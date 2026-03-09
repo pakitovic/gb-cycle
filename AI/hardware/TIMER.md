@@ -1,41 +1,70 @@
 # TIMER
 
 ## Scope
-Define what this subsystem owns and what it does not own.
+
+Own `DIV`, `TIMA`, `TMA`, `TAC`, their internal timing state, overflow behavior, and interrupt request generation.
 
 ## Hardware model
-Summarize the hardware-facing mental model for this subsystem.
+
+Model the timer as edge-sensitive hardware, not as a periodic software counter incremented every few instructions.
 
 ## Responsibilities
-- 
-- 
-- 
+
+- track divider state
+- implement timer enable/frequency selection behavior
+- handle overflow, reload, and interrupt request ordering
 
 ## Registers / MMIO
-- 
+
+- `DIV`
+- `TIMA`
+- `TMA`
+- `TAC`
 
 ## Timing / accuracy requirements
-- 
-- 
+
+- Explain edges, glitches, and event ordering explicitly.
+- Do not reduce the model to "increment every X instructions" if finer timing matters.
+- Preserve the interaction with interrupt timing and writes to timer registers.
 
 ## Dependencies
-- 
+
+- interrupt controller
+- scheduler or clock source
+- bus/MMIO wiring
 
 ## Primary references
-- See 	https://github.com/pakitovic/gb-cycle/blob/main/AI/REFERENCES.md once committed.
-- Add the most relevant references here if needed.
+
+- Pan Docs timer sections
+- AntonioND timing docs
+- Gekkio research and Mooneye timer tests
 
 ## Open-source emulator references
-- Add only the relevant entries from 	https://github.com/pakitovic/gb-cycle/tree/main/AI/research once committed.
+
+Priority order:
+
+1. SameBoy
+2. binjgb
+3. Mooneye GB
+4. Danger Boy
+5. GameRoy
 
 ## Tests
-- List the most relevant ROM-based tests for this subsystem.
+
+- Mooneye timer and DIV/TIMA tests
+- focused write-order and overflow tests
 
 ## Implementation notes for this repo
-- 
+
+- Keep timer state highly testable.
+- Make the source of each timing decision visible in comments or docs.
 
 ## Known pitfalls
-- 
+
+- incorrect edge detection
+- incorrect reload timing
+- mixing interrupt request timing with reload semantics
 
 ## Open questions
-- 
+
+- which internal representation best exposes the divider edge logic

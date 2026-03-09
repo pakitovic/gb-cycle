@@ -1,41 +1,55 @@
 # SERIAL
 
 ## Scope
-Define what this subsystem owns and what it does not own.
+
+Own serial transfer registers, clocking behavior, and link-port-visible state. Do not own host networking or transport APIs.
 
 ## Hardware model
-Summarize the hardware-facing mental model for this subsystem.
+
+Keep hardware serial state explicit even if link support is stubbed initially.
 
 ## Responsibilities
-- 
-- 
-- 
+
+- `SB` and `SC` behavior
+- transfer progress state
+- interrupt signaling at transfer completion
 
 ## Registers / MMIO
-- 
+
+- `SB`
+- `SC`
 
 ## Timing / accuracy requirements
-- 
-- 
+
+- Transfer timing and completion signaling should remain explicit.
 
 ## Dependencies
-- 
+
+- interrupt controller
+- scheduler or clock source
 
 ## Primary references
-- See 	https://github.com/pakitovic/gb-cycle/blob/main/AI/REFERENCES.md once committed.
-- Add the most relevant references here if needed.
+
+- Pan Docs serial sections
 
 ## Open-source emulator references
-- Add only the relevant entries from 	https://github.com/pakitovic/gb-cycle/tree/main/AI/research once committed.
+
+- SameBoy
+- binjgb
 
 ## Tests
-- List the most relevant ROM-based tests for this subsystem.
+
+- register semantics tests
+- completion and interrupt timing tests
 
 ## Implementation notes for this repo
-- 
+
+- Keep the hardware serial model separate from any eventual link backend.
 
 ## Known pitfalls
-- 
+
+- treating serial as purely frontend-defined I/O
 
 ## Open questions
-- 
+
+- what minimal stub behavior is acceptable before true link support exists

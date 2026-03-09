@@ -1,16 +1,18 @@
 # AI Handbook Index
 
-Read files directly instead of using this index as the primary source.
+Read the matching file directly; this index is only a routing guide.
 
 ## Global docs
-- `ARCHITECTURE.md`: project structure and module boundaries.
-- `EXECUTION.md`: implementation workflow.
-- `CODING-RULES.md`: coding standards for Rust.
-- `REFERENCES.md`: external documentation and research sources.
-- `TESTING.md`: validation strategy and ROM test policy.
-- `TIMING-AND-ACCURACY.md`: accuracy goals and timing policy.
+
+- `ARCHITECTURE.md`: project goals, crate layout, subsystem boundaries, and portability rules.
+- `EXECUTION.md`: implementation workflow and change policy.
+- `CODING-RULES.md`: Rust design rules, API style, and optimization discipline.
+- `REFERENCES.md`: primary documentation, hardware research, and open-source consultation order.
+- `TESTING.md`: unit, integration, ROM-based, and oracle-comparison strategy.
+- `TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
 
 ## Hardware docs
+
 - `hardware/CPU.md`
 - `hardware/BUS.md`
 - `hardware/MEMORY.md`
@@ -26,7 +28,17 @@ Read files directly instead of using this index as the primary source.
 - `hardware/CGB.md`
 - `hardware/SGB.md`
 
-## Emulator research docs
+Each hardware file should capture:
+
+- what the subsystem owns
+- which registers and timing rules matter
+- what must remain explicit in code
+- the best primary references
+- the best emulator references for comparison
+- the most relevant tests and pitfalls
+
+## Research docs
+
 - `research/SAMEBOY.md`
 - `research/BINJGB.md`
 - `research/GAMEROY.md`
@@ -34,3 +46,5 @@ Read files directly instead of using this index as the primary source.
 - `research/MOONEYE-GB.md`
 - `research/DANGER-BOY.md`
 - `research/GAMBATTE.md`
+
+Use research docs as implementation cross-checks, not as the source of truth.

@@ -1,41 +1,68 @@
 # DMA
 
 ## Scope
-Define what this subsystem owns and what it does not own.
+
+Own OAM DMA behavior now and leave architectural room for CGB HDMA and related access blocking rules later.
 
 ## Hardware model
-Summarize the hardware-facing mental model for this subsystem.
+
+DMA is not an instant copy when accuracy matters. Represent transfer progress and blocking behavior explicitly.
 
 ## Responsibilities
-- 
-- 
-- 
+
+- OAM DMA transfer state
+- bus blocking and visibility rules during transfer
+- future HDMA integration points
 
 ## Registers / MMIO
-- 
+
+- `DMA`
+- future CGB HDMA registers
 
 ## Timing / accuracy requirements
-- 
-- 
+
+- Describe when CPU and PPU access is blocked.
+- Do not hide DMA behind a one-shot memory copy if the target model requires visible timing.
+- Keep the design ready for HDMA without rewriting the API surface later.
 
 ## Dependencies
-- 
+
+- bus
+- PPU
+- memory/MMIO map
+- model/revision configuration
 
 ## Primary references
-- See 	https://github.com/pakitovic/gb-cycle/blob/main/AI/REFERENCES.md once committed.
-- Add the most relevant references here if needed.
+
+- Pan Docs DMA sections
+- AntonioND timing material
+- relevant CGB documentation for HDMA
 
 ## Open-source emulator references
-- Add only the relevant entries from 	https://github.com/pakitovic/gb-cycle/tree/main/AI/research once committed.
+
+Priority order:
+
+1. SameBoy
+2. binjgb
+3. accurateboy
+4. Mooneye GB
+5. Danger Boy
 
 ## Tests
-- List the most relevant ROM-based tests for this subsystem.
+
+- Mooneye DMA tests
+- focused OAM-blocking tests
 
 ## Implementation notes for this repo
-- 
+
+- Model transfer progress explicitly.
+- Keep DMG OAM DMA and future CGB HDMA conceptually separated.
 
 ## Known pitfalls
-- 
+
+- implementing DMA as an invisible instant copy
+- forgetting access restrictions during transfer
 
 ## Open questions
-- 
+
+- where DMA scheduling should attach to the future scheduler/clock domain

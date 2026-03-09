@@ -1,41 +1,55 @@
 # JOYPAD
 
 ## Scope
-Define what this subsystem owns and what it does not own.
+
+Own the joypad register view, button selection lines, and interrupt request signaling.
 
 ## Hardware model
-Summarize the hardware-facing mental model for this subsystem.
+
+Keep the hardware-visible register behavior separate from host input collection.
 
 ## Responsibilities
-- 
-- 
-- 
+
+- `P1/JOYP` register behavior
+- button matrix selection handling
+- interrupt signaling on input transitions
 
 ## Registers / MMIO
-- 
+
+- `JOYP`
 
 ## Timing / accuracy requirements
-- 
-- 
+
+- Preserve hardware-visible register semantics even if host input arrives asynchronously.
 
 ## Dependencies
-- 
+
+- interrupt controller
+- frontend input adapter boundary
 
 ## Primary references
-- See 	https://github.com/pakitovic/gb-cycle/blob/main/AI/REFERENCES.md once committed.
-- Add the most relevant references here if needed.
+
+- Pan Docs joypad sections
 
 ## Open-source emulator references
-- Add only the relevant entries from 	https://github.com/pakitovic/gb-cycle/tree/main/AI/research once committed.
+
+- SameBoy
+- binjgb
+- GameRoy
 
 ## Tests
-- List the most relevant ROM-based tests for this subsystem.
+
+- register behavior tests
+- interrupt signaling tests
 
 ## Implementation notes for this repo
-- 
+
+- Keep host key mapping outside the emulation core.
 
 ## Known pitfalls
-- 
+
+- mixing frontend input API details into joypad logic
 
 ## Open questions
-- 
+
+- whether input sampling should happen per tick, per frame, or via latched events

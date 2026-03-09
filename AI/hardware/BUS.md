@@ -1,41 +1,66 @@
 # BUS
 
 ## Scope
-Define what this subsystem owns and what it does not own.
+
+Own address decoding, subsystem routing, and visible memory access ordering.
 
 ## Hardware model
-Summarize the hardware-facing mental model for this subsystem.
+
+The bus is not just a convenience table. It is where address ownership, access restrictions, and observable ordering become explicit.
 
 ## Responsibilities
-- 
-- 
-- 
+
+- route reads and writes by address range
+- expose MMIO ownership clearly
+- keep arbitration and blocking rules visible
 
 ## Registers / MMIO
-- 
+
+- full memory map routing
+- shared access to cartridge, VRAM, WRAM, OAM, HRAM, and MMIO registers
 
 ## Timing / accuracy requirements
-- 
-- 
+
+- Bus-visible ordering must remain explicit.
+- Access restrictions from PPU and DMA must not be hidden.
 
 ## Dependencies
-- 
+
+- memory/MMIO map
+- cartridge/MBC
+- PPU, DMA, timer, interrupt controller, joypad, serial, APU
 
 ## Primary references
-- See 	https://github.com/pakitovic/gb-cycle/blob/main/AI/REFERENCES.md once committed.
-- Add the most relevant references here if needed.
+
+- Pan Docs memory map sections
+- AntonioND timing material
+- Gekkio documentation and tests
 
 ## Open-source emulator references
-- Add only the relevant entries from 	https://github.com/pakitovic/gb-cycle/tree/main/AI/research once committed.
+
+Priority order:
+
+1. SameBoy
+2. binjgb
+3. GameRoy
+4. Mooneye GB
+5. Gambatte
 
 ## Tests
-- List the most relevant ROM-based tests for this subsystem.
+
+- Mooneye memory and MMIO behavior tests
+- subsystem-specific access restriction tests
 
 ## Implementation notes for this repo
-- 
+
+- Keep cartridge logic decoupled from the rest of the bus.
+- Favor explicit maps and handlers over opaque indirection.
 
 ## Known pitfalls
-- 
+
+- accidental coupling between unrelated devices
+- hiding blocked reads/writes behind generic memory helpers
 
 ## Open questions
-- 
+
+- whether scheduler ownership should live above the bus or beside it

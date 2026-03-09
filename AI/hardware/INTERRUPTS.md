@@ -1,41 +1,63 @@
 # INTERRUPTS
 
 ## Scope
-Define what this subsystem owns and what it does not own.
+
+Own interrupt request state, enable state, source tracking, and CPU-visible acknowledge behavior.
 
 ## Hardware model
-Summarize the hardware-facing mental model for this subsystem.
+
+Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance logic explicit rather than scattering it across subsystems.
 
 ## Responsibilities
-- 
-- 
-- 
+
+- represent `IF` and `IE`
+- track interrupt sources
+- provide clear acknowledge behavior to the CPU
 
 ## Registers / MMIO
-- 
+
+- `IF`
+- `IE`
 
 ## Timing / accuracy requirements
-- 
-- 
+
+- Preserve ordering with CPU execution, `EI`, `DI`, `HALT`, and timer/PPU requests.
 
 ## Dependencies
-- 
+
+- CPU
+- timer
+- PPU
+- joypad
+- serial
 
 ## Primary references
-- See 	https://github.com/pakitovic/gb-cycle/blob/main/AI/REFERENCES.md once committed.
-- Add the most relevant references here if needed.
+
+- Pan Docs interrupt sections
+- AntonioND timing material
+- Gekkio/Mooneye interrupt edge-case research
 
 ## Open-source emulator references
-- Add only the relevant entries from 	https://github.com/pakitovic/gb-cycle/tree/main/AI/research once committed.
+
+- SameBoy
+- binjgb
+- Mooneye GB
+- GameRoy
 
 ## Tests
-- List the most relevant ROM-based tests for this subsystem.
+
+- Mooneye interrupt timing tests
+- focused tests for priority, masking, and delayed enable behavior
 
 ## Implementation notes for this repo
-- 
+
+- Keep source signaling separate from CPU acknowledgement.
 
 ## Known pitfalls
-- 
+
+- conflating request with acceptance
+- hiding delayed effects from `EI`
 
 ## Open questions
-- 
+
+- whether interrupt controller state should live in CPU-adjacent or bus-adjacent ownership
