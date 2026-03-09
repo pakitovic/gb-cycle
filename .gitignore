@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Rust / Cargo
+/target/
+
+# Editors
+.idea/
+.vscode/
+
+# Logs
+*.log
