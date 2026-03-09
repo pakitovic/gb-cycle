@@ -16,6 +16,7 @@ Every subsystem change should aim to leave behind one of these:
 - a focused automated test for the local invariant
 - a ROM-based reproduction case
 - a documented oracle comparison when timing or ordering is under review
+- a characterization test before structural refactors in behavior-sensitive code
 
 ## ROM-based validation policy
 
@@ -57,3 +58,14 @@ Every fixed bug should leave behind:
 
 - a focused automated test, or
 - a documented ROM-based reproduction case
+
+## Test organization policy
+
+- Prefer local module tests for unit-level coverage.
+- Use top-level `tests/` for integration coverage only.
+- When module tests outgrow an inline `tests` block, move them to a co-located test facade such as `foo/tests.rs`.
+
+## Bug traceability policy
+
+- Bug fixes should keep a reproducible description: ROM or test case, observed behavior, and expected behavior.
+- For CPU, PPU, timer, interrupts, DMA, memory map, and boot behavior, prefer writing the failing test first when practical.

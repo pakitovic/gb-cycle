@@ -39,6 +39,14 @@ AI/
 
 For an early-stage repo, a simplified equivalent is acceptable as long as these boundaries stay visible.
 
+## Rust module layout policy
+
+- Use `foo.rs` for small subsystems.
+- When a subsystem grows, prefer `foo.rs` plus `foo/` as the default production layout.
+- Treat the top-level subsystem file as the facade for module declarations, re-exports, and narrow orchestration.
+- Move hardware responsibilities into focused child files instead of letting timing-sensitive logic accumulate in one large file.
+- Avoid layout churn during behavior work; structural migrations should be isolated when possible.
+
 ## Core design principles
 
 - Model hardware by responsibilities, not by frontend features.

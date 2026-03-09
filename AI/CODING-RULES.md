@@ -16,6 +16,9 @@
 - Keep debug logging and tracing easy to enable in development.
 - Prefer pure APIs when reasonable, especially around decode, derived state, and reusable helpers.
 - Make facts, inferences, and design choices easy to distinguish in code comments and docs.
+- Keep code and code comments in English.
+- Use explicit integer types when register width, wrapping, masking, or overflow semantics matter.
+- Use named constants for registers, bit masks, timing windows, and memory ranges.
 
 ## Architecture discipline
 
@@ -24,6 +27,7 @@
 - Avoid circular dependencies between subsystems.
 - Avoid implicit temporal logic hidden inside convenience APIs.
 - Every hardware quirk should have an explicit home in code.
+- Default to private items and widen visibility only when the subsystem boundary requires it.
 
 ## Timing-sensitive code
 
@@ -31,6 +35,7 @@
 - Prefer code that mirrors hardware phases when accuracy matters.
 - Comment non-obvious hardware quirks with source references.
 - Do not replace fine-grained timing with "every N instructions" models unless the subsystem documentation explicitly justifies it.
+- Make wrapping, overflow, and edge-triggered intent explicit in code.
 
 ## Error handling
 
@@ -64,3 +69,9 @@ Avoid without evidence:
 - obscuring real clocking behind broad abstractions
 - `unsafe` without a strong reason
 - parallelism that harms determinism
+
+## Refactor policy
+
+- Structural refactors should be behavior-neutral.
+- Do not mix layout churn with timing fixes unless the change cannot be separated cleanly.
+- For CPU, PPU, APU, timer, interrupt, DMA, and bus paths, keep or add characterization tests before reshaping the code.
