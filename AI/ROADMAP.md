@@ -219,7 +219,7 @@ This phase must define:
 6. **Complete memory map and special behavior by region**
 7. **Base cartridge interface**
 8. **General I/O registers and read/write rules**
-9. **Exact startup sequence and boot ROM mapping/unmapping**
+9. **Boot ROM mapping, startup modes, and handoff infrastructure**
 
 #### Goal
 
@@ -260,7 +260,11 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - general I/O registers with base read/write rules
 - boot ROM integration into the memory map
 - correct boot ROM unmapping
-- system-visible startup sequence
+- system-visible startup configuration
+- explicit `RealBoot` and `SkipBoot` startup modes
+- DMG-family boot-ROM kind selection for `DMG0`, `DMG`, and `MGB`
+- `FF50`-driven handoff infrastructure in the bus mapping layer
+- skip-boot initialization path with model-aware post-boot state entry
 
 #### Done criteria
 
@@ -270,6 +274,9 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - a functional ROM-only cartridge exists
 - base I/O registers are connected to the bus
 - the boot ROM can be mapped and unmapped correctly
+- boot-ROM overlay versus cartridge visibility is controlled explicitly by bus-visible mapping state
+- `SkipBoot` reaches `0x0100` through explicit post-boot initialization rather than partial boot-ROM execution
+- the infrastructure is ready for a later real-boot path to start CPU execution at `0x0000` with boot ROM mapped and hand off through a real `FF50` write once the CPU core exists
 
 #### Risks if done late or incorrectly
 
@@ -308,6 +315,13 @@ Build a truly temporal CPU core, where observable behavior emerges from internal
 - explicitly modeled reads and writes
 - correct handling of relevant internal states
 
+##### CPU / boot integration
+
+- real boot-ROM execution through the same CPU core and scheduler used after startup
+- real `FF50` write causing cartridge handoff on the next fetch
+- logo/checksum outcomes emerging from executed boot-ROM code rather than emulator-side validation
+- correct model-visible cartridge-entry state after real boot
+
 ##### Timer
 
 - DIV
@@ -334,6 +348,9 @@ Build a truly temporal CPU core, where observable behavior emerges from internal
 - instructions generate their real bus accesses
 - the timer advances with the global scheduler
 - interrupts and HALT are integrated into the real execution flow
+- real boot executes through the same CPU fetch/decode/execute engine used for the rest of the machine
+- real boot reaches cartridge code only through an executed `FF50` write and next-fetch handoff
+- invalid boot-logo or header-check cases remain in boot instead of handing off to the cartridge
 - tracing can observe fetches, accesses, and IRQ acceptance
 
 #### Risks if done late or superficially
@@ -592,7 +609,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 6. Complete memory map and special behavior by region  
 7. Base cartridge interface  
 8. General I/O registers and read/write rules  
-9. Exact startup sequence and boot ROM mapping/unmapping  
+9. Boot ROM mapping, startup modes, and handoff infrastructure  
 
 10. Exact CPU core at the fetch / execute / memory access level  
 11. Timer  

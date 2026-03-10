@@ -136,8 +136,10 @@ to immediately materialize as a separate directory.
 ### `boot/`
 
 - boot ROM assets and selection
+- startup-mode selection such as real boot versus direct post-boot entry
 - initial mapping state
 - boot ROM unmapping
+- model-aware post-boot initialization for explicit skip-boot paths
 - startup-visible boot behavior from the system perspective
 
 ### `cpu/`

@@ -32,6 +32,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 
 - Bus-visible ordering must remain explicit.
 - Access restrictions from PPU and DMA must not be hidden.
+- Boot-ROM overlay and cartridge handoff must be represented as observable routing behavior, not as a CPU-local switch or a post-boot jump shortcut.
 - OAM decisions must consider address, LCD enable state, PPU mode, and OAM DMA state together rather than as unrelated checks.
 - OAM access blocking during PPU Mode 2 must be represented as observable bus behavior, not as a render-only detail.
 - During PPU Mode 3, both OAM and VRAM access restrictions must be represented as observable bus behavior.
@@ -70,6 +71,8 @@ Priority order:
 - subsystem-specific access restriction tests
 - tests for blocked reads returning the expected observable value and blocked writes being ignored where applicable
 - tests for requester-specific behavior during OAM DMA, including CPU HRAM access and DMA-driven OAM writes
+- tests for boot-ROM overlay before `FF50` and cartridge visibility after `FF50`
+- tests that the next fetch after boot-ROM unmapping already observes cartridge routing
 
 ## Implementation notes for this repo
 
@@ -81,9 +84,11 @@ Priority order:
 - Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers.
 - Do not special-case CPU opcode fetch, operand fetch, or stack accesses outside the common bus contract; they should use the same routed access path as any other CPU-visible memory transaction.
 - Treat `FF46` as the trigger that configures the DMA subsystem; do not implement OAM DMA by performing a direct `160`-byte copy inside the bus write path.
+- Treat `FF50` as the trigger that changes boot-ROM mapping state; do not model real boot completion as a synthetic `PC = 0x0100` event outside the bus and CPU execution flow.
 - Design region ownership so future CGB additions can extend VRAM banking, WRAM banking, extra I/O registers, and HDMA without replacing the bus contract.
 - Prefer region controllers or explicit handlers over hard-coded assumptions like "DMG only has one VRAM shape forever".
 - The bus should model boot ROM mapping as a first-class routing rule, including the later `FF50`-controlled unmap to cartridge ROM.
+- The DMG-family next-fetch handoff after `FF50` should already be modeled in a way that can later extend to CGB's split boot-ROM mapping while keeping the cartridge header window visible.
 - Avoid boot-ROM mapping code that assumes firmware always occupies exactly one small contiguous prefix of the address space.
 - Leave room for model-specific boot firmware windows that are not a single contiguous DMG-style range.
 - Keep blocked-access behavior inside bus-facing region handlers such as VRAM/OAM access paths rather than teaching the CPU about those rules.
