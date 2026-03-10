@@ -2,7 +2,7 @@
 
 ## Scope
 
-Own boot ROM mapping, power-up sequencing, direct-boot state definitions, and hardware revision differences visible at startup.
+Own boot ROM assets, boot-ROM enable/disable state, power-up sequencing, direct-boot state definitions, and hardware revision differences visible at startup.
 
 ## Hardware model
 
@@ -16,6 +16,7 @@ The boot subsystem should own firmware selection and boot-ROM enable state, whil
 ## Responsibilities
 
 - boot ROM enable/disable behavior
+- boot ROM mapping policy and state exposed to the bus
 - model-specific initial register and memory state
 - revision-aware startup configuration
 - DMG-family differentiation where boot ROM or startup-visible behavior differs

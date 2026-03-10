@@ -37,7 +37,7 @@ Include coverage for Mode 2 OAM blocking, OAM-order sprite selection, and the `1
 Include DMG STAT quirk coverage and avoid assuming the same result on GBC-in-DMG-mode without validation.
 Include coverage for Mode 3 startup cost, SCX-dependent timing, window-trigger timing, and sprite-induced stalls when suitable tests exist.
 For bus behavior, include blocked-access cases, boot ROM remapping, and DMA-related contention whenever suitable tests exist.
-For DMA behavior, include transfer-progress timing, source-page effects, and OAM-visibility or blocking cases whenever suitable tests exist.
+For DMA behavior, include `FF46` source-page selection, full `160`-byte copy correctness, DMG total duration of `640` dots, transfer-progress timing, CPU blocking outside HRAM, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
 
 ## Recommended external validation sources
 

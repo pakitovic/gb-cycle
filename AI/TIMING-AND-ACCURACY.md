@@ -55,4 +55,6 @@ When implementing timing:
 - CPU, PPU, timer, APU, DMA, and bus-visible effects should be expressible on a shared T-cycle timeline.
 - Avoid architectures that execute a whole instruction or whole M-cycle and only then advance the rest of the hardware.
 - If higher-level helpers exist for ergonomics, they must preserve the same per-T-cycle ordering semantics internally.
+- Long-running hardware activity started by a register write, such as OAM DMA, should become explicit in-flight state on the shared timeline rather than a one-shot side effect.
+- When a subsystem progresses in repeated temporal slices, such as one DMA byte every four dots on DMG OAM DMA, that phase relationship should remain visible in code and tests.
 - For the PPU specifically, dot-by-dot progression is the intended interpretation of the shared T-cycle timeline.

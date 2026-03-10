@@ -15,7 +15,7 @@ La base gráfica objetivo es un PPU `dot-by-dot` con `tile fetcher + pixel FIFO`
 
 ## Estructura prevista
 
-La documentación del proyecto recomienda una organización similar a esta:
+La documentación del proyecto recomienda una organización temprana simplificada, compatible con el layout más detallado descrito en `AI/ARCHITECTURE.md`:
 
 ```text
 core/        Lógica pura de emulación
@@ -40,4 +40,7 @@ Antes de implementar subsistemas, consulta las guías en `AI/`:
 - `AI/ARCHITECTURE.md`
 - `AI/CODING-RULES.md`
 - `AI/EXECUTION.md`
+- `AI/REFERENCES.md`
+- `AI/TESTING.md`
+- `AI/TIMING-AND-ACCURACY.md`
 - `AI/hardware/*.md`

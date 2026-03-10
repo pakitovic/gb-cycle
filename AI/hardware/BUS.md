@@ -18,6 +18,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - keep arbitration and blocking rules visible
 - apply access rules based on the current hardware state, not only the address
 - let the CPU perform generic bus accesses without embedding device-specific lock rules in CPU code
+- distinguish requester-specific access semantics when CPU, DMA, or other actors do not obey the same rules
 - coordinate dynamic mapping between boot ROM, cartridge ROM, and later model-specific extensions
 - consume subsystem-owned state such as PPU mode, DMA progress, and boot-ROM enable state when deciding the observable result of an access
 
@@ -31,14 +32,18 @@ Address alone is not enough: the bus must also consider the current temporal har
 
 - Bus-visible ordering must remain explicit.
 - Access restrictions from PPU and DMA must not be hidden.
+- OAM decisions must consider address, LCD enable state, PPU mode, and OAM DMA state together rather than as unrelated checks.
 - OAM access blocking during PPU Mode 2 must be represented as observable bus behavior, not as a render-only detail.
 - During PPU Mode 3, both OAM and VRAM access restrictions must be represented as observable bus behavior.
+- During DMG OAM DMA, CPU accesses should retain normal HRAM behavior while non-HRAM CPU accesses observe DMA-blocked semantics instead of normal memory-region behavior.
 - With LCD disabled, access rules should return to the hardware state expected for LCD-off behavior.
 - When an access is blocked, the bus should model the correct observable result for that situation instead of falling through to normal RAM semantics.
 
 ## Dependencies
 
 - memory/MMIO map
+- boot subsystem state
+- model/revision configuration
 - cartridge/MBC
 - PPU, DMA, timer, interrupt controller, joypad, serial, APU
 
@@ -63,6 +68,7 @@ Priority order:
 - Mooneye memory and MMIO behavior tests
 - subsystem-specific access restriction tests
 - tests for blocked reads returning the expected observable value and blocked writes being ignored where applicable
+- tests for requester-specific behavior during OAM DMA, including CPU HRAM access and DMA-driven OAM writes
 
 ## Implementation notes for this repo
 
@@ -70,7 +76,9 @@ Priority order:
 - Favor explicit maps and handlers over opaque indirection.
 - Treat the bus as both an address decoder and an access arbiter.
 - A bus context or equivalent state bundle is a good fit for carrying model, PPU mode, LCD enable, DMA activity, boot ROM mapping, and later CGB-specific selectors.
+- A caller-aware access split or equivalent internal distinction between CPU-initiated and DMA-initiated accesses is recommended when the observable rules differ.
 - Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers.
+- Treat `FF46` as the trigger that configures the DMA subsystem; do not implement OAM DMA by performing a direct `160`-byte copy inside the bus write path.
 - Design region ownership so future CGB additions can extend VRAM banking, WRAM banking, extra I/O registers, and HDMA without replacing the bus contract.
 - Prefer region controllers or explicit handlers over hard-coded assumptions like "DMG only has one VRAM shape forever".
 - The bus should model boot ROM mapping as a first-class routing rule, including the later `FF50`-controlled unmap to cartridge ROM.
@@ -82,6 +90,7 @@ Priority order:
 
 - accidental coupling between unrelated devices
 - hiding blocked reads/writes behind generic memory helpers
+- treating requester identity as irrelevant when CPU and DMA need different observable access rules
 - freezing the MMIO map behind abstractions that are hard to extend for CGB-only registers
 - treating the bus as a static memory map without temporal arbitration
 

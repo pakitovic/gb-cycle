@@ -62,6 +62,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - M-cycles may be referenced for documentation or instruction summaries, but they are not the primary execution unit of the core.
 - Shared subsystem scheduling should assume a common T-cycle timeline so CPU, PPU, timer, DMA, APU, and bus interactions can be modeled without coarse conversion layers.
 - For the PPU, that shared T-cycle timeline is also the dot timeline; dot-by-dot behavior is the intended baseline.
+- Long-running hardware operations triggered by MMIO writes, such as OAM DMA, should become explicit in-flight subsystem state on that shared timeline rather than immediate bulk side effects.
 
 ## Console model policy
 
@@ -107,6 +108,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
 - The memory subsystem owns plain storage regions such as WRAM and HRAM; it must not bypass bus-visible access restrictions defined elsewhere.
+- Shared scheduling must allow CPU, DMA, PPU, timer, and other actors to make progress on the same T-cycle timeline so arbitration remains observable.
 
 ## Boot ROM architecture policy
 
