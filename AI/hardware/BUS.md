@@ -26,6 +26,8 @@ Even in a DMG-only implementation, treat VRAM, WRAM, OAM, cartridge space, HRAM,
 
 - Bus-visible ordering must remain explicit.
 - Access restrictions from PPU and DMA must not be hidden.
+- OAM access blocking during PPU Mode 2 must be represented as observable bus behavior, not as a render-only detail.
+- During PPU Mode 3, both OAM and VRAM access restrictions must be represented as observable bus behavior.
 
 ## Dependencies
 

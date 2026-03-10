@@ -52,4 +52,4 @@ Keep the hardware-visible register behavior separate from host input collection.
 
 ## Open questions
 
-- whether input sampling should happen per tick, per frame, or via latched events
+- whether input sampling should happen per T-cycle, per frame, or via latched events

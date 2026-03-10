@@ -22,11 +22,12 @@ Keep hardware serial state explicit even if link support is stubbed initially.
 ## Timing / accuracy requirements
 
 - Transfer timing and completion signaling should remain explicit.
+- Serial progress should remain compatible with the shared T-cycle timing model of the core.
 
 ## Dependencies
 
 - interrupt controller
-- scheduler or clock source
+- T-cycle scheduler or clock source
 
 ## Primary references
 

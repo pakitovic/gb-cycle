@@ -12,6 +12,7 @@ Read the matching file directly; this index is only a routing guide.
 - `TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
 
 The project-wide timing baseline is T-cycle based; see `TIMING-AND-ACCURACY.md` and `hardware/CPU.md`.
+The project-wide PPU baseline is dot-by-dot with explicit fetcher/FIFO behavior; see `hardware/PPU.md`.
 
 ## Hardware docs
 

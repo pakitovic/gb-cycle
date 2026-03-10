@@ -9,6 +9,7 @@ Own LCD/PPU mode progression, rendering state, VRAM/OAM access rules, STAT behav
 Model PPU modes explicitly. Separate fetcher/FIFO logic when it improves clarity and timing fidelity.
 
 Even in DMG-only work, avoid hard-wiring the design to a single permanent VRAM interpretation or a renderer that only understands four grayscale outputs.
+For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle`.
 
 ## Responsibilities
 
@@ -16,6 +17,8 @@ Even in DMG-only work, avoid hard-wiring the design to a single permanent VRAM i
 - background, window, and sprite fetch behavior
 - pixel priority rules
 - STAT/LY/LYC and LCD-visible interrupts
+- tile fetcher state
+- pixel FIFO state and output timing
 
 ## Registers / MMIO
 
@@ -33,6 +36,15 @@ Even in DMG-only work, avoid hard-wiring the design to a single permanent VRAM i
 - Handle VRAM/OAM locking precisely.
 - Explain sprite, window, and FIFO quirks where accuracy depends on them.
 - Use a timing base that is compatible with dot-level reasoning so future CGB double-speed support does not require a new temporal model.
+- Model scanline timing in dots: `456` dots per scanline and `154` scanlines per frame.
+- Treat the full frame as `70224` dots.
+- Treat Mode 2 as `80` dots and keep Mode 3 variable by construction instead of forcing a fixed duration.
+- Treat Mode 3 as a variable phase in the `172-289` dot range for DMG-family behavior, depending on fetcher/FIFO work and stalls.
+- Treat Mode 0 / HBlank as the remainder of the scanline budget after Mode 2 and variable Mode 3 work have completed.
+- Output and pipeline progress should be expressible dot-by-dot on the shared T-cycle timeline.
+- LCD-visible pixel output should advance at one pixel per dot once the pipeline is producing pixels.
+- During Mode 2, OAM scan should progress on a fixed `80`-dot budget while building the per-scanline sprite candidate list for Mode 3.
+- Model OAM scan as an ordered traversal of the `40` OAM entries, selecting at most `10` sprites for the current scanline.
 
 ## Dependencies
 
@@ -62,14 +74,25 @@ Priority order:
 - dmg-acid2 / cgb-acid2
 - mealybug-tearoom-tests
 - Mooneye LCD/STAT tests
+- tests for variable Mode 3 timing, SCX discard behavior, and sprite-induced stalls when available
 
 ## Implementation notes for this repo
 
 - Keep mode state explicit.
 - Separate rendering backend concerns from internal PPU state.
+- Do not implement the PPU as a scanline renderer or a mode-only renderer if the goal is cycle accuracy.
+- Mode 2 should be an explicit PPU state with its own dot counter, OAM traversal progress, and temporary visible-sprite list.
+- Preserve OAM discovery order during Mode 2 instead of rebuilding an idealized sprite list later.
+- Represent the pixel pipeline explicitly as fetcher plus FIFO, with state advanced one dot at a time.
+- A fetcher model with explicit stages such as tile index, tile data low, tile data high, and FIFO push is preferred over opaque bulk tile reads.
+- Treat the framebuffer as an emulator-side output buffer only; hardware pixel production should conceptually flow through fetcher -> FIFO -> LCD output.
 - The fetcher and pixel path should be able to grow future metadata such as bank source, palette selection, or priority-related information without redesigning the whole pipeline.
 - Do not hard-code DMG palette mapping as the final renderer boundary; keep a stage where hardware pixel meaning can later expand for CGB palettes and tile attributes.
 - Treat CGB palette and tile-attribute support as future extensions of the same pixel pipeline, not as a replacement renderer.
+- SCX startup discard, window start behavior, and sprite fetch pauses must be able to delay pixel output and therefore stretch Mode 3 naturally.
+- Treat Mode 2 as a preparatory pipeline phase for Mode 3, not as an isolated bookkeeping pass.
+- STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
+- Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
 
 ## Known pitfalls
 
@@ -78,7 +101,13 @@ Priority order:
 - sprite priority and timing shortcuts
 - modeling DMA/PPU access conflicts too loosely
 - baking DMG-only palette assumptions into the final pixel representation
+- forcing Mode 3 to a constant duration
+- forcing HBlank to a constant duration independent of Mode 3 work
+- pushing whole tiles or scanlines directly to a framebuffer without a FIFO model
+- selecting sprites without respecting OAM order and the per-line limit of `10`
+- modeling Mode 2 as an instant scan instead of a fixed `80`-dot phase
+- treating STAT behavior as a generic interrupt source without hardware-specific LCD quirks
 
 ## Open questions
 
-- how soon a full fetcher/FIFO model is required for target accuracy
+- the exact level of sprite-fetch and window-trigger detail required for the first DMG milestone

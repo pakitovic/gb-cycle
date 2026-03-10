@@ -32,6 +32,9 @@ Map tests to the subsystem they validate:
 - CGB-specific features
 
 For boot behavior, cover both real boot ROM execution and direct-boot presets when those modes exist.
+For PPU behavior, prioritize tests that expose dot timing, variable Mode 3 length, fetcher/FIFO correctness, STAT timing, and sprite interaction.
+Include coverage for Mode 2 OAM blocking, OAM-order sprite selection, and the `10`-sprites-per-scanline limit when suitable tests exist.
+Include DMG STAT quirk coverage and avoid assuming the same result on GBC-in-DMG-mode without validation.
 
 ## Recommended external validation sources
 

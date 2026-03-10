@@ -55,3 +55,4 @@ When implementing timing:
 - CPU, PPU, timer, APU, DMA, and bus-visible effects should be expressible on a shared T-cycle timeline.
 - Avoid architectures that execute a whole instruction or whole M-cycle and only then advance the rest of the hardware.
 - If higher-level helpers exist for ergonomics, they must preserve the same per-T-cycle ordering semantics internally.
+- For the PPU specifically, dot-by-dot progression is the intended interpretation of the shared T-cycle timeline.

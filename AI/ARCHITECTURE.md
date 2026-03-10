@@ -61,6 +61,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - The project timing foundation is T-cycle based from the start.
 - M-cycles may be referenced for documentation or instruction summaries, but they are not the primary execution unit of the core.
 - Shared subsystem scheduling should assume a common T-cycle timeline so CPU, PPU, timer, DMA, APU, and bus interactions can be modeled without coarse conversion layers.
+- For the PPU, that shared T-cycle timeline is also the dot timeline; dot-by-dot behavior is the intended baseline.
 
 ## Console model policy
 
