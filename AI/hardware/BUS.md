@@ -38,6 +38,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - During DMG OAM DMA, CPU accesses should retain normal HRAM behavior while non-HRAM CPU accesses observe DMA-blocked semantics instead of normal memory-region behavior.
 - With LCD disabled, access rules should return to the hardware state expected for LCD-off behavior.
 - When an access is blocked, the bus should model the correct observable result for that situation instead of falling through to normal RAM semantics.
+- CPU opcode fetch, immediate fetch, stack traffic, and read-modify-write memory operations should appear as ordinary ordered bus accesses, not as post-instruction aggregated effects.
 
 ## Dependencies
 
@@ -78,6 +79,7 @@ Priority order:
 - A bus context or equivalent state bundle is a good fit for carrying model, PPU mode, LCD enable, DMA activity, boot ROM mapping, and later CGB-specific selectors.
 - A caller-aware access split or equivalent internal distinction between CPU-initiated and DMA-initiated accesses is recommended when the observable rules differ.
 - Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers.
+- Do not special-case CPU opcode fetch, operand fetch, or stack accesses outside the common bus contract; they should use the same routed access path as any other CPU-visible memory transaction.
 - Treat `FF46` as the trigger that configures the DMA subsystem; do not implement OAM DMA by performing a direct `160`-byte copy inside the bus write path.
 - Design region ownership so future CGB additions can extend VRAM banking, WRAM banking, extra I/O registers, and HDMA without replacing the bus contract.
 - Prefer region controllers or explicit handlers over hard-coded assumptions like "DMG only has one VRAM shape forever".

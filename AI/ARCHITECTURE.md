@@ -61,6 +61,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - The project timing foundation is T-cycle based from the start.
 - M-cycles may be referenced for documentation or instruction summaries, but they are not the primary execution unit of the core.
 - Shared subsystem scheduling should assume a common T-cycle timeline so CPU, PPU, timer, DMA, APU, and bus interactions can be modeled without coarse conversion layers.
+- CPU execution on that timeline should be expressed through ordered fetch/read/write/internal steps rather than a black-box opcode plus aggregate duration.
 - For the PPU, that shared T-cycle timeline is also the dot timeline; dot-by-dot behavior is the intended baseline.
 - Long-running hardware operations triggered by MMIO writes, such as OAM DMA, should become explicit in-flight subsystem state on that shared timeline rather than immediate bulk side effects.
 
@@ -88,7 +89,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 
 ## Suggested subsystem boundaries
 
-- CPU: instruction flow, register state, IME state, interrupt acceptance/dispatch, and HALT/STOP semantics
+- CPU: instruction flow, register state, decode/execution state, fine-grained fetch/read/write/internal steps, IME state, interrupt acceptance/dispatch, and HALT/STOP semantics
 - Bus: address decoding, subsystem routing, dynamic mapping, visible access ordering, and temporal arbitration of blocked accesses
 - Memory and MMIO: WRAM, HRAM, echo behavior, plain storage ownership, and MMIO-backed state not owned by another subsystem
 - Interrupt controller: IF/IE state, interrupt request paths, priority-ordered pending selection, and acknowledge flow
@@ -110,6 +111,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
 - The memory subsystem owns plain storage regions such as WRAM and HRAM; it must not bypass bus-visible access restrictions defined elsewhere.
 - Shared scheduling must allow CPU, DMA, PPU, timer, and other actors to make progress on the same T-cycle timeline so arbitration remains observable.
+- Shared scheduling must not depend on whole-instruction CPU completion; it should be able to observe CPU fetches, operand reads, stack traffic, and internal steps while the rest of the hardware continues to advance.
 
 ## Boot ROM architecture policy
 

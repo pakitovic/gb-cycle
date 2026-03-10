@@ -26,6 +26,7 @@ Keep hardware serial state explicit even if link support is stubbed initially.
 
 ## Dependencies
 
+- bus/MMIO wiring
 - interrupt controller
 - T-cycle scheduler or clock source
 
@@ -46,6 +47,7 @@ Keep hardware serial state explicit even if link support is stubbed initially.
 ## Implementation notes for this repo
 
 - Keep the hardware serial model separate from any eventual link backend.
+- Let bus/MMIO wiring expose `SB` and `SC` at their mapped addresses while the serial subsystem owns transfer semantics.
 - Request the serial interrupt through the shared interrupt-controller path instead of reaching into CPU interrupt state directly.
 
 ## Known pitfalls

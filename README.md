@@ -3,6 +3,7 @@
 Emulador de Game Boy centrado en exactitud de hardware y escrito en Rust.
 
 La base temporal objetivo del core es `1 tick = 1 T-cycle`.
+La base CPU objetivo es un core de `fetch / decode / execute` con accesos reales al bus.
 La base gráfica objetivo es un PPU `dot-by-dot` con `tile fetcher + pixel FIFO`.
 
 ## Objetivos
@@ -11,6 +12,7 @@ La base gráfica objetivo es un PPU `dot-by-dot` con `tile fetcher + pixel FIFO`
 - Mantener un core portable y desacoplado de cualquier frontend.
 - Facilitar validación con tests y ROMs de referencia.
 - Construir el core desde el principio sobre una línea temporal por `T-cycle`, no por `M-cycle`.
+- Modelar la CPU desde el principio como flujo real de fetch/decode/execute, no como opcodes opacos con duración agregada.
 - Modelar el PPU desde el principio como pipeline real, no como renderer por scanline.
 
 ## Estructura prevista

@@ -24,6 +24,7 @@ Keep the hardware-visible register behavior separate from host input collection.
 
 ## Dependencies
 
+- bus/MMIO wiring
 - interrupt controller
 - frontend input adapter boundary
 
@@ -45,6 +46,7 @@ Keep the hardware-visible register behavior separate from host input collection.
 ## Implementation notes for this repo
 
 - Keep host key mapping outside the emulation core.
+- Let bus/MMIO wiring expose `JOYP` at its mapped address while the joypad subsystem owns the register semantics.
 - Request the joypad interrupt through the shared interrupt-controller path instead of mutating CPU interrupt state directly.
 
 ## Known pitfalls
