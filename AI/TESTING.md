@@ -37,8 +37,14 @@ For direct-boot presets, include model-specific CPU state at `PC = 0x0100`, chec
 Include explicit tests for unreliable post-boot state policy, such as WRAM, HRAM, external RAM, `OBP0`, and `OBP1`, without presenting those policy choices as proven hardware constants.
 For PPU behavior, prioritize tests that expose dot timing, variable Mode 3 length, fetcher/FIFO correctness, STAT timing, and sprite interaction.
 Include coverage for Mode 2 OAM blocking, OAM-order sprite selection, and the `10`-sprites-per-scanline limit when suitable tests exist.
+Include sprite-selection tests that prove `Y` drives Mode 2 selection while `X` visibility does not prevent a sprite from consuming one of the `10` slots.
+Include DMG OBJ/OBJ priority tests that distinguish selection priority from drawing priority and verify smaller `X` then earlier OAM order.
+Include OBJ transparency tests that verify color index `0` is transparent rather than visible white output.
+Include BG/OBJ mixing tests that verify the winning OBJ pixel is chosen before the BG-over-OBJ rule is applied.
 Include DMG STAT quirk coverage and avoid assuming the same result on GBC-in-DMG-mode without validation.
 Include coverage for Mode 3 startup cost, SCX-dependent timing, window-trigger timing, and sprite-induced stalls when suitable tests exist.
+Include sprite-edge tests for top and bottom clipping, `8x8` versus `8x16`, and the `SCX & 7` plus `X = 0` timing-sensitive path when suitable tests exist.
+Include mid-frame `LCDC.1` and `LCDC.2` toggle coverage when sprite fetch cancel and size-change behavior are implemented.
 For CPU execution behavior, include opcode fetch under boot-ROM/cartridge mapping, `imm8`/`imm16` fetch order, register-versus-`(HL)` timing differences, taken-versus-untaken conditional paths, stack byte order, CB-prefix double-fetch behavior, and instructions with internal no-bus steps whenever suitable tests exist.
 For CPU interrupt-control behavior, include IE/IF register behavior, delayed `EI`, immediate `DI`, fixed interrupt priority, vector dispatch, `RETI`, `HALT` wake-up semantics, `HALT` bug activation/effect, and separate `STOP` coverage whenever suitable tests exist.
 For timer behavior, include internal-counter-derived `DIV`, DIV-write glitches, TAC-write glitches, falling-edge TIMA increments, overflow-window behavior, separate TIMA/TMA write cases before/during/after reload, and timer interrupt timing through `IF` and CPU-visible servicing whenever suitable tests exist.

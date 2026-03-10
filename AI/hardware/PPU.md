@@ -43,6 +43,76 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
 - For `OBP0` and `OBP1`, the low two bits must not change the meaning of OBJ color index `0`, because that index remains transparent.
 
+## Sprite pipeline baseline
+
+- DMG sprites must be integrated into the real Mode 3 pixel pipeline rather than rendered by a scanline-level compositor layered over a finished background image.
+- The PPU should keep separate BG FIFO and OBJ/OAM FIFO state and perform BG/OBJ mixing when pixels are popped for LCD output, not after the background has already been rendered.
+- Sprite presence must be able to lengthen Mode 3 through real fetch pauses and object-fetch work rather than through a fixed per-scanline sprite surcharge.
+
+## Sprite representation baseline
+
+- OAM contains `40` sprite entries of `4` bytes each: `Y`, `X`, tile index, and attributes.
+- Sprite coordinates should be interpreted using the hardware offsets `screen_y = oam_y - 16` and `screen_x = oam_x - 8`.
+- A sprite with `Y = 0` or `Y >= 160` should be treated as vertically hidden.
+- A sprite with `X = 0` or `X >= 168` should be treated as horizontally off-screen.
+- In `8x16` mode, bit `0` of the tile index should always be ignored so the upper tile is even-aligned and the lower tile is the following odd tile.
+- Per-sprite attributes should explicitly include at least BG-over-OBJ priority, X flip, Y flip, and DMG palette selection `OBP0` or `OBP1`.
+
+## Mode 2 sprite-selection baseline
+
+- Mode 2 should select candidate sprites for the current scanline using only the current `LY`, the sprite `Y` coordinate, and the live global size selected by `LCDC.2`.
+- Sprite selection should ignore `X`; horizontally off-screen sprites still count toward the per-line selection limit if they match vertically.
+- The selection order should be OAM order from `FE00` upward, stopping once `10` matching sprites have been collected.
+- The current line's selected-sprite list should preserve OAM discovery order for later priority and timing work.
+
+## DMG OBJ priority baseline
+
+- Keep selection priority and drawing priority conceptually separate.
+- On DMG, selection priority is OAM traversal order under the hard `10`-sprite-per-line limit.
+- On DMG, drawing priority between overlapping non-transparent OBJ pixels should prefer the smaller `X` coordinate.
+- If overlapping OBJ pixels have the same `X`, drawing priority should prefer the earlier OAM entry.
+- Do not reuse CGB's OBJ-priority policy for DMG OBJ/OBJ conflicts.
+
+## OBJ transparency and BG/OBJ mixing baseline
+
+- OBJ color index `0` must always be treated as transparent.
+- The object FIFO should support transparent filler pixels of minimal priority so partially available object runs do not accidentally block the background.
+- Transparent OBJ pixels must not be treated as visible white output; transparency is a property of the object color index before DMG palette mapping.
+- The PPU should resolve OBJ/OBJ priority first, producing one winning object pixel candidate, and only then apply the BG-versus-OBJ rule using that winning pixel's attributes.
+- The OBJ BG-over-OBJ attribute must not influence which sprite wins an OBJ/OBJ overlap.
+- A higher-priority OBJ may therefore hide a lower-priority OBJ even if the winning OBJ later stays behind a nonzero BG pixel.
+- BG/OBJ mixing should be decided per popped pixel using the live BG pixel, the winning OBJ pixel, `LCDC.0`, `LCDC.1`, and the OBJ priority attribute.
+- In DMG mode with `LCDC.0 = 0`, BG and window output should be forced to white while OBJ output can still remain visible when `LCDC.1 = 1`.
+- A BG pixel of color `0` should not block an eligible OBJ pixel as if the BG were opaque.
+
+## Object fetch and stall baseline
+
+- Mode 3 should include an explicit object-fetch path instead of treating sprite timing as a scalar penalty.
+- Object fetch should be able to wait for the BG fetcher to reach the relevant point before the sprite data is incorporated into the object FIFO.
+- Sprite fetch work should be able to stall pixel output and lengthen Mode 3 on the shared dot timeline.
+- The special DMG timing penalty involving `SCX & 7 > 0` together with a sprite at `X = 0` should have an explicit path in the design even if the exact timing remains documented as partially unsettled.
+- Avoid reducing sprite timing to "add N dots per sprite" without internal fetcher state.
+
+## Mid-frame toggle and size-change baseline
+
+- `LCDC.1` should be observable by the sprite pipeline mid-frame, including during an in-flight object fetch.
+- If `LCDC.1` is turned off during active object fetching, the design should support an explicit fetch-cancel path with real timing cost rather than a pure visibility flag change.
+- `LCDC.2` sprite size should be treated as live state, not as a once-per-frame configuration snapshot.
+- In `8x16` mode, line selection and tile-row calculation should treat the sprite as two stacked tiles with even/odd tile pairing derived from the masked tile index.
+- Keep a dedicated task for the visible DMG artifacts and leaks caused by changing `LCDC.2` mid-frame, especially during the lower half of an `8x16` sprite.
+
+## Sprite edge-case baseline
+
+- Vertically clipped sprites near the top and bottom of the screen should be modeled explicitly rather than rejected as fully invisible.
+- Cases such as `Y = 2` and `Y = 154` should remain part of the test plan because they expose partial-row visibility differences between `8x8` and `8x16`.
+- A sprite hidden by `X = 0` or `X >= 168` should remain capable of consuming one of the `10` Mode 2 sprite-selection slots if its `Y` matches the current scanline.
+
+## Sprite and window integration baseline
+
+- Sprite mixing must remain compatible with a BG/window pipeline in which window start clears the BG FIFO and resets the fetcher mid-line.
+- Do not design sprites as a layer applied over a fully resolved BG image, because window activation can restart fetch state in the middle of the scanline.
+- Keep window-specific glitches and `WX`/`WY` behavior in their own work item, but preserve a per-pixel mixer design now so later window work does not require a sprite rewrite.
+
 ## Timing / accuracy requirements
 
 - Make mode timing explicit.
@@ -93,6 +163,13 @@ Priority order:
 - mealybug-tearoom-tests
 - Mooneye LCD/STAT tests
 - tests for variable Mode 3 timing, SCX discard behavior, and sprite-induced stalls when available
+- tests for Mode 2 sprite selection using Y only, including horizontally off-screen sprites still consuming one of the `10` slots
+- tests for DMG OBJ/OBJ priority: lower `X` wins, then OAM order on equal `X`
+- tests for OBJ color `0` transparency and transparent object FIFO filler behavior
+- tests for BG/OBJ mixing using the winning OBJ pixel before applying the BG-over-OBJ rule
+- tests for `8x8` versus `8x16` selection and row mapping, including bit `0` ignored on `8x16` tile indices
+- tests for top-edge and bottom-edge partial sprite visibility such as `Y = 2` and `Y = 154`
+- tests for mid-frame `LCDC.1` and `LCDC.2` changes when relevant behavior is implemented or intentionally isolated
 - direct-boot continuity tests that verify the first LCD-visible dots after `SkipBoot` are coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
 
 ## Implementation notes for this repo
@@ -115,6 +192,11 @@ Priority order:
 - Sprite handling during Mode 3 must be able to interrupt or stall the normal background fetch flow while object data is incorporated.
 - Treat Mode 2 as a preparatory pipeline phase for Mode 3, not as an isolated bookkeeping pass.
 - The list of visible sprites produced in Mode 2 should feed directly into Mode 3 object timing and mixing logic.
+- A shape such as `SelectedSpritesForLine`, `ObjectFetcherState`, `OamFifo`, `ObjectPixel`, `SpritePriorityResolver`, and `BgObjMixer` is a good fit for keeping sprite work explicit and testable.
+- Use one consistent local term for the sprite-pixel queue; `OBJ FIFO`, `OAM FIFO`, and `ObjectFifo` in this documentation refer to the same hardware-facing queue.
+- The object FIFO should carry per-pixel metadata such as color index, palette selection, OBJ priority attribute, X-priority information, OAM-order tie-break information, and transparency.
+- Keep OBJ/OBJ priority resolution separate from BG/OBJ mixing so the BG-over-OBJ attribute is applied only after the winning sprite pixel has been chosen.
+- Apply X flip, Y flip, palette selection, and `8x16` tile-row mapping during object fetch and FIFO population rather than as a framebuffer post-process.
 - STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
 - Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
 - Mid-frame writes to LCD-visible registers should be interpreted on the same dot timeline that drives mode, fetcher, FIFO, and interrupt behavior.
@@ -137,6 +219,10 @@ Priority order:
 - pushing whole tiles or scanlines directly to a framebuffer without a FIFO model
 - selecting sprites without respecting OAM order and the per-line limit of `10`
 - modeling Mode 2 as an instant scan instead of a fixed `80`-dot phase
+- resolving BG/OBJ mixing before resolving which OBJ pixel actually wins an overlap
+- using X visibility as part of Mode 2 sprite selection and thereby hiding real `10`-sprite-per-line exhaustion
+- treating OBJ color `0` as white output instead of transparency
+- collapsing sprite timing into a constant per-sprite penalty with no explicit object-fetch state
 - treating STAT behavior as a generic interrupt source without hardware-specific LCD quirks
 - storing `LY` as a writable register instead of exposing the live scanline
 - letting LCD-visible MMIO writes bypass the temporal PPU model and only affect a later renderer pass

@@ -491,11 +491,34 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
 - LCD on/off and reactivation
 - OAM corruption bug
 
+#### Sprite sequencing inside Phase 4
+
+1. Implement Mode 2 sprite selection.
+   Scope: vertical match by `Y`, live `LCDC.2` size, OAM order, and the hard `10`-sprite-per-line limit.
+   Acceptance criteria: horizontally off-screen sprites still count if their `Y` matches, `8x8` and `8x16` selection are both correct, and OAM discovery order is preserved.
+2. Implement DMG OBJ/OBJ priority resolution.
+   Scope: choose the winning visible OBJ pixel among overlapping sprite candidates before any BG mixing.
+   Acceptance criteria: smaller `X` wins, equal `X` resolves by earlier OAM entry, and BG-over-OBJ does not participate in OBJ/OBJ priority.
+3. Implement the object FIFO and transparency rules.
+   Scope: object-pixel representation, transparent filler pixels, and OBJ color `0` semantics.
+   Acceptance criteria: OBJ color `0` is transparent, transparent OBJ pixels do not block BG, and object FIFO fill behavior is explicit rather than implicit.
+4. Integrate object fetch and sprite stalls into Mode 3.
+   Scope: in-flight object-fetch state, BG-fetcher interaction, and real sprite-driven Mode 3 lengthening.
+   Acceptance criteria: Mode 3 length can increase because of sprite work, BG fetch and object fetch interact on the dot timeline, and the `SCX & 7` plus `X = 0` special path exists as explicit timing-sensitive logic.
+5. Implement per-pixel BG/OBJ mixing.
+   Scope: popped BG and OBJ pixels, live `LCDC.0` and `LCDC.1`, and DMG BG-over-OBJ semantics.
+   Acceptance criteria: BG/OBJ priority is resolved per pixel, BG-over-OBJ is applied only after the winning OBJ pixel is chosen, and DMG `LCDC.0 = 0` behavior remains correct.
+6. Cover sprite edge cases and mid-frame toggles.
+   Scope: `LCDC.1` fetch cancel, `LCDC.2` size changes, partial vertical clipping, and known `8x16` artifact work.
+   Acceptance criteria: object-fetch cancel exists, top and bottom clipping cases are covered, and unresolved `8x16` leak/artifact behavior remains isolated as explicit follow-up work instead of hidden undefined behavior.
+
 #### Done criteria
 
 - the PPU advances dot-by-dot
 - Mode 3 is based on a pixel FIFO rather than deferred scanline rendering
 - sprites and window participate inside the real pipeline
+- Mode 2 sprite selection, object fetch, OBJ FIFO state, and BG/OBJ mixing are all represented as explicit pipeline behavior rather than scanline-level composition
+- DMG sprite priority rules are respected separately for selection, OBJ/OBJ overlap, and BG/OBJ mixing
 - STAT, LY, LYC, and LCD IRQs reflect the PPU's real temporal state
 - direct-boot LCD-visible state is backed by a coherent internal PPU phase rather than an invented reset-mode shortcut
 - bugs and quirks are added on top of an already stable base
