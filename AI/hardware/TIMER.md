@@ -7,12 +7,16 @@ Own `DIV`, `TIMA`, `TMA`, `TAC`, their internal timing state, overflow behavior,
 ## Hardware model
 
 Model the timer as edge-sensitive hardware, not as a periodic software counter incremented every few instructions.
+The source of truth should be an internal `16`-bit system counter advanced by the shared master clock, with `DIV` and TIMA-driving events derived from that counter rather than maintained as unrelated software counters.
 
 ## Responsibilities
 
-- track divider state
+- track the internal timer system counter
+- expose `DIV` as a derived visible register view
 - implement timer enable/frequency selection behavior
+- detect the effective timer signal and its relevant edges
 - handle overflow, reload, and interrupt request ordering
+- integrate writes to `DIV`, `TIMA`, `TMA`, and `TAC` with the timer's internal temporal state
 
 ## Registers / MMIO
 
@@ -21,18 +25,39 @@ Model the timer as edge-sensitive hardware, not as a periodic software counter i
 - `TMA`
 - `TAC`
 
+## DMG timer baseline
+
+- The timer should maintain an internal `16`-bit system counter or equivalent state advanced by `1` on every T-cycle.
+- `DIV` should be treated as a visible derivation of that internal counter, not as an independent master counter.
+- Writing to `DIV` should reset the internal divider/system-counter state rather than storing the written byte literally.
+- TIMA increments should come from a falling-edge (`1 -> 0`) detection on the effective timer signal, not from a generic "every N cycles" accumulator.
+- The effective timer signal on DMG is `timer_enable && selected_counter_bit`.
+- The TAC frequency selection should be modeled as internal counter-bit selection, using the DMG mapping:
+  - `00 -> bit 9`
+  - `01 -> bit 3`
+  - `10 -> bit 5`
+  - `11 -> bit 7`
+- Timer overflow should be modeled as a temporal process with explicit pending/reload state; do not collapse overflow, reload from `TMA`, and interrupt request into one instant write-like event.
+
 ## Timing / accuracy requirements
 
 - Explain edges, glitches, and event ordering explicitly.
 - Do not reduce the model to "increment every X instructions" if finer timing matters.
 - Preserve the interaction with interrupt timing and writes to timer registers.
 - Express timer behavior on the shared T-cycle timeline of the core.
+- The internal timer system counter must advance at `1` step per T-cycle on that shared timeline.
+- Keep `DIV`, `TIMA`, and `TAC` coupled through the internal counter and edge logic; do not split them into desynchronized derived counters.
+- A write to `DIV` can cause an immediate TIMA increment when it changes the effective timer signal through the relevant falling edge.
+- A write to `TAC` must reevaluate both the selected counter bit and the enable contribution; TAC writes can therefore trigger the timer glitch behavior and immediate TIMA increment in the relevant cases.
+- TIMA overflow must enter an explicit pending/reload sequence before `TMA` is copied and the timer interrupt is requested.
+- Writes to `TIMA` and `TMA` near overflow/reload must be modeled against that internal overflow state machine rather than as unconditional register stores.
 
 ## Dependencies
 
 - interrupt controller
 - T-cycle scheduler or clock source
 - bus/MMIO wiring
+- model/revision configuration
 
 ## Primary references
 
@@ -49,23 +74,53 @@ Priority order:
 3. Mooneye GB
 4. Danger Boy
 5. GameRoy
+6. Gambatte
 
 ## Tests
 
 - Mooneye timer and DIV/TIMA tests
+- DIV read/reset and DIV-write glitch tests
+- TAC bit-selection and TAC-write glitch tests
+- focused edge-detection and cadence tests for each TAC frequency
 - focused write-order and overflow tests
+- TIMA overflow-window tests, including reads and writes around pending reload
+- separate TIMA-write tests for before overflow, at overflow, during reload, and after reload
+- TMA-write timing tests around reload
+- separate TMA-write tests for before overflow, just before reload, at reload, and after reload
+- timer interrupt integration tests across timer state, `IF`, and CPU-visible servicing timing
 
 ## Implementation notes for this repo
 
 - Keep timer state highly testable.
 - Make the source of each timing decision visible in comments or docs.
+- Prefer a source-of-truth shape like `system_counter`, `tima`, `tma`, `tac`, `previous_timer_signal`, and an explicit overflow state machine, even if field names differ.
+- A pure helper such as `selected_timer_bit(tac)` is a good fit for frequency selection logic.
+- `tick()`, `read()`, and `write()` should all be aware of the timer's internal temporal state; register writes are not simple blind setters in the precise model.
+- The timer should request its interrupt through the global interrupt controller path, not by mutating unrelated CPU or bus flags ad hoc.
+
+## Recommended implementation order
+
+- implement the internal `system_counter` and derive `DIV` from it
+- implement TAC bit selection and the effective timer signal
+- implement falling-edge-based TIMA increments
+- implement overflow as an explicit temporal state machine
+- integrate TIMA/TMA writes with the overflow window
+- integrate timer interrupt requests with the global interrupt controller and CPU-visible timing
+
+## Planning note
+
+- Reserve a dedicated work item for TIMA/TMA corner cases during the overflow and reload window; those cases should not be treated as incidental cleanup after the main timer logic.
 
 ## Known pitfalls
 
+- treating `DIV` as an independent counter instead of a derived view of the internal counter
 - incorrect edge detection
+- incrementing TIMA through modular cycle accumulation instead of falling-edge detection
 - incorrect reload timing
+- implementing reload from `TMA` instantaneously at overflow
+- treating `DIV`, `TIMA`, and `TAC` as loosely related registers instead of coupled hardware logic
 - mixing interrupt request timing with reload semantics
 
 ## Open questions
 
-- which internal representation best exposes the divider edge logic
+- which exact overflow state encoding is clearest for the repo while preserving the observable reload window semantics

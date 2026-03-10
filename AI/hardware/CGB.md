@@ -53,6 +53,7 @@ When CGB work starts, prioritize these functional areas before worrying about ha
 
 - PPU
 - DMA
+- timer
 - bus and memory
 - model/revision configuration
 
@@ -85,6 +86,7 @@ Priority order:
 - DMG-family behavior should remain the baseline shared path where possible, with CGB-specific features layered on through explicit model capabilities.
 - CGB readiness today should focus on architecture seams for banked memory, palette state, extra I/O, HDMA, and speed switching, not on partial functional implementation.
 - The DMG OAM DMA implementation should already live inside a reusable DMA subsystem contract so future CGB OAM DMA timing differences, GDMA, and HDMA can extend the same infrastructure.
+- The DMG timer implementation should already be expressed in terms of an internal counter plus derived edge logic so future CGB clocking changes can extend the same model rather than replace it.
 - Future CGB boot flow should be able to branch into full CGB mode or DMG-compatibility mode based on cartridge header information, without requiring a separate emulator core.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
@@ -97,6 +99,7 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 - VRAM bank 1 behavior
 - WRAM banks 2-7
 - `KEY1` and double speed behavior
+- timer behavior under CGB double-speed timing
 - CGB OAM DMA duration differences in double speed
 - HDMA and GDMA
 - CGB tile attributes
