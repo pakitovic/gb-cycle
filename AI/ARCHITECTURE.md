@@ -129,6 +129,7 @@ to immediately materialize as a separate directory.
 
 - memory reads and writes
 - memory-map region resolution
+- one central address-decode path over the full `0x0000-0xFFFF` map
 - access arbitration
 - integration of cartridge, VRAM, WRAM, OAM, I/O, HRAM, IE, and boot ROM mapping
 - modeling of access restrictions and conflicts when hardware makes them visible

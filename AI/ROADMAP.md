@@ -248,6 +248,8 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - unified access to ROM, VRAM, WRAM, external RAM, OAM, I/O, HRAM, and IE
 - modeling of echo RAM and unusable areas
 - access arbitration infrastructure
+- one central decode path across `0x0000-0xFFFF` with explicit owner and access policy per region
+- centralized MMIO register routing instead of a generic RAM-like `FF00-FF7F` block
 
 ##### Base cartridge
 
@@ -273,6 +275,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - the system can advance by T-cycles consistently
 - all memory accesses go through `bus/`
 - the memory map is modeled completely for DMG
+- every DMG address region has an explicit owner, read behavior, write behavior, and blocked-access policy where applicable
 - a functional ROM-only cartridge exists
 - base I/O registers are connected to the bus
 - the boot ROM can be mapped and unmapped correctly

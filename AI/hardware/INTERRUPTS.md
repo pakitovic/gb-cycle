@@ -21,6 +21,11 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - `IF` at `FF0F`
 - `IE` at `FFFF`
 
+## Map-location baseline
+
+- `IE` being located at `0xFFFF` instead of inside `0xFF00-0xFF7F` should stay explicit in bus decode and MMIO wiring.
+- `IF` should remain part of the main MMIO range while `IE` is handled as its own high-memory decode case.
+
 ## Pending interrupt baseline
 
 - Hardware devices should request interrupts by setting the relevant bit in `IF`, not by invoking CPU dispatch logic directly.
@@ -77,6 +82,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - A helper such as `request_interrupt(kind)` is preferred over handwritten bit-twiddling at each producer site.
 - Keep the final decision to accept and dispatch an interrupt in CPU flow, even if priority selection and `IF`/`IE` ownership live here.
 - Direct-boot startup values for `IF` and `IE` should be sourced from the centralized post-boot snapshot rather than inferred from CPU-local interrupt state.
+- Keep the semantic ownership of `IF` and `IE` here even though bus decode must route `0xFF0F` and `0xFFFF` correctly.
 
 ## Known pitfalls
 

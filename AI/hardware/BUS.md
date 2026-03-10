@@ -28,6 +28,108 @@ Address alone is not enough: the bus must also consider the current temporal har
 - shared access to cartridge, VRAM, WRAM, OAM, HRAM, and MMIO registers
 - startup mapping of boot ROM over `0000-00FF` and later cartridge handoff
 
+## DMG region-decode baseline
+
+- The bus should expose one central decode path covering the full `0x0000-0xFFFF` address space.
+- That decode path should distinguish at least these regions:
+  - `0x0000-0x3FFF`: fixed cartridge ROM, with boot-ROM overlay when active
+  - `0x4000-0x7FFF`: switchable cartridge ROM
+  - `0x8000-0x9FFF`: VRAM
+  - `0xA000-0xBFFF`: cartridge external RAM or cartridge-owned external hardware
+  - `0xC000-0xCFFF`: WRAM bank 0
+  - `0xD000-0xDFFF`: WRAM additional region, linear on DMG and future-bankable on CGB
+  - `0xE000-0xFDFF`: echo RAM alias of `0xC000-0xDDFF`
+  - `0xFE00-0xFE9F`: OAM
+  - `0xFEA0-0xFEFF`: unusable / prohibited region
+  - `0xFF00-0xFF7F`: MMIO registers
+  - `0xFF80-0xFFFE`: HRAM
+  - `0xFFFF`: `IE`
+- The bus should resolve accesses from address plus current hardware context, not from address alone.
+- CPU, DMA, and other actors must not bypass that central decode path with direct "fast" access to backing arrays.
+
+## Region contract baseline
+
+### Cartridge fixed ROM `0x0000-0x3FFF`
+
+- This region should be owned by the cartridge device, not by internal console memory.
+- While boot ROM is mapped, the relevant low part of this region must be overlaid by boot firmware routing; once boot ROM is unmapped, reads must return cartridge ROM again.
+- Reads should return bytes from the cartridge's fixed low ROM bank.
+- Writes must not attempt to modify ROM contents; they should be delegated to cartridge/MBC control semantics.
+- The cartridge header at `0x0100-0x014F` should become visible through normal cartridge routing once boot ROM no longer covers it.
+
+### Cartridge switchable ROM `0x4000-0x7FFF`
+
+- This region should also be owned by the cartridge device.
+- Active-ROM-bank selection belongs to cartridge/MBC logic, not to the generic bus.
+- Reads should come from the active cartridge ROM bank.
+- Writes should be treated as MBC control writes where the cartridge type requires that behavior, not as ROM writes.
+
+### VRAM `0x8000-0x9FFF`
+
+- VRAM should be treated as a dedicated graphics-memory region rather than generic RAM with no access policy.
+- CPU reads and writes to VRAM must respect PPU access timing.
+- On DMG, CPU VRAM access should be allowed in Modes `0`, `1`, and `2`, and blocked during Mode `3`.
+- When blocked, CPU writes should be ignored and CPU reads should return the blocked-access result rather than the stored VRAM byte, typically `0xFF`.
+- The PPU and CPU must not have incompatible direct paths to VRAM that bypass shared access policy.
+
+### Cartridge external range `0xA000-0xBFFF`
+
+- This range should be owned by the cartridge device, not by internal console RAM.
+- The bus should delegate both reads and writes here to cartridge/MBC logic.
+- Semantics may vary by cartridge type: absent RAM, enable-controlled RAM, banked RAM, RTC, or other external hardware.
+- Behavior for unmapped or wrapped RAM banks should be defined by the active cartridge/MBC implementation, not hard-coded in generic bus code.
+
+### WRAM `0xC000-0xDFFF`
+
+- WRAM should be treated as internal console RAM.
+- On DMG, `0xC000-0xDFFF` should behave as a linear `8 KiB` working RAM region.
+- Future CGB bankability of `0xD000-0xDFFF` should remain an extension seam without changing current DMG behavior.
+- Initialization policy for WRAM contents is separate from access semantics; once initialized, reads and writes should behave like normal internal RAM.
+
+### Echo RAM `0xE000-0xFDFF`
+
+- Echo RAM must not be modeled as independent storage.
+- It should behave as a real alias of `0xC000-0xDDFF`.
+- Writes through echo addresses should affect the mirrored WRAM bytes and vice versa because the observable storage is shared.
+- The alias relationship should be expressed in bus decode and routing rather than by duplicating memory buffers.
+
+### OAM `0xFE00-0xFE9F`
+
+- OAM should be treated as a dedicated sprite-attribute region, not as always-accessible RAM.
+- CPU OAM access must obey both PPU timing and DMA-related bus policy.
+- On DMG, CPU OAM access should be blocked during PPU Modes `2` and `3`.
+- During blocked periods, CPU writes should be ignored and CPU reads should return the blocked-access result instead of the stored OAM byte.
+- OAM DMA should write into the same underlying OAM storage while still participating in the same central arbitration model.
+
+### Unusable area `0xFEA0-0xFEFF`
+
+- This region must not be modeled as free RAM.
+- For the current DMG-family target, it should have explicit revision-aware behavior instead of a placeholder array.
+- On DMG-family hardware outside OAM-blocked periods, reads should return `0x00`.
+- During OAM-blocked periods on DMG-family hardware, reads should return `0xFF`.
+- The region should stay explicitly connected to later OAM corruption bug work rather than being treated as unrelated filler space.
+- Writes here should not behave like ordinary RAM writes.
+
+### MMIO `0xFF00-0xFF7F`
+
+- MMIO must not be modeled as a generic `128`-byte RAM block.
+- Each register should have explicit read, write, and side-effect semantics.
+- The MMIO table should distinguish at least read-only, write-only, read/write, and mixed or reserved-bit behavior.
+- `FF46` should remain the OAM-DMA trigger and `FF50` the boot-ROM mapping control.
+- CGB-only registers should stay reserved under the DMG readback policy instead of surfacing accidentally as RAM.
+
+### HRAM `0xFF80-0xFFFE`
+
+- HRAM should be modeled as a dedicated internal RAM region distinct from WRAM and MMIO.
+- On DMG, CPU HRAM access should remain available during OAM DMA even while most other CPU bus accesses are blocked.
+- HRAM initialization policy is separate from its access semantics.
+
+### `IE` at `0xFFFF`
+
+- `0xFFFF` should decode to the interrupt-enable register, not to ordinary RAM.
+- Its read and write behavior should be routed through the interrupt-controller/MMIO path rather than through generic high-memory storage.
+- The fact that `IE` lives outside `0xFF00-0xFF7F` should remain explicit in the bus decode.
+
 ## Timing / accuracy requirements
 
 - Bus-visible ordering must remain explicit.
@@ -42,6 +144,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - CPU opcode fetch, immediate fetch, stack traffic, and read-modify-write memory operations should appear as ordinary ordered bus accesses, not as post-instruction aggregated effects.
 - `SkipBoot` should begin with the same ordinary routing rules the machine would have after handoff, not with a hidden "skip mode" that bypasses normal boot-ROM and cartridge visibility logic.
 - In DMG mode, reads from CGB-only registers that are not functionally implemented should return `0xFF` through the normal MMIO routing path rather than through ad hoc call-site checks.
+- Each region should have explicit read, write, blocked-access, and model-specific policy rather than being treated as RAM or ROM with only a different backing store.
 
 ## Dependencies
 
@@ -77,12 +180,18 @@ Priority order:
 - tests that the next fetch after boot-ROM unmapping already observes cartridge routing
 - direct-boot routing tests that verify the ordinary cartridge ROM map is visible again after startup, including `0x0000`, `0x0100`, and mapper-controlled ROM regions where applicable
 - DMG-mode MMIO tests that verify CGB-only registers read back as `0xFF`
+- full-range decode tests that ensure every address in `0x0000-0xFFFF` maps to an explicit owner and policy
+- tests that ROM-region writes are delegated to cartridge/MBC control rather than treated as memory writes
+- bidirectional alias tests between WRAM and echo RAM
+- tests for `0xFEA0-0xFEFF` DMG-family read behavior inside and outside OAM-blocked periods
+- tests that `0xFFFF` routes to `IE` rather than HRAM or generic MMIO backing
 
 ## Implementation notes for this repo
 
 - Keep cartridge logic decoupled from the rest of the bus.
 - Favor explicit maps and handlers over opaque indirection.
 - Treat the bus as both an address decoder and an access arbiter.
+- Keep one source of truth for address decode plus access policy; do not let per-subsystem shortcuts become shadow decoders.
 - A bus context or equivalent state bundle is a good fit for carrying model, PPU mode, LCD enable, DMA activity, boot ROM mapping, and later CGB-specific selectors.
 - A caller-aware access split or equivalent internal distinction between CPU-initiated and DMA-initiated accesses is recommended when the observable rules differ.
 - Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers.
@@ -99,6 +208,7 @@ Priority order:
 - Avoid boot-ROM mapping code that assumes firmware always occupies exactly one small contiguous prefix of the address space.
 - Leave room for model-specific boot firmware windows that are not a single contiguous DMG-style range.
 - Keep blocked-access behavior inside bus-facing region handlers such as VRAM/OAM access paths rather than teaching the CPU about those rules.
+- A region-description shape that makes owner, read behavior, write behavior, blocked semantics, and future extension points explicit is preferred over ad hoc nested matches.
 
 ## Known pitfalls
 
@@ -108,6 +218,8 @@ Priority order:
 - freezing the MMIO map behind abstractions that are hard to extend for CGB-only registers
 - treating the bus as a static memory map without temporal arbitration
 - adding a special direct-boot routing shortcut instead of initializing the normal post-boot mapping state
+- modeling the unusable area `0xFEA0-0xFEFF` as ordinary RAM
+- duplicating echo RAM storage instead of routing it as an alias of WRAM
 
 ## Open questions
 

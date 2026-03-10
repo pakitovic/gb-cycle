@@ -2,7 +2,7 @@
 
 ## Scope
 
-Own internal memory regions and the documented map of WRAM, HRAM, echo behavior, and MMIO-facing storage that is not owned by another subsystem.
+Own internal memory regions and the backing storage behind WRAM, HRAM, and their documented alias relationships, plus any MMIO-facing storage not owned by another subsystem.
 
 ## Hardware model
 
@@ -14,14 +14,22 @@ VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this su
 ## Responsibilities
 
 - represent WRAM and HRAM explicitly
-- model region-specific behavior and mirroring
+- provide storage-level support for internal RAM aliasing and mirroring
 - define ownership boundaries between plain memory and MMIO devices
+- provide the underlying storage reached through WRAM and HRAM address aliases without turning those aliases into duplicate buffers
 
 ## Registers / MMIO
 
 - WRAM
 - HRAM
-- echo RAM behavior if modeled
+- WRAM storage reached through the echo-RAM alias
+
+## DMG memory baseline
+
+- On DMG, `0xC000-0xDFFF` should behave as linear internal WRAM with no active banking.
+- `0xD000-0xDFFF` should still be kept structurally ready for future CGB banking without changing current DMG semantics.
+- `0xE000-0xFDFF` must not be backed by a second RAM allocation; it should resolve to the same observable storage as `0xC000-0xDDFF`.
+- Initialization policy for WRAM and HRAM contents is separate from the fact that subsequent access semantics are ordinary RAM behavior.
 
 ## Timing / accuracy requirements
 
@@ -49,6 +57,7 @@ VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this su
 - memory map tests
 - mirror and access boundary tests
 - tests that document the chosen uninitialized WRAM/HRAM policy for direct-boot presets without confusing that policy with real hardware guarantees
+- explicit alias tests that prove writes through echo RAM affect WRAM storage and vice versa
 
 ## Implementation notes for this repo
 
@@ -59,6 +68,7 @@ VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this su
 - Keep VRAM readiness as an architectural concern without moving VRAM locking or access rules out of the PPU/bus boundary.
 - When `SkipBoot` is used, initialize WRAM and HRAM through an explicit uninitialized-memory policy rather than silently zero-filling them as if that were proven hardware behavior.
 - Keep that uninitialized-memory policy reproducible for tests while remaining clearly separate from deterministic startup values owned by the boot snapshot.
+- Let bus decode own the echo-RAM alias decision; the memory subsystem should expose the shared storage it aliases, not invent a second echo-specific backing store.
 
 ## Known pitfalls
 
@@ -66,6 +76,7 @@ VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this su
 - mixing ownership between bus and memory modules
 - modeling storage so rigidly that later banked memory support becomes a rewrite
 - treating WRAM or HRAM as documented zeroed memory at power-up because a convenient preset happened to choose zeroes
+- allocating echo RAM as independent storage instead of as an alias of WRAM
 
 ## Open questions
 

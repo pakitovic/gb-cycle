@@ -50,6 +50,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - During real DMG-family boot, the boot ROM should read the cartridge logo/header bytes, perform its documented checks, drive the visible animation through ordinary CPU and bus activity, and withhold cartridge handoff when those checks fail.
 - The visible boot logo should come from the cartridge header bytes at `0x0104-0x0133`, not from a frontend animation script or emulator-side asset.
 - The "no cartridge / reads as `0xFF`" boot behavior should emerge from cartridge and bus behavior rather than a special visual hack.
+- While boot ROM is mapped, it should overlay the relevant low cartridge range through ordinary bus routing; once unmapped, the cartridge entry point and header at `0x0100-0x014F` should be visible again through normal cartridge decode.
 
 ## `FF50` handoff baseline
 

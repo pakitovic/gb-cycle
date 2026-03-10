@@ -44,6 +44,7 @@ For CPU interrupt-control behavior, include IE/IF register behavior, delayed `EI
 For timer behavior, include internal-counter-derived `DIV`, DIV-write glitches, TAC-write glitches, falling-edge TIMA increments, overflow-window behavior, separate TIMA/TMA write cases before/during/after reload, and timer interrupt timing through `IF` and CPU-visible servicing whenever suitable tests exist.
 For bus behavior, include blocked-access cases, boot ROM remapping, next-fetch behavior after `FF50`, and DMA-related contention whenever suitable tests exist.
 Include direct-boot routing checks that verify boot ROM is already unmapped, the ordinary cartridge ROM map is visible again across `0x0000-0x7FFF`, and DMG-mode reads of CGB-only registers return `0xFF` whenever suitable tests exist.
+Include region-contract tests for fixed ROM, switchable ROM, VRAM, cartridge external space, WRAM, echo RAM, OAM, unusable space, MMIO, HRAM, and `IE`, including aliasing, blocked-access semantics, and ownership-by-device whenever suitable tests exist.
 For DMA behavior, include `FF46` source-page selection, full `160`-byte copy correctness, DMG total duration of `640` dots, transfer-progress timing, CPU blocking outside HRAM, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
 
 ## Recommended external validation sources
