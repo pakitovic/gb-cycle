@@ -31,6 +31,18 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `BGP`, `OBP0`, `OBP1`
 - OAM and VRAM ownership rules
 
+## LCD MMIO contract baseline
+
+- `LCDC` should remain owned by the PPU/LCD controller rather than by a generic MMIO byte bank.
+- Writing `LCDC.7` should trigger immediate LCD/PPU side effects, including the LCD enable/disable transition and the corresponding VRAM/OAM accessibility rules.
+- `STAT` should be modeled as a mixed register with writable interrupt-enable fields and dynamic read-only fields for coincidence and the current PPU mode.
+- Preserve the documented DMG-specific spurious `STAT` interrupt quirk on `STAT` writes; do not assume the same write behavior on GBC running in DMG mode.
+- `LY` should be read-only and reflect the current live scanline `0-153`; writes must not behave like storage updates.
+- `LYC` is readable and writable storage, but its comparison effect belongs to the live PPU state and should be evaluated continuously against `LY`.
+- `SCX`, `SCY`, `WX`, and `WY` should be modeled as MMIO-visible PPU registers whose mid-frame writes participate in the same temporal PPU model rather than a deferred renderer recomputation.
+- `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
+- For `OBP0` and `OBP1`, the low two bits must not change the meaning of OBJ color index `0`, because that index remains transparent.
+
 ## Timing / accuracy requirements
 
 - Make mode timing explicit.
@@ -105,6 +117,7 @@ Priority order:
 - The list of visible sprites produced in Mode 2 should feed directly into Mode 3 object timing and mixing logic.
 - STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
 - Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
+- Mid-frame writes to LCD-visible registers should be interpreted on the same dot timeline that drives mode, fetcher, FIFO, and interrupt behavior.
 - A `SkipBoot` path should synthesize internal LCD mode, dot position, and any relevant pipeline state coherently with the visible post-boot register snapshot instead of inventing a contradictory hidden phase.
 - Do not present `OBP0` and `OBP1` as stable fixed post-boot values in DMG-family direct-boot presets; those registers should remain under an explicit uninitialized-state policy when firmware execution is skipped.
 - Let the PPU define when VRAM/OAM are logically inaccessible, while the bus remains responsible for exposing the observable blocked-access result to other actors.
@@ -125,6 +138,8 @@ Priority order:
 - selecting sprites without respecting OAM order and the per-line limit of `10`
 - modeling Mode 2 as an instant scan instead of a fixed `80`-dot phase
 - treating STAT behavior as a generic interrupt source without hardware-specific LCD quirks
+- storing `LY` as a writable register instead of exposing the live scanline
+- letting LCD-visible MMIO writes bypass the temporal PPU model and only affect a later renderer pass
 - synthesizing `SkipBoot` LCD registers without a matching hidden PPU phase
 
 ## Open questions

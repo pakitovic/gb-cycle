@@ -39,6 +39,14 @@ The source of truth should be an internal `16`-bit system counter advanced by th
   - `11 -> bit 7`
 - Timer overflow should be modeled as a temporal process with explicit pending/reload state; do not collapse overflow, reload from `TMA`, and interrupt request into one instant write-like event.
 
+## MMIO contract baseline
+
+- `DIV`, `TIMA`, `TMA`, and `TAC` belong to the timer subsystem; MMIO is only the external contract by which other actors access them.
+- `DIV` reads should be derived from the current internal timer counter state, not from a separately stored visible register byte.
+- Any write to `DIV` should invoke the timer's reset semantics regardless of the data value on the bus.
+- `TIMA`, `TMA`, and `TAC` should not duplicate timer logic in the bus or CPU; their observable behavior must come from timer-owned state transitions.
+- `TAC` writes must be able to trigger the documented one-step TIMA increment glitch when the effective timer signal changes accordingly.
+
 ## Timing / accuracy requirements
 
 - Explain edges, glitches, and event ordering explicitly.

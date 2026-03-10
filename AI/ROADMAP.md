@@ -260,6 +260,8 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 ##### I/O and boot
 
 - general I/O registers with base read/write rules
+- centralized MMIO metadata describing owner, access class, readable bits, writable bits, dynamic bits, reserved bits, read side effects, write side effects, and model-specific availability
+- MMIO infrastructure for mixed registers composed from latched, dynamic, forced, and unimplemented bits
 - boot ROM integration into the memory map
 - correct boot ROM unmapping
 - system-visible startup configuration
@@ -276,10 +278,13 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - all memory accesses go through `bus/`
 - the memory map is modeled completely for DMG
 - every DMG address region has an explicit owner, read behavior, write behavior, and blocked-access policy where applicable
+- every MMIO address in `0xFF00-0xFF7F` and `0xFFFF` has an explicit routed owner and contract rather than accidental default byte-storage behavior
+- mixed MMIO registers are represented as per-field contracts rather than as plain read/write bytes plus a coarse mask
 - a functional ROM-only cartridge exists
 - base I/O registers are connected to the bus
 - the boot ROM can be mapped and unmapped correctly
 - boot-ROM overlay versus cartridge visibility is controlled explicitly by bus-visible mapping state
+- MMIO side effects occur on the access itself on the shared timeline rather than in an end-of-instruction cleanup pass
 - `SkipBoot` reaches `0x0100` through explicit post-boot initialization rather than partial boot-ROM execution
 - deterministic and cartridge-derived visible post-boot state are initialized through one documented path rather than scattered startup literals
 - the infrastructure is ready for a later real-boot path to start CPU execution at `0x0000` with boot ROM mapped and hand off through a real `FF50` write once the CPU core exists
@@ -290,6 +295,27 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - PPU or DMA breaking later because real arbitration was missing
 - boot ROM treated as a hack rather than real hardware
 - rewriting the bus when introducing DMA, PPU, or MBCs
+
+#### MMIO contract sequencing
+
+These steps define register-contract groundwork only.
+They do not move full joypad, serial, audio, or timing-complete PPU implementation out of their later dedicated phases; those later phases still own complete functional behavior on top of the earlier MMIO contract baseline.
+
+1. Define the central MMIO metadata table.
+   Acceptance criteria: every address in `0xFF00-0xFF7F` and `0xFFFF` resolves to an explicit descriptor or dedicated handler, and no MMIO address falls back to accidental generic RAM behavior.
+2. Add mixed-register composition infrastructure.
+   Acceptance criteria: registers such as `JOYP`, `STAT`, `NR14`, and `NR52` can compose latched, dynamic, forced, and unimplemented bits without allowing read-only fields to be overwritten accidentally.
+3. Close the first non-trivial register-contract baselines.
+   Scope: `JOYP`, `DIV/TIMA/TMA/TAC`, `IF/IE`, `FF46`, and `FF50`.
+   Acceptance criteria: read/write behavior and immediate side effects are observable through the routed MMIO path without duplicated logic in CPU or bus helpers.
+4. Close LCD-facing MMIO contract baselines.
+   Scope: `LCDC`, `STAT`, `LY`, `LYC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, `OBP0`, and `OBP1`.
+   Acceptance criteria: dynamic bits, LCD side effects, and impossible writes such as `LY` stores are all handled by the PPU-owned contract.
+5. Close serial and audio MMIO contract baselines.
+   Scope: `SB/SC` and the `NRxx` family.
+   Acceptance criteria: the routed MMIO contract already encodes correct read/write policy, immediate register-side effects, and non-RAM-like behavior for these ranges; full transfer timing and full APU behavior remain owned by later subsystem phases.
+6. Close absent and CGB-only register policy in DMG mode.
+   Acceptance criteria: unavailable CGB-only MMIO registers do not behave like RAM, readback follows documented DMG fallback values, and writes follow an explicit ignored-or-stub policy.
 
 ---
 

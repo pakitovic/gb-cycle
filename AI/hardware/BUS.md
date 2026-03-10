@@ -116,7 +116,50 @@ Address alone is not enough: the bus must also consider the current temporal har
 - Each register should have explicit read, write, and side-effect semantics.
 - The MMIO table should distinguish at least read-only, write-only, read/write, and mixed or reserved-bit behavior.
 - `FF46` should remain the OAM-DMA trigger and `FF50` the boot-ROM mapping control.
-- CGB-only registers should stay reserved under the DMG readback policy instead of surfacing accidentally as RAM.
+- CGB-only registers should stay under an explicit DMG absent/stub readback policy instead of surfacing accidentally as RAM.
+
+## MMIO contract baseline
+
+- Do not model an MMIO register as "stored byte plus optional mask" unless the hardware behavior truly is that simple.
+- Treat each MMIO register as an interface owned by one subsystem, with its own read behavior, write behavior, and side effects.
+- Distinguish the value visible to MMIO reads from any internal latched fields and from the side effects caused by an access.
+- Keep one source of truth for MMIO semantics. Avoid shadow register behavior implemented separately in CPU, bus, timer, PPU, APU, DMA, or frontend code.
+
+## MMIO descriptor baseline
+
+- Every address in `0xFF00-0xFF7F` and `0xFFFF` should resolve to an explicit descriptor or equally explicit dedicated handler.
+- That descriptor should make the following properties explicit:
+  - owning subsystem
+  - access class
+  - readable bits
+  - writable bits
+  - dynamic read-only bits
+  - write-only or read-suppressed bits
+  - reserved or forced bits
+  - read side effects
+  - write side effects
+  - model-specific availability such as shared, DMG-only, CGB-only, absent in the current model, or stubbed
+- The descriptor should support readback composition from latched bits, dynamic bits, forced bits, and unimplemented bits rather than assuming all visible bits come from one stored byte.
+
+## MMIO access-class baseline
+
+- The minimum MMIO access taxonomy should be `ReadOnly`, `WriteOnly`, `ReadWrite`, and `Mixed`.
+- `Mixed` registers must keep per-bit or per-field behavior explicit; they should not be downgraded to generic `ReadWrite` storage plus one coarse mask.
+- Write-only readback policy must be explicit per register or per field. Do not rely on an accidental project-wide default.
+- Writes to read-only bits inside mixed registers should follow register-specific masking or ignore rules rather than mutating storage accidentally.
+
+## MMIO execution-order baseline
+
+- The bus should decode the address and delegate to the owning subsystem; it should not embed the full internal logic of `JOYP`, `STAT`, `DIV`, `NR52`, or other subsystem-owned registers.
+- CPU code should perform ordinary bus/MMIO accesses and let the owning device decide what the register read or write means.
+- MMIO side effects should occur at the time of the actual access on the shared T-cycle timeline, not in a deferred end-of-instruction cleanup pass.
+- Reads of dynamic MMIO registers should sample the subsystem's live hardware state at that exact access point.
+
+## Model-aware MMIO baseline
+
+- Register availability must stay model-aware rather than being inferred from whether a backing field exists today.
+- In DMG mode, unimplemented CGB-only registers should return the correct DMG fallback read value, typically `0xFF`, through the ordinary MMIO path.
+- Writes to unavailable CGB-only registers in DMG mode should follow an explicit ignored-or-stub policy; they must not mutate fake storage just because the address is in `FFxx`.
 
 ### HRAM `0xFF80-0xFFFE`
 
@@ -142,6 +185,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - With LCD disabled, access rules should return to the hardware state expected for LCD-off behavior.
 - When an access is blocked, the bus should model the correct observable result for that situation instead of falling through to normal RAM semantics.
 - CPU opcode fetch, immediate fetch, stack traffic, and read-modify-write memory operations should appear as ordinary ordered bus accesses, not as post-instruction aggregated effects.
+- MMIO reads and writes should remain ordinary ordered bus transactions whose visible result and side effects depend on the exact temporal hardware state at that access point.
 - `SkipBoot` should begin with the same ordinary routing rules the machine would have after handoff, not with a hidden "skip mode" that bypasses normal boot-ROM and cartridge visibility logic.
 - In DMG mode, reads from CGB-only registers that are not functionally implemented should return `0xFF` through the normal MMIO routing path rather than through ad hoc call-site checks.
 - Each region should have explicit read, write, blocked-access, and model-specific policy rather than being treated as RAM or ROM with only a different backing store.
@@ -185,6 +229,9 @@ Priority order:
 - bidirectional alias tests between WRAM and echo RAM
 - tests for `0xFEA0-0xFEFF` DMG-family read behavior inside and outside OAM-blocked periods
 - tests that `0xFFFF` routes to `IE` rather than HRAM or generic MMIO backing
+- full MMIO descriptor-coverage tests for `0xFF00-0xFF7F` and `0xFFFF`
+- tests for write-only readback policy and mixed-register bit composition through the routed MMIO path
+- tests that MMIO side effects such as `DIV` reset, `FF46` DMA start, and `FF50` unmapping occur on the access itself rather than a later deferred phase
 
 ## Implementation notes for this repo
 
@@ -195,6 +242,8 @@ Priority order:
 - A bus context or equivalent state bundle is a good fit for carrying model, PPU mode, LCD enable, DMA activity, boot ROM mapping, and later CGB-specific selectors.
 - A caller-aware access split or equivalent internal distinction between CPU-initiated and DMA-initiated accesses is recommended when the observable rules differ.
 - Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers.
+- Prefer a centralized MMIO descriptor table or equivalent routed register map over scattered `match` blocks that each know only part of a register's semantics.
+- Let subsystem-owned handlers compose readback from live state, latched state, and forced bits; do not teach the bus to fake those register internals.
 - Do not special-case CPU opcode fetch, operand fetch, or stack accesses outside the common bus contract; they should use the same routed access path as any other CPU-visible memory transaction.
 - Treat `FF46` as the trigger that configures the DMA subsystem; do not implement OAM DMA by performing a direct `160`-byte copy inside the bus write path.
 - Treat `FF50` as the trigger that changes boot-ROM mapping state; do not model real boot completion as a synthetic `PC = 0x0100` event outside the bus and CPU execution flow.
@@ -216,6 +265,7 @@ Priority order:
 - hiding blocked reads/writes behind generic memory helpers
 - treating requester identity as irrelevant when CPU and DMA need different observable access rules
 - freezing the MMIO map behind abstractions that are hard to extend for CGB-only registers
+- reducing mixed MMIO registers to "byte plus mask" storage and losing per-bit semantics
 - treating the bus as a static memory map without temporal arbitration
 - adding a special direct-boot routing shortcut instead of initializing the normal post-boot mapping state
 - modeling the unusable area `0xFEA0-0xFEFF` as ordinary RAM

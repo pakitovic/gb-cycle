@@ -59,6 +59,8 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - The mapping change caused by `FF50` must affect the next fetch, not previous accesses retroactively.
 - On DMG-family real boot, the first opcode fetched from the cartridge after handoff should be the byte at `0x0100`.
 - Register state visible at cartridge entry must come from the executed boot ROM of the selected model; do not hard-code DMG and MGB as sharing one identical final `A` value.
+- `FF50` should stay a write-only MMIO control path from the hardware-contract perspective, even if the implementation keeps internal mapping state for debugging or introspection.
+- The write to `FF50` should perform the mapping side effect at the access itself; do not treat it as a passive stored byte that another subsystem polls later.
 
 ## DMG-family skip-boot CPU snapshot baseline
 

@@ -52,6 +52,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Model hardware by responsibilities, not by frontend features.
 - Favor explicit state transitions over implicit side effects.
 - Keep timing ownership clear.
+- Treat MMIO registers as device interfaces with explicit contracts, not as generic stored bytes.
 - Separate behavior specification from optimization strategy.
 - Make room for CGB-specific extensions without spreading model checks everywhere.
 - Use types to reflect hardware concepts such as model, interrupt source, PPU mode, and cartridge kind.
@@ -133,6 +134,8 @@ to immediately materialize as a separate directory.
 - access arbitration
 - integration of cartridge, VRAM, WRAM, OAM, I/O, HRAM, IE, and boot ROM mapping
 - modeling of access restrictions and conflicts when hardware makes them visible
+- MMIO routing to the subsystem-owned register contract for each mapped address
+- one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
 
 ### `boot/`
 
@@ -234,6 +237,9 @@ to immediately materialize as a separate directory.
 - The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
 - The interrupt controller owns `IF`/`IE` register state and pending-request bookkeeping, while the CPU owns `IME`, `halted`, `stopped`, and the final decision to accept and service an interrupt.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
+- The bus owns address decode and MMIO dispatch, but the device that owns a register must own its read, write, and side-effect semantics.
+- MMIO metadata should be centralized enough that readable bits, writable bits, dynamic bits, reserved bits, and model-specific availability are not re-declared ad hoc in several modules.
+- CPU code, DMA helpers, and frontend input/audio/video layers must not bypass MMIO-owned subsystem state by poking internal register-shaped fields directly.
 - The memory subsystem owns plain storage regions such as WRAM and HRAM; it must not bypass bus-visible access restrictions defined elsewhere.
 - Shared scheduling must allow CPU, DMA, PPU, timer, and other actors to make progress on the same T-cycle timeline so arbitration remains observable.
 - Shared scheduling must not depend on whole-instruction CPU completion; it should be able to observe CPU fetches, operand reads, stack traffic, and internal steps while the rest of the hardware continues to advance.

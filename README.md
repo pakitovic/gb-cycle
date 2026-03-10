@@ -19,6 +19,7 @@ La base gráfica objetivo es un PPU `dot-by-dot` con `tile fetcher + pixel FIFO`
 
 La siguiente distribución es solo una guía conceptual temprana.
 La estructura canónica y sus límites de ownership están definidos en `AI/ARCHITECTURE.md`.
+A medio plazo, la forma preferida es la familia `crates/gb-core`, `gb-cli`, `gb-desktop`, `gb-web` y utilidades relacionadas descrita allí; el esquema siguiente solo agrupa responsabilidades.
 
 ```text
 core/         Lógica pura de emulación

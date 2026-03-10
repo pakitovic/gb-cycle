@@ -32,6 +32,13 @@ Treat DMA as another bus actor competing for access over time, not as a side eff
 - A first correct implementation should explicitly track at least `active`, `kind`, `source_high`, `source_addr_current`, `dest_addr_current`, `bytes_remaining`, and `elapsed_dots` or an equivalent byte-phase timing state.
 - `FF46` must arm and configure the DMA subsystem; it must not perform the `160`-byte copy immediately as a side effect of the register write.
 
+## `FF46` MMIO contract baseline
+
+- Treat `FF46` as a write-triggered DMA control register with immediate side effects, not as a passive byte that another subsystem polls later.
+- The authoritative action of a write to `FF46` is "start OAM DMA with this source page" on that access, not "update a memory-mapped variable that may later cause DMA."
+- Any MMIO-visible `FF46` readback should come from DMA-owned latched state rather than from a generic bus byte.
+- Internal debug state for DMA may exist separately, but it must not replace explicit in-flight transfer state or the MMIO-owned register view.
+
 ## Timing / accuracy requirements
 
 - Describe when CPU and PPU access is blocked.

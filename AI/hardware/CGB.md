@@ -43,6 +43,13 @@ When CGB work starts, prioritize these functional areas before worrying about ha
 - `OCPS`, `OCPD`
 - `KEY1`
 
+## DMG fallback policy for CGB-only MMIO
+
+- The shared MMIO map should record, per register, whether a CGB-only address is implemented, stubbed, or unavailable in the active model.
+- In DMG mode, CGB-only registers that are not functionally implemented should return the documented non-CGB fallback value, typically `0xFF`, rather than behaving as RAM.
+- Writes to those registers in DMG mode should follow an explicit ignored-or-DMG-semantics policy and must not mutate nonexistent state accidentally.
+- Bringing CGB support online later should extend the same routed MMIO contract rather than replacing a temporary DMG-only shortcut.
+
 ## Timing / accuracy requirements
 
 - Avoid DMG shortcuts that would break banks, palettes, HDMA, or double speed.
@@ -92,6 +99,7 @@ Priority order:
 - The DMG OAM DMA implementation should already live inside a reusable DMA subsystem contract so future CGB OAM DMA timing differences, GDMA, and HDMA can extend the same infrastructure.
 - The DMG timer implementation should already be expressed in terms of an internal counter plus derived edge logic so future CGB clocking changes can extend the same model rather than replace it.
 - In DMG mode before functional CGB support exists, CGB-only MMIO reads should already return the correct non-CGB fallback value of `0xFF` instead of emulator-invented placeholders.
+- In DMG mode before functional CGB support exists, CGB-only MMIO writes should already be handled explicitly rather than falling through to fake storage.
 - Future CGB boot flow should be able to branch into full CGB mode or DMG-compatibility mode based on cartridge header information, without requiring a separate emulator core.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.

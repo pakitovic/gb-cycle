@@ -33,6 +33,14 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - When several interrupts are pending at once, the priority order must be `VBlank > LCD STAT > Timer > Serial > Joypad`.
 - The interrupt controller should expose the highest-priority pending source as a single choice for CPU dispatch rather than encouraging ad hoc priority checks in multiple places.
 
+## `IF` / `IE` MMIO contract baseline
+
+- `IF` and `IE` are MMIO-visible registers, but they should not be treated as generic CPU-private bytes.
+- `IF` must accept both program-visible MMIO writes and asynchronous hardware requests coming from timer, PPU, serial, joypad, and other producers.
+- `IE` should remain owned by the interrupt controller even though it is exposed at `0xFFFF`.
+- Prefer helpers such as `request_interrupt(kind)` and `clear_interrupt(kind)` alongside the routed MMIO read/write path.
+- Program writes to `IF` should coexist with hardware requests without bypassing the interrupt controller's source-of-truth state.
+
 ## Timing / accuracy requirements
 
 - Preserve ordering with CPU execution, `EI`, `DI`, `HALT`, and timer/PPU requests.
@@ -80,6 +88,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 
 - Keep source signaling separate from CPU acknowledgement.
 - A helper such as `request_interrupt(kind)` is preferred over handwritten bit-twiddling at each producer site.
+- A helper such as `clear_interrupt(kind)` is also preferred over ad hoc bit masking outside the interrupt controller when software-visible acknowledge logic needs it.
 - Keep the final decision to accept and dispatch an interrupt in CPU flow, even if priority selection and `IF`/`IE` ownership live here.
 - Direct-boot startup values for `IF` and `IE` should be sourced from the centralized post-boot snapshot rather than inferred from CPU-local interrupt state.
 - Keep the semantic ownership of `IF` and `IE` here even though bus decode must route `0xFF0F` and `0xFFFF` correctly.
