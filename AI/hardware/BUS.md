@@ -69,6 +69,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - VRAM should be treated as a dedicated graphics-memory region rather than generic RAM with no access policy.
 - CPU reads and writes to VRAM must respect PPU access timing.
 - On DMG, CPU VRAM access should be allowed in Modes `0`, `1`, and `2`, and blocked during Mode `3`.
+- With the LCD disabled through `LCDC.7 = 0`, ordinary PPU-mode VRAM restrictions should be lifted immediately because the active raster pipeline is no longer running.
 - When blocked, CPU writes should be ignored and CPU reads should return the blocked-access result rather than the stored VRAM byte, typically `0xFF`.
 - The PPU and CPU must not have incompatible direct paths to VRAM that bypass shared access policy.
 
@@ -98,6 +99,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - OAM should be treated as a dedicated sprite-attribute region, not as always-accessible RAM.
 - CPU OAM access must obey both PPU timing and DMA-related bus policy.
 - On DMG, CPU OAM access should be blocked during PPU Modes `2` and `3`.
+- With the LCD disabled through `LCDC.7 = 0`, ordinary PPU-mode OAM restrictions should be lifted immediately even though other actors such as OAM DMA may still impose their own access rules.
 - During blocked periods, CPU writes should be ignored and CPU reads should return the blocked-access result instead of the stored OAM byte.
 - OAM DMA should write into the same underlying OAM storage while still participating in the same central arbitration model.
 
@@ -183,6 +185,9 @@ Address alone is not enough: the bus must also consider the current temporal har
 - During PPU Mode 3, both OAM and VRAM access restrictions must be represented as observable bus behavior.
 - During DMG OAM DMA, CPU accesses should retain normal HRAM behavior while non-HRAM CPU accesses observe DMA-blocked semantics instead of normal memory-region behavior.
 - With LCD disabled, access rules should return to the hardware state expected for LCD-off behavior.
+- LCD-off accessibility should remove ordinary PPU mode locks, but it must not erase independent blocking rules coming from DMA or any later bus actor.
+- The same PPU-disabled state that makes `STAT.mode` read as `0` should also be the state the bus uses to release ordinary VRAM/OAM mode restrictions.
+- Mid-scanline writes to `LCDC.7` should therefore be able to change VRAM/OAM accessibility immediately on the shared timeline rather than at scanline or frame end.
 - When an access is blocked, the bus should model the correct observable result for that situation instead of falling through to normal RAM semantics.
 - CPU opcode fetch, immediate fetch, stack traffic, and read-modify-write memory operations should appear as ordinary ordered bus accesses, not as post-instruction aggregated effects.
 - MMIO reads and writes should remain ordinary ordered bus transactions whose visible result and side effects depend on the exact temporal hardware state at that access point.
@@ -220,6 +225,8 @@ Priority order:
 - subsystem-specific access restriction tests
 - tests for blocked reads returning the expected observable value and blocked writes being ignored where applicable
 - tests for requester-specific behavior during OAM DMA, including CPU HRAM access and DMA-driven OAM writes
+- tests for LCD-off VRAM and OAM accessibility and for immediate access-policy change on `LCDC.7` transitions
+- tests that LCD-off accessibility and DMA-specific blocking compose correctly instead of one silently erasing the other
 - tests for boot-ROM overlay before `FF50` and cartridge visibility after `FF50`
 - tests that the next fetch after boot-ROM unmapping already observes cartridge routing
 - direct-boot routing tests that verify the ordinary cartridge ROM map is visible again after startup, including `0x0000`, `0x0100`, and mapper-controlled ROM regions where applicable

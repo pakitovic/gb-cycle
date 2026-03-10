@@ -551,6 +551,24 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
    Scope: `LCDC.7` disable/enable effects on reported mode, LCD STAT sources, and VRAM/OAM accessibility, without replacing the broader LCD reactivation work item.
    Acceptance criteria: `STAT.mode = 0` while LCD is disabled, ordinary mode-source behavior is suspended while LCD is off, and re-enable remains compatible with the separate first-frame-blank rule handled by the later LCD reactivation block.
 
+#### LCD on/off and reactivation sequencing inside Phase 4
+
+1. Implement real LCD disable.
+   Scope: `LCDC.7: 1 -> 0`, explicit LCD/PPU-disabled state, visible LCD-off blank output, and release of ordinary VRAM/OAM mode restrictions.
+   Acceptance criteria: disabling LCD stops the active PPU mode scheduler, `STAT.mode = 0`, visible output becomes LCD-off white, ordinary VRAM/OAM mode restrictions are released again without erasing independent DMA-side blocking, and mode-driven LCD STAT requests stop.
+2. Implement real LCD re-enable and raster restart.
+   Scope: `LCDC.7: 0 -> 1`, one explicit raster-start state, and immediate internal PPU restart.
+   Acceptance criteria: the PPU resumes on the shared timeline without an invented startup delay, the re-enable entry point has one documented line/dot/mode source of truth, and the implementation does not resume an old half-finished scanline.
+3. Implement visible blank-first-frame behavior.
+   Scope: separation between internal pixel generation and panel-visible output after LCD re-enable.
+   Acceptance criteria: the internal PPU can start drawing immediately after re-enable while the visible LCD output remains blank for the first full frame, and normal visible output resumes only after that blank frame completes.
+4. Reset the pixel pipeline cleanly across LCD power transitions.
+   Scope: BG FIFO, OBJ FIFO, fetchers, object-fetch state, window state, and in-progress pixel-mixing state.
+   Acceptance criteria: LCD disable invalidates in-flight pixel state explicitly, and LCD re-enable starts from a clean reproducible pipeline instead of resuming stale FIFOs or stale fetch state.
+5. Integrate LCD power transitions with bus, LY policy, and mid-scanline writes.
+   Scope: synchronized access policy, explicit LY-disabled/re-enable behavior, and immediate `LCDC.7` side effects even outside VBlank.
+   Acceptance criteria: bus access policy, `STAT`, `LY`, and the PPU scheduler tell one coherent story during LCD off/on, re-enable does not inherit stale LCD STAT edge/coincidence state, mid-scanline writes remain immediate, and any optional out-of-VBlank warning stays observational only.
+
 #### Done criteria
 
 - the PPU advances dot-by-dot
@@ -560,6 +578,7 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
 - DMG sprite priority rules are respected separately for selection, OBJ/OBJ overlap, and BG/OBJ mixing
 - window activation, BG-to-window fetch transition, and the internal window line counter are represented as explicit pipeline state rather than as global coordinate remapping
 - LCD STAT interrupt generation is represented as one internal edge-detected line driven by live mode/coincidence state rather than as independent level-triggered source checks
+- LCD power transitions enter and leave an explicit PPU-disabled state, restart from a defined raster state, and keep the first post-enable blank frame as visible-output behavior rather than a scheduler stall
 - STAT, LY, LYC, and LCD IRQs reflect the PPU's real temporal state
 - direct-boot LCD-visible state is backed by a coherent internal PPU phase rather than an invented reset-mode shortcut
 - bugs and quirks are added on top of an already stable base

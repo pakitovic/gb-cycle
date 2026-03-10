@@ -43,6 +43,29 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
 - For `OBP0` and `OBP1`, the low two bits must not change the meaning of OBJ color index `0`, because that index remains transparent.
 
+## LCD master-control baseline
+
+- `LCDC.7` should be treated as the master enable for the LCD/PPU subsystem, not as a late visibility-only flag on an otherwise running raster.
+- A transition `LCDC.7: 1 -> 0` should disable the active LCD/PPU pipeline itself rather than merely hiding already-generated pixels.
+- A transition `LCDC.7: 0 -> 1` should re-enable the PPU immediately on the shared T-cycle timeline, without an invented delay before internal drawing resumes.
+- CPU execution, timer progress, DMA, and interrupt logic should continue normally while the LCD/PPU is disabled; LCD off is not a whole-machine pause.
+- Mid-scanline writes to `LCDC.7` should take effect on the access itself unless later hardware evidence proves a narrower timing rule.
+
+## LCD-off state baseline
+
+- LCD-disabled state should be represented as a dedicated PPU/LCD-disabled condition, not as the ordinary HBlank path with rendering silently hidden.
+- When `LCDC.7 = 0`, the PPU should stop progressing through the ordinary active-LCD mode schedule.
+- The same disabled-state decision should drive both `STAT.mode = 0` readback and the bus-side release of normal VRAM/OAM mode restrictions.
+- Releasing LCD-mode access restrictions must not erase independent bus-side restrictions such as active OAM DMA; LCD-off policy and DMA policy must still compose cleanly.
+- LCD-disabled state should therefore be one explicit source of truth consumed by both the PPU-visible register contract and the bus access-policy contract.
+
+## LCD-visible output baseline
+
+- The project should distinguish between the internal PPU pixel pipeline and the visible LCD-panel output state.
+- When the LCD is disabled, the visible output should be forced to the LCD-off DMG white state rather than to palette color `0` as if the PPU were still presenting ordinary pixels.
+- After re-enabling the LCD, the PPU may resume internal drawing immediately while the panel-visible output remains forced blank for the first full frame.
+- The "first full frame stays blank" rule should be modeled as visible-output behavior, not as a delayed start of the internal PPU scheduler.
+
 ## STAT register baseline
 
 - `STAT` should remain a mixed register whose writable portion is the software-configured interrupt-enable mask and whose read-only portion is derived from live PPU state.
@@ -90,9 +113,32 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## LCD disable / re-enable baseline
 
 - When `LCDC.7 = 0`, the PPU should stop behaving as if it were traversing ordinary Modes `2`, `3`, `0`, and `1` in the background.
-- With LCD disabled, `STAT` mode should report `0`, VRAM should be accessible, and OAM should be accessible under the LCD-off policy already used by the bus.
+- With LCD disabled, `STAT` mode should report `0`, VRAM should become ordinarily accessible again, and OAM should follow the same LCD-off policy already used by the bus while still remaining compatible with separate DMA-side blocking rules.
 - The internal STAT interrupt line should stop following the ordinary active-LCD mode/coincidence-source schedule while LCD is disabled.
-- Re-enabling LCD should restart the PPU timing state through the real scheduler path and remain compatible with the separate rule that the first frame after re-enable stays blank.
+- The disabled-state transition should also clear or recompute any previous `stat_irq_line` edge-detection state so LCD re-enable does not inherit a stale-high STAT source.
+- Re-enabling LCD should restart the PPU timing state through the real scheduler path and remain compatible with the separate rule that the first full frame after re-enable stays blank.
+
+## LCD re-enable and raster restart baseline
+
+- Re-enabling the LCD should enter one explicit, reproducible raster-start state rather than resuming from an ambiguous saved dot or half-finished scanline.
+- The implementation should keep one source of truth for the initial scanline, dot, mode, and related scheduler state used after `LCDC.7: 0 -> 1`.
+- The first-frame-blank period should be counted from that re-enabled raster start, not from the earlier disable event.
+- The implementation should also keep one explicit, tested policy for how `LY` behaves while the LCD is disabled and how it re-enters the active raster model after re-enable.
+
+## LCD pipeline reset baseline
+
+- Disabling the LCD should explicitly invalidate or reset in-flight pixel-pipeline state rather than freezing and later resuming a half-consumed scanline.
+- That reset should cover at least BG FIFO state, OBJ/OAM FIFO state, background/window fetcher state, object-fetch state, window latch/counter state, and any in-progress pixel-mixing state.
+- Re-enabling the LCD should start pixel production from a clean pipeline state compatible with the chosen raster-start state.
+- Do not resume fetchers or FIFOs from the last active-LCD dot before disable; that would contradict the hardware-facing model of the PPU being off and then starting a new draw again.
+
+## LCD-disabled scheduler / IRQ baseline
+
+- While the LCD is disabled, mode-dependent LCD STAT sources should not continue to fire as if the raster were still advancing invisibly.
+- The `STAT` controller, `LY` handling, and any mode-driven PPU scheduler state should move coherently into the same explicit LCD-disabled state.
+- The implementation should not let `LY` keep advancing accidentally just because a generic line counter happened to keep ticking after the LCD was turned off.
+- Re-enabling the LCD should rebuild live coincidence and STAT-line state from the chosen raster restart state rather than reusing stale coincidence or edge-detection state from before disable.
+- If the project later offers a debug warning for disabling the LCD outside VBlank, that warning must remain observational only and must not change the emulated hardware result.
 
 ## Sprite pipeline baseline
 
@@ -303,7 +349,12 @@ Priority order:
 - tests that entering Mode `1` can request both VBlank interrupt and LCD STAT interrupt independently
 - tests for DMG-family `STAT` write quirk in Mode `2`, Mode `0`, Mode `1`, and coincidence-active cases, plus a negative test for Mode `3`
 - tests that the mode reported through `STAT` matches the same live state used by the bus to block or allow VRAM/OAM access
-- tests for LCD off/on behavior around `STAT`, including LCD-off `STAT` mode readback, LCD-off VRAM/OAM accessibility, and re-enable without stale STAT-line behavior
+- tests for LCD off/on behavior around `STAT`, including LCD-off `STAT` mode readback, release of ordinary LCD-mode VRAM/OAM restrictions, and re-enable without stale STAT-line or coincidence carry-over
+- tests for `LCDC.7: 1 -> 0` causing immediate LCD/PPU disable, visible white output, and release of ordinary VRAM/OAM mode restrictions
+- tests for `LCDC.7: 0 -> 1` causing immediate internal PPU restart while keeping the visible output blank for the first full frame
+- tests that LCD disable resets pipeline state so re-enable does not resume a corrupted partial scanline
+- tests for one explicit LY/off/re-enable policy covering the disable point, steady LCD-off state, and re-enable boundary rather than accidental continued line counting during LCD-disabled state
+- tests that mid-scanline `LCDC.7` writes take effect immediately rather than waiting for scanline or frame end
 - direct-boot continuity tests that verify the first LCD-visible dots after `SkipBoot` are coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
 
 ## Implementation notes for this repo
@@ -329,6 +380,7 @@ Priority order:
 - A shape such as `SelectedSpritesForLine`, `ObjectFetcherState`, `OamFifo`, `ObjectPixel`, `SpritePriorityResolver`, and `BgObjMixer` is a good fit for keeping sprite work explicit and testable.
 - A shape such as `wy_triggered`, `window_active_this_line`, `window_line_counter`, `window_x_counter`, explicit window-start events, and pending WX/LCDC-related glitch state is a good fit for keeping window behavior explicit and testable.
 - A `StatController`-style unit inside the PPU is a good fit for owning `STAT` enable bits, live coincidence calculation, internal STAT-line composition, rising-edge detection, and the DMG `STAT` write quirk.
+- A shape such as `lcd_enabled`, `panel_blank_forced`, `blank_frame_pending`, an explicit raster-start state for LCD re-enable, and a clean pixel-pipeline reset path is a good fit for making LCD power transitions reproducible and testable.
 - A fetcher-source distinction such as `BackgroundFetch` versus `WindowFetch` is preferred over late coordinate branching at mix time.
 - Use one consistent local term for the sprite-pixel queue; `OBJ FIFO`, `OAM FIFO`, and `ObjectFifo` in this documentation refer to the same hardware-facing queue.
 - The object FIFO should carry per-pixel metadata such as color index, palette selection, OBJ priority attribute, X-priority information, OAM-order tie-break information, and transparency.
@@ -340,6 +392,7 @@ Priority order:
 - STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
 - Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
 - Mid-frame writes to LCD-visible registers should be interpreted on the same dot timeline that drives mode, fetcher, FIFO, and interrupt behavior.
+- Keep the visible panel-blanking policy separate from the internal pixel pipeline so the first post-enable blank frame does not accidentally become a delayed scheduler start.
 - A `SkipBoot` path should synthesize internal LCD mode, dot position, and any relevant pipeline state coherently with the visible post-boot register snapshot instead of inventing a contradictory hidden phase.
 - Do not present `OBP0` and `OBP1` as stable fixed post-boot values in DMG-family direct-boot presets; those registers should remain under an explicit uninitialized-state policy when firmware execution is skipped.
 - Let the PPU define when VRAM/OAM are logically inaccessible, while the bus remains responsible for exposing the observable blocked-access result to other actors.
@@ -366,6 +419,11 @@ Priority order:
 - treating LCD STAT interrupts as level-triggered "condition is true" events instead of rising edges on one shared internal line
 - recalculating LCD STAT source timing independently from the real PPU mode scheduler
 - desynchronizing the mode exposed through `STAT` from the mode the bus uses for VRAM/OAM blocking
+- treating `LCDC.7` as a cosmetic display-visibility bit instead of a master LCD/PPU power transition
+- pausing the whole machine when the LCD is disabled instead of only disabling the LCD/PPU path
+- delaying LCD on/off writes until the end of a scanline or frame without hardware evidence
+- resuming fetchers, FIFOs, or partial scanlines after LCD re-enable instead of restarting from a clean raster state
+- modeling the first post-enable blank frame as a delayed PPU restart instead of as panel-visible blanking over an already-running internal pipeline
 - resolving BG/OBJ mixing before resolving which OBJ pixel actually wins an overlap
 - using X visibility as part of Mode 2 sprite selection and thereby hiding real `10`-sprite-per-line exhaustion
 - treating OBJ color `0` as white output instead of transparency
