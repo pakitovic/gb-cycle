@@ -23,11 +23,12 @@ Keep channel behavior and frame-sequencer timing explicit. Separate internal aud
 
 - Keep channel and frame-sequencer timing visible.
 - Do not mix backend sampling concerns with hardware state evolution.
+- Keep internal APU sequencing compatible with the shared T-cycle timing model, even if audio output is resampled later.
 
 ## Dependencies
 
 - bus/MMIO
-- scheduler or clock source
+- T-cycle scheduler or clock source
 - model/revision configuration
 
 ## Primary references

@@ -21,6 +21,7 @@
 - Document the expected ordering of events.
 - State whether reasoning is based on Pan Docs, AntonioND, Gekkio, tests, or reference emulators.
 - Prefer reproducible validation over intuition.
+- Preserve the project's T-cycle timing foundation; do not introduce M-cycle-first scheduling shortcuts as a local convenience.
 
 ## Definition of done
 

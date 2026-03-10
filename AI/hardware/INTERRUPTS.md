@@ -22,6 +22,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 ## Timing / accuracy requirements
 
 - Preserve ordering with CPU execution, `EI`, `DI`, `HALT`, and timer/PPU requests.
+- Interrupt request and acknowledge behavior should be reasoned about on the shared T-cycle timeline.
 
 ## Dependencies
 

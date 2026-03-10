@@ -26,11 +26,12 @@ Model the timer as edge-sensitive hardware, not as a periodic software counter i
 - Explain edges, glitches, and event ordering explicitly.
 - Do not reduce the model to "increment every X instructions" if finer timing matters.
 - Preserve the interaction with interrupt timing and writes to timer registers.
+- Express timer behavior on the shared T-cycle timeline of the core.
 
 ## Dependencies
 
 - interrupt controller
-- scheduler or clock source
+- T-cycle scheduler or clock source
 - bus/MMIO wiring
 
 ## Primary references

@@ -11,6 +11,8 @@ Read the matching file directly; this index is only a routing guide.
 - `TESTING.md`: unit, integration, ROM-based, and oracle-comparison strategy.
 - `TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
 
+The project-wide timing baseline is T-cycle based; see `TIMING-AND-ACCURACY.md` and `hardware/CPU.md`.
+
 ## Hardware docs
 
 - `hardware/CPU.md`

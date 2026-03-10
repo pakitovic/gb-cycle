@@ -2,11 +2,14 @@
 
 Emulador de Game Boy centrado en exactitud de hardware y escrito en Rust.
 
+La base temporal objetivo del core es `1 tick = 1 T-cycle`.
+
 ## Objetivos
 
 - Priorizar el comportamiento fiel al hardware real.
 - Mantener un core portable y desacoplado de cualquier frontend.
 - Facilitar validación con tests y ROMs de referencia.
+- Construir el core desde el principio sobre una línea temporal por `T-cycle`, no por `M-cycle`.
 
 ## Estructura prevista
 

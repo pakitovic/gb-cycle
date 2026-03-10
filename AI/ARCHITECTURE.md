@@ -56,6 +56,12 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Make room for CGB-specific extensions without spreading model checks everywhere.
 - Use types to reflect hardware concepts such as model, interrupt source, PPU mode, and cartridge kind.
 
+## Timing foundation
+
+- The project timing foundation is T-cycle based from the start.
+- M-cycles may be referenced for documentation or instruction summaries, but they are not the primary execution unit of the core.
+- Shared subsystem scheduling should assume a common T-cycle timeline so CPU, PPU, timer, DMA, APU, and bus interactions can be modeled without coarse conversion layers.
+
 ## Console model policy
 
 - The core must expose an explicit console model concept.

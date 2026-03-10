@@ -24,6 +24,7 @@ DMA is not an instant copy when accuracy matters. Represent transfer progress an
 - Describe when CPU and PPU access is blocked.
 - Do not hide DMA behind a one-shot memory copy if the target model requires visible timing.
 - Keep the design ready for HDMA without rewriting the API surface later.
+- DMA progress and blocking should be expressible on the same T-cycle timeline as CPU and PPU activity.
 
 ## Dependencies
 
