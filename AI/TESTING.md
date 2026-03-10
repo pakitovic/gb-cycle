@@ -45,6 +45,12 @@ Include DMG STAT quirk coverage and avoid assuming the same result on GBC-in-DMG
 Include coverage for Mode 3 startup cost, SCX-dependent timing, window-trigger timing, and sprite-induced stalls when suitable tests exist.
 Include sprite-edge tests for top and bottom clipping, `8x8` versus `8x16`, and the `SCX & 7` plus `X = 0` timing-sensitive path when suitable tests exist.
 Include mid-frame `LCDC.1` and `LCDC.2` toggle coverage when sprite fetch cancel and size-change behavior are implemented.
+Include window tests that separate WY latch timing from WX trigger timing and verify WY is latched at Mode 2 start rather than recomputed continuously during the line.
+Include tests for BG FIFO clear and fetcher restart when the window starts mid-scanline.
+Include tests for the internal window line counter, including reset during VBlank and increment only on lines where window rendering really starts.
+Include tests for `WX = 0`, `WX = 166`, and mid-frame `WX`/`WY`/`LCDC.5` glitches when suitable tests exist.
+Include DMG tests that verify `LCDC.0 = 0` suppresses window rendering even if `LCDC.5 = 1`.
+Include tests where window start or window glitches alter the BG/window stream seen by later sprite mixing without spuriously clearing OBJ FIFO state.
 For CPU execution behavior, include opcode fetch under boot-ROM/cartridge mapping, `imm8`/`imm16` fetch order, register-versus-`(HL)` timing differences, taken-versus-untaken conditional paths, stack byte order, CB-prefix double-fetch behavior, and instructions with internal no-bus steps whenever suitable tests exist.
 For CPU interrupt-control behavior, include IE/IF register behavior, delayed `EI`, immediate `DI`, fixed interrupt priority, vector dispatch, `RETI`, `HALT` wake-up semantics, `HALT` bug activation/effect, and separate `STOP` coverage whenever suitable tests exist.
 For timer behavior, include internal-counter-derived `DIV`, DIV-write glitches, TAC-write glitches, falling-edge TIMA increments, overflow-window behavior, separate TIMA/TMA write cases before/during/after reload, and timer interrupt timing through `IF` and CPU-visible servicing whenever suitable tests exist.

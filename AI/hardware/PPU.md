@@ -111,7 +111,73 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 - Sprite mixing must remain compatible with a BG/window pipeline in which window start clears the BG FIFO and resets the fetcher mid-line.
 - Do not design sprites as a layer applied over a fully resolved BG image, because window activation can restart fetch state in the middle of the scanline.
-- Keep window-specific glitches and `WX`/`WY` behavior in their own work item, but preserve a per-pixel mixer design now so later window work does not require a sprite rewrite.
+- Keep window-specific glitches and `WX`/`WY` behavior in their own explicit pipeline/state model so sprite logic stays decoupled while remaining compatible with detailed window behavior.
+
+## Window pipeline baseline
+
+- The window must be part of the same Mode 3 fetcher/FIFO pipeline as BG and sprites; it must not be modeled as a second background compositor applied after the scanline has already been built.
+- Window start is a temporal pipeline event in the middle of the scanline rather than a frame-level or scanline-level mode switch.
+- When the window starts rendering, the BG FIFO should be cleared and the fetcher should restart from its initial fetch step.
+- Window visibility must depend on the combined state of `LCDC.5`, the WY latch, and the runtime WX trigger rather than on a single late visibility flag.
+- Window Y addressing must come from a dedicated internal window line counter rather than from naïvely using `LY - WY` at all times.
+
+## Window coordinate baseline
+
+- `WX` should be interpreted using the hardware `X + 7` convention rather than as a direct screen X coordinate.
+- `WY` should be treated as the visible starting scanline for window activation, not as a generic continuously applied Y offset.
+- The window should only be considered potentially visible when `WX` is within `0..=166` and `WY` is within `0..=143`.
+- `WX = 0` and `WX = 166` should remain explicit edge-case paths because they have distinct DMG-visible glitches.
+
+## Window activation baseline
+
+- The WY condition should be checked at the start of Mode 2 for each scanline and latched for later Mode 3 use.
+- Once latched for a given scanline, the WY condition should not be recomputed continuously during the same line.
+- The WX condition should be evaluated during pixel production using the current render position of the pipeline.
+- The window should start on a scanline only when the WY latch is active, the WX trigger point is reached, and `LCDC.5 = 1`.
+- In DMG mode, `LCDC.0 = 0` should suppress window rendering even if `LCDC.5 = 1`.
+
+## Window tilemap and fetch baseline
+
+- The window tilemap should be selected by `LCDC.6`, independent of the BG tilemap selection.
+- Window tile data addressing should follow `LCDC.4`, matching BG tile addressing rules while remaining separate from OBJ tile handling.
+- The fetcher should have explicit BG and window fetch modes rather than reusing BG fetch implicitly through altered coordinates.
+- Window tile X should derive from a window-local X counter, not from `SCX`.
+- Window tile Y should derive from the internal window line counter, not from `LY + SCY`.
+- BG-side `SCX` and `SCY` rereads per tile fetch should remain confined to BG coordinate logic and must not leak into window fetch coordinates.
+
+## Window start-event baseline
+
+- Starting the window should clear the BG FIFO.
+- Starting the window should reset the fetcher to its initial fetch step rather than continuing from the current BG fetch phase.
+- The window-start event should alter the remaining pixel sequence of the current scanline without replaying or recomputing the whole line.
+- The DMG special case `WX = 0 && (SCX & 7) > 0` should be modeled as an explicit path that shortens Mode 3 by `1` dot.
+
+## Window line-counter baseline
+
+- The PPU should keep an explicit internal window line counter.
+- That counter should reset during VBlank.
+- The counter should increment only on scanlines where the window actually begins rendering.
+- Hiding the window mid-frame via `WX` manipulation or `LCDC.5` should be able to prevent the increment for affected lines.
+- Do not define the window row globally as `LY - WY`; that shortcut is not valid for status bars and mid-frame show/hide behavior.
+
+## Window mid-frame write and glitch baseline
+
+- Writes to `WX`, `WY`, and `LCDC.5` during the frame must be visible to the live pipeline rather than deferred until the next frame.
+- If the WY latch is already active for the current line and `LCDC.5` was active at line start but is cleared before the WX trigger point, the design should support the documented window-glitch pixel at the would-be window start.
+- If `WX` changes after the window has already started on the line and the new trigger position is reached again, the documented bug should be representable as a low-priority color-`0` pixel pushed into the BG FIFO path.
+- These glitches should live in fetcher/FIFO/pipeline logic rather than as framebuffer post-processing rules.
+
+## Window edge-case baseline
+
+- `WX = 0` should be treated as a DMG-specific special case whose visible stutter depends on `SCX & 7`, not as a normal "starts at X = -7" case.
+- `WX = 166` should retain its special behavior of extending across the following scanline rather than being clipped away as an ordinary out-of-range value.
+- `WX = 0` and `WX = 166` should each have their own explicit tests and implementation paths.
+
+## Window and sprite interaction baseline
+
+- Window start should change the BG/window pixel stream before OBJ-versus-BG mixing for the final LCD pixel.
+- Starting the window should not automatically clear the OBJ/OAM FIFO; the documented reset is on the BG-side FIFO path.
+- Window glitches must be able to affect final sprite mixing because they alter the actual BG/window pixels consumed by the mixer.
 
 ## Timing / accuracy requirements
 
@@ -170,6 +236,13 @@ Priority order:
 - tests for `8x8` versus `8x16` selection and row mapping, including bit `0` ignored on `8x16` tile indices
 - tests for top-edge and bottom-edge partial sprite visibility such as `Y = 2` and `Y = 154`
 - tests for mid-frame `LCDC.1` and `LCDC.2` changes when relevant behavior is implemented or intentionally isolated
+- tests for WY latch timing at Mode 2 start and WX-trigger timing during Mode 3
+- tests for window fetcher reset and BG FIFO clear when the window starts mid-scanline
+- tests for the internal window line counter, including increment-only-when-started and reset during VBlank
+- tests for `WX = 0` and `WX = 166` special behavior
+- tests for DMG `LCDC.0` suppressing window rendering even when `LCDC.5 = 1`
+- tests for mid-frame `WX`, `WY`, and `LCDC.5` writes when relevant glitches are implemented or intentionally isolated
+- tests for window-start and window-glitch cases that continue into later BG/OBJ mixing without resetting the OBJ/OAM FIFO incorrectly
 - direct-boot continuity tests that verify the first LCD-visible dots after `SkipBoot` are coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
 
 ## Implementation notes for this repo
@@ -193,10 +266,13 @@ Priority order:
 - Treat Mode 2 as a preparatory pipeline phase for Mode 3, not as an isolated bookkeeping pass.
 - The list of visible sprites produced in Mode 2 should feed directly into Mode 3 object timing and mixing logic.
 - A shape such as `SelectedSpritesForLine`, `ObjectFetcherState`, `OamFifo`, `ObjectPixel`, `SpritePriorityResolver`, and `BgObjMixer` is a good fit for keeping sprite work explicit and testable.
+- A shape such as `wy_triggered`, `window_active_this_line`, `window_line_counter`, `window_x_counter`, explicit window-start events, and pending WX/LCDC-related glitch state is a good fit for keeping window behavior explicit and testable.
+- A fetcher-source distinction such as `BackgroundFetch` versus `WindowFetch` is preferred over late coordinate branching at mix time.
 - Use one consistent local term for the sprite-pixel queue; `OBJ FIFO`, `OAM FIFO`, and `ObjectFifo` in this documentation refer to the same hardware-facing queue.
 - The object FIFO should carry per-pixel metadata such as color index, palette selection, OBJ priority attribute, X-priority information, OAM-order tie-break information, and transparency.
 - Keep OBJ/OBJ priority resolution separate from BG/OBJ mixing so the BG-over-OBJ attribute is applied only after the winning sprite pixel has been chosen.
 - Apply X flip, Y flip, palette selection, and `8x16` tile-row mapping during object fetch and FIFO population rather than as a framebuffer post-process.
+- The BG-to-window fetch transition should be represented as an explicit pipeline event rather than as a late conditional in the pixel mixer.
 - STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
 - Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
 - Mid-frame writes to LCD-visible registers should be interpreted on the same dot timeline that drives mode, fetcher, FIFO, and interrupt behavior.
@@ -219,6 +295,10 @@ Priority order:
 - pushing whole tiles or scanlines directly to a framebuffer without a FIFO model
 - selecting sprites without respecting OAM order and the per-line limit of `10`
 - modeling Mode 2 as an instant scan instead of a fixed `80`-dot phase
+- modeling the window as a second background layer composited after the scanline instead of as a fetcher/FIFO transition
+- deriving the window row solely from `LY - WY` and thereby breaking mid-frame hide/show behavior
+- resetting the whole scanline instead of only the relevant fetcher/FIFO state when the window starts
+- ignoring `WX = 0`, `WX = 166`, or mid-frame `WX`/`WY`/`LCDC.5` writes because they are rare edge cases
 - resolving BG/OBJ mixing before resolving which OBJ pixel actually wins an overlap
 - using X visibility as part of Mode 2 sprite selection and thereby hiding real `10`-sprite-per-line exhaustion
 - treating OBJ color `0` as white output instead of transparency

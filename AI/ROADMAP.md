@@ -512,6 +512,24 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
    Scope: `LCDC.1` fetch cancel, `LCDC.2` size changes, partial vertical clipping, and known `8x16` artifact work.
    Acceptance criteria: object-fetch cancel exists, top and bottom clipping cases are covered, and unresolved `8x16` leak/artifact behavior remains isolated as explicit follow-up work instead of hidden undefined behavior.
 
+#### Window sequencing inside Phase 4
+
+1. Implement basic window activation.
+   Scope: WY latch at Mode 2 start, WX trigger during pixel output, and `LCDC.5`-controlled start conditions.
+   Acceptance criteria: the window starts only when the WY latch, WX trigger, and window enable are all satisfied, and DMG `LCDC.0 = 0` suppresses window start.
+2. Implement fetcher/FIFO reset on window start.
+   Scope: BG FIFO clear, fetcher restart, window tilemap selection, and window-local coordinate source.
+   Acceptance criteria: the window can begin in the middle of a scanline without recomputing the full line, the visible pixel sequence changes accordingly, and the `WX = 0 && (SCX & 7) > 0` one-dot shortening path is explicit.
+3. Implement the internal window line counter.
+   Scope: dedicated window Y counter, reset during VBlank, and increment only on scanlines where the window truly starts.
+   Acceptance criteria: hiding the window mid-frame can prevent the increment, and status-bar style split usage does not break the chosen window row.
+4. Implement WX/WY/LCDC window glitches.
+   Scope: glitch pixel behavior around `LCDC.5`, post-start `WX` change behavior, and special handling for `WX = 0` and `WX = 166`.
+   Acceptance criteria: the documented glitches exist as pipeline behavior, not framebuffer post-processing, and each case has isolated tests.
+5. Integrate window with sprite mixing.
+   Scope: BG/window pixel-source transition before final OBJ mixing, without unintended OBJ FIFO resets.
+   Acceptance criteria: window start changes the BG/window stream against which OBJ pixels compete, OBJ FIFO state is preserved appropriately, final LCD output still resolves per pixel, and focused tests cover window-plus-sprite interaction without hidden scanline compositing shortcuts.
+
 #### Done criteria
 
 - the PPU advances dot-by-dot
@@ -519,6 +537,7 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
 - sprites and window participate inside the real pipeline
 - Mode 2 sprite selection, object fetch, OBJ FIFO state, and BG/OBJ mixing are all represented as explicit pipeline behavior rather than scanline-level composition
 - DMG sprite priority rules are respected separately for selection, OBJ/OBJ overlap, and BG/OBJ mixing
+- window activation, BG-to-window fetch transition, and the internal window line counter are represented as explicit pipeline state rather than as global coordinate remapping
 - STAT, LY, LYC, and LCD IRQs reflect the PPU's real temporal state
 - direct-boot LCD-visible state is backed by a coherent internal PPU phase rather than an invented reset-mode shortcut
 - bugs and quirks are added on top of an already stable base
