@@ -31,6 +31,8 @@ Map tests to the subsystem they validate:
 - boot-state and model differences
 - CGB-specific features
 
+For boot behavior, cover both real boot ROM execution and direct-boot presets when those modes exist.
+
 ## Recommended external validation sources
 
 - blargg test ROMs
@@ -69,3 +71,8 @@ Every fixed bug should leave behind:
 
 - Bug fixes should keep a reproducible description: ROM or test case, observed behavior, and expected behavior.
 - For CPU, PPU, timer, interrupts, DMA, memory map, and boot behavior, prefer writing the failing test first when practical.
+
+## Boot and startup policy
+
+- When direct-boot presets are used in tests, document the assumed register and memory state explicitly.
+- Keep tests that exercise real boot ROM execution separate from tests that start after boot.

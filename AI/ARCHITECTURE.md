@@ -56,6 +56,28 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Make room for CGB-specific extensions without spreading model checks everywhere.
 - Use types to reflect hardware concepts such as model, interrupt source, PPU mode, and cartridge kind.
 
+## Console model policy
+
+- The core must expose an explicit console model concept.
+- At minimum, plan for `DMG0`, `DMG`, `MGB`, and future `CGB`.
+- The current implementation target should behave as a DMG-family core, while still distinguishing observable model differences.
+- Design the DMG-family core with future CGB integration in mind, but do not introduce CGB implementation complexity before it is needed.
+- The goal is to avoid major later refactors, not to prematurely model every CGB-only path.
+- Boot ROM behavior and startup-visible quirks must be model-aware rather than treated as one generic DMG state.
+- `DMG0`, `DMG`, and `MGB` should share one DMG-family hardware core unless evidence shows a true hardware-level divergence that matters to emulation.
+- CGB must enter as an extension of the shared architecture, not as a second emulator with duplicated subsystems.
+- No critical subsystem should be rigidly tied to a single hardware variant if that would block natural extension to other models.
+
+## DMG-first, CGB-ready policy
+
+- The base core should implement DMG-family behavior only until DMG timing and correctness are stable.
+- "Prepared for CGB" means leaving explicit extension seams, not implementing partial CGB logic ahead of time.
+- Shared subsystems should be designed so later support for banked VRAM, banked WRAM, extra CGB I/O registers, HDMA, palette state, and double speed can be added without re-architecting the whole core.
+- Avoid rigid fixed-size assumptions in subsystem interfaces when the hardware family naturally extends them later.
+- Keep the common GB model solid first; do not dilute DMG timing work by mixing in unfinished CGB behavior.
+- When CGB arrives, prefer one standard CGB model before attempting fine-grained CGB hardware revision support.
+- Architecture should allow the same core to run in DMG-family mode or CGB mode without duplicating subsystem implementations.
+
 ## Suggested subsystem boundaries
 
 - CPU: instruction flow, register state, interrupt acceptance, HALT/STOP semantics
@@ -71,6 +93,14 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
 - Model-specific extensions: CGB and later SGB
 
+## Boot ROM architecture policy
+
+- Treat boot ROM as firmware executed by the real CPU model, not as a fake initialization script.
+- Keep DMG-family hardware separate from boot ROM assets: one hardware core, multiple selectable boot ROM images.
+- Boot ROM selection should depend on the console model and support at least real boot ROM execution, custom boot ROM injection, and direct boot without firmware.
+- Direct-boot helpers are a testing and tooling feature, not a replacement for real boot ROM execution.
+- The boot subsystem should not assume every model uses the same boot firmware size or address mapping layout; keep those details inside the boot and bus design, not spread through unrelated subsystems.
+
 ## Portability policy
 
 - No platform-specific APIs inside the emulation core.
@@ -84,3 +114,4 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Avoid spreading model checks across unrelated modules.
 - Centralize model and revision capabilities.
 - Do not couple DMG-only shortcuts into APIs that would block CGB banking, palettes, HDMA, or double speed later.
+- Prefer capability-driven branching from a shared model description over ad hoc per-subsystem variant checks.

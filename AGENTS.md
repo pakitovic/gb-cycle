@@ -54,6 +54,7 @@ Quick map:
 - Keep modules small, explicit, and portable.
 - Avoid hidden global state.
 - Always leave room for future CGB support, even in DMG-only work.
+- Design with future CGB support in mind, but do not add premature CGB complexity before it serves a concrete need.
 - Optimize only after preserving correctness and observability.
 - When changing behavior, update the matching `AI/*` file in the same change.
 

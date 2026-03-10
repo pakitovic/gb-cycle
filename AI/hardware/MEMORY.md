@@ -8,6 +8,8 @@ Own internal memory regions and the documented map of WRAM, HRAM, echo behavior,
 
 Memory should reflect distinct hardware regions, not a single flat array with ad hoc exceptions.
 
+DMG may expose only one active VRAM bank and simple WRAM behavior, but the architecture should leave room for future bank-selectable regions where the hardware family later requires them.
+
 ## Responsibilities
 
 - represent WRAM and HRAM explicitly
@@ -48,11 +50,15 @@ Memory should reflect distinct hardware regions, not a single flat array with ad
 ## Implementation notes for this repo
 
 - Keep plain storage separate from device-backed MMIO.
+- Avoid closed abstractions that assume WRAM and VRAM can never gain bank-selection behavior.
+- Treat extensibility of the I/O block and memory-backed regions as part of the baseline design, even before CGB functionality exists.
+- Prefer designs where extra CGB banks can be disabled by machine mode rather than requiring a different memory architecture.
 
 ## Known pitfalls
 
 - flattening all address space into one abstraction
 - mixing ownership between bus and memory modules
+- modeling storage so rigidly that later banked memory support becomes a rewrite
 
 ## Open questions
 

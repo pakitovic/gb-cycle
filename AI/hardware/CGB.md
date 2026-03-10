@@ -8,6 +8,9 @@ Own Color Game Boy-specific behavior: double speed, VRAM banks, WRAM banks, pale
 
 Design interfaces today that do not block CGB tomorrow. Separate DMG-only, shared, and CGB-only behavior explicitly.
 
+CGB should extend the shared core through model-aware behavior and capabilities, not by introducing a parallel emulator architecture.
+Until CGB work starts, avoid premature complexity in DMG-family subsystems; only preserve the extension seams that prevent large future refactors.
+
 ## Responsibilities
 
 - double-speed behavior
@@ -15,6 +18,17 @@ Design interfaces today that do not block CGB tomorrow. Separate DMG-only, share
 - color palettes
 - CGB-only DMA/HDMA features
 - model capability flags and feature gates
+- CGB boot-time mode selection versus DMG-compatibility mode
+
+## Implementation priority
+
+When CGB work starts, prioritize these functional areas before worrying about hardware revision variants:
+
+- CPU double speed
+- two VRAM banks
+- banked WRAM
+- CGB palette state
+- additional CGB-only I/O registers
 
 ## Registers / MMIO
 
@@ -22,11 +36,18 @@ Design interfaces today that do not block CGB tomorrow. Separate DMG-only, share
 - VRAM/WRAM bank registers
 - speed switch control
 - HDMA registers
+- boot-time interpretation of cartridge CGB compatibility flags
+- `VBK`
+- `SVBK`
+- `BCPS`, `BCPD`
+- `OCPS`, `OCPD`
+- `KEY1`
 
 ## Timing / accuracy requirements
 
 - Avoid DMG shortcuts that would break banks, palettes, HDMA, or double speed.
 - Keep CGB timing and shared timing differences visible.
+- Keep the timing model ready for CPU-speed changes without redefining the LCD-side temporal foundation.
 
 ## Dependencies
 
@@ -61,11 +82,30 @@ Priority order:
 
 - Model capabilities should be centralized, not spread as random conditionals.
 - Shared subsystems should expose clean extension points for CGB-only behavior.
+- DMG-family behavior should remain the baseline shared path where possible, with CGB-specific features layered on through explicit model capabilities.
+- CGB readiness today should focus on architecture seams for banked memory, palette state, extra I/O, HDMA, and speed switching, not on partial functional implementation.
+- Future CGB boot flow should be able to branch into full CGB mode or DMG-compatibility mode based on cartridge header information, without requiring a separate emulator core.
+- When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
+- A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
+
+## Deferred for now
+
+These can stay unimplemented in the first DMG-family core as long as the architecture leaves them a clear place:
+
+- real CGB palettes
+- VRAM bank 1 behavior
+- WRAM banks 2-7
+- `KEY1` and double speed behavior
+- HDMA and GDMA
+- CGB tile attributes
+- CGB boot ROM behavior
+- DMG-on-CGB compatibility details
 
 ## Known pitfalls
 
 - coupling DMG assumptions into shared APIs
 - hiding double-speed effects behind generic timing helpers
+- over-designing around CGB revision differences before the base CGB feature set exists
 
 ## Open questions
 

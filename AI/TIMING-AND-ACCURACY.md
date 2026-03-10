@@ -45,3 +45,5 @@ When implementing timing:
 - Make temporal edges visible in code and tests.
 - Do not replace hardware ordering with convenience batching unless the behavior is proven equivalent for the target accuracy.
 - Favor clarity and testability over shortcuts that obscure the phase model.
+- Use dot or T-cycle level reasoning as the baseline timing vocabulary for the core.
+- Keep the timing model clean enough that future CGB double-speed behavior can be expressed as an extension of the same temporal foundation rather than a separate clocking design.
