@@ -140,6 +140,8 @@ to immediately materialize as a separate directory.
 - initial mapping state
 - boot ROM unmapping
 - model-aware post-boot initialization for explicit skip-boot paths
+- centralized post-boot snapshot data and cartridge-derived startup adjustments
+- coordination of subsystem-owned hidden-state synthesis needed for temporally coherent direct-boot entry
 - startup-visible boot behavior from the system perspective
 
 ### `cpu/`
@@ -226,6 +228,7 @@ to immediately materialize as a separate directory.
 ## Ownership boundary notes
 
 - The boot subsystem owns firmware assets, model-aware boot configuration, and boot-ROM enable/disable state.
+- The boot subsystem also owns the source-of-truth startup snapshot for direct-boot entry, while the target subsystems still own the live semantics of their registers once execution begins.
 - The DMA subsystem owns transfer state and transfer requests over time.
 - The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
 - The interrupt controller owns `IF`/`IE` register state and pending-request bookkeeping, while the CPU owns `IME`, `halted`, `stopped`, and the final decision to accept and service an interrupt.

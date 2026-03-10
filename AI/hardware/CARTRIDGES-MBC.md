@@ -24,6 +24,7 @@ Keep MBC behavior decoupled from the rest of the core. Cartridge hardware should
 
 - Access behavior must remain compatible with bus ordering.
 - Architecture should scale from ROM-only to MBC1, MBC3, MBC5, and later extensions.
+- Direct-boot initialization should not assume external RAM starts clean unless that follows from persisted save data or an explicit uninitialized-memory policy.
 
 ## Dependencies
 
@@ -51,16 +52,19 @@ Priority order:
 - mapper-specific ROM tests
 - save RAM behavior tests
 - RTC behavior tests when implemented
+- tests that document startup behavior for external RAM when direct-boot presets bypass firmware execution
 
 ## Implementation notes for this repo
 
 - Keep mapper traits or enums narrow and explicit.
 - Avoid hard-coding cartridge logic into generic bus code.
+- Treat external RAM power-up contents as separate from deterministic post-boot CPU/MMIO state; if the emulator chooses a direct-boot initialization policy, keep it explicit and configurable.
 
 ## Known pitfalls
 
 - leaking mapper knowledge into unrelated modules
 - under-designing the cartridge boundary so later MBCs become invasive
+- silently zeroing cartridge RAM during direct boot and then treating that as hardware-accurate startup behavior
 
 ## Open questions
 

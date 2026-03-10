@@ -79,6 +79,7 @@ Priority order:
 - mealybug-tearoom-tests
 - Mooneye LCD/STAT tests
 - tests for variable Mode 3 timing, SCX discard behavior, and sprite-induced stalls when available
+- direct-boot continuity tests that verify the first LCD-visible dots after `SkipBoot` are coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
 
 ## Implementation notes for this repo
 
@@ -102,6 +103,8 @@ Priority order:
 - The list of visible sprites produced in Mode 2 should feed directly into Mode 3 object timing and mixing logic.
 - STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
 - Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
+- A `SkipBoot` path should synthesize internal LCD mode, dot position, and any relevant pipeline state coherently with the visible post-boot register snapshot instead of inventing a contradictory hidden phase.
+- Do not present `OBP0` and `OBP1` as stable fixed post-boot values in DMG-family direct-boot presets; those registers should remain under an explicit uninitialized-state policy when firmware execution is skipped.
 - Let the PPU define when VRAM/OAM are logically inaccessible, while the bus remains responsible for exposing the observable blocked-access result to other actors.
 - Let the PPU raise LCD interrupt requests through the shared interrupt-controller path rather than owning `IF` state or dispatching CPU interrupt service directly.
 
@@ -119,6 +122,7 @@ Priority order:
 - selecting sprites without respecting OAM order and the per-line limit of `10`
 - modeling Mode 2 as an instant scan instead of a fixed `80`-dot phase
 - treating STAT behavior as a generic interrupt source without hardware-specific LCD quirks
+- synthesizing `SkipBoot` LCD registers without a matching hidden PPU phase
 
 ## Open questions
 

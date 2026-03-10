@@ -51,6 +51,7 @@ The source of truth should be an internal `16`-bit system counter advanced by th
 - A write to `TAC` must reevaluate both the selected counter bit and the enable contribution; TAC writes can therefore trigger the timer glitch behavior and immediate TIMA increment in the relevant cases.
 - TIMA overflow must enter an explicit pending/reload sequence before `TMA` is copied and the timer interrupt is requested.
 - Writes to `TIMA` and `TMA` near overflow/reload must be modeled against that internal overflow state machine rather than as unconditional register stores.
+- When `SkipBoot` synthesizes a post-boot machine state, the timer's hidden `system_counter` and any overflow-related state must be initialized coherently with the visible `DIV`, `TIMA`, `TMA`, and `TAC` snapshot rather than being reset independently.
 
 ## Dependencies
 
@@ -88,6 +89,7 @@ Priority order:
 - TMA-write timing tests around reload
 - separate TMA-write tests for before overflow, just before reload, at reload, and after reload
 - timer interrupt integration tests across timer state, `IF`, and CPU-visible servicing timing
+- direct-boot continuity tests that verify the first timer-visible ticks after `SkipBoot` remain coherent with the published post-boot `DIV` snapshot
 
 ## Implementation notes for this repo
 
@@ -97,6 +99,7 @@ Priority order:
 - A pure helper such as `selected_timer_bit(tac)` is a good fit for frequency selection logic.
 - `tick()`, `read()`, and `write()` should all be aware of the timer's internal temporal state; register writes are not simple blind setters in the precise model.
 - The timer should request its interrupt through the global interrupt controller path, not by mutating unrelated CPU or bus flags ad hoc.
+- Treat visible startup values such as `DIV=0xAB` as consequences of a synthesized internal timer state during `SkipBoot`, not as disconnected register literals.
 
 ## Recommended implementation order
 
@@ -120,6 +123,7 @@ Priority order:
 - implementing reload from `TMA` instantaneously at overflow
 - treating `DIV`, `TIMA`, and `TAC` as loosely related registers instead of coupled hardware logic
 - mixing interrupt request timing with reload semantics
+- setting the visible direct-boot `DIV` register without also choosing a coherent hidden `system_counter`
 
 ## Open questions
 

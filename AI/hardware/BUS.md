@@ -40,6 +40,8 @@ Address alone is not enough: the bus must also consider the current temporal har
 - With LCD disabled, access rules should return to the hardware state expected for LCD-off behavior.
 - When an access is blocked, the bus should model the correct observable result for that situation instead of falling through to normal RAM semantics.
 - CPU opcode fetch, immediate fetch, stack traffic, and read-modify-write memory operations should appear as ordinary ordered bus accesses, not as post-instruction aggregated effects.
+- `SkipBoot` should begin with the same ordinary routing rules the machine would have after handoff, not with a hidden "skip mode" that bypasses normal boot-ROM and cartridge visibility logic.
+- In DMG mode, reads from CGB-only registers that are not functionally implemented should return `0xFF` through the normal MMIO routing path rather than through ad hoc call-site checks.
 
 ## Dependencies
 
@@ -73,6 +75,8 @@ Priority order:
 - tests for requester-specific behavior during OAM DMA, including CPU HRAM access and DMA-driven OAM writes
 - tests for boot-ROM overlay before `FF50` and cartridge visibility after `FF50`
 - tests that the next fetch after boot-ROM unmapping already observes cartridge routing
+- direct-boot routing tests that verify the ordinary cartridge ROM map is visible again after startup, including `0x0000`, `0x0100`, and mapper-controlled ROM regions where applicable
+- DMG-mode MMIO tests that verify CGB-only registers read back as `0xFF`
 
 ## Implementation notes for this repo
 
@@ -89,6 +93,9 @@ Priority order:
 - Prefer region controllers or explicit handlers over hard-coded assumptions like "DMG only has one VRAM shape forever".
 - The bus should model boot ROM mapping as a first-class routing rule, including the later `FF50`-controlled unmap to cartridge ROM.
 - The DMG-family next-fetch handoff after `FF50` should already be modeled in a way that can later extend to CGB's split boot-ROM mapping while keeping the cartridge header window visible.
+- In `SkipBoot`, boot ROM mapping should simply start disabled while leaving `FF50` and the ordinary mapping logic intact.
+- After `SkipBoot`, the bus should expose the normal cartridge ROM layout over `0x0000-0x7FFF` rather than a special reduced direct-boot map.
+- Keep DMG-versus-CGB MMIO readback policy in the routed register map rather than spreading `if cgb` checks through unrelated subsystems.
 - Avoid boot-ROM mapping code that assumes firmware always occupies exactly one small contiguous prefix of the address space.
 - Leave room for model-specific boot firmware windows that are not a single contiguous DMG-style range.
 - Keep blocked-access behavior inside bus-facing region handlers such as VRAM/OAM access paths rather than teaching the CPU about those rules.
@@ -100,6 +107,7 @@ Priority order:
 - treating requester identity as irrelevant when CPU and DMA need different observable access rules
 - freezing the MMIO map behind abstractions that are hard to extend for CGB-only registers
 - treating the bus as a static memory map without temporal arbitration
+- adding a special direct-boot routing shortcut instead of initializing the normal post-boot mapping state
 
 ## Open questions
 

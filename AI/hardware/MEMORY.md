@@ -26,6 +26,7 @@ VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this su
 ## Timing / accuracy requirements
 
 - Memory behavior must stay compatible with bus arbitration and subsystem locking rules.
+- Power-up and direct-boot initialization should not pretend WRAM or HRAM have one fixed hardware-defined value when the hardware leaves them unreliable.
 
 ## Dependencies
 
@@ -47,6 +48,7 @@ VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this su
 
 - memory map tests
 - mirror and access boundary tests
+- tests that document the chosen uninitialized WRAM/HRAM policy for direct-boot presets without confusing that policy with real hardware guarantees
 
 ## Implementation notes for this repo
 
@@ -55,13 +57,17 @@ VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this su
 - Treat extensibility of the I/O block and memory-backed regions as part of the baseline design, even before CGB functionality exists.
 - Prefer designs where extra CGB banks can be disabled by machine mode rather than requiring a different memory architecture.
 - Keep VRAM readiness as an architectural concern without moving VRAM locking or access rules out of the PPU/bus boundary.
+- When `SkipBoot` is used, initialize WRAM and HRAM through an explicit uninitialized-memory policy rather than silently zero-filling them as if that were proven hardware behavior.
+- Keep that uninitialized-memory policy reproducible for tests while remaining clearly separate from deterministic startup values owned by the boot snapshot.
 
 ## Known pitfalls
 
 - flattening all address space into one abstraction
 - mixing ownership between bus and memory modules
 - modeling storage so rigidly that later banked memory support becomes a rewrite
+- treating WRAM or HRAM as documented zeroed memory at power-up because a convenient preset happened to choose zeroes
 
 ## Open questions
 
 - how much of echo behavior should be explicit versus delegated through bus mapping
+- which default uninitialized-memory policy is most useful for direct-boot validation without overstating hardware certainty

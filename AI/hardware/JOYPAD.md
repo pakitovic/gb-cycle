@@ -48,6 +48,7 @@ Keep the hardware-visible register behavior separate from host input collection.
 - Keep host key mapping outside the emulation core.
 - Let bus/MMIO wiring expose `JOYP` at its mapped address while the joypad subsystem owns the register semantics.
 - Request the joypad interrupt through the shared interrupt-controller path instead of mutating CPU interrupt state directly.
+- Direct-boot startup values such as the documented post-boot `P1` snapshot should be injected through the centralized boot-state path rather than hard-coded as a local joypad reset default.
 
 ## Known pitfalls
 

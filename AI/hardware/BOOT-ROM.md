@@ -40,6 +40,8 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - `RealBoot` must execute the selected boot ROM on the real CPU core, through the real bus, and on the shared T-cycle scheduler.
 - `SkipBoot` must initialize a model-specific post-boot state directly, start execution at `0x0100`, and leave boot ROM mapping disabled from the beginning.
 - The rest of the system should not care whether execution reached cartridge code through real boot or skip boot; only the configured startup path should differ.
+- `SkipBoot` should represent the observable machine state at the logical handoff point `PC = 0x0100`, not a vague "power-on but boot skipped" approximation.
+- Treat the post-boot snapshot as a mix of fixed-per-model values, cartridge-header-derived values, explicitly unreliable or uninitialized values, and hidden temporal state that must be synthesized coherently.
 
 ## DMG-family boot baseline
 
@@ -57,6 +59,47 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - On DMG-family real boot, the first opcode fetched from the cartridge after handoff should be the byte at `0x0100`.
 - Register state visible at cartridge entry must come from the executed boot ROM of the selected model; do not hard-code DMG and MGB as sharing one identical final `A` value.
 
+## DMG-family skip-boot CPU snapshot baseline
+
+- `SkipBoot` should expose CPU state matching the post-boot handoff point at `PC = 0x0100`.
+- DMG `SkipBoot` CPU state should initialize `A=0x01`, `B=0x00`, `C=0x13`, `D=0x00`, `E=0xD8`, `H=0x01`, `L=0x4D`, `SP=0xFFFE`, and `PC=0x0100`.
+- MGB `SkipBoot` CPU state should match DMG except for `A=0xFF`.
+- DMG0 `SkipBoot` CPU state should use its own table rather than reusing later DMG defaults: `A=0x01`, `B=0xFF`, `C=0x13`, `D=0x00`, `E=0xC1`, `H=0x84`, `L=0x03`, `SP=0xFFFE`, `PC=0x0100`.
+- For DMG and MGB, `F` should not be a single hard-coded constant; `Z=1` and `N=0` remain fixed, while `H` and `C` should derive from the cartridge header checksum (`0x00` leaves both cleared, any other checksum leaves both set).
+- DMG0 `F` should start cleared in the direct post-boot snapshot.
+- Cartridge-header-dependent post-boot CPU state should be derived from the loaded cartridge data rather than duplicated as disconnected literals.
+
+## DMG-family skip-boot I/O snapshot baseline
+
+- `SkipBoot` should initialize a centralized model-aware post-boot I/O snapshot rather than scattering startup literals across subsystems.
+- For DMG and MGB, the visible post-boot snapshot should include at least `P1=0xCF`, `SB=0x00`, `SC=0x7E`, `DIV=0xAB`, `TIMA=0x00`, `TMA=0x00`, `TAC=0xF8`, `IF=0xE1`, `LCDC=0x91`, `STAT=0x85`, `SCY=0x00`, `SCX=0x00`, `LY=0x00`, `LYC=0x00`, `DMA=0xFF`, `BGP=0xFC`, `WY=0x00`, `WX=0x00`, and `IE=0x00`.
+- The direct post-boot snapshot should also include the published DMG-family audio-register values rather than leaving the APU block in a made-up default state.
+- `OBP0` and `OBP1` should not be treated as reliable fixed hardware constants in `SkipBoot`; keep them under an explicit emulator policy for uninitialized state instead of inventing a false canonical value.
+- Values that remain undefined or unreliable after power-up should stay explicitly classified as such even when `SkipBoot` is used.
+
+## Hidden-state synthesis baseline
+
+- A T-cycle-accurate `SkipBoot` path must synthesize internal subsystem state, not only visible registers.
+- The timer's internal counter and overflow-related state should be initialized coherently with the visible `DIV`, `TIMA`, `TMA`, and `TAC` snapshot at `PC = 0x0100`.
+- The PPU's internal mode, dot position, and related pipeline state should be initialized coherently with the visible `LCDC`, `STAT`, `LY`, `LYC`, and other LCD-facing registers at `PC = 0x0100`.
+- `SkipBoot` must not leave visible registers claiming `DIV=0xAB` or `STAT=0x85` while the hidden timer or PPU state still corresponds to a zeroed or impossible phase.
+- The first T-cycles after `SkipBoot` should behave as a plausible temporal continuation of a real boot handoff rather than showing artificial discontinuities caused by inconsistent hidden state.
+
+## Uninitialized and cartridge-dependent startup state
+
+- `SkipBoot` must distinguish between values that are fixed by model, values derived from the cartridge header, and values that are genuinely unreliable after power-up.
+- WRAM and HRAM should not be treated as fixed zero-filled memory in the direct post-boot snapshot.
+- External cartridge RAM should not be assumed clean on first power-up when a direct post-boot path is used.
+- A direct-boot path should use an explicit policy for uninitialized memory and unreliable registers, such as seeded pseudo-random data, a documented pattern, or a debug-oriented strict mode.
+- That uninitialized-state policy must not overwrite values that are deterministic in the documented post-boot snapshot.
+
+## Post-boot visible map baseline
+
+- `SkipBoot` should begin with boot ROM already unmapped and normal cartridge visibility restored.
+- After `SkipBoot`, the ordinary cartridge ROM map across `0x0000-0x7FFF` should be visible again: the fixed low ROM region should no longer be covered by boot ROM, and the switchable cartridge-ROM region should remain under normal mapper control where applicable.
+- `FF50` should still exist as the boot-ROM mapping-control register even though `SkipBoot` starts with boot ROM already disabled.
+- DMG-mode reads from CGB-only registers that do not exist functionally yet should return `0xFF` rather than emulator-invented values.
+
 ## Timing / accuracy requirements
 
 - Boot ROM transition behavior must remain explicit.
@@ -68,6 +111,9 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - Boot ROM reads from the cartridge header and boot-ROM writes to VRAM/LCD/MMIO should use the same bus and arbitration rules as ordinary execution.
 - The duration of the boot process should emerge from executed instructions and subsystem timing, not from an external startup timer.
 - Skip-boot must remain a distinct initialization path; do not partially execute the boot ROM and cut it short.
+- `SkipBoot` should restore the observable machine state at `PC = 0x0100`, including any documented timing-sensitive register values.
+- A direct-boot preset must not stop at visible MMIO values alone; it should also establish hidden timer and PPU state consistent with those values.
+- Direct-boot initialization of indeterminate memory and unreliable registers should remain explicit and configurable rather than pretending the hardware guarantees a single power-up value.
 
 ## Dependencies
 
@@ -75,6 +121,8 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - T-cycle scheduler or clock source
 - bus and memory
 - cartridge/MBC
+- timer
+- PPU
 - model/revision configuration
 
 ## Primary references
@@ -105,6 +153,11 @@ Priority order:
 - tests for missing-cartridge or `0xFF`-filled header behavior
 - tests for model-specific visible `A` at cartridge entry, especially DMG versus MGB
 - direct-boot preset tests that document assumed register state
+- direct-boot CPU-register tests for `DMG0`, DMG with checksum `0x00`, DMG with checksum not `0x00`, and MGB
+- direct-boot I/O readback tests for the published post-boot snapshot
+- direct-boot tests that verify the ordinary cartridge ROM map is visible again after startup, including `0x0000`, `0x0100`, and mapper-controlled regions where applicable
+- continuity tests for the first T-cycles after `SkipBoot`, especially around timer and PPU state derived from the visible post-boot registers
+- tests that document the chosen policy for WRAM, HRAM, external RAM, `OBP0`, and `OBP1` when direct boot bypasses firmware execution
 
 ## Implementation notes for this repo
 
@@ -119,6 +172,11 @@ Priority order:
 - DMG-family observable differences should initially be assumed to come from firmware and startup state unless a proven hardware-level difference matters to the emulator.
 - `FF50` should integrate with system or bus mapping control, not as a CPU-local shortcut.
 - Real-boot header validation should emerge from executed boot-ROM code reading cartridge bytes, not from a parallel emulator-side validator.
+- A central routine such as `initialize_post_boot_state(model, cartridge)` is the preferred shape for `SkipBoot`, with one source of truth for model-specific CPU state, visible I/O state, and hidden-state synthesis inputs.
+- Keep direct-boot snapshot data centralized in typed structures rather than copying startup literals into CPU, timer, PPU, APU, or bus modules independently.
+- That centralized post-boot snapshot should own initial visible values only; each subsystem must still own the live semantics of its registers after startup.
+- Cartridge-derived post-boot fields such as DMG/MGB `F` should be computed from the loaded header at initialization time rather than hard-coded into one static table.
+- Uninitialized-state policy for WRAM, HRAM, external RAM, `OBP0`, and `OBP1` should be explicit and testable.
 - Do not hard-code boot ROM support around a fixed 256-byte assumption; CGB boot ROM is larger and uses a split mapped layout.
 - When CGB is implemented, boot should be able to inspect cartridge header compatibility information and choose CGB mode or DMG-compatibility mode accordingly.
 
@@ -131,9 +189,13 @@ Priority order:
 - validating logo or checksum outside the executed boot ROM path
 - faking the Nintendo logo or boot animation in a frontend layer instead of letting VRAM/LCD writes emerge from execution
 - silently jumping to post-boot state without making the mode explicit
+- treating `SkipBoot` as "set a few famous CPU registers" while leaving timer and PPU hidden state incoherent with the published post-boot snapshot
+- zero-filling WRAM, HRAM, or cartridge RAM and presenting that as documented hardware behavior
+- inventing fixed post-boot values for unreliable registers such as `OBP0` and `OBP1`
 
 ## Open questions
 
 - which models and revisions to support in the first direct-boot API
 - which DMG-family differences are treated as required from day one versus deferred behind documented limitations
 - how the boot mapping abstraction should represent non-contiguous firmware windows cleanly once CGB support begins
+- which explicit uninitialized-state policy should be the default for direct boot in tests versus interactive use

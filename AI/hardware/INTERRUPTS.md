@@ -69,12 +69,14 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - timer interrupt timing tests that verify IF request timing relative to TIMA overflow/reload
 - timer interrupt integration tests that verify CPU-visible servicing order after the request becomes pending
 - LCD/STAT timing tests, including mode transitions and STAT quirk coverage when available
+- direct-boot readback tests for documented startup `IF`/`IE` values when firmware execution is bypassed
 
 ## Implementation notes for this repo
 
 - Keep source signaling separate from CPU acknowledgement.
 - A helper such as `request_interrupt(kind)` is preferred over handwritten bit-twiddling at each producer site.
 - Keep the final decision to accept and dispatch an interrupt in CPU flow, even if priority selection and `IF`/`IE` ownership live here.
+- Direct-boot startup values for `IF` and `IE` should be sourced from the centralized post-boot snapshot rather than inferred from CPU-local interrupt state.
 
 ## Known pitfalls
 

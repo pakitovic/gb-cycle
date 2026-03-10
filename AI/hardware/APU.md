@@ -51,11 +51,13 @@ Priority order:
 - audio-focused ROMs where available
 - register semantics tests
 - frame-sequencer timing tests
+- direct-boot register-readback tests for the published post-boot audio snapshot when startup presets bypass firmware execution
 
 ## Implementation notes for this repo
 
 - Keep output backend decoupled from the emulation core.
 - Favor correctness and clarity before micro-optimizations.
+- Visible post-boot `NRxx` register values for `SkipBoot` should come from the centralized boot snapshot rather than ad hoc per-register reset literals spread through APU code.
 
 ## Known pitfalls
 

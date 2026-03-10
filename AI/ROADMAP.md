@@ -265,6 +265,8 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - DMG-family boot-ROM kind selection for `DMG0`, `DMG`, and `MGB`
 - `FF50`-driven handoff infrastructure in the bus mapping layer
 - skip-boot initialization path with model-aware post-boot state entry
+- centralized visible post-boot snapshot tables for CPU and I/O state
+- explicit direct-boot policy for unreliable startup state such as WRAM, HRAM, and other non-deterministic regions
 
 #### Done criteria
 
@@ -276,6 +278,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - the boot ROM can be mapped and unmapped correctly
 - boot-ROM overlay versus cartridge visibility is controlled explicitly by bus-visible mapping state
 - `SkipBoot` reaches `0x0100` through explicit post-boot initialization rather than partial boot-ROM execution
+- deterministic and cartridge-derived visible post-boot state are initialized through one documented path rather than scattered startup literals
 - the infrastructure is ready for a later real-boot path to start CPU execution at `0x0000` with boot ROM mapped and hand off through a real `FF50` write once the CPU core exists
 
 #### Risks if done late or incorrectly
@@ -330,6 +333,7 @@ Build a truly temporal CPU core, where observable behavior emerges from internal
 - TAC
 - edge timing integrated with the real system clock
 - timer interrupt request generation
+- direct-boot timer hidden-state synthesis coherent with the visible post-boot timer snapshot
 
 ##### Interrupts and CPU states
 
@@ -348,6 +352,7 @@ Build a truly temporal CPU core, where observable behavior emerges from internal
 - instructions generate their real bus accesses
 - the timer advances with the global scheduler
 - interrupts and HALT are integrated into the real execution flow
+- direct-boot timer state does not fake `DIV` or related registers through disconnected visible-only initialization
 - real boot executes through the same CPU fetch/decode/execute engine used for the rest of the machine
 - real boot reaches cartridge code only through an executed `FF50` write and next-fetch handoff
 - invalid boot-logo or header-check cases remain in boot instead of handing off to the cartridge
@@ -429,6 +434,7 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
 - general LCD state control
 - mode sequencing connected to real timing
 - LY and line/dot progression
+- direct-boot PPU hidden-state synthesis coherent with the visible post-boot LCD snapshot
 
 ##### Mode 2
 
@@ -462,6 +468,7 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
 - Mode 3 is based on a pixel FIFO rather than deferred scanline rendering
 - sprites and window participate inside the real pipeline
 - STAT, LY, LYC, and LCD IRQs reflect the PPU's real temporal state
+- direct-boot LCD-visible state is backed by a coherent internal PPU phase rather than an invented reset-mode shortcut
 - bugs and quirks are added on top of an already stable base
 
 #### Risks if oversimplified
