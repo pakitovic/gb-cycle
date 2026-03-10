@@ -17,13 +17,16 @@ La base gráfica objetivo es un PPU `dot-by-dot` con `tile fetcher + pixel FIFO`
 
 ## Estructura prevista
 
-La documentación del proyecto recomienda una organización temprana simplificada, compatible con el layout más detallado descrito en `AI/ARCHITECTURE.md`:
+La siguiente distribución es solo una guía conceptual temprana.
+La estructura canónica y sus límites de ownership están definidos en `AI/ARCHITECTURE.md`.
 
 ```text
-core/        Lógica pura de emulación
-frontends/   CLI, escritorio o web
-tests/       Tests de integración, ROMs y helpers
-AI/          Arquitectura, reglas y documentación técnica
+core/         Lógica pura de emulación
+frontends/    CLI, escritorio o web
+tooling/      Runner de ROMs, debugger y utilidades
+persistence/  Adaptadores de saves/RTC fuera del core
+tests/        Tests de integración, ROMs y helpers
+AI/           Arquitectura, roadmap y documentación técnica
 ```
 
 ## Primeros pasos
@@ -39,10 +42,13 @@ cargo test
 
 Antes de implementar subsistemas, consulta las guías en `AI/`:
 
+- `AI/index.md`
 - `AI/ARCHITECTURE.md`
 - `AI/CODING-RULES.md`
 - `AI/EXECUTION.md`
 - `AI/REFERENCES.md`
+- `AI/ROADMAP.md`
 - `AI/TESTING.md`
 - `AI/TIMING-AND-ACCURACY.md`
 - `AI/hardware/*.md`
+- `AI/research/*.md`

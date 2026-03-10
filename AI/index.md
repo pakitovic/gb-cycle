@@ -8,6 +8,7 @@ Read the matching file directly; this index is only a routing guide.
 - `EXECUTION.md`: implementation workflow and change policy.
 - `CODING-RULES.md`: Rust design rules, API style, and optimization discipline.
 - `REFERENCES.md`: primary documentation, hardware research, and open-source consultation order.
+- `ROADMAP.md`: living implementation order, phase goals, done criteria, and open TODO tracking for deferred work.
 - `TESTING.md`: unit, integration, ROM-based, and oracle-comparison strategy.
 - `TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
 
@@ -16,6 +17,7 @@ Subsystem handbooks may refine the generic reference consultation order from `RE
 The project-wide timing baseline is T-cycle based; see `TIMING-AND-ACCURACY.md` and `hardware/CPU.md`.
 The project-wide CPU baseline is a fine-grained fetch/decode/execute model with explicit bus-visible steps; see `hardware/CPU.md`.
 The project-wide PPU baseline is dot-by-dot with explicit fetcher/FIFO behavior; see `hardware/PPU.md`.
+Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work, or when documenting known remaining gaps after an implementation.
 
 ## Hardware docs
 

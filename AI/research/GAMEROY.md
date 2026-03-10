@@ -15,9 +15,9 @@ Repository: https://github.com/Rodrigodd/gameroy
 - DMG-only; do not use as a CGB authority
 
 ## Typical subsystems to inspect
+- Rust-oriented architecture and observability
 - CPU / bus
 - PPU / LCD
-- Timing-sensitive behavior
 
 ## Notes for this repo
 - Record here the files, modules, or patterns that become relevant during implementation.

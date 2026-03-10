@@ -33,10 +33,12 @@ Consult the `AI/*` handbook files directly. Pick only the files relevant to the 
 
 Quick map:
 
+- `AI/index.md`
 - `AI/ARCHITECTURE.md`
 - `AI/EXECUTION.md`
 - `AI/CODING-RULES.md`
 - `AI/REFERENCES.md`
+- `AI/ROADMAP.md`
 - `AI/TESTING.md`
 - `AI/TIMING-AND-ACCURACY.md`
 - `AI/hardware/*`
@@ -72,11 +74,13 @@ Quick map:
 
 - Identify the owning subsystem.
 - Read the matching `AI/hardware/*.md` file first.
+- Read `AI/ROADMAP.md` when the task affects implementation sequencing, resumes unfinished work, or may leave follow-up work behind.
 - Read the matching primary references from `AI/REFERENCES.md`.
 - Read `AI/research/*.md` only when implementation examples are needed.
 - Define contracts and invariants before editing code.
 - Add or update tests and ROM-based validation.
 - Compare behavior against at least one trusted oracle when touching timing-sensitive logic.
+- If a change leaves known gaps, deferred validation, or roadmap done criteria partially unmet, record it in `AI/ROADMAP.md`.
 - Update docs when architecture, rules, timing assumptions, or references change.
 
 ## Final decision rule

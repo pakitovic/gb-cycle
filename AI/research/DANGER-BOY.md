@@ -16,8 +16,8 @@ Repository: https://github.com/austinthresher/dangerboy
 
 ## Typical subsystems to inspect
 - CPU / bus
-- PPU / LCD
-- Timing-sensitive behavior
+- DMA and bus interaction
+- timing-sensitive DMG behavior
 
 ## Notes for this repo
 - Record here the files, modules, or patterns that become relevant during implementation.

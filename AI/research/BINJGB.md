@@ -16,8 +16,8 @@ Repository: https://github.com/binji/binjgb
 
 ## Typical subsystems to inspect
 - CPU / bus
-- PPU / LCD
-- Timing-sensitive behavior
+- timing-sensitive DMG behavior
+- compact architecture and stepping structure
 
 ## Notes for this repo
 - Record here the files, modules, or patterns that become relevant during implementation.

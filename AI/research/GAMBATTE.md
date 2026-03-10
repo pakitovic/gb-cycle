@@ -1,6 +1,6 @@
 # Gambatte
 
-Repository: https://github.com/libretro/gambatte-libretro
+Repository: https://github.com/gb-archive/gambatte
 
 ## Why keep this reference
 - Important historical high-accuracy reference
@@ -13,13 +13,13 @@ Repository: https://github.com/libretro/gambatte-libretro
 - Behavioral cross-checks when documentation is ambiguous
 
 ## Cautions
-- This public repository is a usable modern fork/archive path, not the original active upstream
-- Its archival status affects ergonomics, not the value of its behavioral study
+- The repository is an archive-oriented public mirror, not an actively evolving upstream
+- Archival status affects ergonomics, not the value of its behavioral study
 
 ## Typical subsystems to inspect
 - CPU / bus
 - PPU / LCD
-- Timing-sensitive behavior
+- timing-sensitive corner cases
 
 ## Notes for this repo
 - Record here the files, modules, or patterns that become relevant during implementation.

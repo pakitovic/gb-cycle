@@ -48,8 +48,8 @@ The source of truth should not be "execute opcode, mutate registers, then report
 
 - The CPU should keep an explicit execution state for the current instruction rather than treating each opcode as one opaque step with a total duration attached.
 - Each instruction should be decomposable into ordered elementary actions such as opcode fetch, immediate fetch, memory read, memory write, stack byte transfer, branch/control-flow step, and internal time-only step.
-- The execution model may be stored either as T-cycle-level subphases or as M-cycle-scale micro-operations that each expand into `4` visible T-cycles.
-- If an M-cycle-flavored micro-op model is used, it must still preserve shared T-cycle observability for CPU, PPU, timer, DMA, interrupts, and bus arbitration.
+- The execution model may be stored either as T-cycle-level subphases or as micro-operations that internally group one M-cycle worth of work while still expanding into `4` explicit T-cycles.
+- If such a micro-op model is used, it is only an internal decomposition aid; the architectural timing model must still preserve shared T-cycle observability for CPU, PPU, timer, DMA, interrupts, and bus arbitration.
 - Aggregate opcode timing tables may still exist as derived metadata or validation aids, but they must not become a second source of truth that can drift away from the real execution engine.
 
 ## Bus-visible instruction flow baseline
@@ -170,4 +170,4 @@ Priority order:
 
 ## Open questions
 
-- which in-flight execution representation is clearest for this repo: direct T-cycle subphases or M-cycle-scale micro-ops expanded across T-cycles
+- which in-flight execution representation is clearest for this repo: direct T-cycle subphases or micro-ops that group one M-cycle worth of work while still expanding across T-cycles

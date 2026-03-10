@@ -102,6 +102,125 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
 - Model-specific extensions: CGB and later SGB
 
+## Detailed module responsibility guide
+
+This section complements `Suggested subsystem boundaries` by mapping the
+intended source layout to concrete ownership. The goal is to keep one canonical
+reference for module responsibilities without forcing every early-stage refactor
+to immediately materialize as a separate directory.
+
+### `model/`
+
+- DMG-family hardware model definitions
+- system base types
+- enums for hardware variants and shared configuration
+- structural core configuration
+- architectural extension points for future variants such as CGB
+
+### `scheduler/`
+
+- global T-cycle stepping
+- temporal coordination between subsystems
+- stable per-T-cycle subsystem stepping order
+- explicit global synchronization points
+- orchestration between CPU, PPU, DMA, timer, APU, and peripherals
+
+### `bus/`
+
+- memory reads and writes
+- memory-map region resolution
+- access arbitration
+- integration of cartridge, VRAM, WRAM, OAM, I/O, HRAM, IE, and boot ROM mapping
+- modeling of access restrictions and conflicts when hardware makes them visible
+
+### `boot/`
+
+- boot ROM assets and selection
+- initial mapping state
+- boot ROM unmapping
+- startup-visible boot behavior from the system perspective
+
+### `cpu/`
+
+- SM83 core execution
+- fetch / decode / execute at T-cycle granularity
+- per-instruction reads, writes, and internal steps
+- interrupt acceptance and servicing
+- HALT / STOP / HALT bug behavior
+
+### `ppu/`
+
+- LCD control state
+- PPU mode sequencing
+- OAM scan
+- pixel fetcher
+- pixel FIFO
+- BG / window / OBJ mixing
+- LCD-facing registers owned by the PPU path
+- LY / LYC / STAT behavior
+
+### `dma/`
+
+- DMG OAM DMA
+- transfer timing over the shared scheduler timeline
+- integration with bus arbitration
+- architectural preparation for future transfer mechanisms outside current DMG scope
+
+### `timer/`
+
+- DIV / TIMA / TMA / TAC
+- edge-sensitive timer timing
+- timer interrupt request generation
+
+### `joypad/`
+
+- input state as seen by hardware
+- line selection behavior
+- interrupt integration
+
+### `serial/`
+
+- serial port registers
+- serial transfer behavior from the emulated hardware perspective
+
+### `cartridge/`
+
+- base cartridge interface
+- ROM-only support
+- MBC implementations
+- external RAM
+- RTC-backed cartridges
+- persistence boundaries kept outside the core runtime API when possible
+
+### `apu/`
+
+- global audio architecture
+- channel state machines
+- frame sequencer
+- mixing logic
+- DAC and output-facing emulated state
+
+### `debugger/`
+
+- tracing
+- breakpoints
+- watchpoints
+- snapshots
+- state inspection
+- internal analysis and comparison tools
+- utilities for synchronization and trace-debug workflows
+
+## Module mapping notes
+
+- `Memory and MMIO` may remain a dedicated module or stay split across bus-owned
+  storage helpers and subsystem-owned registers, but ownership must stay
+  explicit.
+- `Interrupt controller` may exist as its own module or as a tightly scoped core
+  component, but `IF` / `IE` ownership must remain distinct from CPU-owned
+  `IME`, `halted`, and `stopped` state.
+- `model/`, `scheduler/`, and `debugger/` are architectural modules even if an
+  early repository stage temporarily keeps some of their code in fewer files.
+
 ## Ownership boundary notes
 
 - The boot subsystem owns firmware assets, model-aware boot configuration, and boot-ROM enable/disable state.

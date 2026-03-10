@@ -15,9 +15,9 @@ Repository: https://github.com/Atem2069/accurateboy
 - Do not treat it as a complete global oracle for all subsystems
 
 ## Typical subsystems to inspect
-- CPU / bus
 - PPU / LCD
-- Timing-sensitive behavior
+- pixel fetch / FIFO behavior
+- dot-timing-sensitive rendering behavior
 
 ## Notes for this repo
 - Record here the files, modules, or patterns that become relevant during implementation.
