@@ -11,6 +11,7 @@ Distinguish clearly between running through boot ROM code and starting from an a
 Within the DMG family, do not collapse `DMG0`, later `DMG`, and `MGB` into one generic startup model if observable differences matter.
 For DMG-family support, prefer one shared hardware core with different boot ROM images rather than separate emulator implementations per model.
 When CGB support arrives, treat its boot ROM as a larger and structurally different firmware flow, not as a simple DMG boot ROM variant with a few extra writes.
+The boot subsystem should own firmware selection and boot-ROM enable state, while the bus consumes that state when routing accesses.
 
 ## Responsibilities
 
@@ -46,8 +47,8 @@ When CGB support arrives, treat its boot ROM as a larger and structurally differ
 ## Primary references
 
 - Pan Docs boot process sections
+- Gekkio hardware documentation and revision material
 - Mooneye documentation and tests
-- SameBoy revision handling for comparison
 
 ## Open-source emulator references
 
@@ -72,6 +73,7 @@ Priority order:
 - Leave extension points for hardware revisions and variants.
 - The first core may target the DMG family, but the boot path must still depend on an explicit console model enum or equivalent typed descriptor.
 - Boot ROM loading should be configurable so the emulator can use real dumps, custom firmware, or no boot ROM at all.
+- Keep boot-ROM asset ownership and boot enable/disable state in the boot subsystem even if the bus performs the actual address routing.
 - A `skip_bootrom` or equivalent direct-boot mode is useful for tests, tooling, and differential validation, but it must remain distinct from verified boot ROM execution.
 - DMG-family observable differences should initially be assumed to come from firmware and startup state unless a proven hardware-level difference matters to the emulator.
 - Do not hard-code boot ROM support around a fixed 256-byte assumption; CGB boot ROM is larger and uses a split mapped layout.

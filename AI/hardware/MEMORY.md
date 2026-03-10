@@ -8,7 +8,8 @@ Own internal memory regions and the documented map of WRAM, HRAM, echo behavior,
 
 Memory should reflect distinct hardware regions, not a single flat array with ad hoc exceptions.
 
-DMG may expose only one active VRAM bank and simple WRAM behavior, but the architecture should leave room for future bank-selectable regions where the hardware family later requires them.
+DMG may expose only simple WRAM behavior today, but the overall memory architecture should leave room for future bank-selectable regions where the hardware family later requires them.
+VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this subsystem focuses on plain storage regions and their ownership boundaries.
 
 ## Responsibilities
 
@@ -53,6 +54,7 @@ DMG may expose only one active VRAM bank and simple WRAM behavior, but the archi
 - Avoid closed abstractions that assume WRAM and VRAM can never gain bank-selection behavior.
 - Treat extensibility of the I/O block and memory-backed regions as part of the baseline design, even before CGB functionality exists.
 - Prefer designs where extra CGB banks can be disabled by machine mode rather than requiring a different memory architecture.
+- Keep VRAM readiness as an architectural concern without moving VRAM locking or access rules out of the PPU/bus boundary.
 
 ## Known pitfalls
 

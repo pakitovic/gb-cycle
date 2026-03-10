@@ -11,6 +11,8 @@ Read the matching file directly; this index is only a routing guide.
 - `TESTING.md`: unit, integration, ROM-based, and oracle-comparison strategy.
 - `TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
 
+Subsystem handbooks may refine the generic reference consultation order from `REFERENCES.md` when a specific subsystem has a stronger oracle.
+
 The project-wide timing baseline is T-cycle based; see `TIMING-AND-ACCURACY.md` and `hardware/CPU.md`.
 The project-wide PPU baseline is dot-by-dot with explicit fetcher/FIFO behavior; see `hardware/PPU.md`.
 

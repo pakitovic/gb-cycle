@@ -71,6 +71,7 @@ Priority order:
 3. binjgb
 4. Mooneye GB
 5. Danger Boy
+6. Gambatte
 
 ## Tests
 
@@ -101,6 +102,7 @@ Priority order:
 - The list of visible sprites produced in Mode 2 should feed directly into Mode 3 object timing and mixing logic.
 - STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
 - Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
+- Let the PPU define when VRAM/OAM are logically inaccessible, while the bus remains responsible for exposing the observable blocked-access result to other actors.
 
 ## Known pitfalls
 

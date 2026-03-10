@@ -88,8 +88,8 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 ## Suggested subsystem boundaries
 
 - CPU: instruction flow, register state, interrupt acceptance, HALT/STOP semantics
-- Bus: address decoding, subsystem routing, visible access ordering
-- Memory and MMIO: WRAM, HRAM, register ownership, access restrictions
+- Bus: address decoding, subsystem routing, dynamic mapping, visible access ordering, and temporal arbitration of blocked accesses
+- Memory and MMIO: WRAM, HRAM, echo behavior, plain storage ownership, and MMIO-backed state not owned by another subsystem
 - Interrupt controller: IF/IE state and request/acknowledge flow
 - Timer: DIV/TIMA/TMA/TAC behavior and edge-sensitive increment logic
 - PPU: LCD modes, fetcher/FIFO behavior, rendering state, VRAM/OAM restrictions
@@ -99,6 +99,14 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Cartridge and MBC: ROM/RAM banking, RTC, rumble, and mapper-specific behavior
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
 - Model-specific extensions: CGB and later SGB
+
+## Ownership boundary notes
+
+- The boot subsystem owns firmware assets, model-aware boot configuration, and boot-ROM enable/disable state.
+- The DMA subsystem owns transfer state and transfer requests over time.
+- The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
+- The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
+- The memory subsystem owns plain storage regions such as WRAM and HRAM; it must not bypass bus-visible access restrictions defined elsewhere.
 
 ## Boot ROM architecture policy
 
@@ -122,3 +130,4 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Centralize model and revision capabilities.
 - Do not couple DMG-only shortcuts into APIs that would block CGB banking, palettes, HDMA, or double speed later.
 - Prefer capability-driven branching from a shared model description over ad hoc per-subsystem variant checks.
+- Prefer bus-side dynamic mapping and access-state rules over flattening everything into static memory ownership tables.

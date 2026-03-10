@@ -4,6 +4,7 @@ Repository: https://github.com/libretro/gambatte-libretro
 
 ## Why keep this reference
 - Important historical high-accuracy reference
+- Strong corroborating oracle for practical accuracy and corner cases
 - Useful as an additional implementation perspective
 
 ## What to consult it for
@@ -13,6 +14,7 @@ Repository: https://github.com/libretro/gambatte-libretro
 
 ## Cautions
 - This public repository is a usable modern fork/archive path, not the original active upstream
+- Its archival status affects ergonomics, not the value of its behavioral study
 
 ## Typical subsystems to inspect
 - CPU / bus

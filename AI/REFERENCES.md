@@ -40,7 +40,8 @@ Primary documentation should be consulted before using emulator source code as g
 
 ## Open-source emulator consultation tier
 
-Use this order when implementation examples or behavioral cross-checks are needed:
+Use this order when implementation examples or behavioral cross-checks are needed and no subsystem-specific handbook names a stronger oracle.
+This default order balances coverage, maintainability, and accessibility; it is not a literal accuracy ranking for every subsystem.
 
 1. SameBoy — https://github.com/LIJI32/SameBoy
 2. binjgb — https://github.com/binji/binjgb
@@ -60,10 +61,10 @@ Use this order when implementation examples or behavioral cross-checks are neede
 
 ## Practical specialization by reference
 
-- SameBoy: best general reference for DMG/CGB behavior, video timing, audio, and compatibility.
+- SameBoy: best general reference and the practical ceiling for DMG/CGB behavior, LCD timing, audio, and compatibility study.
 - binjgb: strong reference for timing, CPU/bus behavior, and compact architecture.
 - GameRoy: useful reference for idiomatic Rust-oriented structure.
 - accurateboy: especially valuable for PPU, fetcher, and pixel FIFO behavior.
 - Mooneye GB: strong documentary and edge-case reasoning reference.
 - Danger Boy: useful smaller codebase for DMG timing study.
-- Gambatte: historical high-accuracy reference and extra comparison point.
+- Gambatte: historical high-accuracy reference and a strong corroborating oracle for practical accuracy and corner cases.

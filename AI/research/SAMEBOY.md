@@ -4,6 +4,7 @@ Repository: https://github.com/LIJI32/SameBoy
 
 ## Why keep this reference
 - Strong global DMG/CGB reference
+- Practical ceiling reference for timing-sensitive DMG/CGB behavior, especially LCD/PPU work
 - Very useful for PPU/LCD timing and APU
 - Use as an open-source oracle and implementation reference
 
