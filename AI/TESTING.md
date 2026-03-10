@@ -67,6 +67,11 @@ Include tests that LCD disable clears in-flight fetcher/FIFO/window/object state
 Include tests that LCD-off accessibility and DMA-specific blocking still compose correctly instead of one silently erasing the other.
 Include tests for one explicit LY policy at disable, during steady LCD-off state, and across LCD re-enable.
 Include tests that mid-scanline `LCDC.7` writes take effect immediately rather than waiting for scanline or frame end.
+Include DMG-family OAM corruption tests that distinguish ordinary Mode `2` OAM/`FEA0-FEFF` triggers from generic blocked OAM behavior in other modes.
+Include tests that the current Mode `2` OAM row is exposed deterministically one row per `4` dots and that the first row remains immune to the basic corruption patterns.
+Include tests for distinct read-corruption and write-corruption formulas and for the dedicated `read + inc/dec` versus `write + inc/dec` paths, including the previous-row mutation and copy behavior of the complex `read + inc/dec` case.
+Include instruction-family tests for OAM corruption triggers covering `inc rr` / `dec rr`, `[hli]` / `[hld]`, `push` / `pop`, `call` / `ret` / `rst`, interrupt service, and executing from OAM.
+Include model-gating tests where DMG-family models trigger the bug and CGB-family models do not.
 For CPU execution behavior, include opcode fetch under boot-ROM/cartridge mapping, `imm8`/`imm16` fetch order, register-versus-`(HL)` timing differences, taken-versus-untaken conditional paths, stack byte order, CB-prefix double-fetch behavior, and instructions with internal no-bus steps whenever suitable tests exist.
 For CPU interrupt-control behavior, include IE/IF register behavior, delayed `EI`, immediate `DI`, fixed interrupt priority, vector dispatch, `RETI`, `HALT` wake-up semantics, `HALT` bug activation/effect, and separate `STOP` coverage whenever suitable tests exist.
 For timer behavior, include internal-counter-derived `DIV`, DIV-write glitches, TAC-write glitches, falling-edge TIMA increments, overflow-window behavior, separate TIMA/TMA write cases before/during/after reload, and timer interrupt timing through `IF` and CPU-visible servicing whenever suitable tests exist.

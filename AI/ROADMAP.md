@@ -549,7 +549,7 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
    Acceptance criteria: the quirk is model-gated to DMG-family behavior, does not appear as a blanket "all `STAT` writes request IRQ" rule, and Mode `3` remains a negative case.
 6. Integrate the `STAT`-facing subset of LCD off/on behavior.
    Scope: `LCDC.7` disable/enable effects on reported mode, LCD STAT sources, and VRAM/OAM accessibility, without replacing the broader LCD reactivation work item.
-   Acceptance criteria: `STAT.mode = 0` while LCD is disabled, ordinary mode-source behavior is suspended while LCD is off, and re-enable remains compatible with the separate first-frame-blank rule handled by the later LCD reactivation block.
+   Acceptance criteria: `STAT.mode = 0` while LCD is disabled, ordinary mode-source behavior is suspended while LCD is off, and re-enable remains compatible with the separate first-full-frame-blank rule handled by the later LCD reactivation block.
 
 #### LCD on/off and reactivation sequencing inside Phase 4
 
@@ -569,6 +569,27 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
    Scope: synchronized access policy, explicit LY-disabled/re-enable behavior, and immediate `LCDC.7` side effects even outside VBlank.
    Acceptance criteria: bus access policy, `STAT`, `LY`, and the PPU scheduler tell one coherent story during LCD off/on, re-enable does not inherit stale LCD STAT edge/coincidence state, mid-scanline writes remain immediate, and any optional out-of-VBlank warning stays observational only.
 
+#### OAM corruption bug sequencing inside Phase 4
+
+1. Expose the current Mode `2` OAM row.
+   Scope: deterministic row tracking for the `20` Mode `2` rows, with one row per `4` dots (`1` M-cycle as a descriptive grouping only).
+   Acceptance criteria: the current row is available as live state, matches the real Mode `2` scheduler, and can be consumed by other subsystems without re-deriving it ad hoc.
+2. Detect trigger events from bus access and IDU activity.
+   Scope: OAM and `FEA0-FEFF` accesses during Mode `2`, plus `16`-bit `inc/dec` activity in `FE00-FEFF`.
+   Acceptance criteria: ordinary OAM accesses, `[hli]` / `[hld]`, stack/control-flow sequences, interrupt service, and `PC` increments in OAM all reach one common event model instead of an opcode blacklist.
+3. Implement the basic deterministic corruption patterns.
+   Scope: distinct read-corruption and write-corruption formulas over the current row and previous row.
+   Acceptance criteria: row `0` stays intact, read and write paths remain separate, and the word-copy behavior matches the documented deterministic pattern.
+4. Implement combined-event patterns.
+   Scope: `write + inc/dec` and `read + inc/dec`.
+   Acceptance criteria: `write + inc/dec` collapses to one effective write-corruption result, and `read + inc/dec` uses its dedicated row-restricted path that first mutates the previous row, copies it into the current row and the row two rows before, and then applies the ordinary read-corruption step.
+5. Integrate the unusable-area path and model gating.
+   Scope: `FEA0-FEFF` reads during Mode `2`, DMG-family enablement, and CGB-family exclusion.
+   Acceptance criteria: DMG-family `FEA0-FEFF` reads during the Mode `2` OAM-scan blocked window feed the same controller, outside that window the range keeps its normal DMG readback behavior, and CGB-family models remain unaffected.
+6. Close fine validation.
+   Scope: row-by-row behavior, first-row immunity, instruction-family coverage, and model-family coverage.
+   Acceptance criteria: tests exist for ordinary access triggers, IDU triggers, row exceptions, first-row immunity, and DMG-family positive versus CGB-family negative behavior.
+
 #### Done criteria
 
 - the PPU advances dot-by-dot
@@ -579,6 +600,7 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
 - window activation, BG-to-window fetch transition, and the internal window line counter are represented as explicit pipeline state rather than as global coordinate remapping
 - LCD STAT interrupt generation is represented as one internal edge-detected line driven by live mode/coincidence state rather than as independent level-triggered source checks
 - LCD power transitions enter and leave an explicit PPU-disabled state, restart from a defined raster state, and keep the first post-enable blank frame as visible-output behavior rather than a scheduler stall
+- DMG-family OAM corruption is modeled from the live Mode `2` row plus bus/CPU micro-events rather than from opcode tables or generic OAM blocking
 - STAT, LY, LYC, and LCD IRQs reflect the PPU's real temporal state
 - direct-boot LCD-visible state is backed by a coherent internal PPU phase rather than an invented reset-mode shortcut
 - bugs and quirks are added on top of an already stable base

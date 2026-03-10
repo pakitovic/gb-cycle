@@ -14,9 +14,11 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## Responsibilities
 
 - mode transitions and scanline progression
+- current Mode `2` OAM-row progression
 - background, window, and sprite fetch behavior
 - pixel priority rules
 - STAT/LY/LYC and LCD-visible interrupts
+- DMG-family OAM corruption behavior
 - tile fetcher state
 - background and object FIFO state
 - pixel FIFO state and output timing
@@ -122,7 +124,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 - Re-enabling the LCD should enter one explicit, reproducible raster-start state rather than resuming from an ambiguous saved dot or half-finished scanline.
 - The implementation should keep one source of truth for the initial scanline, dot, mode, and related scheduler state used after `LCDC.7: 0 -> 1`.
-- The first-frame-blank period should be counted from that re-enabled raster start, not from the earlier disable event.
+- The first-full-frame blank period should be counted from that re-enabled raster start, not from the earlier disable event.
 - The implementation should also keep one explicit, tested policy for how `LY` behaves while the LCD is disabled and how it re-enters the active raster model after re-enable.
 
 ## LCD pipeline reset baseline
@@ -276,6 +278,50 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Starting the window should not automatically clear the OBJ/OAM FIFO; the documented reset is on the BG-side FIFO path.
 - Window glitches must be able to affect final sprite mixing because they alter the actual BG/window pixels consumed by the mixer.
 
+## OAM corruption bug baseline
+
+- The DMG-family OAM corruption bug should be modeled as hardware behavior tied to the live PPU/CPU/bus interaction, not as a short opcode blacklist or a generic "weird OAM write" exception.
+- The affected hardware family should include at least `DMG0`, `DMG`, and `MGB`, while the architecture should stay ready to extend the same model to `SGB` and `SGB2`.
+- Future `CGB`, `AGB`, `AGS`, and `GBP` support must not inherit this DMG-family bug automatically, even when running monochrome software.
+- During Mode `2`, the PPU should expose the currently scanned OAM row as explicit state. That row is an `8`-byte slice, and Mode `2` should advance through the `20` rows at one row per `4` dots (`1` M-cycle as a descriptive grouping only).
+- OAM corruption logic must therefore consume both the current live PPU mode and the current Mode `2` row instead of relying only on a coarse "OAM blocked" flag.
+- The first OAM row, `FE00-FE07` (objects `0` and `1`), should remain immune to the basic corruption patterns documented for the bug.
+
+## OAM corruption trigger baseline
+
+- Two trigger families should remain distinct:
+  - CPU-visible read or write attempts to OAM during Mode `2`, including reads from `FEA0-FEFF` on affected DMG-family hardware
+  - `16`-bit increment/decrement activity whose address output lies in `FE00-FEFF`, because the IDU drives that value onto the address bus even without an ordinary memory read or write
+- Do not model the bug as a fixed list of affected opcodes. The trigger source is the microarchitectural event: read, write, read plus `inc/dec`, or write plus `inc/dec`.
+- The event model must be rich enough to cover ordinary OAM accesses, `inc rr` / `dec rr`, `[hli]` / `[hld]`, `push` / `pop`, `call` / `ret` / `rst`, interrupt service, and `PC` increments while executing from OAM.
+- The pattern must not depend on the exact byte address touched inside OAM, nor on the data value written by the CPU; it depends on the current Mode `2` row and the trigger class.
+
+## OAM corruption pattern baseline
+
+- Corruption should be reasoned about in `16`-bit OAM words, not as independent byte noise.
+- A write-triggered corruption on the current row, except for row `0`, should:
+  - replace the first word of the current row with `((a ^ c) & (b ^ c)) ^ c`
+  - copy the last three words of the previous row into the last three words of the current row
+- In that write pattern, `a` is the current row's first word before corruption, `b` is the previous row's first word, and `c` is the previous row's third word.
+- A read-triggered corruption should keep its own first-word formula, `b | (a & c)`, while preserving the same "copy the previous row's last three words" structure.
+- `write + inc/dec` in the same effective CPU step should behave as one effective write corruption, not as two stacked write corruptions.
+- `read + inc/dec` should have its own dedicated path rather than being synthesized from "read corruption plus write corruption". That complex path should remain gated off for the first four rows and for the last row, matching the documented row exceptions.
+- In the complex `read + inc/dec` path, let `a` be the first word two rows before the current row, `b` the first word of the previous row, `c` the first word of the current row, and `d` the third word of the previous row. The first word of the previous row should first become `(b & (a | c | d)) | (a & c & d)`.
+- After that first-word mutation, the whole previous row should be copied both into the current row and into the row two rows before the current row.
+- After the row-restricted complex path resolves, the controller should still apply the ordinary read-corruption step for the current row in the same event sequence.
+
+## OAM corruption controller baseline
+
+- The project should keep an explicit `OamCorruptionController` or equivalent owner for the deterministic corruption formulas.
+- That controller should consume at least:
+  - active console model
+  - whether the PPU is in Mode `2`
+  - the current Mode `2` OAM row
+  - an event kind such as `read`, `write`, `read_plus_incdec`, or `write_plus_incdec`
+  - access to the underlying OAM storage in a word-oriented view
+- The PPU should own the current-row source of truth, the bus should detect address-based triggers, and the CPU should expose the micro-operation events needed to classify IDU-driven cases.
+- Do not duplicate the corruption formulas across CPU, bus, and PPU helpers.
+
 ## Timing / accuracy requirements
 
 - Make mode timing explicit.
@@ -295,10 +341,13 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Model OAM scan as an ordered traversal of the `40` OAM entries, selecting at most `10` sprites for the current scanline.
 - On DMG, CPU OAM access should be treated as blocked during Modes `2` and `3`, while CPU VRAM access should be treated as blocked during Mode `3`.
 - When those CPU accesses are blocked, writes should be ignored and reads should return the blocked-access result rather than the underlying stored byte.
+- DMG-family OAM corruption should be tied to the exact T-cycle where the triggering access or IDU event occurs, using the Mode `2` row active in that `4`-dot slice.
+- Do not generalize the OAM corruption bug to generic OAM blocking in Mode `3`; the documented bug is a Mode `2` plus IDU phenomenon.
 
 ## Dependencies
 
 - bus and memory
+- CPU
 - interrupt controller
 - DMA
 - model/revision configuration
@@ -355,6 +404,14 @@ Priority order:
 - tests that LCD disable resets pipeline state so re-enable does not resume a corrupted partial scanline
 - tests for one explicit LY/off/re-enable policy covering the disable point, steady LCD-off state, and re-enable boundary rather than accidental continued line counting during LCD-disabled state
 - tests that mid-scanline `LCDC.7` writes take effect immediately rather than waiting for scanline or frame end
+- tests that the Mode `2` OAM row exposed by the PPU is deterministic and advances one row per `4` dots
+- tests for OAM corruption trigger families: ordinary OAM access, `FEA0-FEFF` read during Mode `2`, and IDU-driven `inc/dec` events in `FE00-FEFF`
+- tests for first-row immunity of the basic OAM corruption patterns
+- tests for write corruption and read corruption using the documented deterministic word formulas rather than random damage
+- tests for `write + inc/dec` collapsing to one effective write-corruption path
+- tests for the dedicated `read + inc/dec` pattern, including its row exclusions for the first four rows and the last row
+- tests that `[hli]` / `[hld]`, `push` / `pop`, `call` / `ret` / `rst`, interrupt service, and executing code from OAM can all trigger the bug through the same event model
+- tests that DMG-family models are affected while future CGB-family models are not
 - direct-boot continuity tests that verify the first LCD-visible dots after `SkipBoot` are coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
 
 ## Implementation notes for this repo
@@ -380,6 +437,7 @@ Priority order:
 - A shape such as `SelectedSpritesForLine`, `ObjectFetcherState`, `OamFifo`, `ObjectPixel`, `SpritePriorityResolver`, and `BgObjMixer` is a good fit for keeping sprite work explicit and testable.
 - A shape such as `wy_triggered`, `window_active_this_line`, `window_line_counter`, `window_x_counter`, explicit window-start events, and pending WX/LCDC-related glitch state is a good fit for keeping window behavior explicit and testable.
 - A `StatController`-style unit inside the PPU is a good fit for owning `STAT` enable bits, live coincidence calculation, internal STAT-line composition, rising-edge detection, and the DMG `STAT` write quirk.
+- A shape such as `current_oam_scan_row`, `OamCorruptionController`, and `OamCorruptionEventKind` is a good fit for keeping the DMG-family OAM corruption bug deterministic and testable.
 - A shape such as `lcd_enabled`, `panel_blank_forced`, `blank_frame_pending`, an explicit raster-start state for LCD re-enable, and a clean pixel-pipeline reset path is a good fit for making LCD power transitions reproducible and testable.
 - A fetcher-source distinction such as `BackgroundFetch` versus `WindowFetch` is preferred over late coordinate branching at mix time.
 - Use one consistent local term for the sprite-pixel queue; `OBJ FIFO`, `OAM FIFO`, and `ObjectFifo` in this documentation refer to the same hardware-facing queue.
@@ -398,6 +456,7 @@ Priority order:
 - Let the PPU define when VRAM/OAM are logically inaccessible, while the bus remains responsible for exposing the observable blocked-access result to other actors.
 - Keep the PPU as the source of truth for whether VRAM or OAM are currently accessible, but let the bus enforce the resulting CPU-visible read/write behavior.
 - Let the PPU raise LCD interrupt requests through the shared interrupt-controller path rather than owning `IF` state or dispatching CPU interrupt service directly.
+- Let the PPU own the current Mode `2` OAM row and the corruption formulas, while the bus and CPU only feed address-based and IDU-based trigger events into that controller.
 
 ## Known pitfalls
 
@@ -432,6 +491,9 @@ Priority order:
 - storing `LY` as a writable register instead of exposing the live scanline
 - letting LCD-visible MMIO writes bypass the temporal PPU model and only affect a later renderer pass
 - synthesizing `SkipBoot` LCD registers without a matching hidden PPU phase
+- modeling OAM corruption as an opcode blacklist instead of as Mode `2` plus micro-event hardware behavior
+- treating all blocked OAM access the same and thereby triggering OAM corruption during Mode `3`
+- forgetting that the first OAM row is special and should remain immune to the basic corruption patterns
 
 ## Open questions
 

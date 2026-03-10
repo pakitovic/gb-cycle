@@ -101,6 +101,8 @@ Address alone is not enough: the bus must also consider the current temporal har
 - On DMG, CPU OAM access should be blocked during PPU Modes `2` and `3`.
 - With the LCD disabled through `LCDC.7 = 0`, ordinary PPU-mode OAM restrictions should be lifted immediately even though other actors such as OAM DMA may still impose their own access rules.
 - During blocked periods, CPU writes should be ignored and CPU reads should return the blocked-access result instead of the stored OAM byte.
+- On affected DMG-family hardware, CPU-visible OAM reads or writes during Mode `2` should also feed the OAM-corruption trigger path while still observing the ordinary blocked-access result.
+- During Mode `3`, blocked OAM access should remain blocked without automatically implying the DMG OAM corruption bug.
 - OAM DMA should write into the same underlying OAM storage while still participating in the same central arbitration model.
 
 ### Unusable area `0xFEA0-0xFEFF`
@@ -109,6 +111,8 @@ Address alone is not enough: the bus must also consider the current temporal har
 - For the current DMG-family target, it should have explicit revision-aware behavior instead of a placeholder array.
 - On DMG-family hardware outside OAM-blocked periods, reads should return `0x00`.
 - During OAM-blocked periods on DMG-family hardware, reads should return `0xFF`.
+- On affected DMG-family hardware during the specific Mode `2` OAM-scan block, reads from this range should also enter the same OAM-corruption trigger path used for OAM reads.
+- Other causes of temporary OAM unavailability must not be treated as an automatic OAM-corruption trigger for `FEA0-FEFF`; the bug hook belongs to the Mode `2` path.
 - The region should stay explicitly connected to later OAM corruption bug work rather than being treated as unrelated filler space.
 - Writes here should not behave like ordinary RAM writes.
 
@@ -188,6 +192,9 @@ Address alone is not enough: the bus must also consider the current temporal har
 - LCD-off accessibility should remove ordinary PPU mode locks, but it must not erase independent blocking rules coming from DMA or any later bus actor.
 - The same PPU-disabled state that makes `STAT.mode` read as `0` should also be the state the bus uses to release ordinary VRAM/OAM mode restrictions.
 - Mid-scanline writes to `LCDC.7` should therefore be able to change VRAM/OAM accessibility immediately on the shared timeline rather than at scanline or frame end.
+- The bus must distinguish ordinary blocked OAM semantics from the DMG-family OAM corruption bug; not every blocked OAM or unusable-area access should trigger corruption.
+- CPU-originated OAM or `FEA0-FEFF` access attempts during Mode `2` on affected models should enter the OAM-corruption event path using the live current row reported by the PPU.
+- CPU-provided address-bearing `16`-bit inc/dec events in `FE00-FEFF` should also route into that same corruption controller even when no ordinary memory access occurs.
 - When an access is blocked, the bus should model the correct observable result for that situation instead of falling through to normal RAM semantics.
 - CPU opcode fetch, immediate fetch, stack traffic, and read-modify-write memory operations should appear as ordinary ordered bus accesses, not as post-instruction aggregated effects.
 - MMIO reads and writes should remain ordinary ordered bus transactions whose visible result and side effects depend on the exact temporal hardware state at that access point.
@@ -235,6 +242,9 @@ Priority order:
 - tests that ROM-region writes are delegated to cartridge/MBC control rather than treated as memory writes
 - bidirectional alias tests between WRAM and echo RAM
 - tests for `0xFEA0-0xFEFF` DMG-family read behavior inside and outside OAM-blocked periods
+- tests that Mode `2` OAM accesses and Mode `2` `FEA0-FEFF` reads on affected DMG-family models trigger the OAM-corruption path while preserving the documented blocked-access readback
+- tests that blocked OAM access in Mode `3` does not trigger the DMG-family OAM corruption bug automatically
+- tests that CPU-provided IDU `inc/dec` events in `FE00-FEFF` reach the same corruption controller without requiring a normal memory read or write
 - tests that `0xFFFF` routes to `IE` rather than HRAM or generic MMIO backing
 - full MMIO descriptor-coverage tests for `0xFF00-0xFF7F` and `0xFFFF`
 - tests for write-only readback policy and mixed-register bit composition through the routed MMIO path
@@ -252,6 +262,7 @@ Priority order:
 - Prefer a centralized MMIO descriptor table or equivalent routed register map over scattered `match` blocks that each know only part of a register's semantics.
 - Let subsystem-owned handlers compose readback from live state, latched state, and forced bits; do not teach the bus to fake those register internals.
 - Do not special-case CPU opcode fetch, operand fetch, or stack accesses outside the common bus contract; they should use the same routed access path as any other CPU-visible memory transaction.
+- A routed helper such as `notify_oam_corruption_event(kind, addr)` is a good fit once CPU micro-ops and the PPU's current Mode `2` row are available; let the bus classify address-space triggers but not own the corruption formulas themselves.
 - Treat `FF46` as the trigger that configures the DMA subsystem; do not implement OAM DMA by performing a direct `160`-byte copy inside the bus write path.
 - Treat `FF50` as the trigger that changes boot-ROM mapping state; do not model real boot completion as a synthetic `PC = 0x0100` event outside the bus and CPU execution flow.
 - Design region ownership so future CGB additions can extend VRAM banking, WRAM banking, extra I/O registers, and HDMA without replacing the bus contract.
@@ -277,6 +288,8 @@ Priority order:
 - adding a special direct-boot routing shortcut instead of initializing the normal post-boot mapping state
 - modeling the unusable area `0xFEA0-0xFEFF` as ordinary RAM
 - duplicating echo RAM storage instead of routing it as an alias of WRAM
+- conflating any blocked OAM access with the Mode `2`-specific DMG OAM corruption bug
+- hard-coding OAM corruption in the bus as an opcode list instead of routing micro-events into the controller that owns the formulas
 
 ## Open questions
 

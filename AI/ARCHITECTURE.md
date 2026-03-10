@@ -90,12 +90,12 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 
 ## Suggested subsystem boundaries
 
-- CPU: instruction flow, register state, decode/execution state, fine-grained fetch/read/write/internal steps, IME state, interrupt acceptance/dispatch, and HALT/STOP semantics
-- Bus: address decoding, subsystem routing, dynamic mapping, visible access ordering, and temporal arbitration of blocked accesses
+- CPU: instruction flow, register state, decode/execution state, fine-grained fetch/read/write/internal steps, IME state, interrupt acceptance/dispatch, HALT/STOP semantics, and micro-operation visibility for timing-sensitive hardware interactions
+- Bus: address decoding, subsystem routing, dynamic mapping, visible access ordering, temporal arbitration of blocked accesses, and routing of access attempts that carry hardware-visible side effects such as DMG OAM corruption triggers
 - Memory and MMIO: WRAM, HRAM, echo behavior, plain storage ownership, and MMIO-backed state not owned by another subsystem
 - Interrupt controller: IF/IE state, interrupt request paths, priority-ordered pending selection, and acknowledge flow
 - Timer: DIV/TIMA/TMA/TAC behavior and edge-sensitive increment logic
-- PPU: LCD modes, fetcher/FIFO behavior, rendering state, VRAM/OAM restrictions
+- PPU: LCD modes, fetcher/FIFO behavior, rendering state, VRAM/OAM restrictions, Mode 2 OAM-scan row state, and DMG-family OAM corruption behavior
 - DMA: OAM DMA and future HDMA scheduling and blocking rules
 - APU: internal channel/frame-sequencer state only, not output backends
 - Joypad and serial: hardware-visible registers and signaling
@@ -134,6 +134,7 @@ to immediately materialize as a separate directory.
 - access arbitration
 - integration of cartridge, VRAM, WRAM, OAM, I/O, HRAM, IE, and boot ROM mapping
 - modeling of access restrictions and conflicts when hardware makes them visible
+- routing of OAM and `FEA0-FEFF` access attempts and CPU-provided address-bearing micro-events into the DMG-family OAM corruption path when applicable
 - MMIO routing to the subsystem-owned register contract for each mapped address
 - one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
 
@@ -153,6 +154,7 @@ to immediately materialize as a separate directory.
 - SM83 core execution
 - fetch / decode / execute at T-cycle granularity
 - per-instruction reads, writes, and internal steps
+- explicit address-bearing `16`-bit increment/decrement micro-events where hardware quirks depend on them
 - interrupt acceptance and servicing
 - HALT / STOP / HALT bug behavior
 
@@ -161,11 +163,13 @@ to immediately materialize as a separate directory.
 - LCD control state
 - PPU mode sequencing
 - OAM scan
+- current Mode `2` OAM row tracking
 - pixel fetcher
 - pixel FIFO
 - BG / window / OBJ mixing
 - LCD-facing registers owned by the PPU path
 - LY / LYC / STAT behavior
+- DMG-family OAM corruption controller and formulas
 
 ### `dma/`
 
@@ -235,6 +239,7 @@ to immediately materialize as a separate directory.
 - The boot subsystem also owns the source-of-truth startup snapshot for direct-boot entry, while the target subsystems still own the live semantics of their registers once execution begins.
 - The DMA subsystem owns transfer state and transfer requests over time.
 - The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
+- The PPU also owns the live Mode `2` OAM-row state and the DMG-family OAM corruption formulas, while the bus routes relevant access attempts and the CPU exposes the micro-events needed to classify IDU-driven triggers.
 - The interrupt controller owns `IF`/`IE` register state and pending-request bookkeeping, while the CPU owns `IME`, `halted`, `stopped`, and the final decision to accept and service an interrupt.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
 - The bus owns address decode and MMIO dispatch, but the device that owns a register must own its read, write, and side-effect semantics.

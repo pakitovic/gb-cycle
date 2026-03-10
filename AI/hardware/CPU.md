@@ -17,6 +17,7 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - register file and flag behavior
 - instruction decode and execution semantics
 - in-flight instruction phase and micro-operation state
+- publication of address-bearing read/write and `16`-bit `inc/dec` micro-events when other hardware depends on them
 - IME state and delayed enable behavior
 - interrupt acceptance and dispatch timing
 - operand fetch, memory access, stack access, and branch sequencing
@@ -64,6 +65,8 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - Some instructions consume time without an external bus access; the execution model must represent those internal steps explicitly instead of assuming time only passes during reads and writes.
 - CB-prefixed instructions should model prefix fetch and extended-opcode fetch as separate ordered steps, with `(HL)` variants layering real memory access and optional writeback on top.
 - Flag calculation should be centralized by instruction family and committed when the logical operation resolves, not leaked across unrelated helper steps or applied too early.
+- `16`-bit increment/decrement activity on `BC`, `DE`, `HL`, `SP`, and `PC` must remain explicit enough that IDU-driven side effects can be observed even when the instruction does not look like a normal memory access.
+- Implicit updates in `[hli]`, `[hld]`, stack/control-flow sequences, interrupt service, and instruction fetch must therefore not be flattened away when their address output matters to the rest of the hardware.
 
 ## Timing / accuracy requirements
 
@@ -82,6 +85,8 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - Interrupt dispatch must not be modeled as an instantaneous jump detached from the CPU timing flow; the service sequence should consume its real CPU-side steps.
 - `HALT` wake-up and interrupt dispatch are related but distinct events; waking from `HALT` with `IME = 0` must not be collapsed into automatic interrupt service.
 - The `HALT` bug condition is `HALT` executed with `IME = 0` and `IE & IF != 0`; it must alter the next fetch without pretending an interrupt was serviced.
+- The CPU must expose enough ordered micro-event detail for the DMG-family OAM corruption bug to observe `read`, `write`, `read + inc/dec`, and `write + inc/dec` cases on the shared timeline.
+- `PC` increments through the OAM range must remain observable as address-bearing events rather than as a hidden decode-side counter update.
 
 ## Dependencies
 
@@ -123,6 +128,8 @@ Priority order:
 - tests for `EI ; NOP`, `EI ; DI`, `DI ; EI ; NOP`, and pending-IRQ visibility around delayed `EI`
 - tests for `HALT` wake-up with `IME = 1`, `IME = 0`, and `IME = 0` plus already-pending interrupt
 - tests for `RETI` re-enabling interrupts and allowing later pending requests to be serviced
+- tests that `inc rr` / `dec rr` with `BC`, `DE`, or `HL` in `FE00-FEFF` expose the IDU event needed by the OAM-corruption path
+- tests that `[hli]` / `[hld]`, `push` / `pop`, `call` / `ret` / `rst`, interrupt service, and opcode fetch from OAM expose the same micro-event model instead of requiring opcode-specific hacks
 
 ## Implementation notes for this repo
 
@@ -141,6 +148,8 @@ Priority order:
 - The interrupt controller should own `IE` and `IF` as observable interrupt state, while bus/MMIO wiring exposes those registers at their mapped addresses.
 - A clear split such as `request_interrupt(kind)`, `pending_interrupts()`, and `consume_interrupt(kind)` is preferred over implicit cross-module mutation.
 - `RETI` should be implemented as a real instruction with return plus interrupt re-enable semantics, not as `RET` plus an informal external patch.
+- Prefer micro-op metadata or callbacks that let the bus/PPU observe "read", "write", and address-bearing `inc/dec` events without hard-coding an opcode blacklist for the OAM corruption bug.
+- Keep implicit `HL`, `SP`, and `PC` updates explicit enough that the IDU path can be observed as part of the same T-cycle-accurate CPU model.
 
 ## Recommended implementation order
 
@@ -167,6 +176,8 @@ Priority order:
 - patching memory-indirect opcodes with extra cycle counts instead of modeling their real bus accesses
 - assuming instruction-level stepping is always sufficient
 - treating M-cycle totals as enough to model timing-sensitive hardware interaction
+- driving the OAM corruption bug from an opcode blacklist instead of from read/write/IDU micro-events
+- hiding implicit `HL`, `SP`, or `PC` increments inside helpers so the rest of the machine cannot observe them
 
 ## Open questions
 

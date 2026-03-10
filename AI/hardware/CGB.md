@@ -55,6 +55,7 @@ When CGB work starts, prioritize these functional areas before worrying about ha
 - Avoid DMG shortcuts that would break banks, palettes, HDMA, or double speed.
 - Keep CGB timing and shared timing differences visible.
 - Keep the timing model ready for CPU-speed changes without redefining the LCD-side temporal foundation.
+- Keep DMG-family quirks such as the OAM corruption bug explicitly model-gated; CGB-family hardware must not inherit them accidentally in DMG-compatibility mode.
 
 ## Dependencies
 
@@ -86,6 +87,7 @@ Priority order:
 - cgb-acid2
 - CGB Mooneye tests
 - palette/banking/HDMA focused tests
+- when CGB work starts, negative tests that DMG-family OAM corruption behavior does not appear on CGB-family hardware even while running monochrome software
 
 ## Implementation notes for this repo
 
@@ -98,6 +100,7 @@ Priority order:
 - The boot subsystem and bus should already treat boot-ROM mapping as model-aware routing state so future CGB split boot-ROM windows can extend the same abstraction while preserving cartridge-header visibility around `0x0100-0x014F`.
 - The DMG OAM DMA implementation should already live inside a reusable DMA subsystem contract so future CGB OAM DMA timing differences, GDMA, and HDMA can extend the same infrastructure.
 - The DMG timer implementation should already be expressed in terms of an internal counter plus derived edge logic so future CGB clocking changes can extend the same model rather than replace it.
+- The DMG-family OAM corruption bug should stay behind an explicit model gate so future CGB, AGB, AGS, and GBP support can keep the documented non-bugged behavior.
 - In DMG mode before functional CGB support exists, CGB-only MMIO reads should already return the correct non-CGB fallback value of `0xFF` instead of emulator-invented placeholders.
 - In DMG mode before functional CGB support exists, CGB-only MMIO writes should already be handled explicitly rather than falling through to fake storage.
 - Future CGB boot flow should be able to branch into full CGB mode or DMG-compatibility mode based on cartridge header information, without requiring a separate emulator core.
@@ -124,6 +127,7 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 - coupling DMG assumptions into shared APIs
 - hiding double-speed effects behind generic timing helpers
 - over-designing around CGB revision differences before the base CGB feature set exists
+- assuming DMG-family OAM corruption should also exist on CGB-family hardware running DMG software
 
 ## Open questions
 
