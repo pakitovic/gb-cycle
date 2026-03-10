@@ -43,6 +43,57 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
 - For `OBP0` and `OBP1`, the low two bits must not change the meaning of OBJ color index `0`, because that index remains transparent.
 
+## STAT register baseline
+
+- `STAT` should remain a mixed register whose writable portion is the software-configured interrupt-enable mask and whose read-only portion is derived from live PPU state.
+- Bits `6-3` should be treated as writable enables for the `LYC==LY`, Mode `2`, Mode `1`, and Mode `0` STAT sources.
+- Bit `2` should expose the live `LYC==LY` coincidence state as a read-only flag.
+- Bits `1-0` should expose the live current PPU mode as a read-only value: `0` HBlank, `1` VBlank, `2` OAM scan, `3` drawing.
+- When the LCD/PPU is disabled through `LCDC.7 = 0`, `STAT` mode bits should read back as `0`.
+- Writes to `STAT` must not overwrite the live mode bits or the coincidence flag.
+
+## LY / LYC coincidence baseline
+
+- `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
+- The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
+- Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
+- Coincidence should remain possible during VBlank as well as during visible scanlines.
+- The PPU should not model `LYC` as "schedule a future interrupt when LY reaches this line"; it is a live comparison input to `STAT`.
+
+## STAT interrupt-line baseline
+
+- The PPU should keep an explicit internal `stat_irq_line` or equivalent signal distinct from the visible `STAT` byte readback.
+- That internal line should be computed as the OR of the enabled live sources:
+  - `stat_mode0_enable && mode == 0`
+  - `stat_mode1_enable && mode == 1`
+  - `stat_mode2_enable && mode == 2`
+  - `stat_lyc_enable && ly == lyc`
+- LCD STAT interrupt requests should be emitted only on a rising edge of that internal line, not merely because one contributing condition is true.
+- STAT blocking should be preserved: if one enabled source keeps the internal line high while another source becomes true, no new LCD STAT interrupt should be requested until the line first drops low and rises again.
+- Mode `3` must not be treated as a direct STAT interrupt source.
+
+## STAT scheduling and interrupt baseline
+
+- `STAT` mode changes should come directly from the real PPU dot scheduler rather than from a post-hoc per-scanline summary.
+- Entry into Mode `2`, Mode `3`, Mode `0`, and Mode `1` should become visible to `STAT` at the real dot where the PPU scheduler changes mode.
+- Because Mode `3` is variable-length, the exact Mode `3 -> 0` transition point must propagate to the `STAT` line and LCD interrupt timing without being quantized to a fixed scanline template.
+- Entering VBlank at `LY = 144` should be able to request both the dedicated VBlank interrupt and the LCD STAT interrupt for Mode `1` independently when the corresponding `STAT` enable is set.
+- The same live mode state that feeds `STAT` must also feed VRAM/OAM accessibility decisions so software polling `STAT` sees the same timing the bus uses for blocking.
+
+## STAT write quirk baseline
+
+- On DMG-family hardware, writing `STAT` during Mode `0`, Mode `1`, Mode `2`, or while `LYC==LY` is true should support the documented spurious LCD STAT interrupt behavior.
+- That quirk should be modeled as a temporary elevation-equivalent effect on the internal STAT interrupt line rather than as "every write to `STAT` requests an interrupt."
+- The quirk must not trigger from a Mode `3` write path merely because `STAT` was written.
+- Future GBC-in-DMG-mode support must keep this quirk model-gated rather than inheriting the DMG behavior accidentally.
+
+## LCD disable / re-enable baseline
+
+- When `LCDC.7 = 0`, the PPU should stop behaving as if it were traversing ordinary Modes `2`, `3`, `0`, and `1` in the background.
+- With LCD disabled, `STAT` mode should report `0`, VRAM should be accessible, and OAM should be accessible under the LCD-off policy already used by the bus.
+- The internal STAT interrupt line should stop following the ordinary active-LCD mode/coincidence-source schedule while LCD is disabled.
+- Re-enabling LCD should restart the PPU timing state through the real scheduler path and remain compatible with the separate rule that the first frame after re-enable stays blank.
+
 ## Sprite pipeline baseline
 
 - DMG sprites must be integrated into the real Mode 3 pixel pipeline rather than rendered by a scanline-level compositor layered over a finished background image.
@@ -243,6 +294,16 @@ Priority order:
 - tests for DMG `LCDC.0` suppressing window rendering even when `LCDC.5 = 1`
 - tests for mid-frame `WX`, `WY`, and `LCDC.5` writes when relevant glitches are implemented or intentionally isolated
 - tests for window-start and window-glitch cases that continue into later BG/OBJ mixing without resetting the OBJ/OAM FIFO incorrectly
+- tests for live `STAT` readback composition: writable enable bits plus live mode and coincidence bits
+- tests for `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
+- tests for immediate `LYC` write reevaluation of `STAT.2` and the internal STAT interrupt line
+- tests for each enabled LCD STAT mode source path for Mode `0`, Mode `1`, and Mode `2`
+- tests for LCD STAT rising-edge behavior and STAT blocking across consecutive enabled sources such as Mode `0` followed by Mode `1`
+- tests that Mode `3` never acts as a direct LCD STAT interrupt source
+- tests that entering Mode `1` can request both VBlank interrupt and LCD STAT interrupt independently
+- tests for DMG-family `STAT` write quirk in Mode `2`, Mode `0`, Mode `1`, and coincidence-active cases, plus a negative test for Mode `3`
+- tests that the mode reported through `STAT` matches the same live state used by the bus to block or allow VRAM/OAM access
+- tests for LCD off/on behavior around `STAT`, including LCD-off `STAT` mode readback, LCD-off VRAM/OAM accessibility, and re-enable without stale STAT-line behavior
 - direct-boot continuity tests that verify the first LCD-visible dots after `SkipBoot` are coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
 
 ## Implementation notes for this repo
@@ -267,12 +328,15 @@ Priority order:
 - The list of visible sprites produced in Mode 2 should feed directly into Mode 3 object timing and mixing logic.
 - A shape such as `SelectedSpritesForLine`, `ObjectFetcherState`, `OamFifo`, `ObjectPixel`, `SpritePriorityResolver`, and `BgObjMixer` is a good fit for keeping sprite work explicit and testable.
 - A shape such as `wy_triggered`, `window_active_this_line`, `window_line_counter`, `window_x_counter`, explicit window-start events, and pending WX/LCDC-related glitch state is a good fit for keeping window behavior explicit and testable.
+- A `StatController`-style unit inside the PPU is a good fit for owning `STAT` enable bits, live coincidence calculation, internal STAT-line composition, rising-edge detection, and the DMG `STAT` write quirk.
 - A fetcher-source distinction such as `BackgroundFetch` versus `WindowFetch` is preferred over late coordinate branching at mix time.
 - Use one consistent local term for the sprite-pixel queue; `OBJ FIFO`, `OAM FIFO`, and `ObjectFifo` in this documentation refer to the same hardware-facing queue.
 - The object FIFO should carry per-pixel metadata such as color index, palette selection, OBJ priority attribute, X-priority information, OAM-order tie-break information, and transparency.
 - Keep OBJ/OBJ priority resolution separate from BG/OBJ mixing so the BG-over-OBJ attribute is applied only after the winning sprite pixel has been chosen.
 - Apply X flip, Y flip, palette selection, and `8x16` tile-row mapping during object fetch and FIFO population rather than as a framebuffer post-process.
 - The BG-to-window fetch transition should be represented as an explicit pipeline event rather than as a late conditional in the pixel mixer.
+- Let the main PPU scheduler remain the source of truth for live mode and `LY`; the `STAT` controller should consume that state rather than re-derive timing independently.
+- LCD STAT interrupt requests should leave the PPU through the shared interrupt-controller path rather than by mutating CPU state directly.
 - STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
 - Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
 - Mid-frame writes to LCD-visible registers should be interpreted on the same dot timeline that drives mode, fetcher, FIFO, and interrupt behavior.
@@ -299,6 +363,9 @@ Priority order:
 - deriving the window row solely from `LY - WY` and thereby breaking mid-frame hide/show behavior
 - resetting the whole scanline instead of only the relevant fetcher/FIFO state when the window starts
 - ignoring `WX = 0`, `WX = 166`, or mid-frame `WX`/`WY`/`LCDC.5` writes because they are rare edge cases
+- treating LCD STAT interrupts as level-triggered "condition is true" events instead of rising edges on one shared internal line
+- recalculating LCD STAT source timing independently from the real PPU mode scheduler
+- desynchronizing the mode exposed through `STAT` from the mode the bus uses for VRAM/OAM blocking
 - resolving BG/OBJ mixing before resolving which OBJ pixel actually wins an overlap
 - using X visibility as part of Mode 2 sprite selection and thereby hiding real `10`-sprite-per-line exhaustion
 - treating OBJ color `0` as white output instead of transparency

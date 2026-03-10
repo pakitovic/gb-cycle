@@ -530,6 +530,27 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
    Scope: BG/window pixel-source transition before final OBJ mixing, without unintended OBJ FIFO resets.
    Acceptance criteria: window start changes the BG/window stream against which OBJ pixels compete, OBJ FIFO state is preserved appropriately, final LCD output still resolves per pixel, and focused tests cover window-plus-sprite interaction without hidden scanline compositing shortcuts.
 
+#### STAT / coincidence / LCD IRQ sequencing inside Phase 4
+
+1. Implement live `LY`, `LYC`, and coincidence state.
+   Scope: live `LY` progression through `0..=153`, writable `LYC`, and continuous coincidence evaluation.
+   Acceptance criteria: `STAT.2` reflects live `LY==LYC`, coincidence is reevaluated immediately after `LYC` writes, and VBlank lines `144..=153` remain part of the same comparison model.
+2. Implement mixed `STAT` readback and enable bits.
+   Scope: writable bits `6-3`, live coincidence flag, and live mode bits with LCD-off behavior.
+   Acceptance criteria: `STAT` readback composes writable enables plus live bits correctly, mode reads as `0` when LCD is disabled, and software writes cannot overwrite read-only fields.
+3. Implement the internal LCD STAT line and rising-edge behavior.
+   Scope: OR-composed enabled sources for Mode `0`, Mode `1`, Mode `2`, and coincidence, plus previous-line tracking for edge detection.
+   Acceptance criteria: LCD STAT requests occur only on `0 -> 1` transitions of the internal line, Mode `3` is not a direct source, and STAT blocking is reproduced for overlapping enabled conditions.
+4. Integrate STAT with the real PPU scheduler and bus-facing access policy.
+   Scope: real mode transitions, `LY` progression, Mode `1` entry, and synchronization with VRAM/OAM blocking.
+   Acceptance criteria: LCD STAT timing follows the real mode-transition dot, entering VBlank can request both VBlank and LCD STAT Mode `1`, and the mode exposed through `STAT` matches the mode used by the bus for access restrictions.
+5. Implement the DMG-family `STAT` write quirk.
+   Scope: spurious LCD STAT interrupt behavior on `STAT` writes during Mode `0`, Mode `1`, Mode `2`, and coincidence-active situations.
+   Acceptance criteria: the quirk is model-gated to DMG-family behavior, does not appear as a blanket "all `STAT` writes request IRQ" rule, and Mode `3` remains a negative case.
+6. Integrate the `STAT`-facing subset of LCD off/on behavior.
+   Scope: `LCDC.7` disable/enable effects on reported mode, LCD STAT sources, and VRAM/OAM accessibility, without replacing the broader LCD reactivation work item.
+   Acceptance criteria: `STAT.mode = 0` while LCD is disabled, ordinary mode-source behavior is suspended while LCD is off, and re-enable remains compatible with the separate first-frame-blank rule handled by the later LCD reactivation block.
+
 #### Done criteria
 
 - the PPU advances dot-by-dot
@@ -538,6 +559,7 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
 - Mode 2 sprite selection, object fetch, OBJ FIFO state, and BG/OBJ mixing are all represented as explicit pipeline behavior rather than scanline-level composition
 - DMG sprite priority rules are respected separately for selection, OBJ/OBJ overlap, and BG/OBJ mixing
 - window activation, BG-to-window fetch transition, and the internal window line counter are represented as explicit pipeline state rather than as global coordinate remapping
+- LCD STAT interrupt generation is represented as one internal edge-detected line driven by live mode/coincidence state rather than as independent level-triggered source checks
 - STAT, LY, LYC, and LCD IRQs reflect the PPU's real temporal state
 - direct-boot LCD-visible state is backed by a coherent internal PPU phase rather than an invented reset-mode shortcut
 - bugs and quirks are added on top of an already stable base

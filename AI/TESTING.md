@@ -51,6 +51,16 @@ Include tests for the internal window line counter, including reset during VBlan
 Include tests for `WX = 0`, `WX = 166`, and mid-frame `WX`/`WY`/`LCDC.5` glitches when suitable tests exist.
 Include DMG tests that verify `LCDC.0 = 0` suppresses window rendering even if `LCDC.5 = 1`.
 Include tests where window start or window glitches alter the BG/window stream seen by later sprite mixing without spuriously clearing OBJ FIFO state.
+Include tests for live `STAT` readback composition, especially writable enable bits plus live mode and live coincidence bits.
+Include tests that `LY` spans `0..=153`, including coincidence behavior during VBlank and across the `153 -> 0` transition.
+Include tests that writing `LYC` reevaluates coincidence and the LCD STAT source immediately on the current dot.
+Include tests for each LCD STAT mode-source enable path for Mode `0`, Mode `1`, and Mode `2`.
+Include LCD STAT tests that verify one shared internal rising-edge source line, including STAT blocking when consecutive enabled sources keep that line high.
+Include tests that Mode `3` never acts as a direct LCD STAT interrupt source.
+Include tests where entering VBlank can request both VBlank and LCD STAT Mode `1` without collapsing them into one source.
+Include DMG-family tests for the `STAT` write quirk in Mode `0`, Mode `1`, Mode `2`, coincidence-active cases, and a negative case for Mode `3`.
+Include tests that the mode reported by `STAT` matches the same live state used by the bus for VRAM/OAM blocking decisions.
+Include LCD off/on tests for `STAT.mode = 0`, LCD-off VRAM/OAM accessibility, and re-enable without stale LCD STAT behavior.
 For CPU execution behavior, include opcode fetch under boot-ROM/cartridge mapping, `imm8`/`imm16` fetch order, register-versus-`(HL)` timing differences, taken-versus-untaken conditional paths, stack byte order, CB-prefix double-fetch behavior, and instructions with internal no-bus steps whenever suitable tests exist.
 For CPU interrupt-control behavior, include IE/IF register behavior, delayed `EI`, immediate `DI`, fixed interrupt priority, vector dispatch, `RETI`, `HALT` wake-up semantics, `HALT` bug activation/effect, and separate `STOP` coverage whenever suitable tests exist.
 For timer behavior, include internal-counter-derived `DIV`, DIV-write glitches, TAC-write glitches, falling-edge TIMA increments, overflow-window behavior, separate TIMA/TMA write cases before/during/after reload, and timer interrupt timing through `IF` and CPU-visible servicing whenever suitable tests exist.

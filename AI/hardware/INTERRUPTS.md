@@ -41,6 +41,12 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Prefer helpers such as `request_interrupt(kind)` and `clear_interrupt(kind)` alongside the routed MMIO read/write path.
 - Program writes to `IF` should coexist with hardware requests without bypassing the interrupt controller's source-of-truth state.
 
+## LCD interrupt-producer baseline
+
+- The PPU should request the LCD STAT interrupt through the same global interrupt-controller path used by other hardware producers; the interrupt controller must not try to recompute STAT source conditions from raw `STAT`, `LY`, or mode state on its own.
+- The PPU-side LCD STAT producer should already have resolved rising-edge behavior and STAT blocking before calling into the interrupt controller.
+- Entering VBlank can legitimately produce both a VBlank request and an LCD STAT Mode `1` request on the same dot; these must remain distinct interrupt sources that coexist in `IF`.
+
 ## Timing / accuracy requirements
 
 - Preserve ordering with CPU execution, `EI`, `DI`, `HALT`, and timer/PPU requests.
@@ -82,6 +88,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - timer interrupt timing tests that verify IF request timing relative to TIMA overflow/reload
 - timer interrupt integration tests that verify CPU-visible servicing order after the request becomes pending
 - LCD/STAT timing tests, including mode transitions and STAT quirk coverage when available
+- tests where VBlank and LCD STAT Mode `1` requests become pending together and remain distinguishable in `IF`
 - direct-boot readback tests for documented startup `IF`/`IE` values when firmware execution is bypassed
 
 ## Implementation notes for this repo
@@ -92,6 +99,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Keep the final decision to accept and dispatch an interrupt in CPU flow, even if priority selection and `IF`/`IE` ownership live here.
 - Direct-boot startup values for `IF` and `IE` should be sourced from the centralized post-boot snapshot rather than inferred from CPU-local interrupt state.
 - Keep the semantic ownership of `IF` and `IE` here even though bus decode must route `0xFF0F` and `0xFFFF` correctly.
+- Let the PPU own the generation rules for LCD STAT requests, including rising-edge detection and DMG STAT-write quirks; the interrupt controller should only observe the resulting request events.
 
 ## Known pitfalls
 
@@ -99,6 +107,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - bypassing `IF` by letting hardware call directly into CPU interrupt dispatch
 - hiding delayed effects from `EI`
 - decoupling STAT/LCD interrupt timing from the real PPU mode schedule
+- recomputing LCD STAT source conditions in the interrupt controller instead of consuming the PPU's request events
 - assuming the DMG STAT write quirk applies unchanged to GBC-in-DMG-mode
 
 ## Open questions
