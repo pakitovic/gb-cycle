@@ -88,10 +88,10 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 
 ## Suggested subsystem boundaries
 
-- CPU: instruction flow, register state, interrupt acceptance, HALT/STOP semantics
+- CPU: instruction flow, register state, IME state, interrupt acceptance/dispatch, and HALT/STOP semantics
 - Bus: address decoding, subsystem routing, dynamic mapping, visible access ordering, and temporal arbitration of blocked accesses
 - Memory and MMIO: WRAM, HRAM, echo behavior, plain storage ownership, and MMIO-backed state not owned by another subsystem
-- Interrupt controller: IF/IE state and request/acknowledge flow
+- Interrupt controller: IF/IE state, interrupt request paths, priority-ordered pending selection, and acknowledge flow
 - Timer: DIV/TIMA/TMA/TAC behavior and edge-sensitive increment logic
 - PPU: LCD modes, fetcher/FIFO behavior, rendering state, VRAM/OAM restrictions
 - DMA: OAM DMA and future HDMA scheduling and blocking rules
@@ -106,6 +106,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - The boot subsystem owns firmware assets, model-aware boot configuration, and boot-ROM enable/disable state.
 - The DMA subsystem owns transfer state and transfer requests over time.
 - The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
+- The interrupt controller owns `IF`/`IE` register state and pending-request bookkeeping, while the CPU owns `IME`, `halted`, `stopped`, and the final decision to accept and service an interrupt.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
 - The memory subsystem owns plain storage regions such as WRAM and HRAM; it must not bypass bus-visible access restrictions defined elsewhere.
 - Shared scheduling must allow CPU, DMA, PPU, timer, and other actors to make progress on the same T-cycle timeline so arbitration remains observable.

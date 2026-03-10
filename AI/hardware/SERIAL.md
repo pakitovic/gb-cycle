@@ -46,6 +46,7 @@ Keep hardware serial state explicit even if link support is stubbed initially.
 ## Implementation notes for this repo
 
 - Keep the hardware serial model separate from any eventual link backend.
+- Request the serial interrupt through the shared interrupt-controller path instead of reaching into CPU interrupt state directly.
 
 ## Known pitfalls
 

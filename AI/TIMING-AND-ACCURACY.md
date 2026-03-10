@@ -58,4 +58,5 @@ When implementing timing:
 - Long-running hardware activity started by a register write, such as OAM DMA, should become explicit in-flight state on the shared timeline rather than a one-shot side effect.
 - When a subsystem progresses in repeated temporal slices, such as one DMA byte every four dots on DMG OAM DMA, that phase relationship should remain visible in code and tests.
 - Edge-driven subsystems such as the timer should derive visible events from clocked internal state transitions, not from coarse accumulated-period shortcuts.
+- CPU interrupt acceptance, delayed `EI`, `HALT` wake-up, and `HALT` bug behavior should be expressed as ordered events on that same shared timeline rather than as opaque instruction-level shortcuts.
 - For the PPU specifically, dot-by-dot progression is the intended interpretation of the shared T-cycle timeline.

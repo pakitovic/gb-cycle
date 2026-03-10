@@ -103,6 +103,7 @@ Priority order:
 - STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
 - Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
 - Let the PPU define when VRAM/OAM are logically inaccessible, while the bus remains responsible for exposing the observable blocked-access result to other actors.
+- Let the PPU raise LCD interrupt requests through the shared interrupt-controller path rather than owning `IF` state or dispatching CPU interrupt service directly.
 
 ## Known pitfalls
 
