@@ -776,7 +776,7 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 #### Deliverables
 
 - standard MBC1 support with explicit wiring validation, immediate access-ordered bank effects, and reserved future MBC1M variant space
-- banking support for MBC2
+- standard MBC2 support with address-bit-`8` control decode, internal `512 x 4-bit` RAM, echo aliasing, and explicit header validation
 - banking and RTC support for MBC3
 - banking support for MBC5
 - functional mapper-controlled external RAM beyond the No MBC linear baseline
@@ -804,11 +804,30 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
    Scope: unit tests, integration tests, ROM-based coverage, and at least one trusted oracle comparison for bank-selection edge cases.
    Acceptance criteria: tests cover RAM enable, `0 -> 1`, banks `0x01`, `0x1F`, `0x21`, `0x41`, `0x61`, the `0x20` / `0x40` / `0x60` anomaly, the small-ROM high-region bank-`0` case, mode `0` versus mode `1`, `8 KiB` versus `32 KiB` RAM behavior, and explicit configuration diagnostics.
 
+#### MBC2 sequencing inside Phase 6
+
+1. Establish the MBC2 control model and power-up state.
+   Scope: `ram_enabled`, raw `rom_bank_low4`, address-bit-`8` decode inside the cartridge device, deterministic startup for both `RealBoot` and `SkipBoot`, and the documented `0 -> 1` behavior for the switchable ROM window.
+   Acceptance criteria: power-up state is `ram_enabled = false` and raw `rom_bank_low4 = 0`, the effective `0x4000-0x7FFF` bank starts at `1`, writes with address bit `8 = 0` control RAM enable, and writes with address bit `8 = 1` control the ROM-bank register immediately on the shared T-cycle timeline.
+2. Implement MBC2 ROM banking and ROM-size validation.
+   Scope: switchable-region bank selection in `0x4000-0x7FFF`, raw `4`-bit bank-register preservation, documented `0 -> 1`, final masking by real ROM size, and explicit `256 KiB` maximum validation.
+   Acceptance criteria: bank `0` translates to bank `1`, the effective high-region bank follows the real loaded ROM size without losing the raw-register semantics, and MBC2 cartridges that exceed `256 KiB` produce explicit diagnostics.
+3. Implement internal `512 x 4-bit` RAM and echo aliasing.
+   Scope: nibble-based internal RAM storage, low-nibble writes, explicit high-nibble read policy, disabled-RAM behavior, and low-`9`-bit address masking across `0xA000-0xBFFF`.
+   Acceptance criteria: only `512` logical cells exist, writes preserve only the low nibble, the chosen high-nibble readback policy is explicit, RAM-disabled writes are ignored, RAM-disabled reads follow one explicit policy, and aliasing between `0xA000-0xA1FF` and `0xA200-0xBFFF` is correct.
+4. Add persistence and header validation for MBC2.
+   Scope: `0x05` versus `0x06`, battery-backed persistence for internal RAM, `0x0149` special-case validation, and explicit diagnostics for inconsistent header metadata.
+   Acceptance criteria: `0x06` persists the internal RAM, `0x05` does not, `0x0149` is not reinterpreted as external SRAM size, and nonzero `0x0149` values on MBC2 cartridges produce clear warnings or errors according to the selected validation policy.
+5. Close with dedicated MBC2 tests and oracle comparisons.
+   Scope: unit tests, integration tests, ROM-based coverage, and at least one trusted oracle comparison for MBC2 bank and RAM edge cases.
+   Acceptance criteria: tests cover address-bit-`8` control decode, bank `0 -> 1`, ROM-size diagnostics, echo aliasing across `0xA000-0xBFFF`, low-nibble storage, chosen high-nibble readback policy, battery persistence, and `0x0149 = 0x00` validation.
+
 #### Done criteria
 
 - the bus uses a clean interface toward the cartridge
 - each MBC lives inside `cartridge/` without polluting the rest of the system
 - standard MBC1 behavior is modeled inside cartridge devices with explicit wiring / variant metadata rather than bus-side heuristics or one opaque active-bank field
+- standard MBC2 behavior is modeled inside cartridge devices with explicit address-bit-`8` control decode, internal nibble RAM semantics, and mapper-local validation rather than generic external-SRAM assumptions
 - RTC and persistence are properly encapsulated
 - persistence does not break portability between CLI, desktop, and web
 

@@ -100,7 +100,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 
 - `SkipBoot` must distinguish between values that are fixed by model, values derived from the cartridge header, and values that are genuinely unreliable after power-up.
 - WRAM and HRAM should not be treated as fixed zero-filled memory in the direct post-boot snapshot.
-- External cartridge RAM should not be assumed clean on first power-up when a direct post-boot path is used.
+- Cartridge RAM, whether external or mapper-local to the cartridge controller, should not be assumed clean on first power-up when a direct post-boot path is used.
 - A direct-boot path should use an explicit policy for uninitialized memory and unreliable registers, such as seeded pseudo-random data, a documented pattern, or a debug-oriented strict mode.
 - That uninitialized-state policy must not overwrite values that are deterministic in the documented post-boot snapshot.
 
@@ -170,7 +170,7 @@ Priority order:
 - direct-boot I/O readback tests for the published post-boot snapshot
 - direct-boot tests that verify the ordinary cartridge ROM map is visible again after startup, including `0x0000`, `0x0100`, and mapper-controlled regions where applicable
 - continuity tests for the first T-cycles after `SkipBoot`, especially around timer, PPU, and APU state derived from the visible post-boot registers
-- tests that document the chosen policy for WRAM, HRAM, external RAM, `OBP0`, and `OBP1` when direct boot bypasses firmware execution
+- tests that document the chosen policy for WRAM, HRAM, cartridge RAM whether external or mapper-local, `OBP0`, and `OBP1` when direct boot bypasses firmware execution
 
 ## Implementation notes for this repo
 
@@ -190,7 +190,7 @@ Priority order:
 - Keep direct-boot snapshot data centralized in typed structures rather than copying startup literals into CPU, timer, PPU, APU, or bus modules independently.
 - That centralized post-boot snapshot should own initial visible values only; each subsystem must still own the live semantics of its registers after startup.
 - Cartridge-derived post-boot fields such as DMG/MGB `F` should be computed from the loaded header at initialization time rather than hard-coded into one static table.
-- Uninitialized-state policy for WRAM, HRAM, external RAM, `OBP0`, and `OBP1` should be explicit and testable.
+- Uninitialized-state policy for WRAM, HRAM, cartridge RAM whether external or mapper-local, `OBP0`, and `OBP1` should be explicit and testable.
 - Do not hard-code boot ROM support around a fixed 256-byte assumption; CGB boot ROM is larger and uses a split mapped layout.
 - When CGB is implemented, boot should be able to inspect cartridge header compatibility information and choose CGB mode or DMG-compatibility mode accordingly.
 

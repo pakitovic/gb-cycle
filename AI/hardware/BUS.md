@@ -36,7 +36,7 @@ Address alone is not enough: the bus must also consider the current temporal har
   - `0x0000-0x3FFF`: fixed cartridge ROM, with boot-ROM overlay when active
   - `0x4000-0x7FFF`: switchable cartridge ROM
   - `0x8000-0x9FFF`: VRAM
-  - `0xA000-0xBFFF`: cartridge external RAM or cartridge-owned external hardware
+  - `0xA000-0xBFFF`: cartridge-visible RAM or cartridge-owned external hardware
   - `0xC000-0xCFFF`: WRAM bank 0
   - `0xD000-0xDFFF`: WRAM additional region, linear on DMG and future-bankable on CGB
   - `0xE000-0xFDFF`: echo RAM alias of `0xC000-0xDDFF`
@@ -74,13 +74,13 @@ Address alone is not enough: the bus must also consider the current temporal har
 - When blocked, CPU writes should be ignored and CPU reads should return the blocked-access result rather than the stored VRAM byte, typically `0xFF`.
 - The PPU and CPU must not have incompatible direct paths to VRAM that bypass shared access policy.
 
-### Cartridge external range `0xA000-0xBFFF`
+### Cartridge RAM / external range `0xA000-0xBFFF`
 
 - This range should be owned by the cartridge device, not by internal console RAM.
 - The bus should delegate both reads and writes here to cartridge/MBC logic.
-- Semantics may vary by cartridge type: absent RAM, enable-controlled RAM, banked RAM, RTC, or other external hardware.
+- Semantics may vary by cartridge type: absent RAM, mapper-local RAM such as MBC2 internal RAM, enable-controlled RAM, banked RAM, RTC, or other external hardware.
 - Behavior for unmapped or wrapped RAM banks should be defined by the active cartridge/MBC implementation, not hard-coded in generic bus code.
-- The bus should not infer external-RAM presence from `0x0149` on its own; the loaded cartridge device already owns that decision.
+- The bus should not infer cartridge-RAM presence or shape from `0x0149` on its own; the loaded cartridge device already owns that decision, including mapper-local RAM special cases such as MBC2.
 
 ### WRAM `0xC000-0xDFFF`
 

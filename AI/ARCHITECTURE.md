@@ -226,12 +226,12 @@ to immediately materialize as a separate directory.
 - typed cartridge-header parsing over `0x0100-0x014F`
 - decoded cartridge capability model including cartridge type, ROM size, RAM size, CGB flag, and SGB flag
 - central cartridge factory and validation policy
-- concrete cartridge devices such as `NoMbcCartridge` and `Mbc1Cartridge`
+- concrete cartridge devices such as `NoMbcCartridge`, `Mbc1Cartridge`, and `Mbc2Cartridge`
 - No MBC family support, including the `0x00`, `0x08`, and `0x09` header variants
 - MBC implementations
 - explicit first-pass taxonomy such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, and `Unsupported`
-- explicit separation between raw mapper register state, header-derived wiring / variant metadata, and helper logic that resolves effective ROM and RAM banks
-- external RAM
+- explicit separation between raw mapper register state, header-derived wiring / variant metadata, mapper-local RAM organization, and helper logic that resolves effective ROM and RAM banks
+- cartridge-visible RAM, whether external or mapper-local to the mapper
 - RTC-backed cartridges
 - bus-facing ownership of `0x0000-0x7FFF` and `0xA000-0xBFFF` through one stable device contract
 - persistence boundaries kept outside the core runtime API when possible

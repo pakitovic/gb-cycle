@@ -8,13 +8,13 @@ Own cartridge ROM/RAM mapping, cartridge-header parsing, mapper state, battery-b
 
 Keep MBC behavior decoupled from the rest of the core. Cartridge hardware should expose a clear mapper contract to the bus rather than leaking mapper rules everywhere.
 
-The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." From the console's point of view it is an external bus device that owns `0x0000-0x7FFF` and `0xA000-0xBFFF`, exposes ROM bank `0`, switchable ROM, optional external RAM, and any extra cartridge-local hardware declared by the header.
+The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." From the console's point of view it is an external bus device that owns `0x0000-0x7FFF` and `0xA000-0xBFFF`, exposes ROM bank `0`, switchable ROM, optional cartridge-visible RAM whether external or mapper-local, and any extra cartridge-local hardware declared by the header.
 
 ## Responsibilities
 
 - parse the cartridge header at `0x0100-0x014F`
 - derive cartridge model, capacity, and capability metadata from that header
-- ROM and external RAM banking
+- ROM banking and cartridge-visible RAM mapping
 - mapper register writes
 - future RTC and rumble support
 - cartridge metadata and model capability handling
@@ -25,7 +25,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 - cartridge header bytes in ROM bank `0` at `0x0100-0x014F`
 - mapper-controlled ROM/RAM banking ranges
-- external RAM enable and control ranges
+- cartridge RAM enable and control ranges
 
 ## Header-driven cartridge baseline
 
@@ -53,7 +53,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
   - `Mbc5`
   - `Unsupported` or `Other`
 - `NoMbc` should be the non-banked family covering header codes `0x00`, `0x08`, and `0x09`, while preserving the raw header type for RAM/battery distinctions and diagnostics.
-- The cartridge type must drive more than bank switching. It also defines whether the cartridge has external RAM, battery-backed save state, RTC, rumble, or other mapper-local hardware.
+- The cartridge type must drive more than bank switching. It also defines whether the cartridge has external RAM, mapper-local RAM such as MBC2 internal RAM, battery-backed save state, RTC, rumble, or other mapper-local hardware.
 - Less common types such as `MMM01`, `MBC6`, `MBC7`, `HuC1`, `HuC3`, camera, or sensor cartridges may begin life as `Unsupported`, but they should remain explicitly identified rather than silently coerced into a nearby supported mapper.
 
 ## ROM-size and RAM-size baseline
@@ -76,7 +76,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
   - `write_ram(addr, value)`
   - header or metadata accessors
 - The bus must never "write to ROM contents." A write in `0x0000-0x7FFF` is a command routed to the cartridge device on the shared bus timeline.
-- The same contract should cover cartridges with no RAM, ordinary external RAM, banked RAM, RTC-mapped registers, and later extra cartridge-local hardware without requiring a new bus API.
+- The same contract should cover cartridges with no RAM, ordinary external RAM, mapper-local RAM such as MBC2 internal RAM, banked RAM, RTC-mapped registers, and later extra cartridge-local hardware without requiring a new bus API.
 - Real boot and post-boot execution should read the entry point, Nintendo logo, and header bytes through the same cartridge device rather than through a boot-only bypass.
 
 ## Factory and validation baseline
@@ -163,14 +163,60 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Prefer explicit helpers such as `effective_low_region_rom_bank()`, `effective_high_region_rom_bank()`, and `effective_ram_bank()` so raw register state, wiring decisions, and final masked bank numbers stay inspectable.
 - Reserve an explicit variant or flag for future MBC1M support instead of letting the first standard implementation accrete scattered special cases.
 
+## MBC2 baseline
+
+- Treat MBC2 as its own mapper family, not as a cut-down MBC1.
+- MBC2 should keep explicit live state for `ram_enabled`, a raw `4`-bit ROM-bank register such as `rom_bank_low4`, internal `512 x 4-bit` RAM, and header-derived metadata.
+- MBC2 must not grow MBC1 concepts that do not exist here: no banking mode, no secondary bank register, no banked external SRAM, no RTC, and no separate enable register outside the ROM-space control range.
+- Header codes `0x05` and `0x06` should be recognized explicitly as the MBC2 family.
+- `0x05` means MBC2 with no persistence, while `0x06` means MBC2 + battery-backed persistence for its internal RAM.
+- Battery presence changes persistence expectations only; it must not change visible ROM banking or RAM-enable behavior.
+- Standard MBC2 must support at most `256 KiB` ROM, meaning at most `16` total `16 KiB` ROM banks with bank `0` fixed in `0x0000-0x3FFF` and banks `0x01..=0x0F` visible in `0x4000-0x7FFF`.
+- If a cartridge header declares MBC2 but the validated ROM size exceeds that limit, the loader should emit an explicit diagnostic rather than guessing a nearby mapper.
+- MBC2 RAM is a mapper-local special case: it is internal `512 x 4-bit` RAM inside the MBC, not ordinary external SRAM described by the generic `0x0149` RAM-size table.
+- For MBC2, the expected `0x0149` value is `0x00`; do not reinterpret a nonzero `0x0149` value as ordinary external SRAM capacity.
+- If an MBC2 cartridge declares `0x0149 != 0x00`, emit a warning or error according to the configured validation policy while still keeping MBC2 RAM modeled as internal mapper RAM.
+- The visible MBC2 memory map should be:
+  - `0x0000-0x3FFF`: fixed ROM bank `0`
+  - `0x4000-0x7FFF`: switchable ROM bank `0x01..=0x0F`
+  - `0xA000-0xA1FF`: internal MBC2 RAM
+  - `0xA200-0xBFFF`: echoes of the same internal RAM because only the low `9` address bits participate in RAM indexing
+- Do not allocate `8 KiB` of byte-wide RAM for MBC2. The implementation should model one logical `512`-cell nibble array and use masked addressing for the echoes.
+- MBC2 RAM cells are `4` bits wide. Writes should store only the low nibble of the written value.
+- The upper nibble returned by MBC2 RAM reads is not a documented hardware constant. Keep it under an explicit emulator policy rather than accidental host-memory behavior.
+- For the current repo default, MBC2 RAM reads should return `0xF0 | stored_nibble`; that is an explicit emulator policy for the undefined high nibble, not a claim that real hardware always reads back that exact pattern.
+- Functional tests should treat the low nibble as the hardware-significant part of MBC2 RAM unless the chosen high-nibble policy itself is under test.
+- MBC2 ROM-space control writes are multiplexed inside `0x0000-0x3FFF` and must be decoded by address bit `8`, not by fixed `0x0000-0x1FFF` versus `0x2000-0x3FFF` subranges.
+- When address bit `8` is `0`, the write is a RAM-enable command. When address bit `8` is `1`, the write is a ROM-bank command.
+- Keep that address-bit decode inside `Mbc2Cartridge`; the bus should still delegate the whole ROM-space write to the cartridge device rather than inspecting MBC2-specific address rules.
+- For RAM-enable writes, MBC2 should enable RAM only when the written low nibble is `0xA`; any other low nibble should disable RAM.
+- Power-up state must be deterministic for both `RealBoot` and `SkipBoot`: `ram_enabled = false` and raw `rom_bank_low4 = 0`, while the effective switchable-ROM bank must start at bank `1`.
+- For ROM-bank writes, keep only the written low nibble as raw MBC2 bank-register state and ignore the upper `4` bits of the data byte.
+- The switchable ROM window at `0x4000-0x7FFF` must apply the documented `0 -> 1` translation to that raw `4`-bit bank field.
+- Keep raw `rom_bank_low4`, the documented `0 -> 1` translation, and final ROM-size masking as explicit separate concepts in code.
+- Effective MBC2 ROM-bank selection should be masked by the real number of loaded ROM banks without losing the documented raw-register `0 -> 1` semantics.
+- MBC2 must distinguish RAM-enabled from RAM-disabled behavior explicitly.
+- With RAM disabled, writes to `0xA000-0xBFFF` must be ignored.
+- With RAM disabled, reads from `0xA000-0xBFFF` should use an explicit project open-bus policy rather than pretending the internal RAM remains normally readable. `0xFF` is a reasonable default, but keep the policy explicit and testable.
+- RAM indexing for `0xA000-0xBFFF` should use only the low `9` address bits, such as through a helper like `effective_ram_index(addr) = addr & 0x01FF`.
+- `0xA000-0xA1FF` and every echo in `0xA200-0xBFFF` must therefore alias the same `512` logical cells rather than a duplicated backing store.
+- Persistence for `0x06` should cover the internal `512 x 4-bit` RAM contents; `0x05` should not persist those contents automatically.
+- Persistence must remain a cartridge/save-layer concern rather than bus logic.
+- ROM-space writes to MBC2 are ordered cartridge commands on the shared T-cycle timeline.
+- A write that changes MBC2 RAM-enable or ROM-bank state must become visible on the access T-cycle for all later cartridge accesses; do not defer mapper changes to instruction or frame boundaries.
+- A concrete `Mbc2Cartridge` implementing `CartridgeDevice` is the intended implementation shape for this repo.
+- It should contain at least `rom`, `ram_nibbles` with `512` logical cells, `has_battery`, `ram_enabled`, `rom_bank_low4`, and `header`.
+- Prefer explicit helpers such as `is_ram_enable_write(addr)`, `is_rom_bank_write(addr)`, `effective_high_region_rom_bank()`, and `effective_ram_index(addr)` so address decode, raw register state, and final effective mapping remain inspectable.
+- Do not add `banking_mode`, `secondary_bank`, or generic external-RAM-bank state to `Mbc2Cartridge`.
+
 ## Timing / accuracy requirements
 
 - Access behavior must remain compatible with bus ordering.
-- Architecture should scale from the No MBC family to MBC1, MBC3, MBC5, and later extensions.
-- Direct-boot initialization should not assume external RAM starts clean unless that follows from persisted save data or an explicit uninitialized-memory policy.
+- Architecture should scale from the No MBC family to MBC1, MBC2, MBC3, MBC5, and later extensions.
+- Direct-boot initialization should not assume cartridge RAM starts clean unless that follows from persisted save data or an explicit uninitialized-memory policy.
 - Writes in ROM address space should be interpreted as cartridge/MBC control behavior where applicable, not as attempts to mutate ROM contents.
 - Cartridge-visible reads and writes should remain ordinary bus transactions on the shared T-cycle timeline; mapper side effects must occur in access order rather than in a deferred per-instruction batch.
-- For MBC1 and later banked mappers, RAM-enable and bank-select writes should become visible on the access T-cycle for all later cartridge reads and writes.
+- For MBC1, MBC2, and later banked mappers, RAM-enable and bank-select writes should become visible on the access T-cycle for all later cartridge reads and writes.
 - Header parsing is configuration work at load time, but runtime visibility of header bytes at `0x0100-0x014F` must still emerge from normal ROM bank `0` reads after boot-ROM handoff.
 - For No MBC specifically, linear ROM reads, ignored ROM-space writes, and optional external-RAM accesses should still happen through the same ordered T-cycle cartridge transactions rather than through a bus-local fast path.
 
@@ -209,10 +255,13 @@ Priority order:
 - explicit MBC1 tests for `0x01`, `0x02`, and `0x03`, deterministic power-up state, register writes to each control range, and immediate visibility of mapper writes to later accesses
 - tests that MBC1 reproduces raw-register `0 -> 1`, dedicated access to banks `0x01`, `0x1F`, `0x21`, `0x41`, and `0x61`, the documented small-ROM case where bank `0` becomes visible in `0x4000-0x7FFF` after size masking, and the large-ROM `0x20` / `0x40` / `0x60` to `0x21` / `0x41` / `0x61` anomaly
 - tests that MBC1 distinguishes standard `32 KiB` banked-RAM wiring from large-ROM alternate wiring, including mode `0` versus mode `1`, disabled-RAM open-bus reads and ignored writes, fixed `8 KiB` RAM, banked `32 KiB` RAM, and explicit diagnostics for impossible ROM/RAM/wiring combinations
+- explicit MBC2 tests for `0x05` and `0x06`, deterministic power-up state, address-bit-`8` control decode, immediate visibility of RAM-enable and ROM-bank writes, and the documented `0 -> 1` behavior for the `4`-bit ROM-bank register
+- tests that MBC2 enforces its `256 KiB` ROM limit, keeps `0x0149` as a validation-only special case rather than external-SRAM sizing, and reports explicit diagnostics when ROM size or RAM-size metadata are inconsistent with MBC2 rules
+- tests that MBC2 models one logical `512 x 4-bit` internal RAM array with low-`9`-bit echo aliasing across `0xA000-0xBFFF`, stores only the low nibble on writes, uses the documented repo high-nibble read policy explicitly, ignores writes while RAM is disabled, and persists that internal RAM only for `0x06`
 - mapper-specific ROM tests
-- save RAM behavior tests
+- cartridge RAM persistence behavior tests
 - RTC behavior tests when implemented
-- tests that document startup behavior for external RAM when direct-boot presets bypass firmware execution
+- tests that document startup behavior for cartridge RAM, whether external or mapper-local, when direct-boot presets bypass firmware execution
 - tests that fixed-ROM, switchable-ROM, and external cartridge ranges are delegated through the cartridge interface rather than treated as internal console memory
 - tests that ROM-space writes hit MBC control semantics instead of fake writable ROM
 - tests that boot and post-boot paths both observe `0x0100-0x014F` through the ordinary cartridge device rather than through a shadow header copy
@@ -226,13 +275,15 @@ Priority order:
 - Model No MBC as its own concrete device, not as a generic blob-reader fallback.
 - Keep mapper traits or enums narrow and explicit.
 - Avoid hard-coding cartridge logic into generic bus code.
-- Treat external RAM power-up contents as separate from deterministic post-boot CPU/MMIO state; if the emulator chooses a direct-boot initialization policy, keep it explicit and configurable.
+- Treat cartridge RAM power-up contents, whether external or mapper-local, as separate from deterministic post-boot CPU/MMIO state; if the emulator chooses a direct-boot initialization policy, keep it explicit and configurable.
 - Keep No MBC absent-RAM behavior under an explicit and configurable policy instead of accidental zero-backed memory.
 - Keep active-ROM-bank selection, RAM enable, RAM banking, RTC mapping, and any bank-wrap quirks inside cartridge/MBC implementations rather than generic bus region logic.
 - Keep header validation policy explicit and centralized rather than hiding it inside individual mapper constructors.
 - For MBC1, keep raw register fields, resolved effective bank helpers, and validated wiring / variant metadata as separate layers instead of one opaque "current bank" state blob.
 - For MBC1, derive an explicit standard-versus-large-ROM wiring classification, plus a reserved future MBC1M variant, from validated cartridge metadata instead of branching ad hoc during each access.
 - Keep disabled external-RAM open-bus behavior explicit and configurable enough that tests can pin the chosen policy.
+- For MBC2, keep address-bit-`8` control decode, raw `rom_bank_low4`, internal nibble RAM organization, effective ROM-bank helpers, and explicit disabled-RAM / high-nibble readback policies as separate layers instead of hiding them in generic byte-RAM helpers.
+- For MBC2, treat `0x0149` as validation metadata only; runtime RAM capacity comes from the mapper family itself rather than from the ordinary external-RAM table.
 
 ## Known pitfalls
 
@@ -254,6 +305,11 @@ Priority order:
 - assuming bank `0` can never appear in `0x4000-0x7FFF` on small MBC1 ROMs
 - treating all MBC1 cartridges as if the secondary register always means the same thing regardless of wiring and banking mode
 - folding future MBC1M behavior into standard MBC1 bank math with scattered conditionals
+- modeling MBC2 as "MBC1 with fewer bits" instead of as its own mapper with address-bit-`8` control decode
+- splitting MBC2 control writes into arbitrary `0x0000-0x1FFF` / `0x2000-0x3FFF` subranges instead of decoding address bit `8`
+- modeling MBC2 RAM as ordinary byte-wide `8 KiB` SRAM instead of one `512 x 4-bit` internal array with echoes
+- forgetting that `0xA200-0xBFFF` aliases the same MBC2 RAM cells as `0xA000-0xA1FF`
+- letting MBC2 high-nibble readback or disabled-RAM behavior emerge accidentally from host memory instead of one explicit project policy
 
 ## Open questions
 
