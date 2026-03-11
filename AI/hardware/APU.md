@@ -115,6 +115,121 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The APU output path should include a high-pass filter per output channel, after mixing and master-volume scaling.
 - Leaving the HPF out entirely should be treated as a temporary debug mode, not as the target hardware behavior.
 
+## CH1 baseline (pulse + sweep)
+
+- CH1 should be modeled as a composition of explicit sub-blocks rather than as one helper that emits a square wave with a few extra flags attached.
+- At minimum, the CH1 state shape should keep explicit fields or equivalent ownership for:
+  - `channel_active`
+  - `dac_enabled`
+  - `period_value`
+  - `period_timer`
+  - selected duty
+  - `duty_step`
+  - `length_counter`
+  - `length_enabled`
+  - envelope timer / pace / direction / current volume
+  - `sweep_timer`
+  - `sweep_enabled`
+  - `sweep_shadow_period`
+- CH1 ownership should stay with the channel block itself: the master APU should provide clocks and collect outputs, but it should not own CH1-specific sweep, duty, or envelope internals indirectly through generic helpers.
+
+## CH1 MMIO ownership baseline
+
+- `NR10` through `NR14` should remain owned by the CH1 block rather than by a flat APU register bank.
+- `NR10` should be decomposed into sweep pace, sweep direction, and sweep shift/individual-step semantics.
+- `NR11` should keep duty (`bits 7-6`) distinct from the write-only initial length field (`bits 5-0`).
+- `NR12` should keep initial volume, envelope direction, and envelope pace distinct.
+- `NR13` should remain write-only at the MMIO contract layer.
+- `NR14` bit `7` should remain the trigger input, while bit `6` should remain the length-enable control with immediate write-time effect.
+
+## CH1 duty and waveform baseline
+
+- CH1 should keep an explicit duty-step counter in the range `0..=7`.
+- The waveform should remain an `8`-step pulse waveform selected by `NR11` duty.
+- The duty-step counter should not reset when CH1 is retriggered; only powering the APU off should reset the pulse duty-step state.
+- Retriggering CH1 should reset the pulse period/frequency timer instead.
+- When a pulse channel is first started, the digital output should begin at `0`.
+- Keep an explicit follow-up work item for the documented post-power-on quirk where the first CH1/CH2 duty step after the first trigger behaves as if it were step `0`, and duty clocking is disabled until the first trigger.
+
+## CH1 period value and timer baseline
+
+- `NR13` plus the low three bits of `NR14` should form CH1's `11`-bit period value.
+- CH1 should keep explicit separation between the period value stored in registers and the in-flight period timer currently timing the sample.
+- For the current DMG target, the pulse period timer should be clocked at `1048576` Hz, i.e. once every `4` dots.
+- A duty-step advance should occur when the channel's current sample completes, not on every frame-sequencer tick.
+- Writes to `NR13` or `NR14` should not change the currently playing sample instantly; the new period should only take effect after the current sample ends.
+- Keep a dedicated validation case for CH1 period-write delay rather than burying it inside generic "period changes work" coverage.
+- Keep explicit CH1 validation for the internal rule that programmed envelope/sweep pace or period `0` behaves as `8` on the corresponding timer-reload path.
+
+## CH1 DAC and trigger baseline
+
+- CH1 `dac_enabled` should derive from `NR12 & 0xF8 != 0`.
+- If the DAC is off, a trigger write to `NR14` must not activate CH1.
+- If a write to `NR12` turns the DAC off, CH1 should be disabled immediately.
+- `channel_active` and `dac_enabled` must remain distinct CH1 states; an inactive channel with DAC still enabled should still correspond to digital `0` being converted by the DAC.
+- CH1 trigger should be represented as one explicit operation that performs the channel's trigger-time state transitions rather than as unrelated side effects scattered across MMIO, envelope, and sweep helpers.
+- On CH1 trigger:
+  - the channel should become active if the DAC is enabled
+  - the period timer should reload from `NR13` / `NR14`
+  - the envelope timer should reset
+  - current volume should become the initial volume from `NR12`
+  - expired length state should be restored to a valid running state
+  - sweep should perform its trigger-time initialization
+- Keep a dedicated follow-up work item for the documented quirk where triggering CH1/CH2 does not modify the low two bits of the frequency timer.
+
+## CH1 length and envelope baseline
+
+- CH1 should keep an explicit `64`-step length counter.
+- That length counter should be clocked only by the frame sequencer's `256` Hz length clock, not by the channel's fast waveform timer.
+- `NR14` bit `6` should enable or disable the CH1 length unit immediately on write.
+- If the length counter expires while enabled, CH1 should be disabled.
+- Extra length clocking on `NR14` writes should remain an explicit CH1 work item; do not treat it as a negligible quirk.
+- CH1 should keep envelope timer state and current volume separate from the readable contents of `NR12`.
+- The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
+- Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
+- Envelope progression must update CH1's internal current volume, not the readable initial-volume bits in `NR12`.
+- Reaching volume `0` through the envelope must not disable CH1 by itself.
+
+## CH1 sweep baseline
+
+- CH1 must keep explicit sweep-specific state:
+  - `sweep_timer`
+  - `sweep_enabled`
+  - `sweep_shadow_period`
+- Sweep should be clocked from the frame sequencer's `128` Hz CH1 sweep clock.
+- On CH1 trigger:
+  - the current period should be copied into `sweep_shadow_period`
+  - the sweep timer should reset
+  - `sweep_enabled` should become true if sweep pace or sweep shift are non-zero, false otherwise
+  - if sweep shift is non-zero, sweep calculation and overflow check should run immediately
+- Sweep calculation should be represented as an explicit pure calculation over the current shadow period:
+  - compute `shadow >> shift`
+  - add or subtract depending on sweep direction
+  - produce a candidate new period
+- If an addition-mode sweep result exceeds `0x7FF`, CH1 should be disabled by sweep overflow.
+- Decreasing sweep should not be modeled as a symmetric underflow-based shutdown path; the documented hardware behavior is not symmetric there.
+- On a sweep clock while sweep is enabled and pace is non-zero:
+  - calculate the new period and perform overflow check
+  - if the result is in range and shift is non-zero, write it back to `sweep_shadow_period`, `NR13`, and `NR14`
+  - then run a second immediate calculation plus overflow check using the new shadow period, without writing that second result back
+- Keep this second overflow check explicit; do not fold it into a generic "next tick will catch it" simplification.
+- Writes to `NR13` / `NR14` while sweep is active must not refresh `sweep_shadow_period`; a later sweep tick may therefore overwrite the just-written register value unless CH1 is retriggered.
+- Sweep pace `0` should still preserve the documented trigger/overflow semantics and the documented timer-reload rule that a programmed pace or period of `0` behaves as `8`, rather than being simplified to "sweep logic fully off".
+- Keep an explicit follow-up work item for the documented CH1 behavior where clearing the sweep direction bit after subtraction-mode calculations can immediately disable the channel.
+
+## CH1 active-state integration baseline
+
+- CH1 should be disabled by exactly these ordinary causes:
+  - DAC disable
+  - length expiry
+  - CH1 sweep overflow
+- CH1 should not be disabled merely because the envelope reached volume `0`.
+- `NR52` bit `0` should track CH1 activity according to those rules.
+- The mixer should consume CH1's resolved current digital output together with its DAC/active state; it should not reconstruct CH1 output by re-reading `NR10` through `NR14`.
+- CH1 timing integration should remain split into:
+  - fast waveform/period timing on the shared T-cycle timeline
+  - slow frame-sequencer clocks for length, envelope, and sweep
+
 ## Timing / accuracy requirements
 
 - Keep channel and frame-sequencer timing visible.
@@ -165,6 +280,13 @@ Priority order:
 - tests for `dac_enabled` versus `channel_active`, including DAC-off forcing the channel off and DAC-on plus inactive-channel remaining distinct
 - tests for `NR50` / `NR51` routing, master-volume scaling, and the documented "volume 0 still means factor 1" behavior
 - tests that HPF-visible state changes when routing, master volume, or DAC state changes produce DC-offset changes
+- tests for `NR10`-`NR14` ownership and MMIO semantics, including `NR13` write-only readback policy
+- tests for CH1 duty-step behavior, including "retrigger resets timer but not duty step"
+- tests for CH1 period-write delay where `NR13` / `NR14` changes apply after the current sample ends
+- tests that CH1 trigger reloads period/envelope/sweep state but does not activate the channel while DAC is off
+- tests for CH1 length expiry, CH1 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
+- sweep tests covering trigger-time shadow copy, immediate overflow check, timed writeback, second overflow check, and the rule that `NR13` / `NR14` writes do not update the sweep shadow automatically
+- dedicated CH1 quirk tests for period-`0`-treated-as-`8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever those behaviors are implemented
 
 ## Implementation notes for this repo
 
@@ -183,6 +305,8 @@ Priority order:
 - The mixer should consume already-resolved channel output and DAC state rather than peeking back into raw register storage to reconstruct behavior indirectly.
 - Keep a clear API boundary between exact internal audio state and the later host-facing sample or resampler path.
 - Reserve explicit follow-up work items for per-channel quirks such as extra length clocking, CH1 sweep details, CH3 retrigger/wave-RAM edge cases, CH4 lock-up, and envelope zombie-mode behavior.
+- A channel shape such as `Channel1 { active, dac_enabled, period_value, period_timer, duty, duty_step, length_counter, length_enabled, envelope, sweep }` is a good fit for keeping CH1 readable and testable, even if field names differ.
+- Keep CH1 sweep logic isolated enough that trigger-time setup, timed sweep iterations, overflow checks, and shadow-register behavior can each be tested directly.
 
 ## Known pitfalls
 

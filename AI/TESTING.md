@@ -85,6 +85,11 @@ Include tests that the frame sequencer clocks length, envelope, and CH1 sweep wi
 Include tests that `dac_enabled` and `channel_active` stay distinct, that DAC-off forces channel-off, and that `NR52` reports active channels rather than DAC-enabled channels.
 Include tests that `NRx4` trigger writes act immediately on the shared timeline and do not activate a channel whose DAC is off.
 Include tests for `NR51` stereo routing, `NR50` master-volume semantics including the documented "0 behaves like factor 1" rule, and HPF/DC-offset-sensitive mixer state changes whenever suitable tests exist.
+Include CH1 tests for `NR10`-`NR14` ownership, `NR13` write-only behavior, and immediate `NR14` trigger/length-enable semantics.
+Include CH1 tests for period timer cadence, duty-step progression, retrigger-not-resetting-duty-step behavior, and period-write delay until the current sample ends.
+Include CH1 tests for length expiry, envelope progression, and the rule that envelope volume reaching `0` does not disable the channel.
+Include CH1 sweep tests for trigger-time shadow copy, immediate overflow check, timed writeback, second overflow check, and the rule that `NR13` / `NR14` writes do not update the sweep shadow automatically.
+Include dedicated CH1 quirk tests for envelope/sweep timer-reload semantics where programmed pace or period `0` behaves as `8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever suitable tests exist.
 
 ## Recommended external validation sources
 

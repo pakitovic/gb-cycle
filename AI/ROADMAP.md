@@ -746,6 +746,27 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Scope: stable hooks for CH1-CH4 slow clocks and fast timers, plus follow-up placeholders for channel-specific quirks and edge cases.
    Acceptance criteria: each channel can later receive its own waveform timer without changing the master frame-sequencer architecture, and known follow-up work such as extra length clocking, CH3 wave-RAM quirks, and envelope zombie-mode remains explicitly tracked rather than implicit.
 
+#### CH1 sequencing inside Phase 7
+
+1. Establish CH1 state ownership and MMIO routing.
+   Scope: CH1-owned `NR10`-`NR14`, explicit channel state, and write-only/read-only field policy.
+   Acceptance criteria: `NR13` remains write-only, `NR14` bit `7` acts as trigger, `NR14` bit `6` acts as immediate length enable, and CH1 ownership is not split informally across generic APU helpers.
+2. Implement CH1 period timer and duty stepping.
+   Scope: `11`-bit period value, fast period timer, selected duty waveform, and non-resetting duty-step counter.
+   Acceptance criteria: the pulse timer advances once every `4` dots on DMG, the waveform is `8` steps long, retrigger resets the timer but not duty step, and period writes take effect only after the current sample ends.
+3. Implement CH1 DAC state and general trigger behavior.
+   Scope: `dac_enabled`, `channel_active`, trigger-time state reload, and `NR52` bit `0` integration.
+   Acceptance criteria: DAC-off disables CH1 immediately, trigger does nothing if DAC is off, and CH1 trigger resets the documented period/envelope/sweep state in one explicit path.
+4. Integrate CH1 length and envelope.
+   Scope: `64`-step length counter, `256` Hz length clock, `64` Hz envelope clock, current-volume state, and immediate `NR14` length-enable behavior.
+   Acceptance criteria: length expiry disables CH1, envelope changes current volume without mutating readable `NR12` bits, envelope volume reaching `0` does not disable CH1, and extra-length-clocking behavior is either implemented or isolated as explicit follow-up logic.
+5. Implement full CH1 sweep behavior.
+   Scope: shadow period, sweep timer, enabled flag, trigger-time setup, timed sweep iterations, writeback, and second overflow check.
+   Acceptance criteria: trigger copies the shadow period and performs the immediate overflow check when required, sweep ticks perform writeback plus the second overflow check, and writes to `NR13` / `NR14` do not refresh the sweep shadow automatically.
+6. Close CH1 quirks and fine validation.
+   Scope: envelope/sweep timer-reload semantics where programmed pace or period `0` behaves as `8`, low frequency-timer bits on trigger, first-duty-step-after-power-on behavior, and any remaining documented CH1 trigger/length edge cases.
+   Acceptance criteria: quirks are isolated behind explicit channel logic and tests, rather than leaking into the general APU architecture.
+
 #### Done criteria
 
 - each channel is independently verifiable
