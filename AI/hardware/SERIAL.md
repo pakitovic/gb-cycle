@@ -35,6 +35,7 @@ Keep these concerns distinct:
 - `SB` and `SC` should remain owned by the serial subsystem rather than by a generic MMIO array.
 - `SB` should hold the next outgoing byte before transfer start, and during an active transfer it should reflect the live shifted state rather than staying frozen until completion.
 - `SC` should remain a mixed register in the architectural sense: writable control bits plus model-dependent readback policy for non-functional fields.
+- For the current DMG-family baseline, `SC` bits `6..=1` should read back as `1`, while bit `7` reflects transfer requested/in-progress state and bit `0` reflects the selected clock mode.
 - `SC.7` should express transfer requested / transfer in progress semantics, not a decorative latched bit or a "transfer finished" flag.
 - `SC.0` should select internal versus external clock semantics.
 - In DMG mode, `SC.1` should not expose functional high-speed behavior; keep that bit reserved for future CGB extension rather than activating undocumented DMG behavior.

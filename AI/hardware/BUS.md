@@ -21,6 +21,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - distinguish requester-specific access semantics when CPU, DMA, or other actors do not obey the same rules
 - coordinate dynamic mapping between boot ROM, cartridge ROM, and later model-specific extensions
 - consume subsystem-owned state such as PPU mode, DMA progress, and boot-ROM enable state when deciding the observable result of an access
+- delegate all cartridge-owned accesses through one stable cartridge-device contract instead of embedding per-MBC logic in the bus
 
 ## Registers / MMIO
 
@@ -53,16 +54,16 @@ Address alone is not enough: the bus must also consider the current temporal har
 
 - This region should be owned by the cartridge device, not by internal console memory.
 - While boot ROM is mapped, the relevant low part of this region must be overlaid by boot firmware routing; once boot ROM is unmapped, reads must return cartridge ROM again.
-- Reads should return bytes from the cartridge's fixed low ROM bank.
-- Writes must not attempt to modify ROM contents; they should be delegated to cartridge/MBC control semantics.
+- Reads should return bytes through the cartridge device's ROM-read contract, not through a bus-local ROM array or mapper-specific switch.
+- Writes must not attempt to modify ROM contents; they should be delegated to cartridge/MBC control semantics through the cartridge device.
 - The cartridge header at `0x0100-0x014F` should become visible through normal cartridge routing once boot ROM no longer covers it.
 
 ### Cartridge switchable ROM `0x4000-0x7FFF`
 
 - This region should also be owned by the cartridge device.
 - Active-ROM-bank selection belongs to cartridge/MBC logic, not to the generic bus.
-- Reads should come from the active cartridge ROM bank.
-- Writes should be treated as MBC control writes where the cartridge type requires that behavior, not as ROM writes.
+- Reads should come from the active cartridge ROM bank as selected by the cartridge implementation.
+- Writes should be treated as MBC control writes where the cartridge type requires that behavior, not as ROM writes, and the bus should not inspect `0x0147` itself to decide the mapper rule.
 
 ### VRAM `0x8000-0x9FFF`
 
@@ -79,6 +80,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - The bus should delegate both reads and writes here to cartridge/MBC logic.
 - Semantics may vary by cartridge type: absent RAM, enable-controlled RAM, banked RAM, RTC, or other external hardware.
 - Behavior for unmapped or wrapped RAM banks should be defined by the active cartridge/MBC implementation, not hard-coded in generic bus code.
+- The bus should not infer external-RAM presence from `0x0149` on its own; the loaded cartridge device already owns that decision.
 
 ### WRAM `0xC000-0xDFFF`
 
@@ -184,6 +186,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - Bus-visible ordering must remain explicit.
 - Access restrictions from PPU and DMA must not be hidden.
 - Boot-ROM overlay and cartridge handoff must be represented as observable routing behavior, not as a CPU-local switch or a post-boot jump shortcut.
+- Cartridge ROM-space writes and cartridge external-range accesses should remain ordinary ordered T-cycle bus transactions whose meaning is delegated to the cartridge device.
 - OAM decisions must consider address, LCD enable state, PPU mode, and OAM DMA state together rather than as unrelated checks.
 - OAM access blocking during PPU Mode 2 must be represented as observable bus behavior, not as a render-only detail.
 - During PPU Mode 3, both OAM and VRAM access restrictions must be represented as observable bus behavior.
@@ -237,6 +240,7 @@ Priority order:
 - tests for boot-ROM overlay before `FF50` and cartridge visibility after `FF50`
 - tests that the next fetch after boot-ROM unmapping already observes cartridge routing
 - direct-boot routing tests that verify the ordinary cartridge ROM map is visible again after startup, including `0x0000`, `0x0100`, and mapper-controlled ROM regions where applicable
+- tests that all cartridge-owned regions `0x0000-0x7FFF` and `0xA000-0xBFFF` route through the loaded cartridge device contract without bus-side mapper heuristics
 - DMG-mode MMIO tests that verify CGB-only registers read back as `0xFF`
 - full-range decode tests that ensure every address in `0x0000-0xFFFF` maps to an explicit owner and policy
 - tests that ROM-region writes are delegated to cartridge/MBC control rather than treated as memory writes
@@ -253,6 +257,7 @@ Priority order:
 ## Implementation notes for this repo
 
 - Keep cartridge logic decoupled from the rest of the bus.
+- The bus should depend on a base cartridge interface such as `read_rom`, `write_rom`, `read_ram`, `write_ram`, and metadata accessors, not on concrete `Mbc1` or `Mbc3` types.
 - Favor explicit maps and handlers over opaque indirection.
 - Treat the bus as both an address decoder and an access arbiter.
 - Keep one source of truth for address decode plus access policy; do not let per-subsystem shortcuts become shadow decoders.
@@ -269,6 +274,7 @@ Priority order:
 - Prefer region controllers or explicit handlers over hard-coded assumptions like "DMG only has one VRAM shape forever".
 - The bus should model boot ROM mapping as a first-class routing rule, including the later `FF50`-controlled unmap to cartridge ROM.
 - The DMG-family next-fetch handoff after `FF50` should already be modeled in a way that can later extend to CGB's split boot-ROM mapping while keeping the cartridge header window visible.
+- Cartridge type detection, ROM-size decoding, RAM-size decoding, and header validation belong to cartridge loading rather than to the bus decode path.
 - In `SkipBoot`, boot ROM mapping should simply start disabled while leaving `FF50` and the ordinary mapping logic intact.
 - After `SkipBoot`, the bus should expose the normal cartridge ROM layout over `0x0000-0x7FFF` rather than a special reduced direct-boot map.
 - Keep DMG-versus-CGB MMIO readback policy in the routed register map rather than spreading `if cgb` checks through unrelated subsystems.

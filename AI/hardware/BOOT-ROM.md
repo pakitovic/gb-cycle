@@ -51,6 +51,8 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - The visible boot logo should come from the cartridge header bytes at `0x0104-0x0133`, not from a frontend animation script or emulator-side asset.
 - The "no cartridge / reads as `0xFF`" boot behavior should emerge from cartridge and bus behavior rather than a special visual hack.
 - While boot ROM is mapped, it should overlay the relevant low cartridge range through ordinary bus routing; once unmapped, the cartridge entry point and header at `0x0100-0x014F` should be visible again through normal cartridge decode.
+- Real-boot header checks must use ordinary cartridge reads on the shared T-cycle timeline; they must not bypass the cartridge device with a second header-copy path.
+- Skip-boot and future model-selection logic may consume parsed cartridge metadata, but that metadata should come from the cartridge subsystem's canonical header parser rather than from a second boot-local parser.
 
 ## `FF50` handoff baseline
 
@@ -58,6 +60,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - Real boot completion should happen because boot-ROM code executes a real write to `FF50`, not because the emulator detects a conceptual "boot is done" state.
 - The mapping change caused by `FF50` must affect the next fetch, not previous accesses retroactively.
 - On DMG-family real boot, the first opcode fetched from the cartridge after handoff should be the byte at `0x0100`.
+- That post-`FF50` fetch at `0x0100` should come from the same loaded cartridge device that already owns the header bytes and later mapper behavior.
 - Register state visible at cartridge entry must come from the executed boot ROM of the selected model; do not hard-code DMG and MGB as sharing one identical final `A` value.
 - `FF50` should stay a write-only MMIO control path from the hardware-contract perspective, even if the implementation keeps internal mapping state for debugging or introspection.
 - The write to `FF50` should perform the mapping side effect at the access itself; do not treat it as a passive stored byte that another subsystem polls later.
@@ -105,6 +108,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 
 - `SkipBoot` should begin with boot ROM already unmapped and normal cartridge visibility restored.
 - After `SkipBoot`, the ordinary cartridge ROM map across `0x0000-0x7FFF` should be visible again: the fixed low ROM region should no longer be covered by boot ROM, and the switchable cartridge-ROM region should remain under normal mapper control where applicable.
+- After handoff, the same cartridge device should expose `0x0100-0x014F` for entry-point execution, header inspection, and later mapper-owned reads without a boot-specific shadow copy.
 - `FF50` should still exist as the boot-ROM mapping-control register even though `SkipBoot` starts with boot ROM already disabled.
 - DMG-mode reads from CGB-only registers that do not exist functionally yet should return `0xFF` rather than emulator-invented values.
 
@@ -181,6 +185,7 @@ Priority order:
 - DMG-family observable differences should initially be assumed to come from firmware and startup state unless a proven hardware-level difference matters to the emulator.
 - `FF50` should integrate with system or bus mapping control, not as a CPU-local shortcut.
 - Real-boot header validation should emerge from executed boot-ROM code reading cartridge bytes, not from a parallel emulator-side validator.
+- Boot should consume cartridge-derived metadata such as checksum-dependent post-boot flags, `cgb_flag`, or `sgb_flag` through the cartridge subsystem's canonical parsed header view rather than by reparsing header bytes in multiple places.
 - A central routine such as `initialize_post_boot_state(model, cartridge)` is the preferred shape for `SkipBoot`, with one source of truth for model-specific CPU state, visible I/O state, and hidden-state synthesis inputs.
 - Keep direct-boot snapshot data centralized in typed structures rather than copying startup literals into CPU, timer, PPU, APU, or bus modules independently.
 - That centralized post-boot snapshot should own initial visible values only; each subsystem must still own the live semantics of its registers after startup.

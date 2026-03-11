@@ -91,7 +91,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 ## Suggested subsystem boundaries
 
 - CPU: instruction flow, register state, decode/execution state, fine-grained fetch/read/write/internal steps, IME state, interrupt acceptance/dispatch, HALT/STOP semantics, and micro-operation visibility for timing-sensitive hardware interactions
-- Bus: address decoding, subsystem routing, dynamic mapping, visible access ordering, temporal arbitration of blocked accesses, and routing of access attempts that carry hardware-visible side effects such as DMG OAM corruption triggers
+- Bus: address decoding, subsystem routing, dynamic mapping, visible access ordering, temporal arbitration of blocked accesses, delegation to the base cartridge interface for cartridge-owned regions, and routing of access attempts that carry hardware-visible side effects such as DMG OAM corruption triggers
 - Memory and MMIO: WRAM, HRAM, echo behavior, plain storage ownership, and MMIO-backed state not owned by another subsystem
 - Interrupt controller: IF/IE state, interrupt request paths, priority-ordered pending selection, and acknowledge flow
 - Timer: DIV/TIMA/TMA/TAC behavior and edge-sensitive increment logic
@@ -99,7 +99,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - DMA: OAM DMA and future HDMA scheduling and blocking rules
 - APU: per-channel digital generation, DAC state, frame-sequencer / `DIV-APU`, channel-active state, mixing / HPF state, and host-export boundary, but not output backends
 - Joypad and serial: hardware-visible registers and signaling
-- Cartridge and MBC: ROM/RAM banking, RTC, rumble, and mapper-specific behavior
+- Cartridge and MBC: cartridge-header parsing, header-driven device selection, ROM/RAM banking, RTC, rumble, and mapper-specific behavior
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
 - Model-specific extensions: CGB and later SGB
 
@@ -223,10 +223,15 @@ to immediately materialize as a separate directory.
 ### `cartridge/`
 
 - base cartridge interface
+- typed cartridge-header parsing over `0x0100-0x014F`
+- decoded cartridge capability model including cartridge type, ROM size, RAM size, CGB flag, and SGB flag
+- central cartridge factory and validation policy
 - ROM-only support
 - MBC implementations
+- explicit first-pass taxonomy such as `RomOnly`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, and `Unsupported`
 - external RAM
 - RTC-backed cartridges
+- bus-facing ownership of `0x0000-0x7FFF` and `0xA000-0xBFFF` through one stable device contract
 - persistence boundaries kept outside the core runtime API when possible
 
 ### `apu/`

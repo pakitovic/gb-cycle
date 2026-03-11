@@ -265,8 +265,12 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 
 ##### Base cartridge
 
-- base interface for ROM-only
+- central header parser over `0x0100-0x014F`
+- strongly typed cartridge metadata including `entry_point`, `cgb_flag`, `sgb_flag`, `cartridge_type`, `rom_size_code`, and `ram_size_code`
+- base cartridge interface for ROM-only and later MBC-backed devices
 - cartridge integration with the bus
+- central cartridge factory that selects `RomOnly`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or explicit `Unsupported` from `0x0147`
+- explicit validation of declared ROM/RAM metadata against the loaded image with a configurable policy
 - clean separation between bus logic and cartridge-specific logic
 
 ##### I/O and boot
@@ -293,7 +297,12 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - every DMG address region has an explicit owner, read behavior, write behavior, and blocked-access policy where applicable
 - every MMIO address in `0xFF00-0xFF7F` and `0xFFFF` has an explicit routed owner and contract rather than accidental default byte-storage behavior
 - mixed MMIO registers are represented as per-field contracts rather than as plain read/write bytes plus a coarse mask
+- the cartridge subsystem parses `0x0100-0x014F` into a typed header structure and preserves CGB/SGB compatibility flags for later work
 - a functional ROM-only cartridge exists
+- cartridge implementation selection comes from `0x0147` rather than from ROM-size heuristics
+- declared ROM size and RAM size are validated explicitly instead of being trusted silently
+- the bus can access `0x0000-0x7FFF` and `0xA000-0xBFFF` through a base cartridge interface without knowing which MBC is active
+- ROM-space writes are routed as cartridge commands instead of fake ROM mutations
 - base I/O registers are connected to the bus
 - the boot ROM can be mapped and unmapped correctly
 - boot-ROM overlay versus cartridge visibility is controlled explicitly by bus-visible mapping state
@@ -308,6 +317,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - PPU or DMA breaking later because real arbitration was missing
 - boot ROM treated as a hack rather than real hardware
 - rewriting the bus when introducing DMA, PPU, or MBCs
+- scattering mapper detection and header parsing across bus, boot, and frontend code and having to undo that later
 
 #### MMIO contract sequencing
 
@@ -329,6 +339,17 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
    Acceptance criteria: the routed MMIO contract already encodes correct read/write policy, immediate register-side effects, and non-RAM-like behavior for these ranges, including wave RAM's explicit ownership and non-reset-with-`NR52` policy; full transfer timing and full APU behavior remain owned by later subsystem phases.
 6. Close absent and CGB-only register policy in DMG mode.
    Acceptance criteria: unavailable CGB-only MMIO registers do not behave like RAM, readback follows documented DMG fallback values, and writes follow an explicit ignored-or-stub policy.
+
+#### Base cartridge sequencing
+
+1. Parse the cartridge header.
+   Acceptance criteria: `0x0147`, `0x0148`, `0x0149`, `0x0143`, and `0x0146` decode correctly; `entry_point` and logo bytes remain accessible; metadata lives in a strongly typed structure.
+2. Define the base cartridge interface.
+   Acceptance criteria: the bus can read `0x0000-0x7FFF` and `0xA000-0xBFFF` without knowing the active MBC, ROM-space writes route to cartridge commands, and header bytes remain visible through ordinary ROM bank `0` reads.
+3. Add the cartridge factory.
+   Acceptance criteria: the loader selects `RomOnly`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or explicit `Unsupported` from `0x0147`, and unsupported types produce clear diagnostics.
+4. Close validation and diagnostics policy.
+   Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, and the project exposes a configurable strict-versus-permissive policy.
 
 ---
 
@@ -663,11 +684,13 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 
 - joypad and serial are decoupled from the frontend
 - writing `0x30` to `JOYP` makes the visible low nibble read back as `0xF`
+- `JOYP` bits `7-6` read back high in the current DMG-family baseline instead of mirroring arbitrary storage
 - selecting only one joypad row exposes only that row's buttons in the visible low nibble
 - selecting both joypad rows follows one explicit combined-matrix rule for both readback and interrupt detection rather than an invented row priority
 - joypad interrupt requests are generated only by visible `High -> Low` transitions on `P1` bits `0-3`, and only when the relevant row selection makes that transition visible
 - repeated visible input transitions can request joypad interrupts repeatedly; the model does not assume one interrupt per press
 - `STOP` wake-up is driven from the same joypad/input subsystem path used for hardware-visible input state, not by directly toggling CPU state from the frontend
+- for the current repo DMG-family baseline, `STOP` wake is a selection-independent `released -> pressed` transition on any hardware-facing button, kept distinct from joypad-interrupt visibility rules
 - `SB` changes progressively during active serial transfer instead of remaining frozen until the final byte arrives
 - in DMG master mode, serial transfer advances through `8` internally generated clocks at `8192` Hz and clears `SC.7` only on completion
 - in slave mode, serial transfer does not advance without externally injected clocks and does not time out internally
@@ -680,7 +703,7 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 
 1. **`JOYP` mixed-register baseline**
    Scope: `FF00` row selection, active-low low-nibble readback, and read/write ownership in `joypad/`.
-   Acceptance criteria: `0x30` reads back with low nibble `0xF`; selecting buttons versus directions changes which row is visible; the frontend does not write precomposed `JOYP` bytes directly.
+   Acceptance criteria: `0x30` reads back with low nibble `0xF`, `JOYP` bits `7-6` stay high, selecting buttons versus directions changes which row is visible, and the frontend does not write precomposed `JOYP` bytes directly.
 2. **Internal button-matrix state**
    Scope: one hardware-facing state model for all `8` buttons, separated from frontend host input details.
    Acceptance criteria: any button can be pressed or released without touching MMIO directly, and `JOYP` readback derives from that state plus current row selection.
@@ -689,16 +712,16 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
    Acceptance criteria: the interrupt appears only when the relevant row is selected; multiple visible transitions can request multiple interrupts; joypad does not bypass the shared interrupt controller.
 4. **`STOP` integration**
    Scope: route input-driven wake behavior through the joypad subsystem and CPU `STOP` state interface.
-   Acceptance criteria: a relevant input change can wake `STOP`, and that wake path does not bypass the joypad subsystem.
+   Acceptance criteria: a `released -> pressed` transition on any hardware-facing button can wake `STOP` regardless of current `JOYP` row selection, and that wake path does not bypass the joypad subsystem.
 5. **Focused validation**
    Scope: matrix selection, active-low semantics, simultaneous-row selection, visible-edge IRQ detection, and `STOP` wake behavior.
-   Acceptance criteria: tests cover buttons and d-pad separately, both rows selected, visible `High -> Low` detection, repeated input transitions, and the documented repo `STOP` wake policy.
+   Acceptance criteria: tests cover buttons and d-pad separately, both rows selected, visible `High -> Low` detection, repeated input transitions, and the documented repo policy that `STOP` wake is selection-independent while joypad IRQ generation is still selection-dependent.
 
 #### Serial implementation breakdown
 
 1. **`SB` / `SC` MMIO baseline**
    Scope: `FF01`, `FF02`, ownership in `serial/`, DMG control-bit semantics, and non-functional `SC.1` reservation for future CGB work.
-   Acceptance criteria: `SB` and `SC` have clear serial ownership, `SC.7` means requested-or-in-progress transfer, `SC.0` selects internal versus external clock, and DMG does not expose functional high-speed serial through `SC.1`.
+   Acceptance criteria: `SB` and `SC` have clear serial ownership, `SC.7` means requested-or-in-progress transfer, `SC.0` selects internal versus external clock, DMG does not expose functional high-speed serial through `SC.1`, and the other non-functional DMG `SC` bits read back high through the routed MMIO contract.
 2. **Bit-level master transfer**
    Scope: DMG internal-clock master mode, `8` serial shifts, live `SB` evolution, and completion-driven `SC.7` clear plus IRQ.
    Acceptance criteria: `SB` changes progressively during transfer, the DMG internal clock runs at `8192` Hz on the machine timeline, and transfer completion requests the serial interrupt only after the eighth shift.

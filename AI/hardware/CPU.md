@@ -45,6 +45,7 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - `STOP` should be represented distinctly from `HALT`; even before full DMG/CGB STOP behavior is implemented, the architecture must leave it as a separate CPU control state.
 - The architecture must allow `STOP` to be released by an explicit hardware-originated wake path owned by the relevant subsystem, with joypad as the current DMG-family baseline owner, rather than by a frontend-only shortcut.
 - The CPU must consume that documented subsystem-owned `STOP` wake policy; it must not define a second local wake rule in parallel.
+- For the current repo baseline, the CPU should treat `STOP` wake as the joypad-defined selection-independent button-press wake event, while keeping that wake distinct from any later joypad interrupt service.
 - The `HALT` bug must be represented explicitly as a pending effect on the next opcode fetch rather than flattened into a generic "PC did not increment" shortcut.
 
 ## Execution-model baseline

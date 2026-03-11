@@ -32,6 +32,7 @@ Keep these layers distinct:
 ## `JOYP` contract baseline
 
 - `JOYP` should be implemented as a mixed register, not as a flat stored byte.
+- Bits `7` and `6` should read back as `1` in the current DMG-family baseline rather than mirroring arbitrary stored state.
 - Bits `5` and `4` are the writable row-selection lines: bit `5` selects the button row when written as `0`, and bit `4` selects the d-pad row when written as `0`.
 - The selection bits belong to the register's writable state, while the low input nibble is read-only and derived from the current button matrix state.
 - The low nibble is active-low: a pressed button reads back as `0`.
@@ -54,8 +55,10 @@ Keep these layers distinct:
 
 - The joypad subsystem should be the hardware-facing origin of input-driven CPU wake signaling relevant to `STOP`, rather than letting the frontend or UI wake the CPU by bypassing emulated hardware state.
 - The wake path should derive from the same joypad-owned hardware-facing button state and be documented here as the repo's DMG-family `STOP` wake policy, rather than being inferred from a frontend callback or redefined inside the CPU.
-- If the exact DMG-family electrical wake condition remains under research, that uncertainty should still be expressed here as one explicit repo policy or open question; other docs should not invent a second rule.
+- For the current repo DMG-family baseline, `STOP` wake should occur on a hardware-facing `released -> pressed` transition of any of the `8` buttons, independent of the current `JOYP` row-selection bits.
+- That current wake policy is a repo-level behavioral choice for now, not a claim that every remaining electrical detail of DMG-family `STOP` wake has already been proven.
 - `STOP` wake handling and joypad interrupt generation are related but not identical concerns; keep them explicitly connected through shared joypad state without merging them into one opaque shortcut.
+- Joypad interrupt generation must still follow the stricter visible-`JOYP` `High -> Low` rule after row selection has been applied; `STOP` wake must not be silently treated as equivalent to "joypad interrupt requested".
 
 ## Timing / accuracy requirements
 
@@ -98,6 +101,8 @@ Keep these layers distinct:
 - tests that a button change on an unselected row does not request the interrupt until it becomes visible
 - tests that repeated input transitions can request the interrupt repeatedly rather than being collapsed to one request per press
 - tests that interrupt generation is driven from the same underlying input-state transitions observed through `JOYP`
+- tests that `JOYP` bits `7-6` read back high in the current DMG-family baseline instead of mirroring arbitrary storage
+- tests that the current repo `STOP` wake policy is selection-independent across the `8` hardware-facing buttons while still remaining separate from joypad-interrupt visibility rules
 - tests that the documented repo `STOP` wake policy uses the joypad subsystem path rather than a frontend-only shortcut
 
 ## Implementation notes for this repo
