@@ -127,6 +127,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - cartridge/MBC
 - timer
 - PPU
+- APU
 - model/revision configuration
 
 ## Primary references

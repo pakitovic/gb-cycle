@@ -786,11 +786,30 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Scope: envelope timer-reload semantics where programmed pace or period `0` behaves as `8`, low frequency-timer bits on trigger, first-duty-step-after-power-on behavior, and any remaining documented CH2 trigger/length edge cases.
    Acceptance criteria: quirks are isolated behind explicit channel logic and tests, and CH2 remains architecturally simpler than CH1 because no sweep-specific state or flow leaked into it.
 
+#### CH3 sequencing inside Phase 7
+
+1. Establish CH3 state ownership, MMIO routing, and wave RAM.
+   Scope: CH3-owned `NR30`-`NR34`, explicit channel state, write-only/read-only field policy, and explicit `16`-byte wave RAM ownership.
+   Acceptance criteria: `NR31` and `NR33` remain write-only, `NR34` bit `7` acts as trigger, `NR34` bit `6` acts as immediate length enable, wave RAM is visible through its MMIO path, and wave RAM persists across `NR52` power-off.
+2. Implement CH3 period timer, sample index, and sample buffer.
+   Scope: `11`-bit period value, fast period timer, `32`-sample index progression, buffered sample fetch from wave RAM, and delayed application of period writes.
+   Acceptance criteria: the timer advances once every `2` dots on DMG, the sample index traverses `32` logical samples, buffered output comes from fetched wave-RAM nibbles rather than direct live reads, and period writes take effect only after the next wave-RAM read boundary.
+3. Implement CH3 DAC state and general trigger behavior.
+   Scope: `dac_enabled`, `channel_active`, trigger-time timer/index reload, sample-buffer preservation, and `NR52` bit `2` integration.
+   Acceptance criteria: DAC-off disables CH3 immediately, trigger does nothing if DAC is off, trigger resets the documented timer/index state in one explicit path, retrigger does not clear or refill the sample buffer automatically, and `NR52` bit `2` reflects live CH3 activity.
+4. Integrate CH3 length and output level.
+   Scope: `256`-step length counter, `256` Hz length clock, `NR32` digital attenuation rules, and immediate `NR34` length-enable behavior.
+   Acceptance criteria: length expiry disables CH3, `NR32` mute and shift semantics are correct, `NR32` mute is not confused with DAC-off, and trigger-with-length-0 behavior remains either implemented or isolated as explicit follow-up logic.
+5. Close CH3 quirks, active-wave-RAM policy, and DMG retrigger corruption.
+   Scope: digital-`0` startup state, skipped-first-sample / first-buffer behavior, wave-RAM access policy while active, and DMG-family wave-RAM corruption on retrigger.
+   Acceptance criteria: quirks remain isolated behind explicit CH3 state and tests, active-wave-RAM policy is not hidden behind generic RAM behavior, and retrigger corruption distinguishes the special first-byte overwrite case for reads in bytes `0..=3` from the aligned-`4`-byte block-copy cases for reads in bytes `4..=15`.
+
 #### Done criteria
 
 - each channel is independently verifiable
 - the frame sequencer coordinates the subsystem correctly
 - mixing and DACs are implemented on top of a stable channel base
+- direct-boot audio-visible state is backed by a coherent internal APU phase rather than by a disconnected visible-only snapshot
 - the core does not depend on a concrete frontend audio backend
 
 #### Risks if introduced too early

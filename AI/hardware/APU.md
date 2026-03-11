@@ -321,6 +321,120 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - fast waveform/period timing on the shared T-cycle timeline
   - slow frame-sequencer clocks for length and envelope
 
+## CH3 baseline (wave channel)
+
+- CH3 should be modeled as a distinct wave-channel block rather than as a pulse channel with a replaceable waveform.
+- At minimum, the CH3 state shape should keep explicit fields or equivalent ownership for:
+  - `channel_active`
+  - `dac_enabled`
+  - wave RAM storage
+  - `sample_index`
+  - `sample_buffer`
+  - selected output level
+  - `period_value`
+  - `period_timer`
+  - `length_counter`
+  - `length_enabled`
+- CH3 should explicitly not inherit pulse-only machinery such as duty-step state, envelope state, or CH1 sweep state.
+
+## CH3 MMIO ownership baseline
+
+- `NR30` through `NR34` should remain owned by the CH3 block rather than by a flat APU register bank.
+- `NR30` bit `7` should remain the CH3 DAC-enable control.
+- `NR31` should remain write-only at the MMIO contract layer and should represent the initial length write path rather than a readable live counter.
+- `NR32` should be treated as CH3's digital output-level control, not as an analog mixer-volume knob.
+- `NR33` should remain write-only at the MMIO contract layer.
+- `NR34` bit `7` should remain the trigger input, while bit `6` should remain the length-enable control with immediate write-time effect.
+
+## CH3 wave RAM baseline
+
+- CH3 should own an explicit wave RAM of `16` bytes, exposed through the ordinary wave-RAM MMIO path rather than hidden behind abstract sample storage.
+- That wave RAM should represent `32` logical `4`-bit samples, packed as two nibbles per byte.
+- CH3 sample fetch should consume concrete nibbles from that wave RAM according to the current internal sample index rather than from a pre-expanded abstract wavetable detached from MMIO-visible bytes.
+- Wave RAM should remain accessible under the documented hardware policy when the APU is powered off through `NR52`; it must not be cleared just because ordinary audio registers reset.
+
+## CH3 sample index and sample-buffer baseline
+
+- CH3 should keep an explicit `sample_index` in the range `0..=31`.
+- CH3 should keep an explicit `sample_buffer` separate from wave RAM storage.
+- Each sample-index advance should read the corresponding nibble from wave RAM and load that nibble into the sample buffer.
+- CH3 digital output should come from the buffered sample value, not from a fresh live wave-RAM read at mix time.
+- Retriggering CH3 should not automatically clear or refill the sample buffer; the channel should continue outputting the last buffered sample until the next wave-RAM fetch occurs.
+
+## CH3 startup and first-sample baseline
+
+- After APU power-on, CH3 should begin with its sample buffer at digital `0`.
+- CH3 startup should explicitly reserve the documented first-sample quirk where sample `0` is skipped when first starting the channel and the first post-trigger output is not a naive immediate replay of wave-table sample `0`.
+- A CH3 retrigger should therefore preserve the previously buffered sample until the next internal wave-RAM read occurs rather than forcing an immediate load of wave-table sample `0` or clearing the buffer automatically.
+- Keep this startup quirk as explicit CH3 trigger/sample-fetch follow-up work rather than flattening it into a generic "wave channel begins at sample 0" simplification.
+
+## CH3 period value and timer baseline
+
+- `NR33` plus the low three bits of `NR34` should form CH3's `11`-bit period value.
+- CH3 should keep explicit separation between the period value stored in registers and the in-flight period timer currently timing the next sample fetch.
+- For the current DMG target, the CH3 period timer should be clocked at `2097152` Hz, i.e. once every `2` dots.
+- CH3 should advance its `sample_index` at the channel's sample rate, with the `32`-sample waveform reached by successive wave-RAM fetches rather than pulse-duty stepping.
+- Writes to `NR33` or `NR34` should not change the currently buffered output sample instantly; the new period should take effect only after the next wave-RAM read boundary.
+- Keep a dedicated validation case for CH3 period-write delay rather than burying it inside generic "period changes work" coverage.
+
+## CH3 output-level baseline
+
+- CH3 should not own an envelope unit.
+- `NR32` should act as digital attenuation on the buffered sample value before DAC conversion rather than as analog volume control in the mixer.
+- `NR32 = 00` should mute CH3 digitally.
+- `NR32 = 01` should output the buffered sample unshifted.
+- `NR32 = 10` should output the buffered sample shifted right by `1`.
+- `NR32 = 11` should output the buffered sample shifted right by `2`.
+- Mid-playback writes to `NR32` should remain visible in CH3's resolved digital output immediately enough that mixer/DC-offset/HPF-visible behavior can observe the change.
+
+## CH3 DAC and trigger baseline
+
+- CH3 `dac_enabled` should derive exclusively from `NR30` bit `7`.
+- If the DAC is off, a trigger write to `NR34` must not activate CH3.
+- If a write to `NR30` clears bit `7`, CH3 should be disabled immediately.
+- `channel_active` and `dac_enabled` must remain distinct CH3 states; a DAC-enabled but inactive CH3 should still correspond to digital `0` rather than to "channel off equals DAC off".
+- CH3 trigger should be represented as one explicit operation that performs the channel's trigger-time state transitions rather than as unrelated side effects scattered across MMIO and wave-RAM helpers.
+- On CH3 trigger:
+  - the channel should become active if the DAC is enabled
+  - the period timer should reload from `NR33` / `NR34`
+  - the sample index should reset to the trigger-defined starting position
+  - the effective output level should come from the current `NR32` setting
+  - expired length state should be restored to a valid running state
+- CH3 trigger should not refill the sample buffer automatically from wave RAM.
+
+## CH3 length baseline
+
+- CH3 should keep an explicit `256`-step length counter.
+- That length counter should be clocked only by the frame sequencer's `256` Hz length clock, not by the channel's fast sample timer.
+- `NR34` bit `6` should enable or disable the CH3 length unit immediately on write.
+- If the length counter expires while enabled, CH3 should be disabled.
+- Extra length clocking on `NR34` writes should remain an explicit CH3 work item rather than disappearing behind generic channel code.
+- Keep an explicit CH3 follow-up item for the documented trigger-with-length-0 quirk where the effective reloaded length can become `255` instead of `256` depending on frame-sequencer state.
+
+## CH3 wave RAM access and DMG retrigger-corruption baseline
+
+- CH3 wave-RAM access while the channel is active should remain under an explicit hardware policy rather than being treated as always-free RAM with no side effects.
+- Keep a dedicated CH3 work item for the exact wave-RAM access policy while CH3 is active, even if the first implementation leaves some fine details isolated.
+- Keep a dedicated CH3 DMG-family work item for wave-RAM corruption caused by retriggering CH3 at the exact time of an internal wave-RAM read.
+- That corruption path should stay model-gated to DMG-family behavior rather than leaking automatically into future unaffected models.
+- The corruption decision should depend on the exact internal byte-read position when the retrigger occurs, not on a vague "channel was active" condition.
+- The corruption model should distinguish reads in bytes `0..=3` from reads in bytes `4..=15`.
+- For reads in bytes `0..=3`, the documented special case should overwrite only the first byte of wave RAM with the byte currently being read rather than applying the later aligned-block copy rule.
+- For reads in bytes `4..=15`, the first four bytes of wave RAM should be overwritten from the aligned `4`-byte block documented for the internal source position rather than by an undifferentiated "some data got corrupted" shortcut.
+
+## CH3 active-state integration and timing baseline
+
+- CH3 should be disabled by exactly these ordinary causes:
+  - DAC disable
+  - length expiry
+- CH3 should not invent a shutdown path merely because the buffered sample is `0`, because `NR32` is mute, or because the waveform content looks silent.
+- `NR52` bit `2` should track CH3 activity according to those rules.
+- The mixer should consume CH3's resolved current digital output together with its DAC/active state; it should not reconstruct CH3 output by re-reading `NR30` through `NR34`.
+- CH3 should expose distinct temporal inputs for:
+  - fast sample timing and wave-RAM fetch progression on the shared T-cycle timeline
+  - slow frame-sequencer clocks for length only
+- CH3's resolved digital output should be a function of its internal active state, DAC state, buffered sample, and current `NR32` output level rather than of raw MMIO register rereads at mix time.
+
 ## Timing / accuracy requirements
 
 - Keep channel and frame-sequencer timing visible.
@@ -385,6 +499,13 @@ Priority order:
 - tests that CH2 trigger reloads period/envelope state but does not activate the channel while DAC is off
 - tests for CH2 length expiry, CH2 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
 - dedicated CH2 quirk tests for envelope-timer `0 -> 8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever those behaviors are implemented
+- tests for `NR30`-`NR34` ownership and MMIO semantics, including `NR31` / `NR33` write-only readback policy
+- tests that wave RAM remains accessible and is not cleared by `NR52` power-off
+- tests for CH3 period-timer cadence at one tick every `2` dots, `32`-sample index progression, and sample-buffer reload from wave RAM
+- tests for CH3 period-write delay where `NR33` / `NR34` changes apply only after the next wave-RAM read boundary
+- tests that CH3 trigger reloads timer/index state but does not activate the channel while DAC is off and does not clear or refill the sample buffer automatically
+- tests for CH3 length expiry, `NR32` digital output-level semantics, and the rule that `NR32` mute is not equivalent to DAC-off or channel-off
+- dedicated CH3 quirk tests for digital-`0` startup state, skipped-first-sample / first-buffer behavior, explicit wave-RAM access policy while active, trigger-with-length-0 behavior, and DMG-family retrigger corruption keyed both to the exact byte-read position and to the aligned source block whenever those behaviors are implemented
 
 ## Implementation notes for this repo
 
@@ -407,6 +528,7 @@ Priority order:
 - A channel shape such as `Channel1 { active, dac_enabled, period_value, period_timer, duty, duty_step, length_counter, length_enabled, envelope, sweep }` is a good fit for keeping CH1 readable and testable, even if field names differ.
 - Keep CH1 sweep logic isolated enough that trigger-time setup, timed sweep iterations, overflow checks, and shadow-register behavior can each be tested directly.
 - A sibling shape such as `Channel2 { active, dac_enabled, period_value, period_timer, duty, duty_step, length_counter, length_enabled, envelope }` is a good fit for reusing the pulse-channel base without carrying sweep-only state into CH2.
+- A distinct shape such as `Channel3 { active, dac_enabled, wave_ram, sample_index, sample_buffer, output_level, period_value, period_timer, length_counter, length_enabled }` is a good fit for keeping CH3 separate from pulse-channel assumptions and making wave-RAM fetch behavior directly testable.
 
 ## Known pitfalls
 
@@ -416,6 +538,7 @@ Priority order:
 - confusing `channel_active` with `dac_enabled`
 - letting the frame sequencer drive the channels' main waveform timer instead of only their slow control units
 - modeling `NR50` / `NR51` as stateless mixer knobs and losing HPF/DC-offset consequences
+- treating CH3 as a pulse channel with a custom waveform and thereby losing wave RAM, buffered-sample, output-level, and retrigger-specific behavior
 
 ## Open questions
 

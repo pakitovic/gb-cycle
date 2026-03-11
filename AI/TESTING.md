@@ -94,6 +94,10 @@ Include CH2 tests for `NR21`-`NR24` ownership, `NR23` write-only behavior, and i
 Include CH2 tests for period timer cadence, duty-step progression, retrigger-not-resetting-duty-step behavior, and period-write delay until the current sample ends.
 Include CH2 tests for DAC-off behavior, length expiry, envelope progression, and the rule that envelope volume reaching `0` does not disable the channel.
 Include dedicated CH2 quirk tests for envelope timer-reload semantics where programmed pace or period `0` behaves as `8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever suitable tests exist.
+Include CH3 tests for `NR30`-`NR34` ownership, `NR31`/`NR33` write-only behavior, and wave RAM persistence across `NR52` power-off.
+Include CH3 tests for period timer cadence at one tick every `2` dots, `32`-sample index progression, buffered sample fetch from wave RAM, and period-write delay until after the next wave-RAM read.
+Include CH3 tests for DAC-off behavior, trigger-not-refilling-the-sample-buffer behavior, length expiry, and `NR32` digital output-level semantics distinct from DAC-off or analog mixer volume.
+Include dedicated CH3 quirk tests for digital-`0` startup state, skipped-first-sample / first-buffer behavior, active-channel wave-RAM access policy, trigger-with-length-0 behavior, and DMG-family retrigger corruption keyed both to the exact byte-read position and to the affected aligned source block whenever suitable tests exist.
 
 ## Recommended external validation sources
 
