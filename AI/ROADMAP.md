@@ -267,9 +267,10 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 
 - central header parser over `0x0100-0x014F`
 - strongly typed cartridge metadata including `entry_point`, `cgb_flag`, `sgb_flag`, `cartridge_type`, `rom_size_code`, and `ram_size_code`
-- base cartridge interface for ROM-only and later MBC-backed devices
+- base cartridge interface for the No MBC family and later MBC-backed devices
+- `No MBC` as the first closed reference cartridge rather than a generic fallback path
 - cartridge integration with the bus
-- central cartridge factory that selects `RomOnly`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or explicit `Unsupported` from `0x0147`
+- central cartridge factory that selects `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or explicit `Unsupported` from `0x0147`
 - explicit validation of declared ROM/RAM metadata against the loaded image with a configurable policy
 - clean separation between bus logic and cartridge-specific logic
 
@@ -298,7 +299,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - every MMIO address in `0xFF00-0xFF7F` and `0xFFFF` has an explicit routed owner and contract rather than accidental default byte-storage behavior
 - mixed MMIO registers are represented as per-field contracts rather than as plain read/write bytes plus a coarse mask
 - the cartridge subsystem parses `0x0100-0x014F` into a typed header structure and preserves CGB/SGB compatibility flags for later work
-- a functional ROM-only cartridge exists
+- a functional No MBC cartridge family exists as the first closed reference cartridge, covering `0x00`, `0x08`, `0x09`, linear `32 KiB` ROM, optional linear `8 KiB` RAM, and ignored ROM-space writes with no hidden bank state
 - cartridge implementation selection comes from `0x0147` rather than from ROM-size heuristics
 - declared ROM size and RAM size are validated explicitly instead of being trusted silently
 - the bus can access `0x0000-0x7FFF` and `0xA000-0xBFFF` through a base cartridge interface without knowing which MBC is active
@@ -347,9 +348,24 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
 2. Define the base cartridge interface.
    Acceptance criteria: the bus can read `0x0000-0x7FFF` and `0xA000-0xBFFF` without knowing the active MBC, ROM-space writes route to cartridge commands, and header bytes remain visible through ordinary ROM bank `0` reads.
 3. Add the cartridge factory.
-   Acceptance criteria: the loader selects `RomOnly`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or explicit `Unsupported` from `0x0147`, and unsupported types produce clear diagnostics.
+   Acceptance criteria: the loader selects `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or explicit `Unsupported` from `0x0147`, and unsupported types produce clear diagnostics.
 4. Close validation and diagnostics policy.
    Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, and the project exposes a configurable strict-versus-permissive policy.
+
+##### No MBC milestone
+
+1. Construct `NoMbcCartridge`.
+   Acceptance criteria: the loader recognizes `0x00`, `0x08`, and `0x09` as the No MBC family; `0x00` builds without external RAM; `0x08` and `0x09` build with optional `8 KiB` RAM and preserve the raw type plus battery distinction for diagnostics and persistence policy.
+2. Close fixed ROM reads.
+   Acceptance criteria: `0x0000-0x7FFF` reads are linear and bankless, `0x0100-0x014F` plus the entry point stay visible through ordinary cartridge reads, and boot-ROM overlay still belongs to the bus mapping layer on the shared T-cycle timeline.
+3. Close ROM-space write policy.
+   Acceptance criteria: writes to `0x0000-0x7FFF` are still delegated through the cartridge interface as ordered T-cycle accesses, but `NoMbcCartridge` ignores them with no side effects and no fake ROM mutation.
+4. Add optional external RAM.
+   Acceptance criteria: `0xA000-0xBFFF` is either explicit "RAM absent" behavior or one linear `8 KiB` RAM window; there is no RAM enable, no RAM banking, no RTC, and battery only changes persistence policy.
+5. Harden validation and diagnostics.
+   Acceptance criteria: No MBC expects `32 KiB` ROM and at most `8 KiB` RAM, inconsistent headers report declared type, declared ROM size, declared RAM size, and actual file size, `0x08` and `0x09` may warn as rare but are not rejected solely for rarity, and strict/permissive/test modes remain configurable.
+6. Close integration coverage.
+   Acceptance criteria: skip-boot and post-`FF50` mapping tests use No MBC as the first closed cartridge baseline in this phase; once Phase 2 real-boot execution exists, the first real-boot cartridge coverage also lands on No MBC before any MBC-dependent validation.
 
 ---
 
@@ -737,17 +753,17 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 
 ---
 
-### Phase 6 — Real cartridges
+### Phase 6 — Banked cartridges and persistence
 
 25. **MBC1**
 26. **MBC2**
 27. **MBC3**
 28. **MBC5**
-29. **External RAM, battery, RTC, persistence**
+29. **Banked external RAM, battery, RTC, persistence**
 
 #### Goal
 
-Extend `cartridge/` from ROM-only to real commercial cartridge support without contaminating the rest of the core.
+Extend `cartridge/` from the closed No MBC baseline to banked commercial cartridge families and generalized cartridge-local persistence without contaminating the rest of the core.
 
 #### Modules involved
 
@@ -763,7 +779,7 @@ Extend `cartridge/` from ROM-only to real commercial cartridge support without c
 - banking support for MBC2
 - banking and RTC support for MBC3
 - banking support for MBC5
-- functional external RAM
+- functional mapper-controlled external RAM beyond the No MBC linear baseline
 - portable persistence boundaries across frontends and tools
 - clear separation between emulation logic and host storage APIs
 
@@ -984,7 +1000,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 26. MBC2  
 27. MBC3  
 28. MBC5  
-29. External RAM, battery, RTC, persistence  
+29. Banked external RAM, battery, RTC, persistence  
 
 30. General APU architecture
 31. APU frame sequencer
@@ -1034,7 +1050,7 @@ Suggested entry style:
 
 - None currently.
 
-### Phase 6 — Real cartridges
+### Phase 6 — Banked cartridges and persistence
 
 - None currently.
 

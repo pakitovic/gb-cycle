@@ -46,12 +46,13 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 - Byte `0x0147` is the source of truth for selecting the cartridge implementation.
 - The first stable taxonomy for this repo should distinguish at least:
-  - `RomOnly`
+  - `NoMbc`
   - `Mbc1`
   - `Mbc2`
   - `Mbc3`
   - `Mbc5`
   - `Unsupported` or `Other`
+- `NoMbc` should be the non-banked family covering header codes `0x00`, `0x08`, and `0x09`, while preserving the raw header type for RAM/battery distinctions and diagnostics.
 - The cartridge type must drive more than bank switching. It also defines whether the cartridge has external RAM, battery-backed save state, RTC, rumble, or other mapper-local hardware.
 - Less common types such as `MMM01`, `MBC6`, `MBC7`, `HuC1`, `HuC3`, camera, or sensor cartridges may begin life as `Unsupported`, but they should remain explicitly identified rather than silently coerced into a nearby supported mapper.
 
@@ -94,14 +95,38 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Validation should follow an explicit project policy such as `Strict`, `PermissiveWithWarning`, or `TestMode`.
 - Unsupported or inconsistent cartridges should produce explicit diagnostics rather than a silent fallback mapper choice.
 
+## No MBC family baseline
+
+- Treat No MBC as the first closed cartridge implementation for this repo, not as a generic "no mapper" fallback path.
+- This baseline should be the first reference cartridge used to validate bus decode, boot-ROM overlay and `FF50` handoff, header visibility, optional external RAM, and ROM-space write policy before `MBC1` work begins.
+- Header codes `0x00`, `0x08`, and `0x09` should be recognized explicitly as the `NoMbc` family.
+- `0x00` means ROM-only with no external RAM, `0x08` means ROM + RAM, and `0x09` means ROM + RAM + battery.
+- `0x08` and `0x09` are rare and not well documented in licensed cartridges, but rarity is not grounds to reject them automatically; keep the raw type visible for diagnostics while instantiating the same no-banking family.
+- For No MBC, the normal documented expectation is `0x0148 = 0x00`, meaning `32 KiB` total ROM with `2` visible `16 KiB` regions and no bank switching.
+- If the header declares No MBC while `0x0148` or the real file size imply something other than `32 KiB`, emit an explicit diagnostic under the project's validation policy instead of silently coercing the image into another mapper.
+- For `0x0147 = 0x00`, the expected `0x0149` value is `0x00`.
+- For `0x0147 = 0x08` or `0x09`, the supported No MBC RAM case is `0x0149 = 0x02`, meaning one linear `8 KiB` external RAM window.
+- If a No MBC header declares more than `8 KiB` of RAM or any banked-RAM expectation, report it as inconsistent or unsupported explicitly.
+- At runtime, `0x0000-0x7FFF` reads should be linear ROM reads with no active bank state, subject only to boot-ROM overlay in the bus.
+- The header bytes at `0x0100-0x014F` and the entry point at `0x0100` must come from that same cartridge device through ordinary reads after boot-ROM handoff.
+- Writes to `0x0000-0x7FFF` remain routed to the cartridge on the shared T-cycle timeline, but No MBC should treat them as ignored writes with no side effects and no fake ROM mutation.
+- `0xA000-0xBFFF` is either absent or one linear `8 KiB` RAM window; there is no RAM enable, no RAM banking, no RTC, no rumble, no sensor, and no creative pseudo-mapper behavior in this family.
+- When No MBC has no external RAM, the `0xA000-0xBFFF` behavior should follow an explicit project policy for "RAM absent" rather than accidentally reading from zero-initialized backing storage.
+- Battery presence changes only persistence expectations. Runtime mapping and live bus behavior stay the same for `0x08` versus `0x09`.
+- Persistence belongs to the cartridge/save boundary, not to the bus.
+- A concrete `NoMbcCartridge` is the intended implementation shape for this family.
+- It should contain at least `rom: Vec<u8>`, `ram: Option<Vec<u8>>`, `has_battery: bool`, and `header: CartridgeHeader`.
+- It should not carry `active_rom_bank`, `active_ram_bank`, RAM-enable latches, or similar mutable mapper state because No MBC has none.
+
 ## Timing / accuracy requirements
 
 - Access behavior must remain compatible with bus ordering.
-- Architecture should scale from ROM-only to MBC1, MBC3, MBC5, and later extensions.
+- Architecture should scale from the No MBC family to MBC1, MBC3, MBC5, and later extensions.
 - Direct-boot initialization should not assume external RAM starts clean unless that follows from persisted save data or an explicit uninitialized-memory policy.
 - Writes in ROM address space should be interpreted as cartridge/MBC control behavior where applicable, not as attempts to mutate ROM contents.
 - Cartridge-visible reads and writes should remain ordinary bus transactions on the shared T-cycle timeline; mapper side effects must occur in access order rather than in a deferred per-instruction batch.
 - Header parsing is configuration work at load time, but runtime visibility of header bytes at `0x0100-0x014F` must still emerge from normal ROM bank `0` reads after boot-ROM handoff.
+- For No MBC specifically, linear ROM reads, ignored ROM-space writes, and optional external-RAM accesses should still happen through the same ordered T-cycle cartridge transactions rather than through a bus-local fast path.
 
 ## Dependencies
 
@@ -130,6 +155,11 @@ Priority order:
 - tests for standard `0x0148` ROM-size decoding and explicit handling of `0x52`, `0x53`, and `0x54`
 - tests for `0x0149` RAM-size decoding, including the `MBC2` special case where internal RAM is not described by the ordinary RAM-size table
 - tests for explicit diagnostics on unknown cartridge types and size mismatches
+- explicit No MBC tests for `0x00`, `0x08`, and `0x09`, including warning-only handling for rare RAM variants
+- tests that No MBC enforces or diagnoses `32 KiB` ROM and at most linear `8 KiB` RAM instead of silently accepting banked expectations
+- tests that No MBC `0x0000-0x7FFF` reads are linear and bankless, and that `0x0100-0x014F` remains visible through ordinary reads after boot handoff
+- tests that No MBC ROM-space writes are ignored without mutating ROM or mapper state, while still traveling through the normal cartridge command path
+- tests that No MBC `0xA000-0xBFFF` behavior distinguishes absent RAM from present linear `8 KiB` RAM and that battery only changes persistence policy
 - mapper-specific ROM tests
 - save RAM behavior tests
 - RTC behavior tests when implemented
@@ -144,23 +174,28 @@ Priority order:
 - Keep `0x0147`, `0x0148`, and `0x0149` decoding centralized in the cartridge loader instead of reinterpreting them inside the bus, boot code, or frontends.
 - Preserve `cgb_flag` and `sgb_flag` now even if the current core is still DMG-only.
 - A `CartridgeKind` plus device factory is a good fit for early bring-up, as long as unsupported raw type codes remain reportable.
+- Model No MBC as its own concrete device, not as a generic blob-reader fallback.
 - Keep mapper traits or enums narrow and explicit.
 - Avoid hard-coding cartridge logic into generic bus code.
 - Treat external RAM power-up contents as separate from deterministic post-boot CPU/MMIO state; if the emulator chooses a direct-boot initialization policy, keep it explicit and configurable.
+- Keep No MBC absent-RAM behavior under an explicit and configurable policy instead of accidental zero-backed memory.
 - Keep active-ROM-bank selection, RAM enable, RAM banking, RTC mapping, and any bank-wrap quirks inside cartridge/MBC implementations rather than generic bus region logic.
 - Keep header validation policy explicit and centralized rather than hiding it inside individual mapper constructors.
 
 ## Known pitfalls
 
 - treating the cartridge as a raw ROM blob with ad hoc mapper `if` statements
+- treating No MBC as too trivial to deserve a real cartridge device
 - leaking mapper knowledge into unrelated modules
 - under-designing the cartridge boundary so later MBCs become invasive
 - silently zeroing cartridge RAM during direct boot and then treating that as hardware-accurate startup behavior
 - teaching the generic bus how a specific MBC banks ROM or RAM instead of delegating that behavior to the cartridge subsystem
 - inferring the mapper from ROM size or other heuristics instead of using `0x0147`
+- adding fake active-bank or latch state to No MBC
 - using `0x0149` alone to decide whether external RAM exists
 - modeling `MBC2` RAM as if it were ordinary banked SRAM
 - dropping `cgb_flag` or `sgb_flag` because they are not immediately used by the DMG baseline
+- silently accepting No MBC headers that declare more than `32 KiB` ROM or more than `8 KiB` RAM without diagnostics
 - silently coercing unsupported or inconsistent headers into a nearby supported configuration
 
 ## Open questions
