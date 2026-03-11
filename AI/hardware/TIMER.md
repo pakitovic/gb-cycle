@@ -47,6 +47,16 @@ The source of truth should be an internal `16`-bit system counter advanced by th
 - `TIMA`, `TMA`, and `TAC` should not duplicate timer logic in the bus or CPU; their observable behavior must come from timer-owned state transitions.
 - `TAC` writes must be able to trigger the documented one-step TIMA increment glitch when the effective timer signal changes accordingly.
 
+## Shared divider contract with the APU
+
+- The timer should remain the owner of the shared system-counter / divider state from which visible `DIV` is derived.
+- The APU frame sequencer should derive its `DIV-APU` tick source from that same divider timeline rather than maintaining a second unrelated free-running divider.
+- For the current DMG target, the relevant APU control-clock source is the falling edge of visible-`DIV` bit `4`.
+- A write to `DIV` can therefore matter to both subsystems:
+  - timer glitch behavior through the effective TIMA signal
+  - APU frame-sequencer advancement if the reset produces the documented falling edge seen by `DIV-APU`
+- Keep the ownership split explicit: timer owns `DIV` and the shared counter; APU owns `div_apu`, frame-sequencer phase, and the downstream sound clocks.
+
 ## Timing / accuracy requirements
 
 - Explain edges, glitches, and event ordering explicitly.
@@ -56,6 +66,7 @@ The source of truth should be an internal `16`-bit system counter advanced by th
 - The internal timer system counter must advance at `1` step per T-cycle on that shared timeline.
 - Keep `DIV`, `TIMA`, and `TAC` coupled through the internal counter and edge logic; do not split them into desynchronized derived counters.
 - A write to `DIV` can cause an immediate TIMA increment when it changes the effective timer signal through the relevant falling edge.
+- The same `DIV` reset event should remain observable enough for the APU to see whether the `DIV-APU` source edge occurred on that T-cycle.
 - A write to `TAC` must reevaluate both the selected counter bit and the enable contribution; TAC writes can therefore trigger the timer glitch behavior and immediate TIMA increment in the relevant cases.
 - TIMA overflow must enter an explicit pending/reload sequence before `TMA` is copied and the timer interrupt is requested.
 - Writes to `TIMA` and `TMA` near overflow/reload must be modeled against that internal overflow state machine rather than as unconditional register stores.
@@ -104,6 +115,7 @@ Priority order:
 - Keep timer state highly testable.
 - Make the source of each timing decision visible in comments or docs.
 - Prefer a source-of-truth shape like `system_counter`, `tima`, `tma`, `tac`, `previous_timer_signal`, and an explicit overflow state machine, even if field names differ.
+- Expose enough divider-edge information or shared-counter state that the APU can derive `DIV-APU` from the same source instead of cloning timer logic in parallel.
 - A pure helper such as `selected_timer_bit(tac)` is a good fit for frequency selection logic.
 - `tick()`, `read()`, and `write()` should all be aware of the timer's internal temporal state; register writes are not simple blind setters in the precise model.
 - The timer should request its interrupt through the global interrupt controller path, not by mutating unrelated CPU or bus flags ad hoc.

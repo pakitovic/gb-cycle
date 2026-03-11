@@ -100,6 +100,7 @@ Priority order:
 - The boot subsystem and bus should already treat boot-ROM mapping as model-aware routing state so future CGB split boot-ROM windows can extend the same abstraction while preserving cartridge-header visibility around `0x0100-0x014F`.
 - The DMG OAM DMA implementation should already live inside a reusable DMA subsystem contract so future CGB OAM DMA timing differences, GDMA, and HDMA can extend the same infrastructure.
 - The DMG timer implementation should already be expressed in terms of an internal counter plus derived edge logic so future CGB clocking changes can extend the same model rather than replace it.
+- The DMG APU implementation should already derive `DIV-APU` / frame-sequencer timing from the shared divider timeline so future CGB double-speed audio timing can extend the same ownership split rather than introducing a second audio clock model.
 - The DMG-family OAM corruption bug should stay behind an explicit model gate so future CGB, AGB, AGS, and GBP support can keep the documented non-bugged behavior.
 - In DMG mode before functional CGB support exists, CGB-only MMIO reads should already return the correct non-CGB fallback value of `0xFF` instead of emulator-invented placeholders.
 - In DMG mode before functional CGB support exists, CGB-only MMIO writes should already be handled explicitly rather than falling through to fake storage.
@@ -115,6 +116,7 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 - VRAM bank 1 behavior
 - WRAM banks 2-7
 - `KEY1` and double speed behavior
+- APU `DIV-APU` / frame-sequencer behavior under CGB double speed
 - timer behavior under CGB double-speed timing
 - CGB OAM DMA duration differences in double speed
 - HDMA and GDMA

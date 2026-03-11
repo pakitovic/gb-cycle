@@ -79,6 +79,12 @@ For bus behavior, include blocked-access cases, boot ROM remapping, next-fetch b
 Include direct-boot routing checks that verify boot ROM is already unmapped, the ordinary cartridge ROM map is visible again across `0x0000-0x7FFF`, and DMG-mode reads of CGB-only registers return `0xFF` whenever suitable tests exist.
 Include region-contract tests for fixed ROM, switchable ROM, VRAM, cartridge external space, WRAM, echo RAM, OAM, unusable space, MMIO, HRAM, and `IE`, including aliasing, blocked-access semantics, and ownership-by-device whenever suitable tests exist.
 For DMA behavior, include `FF46` source-page selection, full `160`-byte copy correctness, DMG total duration of `640` dots, transfer-progress timing, CPU blocking outside HRAM, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
+For APU behavior, include tests that `NR52` power-off clears ordinary audio registers, preserves wave RAM accessibility, and does not reset the `DIV-APU` source relationship whenever suitable tests exist.
+Include tests that `DIV-APU` advances from the falling edge of `DIV` bit `4`, including `DIV`-write-induced extra ticks when the edge is produced.
+Include tests that the frame sequencer clocks length, envelope, and CH1 sweep without becoming the waveform timer for the channels themselves.
+Include tests that `dac_enabled` and `channel_active` stay distinct, that DAC-off forces channel-off, and that `NR52` reports active channels rather than DAC-enabled channels.
+Include tests that `NRx4` trigger writes act immediately on the shared timeline and do not activate a channel whose DAC is off.
+Include tests for `NR51` stereo routing, `NR50` master-volume semantics including the documented "0 behaves like factor 1" rule, and HPF/DC-offset-sensitive mixer state changes whenever suitable tests exist.
 
 ## Recommended external validation sources
 

@@ -97,7 +97,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - Timer: DIV/TIMA/TMA/TAC behavior and edge-sensitive increment logic
 - PPU: LCD modes, fetcher/FIFO behavior, rendering state, VRAM/OAM restrictions, Mode 2 OAM-scan row state, and DMG-family OAM corruption behavior
 - DMA: OAM DMA and future HDMA scheduling and blocking rules
-- APU: internal channel/frame-sequencer state only, not output backends
+- APU: per-channel digital generation, DAC state, frame-sequencer / `DIV-APU`, channel-active state, mixing / HPF state, and host-export boundary, but not output backends
 - Joypad and serial: hardware-visible registers and signaling
 - Cartridge and MBC: ROM/RAM banking, RTC, rumble, and mapper-specific behavior
 - Boot ROM and model config: power-up state, revision differences, direct-boot setup
@@ -207,10 +207,15 @@ to immediately materialize as a separate directory.
 ### `apu/`
 
 - global audio architecture
+- `NR50`, `NR51`, and `NR52` ownership
 - channel state machines
+- per-channel digital output, DAC-enable state, and active-state tracking
 - frame sequencer
+- `DIV-APU` ownership derived from the shared divider timeline
 - mixing logic
 - DAC and output-facing emulated state
+- stereo master-volume and HPF state
+- host-facing sample/export boundary kept separate from hardware stepping
 
 ### `debugger/`
 
@@ -241,6 +246,7 @@ to immediately materialize as a separate directory.
 - The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
 - The PPU also owns the live Mode `2` OAM-row state and the DMG-family OAM corruption formulas, while the bus routes relevant access attempts and the CPU exposes the micro-events needed to classify IDU-driven triggers.
 - The interrupt controller owns `IF`/`IE` register state and pending-request bookkeeping, while the CPU owns `IME`, `halted`, `stopped`, and the final decision to accept and service an interrupt.
+- The timer owns the shared divider/system-counter state and visible `DIV`, while the APU owns `DIV-APU`, frame-sequencer state, channel-active state, DAC state, mixer state, and HPF state derived from that shared timing source.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
 - The bus owns address decode and MMIO dispatch, but the device that owns a register must own its read, write, and side-effect semantics.
 - MMIO metadata should be centralized enough that readable bits, writable bits, dynamic bits, reserved bits, and model-specific availability are not re-declared ad hoc in several modules.

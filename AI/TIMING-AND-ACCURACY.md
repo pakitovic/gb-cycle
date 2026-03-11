@@ -65,3 +65,7 @@ When implementing timing:
 - Read or write side effects triggered by MMIO, such as `DIV` reset, `LCDC.7` LCD enable changes, `FF46` DMA start, `FF50` boot-ROM unmapping, `SC.7` transfer control, or `NRx4` channel triggers, should occur on the access T-cycle unless hardware evidence says otherwise.
 - Reads of dynamic MMIO state such as `LY`, `STAT` mode bits, interrupt flags, in-progress serial state, or APU channel-status bits should observe the live hardware state at the instant of the read.
 - If hardware truly defers an MMIO-visible effect, model that deferral explicitly as timed state rather than as an informal "apply MMIO side effects later" queue.
+- For the APU specifically, internal channel state, `DIV-APU`, frame-sequencer phase, mixer-visible DAC state, and HPF state should advance on that shared T-cycle timeline rather than on host audio callback cadence.
+- The APU frame sequencer should derive its slow control clock from the same shared divider timeline as `DIV`; for the current DMG target, that means reacting to the falling edge of `DIV` bit `4`, including `DIV`-write-induced extra ticks when the edge occurs.
+- Slow APU control clocks such as length, envelope, and CH1 sweep must remain distinct from each channel's own fast waveform timer and from the host sample or resampler cadence.
+- Host-rate sample production should observe already-stepped hardware state; it must not become the clock that drives the APU core.

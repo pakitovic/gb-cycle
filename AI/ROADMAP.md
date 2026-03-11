@@ -695,11 +695,11 @@ Extend `cartridge/` from ROM-only to real commercial cartridge support without c
 ### Phase 7 — Audio
 
 30. **General APU architecture**
-31. **APU channel 1**
-32. **APU channel 2**
-33. **APU channel 3**
-34. **APU channel 4**
-35. **APU frame sequencer**
+31. **APU frame sequencer**
+32. **APU channel 1**
+33. **APU channel 2**
+34. **APU channel 3**
+35. **APU channel 4**
 36. **Mixing, output, DACs, power control, and audio edge cases**
 
 #### Goal
@@ -724,6 +724,27 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 - power control
 - audio edge cases
 - clean interface between `gb-core` and frontend audio adapters
+
+#### Base APU / frame sequencer sequencing inside Phase 7
+
+1. Establish the master APU skeleton.
+   Scope: `Apu` ownership of `NR50`, `NR51`, `NR52`, powered state, left/right internal outputs, and placeholder HPF state.
+   Acceptance criteria: `NR52` power on/off behavior is centralized, wave RAM remains outside the ordinary power-reset path, and the live low `NR52` bits already represent channel-active state rather than DAC-enabled state.
+2. Integrate `DIV-APU` / frame-sequencer timing.
+   Scope: derive `div_apu` from the shared divider timeline, using the current DMG falling-edge source on `DIV` bit `4`, and emit slow clocks for length, CH1 sweep, and envelope.
+   Acceptance criteria: writes to `DIV` can produce the documented extra frame-sequencer tick when the edge occurs, and the APU slow clocks remain derived from the same divider source as visible `DIV`.
+3. Separate DAC state from channel-active state and centralize trigger behavior.
+   Scope: explicit `dac_enabled` versus `channel_active`, shared trigger handling from `NRx4` bit `7`, and DAC-off forcing channel-off.
+   Acceptance criteria: triggers do not activate channels whose DAC is off, DAC-disable can deactivate a live channel immediately, and `NR52` reports live active channels rather than DAC-enabled channels.
+4. Build the base stereo mixer.
+   Scope: per-channel routing through `NR51`, left/right master-volume scaling through `NR50`, and internal left/right analog-output accumulation.
+   Acceptance criteria: stereo routing is correct, `NR50` follows the documented "0 means factor 1, 7 means factor 8" behavior, and the architecture does not confuse master volume with mute.
+5. Add the output HPF layer.
+   Scope: left/right HPF state in the analog-output path after mixing and master-volume scaling.
+   Acceptance criteria: the pipeline has an explicit place for DC-offset and pop-sensitive behavior, and HPF presence no longer depends on frontend audio code.
+6. Prepare the channel blocks without collapsing the timing model.
+   Scope: stable hooks for CH1-CH4 slow clocks and fast timers, plus follow-up placeholders for channel-specific quirks and edge cases.
+   Acceptance criteria: each channel can later receive its own waveform timer without changing the master frame-sequencer architecture, and known follow-up work such as extra length clocking, CH3 wave-RAM quirks, and envelope zombie-mode remains explicitly tracked rather than implicit.
 
 #### Done criteria
 
@@ -777,13 +798,13 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 28. MBC5  
 29. External RAM, battery, RTC, persistence  
 
-30. General APU architecture  
-31. APU channel 1  
-32. APU channel 2  
-33. APU channel 3  
-34. APU channel 4  
-35. APU frame sequencer  
-36. Mixing, output, DACs, power control, and audio edge cases  
+30. General APU architecture
+31. APU frame sequencer
+32. APU channel 1
+33. APU channel 2
+34. APU channel 3
+35. APU channel 4
+36. Mixing, output, DACs, power control, and audio edge cases
 
 ---
 
