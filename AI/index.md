@@ -12,6 +12,21 @@ Read the matching file directly; this index is only a routing guide.
 - `TESTING.md`: unit, integration, ROM-based, and oracle-comparison strategy.
 - `TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
 
+## Authority map
+
+- `ARCHITECTURE.md` owns crate/module layout, subsystem boundaries, and ownership rules.
+- `TIMING-AND-ACCURACY.md` owns shared timing vocabulary and project-wide temporal constraints.
+- `TESTING.md` owns project-wide validation policy and cross-subsystem testing expectations.
+- `ROADMAP.md` owns implementation sequencing, phase context, and carried TODOs; it does not redefine subsystem behavior.
+- `hardware/*.md` own subsystem-specific behavior, MMIO semantics, timing expectations, and subsystem-specific validation detail.
+
+When guidance overlaps, the more specific document wins:
+
+- `hardware/*.md` over generic docs for subsystem behavior
+- `ARCHITECTURE.md` over `README.md` or roadmap prose for layout and ownership
+- `TESTING.md` over roadmap prose for generic validation policy
+- `ROADMAP.md` only for implementation order and remaining work tracking
+
 Subsystem handbooks may refine the generic reference consultation order from `REFERENCES.md` when a specific subsystem has a stronger oracle.
 
 The project-wide timing baseline is T-cycle based; see `TIMING-AND-ACCURACY.md` and `hardware/CPU.md`.

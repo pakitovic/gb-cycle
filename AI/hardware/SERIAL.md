@@ -2,41 +2,101 @@
 
 ## Scope
 
-Own serial transfer registers, clocking behavior, and link-port-visible state. Do not own host networking or transport APIs.
+Own serial transfer registers, bit-level transfer state, clocking behavior, link-port-visible state, and the boundary to any external peer or cable model. Do not own host networking or transport APIs.
 
 ## Hardware model
 
 Keep hardware serial state explicit even if link support is stubbed initially.
+Model the serial port as a peripheral that shifts one bit per serial clock rather than as an atomic byte send/receive helper.
+Keep these concerns distinct:
+
+- the outgoing byte currently staged for transmission
+- the incoming bits accumulated so far
+- how many bits have been shifted in the current transfer
+- whether transfer has been requested versus whether it is actively advancing
+- whether the clock source is internal or external
+- whether a peer or cable endpoint is connected, disconnected, looped back, or script-driven
 
 ## Responsibilities
 
 - `SB` and `SC` behavior
 - transfer progress state
+- bit-level shifting state and clocking
+- peer or link-endpoint boundary
 - interrupt signaling at transfer completion
 
 ## Registers / MMIO
 
-- `SB`
-- `SC`
+- `SB` at `FF01`
+- `SC` at `FF02`
 
 ## Serial MMIO contract baseline
 
 - `SB` and `SC` should remain owned by the serial subsystem rather than by a generic MMIO array.
-- `SC.7` should express transfer requested / transfer in progress semantics, not a decorative latched bit.
-- `SC.0` should select internal versus external clock semantics, and CGB-only speed-control bits should not act functional in DMG mode before that behavior is implemented.
-- Transfer completion should clear `SC.7` and request the serial interrupt through the interrupt controller.
+- `SB` should hold the next outgoing byte before transfer start, and during an active transfer it should reflect the live shifted state rather than staying frozen until completion.
+- `SC` should remain a mixed register in the architectural sense: writable control bits plus model-dependent readback policy for non-functional fields.
+- `SC.7` should express transfer requested / transfer in progress semantics, not a decorative latched bit or a "transfer finished" flag.
+- `SC.0` should select internal versus external clock semantics.
+- In DMG mode, `SC.1` should not expose functional high-speed behavior; keep that bit reserved for future CGB extension rather than activating undocumented DMG behavior.
+- In DMG mode, `SC.0 = 1` means master mode with internal clock, while `SC.0 = 0` means slave mode waiting for external clock pulses.
+- Writing `SC.7 = 1` must arm or start a transfer, but it must not complete the transfer instantly; completion still requires `8` serial clock edges.
 - When serial transfer is modeled with shifting precision, `SB` reads during an active transfer should be able to reflect the in-progress shifted value rather than a frozen pre-transfer byte.
+
+## Bit-shift transfer baseline
+
+- The serial controller should keep explicit transfer state such as staged outgoing data, incoming data in progress, bits shifted so far, and whether transfer is merely requested or actively advancing.
+- On each serial clock, one bit should leave from the MSB side of the outgoing shift path and one incoming bit should enter on the LSB side.
+- `SB` should therefore evolve during the transfer as the shift register content changes bit by bit.
+- After the eighth shift, `SB` should contain the fully received byte.
+- If a connected peer has not loaded a new outgoing byte before the next transfer begins, the peer side should be able to resend whatever byte it still had staged; the controller should not assume every transfer starts with a freshly provided peer byte.
+
+## Master and slave clock baseline
+
+- In DMG master mode, starting a transfer with `SC.7 = 1` and `SC.0 = 1` should cause the serial subsystem to generate `8` internal serial clock pulses.
+- For the current DMG target, the internal serial clock rate should be `8192` Hz.
+- In slave mode with `SC.0 = 0`, arming the port with `SC.7 = 1` should not advance transfer progress on its own.
+- In slave mode, transfer progress should occur only when external clock pulses are delivered through the peer or link-endpoint boundary.
+- External serial clocks should remain allowed to arrive at non-uniform intervals; do not hard-code a fixed cadence for slave-mode progress.
+- If no external clock pulses arrive in slave mode, the transfer should remain pending indefinitely rather than timing out inside the emulation core.
+
+## Peer / link-endpoint boundary baseline
+
+- The serial core should remain separate from whatever lives on the other side of the cable.
+- Use an explicit peer or link-endpoint abstraction for incoming bits, external clock pulses, and disconnected-state behavior.
+- The serial controller must not assume a second emulated Game Boy is always connected.
+- The peer boundary should support at least:
+  - disconnected state
+  - loopback or echo-style testing
+  - scripted or deterministic test peers
+  - future real emulator-to-emulator or transport-backed peers
+- Frontends and tools should not write received bytes directly into `SB`; they should interact through the peer or link-endpoint abstraction.
+
+## Disconnected-cable baseline
+
+- The design should support an explicit disconnected peer state.
+- For the current DMG-focused scope, a stable disconnected input should read as logical `1` on incoming bits, causing received bytes in master mode to tend toward `0xFF`.
+- Do not treat disconnected behavior as proof that every historical analog edge case is already modeled; keep any finer analog disconnect transition behavior out of the initial DMG scope unless later evidence requires it.
+
+## Serial interrupt baseline
+
+- Serial interrupt request should happen only when the eighth shift completes, not when software writes `SC.7`.
+- On transfer completion, `SC.7` should clear automatically and the serial interrupt should be requested through the shared interrupt-controller path.
+- The serial subsystem should not jump to vector `0x58` directly; it should only raise the ordinary serial interrupt request.
 
 ## Timing / accuracy requirements
 
 - Transfer timing and completion signaling should remain explicit.
 - Serial progress should remain compatible with the shared T-cycle timing model of the core.
+- In DMG master mode, the `8192` Hz serial clock must derive from the emulated machine timeline rather than from host sleeps or wall-clock timers.
+- In slave mode, externally supplied clock pulses must be injectable at precise points on that same shared timeline.
+- `SB`, `SC`, and the serial interrupt request should become visible at the exact transfer-completion point rather than through a deferred end-of-instruction cleanup.
 
 ## Dependencies
 
 - bus/MMIO wiring
 - interrupt controller
 - T-cycle scheduler or clock source
+- peer or link-endpoint boundary
 
 ## Primary references
 
@@ -52,19 +112,39 @@ Keep hardware serial state explicit even if link support is stubbed initially.
 - register semantics tests
 - completion and interrupt timing tests
 - tests for `SC.7` start/in-progress and completion-clears behavior
+- tests for `SC.0` internal-clock versus external-clock behavior
+- tests for bit-by-bit `SB` evolution during active transfer
+- tests for master-mode DMG transfer timing at `8192` Hz
+- tests that slave-mode transfer does not progress without externally injected clocks
+- tests for disconnected-peer behavior returning incoming `1` bits and tending toward `0xFF`
+- tests for loopback or scripted-peer integration without direct MMIO byte injection
 - tests that serial completion requests the interrupt through `IF`
 
 ## Implementation notes for this repo
 
 - Keep the hardware serial model separate from any eventual link backend.
 - Let bus/MMIO wiring expose `SB` and `SC` at their mapped addresses while the serial subsystem owns transfer semantics.
+- Keep one explicit serial-owned source of truth for:
+  - `SB`
+  - `SC`
+  - transfer-active or transfer-requested state
+  - selected clock mode
+  - bits shifted
+  - outgoing and incoming shift state or equivalent
+  - master-clock timing state for DMG internal clock mode
+  - optional connected peer or endpoint
 - Request the serial interrupt through the shared interrupt-controller path instead of reaching into CPU interrupt state directly.
 - Direct-boot startup values for `SB` and `SC` should come from the centralized post-boot snapshot rather than from serial-local guessed reset defaults.
+- Keep disconnected, loopback, scripted, and future transport-backed peers behind one narrow serial-peer boundary so the core stays transport-agnostic.
 
 ## Known pitfalls
 
 - treating serial as purely frontend-defined I/O
+- treating transfer as an atomic byte exchange instead of a bit-level shift process
+- completing transfer immediately on `SC.7` write
+- modeling received data as direct writes into `SB` from outside the serial subsystem
+- coupling the serial core to a concrete host transport or network API
 
 ## Open questions
 
-- what minimal stub behavior is acceptable before true link support exists
+- what the narrowest peer API is for bit input, external clock pulses, staged outgoing-byte behavior, and disconnected state without overfitting to one transport

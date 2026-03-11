@@ -19,6 +19,7 @@ La base gráfica objetivo es un PPU `dot-by-dot` con `tile fetcher + pixel FIFO`
 
 La siguiente distribución es solo una guía conceptual temprana.
 La estructura canónica y sus límites de ownership están definidos en `AI/ARCHITECTURE.md`.
+Si este resumen conceptual difiere de `AI/ARCHITECTURE.md`, prevalece `AI/ARCHITECTURE.md`.
 A medio plazo, la forma preferida es la familia `crates/gb-core`, `gb-cli`, `gb-desktop`, `gb-web` y utilidades relacionadas descrita allí; el esquema siguiente solo agrupa responsabilidades.
 
 ```text
@@ -52,5 +53,12 @@ Antes de implementar subsistemas, consulta primero los handbooks principales en 
 - `AI/TESTING.md`
 - `AI/TIMING-AND-ACCURACY.md`
 - `AI/hardware/*.md`
+
+La jerarquía documental resumida es:
+
+- `AI/ARCHITECTURE.md` para layout, ownership y límites entre subsistemas
+- `AI/hardware/*.md` para comportamiento y contratos del subsistema correspondiente
+- `AI/TESTING.md` para la política global de validación
+- `AI/ROADMAP.md` para orden recomendado, contexto de fase y TODOs pendientes
 
 Usa `AI/research/*.md` como documentación secundaria de contraste cuando necesites ejemplos de implementación, validación adicional o comparación con oráculos de referencia.

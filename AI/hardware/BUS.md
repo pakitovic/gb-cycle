@@ -109,8 +109,8 @@ Address alone is not enough: the bus must also consider the current temporal har
 
 - This region must not be modeled as free RAM.
 - For the current DMG-family target, it should have explicit revision-aware behavior instead of a placeholder array.
-- On DMG-family hardware outside OAM-blocked periods, reads should return `0x00`.
-- During OAM-blocked periods on DMG-family hardware, reads should return `0xFF`.
+- For the current repo baseline on `DMG0`, `DMG`, and `MGB`, reads should return `0x00` outside OAM-blocked periods and `0xFF` during OAM-blocked periods.
+- If later model coverage or hardware evidence requires refinement for a specific revision, keep that change model-gated here rather than falling back to generic RAM semantics.
 - On affected DMG-family hardware during the specific Mode `2` OAM-scan block, reads from this range should also enter the same OAM-corruption trigger path used for OAM reads.
 - Other causes of temporary OAM unavailability must not be treated as an automatic OAM-corruption trigger for `FEA0-FEFF`; the bug hook belongs to the Mode `2` path.
 - The region should stay explicitly connected to later OAM corruption bug work rather than being treated as unrelated filler space.

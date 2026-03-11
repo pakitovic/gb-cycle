@@ -54,6 +54,13 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - If both joypad rows are selected, the joypad producer must use the same combined visible-nibble semantics as `JOYP` readback; do not add a second, row-prioritized IRQ path.
 - The joypad producer should hand the interrupt controller an ordinary joypad request event rather than mutating CPU dispatch flow or jumping to vector `0x60` directly.
 
+## Serial interrupt-producer baseline
+
+- The serial subsystem should request the serial interrupt only when a transfer actually completes after the eighth serial clock shift.
+- A write that sets `SC.7` must not request the interrupt immediately; it only arms or starts the transfer.
+- Serial completion should clear `SC.7` and request the serial interrupt as part of the same logical transfer-complete point.
+- The serial producer should hand the interrupt controller an ordinary serial request event rather than mutating CPU dispatch flow or jumping to vector `0x58` directly.
+
 ## Timing / accuracy requirements
 
 - Preserve ordering with CPU execution, `EI`, `DI`, `HALT`, and timer/PPU requests.
@@ -62,6 +69,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Timer interrupt requests must remain aligned with the timer's real overflow/reload sequence rather than an oversimplified "overflow happened, so request now" shortcut.
 - LCD/STAT timing should stay aligned with PPU mode transitions, including entry into Mode 2.
 - Joypad interrupt timing should stay aligned with the T-cycle at which the visible `P1` low nibble actually gains a new low bit, whether that change came from an `FF00` selection write, a hardware-facing input transition, or both.
+- Serial interrupt timing should stay aligned with the T-cycle at which the eighth serial shift completes and `SC.7` clears, whether the clocks came from the DMG internal serial clock or from externally supplied pulses.
 - When STAT behavior is implemented in detail, preserve the documented DMG-specific STAT write quirk and do not assume the same behavior on GBC running in DMG mode.
 
 ## Dependencies
@@ -99,6 +107,8 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - tests where VBlank and LCD STAT Mode `1` requests become pending together and remain distinguishable in `IF`
 - joypad interrupt tests that distinguish selected-row versus unselected-row button changes
 - joypad interrupt tests that verify visible `High -> Low` detection rather than generic "button changed" behavior
+- serial interrupt tests that verify request-on-completion rather than request-on-start
+- serial interrupt tests that verify `SC.7` clear and serial request occur at the same completion point
 - direct-boot readback tests for documented startup `IF`/`IE` values when firmware execution is bypassed
 
 ## Implementation notes for this repo
@@ -111,6 +121,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Keep the semantic ownership of `IF` and `IE` here even though bus decode must route `0xFF0F` and `0xFFFF` correctly.
 - Let the PPU own the generation rules for LCD STAT requests, including rising-edge detection and DMG STAT-write quirks; the interrupt controller should only observe the resulting request events.
 - Let the joypad subsystem own the `P1` visibility comparison that decides whether a joypad request happened; the interrupt controller should consume the resulting request event, not re-derive it from raw button state.
+- Let the serial subsystem own the transfer-complete detection that decides whether a serial request happened; the interrupt controller should consume the resulting request event, not infer completion from raw `SB` or `SC` bytes.
 
 ## Known pitfalls
 
@@ -120,6 +131,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - decoupling STAT/LCD interrupt timing from the real PPU mode schedule
 - recomputing LCD STAT source conditions in the interrupt controller instead of consuming the PPU's request events
 - requesting the joypad interrupt from abstract button events rather than from visible `P1` `High -> Low` transitions
+- requesting the serial interrupt from transfer-start writes instead of from real transfer completion
 - assuming the DMG STAT write quirk applies unchanged to GBC-in-DMG-mode
 
 ## Open questions

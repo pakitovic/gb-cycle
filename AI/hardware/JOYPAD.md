@@ -53,7 +53,8 @@ Keep these layers distinct:
 ## `STOP` integration baseline
 
 - The joypad subsystem should be the hardware-facing origin of input-driven CPU wake signaling relevant to `STOP`, rather than letting the frontend or UI wake the CPU by bypassing emulated hardware state.
-- The wake path should derive from the same joypad-owned hardware-facing button state and be defined explicitly alongside the chosen DMG-family `STOP` model, rather than being inferred from a frontend callback.
+- The wake path should derive from the same joypad-owned hardware-facing button state and be documented here as the repo's DMG-family `STOP` wake policy, rather than being inferred from a frontend callback or redefined inside the CPU.
+- If the exact DMG-family electrical wake condition remains under research, that uncertainty should still be expressed here as one explicit repo policy or open question; other docs should not invent a second rule.
 - `STOP` wake handling and joypad interrupt generation are related but not identical concerns; keep them explicitly connected through shared joypad state without merging them into one opaque shortcut.
 
 ## Timing / accuracy requirements
@@ -97,7 +98,7 @@ Keep these layers distinct:
 - tests that a button change on an unselected row does not request the interrupt until it becomes visible
 - tests that repeated input transitions can request the interrupt repeatedly rather than being collapsed to one request per press
 - tests that interrupt generation is driven from the same underlying input-state transitions observed through `JOYP`
-- tests that `STOP` wake-up uses the joypad subsystem path rather than a frontend-only shortcut
+- tests that the documented repo `STOP` wake policy uses the joypad subsystem path rather than a frontend-only shortcut
 
 ## Implementation notes for this repo
 
@@ -118,6 +119,7 @@ Keep these layers distinct:
 - detecting interrupts from abstract "button pressed" events instead of from visible `P1` transitions
 - flattening simultaneous row selection into an invented row priority
 - letting CPU or frontend code own `JOYP`-visible state instead of the joypad subsystem
+- encoding one `STOP` wake rule in joypad and a different one in CPU or frontend glue
 
 ## Open questions
 

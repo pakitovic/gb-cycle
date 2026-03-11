@@ -9,6 +9,13 @@ Use multiple layers:
 - ROM-based validation
 - oracle comparisons where useful
 
+## Authority and scope
+
+- This document owns project-wide validation policy and cross-subsystem testing expectations.
+- Detailed subsystem-specific checklists remain owned by the matching `AI/hardware/*.md` handbook.
+- When this file repeats subsystem expectations for planning convenience, the subsystem handbook remains the behavioral authority and this file should be updated to match it.
+- `AI/ROADMAP.md` may mention validation goals by phase, but it does not replace this testing policy.
+
 ## Validation priorities
 
 Every subsystem change should aim to leave behind one of these:
@@ -74,7 +81,8 @@ Include instruction-family tests for OAM corruption triggers covering `inc rr` /
 Include model-gating tests where DMG-family models trigger the bug and CGB-family models do not.
 For CPU execution behavior, include opcode fetch under boot-ROM/cartridge mapping, `imm8`/`imm16` fetch order, register-versus-`(HL)` timing differences, taken-versus-untaken conditional paths, stack byte order, CB-prefix double-fetch behavior, and instructions with internal no-bus steps whenever suitable tests exist.
 For CPU interrupt-control behavior, include IE/IF register behavior, delayed `EI`, immediate `DI`, fixed interrupt priority, vector dispatch, `RETI`, `HALT` wake-up semantics, `HALT` bug activation/effect, and separate `STOP` coverage whenever suitable tests exist.
-For joypad behavior, include `JOYP` mixed-register readback, active-low matrix semantics, separate button-row versus d-pad-row selection, simultaneous-row selection, visible `High -> Low` interrupt generation, repeated visible transitions, and the chosen `STOP` wake path whenever suitable tests exist.
+For joypad behavior, include `JOYP` mixed-register readback, active-low matrix semantics, separate button-row versus d-pad-row selection, simultaneous-row selection, visible `High -> Low` interrupt generation, repeated visible transitions, and the documented repo `STOP` wake policy whenever suitable tests exist.
+For serial behavior, include `SB` / `SC` ownership and mixed-register semantics, DMG master-mode `8192` Hz transfer timing, slave-mode externally clocked progress, disconnected-peer `0xFF` reception, loopback or scripted-peer coverage, intermediate `SB` states during shifting, and serial IRQ request only on eighth-shift completion whenever suitable tests exist.
 For timer behavior, include internal-counter-derived `DIV`, DIV-write glitches, TAC-write glitches, falling-edge TIMA increments, overflow-window behavior, separate TIMA/TMA write cases before/during/after reload, and timer interrupt timing through `IF` and CPU-visible servicing whenever suitable tests exist.
 For bus behavior, include blocked-access cases, boot ROM remapping, next-fetch behavior after `FF50`, and DMA-related contention whenever suitable tests exist.
 Include direct-boot routing checks that verify boot ROM is already unmapped, the ordinary cartridge ROM map is visible again across `0x0000-0x7FFF`, and DMG-mode reads of CGB-only registers return `0xFF` whenever suitable tests exist.

@@ -34,6 +34,18 @@ If no single phase owns the remainder cleanly, place the TODO under `Cross-phase
 
 ---
 
+## Authority boundaries
+
+This roadmap sequences work, but it is not the behavioral source of truth.
+
+- For crate layout, ownership, and subsystem boundaries, follow `AI/ARCHITECTURE.md`.
+- For subsystem behavior, MMIO semantics, and timing contracts, follow the matching `AI/hardware/*.md` file plus `AI/TIMING-AND-ACCURACY.md`.
+- For project-wide validation policy, follow `AI/TESTING.md`.
+
+If roadmap prose ever drifts from those documents, update the roadmap to match the authoritative source instead of treating the mismatch as two valid policies.
+
+---
+
 ## Scope of this roadmap
 
 This roadmap covers only the **DMG** core.
@@ -641,6 +653,9 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 - visible-edge detection for joypad interrupt generation based on the low nibble actually exposed through `P1`
 - input-driven `STOP` wake integration routed through the same joypad subsystem rather than a frontend bypass
 - interrupt generation where appropriate
+- `SB` and `SC` implemented as serial-owned MMIO state, with serial transfer modeled as a bit-level process rather than an instant byte exchange
+- explicit serial-peer boundary for disconnected, loopback, scripted, and future real link peers
+- serial interrupt generation driven by real transfer completion rather than by transfer start
 - serial port functional at the emulated hardware level
 - trace tools to observe both peripherals
 
@@ -653,6 +668,11 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 - joypad interrupt requests are generated only by visible `High -> Low` transitions on `P1` bits `0-3`, and only when the relevant row selection makes that transition visible
 - repeated visible input transitions can request joypad interrupts repeatedly; the model does not assume one interrupt per press
 - `STOP` wake-up is driven from the same joypad/input subsystem path used for hardware-visible input state, not by directly toggling CPU state from the frontend
+- `SB` changes progressively during active serial transfer instead of remaining frozen until the final byte arrives
+- in DMG master mode, serial transfer advances through `8` internally generated clocks at `8192` Hz and clears `SC.7` only on completion
+- in slave mode, serial transfer does not advance without externally injected clocks and does not time out internally
+- disconnected serial-peer behavior is explicit and tends toward receiving `0xFF`
+- serial interrupt requests occur only at transfer completion, when the eighth shift clears `SC.7`
 - both are integrated through the bus and scheduler
 - their interrupts and states are observable and testable
 
@@ -672,7 +692,25 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
    Acceptance criteria: a relevant input change can wake `STOP`, and that wake path does not bypass the joypad subsystem.
 5. **Focused validation**
    Scope: matrix selection, active-low semantics, simultaneous-row selection, visible-edge IRQ detection, and `STOP` wake behavior.
-   Acceptance criteria: tests cover buttons and d-pad separately, both rows selected, visible `High -> Low` detection, repeated input transitions, and the chosen `STOP` wake path.
+   Acceptance criteria: tests cover buttons and d-pad separately, both rows selected, visible `High -> Low` detection, repeated input transitions, and the documented repo `STOP` wake policy.
+
+#### Serial implementation breakdown
+
+1. **`SB` / `SC` MMIO baseline**
+   Scope: `FF01`, `FF02`, ownership in `serial/`, DMG control-bit semantics, and non-functional `SC.1` reservation for future CGB work.
+   Acceptance criteria: `SB` and `SC` have clear serial ownership, `SC.7` means requested-or-in-progress transfer, `SC.0` selects internal versus external clock, and DMG does not expose functional high-speed serial through `SC.1`.
+2. **Bit-level master transfer**
+   Scope: DMG internal-clock master mode, `8` serial shifts, live `SB` evolution, and completion-driven `SC.7` clear plus IRQ.
+   Acceptance criteria: `SB` changes progressively during transfer, the DMG internal clock runs at `8192` Hz on the machine timeline, and transfer completion requests the serial interrupt only after the eighth shift.
+3. **Peer boundary and disconnected behavior**
+   Scope: explicit serial-peer interface, disconnected input policy, loopback, and scripted peers.
+   Acceptance criteria: the core works without a real link peer, disconnected input yields incoming `1` bits and tends toward `0xFF`, and loopback or scripted peers can be attached without direct MMIO byte injection.
+4. **Slave mode with external clock**
+   Scope: externally driven serial clocks, pending transfer state, and non-uniform pulse timing.
+   Acceptance criteria: arming slave mode does not advance transfer on its own, each externally injected clock performs one shift, and the transfer completes only on the eighth external pulse.
+5. **Interrupt and scheduler closure**
+   Scope: full `SB` / `SC` -> transfer -> `IF` route plus timing-visible reads and writes.
+   Acceptance criteria: `IF` receives the serial request at the correct completion point, `SC.7` clears at that same point, and tests cover master mode, slave mode, disconnected peer, loopback or scripted peer, and intermediate `SB` states.
 
 ---
 

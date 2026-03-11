@@ -213,8 +213,12 @@ to immediately materialize as a separate directory.
 
 ### `serial/`
 
-- serial port registers
-- serial transfer behavior from the emulated hardware perspective
+- `SB` and `SC` ownership
+- bit-level serial transfer state
+- internal-clock versus external-clock behavior
+- peer or link-endpoint boundary
+- serial interrupt generation through the shared interrupt-controller path
+- separation between emulated serial hardware and any host transport implementation
 
 ### `cartridge/`
 
@@ -269,6 +273,8 @@ to immediately materialize as a separate directory.
 - The interrupt controller owns `IF`/`IE` register state and pending-request bookkeeping, while the CPU owns `IME`, `halted`, `stopped`, and the final decision to accept and service an interrupt.
 - Frontends, test harnesses, and tooling should submit abstract button press/release state changes rather than prebuilt `JOYP` bytes or direct CPU wake requests.
 - The joypad subsystem owns the translation from host-facing button state plus `P1` row selection into visible `JOYP` readback, joypad interrupt requests, and any input-driven `STOP` wake signal.
+- Frontends, test harnesses, and tooling should provide serial peers, scripted bits, loopback, or external clock pulses through a serial-endpoint boundary rather than by writing received bytes directly into `SB`.
+- The serial subsystem owns the translation from MMIO-visible `SB` / `SC` plus peer-provided bits and clocks into live transfer progress, `SB` intermediate state, and serial interrupt requests.
 - The timer owns the shared divider/system-counter state and visible `DIV`, while the APU owns `DIV-APU`, frame-sequencer state, channel-active state, DAC state, mixer state, and HPF state derived from that shared timing source.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
 - The bus owns address decode and MMIO dispatch, but the device that owns a register must own its read, write, and side-effect semantics.
@@ -278,6 +284,7 @@ to immediately materialize as a separate directory.
 - Shared scheduling must allow CPU, DMA, PPU, timer, and other actors to make progress on the same T-cycle timeline so arbitration remains observable.
 - Shared scheduling must not depend on whole-instruction CPU completion; it should be able to observe CPU fetches, operand reads, stack traffic, and internal steps while the rest of the hardware continues to advance.
 - Input events must enter that same shared scheduling model as changes to hardware-facing button state; they must not live only on a host video-frame cadence if that would hide `JOYP`, interrupt, or `STOP`-wake ordering.
+- Serial peer activity and external serial clock pulses must enter that same shared scheduling model rather than living on host transport threads or timers that bypass the core timeline.
 
 ## Boot ROM architecture policy
 

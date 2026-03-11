@@ -43,7 +43,8 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - `EI` must not enable `IME` immediately; it should arm a delayed enable that becomes visible only after the following instruction completes.
 - `HALT` should be represented as an explicit CPU state distinct from ordinary instruction execution.
 - `STOP` should be represented distinctly from `HALT`; even before full DMG/CGB STOP behavior is implemented, the architecture must leave it as a separate CPU control state.
-- The architecture must allow `STOP` to be released by an explicit hardware-originated wake path such as joypad/input state transitions under the chosen DMG-family `STOP` model, rather than by a frontend-only shortcut.
+- The architecture must allow `STOP` to be released by an explicit hardware-originated wake path owned by the relevant subsystem, with joypad as the current DMG-family baseline owner, rather than by a frontend-only shortcut.
+- The CPU must consume that documented subsystem-owned `STOP` wake policy; it must not define a second local wake rule in parallel.
 - The `HALT` bug must be represented explicitly as a pending effect on the next opcode fetch rather than flattened into a generic "PC did not increment" shortcut.
 
 ## Execution-model baseline
