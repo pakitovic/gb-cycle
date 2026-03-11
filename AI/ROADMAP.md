@@ -312,8 +312,8 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
    Scope: `LCDC`, `STAT`, `LY`, `LYC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, `OBP0`, and `OBP1`.
    Acceptance criteria: dynamic bits, LCD side effects, and impossible writes such as `LY` stores are all handled by the PPU-owned contract.
 5. Close serial and audio MMIO contract baselines.
-   Scope: `SB/SC` and the `NRxx` family.
-   Acceptance criteria: the routed MMIO contract already encodes correct read/write policy, immediate register-side effects, and non-RAM-like behavior for these ranges; full transfer timing and full APU behavior remain owned by later subsystem phases.
+   Scope: `SB/SC`, the `NRxx` family, and wave RAM ownership / visibility rules.
+   Acceptance criteria: the routed MMIO contract already encodes correct read/write policy, immediate register-side effects, and non-RAM-like behavior for these ranges, including wave RAM's explicit ownership and non-reset-with-`NR52` policy; full transfer timing and full APU behavior remain owned by later subsystem phases.
 6. Close absent and CGB-only register policy in DMG mode.
    Acceptance criteria: unavailable CGB-only MMIO registers do not behave like RAM, readback follows documented DMG fallback values, and writes follow an explicit ignored-or-stub policy.
 
@@ -745,7 +745,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Acceptance criteria: the pipeline has an explicit place for DC-offset and pop-sensitive behavior, and HPF presence no longer depends on frontend audio code.
 6. Prepare the channel blocks without collapsing the timing model.
    Scope: stable hooks for CH1-CH4 slow clocks and fast timers, plus follow-up placeholders for channel-specific quirks and edge cases.
-   Acceptance criteria: each channel can later receive its own waveform timer without changing the master frame-sequencer architecture, and known follow-up work such as extra length clocking, CH3 wave-RAM quirks, and envelope zombie-mode remains explicitly tracked rather than implicit.
+   Acceptance criteria: each channel can later receive its own waveform timer without changing the master frame-sequencer architecture, and known follow-up work such as extra length clocking, CH3 wave-RAM quirks, CH4 lock-up, and envelope zombie-mode remains explicitly tracked rather than implicit.
 
 #### CH1 sequencing inside Phase 7
 
@@ -803,6 +803,24 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 5. Close CH3 quirks, active-wave-RAM policy, and DMG retrigger corruption.
    Scope: digital-`0` startup state, skipped-first-sample / first-buffer behavior, wave-RAM access policy while active, and DMG-family wave-RAM corruption on retrigger.
    Acceptance criteria: quirks remain isolated behind explicit CH3 state and tests, active-wave-RAM policy is not hidden behind generic RAM behavior, and retrigger corruption distinguishes the special first-byte overwrite case for reads in bytes `0..=3` from the aligned-`4`-byte block-copy cases for reads in bytes `4..=15`.
+
+#### CH4 sequencing inside Phase 7
+
+1. Establish CH4 state ownership and MMIO routing.
+   Scope: CH4-owned `NR41`-`NR44`, explicit channel state, and write-only/read-only field policy.
+   Acceptance criteria: `NR41` remains write-only, `NR44` bit `7` acts as trigger, `NR44` bit `6` acts as immediate length enable, and CH4 ownership is not split informally across generic APU helpers.
+2. Implement CH4 LFSR, `noise_timer`, and `NR43` decoding.
+   Scope: explicit `lfsr_state`, explicit fast timer, decoded clock shift / width mode / divider state, and the shared `15`-bit versus `7`-bit LFSR path.
+   Acceptance criteria: the ordinary `15`-bit and `7`-bit paths are both correct, divider `0` is treated as `0.5`, clock-shift values `14` and `15` suppress CH4 clocks, and live `NR43` writes alter timer behavior without mutating CH4 into a texture-swap abstraction.
+3. Implement CH4 DAC state and general trigger behavior.
+   Scope: `dac_enabled`, `channel_active`, trigger-time state reload, lock-up recovery on retrigger, and `NR52` bit `3` integration.
+   Acceptance criteria: DAC-off disables CH4 immediately, trigger does nothing if DAC is off, CH4 trigger resets the documented envelope/LFSR/timer state in one explicit path, retrigger exits LFSR lock-up, and `NR52` bit `3` reflects live CH4 activity rather than mere audibility.
+4. Integrate CH4 length and envelope.
+   Scope: `64`-step length counter, `256` Hz length clock, `64` Hz envelope clock, current-volume state, and immediate `NR44` length-enable behavior.
+   Acceptance criteria: length expiry disables CH4, envelope changes current volume without mutating readable `NR42` bits, envelope volume reaching `0` does not disable CH4, and extra-length-clocking behavior is either implemented or isolated as explicit follow-up logic using the same infrastructure as CH1 / CH2.
+5. Close CH4 lock-up and fine validation.
+   Scope: width-mode transition quirks, documented lock-up on `15 -> 7` in the relevant all-ones states, retrigger recovery, and any remaining CH4 trigger/length edge cases.
+   Acceptance criteria: lock-up remains a consequence of real LFSR state rather than an ad hoc mute flag, retrigger recovers sound by resetting the LFSR, and the remaining CH4 quirks are isolated behind explicit channel logic and tests.
 
 #### Done criteria
 

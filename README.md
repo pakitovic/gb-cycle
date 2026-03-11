@@ -41,7 +41,7 @@ cargo test
 
 ## Documentación
 
-Antes de implementar subsistemas, consulta las guías en `AI/`:
+Antes de implementar subsistemas, consulta primero los handbooks principales en `AI/`:
 
 - `AI/index.md`
 - `AI/ARCHITECTURE.md`
@@ -52,4 +52,5 @@ Antes de implementar subsistemas, consulta las guías en `AI/`:
 - `AI/TESTING.md`
 - `AI/TIMING-AND-ACCURACY.md`
 - `AI/hardware/*.md`
-- `AI/research/*.md`
+
+Usa `AI/research/*.md` como documentación secundaria de contraste cuando necesites ejemplos de implementación, validación adicional o comparación con oráculos de referencia.

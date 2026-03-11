@@ -98,6 +98,10 @@ Include CH3 tests for `NR30`-`NR34` ownership, `NR31`/`NR33` write-only behavior
 Include CH3 tests for period timer cadence at one tick every `2` dots, `32`-sample index progression, buffered sample fetch from wave RAM, and period-write delay until after the next wave-RAM read.
 Include CH3 tests for DAC-off behavior, trigger-not-refilling-the-sample-buffer behavior, length expiry, and `NR32` digital output-level semantics distinct from DAC-off or analog mixer volume.
 Include dedicated CH3 quirk tests for digital-`0` startup state, skipped-first-sample / first-buffer behavior, active-channel wave-RAM access policy, trigger-with-length-0 behavior, and DMG-family retrigger corruption keyed both to the exact byte-read position and to the affected aligned source block whenever suitable tests exist.
+Include CH4 tests for `NR41`-`NR44` ownership, `NR41` write-only behavior, and immediate `NR44` trigger/length-enable semantics.
+Include CH4 tests for `noise_timer` cadence, LFSR progression, and decoded `NR43` behavior including divider `0 -> 0.5`, live width-mode changes, and clock-shift `14` / `15` suppressing LFSR clocks.
+Include CH4 tests for DAC-off behavior, trigger-time reset of envelope/LFSR/timer state, length expiry, envelope progression, and the rule that envelope volume reaching `0` does not disable the channel.
+Include dedicated CH4 quirk tests for ordinary `15`-bit mode, ordinary `7`-bit mode, lock-up on `15 -> 7` transitions in the documented all-ones states, retrigger recovery from lock-up, and extra length clocking whenever suitable tests exist.
 
 ## Recommended external validation sources
 

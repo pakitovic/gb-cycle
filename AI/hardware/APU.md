@@ -435,6 +435,102 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - slow frame-sequencer clocks for length only
 - CH3's resolved digital output should be a function of its internal active state, DAC state, buffered sample, and current `NR32` output level rather than of raw MMIO register rereads at mix time.
 
+## CH4 baseline (noise / LFSR)
+
+- CH4 should be modeled as a distinct noise-channel block rather than as generic random output or a precomputed pseudo-random table.
+- At minimum, the CH4 state shape should keep explicit fields or equivalent ownership for:
+  - `channel_active`
+  - `dac_enabled`
+  - `length_counter`
+  - `length_enabled`
+  - envelope timer / pace / direction / current volume
+  - `lfsr_state`
+  - `noise_timer`
+  - decoded `NR43` state such as clock shift, width mode, and clock divider
+- CH4 should explicitly not inherit pulse-only state such as duty-step progression or CH1 sweep state.
+
+## CH4 MMIO ownership baseline
+
+- `NR41` through `NR44` should remain owned by the CH4 block rather than by a flat APU register bank.
+- `NR41` should remain write-only at the MMIO contract layer and should represent the initial length write path rather than a readable live counter.
+- `NR42` should keep CH4's initial volume, envelope direction, and envelope pace distinct, reusing the ordinary envelope/DAC semantics shared with `NR12` / `NR22`.
+- `NR43` should not remain an opaque stored byte; CH4 should decode it into explicit noise-generation parameters such as clock shift, width mode, and clock divider.
+- `NR44` bit `7` should remain the trigger input, while bit `6` should remain the length-enable control with immediate write-time effect.
+
+## CH4 LFSR and NR43 baseline
+
+- CH4 should keep an explicit `lfsr_state` instead of deriving output from an abstract random seed or host RNG state.
+- CH4 LFSR stepping should follow one explicit internal sequence:
+  - calculate the new feedback bit from bits `0` and `1`
+  - write that new bit into bit `15`
+  - when short-width mode is selected, also copy that new bit into bit `7`
+  - shift the register right
+  - derive the resolved digital output decision from the documented output bit after that step
+- CH4 digital output should not be the raw numeric LFSR value; it should resolve to either digital `0` or the current envelope-derived volume according to the LFSR output bit.
+- The `15`-bit and `7`-bit modes should share the same underlying LFSR machinery, with the short-width mode emerging from the additional bit-`7` feedback path rather than from a second independent pseudo-random generator.
+- `NR43` bits `7..=4` should decode as clock shift, bit `3` as width mode, and bits `2..=0` as clock divider.
+- Clock divider `0` should be treated as divider `0.5` on the documented CH4 timer formula rather than as literal `0` or silently coerced to `1`.
+- Clock shift values `14` and `15` should prevent CH4 from receiving LFSR clocks rather than being approximated as merely "very slow noise".
+- Live writes to `NR43` should update the decoded CH4 noise parameters and affect the running channel on its own timer path rather than waiting for the next trigger.
+
+## CH4 noise-timer baseline
+
+- CH4 should keep an explicit `noise_timer` separate from the LFSR state itself.
+- The `noise_timer` should be derived from decoded `NR43` state and should produce exactly one LFSR step whenever it expires.
+- The frame sequencer must not be used as CH4's noise clock; only the fast CH4 timer path should advance the LFSR.
+- Writes to `NR43` should alter CH4's effective timer configuration, not swap in a different abstract "noise texture".
+- Updating `NR43` should not retroactively inject an extra LFSR tick into an in-flight timer interval; the new effective timing should apply through the explicit timer/reload path rather than by mutating past channel time.
+
+## CH4 width-mode and lock-up baseline
+
+- CH4 short-width mode should not be implemented as a separate lookup table; it should arise from the documented extra feedback write into bit `7` before the shift.
+- Changing `NR43` width mode while CH4 is already running should affect the live LFSR state rather than only taking effect on the next trigger.
+- Keep an explicit CH4 work item for the documented lock-up behavior when switching from `15`-bit mode to `7`-bit mode in certain all-ones states.
+- That lock-up should arise from the real LFSR contents and width-mode transition, not from a fake external mute flag disconnected from the register state.
+- Retriggering CH4 should clear the lock-up by reinitializing the LFSR state.
+
+## CH4 DAC and trigger baseline
+
+- CH4 `dac_enabled` should derive from `NR42 & 0xF8 != 0`.
+- If the DAC is off, a trigger write to `NR44` must not activate CH4.
+- If a write to `NR42` turns the DAC off, CH4 should be disabled immediately.
+- `channel_active` and `dac_enabled` must remain distinct CH4 states; a DAC-enabled but inactive CH4 should still correspond to digital `0` rather than to "channel off equals DAC off".
+- CH4 trigger should be represented as one explicit operation that performs the channel's trigger-time state transitions rather than as unrelated side effects scattered across MMIO, envelope, and noise helpers.
+- On CH4 trigger:
+  - the channel should become active if the DAC is enabled
+  - the envelope timer should reset
+  - current volume should become the initial volume from `NR42`
+  - the LFSR state should reset to its trigger-defined initial pattern
+  - the noise timer should reload coherently from the current decoded `NR43`
+  - expired length state should be restored to a valid running state
+- CH4 retrigger should also serve as the explicit path that exits any current LFSR lock-up state.
+
+## CH4 length and envelope baseline
+
+- CH4 should keep an explicit `64`-step length counter.
+- That length counter should be clocked only by the frame sequencer's `256` Hz length clock, not by the channel's fast noise timer.
+- `NR44` bit `6` should enable or disable the CH4 length unit immediately on write.
+- If the length counter expires while enabled, CH4 should be disabled.
+- Extra length clocking on `NR44` writes should remain an explicit CH4 work item and should reuse the same general infrastructure as CH1 / CH2 rather than a parallel incompatible implementation.
+- CH4 should keep envelope timer state and current volume separate from the readable contents of `NR42`.
+- The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
+- Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
+- Envelope progression must update CH4's internal current volume, not the readable initial-volume bits in `NR42`.
+- Reaching volume `0` through the envelope must not disable CH4 by itself.
+
+## CH4 active-state integration and timing baseline
+
+- CH4 should be disabled by exactly these ordinary causes:
+  - DAC disable
+  - length expiry
+- CH4 LFSR lock-up should not be modeled as `channel_active = false`; the channel may remain logically active while the resolved output is effectively silent until retrigger.
+- `NR52` bit `3` should track CH4 activity according to those rules rather than merely reflecting whether CH4 is currently audible.
+- The mixer should consume CH4's resolved current digital output together with its DAC/active state; it should not reconstruct CH4 output by re-reading `NR41` through `NR44`.
+- CH4 should expose distinct temporal inputs for:
+  - fast noise-timer / LFSR timing on the shared T-cycle timeline
+  - slow frame-sequencer clocks for length and envelope
+- CH4's resolved digital output should be a function of its internal active state, DAC state, current LFSR output bit, and current envelope-derived volume rather than of raw MMIO register rereads at mix time.
+
 ## Timing / accuracy requirements
 
 - Keep channel and frame-sequencer timing visible.
@@ -506,6 +602,11 @@ Priority order:
 - tests that CH3 trigger reloads timer/index state but does not activate the channel while DAC is off and does not clear or refill the sample buffer automatically
 - tests for CH3 length expiry, `NR32` digital output-level semantics, and the rule that `NR32` mute is not equivalent to DAC-off or channel-off
 - dedicated CH3 quirk tests for digital-`0` startup state, skipped-first-sample / first-buffer behavior, explicit wave-RAM access policy while active, trigger-with-length-0 behavior, and DMG-family retrigger corruption keyed both to the exact byte-read position and to the aligned source block whenever those behaviors are implemented
+- tests for `NR41`-`NR44` ownership and MMIO semantics, including `NR41` write-only readback policy and immediate `NR44` trigger/length-enable behavior
+- tests for CH4 `noise_timer` cadence, live LFSR progression, and decoded `NR43` behavior including divider `0 -> 0.5` and clock-shift `14` / `15` suppressing CH4 clocks
+- tests that CH4 trigger reloads envelope/LFSR/timer state but does not activate the channel while DAC is off
+- tests for CH4 length expiry, CH4 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
+- dedicated CH4 quirk tests for `15`-bit versus `7`-bit mode behavior, live width-mode changes, LFSR lock-up on `15 -> 7` transitions, retrigger recovery from lock-up, and extra length clocking whenever those behaviors are implemented
 
 ## Implementation notes for this repo
 
@@ -529,6 +630,7 @@ Priority order:
 - Keep CH1 sweep logic isolated enough that trigger-time setup, timed sweep iterations, overflow checks, and shadow-register behavior can each be tested directly.
 - A sibling shape such as `Channel2 { active, dac_enabled, period_value, period_timer, duty, duty_step, length_counter, length_enabled, envelope }` is a good fit for reusing the pulse-channel base without carrying sweep-only state into CH2.
 - A distinct shape such as `Channel3 { active, dac_enabled, wave_ram, sample_index, sample_buffer, output_level, period_value, period_timer, length_counter, length_enabled }` is a good fit for keeping CH3 separate from pulse-channel assumptions and making wave-RAM fetch behavior directly testable.
+- A distinct shape such as `Channel4 { active, dac_enabled, length_counter, length_enabled, envelope, lfsr_state, noise_timer, nr43_decode }` is a good fit for keeping CH4's LFSR-driven behavior explicit instead of hiding it behind generic "noise" helpers.
 
 ## Known pitfalls
 
@@ -539,6 +641,7 @@ Priority order:
 - letting the frame sequencer drive the channels' main waveform timer instead of only their slow control units
 - modeling `NR50` / `NR51` as stateless mixer knobs and losing HPF/DC-offset consequences
 - treating CH3 as a pulse channel with a custom waveform and thereby losing wave RAM, buffered-sample, output-level, and retrigger-specific behavior
+- treating CH4 as random noise or a cached pseudo-random table and thereby losing explicit `NR43`, LFSR, width-mode, and lock-up behavior
 
 ## Open questions
 
