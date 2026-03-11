@@ -33,7 +33,7 @@ Map tests to the subsystem they validate:
 
 For boot behavior, cover both real boot ROM execution and direct-boot presets when those modes exist.
 Include coverage for explicit real-boot versus skip-boot modes, `FF50` handoff timing, boot-ROM overlay versus cartridge visibility, valid versus invalid logo/checksum outcomes, missing-cartridge or `0xFF` header behavior, and model-specific register state such as DMG versus MGB `A` at cartridge entry whenever suitable tests exist.
-For direct-boot presets, include model-specific CPU state at `PC = 0x0100`, checksum-derived `F` on DMG/MGB, immediate I/O readback of the published post-boot snapshot, and continuity checks that the first timer and PPU ticks are coherent with that snapshot rather than restarting from zeroed hidden state.
+For direct-boot presets, include model-specific CPU state at `PC = 0x0100`, checksum-derived `F` on DMG/MGB, immediate I/O readback of the published post-boot snapshot, and continuity checks that the first timer, PPU, and APU ticks are coherent with that snapshot rather than restarting from zeroed hidden state.
 Include explicit tests for unreliable post-boot state policy, such as WRAM, HRAM, external RAM, `OBP0`, and `OBP1`, without presenting those policy choices as proven hardware constants.
 For PPU behavior, prioritize tests that expose dot timing, variable Mode 3 length, fetcher/FIFO correctness, STAT timing, and sprite interaction.
 Include coverage for Mode 2 OAM blocking, OAM-order sprite selection, and the `10`-sprites-per-scanline limit when suitable tests exist.
@@ -90,6 +90,10 @@ Include CH1 tests for period timer cadence, duty-step progression, retrigger-not
 Include CH1 tests for length expiry, envelope progression, and the rule that envelope volume reaching `0` does not disable the channel.
 Include CH1 sweep tests for trigger-time shadow copy, immediate overflow check, timed writeback, second overflow check, and the rule that `NR13` / `NR14` writes do not update the sweep shadow automatically.
 Include dedicated CH1 quirk tests for envelope/sweep timer-reload semantics where programmed pace or period `0` behaves as `8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever suitable tests exist.
+Include CH2 tests for `NR21`-`NR24` ownership, `NR23` write-only behavior, and immediate `NR24` trigger/length-enable semantics.
+Include CH2 tests for period timer cadence, duty-step progression, retrigger-not-resetting-duty-step behavior, and period-write delay until the current sample ends.
+Include CH2 tests for DAC-off behavior, length expiry, envelope progression, and the rule that envelope volume reaching `0` does not disable the channel.
+Include dedicated CH2 quirk tests for envelope timer-reload semantics where programmed pace or period `0` behaves as `8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever suitable tests exist.
 
 ## Recommended external validation sources
 

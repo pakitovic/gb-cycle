@@ -31,6 +31,7 @@ Keep the hardware-visible register behavior separate from host input collection.
 
 - Preserve hardware-visible register semantics even if host input arrives asynchronously.
 - `JOYP` reads should observe the current selected rows and current input state at the instant of the MMIO read.
+- Host input ingestion may be event-driven or latched between core ticks, but `JOYP` readback and interrupt generation should still resolve from a hardware-facing button state on the shared core timeline rather than from a frontend frame callback.
 
 ## Dependencies
 
@@ -70,4 +71,4 @@ Keep the hardware-visible register behavior separate from host input collection.
 
 ## Open questions
 
-- whether input sampling should happen per T-cycle, per frame, or via latched events
+- what frontend-facing event or latch API best feeds button-state changes into the core without hiding the resulting hardware-visible state behind frontend frame timing

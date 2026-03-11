@@ -418,7 +418,7 @@ Priority order:
 
 - Keep mode state explicit.
 - Separate rendering backend concerns from internal PPU state.
-- Do not implement the PPU as a scanline renderer or a mode-only renderer if the goal is cycle accuracy.
+- Do not implement the PPU as a scanline renderer or a mode-only renderer if the goal is dot-by-dot / T-cycle-level accuracy.
 - Mode 2 should be an explicit PPU state with its own dot counter, OAM traversal progress, and temporary visible-sprite list.
 - Preserve OAM discovery order during Mode 2 instead of rebuilding an idealized sprite list later.
 - Mode 3 should begin by clearing the relevant BG/object FIFO state and resetting the pixel pipeline state instead of assuming pixels are already queued.

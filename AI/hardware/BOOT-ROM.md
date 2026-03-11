@@ -85,7 +85,8 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - A T-cycle-accurate `SkipBoot` path must synthesize internal subsystem state, not only visible registers.
 - The timer's internal counter and overflow-related state should be initialized coherently with the visible `DIV`, `TIMA`, `TMA`, and `TAC` snapshot at `PC = 0x0100`.
 - The PPU's internal mode, dot position, and related pipeline state should be initialized coherently with the visible `LCDC`, `STAT`, `LY`, `LYC`, and other LCD-facing registers at `PC = 0x0100`.
-- `SkipBoot` must not leave visible registers claiming `DIV=0xAB` or `STAT=0x85` while the hidden timer or PPU state still corresponds to a zeroed or impossible phase.
+- The APU's internal `DIV-APU` / frame-sequencer phase, channel/DAC state, and other timing-visible audio state should be initialized coherently with the visible post-boot `NRxx` snapshot at `PC = 0x0100`.
+- `SkipBoot` must not leave visible registers claiming `DIV=0xAB`, `STAT=0x85`, or published post-boot `NRxx` values while the hidden timer, PPU, or APU state still corresponds to a zeroed or impossible phase.
 - The first T-cycles after `SkipBoot` should behave as a plausible temporal continuation of a real boot handoff rather than showing artificial discontinuities caused by inconsistent hidden state.
 
 ## Uninitialized and cartridge-dependent startup state
@@ -115,7 +116,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - The duration of the boot process should emerge from executed instructions and subsystem timing, not from an external startup timer.
 - Skip-boot must remain a distinct initialization path; do not partially execute the boot ROM and cut it short.
 - `SkipBoot` should restore the observable machine state at `PC = 0x0100`, including any documented timing-sensitive register values.
-- A direct-boot preset must not stop at visible MMIO values alone; it should also establish hidden timer and PPU state consistent with those values.
+- A direct-boot preset must not stop at visible MMIO values alone; it should also establish hidden timer, PPU, and APU state consistent with those values.
 - Direct-boot initialization of indeterminate memory and unreliable registers should remain explicit and configurable rather than pretending the hardware guarantees a single power-up value.
 
 ## Dependencies
@@ -159,7 +160,7 @@ Priority order:
 - direct-boot CPU-register tests for `DMG0`, DMG with checksum `0x00`, DMG with checksum not `0x00`, and MGB
 - direct-boot I/O readback tests for the published post-boot snapshot
 - direct-boot tests that verify the ordinary cartridge ROM map is visible again after startup, including `0x0000`, `0x0100`, and mapper-controlled regions where applicable
-- continuity tests for the first T-cycles after `SkipBoot`, especially around timer and PPU state derived from the visible post-boot registers
+- continuity tests for the first T-cycles after `SkipBoot`, especially around timer, PPU, and APU state derived from the visible post-boot registers
 - tests that document the chosen policy for WRAM, HRAM, external RAM, `OBP0`, and `OBP1` when direct boot bypasses firmware execution
 
 ## Implementation notes for this repo
@@ -192,7 +193,7 @@ Priority order:
 - validating logo or checksum outside the executed boot ROM path
 - faking the Nintendo logo or boot animation in a frontend layer instead of letting VRAM/LCD writes emerge from execution
 - silently jumping to post-boot state without making the mode explicit
-- treating `SkipBoot` as "set a few famous CPU registers" while leaving timer and PPU hidden state incoherent with the published post-boot snapshot
+- treating `SkipBoot` as "set a few famous CPU registers" while leaving timer, PPU, or APU hidden state incoherent with the published post-boot snapshot
 - zero-filling WRAM, HRAM, or cartridge RAM and presenting that as documented hardware behavior
 - inventing fixed post-boot values for unreliable registers such as `OBP0` and `OBP1`
 

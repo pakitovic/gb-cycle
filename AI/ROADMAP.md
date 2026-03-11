@@ -719,6 +719,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 - base APU architecture
 - separate implementation of each channel
 - functional frame sequencer
+- direct-boot APU hidden-state synthesis coherent with the visible post-boot audio snapshot
 - final mixing
 - DAC control
 - power control
@@ -731,8 +732,8 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Scope: `Apu` ownership of `NR50`, `NR51`, `NR52`, powered state, left/right internal outputs, and placeholder HPF state.
    Acceptance criteria: `NR52` power on/off behavior is centralized, wave RAM remains outside the ordinary power-reset path, and the live low `NR52` bits already represent channel-active state rather than DAC-enabled state.
 2. Integrate `DIV-APU` / frame-sequencer timing.
-   Scope: derive `div_apu` from the shared divider timeline, using the current DMG falling-edge source on `DIV` bit `4`, and emit slow clocks for length, CH1 sweep, and envelope.
-   Acceptance criteria: writes to `DIV` can produce the documented extra frame-sequencer tick when the edge occurs, and the APU slow clocks remain derived from the same divider source as visible `DIV`.
+   Scope: derive `div_apu` from the shared divider timeline, using the current DMG falling-edge source on `DIV` bit `4`, emit slow clocks for length, CH1 sweep, and envelope, and leave room for coherent direct-boot entry.
+   Acceptance criteria: writes to `DIV` can produce the documented extra frame-sequencer tick when the edge occurs, the APU slow clocks remain derived from the same divider source as visible `DIV`, and direct-boot audio entry can synthesize a coherent `DIV-APU` / frame-sequencer phase instead of restarting audio timing from zero.
 3. Separate DAC state from channel-active state and centralize trigger behavior.
    Scope: explicit `dac_enabled` versus `channel_active`, shared trigger handling from `NRx4` bit `7`, and DAC-off forcing channel-off.
    Acceptance criteria: triggers do not activate channels whose DAC is off, DAC-disable can deactivate a live channel immediately, and `NR52` reports live active channels rather than DAC-enabled channels.
@@ -766,6 +767,24 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 6. Close CH1 quirks and fine validation.
    Scope: envelope/sweep timer-reload semantics where programmed pace or period `0` behaves as `8`, low frequency-timer bits on trigger, first-duty-step-after-power-on behavior, and any remaining documented CH1 trigger/length edge cases.
    Acceptance criteria: quirks are isolated behind explicit channel logic and tests, rather than leaking into the general APU architecture.
+
+#### CH2 sequencing inside Phase 7
+
+1. Establish CH2 state ownership and MMIO routing.
+   Scope: CH2-owned `NR21`-`NR24`, explicit channel state, and write-only/read-only field policy without any sweep-only carryover.
+   Acceptance criteria: `NR23` remains write-only, `NR24` bit `7` acts as trigger, `NR24` bit `6` acts as immediate length enable, and CH2 does not accumulate dummy sweep state just because it shares pulse-channel infrastructure with CH1.
+2. Implement CH2 period timer and duty stepping.
+   Scope: `11`-bit period value, fast period timer, selected duty waveform, and non-resetting duty-step counter.
+   Acceptance criteria: the pulse timer advances once every `4` dots on DMG, the waveform is `8` steps long, retrigger resets the timer but not duty step, and period writes take effect only after the current sample ends.
+3. Implement CH2 DAC state and general trigger behavior.
+   Scope: `dac_enabled`, `channel_active`, trigger-time state reload, and `NR52` bit `1` integration.
+   Acceptance criteria: DAC-off disables CH2 immediately, trigger does nothing if DAC is off, and CH2 trigger resets the documented period/envelope state in one explicit path.
+4. Integrate CH2 length and envelope.
+   Scope: `64`-step length counter, `256` Hz length clock, `64` Hz envelope clock, current-volume state, and immediate `NR24` length-enable behavior.
+   Acceptance criteria: length expiry disables CH2, envelope changes current volume without mutating readable `NR22` bits, envelope volume reaching `0` does not disable CH2, and extra-length-clocking behavior is either implemented or isolated as explicit follow-up logic using the same infrastructure as CH1.
+5. Close CH2 shared pulse quirks and fine validation.
+   Scope: envelope timer-reload semantics where programmed pace or period `0` behaves as `8`, low frequency-timer bits on trigger, first-duty-step-after-power-on behavior, and any remaining documented CH2 trigger/length edge cases.
+   Acceptance criteria: quirks are isolated behind explicit channel logic and tests, and CH2 remains architecturally simpler than CH1 because no sweep-specific state or flow leaked into it.
 
 #### Done criteria
 

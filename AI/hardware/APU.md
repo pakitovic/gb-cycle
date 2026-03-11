@@ -230,6 +230,97 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - fast waveform/period timing on the shared T-cycle timeline
   - slow frame-sequencer clocks for length, envelope, and sweep
 
+## CH2 baseline (pulse without sweep)
+
+- CH2 should reuse the same pulse-channel architecture established for CH1 wherever the hardware is actually shared, but without inheriting imaginary sweep state just because the channel is otherwise similar.
+- At minimum, the CH2 state shape should keep explicit fields or equivalent ownership for:
+  - `channel_active`
+  - `dac_enabled`
+  - `period_value`
+  - `period_timer`
+  - selected duty
+  - `duty_step`
+  - `length_counter`
+  - `length_enabled`
+  - envelope timer / pace / direction / current volume
+- CH2 should explicitly not own sweep-specific state such as a sweep timer, sweep-enabled flag, or shadow-period register.
+
+## CH2 MMIO ownership baseline
+
+- `NR21` through `NR24` should remain owned by the CH2 block rather than by a flat APU register bank.
+- `NR21` should keep duty (`bits 7-6`) distinct from the write-only initial length field (`bits 5-0`).
+- `NR22` should keep initial volume, envelope direction, and envelope pace distinct.
+- `NR23` should remain write-only at the MMIO contract layer.
+- `NR24` bit `7` should remain the trigger input, while bit `6` should remain the length-enable control with immediate write-time effect.
+
+## CH2 duty and waveform baseline
+
+- CH2 should keep an explicit duty-step counter in the range `0..=7`.
+- The waveform should remain an `8`-step pulse waveform selected by `NR21` duty.
+- The duty-step counter should not reset when CH2 is retriggered; only powering the APU off should reset the pulse duty-step state.
+- Retriggering CH2 should reset the pulse period/frequency timer instead.
+- When a pulse channel is first started, the digital output should begin at `0`.
+- Keep an explicit follow-up work item for the documented post-power-on quirk where the first CH1/CH2 duty step after the first trigger behaves as if it were step `0`, and duty clocking is disabled until the first trigger.
+
+## CH2 period value and timer baseline
+
+- `NR23` plus the low three bits of `NR24` should form CH2's `11`-bit period value.
+- CH2 should keep explicit separation between the period value stored in registers and the in-flight period timer currently timing the sample.
+- For the current DMG target, the pulse period timer should be clocked at `1048576` Hz, i.e. once every `4` dots.
+- A duty-step advance should occur when the channel's current sample completes, not on every frame-sequencer tick.
+- Writes to `NR23` or `NR24` should not change the currently playing sample instantly; the new period should only take effect after the current sample ends.
+- Keep a dedicated validation case for CH2 period-write delay rather than burying it inside generic "period changes work" coverage.
+
+## CH2 DAC and trigger baseline
+
+- CH2 `dac_enabled` should derive from `NR22 & 0xF8 != 0`.
+- If the DAC is off, a trigger write to `NR24` must not activate CH2.
+- If a write to `NR22` turns the DAC off, CH2 should be disabled immediately.
+- `channel_active` and `dac_enabled` must remain distinct CH2 states; an inactive channel with DAC still enabled should still correspond to digital `0` being converted by the DAC.
+- CH2 trigger should be represented as one explicit operation that performs the channel's trigger-time state transitions rather than as unrelated side effects scattered across MMIO and envelope helpers.
+- On CH2 trigger:
+  - the channel should become active if the DAC is enabled
+  - the period timer should reload from `NR23` / `NR24`
+  - the envelope timer should reset
+  - current volume should become the initial volume from `NR22`
+  - expired length state should be restored to a valid running state
+- Keep a dedicated follow-up work item for the documented quirk where triggering CH1/CH2 does not modify the low two bits of the frequency timer.
+
+## CH2 length and envelope baseline
+
+- CH2 should keep an explicit `64`-step length counter.
+- That length counter should be clocked only by the frame sequencer's `256` Hz length clock, not by the channel's fast waveform timer.
+- `NR24` bit `6` should enable or disable the CH2 length unit immediately on write.
+- If the length counter expires while enabled, CH2 should be disabled.
+- Extra length clocking on `NR24` writes should remain an explicit CH2 work item and should reuse the same general infrastructure as CH1 rather than a parallel incompatible implementation.
+- CH2 should keep envelope timer state and current volume separate from the readable contents of `NR22`.
+- The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
+- Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
+- Envelope progression must update CH2's internal current volume, not the readable initial-volume bits in `NR22`.
+- Reaching volume `0` through the envelope must not disable CH2 by itself.
+
+## CH2 active-state integration and shared quirks baseline
+
+- CH2 should be disabled by exactly these ordinary causes:
+  - DAC disable
+  - length expiry
+- CH2 should not be disabled merely because the envelope reached volume `0`.
+- `NR52` bit `1` should track CH2 activity according to those rules.
+- CH2 should explicitly reserve the pulse-channel quirks it shares with CH1:
+  - programmed envelope pace or period `0` behaving as `8` on the timer-reload path
+  - the first-duty-step-after-power-on behavior
+  - low frequency-timer bits preserved on trigger
+  - extra length clocking on `NR24` writes
+- These quirks should live in CH2 trigger/timer state rather than in post-mix audio patches.
+- The mixer should consume CH2's resolved current digital output together with its DAC/active state; it should not reconstruct CH2 output by re-reading `NR21` through `NR24`.
+- CH2 should expose distinct temporal inputs for:
+  - fast pulse timing on the shared T-cycle timeline
+  - slow frame-sequencer clocks for length and envelope
+- CH2's resolved digital output should be a function of its internal active state, DAC state, duty position, and current envelope-derived volume rather than a fresh interpretation of MMIO register contents at mix time.
+- CH2 timing integration should remain split into:
+  - fast waveform/period timing on the shared T-cycle timeline
+  - slow frame-sequencer clocks for length and envelope
+
 ## Timing / accuracy requirements
 
 - Keep channel and frame-sequencer timing visible.
@@ -270,6 +361,7 @@ Priority order:
 - register semantics tests
 - frame-sequencer timing tests
 - direct-boot register-readback tests for the published post-boot audio snapshot when startup presets bypass firmware execution
+- direct-boot continuity tests that verify the first APU-visible ticks after `SkipBoot` remain coherent with the published post-boot audio snapshot instead of restarting `DIV-APU`, frame-sequencer, DAC, or HPF-visible state from an unrelated zeroed phase
 - tests for write-only register readback policy
 - tests for `NR52` mixed readback and power-gating behavior
 - tests that `NRx4` trigger writes cause immediate channel-side effects
@@ -287,12 +379,19 @@ Priority order:
 - tests for CH1 length expiry, CH1 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
 - sweep tests covering trigger-time shadow copy, immediate overflow check, timed writeback, second overflow check, and the rule that `NR13` / `NR14` writes do not update the sweep shadow automatically
 - dedicated CH1 quirk tests for period-`0`-treated-as-`8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever those behaviors are implemented
+- tests for `NR21`-`NR24` ownership and MMIO semantics, including `NR23` write-only readback policy
+- tests for CH2 duty-step behavior, including "retrigger resets timer but not duty step"
+- tests for CH2 period-write delay where `NR23` / `NR24` changes apply after the current sample ends
+- tests that CH2 trigger reloads period/envelope state but does not activate the channel while DAC is off
+- tests for CH2 length expiry, CH2 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
+- dedicated CH2 quirk tests for envelope-timer `0 -> 8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever those behaviors are implemented
 
 ## Implementation notes for this repo
 
 - Keep output backend decoupled from the emulation core.
 - Favor correctness and clarity before micro-optimizations.
 - Visible post-boot `NRxx` register values for `SkipBoot` should come from the centralized boot snapshot rather than ad hoc per-register reset literals spread through APU code.
+- `SkipBoot` should also synthesize coherent hidden APU timing state such as `DIV-APU`, frame-sequencer phase, channel-active/DAC state, and HPF-visible history rather than pairing the published post-boot `NRxx` values with a contradictory zeroed internal audio phase.
 - Wave RAM accessibility policy should stay explicit and separate from the ordinary `NRxx` register bank contract.
 - A shape such as `Apu { powered, div_apu, nr50, nr51, nr52, hpf_left, hpf_right, ch1, ch2, ch3, ch4 }` is a good fit for this repo's ownership model, even if names differ.
 - Each channel should expose at least:
@@ -307,6 +406,7 @@ Priority order:
 - Reserve explicit follow-up work items for per-channel quirks such as extra length clocking, CH1 sweep details, CH3 retrigger/wave-RAM edge cases, CH4 lock-up, and envelope zombie-mode behavior.
 - A channel shape such as `Channel1 { active, dac_enabled, period_value, period_timer, duty, duty_step, length_counter, length_enabled, envelope, sweep }` is a good fit for keeping CH1 readable and testable, even if field names differ.
 - Keep CH1 sweep logic isolated enough that trigger-time setup, timed sweep iterations, overflow checks, and shadow-register behavior can each be tested directly.
+- A sibling shape such as `Channel2 { active, dac_enabled, period_value, period_timer, duty, duty_step, length_counter, length_enabled, envelope }` is a good fit for reusing the pulse-channel base without carrying sweep-only state into CH2.
 
 ## Known pitfalls
 
