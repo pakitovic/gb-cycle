@@ -43,6 +43,7 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - `EI` must not enable `IME` immediately; it should arm a delayed enable that becomes visible only after the following instruction completes.
 - `HALT` should be represented as an explicit CPU state distinct from ordinary instruction execution.
 - `STOP` should be represented distinctly from `HALT`; even before full DMG/CGB STOP behavior is implemented, the architecture must leave it as a separate CPU control state.
+- The architecture must allow `STOP` to be released by an explicit hardware-originated wake path such as joypad/input state transitions under the chosen DMG-family `STOP` model, rather than by a frontend-only shortcut.
 - The `HALT` bug must be represented explicitly as a pending effect on the next opcode fetch rather than flattened into a generic "PC did not increment" shortcut.
 
 ## Execution-model baseline
@@ -84,6 +85,7 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - The sequence `EI ; DI` must not leave a window where an interrupt is accepted between those two instructions.
 - Interrupt dispatch must not be modeled as an instantaneous jump detached from the CPU timing flow; the service sequence should consume its real CPU-side steps.
 - `HALT` wake-up and interrupt dispatch are related but distinct events; waking from `HALT` with `IME = 0` must not be collapsed into automatic interrupt service.
+- `STOP` wake-up, joypad interrupt request, and any later interrupt service must remain separable ordered events on the shared T-cycle timeline rather than one collapsed "input resumes CPU" shortcut.
 - The `HALT` bug condition is `HALT` executed with `IME = 0` and `IE & IF != 0`; it must alter the next fetch without pretending an interrupt was serviced.
 - The CPU must expose enough ordered micro-event detail for the DMG-family OAM corruption bug to observe `read`, `write`, `read + inc/dec`, and `write + inc/dec` cases on the shared timeline.
 - `PC` increments through the OAM range must remain observable as address-bearing events rather than as a hidden decode-side counter update.
@@ -127,6 +129,7 @@ Priority order:
 - tests for correct push of `PC`, clearing of `IF`, and `IME -> 0` on interrupt service
 - tests for `EI ; NOP`, `EI ; DI`, `DI ; EI ; NOP`, and pending-IRQ visibility around delayed `EI`
 - tests for `HALT` wake-up with `IME = 1`, `IME = 0`, and `IME = 0` plus already-pending interrupt
+- tests for `STOP` wake-up driven through the relevant hardware source path rather than by directly poking CPU state
 - tests for `RETI` re-enabling interrupts and allowing later pending requests to be serviced
 - tests that `inc rr` / `dec rr` with `BC`, `DE`, or `HL` in `FE00-FEFF` expose the IDU event needed by the OAM-corruption path
 - tests that `[hli]` / `[hld]`, `push` / `pop`, `call` / `ret` / `rst`, interrupt service, and opcode fetch from OAM expose the same micro-event model instead of requiring opcode-specific hacks
@@ -146,6 +149,7 @@ Priority order:
 - Every CPU-visible memory access, including opcode fetch, immediate fetch, stack traffic, and `(HL)` access, should go through the central bus contract.
 - The CPU should own `IME`, delayed-IME-enable state, `halted`, `stopped`, and any `halt_bug_pending`-style fetch modifier state.
 - The interrupt controller should own `IE` and `IF` as observable interrupt state, while bus/MMIO wiring exposes those registers at their mapped addresses.
+- The CPU should own `stopped` state and the resume point after `STOP`, but the detection of input-driven wake conditions should remain in the relevant hardware subsystem such as joypad.
 - A clear split such as `request_interrupt(kind)`, `pending_interrupts()`, and `consume_interrupt(kind)` is preferred over implicit cross-module mutation.
 - `RETI` should be implemented as a real instruction with return plus interrupt re-enable semantics, not as `RET` plus an informal external patch.
 - Prefer micro-op metadata or callbacks that let the bus/PPU observe "read", "write", and address-bearing `inc/dec` events without hard-coding an opcode blacklist for the OAM corruption bug.

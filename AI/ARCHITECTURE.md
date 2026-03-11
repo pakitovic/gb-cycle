@@ -138,6 +138,23 @@ to immediately materialize as a separate directory.
 - MMIO routing to the subsystem-owned register contract for each mapped address
 - one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
 
+### `memory/` or bus-owned storage helpers
+
+- WRAM and HRAM backing storage
+- echo-RAM alias backing without duplicate storage
+- plain storage ownership for regions that are not device-defined MMIO
+- explicit uninitialized-memory policy inputs for direct-boot paths
+- narrow storage helpers that remain subordinate to bus-owned address decode and access policy
+
+### `interrupts/` or a tightly scoped interrupt-controller component
+
+- `IF` and `IE` ownership
+- interrupt-source bookkeeping
+- centralized interrupt request / clear helpers
+- fixed-priority pending selection
+- MMIO exposure of `FF0F` and `FFFF`
+- separation between controller-owned request state and CPU-owned `IME` / acceptance flow
+
 ### `boot/`
 
 - boot ROM assets and selection
@@ -186,9 +203,13 @@ to immediately materialize as a separate directory.
 
 ### `joypad/`
 
-- input state as seen by hardware
-- line selection behavior
-- interrupt integration
+- hardware-facing state of the `8` buttons
+- `P1/JOYP` row-selection ownership
+- visible low-nibble composition from the selected matrix rows
+- previous-visible-state tracking or equivalent edge detection
+- joypad interrupt generation through the shared interrupt-controller path
+- input-driven wake signaling for CPU `STOP` integration
+- separation between frontend input collection and emulated joypad semantics
 
 ### `serial/`
 
@@ -246,6 +267,8 @@ to immediately materialize as a separate directory.
 - The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
 - The PPU also owns the live Mode `2` OAM-row state and the DMG-family OAM corruption formulas, while the bus routes relevant access attempts and the CPU exposes the micro-events needed to classify IDU-driven triggers.
 - The interrupt controller owns `IF`/`IE` register state and pending-request bookkeeping, while the CPU owns `IME`, `halted`, `stopped`, and the final decision to accept and service an interrupt.
+- Frontends, test harnesses, and tooling should submit abstract button press/release state changes rather than prebuilt `JOYP` bytes or direct CPU wake requests.
+- The joypad subsystem owns the translation from host-facing button state plus `P1` row selection into visible `JOYP` readback, joypad interrupt requests, and any input-driven `STOP` wake signal.
 - The timer owns the shared divider/system-counter state and visible `DIV`, while the APU owns `DIV-APU`, frame-sequencer state, channel-active state, DAC state, mixer state, and HPF state derived from that shared timing source.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
 - The bus owns address decode and MMIO dispatch, but the device that owns a register must own its read, write, and side-effect semantics.
@@ -254,6 +277,7 @@ to immediately materialize as a separate directory.
 - The memory subsystem owns plain storage regions such as WRAM and HRAM; it must not bypass bus-visible access restrictions defined elsewhere.
 - Shared scheduling must allow CPU, DMA, PPU, timer, and other actors to make progress on the same T-cycle timeline so arbitration remains observable.
 - Shared scheduling must not depend on whole-instruction CPU completion; it should be able to observe CPU fetches, operand reads, stack traffic, and internal steps while the rest of the hardware continues to advance.
+- Input events must enter that same shared scheduling model as changes to hardware-facing button state; they must not live only on a host video-frame cadence if that would hide `JOYP`, interrupt, or `STOP`-wake ordering.
 
 ## Boot ROM architecture policy
 

@@ -270,6 +270,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - `FF50`-driven handoff infrastructure in the bus mapping layer
 - skip-boot initialization path with model-aware post-boot state entry
 - centralized visible post-boot snapshot tables for CPU and I/O state
+- direct-boot snapshot application that respects subsystem-owned mixed-register semantics such as `P1`, `STAT`, `DIV`, and `NR52` rather than raw byte injection
 - explicit direct-boot policy for unreliable startup state such as WRAM, HRAM, and other non-deterministic regions
 
 #### Done criteria
@@ -635,6 +636,10 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 #### Deliverables
 
 - joypad register reads/writes
+- `JOYP` implemented as a mixed register at `FF00`, with latched row-selection bits and a dynamic active-low low nibble derived from a `2x4` button matrix
+- explicit separation between frontend-provided abstract button state and emulated joypad/MMIO state
+- visible-edge detection for joypad interrupt generation based on the low nibble actually exposed through `P1`
+- input-driven `STOP` wake integration routed through the same joypad subsystem rather than a frontend bypass
 - interrupt generation where appropriate
 - serial port functional at the emulated hardware level
 - trace tools to observe both peripherals
@@ -642,8 +647,32 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 #### Done criteria
 
 - joypad and serial are decoupled from the frontend
+- writing `0x30` to `JOYP` makes the visible low nibble read back as `0xF`
+- selecting only one joypad row exposes only that row's buttons in the visible low nibble
+- selecting both joypad rows follows one explicit combined-matrix rule for both readback and interrupt detection rather than an invented row priority
+- joypad interrupt requests are generated only by visible `High -> Low` transitions on `P1` bits `0-3`, and only when the relevant row selection makes that transition visible
+- repeated visible input transitions can request joypad interrupts repeatedly; the model does not assume one interrupt per press
+- `STOP` wake-up is driven from the same joypad/input subsystem path used for hardware-visible input state, not by directly toggling CPU state from the frontend
 - both are integrated through the bus and scheduler
 - their interrupts and states are observable and testable
+
+#### Joypad implementation breakdown
+
+1. **`JOYP` mixed-register baseline**
+   Scope: `FF00` row selection, active-low low-nibble readback, and read/write ownership in `joypad/`.
+   Acceptance criteria: `0x30` reads back with low nibble `0xF`; selecting buttons versus directions changes which row is visible; the frontend does not write precomposed `JOYP` bytes directly.
+2. **Internal button-matrix state**
+   Scope: one hardware-facing state model for all `8` buttons, separated from frontend host input details.
+   Acceptance criteria: any button can be pressed or released without touching MMIO directly, and `JOYP` readback derives from that state plus current row selection.
+3. **Joypad interrupt generation**
+   Scope: visible `High -> Low` detection on `P1` low bits and request routing into `IF`.
+   Acceptance criteria: the interrupt appears only when the relevant row is selected; multiple visible transitions can request multiple interrupts; joypad does not bypass the shared interrupt controller.
+4. **`STOP` integration**
+   Scope: route input-driven wake behavior through the joypad subsystem and CPU `STOP` state interface.
+   Acceptance criteria: a relevant input change can wake `STOP`, and that wake path does not bypass the joypad subsystem.
+5. **Focused validation**
+   Scope: matrix selection, active-low semantics, simultaneous-row selection, visible-edge IRQ detection, and `STOP` wake behavior.
+   Acceptance criteria: tests cover buttons and d-pad separately, both rows selected, visible `High -> Low` detection, repeated input transitions, and the chosen `STOP` wake path.
 
 ---
 
