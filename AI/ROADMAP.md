@@ -822,12 +822,53 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
    Scope: unit tests, integration tests, ROM-based coverage, and at least one trusted oracle comparison for MBC2 bank and RAM edge cases.
    Acceptance criteria: tests cover address-bit-`8` control decode, bank `0 -> 1`, ROM-size diagnostics, echo aliasing across `0xA000-0xBFFF`, low-nibble storage, chosen high-nibble readback policy, battery persistence, and `0x0149 = 0x00` validation.
 
+#### MBC3 sequencing inside Phase 6
+
+1. Establish the MBC3 control model and power-up state.
+   Scope: `ram_rtc_enabled`, raw `rom_bank`, explicit `ram_or_rtc_select`, latch-sequence detection for `0x00 -> 0x01`, deterministic startup for both `RealBoot` and `SkipBoot`, and typed distinction between RAM-bank and RTC-register selection.
+   Acceptance criteria: `0x0000-0x1FFF` enables RAM / RTC on low-nibble `0xA` and disables otherwise, raw ROM bank `0` maps to effective bank `1`, `0x4000-0x5FFF` distinguishes `0x00..=0x07` RAM-bank targets from `0x08..=0x0C` RTC-register targets, and control writes become visible immediately on the shared T-cycle timeline.
+2. Implement standard MBC3 ROM and RAM banking.
+   Scope: fixed low ROM bank `0`, switchable high ROM bank `0x01..=0x7F`, raw `7`-bit ROM-bank register, real-size masking, standard external-RAM banking up to `32 KiB`, and explicit MBC30 reservation.
+   Acceptance criteria: MBC3 supports up to `2 MiB` ROM, the switchable region honors raw `0 -> 1` while still masking by real ROM size, banks `0x20`, `0x40`, and `0x60` are reachable unlike MBC1, RAM banking is masked by real RAM size, and `64 KiB` SRAM configurations are reserved or diagnosed explicitly instead of being treated as standard MBC3.
+3. Implement live RTC registers and latched snapshots.
+   Scope: RTC register mapping for `0x08..=0x0C`, live versus latched RTC state, and the `0x6000-0x7FFF` latch edge.
+   Acceptance criteria: the RTC snapshot refreshes only on the `0x00 -> 0x01` sequence, repeated reads remain stable until the next latch, reads come from the latched snapshot, and writes go to the live RTC state.
+4. Add day counter, halt, and carry behavior.
+   Scope: `9`-bit visible day counter, `DH.bit0`, `DH.bit6`, `DH.bit7`, overflow behavior, sticky carry, and halted-versus-running live RTC progression.
+   Acceptance criteria: visible days stay in `0..=511`, overflow sets carry and wraps the visible day counter, carry stays set until software clears it, `halt` freezes the live RTC, and writes to `DH` control day bit `8`, halt, and carry explicitly.
+5. Add time-source separation and persistence.
+   Scope: explicit separation between visible RTC registers, live RTC counter state, injected time source, and persistence backend; battery-backed elapsed-time handling across powered-off sessions; deterministic testing hooks.
+   Acceptance criteria: battery-backed MBC3 cartridges can persist RTC state, elapsed powered-off time is applied through the chosen time-source policy without coupling RTC advancement to CPU cycle count, and tests can run against an injected deterministic clock rather than host wall time.
+6. Close with dedicated MBC3 tests and validation follow-up.
+   Scope: header-type coverage, RAM-versus-RTC selector behavior, latch sequencing, halt/carry/day overflow, stable snapshots, optional fine-delay research, and explicit future MBC30 tracking.
+   Acceptance criteria: tests cover `0x0F`, `0x10`, `0x11`, `0x12`, and `0x13`, raw ROM-bank `0 -> 1`, RAM-bank versus RTC-register selection, latch `0x00 -> 0x01`, halt / carry / day overflow, stable RTC snapshots, and any deferred `16`-T-cycle / `4 us` access-spacing work is recorded explicitly in the roadmap rather than forgotten.
+
+#### MBC5 sequencing inside Phase 6
+
+1. Establish the MBC5 control model and power-up state.
+   Scope: `ram_enabled`, raw low `8` ROM-bank bits, raw high `1` ROM-bank bit, raw RAM-bank state, deterministic startup for both `RealBoot` and `SkipBoot`, and explicit standard-versus-rumble variant metadata.
+   Acceptance criteria: `0x0000-0x1FFF` enables RAM on low-nibble `0xA` and disables otherwise, the switchable ROM window really allows bank `0`, the low and high ROM-bank register pieces stay explicit, and control writes become visible immediately on the shared T-cycle timeline.
+2. Implement standard MBC5 ROM banking and size masking.
+   Scope: fixed low ROM bank `0`, switchable high ROM bank `0x000..=0x1FF`, raw `8+1` ROM-bank register state, real-size masking, and explicit preservation of bank `0` semantics in the high region.
+   Acceptance criteria: standard MBC5 supports up to `8 MiB` ROM, bank `0` is reachable in `0x4000-0x7FFF`, banks above `0xFF` are reachable through the high ROM-bank bit, and final bank selection remains masked by real ROM size without introducing an MBC1/MBC3-style `0 -> 1` rule.
+3. Implement standard external RAM banking.
+   Scope: non-rumble RAM-bank selection through `0x4000-0x5FFF`, disabled-RAM policy, ignored writes while disabled, and real-size masking for standard MBC5 RAM.
+   Acceptance criteria: standard MBC5 supports the documented RAM-bank range `0x00..=0x0F`, disabled RAM reads and writes follow one explicit policy, and effective RAM banks are masked by the real RAM-bank count.
+4. Add validation, battery persistence, and rumble-variant reservation.
+   Scope: header-type coverage for `0x19`, `0x1A`, `0x1B`, battery-backed persistence expectations, and explicit reservation or first-class variant handling for rumble-capable header types `0x1C`, `0x1D`, and `0x1E`.
+   Acceptance criteria: standard non-rumble MBC5 headers validate cleanly, battery variants persist RAM without changing live mapping rules, and rumble-capable types do not silently masquerade as standard RAM-only MBC5.
+5. Close with dedicated MBC5 tests and oracle comparisons.
+   Scope: unit tests, integration tests, ROM-based coverage, and at least one trusted oracle comparison for bank-selection edge cases.
+   Acceptance criteria: tests cover header types `0x19`, `0x1A`, and `0x1B`, bank `0` visibility in the switchable region, `9`-bit ROM-bank selection across the `0xFF -> 0x100` boundary, RAM-enable behavior, RAM-bank masking, battery persistence expectations, and explicit variant handling for rumble-capable types.
+
 #### Done criteria
 
 - the bus uses a clean interface toward the cartridge
 - each MBC lives inside `cartridge/` without polluting the rest of the system
 - standard MBC1 behavior is modeled inside cartridge devices with explicit wiring / variant metadata rather than bus-side heuristics or one opaque active-bank field
 - standard MBC2 behavior is modeled inside cartridge devices with explicit address-bit-`8` control decode, internal nibble RAM semantics, and mapper-local validation rather than generic external-SRAM assumptions
+- standard MBC3 behavior is modeled inside cartridge devices with explicit RAM-bank versus RTC-register selection, live-versus-latched RTC state, and a reserved future MBC30 extension point
+- standard MBC5 behavior is modeled inside cartridge devices with explicit `9`-bit ROM-bank state, valid switchable-region bank `0`, and a reserved future rumble-variant extension point
 - RTC and persistence are properly encapsulated
 - persistence does not break portability between CLI, desktop, and web
 
@@ -835,6 +876,7 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 
 - cartridge logic spread throughout the bus
 - persistence coupled directly to the core
+- MBC3 treated as "MBC1 with a clock" and split across bus, cartridge, and persistence layers
 - difficulty extending to more mappers or future variants
 
 ---

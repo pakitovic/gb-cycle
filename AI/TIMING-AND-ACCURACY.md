@@ -48,6 +48,7 @@ When implementing timing:
 - Use T-cycles as the fundamental execution unit for the core timing model.
 - Use dot or T-cycle level reasoning as the baseline timing vocabulary for the core.
 - Treat M-cycles only as a descriptive grouping of four T-cycles, not as the project's primary timing abstraction.
+- When external documentation expresses a timing rule in M-cycles or microseconds, restate the corresponding T-cycle value in project docs and code whenever that rule becomes behaviorally relevant or is recorded as deferred validation work.
 - Keep the timing model clean enough that future CGB double-speed behavior can be expressed as an extension of the same temporal foundation rather than a separate clocking design.
 
 ## Practical timing rule

@@ -226,7 +226,7 @@ to immediately materialize as a separate directory.
 - typed cartridge-header parsing over `0x0100-0x014F`
 - decoded cartridge capability model including cartridge type, ROM size, RAM size, CGB flag, and SGB flag
 - central cartridge factory and validation policy
-- concrete cartridge devices such as `NoMbcCartridge`, `Mbc1Cartridge`, and `Mbc2Cartridge`
+- concrete cartridge devices such as `NoMbcCartridge`, `Mbc1Cartridge`, `Mbc2Cartridge`, `Mbc3Cartridge`, and `Mbc5Cartridge`
 - No MBC family support, including the `0x00`, `0x08`, and `0x09` header variants
 - MBC implementations
 - explicit first-pass taxonomy such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, and `Unsupported`

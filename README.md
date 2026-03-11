@@ -1,48 +1,89 @@
 # gb-cycle
 
-Emulador de Game Boy centrado en exactitud de hardware y escrito en Rust.
+A hardware-accuracy-focused Game Boy emulator written in Rust.
 
-La base temporal objetivo del core es `1 tick = 1 T-cycle`.
-La base CPU objetivo es un core de `fetch / decode / execute` con accesos reales al bus.
-La base gráfica objetivo es un PPU `dot-by-dot` con `tile fetcher + pixel FIFO`.
+The target temporal foundation of the core is `1 tick = 1 T-cycle`.
+The target CPU foundation is a `fetch / decode / execute` core with real bus accesses.
+The target graphics foundation is a `dot-by-dot` PPU with `tile fetcher + pixel FIFO`.
 
-## Objetivos
+## Goals
 
-- Priorizar el comportamiento fiel al hardware real.
-- Mantener un core portable y desacoplado de cualquier frontend.
-- Facilitar validación con tests y ROMs de referencia.
-- Construir el core desde el principio sobre una línea temporal por `T-cycle`, no por `M-cycle`.
-- Modelar la CPU desde el principio como flujo real de fetch/decode/execute, no como opcodes opacos con duración agregada.
-- Modelar el PPU desde el principio como pipeline real, no como renderer por scanline.
+- Prioritize behavior faithful to real hardware.
+- Keep the core portable and decoupled from any frontend.
+- Make validation through tests and reference ROMs straightforward.
+- Build the core from the start on a `T-cycle` timeline, not an `M-cycle` timeline.
+- Model the CPU from the start as a real fetch/decode/execute flow, not as opaque opcodes with aggregated duration.
+- Model the PPU from the start as a real pipeline, not as a scanline renderer.
 
-## Estructura prevista
+## Current structure
 
-La siguiente distribución es solo una guía conceptual temprana.
-La estructura canónica y sus límites de ownership están definidos en `AI/ARCHITECTURE.md`.
-Si este resumen conceptual difiere de `AI/ARCHITECTURE.md`, prevalece `AI/ARCHITECTURE.md`.
-A medio plazo, la forma preferida es la familia `crates/gb-core`, `gb-cli`, `gb-desktop`, `gb-web` y utilidades relacionadas descrita allí; el esquema siguiente solo agrupa responsabilidades.
+The canonical structure and ownership boundaries are defined in `AI/ARCHITECTURE.md`.
+If this summary differs from `AI/ARCHITECTURE.md`, `AI/ARCHITECTURE.md` takes precedence.
+The current workspace already uses the `crates/`-based layout, leaving other components as future extensions.
 
 ```text
-core/         Lógica pura de emulación
-frontends/    CLI, escritorio o web
-tooling/      Runner de ROMs, debugger y utilidades
-persistence/  Adaptadores de saves/RTC fuera del core
-tests/        Tests de integración, ROMs y helpers
-AI/           Arquitectura, roadmap y documentación técnica
+crates/
+  gb-core/    Pure emulation logic
+  gb-cli/     Current CLI frontend
+AI/           Architecture, roadmap, and technical documentation
+Makefile      Local verification pipeline and utilities
 ```
 
-## Primeros pasos
+Mid-term planned extensions, not yet materialized as separate crates:
 
-Cuando se inicialice el proyecto Rust:
+- `gb-desktop`
+- `gb-web`
+- additional tooling such as a test runner, debugger, and utilities
+- persistence/save adapters outside the core
+- broader integration tests and ROM suites
+
+### Requirements
+
+- Rust via `rustup`
+
+### Install local tooling
 
 ```bash
-cargo build
-cargo test
+cargo install --locked cargo-llvm-cov
+cargo install --locked cargo-deny
+cargo install --locked typos-cli
 ```
 
-## Documentación
+## Tooling
 
-Antes de implementar subsistemas, consulta primero los handbooks principales en `AI/`:
+This repository uses:
+
+- `rustfmt` for formatting
+- `clippy` for linting
+- `cargo-llvm-cov` for coverage
+- `cargo-deny` for dependency, advisory and license checks
+- `typos` for spellchecking
+
+### Setup
+
+```bash
+make setup
+```
+
+### Coverage
+
+```bash
+cargo cov
+cargo cov-html
+cargo cov-lcov
+```
+
+### Full local pipeline
+
+```bash
+make check
+make ci
+```
+
+
+## Documentation
+
+Before implementing subsystems, read the main handbooks in `AI/` first:
 
 - `AI/index.md`
 - `AI/ARCHITECTURE.md`
@@ -54,15 +95,15 @@ Antes de implementar subsistemas, consulta primero los handbooks principales en 
 - `AI/TIMING-AND-ACCURACY.md`
 - `AI/hardware/*.md`
 
-La jerarquía documental resumida es:
+The documentation hierarchy, in summary, is:
 
-- `AI/index.md` como punto de entrada para rutas de lectura y límites de autoridad entre documentos
-- `AI/ARCHITECTURE.md` para layout, ownership y límites entre subsistemas
-- `AI/TIMING-AND-ACCURACY.md` para vocabulario temporal compartido y restricciones globales de timing
-- `AI/EXECUTION.md` y `AI/CODING-RULES.md` para workflow y disciplina de cambios/código
-- `AI/REFERENCES.md` para el orden de consulta de fuentes y oráculos
-- `AI/hardware/*.md` para comportamiento y contratos del subsistema correspondiente
-- `AI/TESTING.md` para la política global de validación
-- `AI/ROADMAP.md` para orden recomendado, contexto de fase y TODOs pendientes
+- `AI/index.md` as the entry point for reading order and document authority boundaries
+- `AI/ARCHITECTURE.md` for layout, ownership, and subsystem boundaries
+- `AI/TIMING-AND-ACCURACY.md` for shared timing vocabulary and project-wide timing constraints
+- `AI/EXECUTION.md` and `AI/CODING-RULES.md` for workflow and code-change discipline
+- `AI/REFERENCES.md` for source and oracle consultation order
+- `AI/hardware/*.md` for the behavior and contracts of the corresponding subsystem
+- `AI/TESTING.md` for the global validation policy
+- `AI/ROADMAP.md` for recommended implementation order, phase context, and outstanding TODOs
 
-Usa `AI/research/*.md` como documentación secundaria de contraste cuando necesites ejemplos de implementación, validación adicional o comparación con oráculos de referencia.
+Use `AI/research/*.md` as secondary comparison material when you need implementation examples, additional validation, or comparison against reference oracles.
