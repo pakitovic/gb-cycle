@@ -85,6 +85,11 @@ Include tests that the frame sequencer clocks length, envelope, and CH1 sweep wi
 Include tests that `dac_enabled` and `channel_active` stay distinct, that DAC-off forces channel-off, and that `NR52` reports active channels rather than DAC-enabled channels.
 Include tests that `NRx4` trigger writes act immediately on the shared timeline and do not activate a channel whose DAC is off.
 Include tests for `NR51` stereo routing, `NR50` master-volume semantics including the documented "0 behaves like factor 1" rule, and HPF/DC-offset-sensitive mixer state changes whenever suitable tests exist.
+Include APU output-path tests that resolved channel digital outputs feed per-channel DAC conversion before stereo mixing, including the documented negative-slope `0..15 -> -1..1` enabled-DAC mapping.
+Include tests that DAC-off output remains distinct from "inactive channel with DAC still enabled" rather than collapsing both cases into one fake digital-`0` path.
+Include tests that `NR51` routing changes, `NR50` volume changes, and DAC enable changes affect the live analog mix immediately and generate the documented pop-producing DC-offset transitions through the HPF.
+Include tests that the left/right HPF state is persistent and stateful across captured samples instead of acting like a memoryless host post-process.
+Include tests that host-facing sample-rate or buffer-size changes do not alter core APU timing, mixer semantics, HPF behavior, or pop generation, and that the core can be validated without a real audio backend.
 Include CH1 tests for `NR10`-`NR14` ownership, `NR13` write-only behavior, and immediate `NR14` trigger/length-enable semantics.
 Include CH1 tests for period timer cadence, duty-step progression, retrigger-not-resetting-duty-step behavior, and period-write delay until the current sample ends.
 Include CH1 tests for length expiry, envelope progression, and the rule that envelope volume reaching `0` does not disable the channel.

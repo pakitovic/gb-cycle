@@ -822,6 +822,27 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Scope: width-mode transition quirks, documented lock-up on `15 -> 7` in the relevant all-ones states, retrigger recovery, and any remaining CH4 trigger/length edge cases.
    Acceptance criteria: lock-up remains a consequence of real LFSR state rather than an ad hoc mute flag, retrigger recovers sound by resetting the LFSR, and the remaining CH4 quirks are isolated behind explicit channel logic and tests.
 
+#### Final output and host-boundary sequencing inside Phase 7
+
+1. Introduce the explicit DAC layer.
+   Scope: resolved channel digital outputs in the hardware `0..15` domain, per-channel DAC conversion, and an explicit DAC-off path distinct from ordinary enabled-DAC conversion.
+   Acceptance criteria: enabled-DAC conversion follows the documented negative-slope `0..15 -> -1..1` mapping, DAC-off remains distinct from "inactive channel with DAC still enabled", and the master mixer now consumes analog channel outputs instead of raw digital values.
+2. Build the stereo mixer and `NR51` routing.
+   Scope: left/right analog buses, per-channel routing under `NR51`, and immediate routing changes on the shared timeline.
+   Acceptance criteria: each channel can route to left, right, both, or neither; `NR51` writes are immediate; and routing is modeled as analog-bus inclusion rather than as an external mute shortcut.
+3. Integrate `NR50` master-volume scaling and output-side power-state coherence.
+   Scope: per-output master-volume scaling, explicit `VIN` slot, and the effect of `NR52` power-off on active mix contributions.
+   Acceptance criteria: `NR50` level `0` does not mute, maximum volume follows the documented highest factor, and powering the APU off removes active channel contributions from the live mix while preserving wave RAM and `DIV-APU`.
+4. Add the output HPF and DC-offset / pop behavior.
+   Scope: one stateful HPF per stereo output after routing and `NR50`, plus documented pop behavior from DAC-enable, `NR51`, and `NR50` changes.
+   Acceptance criteria: left/right HPF state persists across captured samples, output converges back toward neutral DC offset, documented pops emerge from the modeled signal path, and HPF absence remains at most a debug-only bypass.
+5. Separate the T-cycle-accurate APU core from the host-facing sample/export boundary.
+   Scope: explicit post-HPF analog-output exposure, sample-capture policy, host resampler/export boundary, and final normalization / format conversion outside the hardware model.
+   Acceptance criteria: changing host sample rate does not change the core APU model, the core can run deterministically in tests without a real audio backend, and host-side conversion no longer owns hardware semantics such as mixing, HPF behavior, or pop generation.
+6. Close final output-path integration and validation.
+   Scope: end-to-end `DAC -> mixer -> NR50 -> HPF -> host-facing export boundary` behavior under dynamic routing, volume, DAC, and power changes.
+   Acceptance criteria: `NR50`, `NR51`, `NR52`, and DAC-enable changes all affect the final stereo path coherently, pop-producing transitions are covered by tests, HPF behavior is deterministic, and the final host-facing export layer preserves rather than rewrites the hardware model.
+
 #### Done criteria
 
 - each channel is independently verifiable

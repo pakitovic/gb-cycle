@@ -115,6 +115,93 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The APU output path should include a high-pass filter per output channel, after mixing and master-volume scaling.
 - Leaving the HPF out entirely should be treated as a temporary debug mode, not as the target hardware behavior.
 
+## Final output-pipeline baseline
+
+- The final APU output path should remain explicit as:
+  - resolved per-channel digital output
+  - per-channel DAC conversion
+  - stereo routing and summation under `NR51`
+  - per-output master-volume scaling under `NR50`
+  - per-output high-pass filtering
+  - host-facing capture / resampler boundary
+- Do not collapse the design into "sum four channel states and normalize to host PCM" without the DAC, mixer, and HPF stages remaining explicit.
+- Final mixing should remain owned by the master APU path rather than being split between channel helpers and the host audio backend.
+- Before `NR50` scaling and HPF, each stereo analog bus should be allowed to represent the true mixed hardware-domain range produced by summing up to four channel DAC outputs; do not pre-normalize the core's internal analog signal just because the host sink later wants `float` or `int16`.
+
+## DAC conversion baseline
+
+- Each channel should expose a resolved digital output in the hardware `0..15` domain before DAC conversion rather than a pre-mixed host-ready sample.
+- The APU should keep an explicit DAC stage per channel.
+- When a channel DAC is enabled, digital values `0..15` should map linearly into the analog `-1..1` range with the documented negative slope:
+  - digital `0 -> analog +1`
+  - digital `15 -> analog -1`
+- An inactive channel with its DAC still enabled should therefore contribute the analog level corresponding to digital `0`; "inactive" must stay distinct from "DAC off".
+- The DAC-off path should remain explicit rather than being faked as one more ordinary `0..15` digital conversion case.
+- For the current DMG-family target, leave room for the documented model-dependent transition toward analog `0` when a DAC turns off instead of baking that behavior into ordinary digital-code conversion.
+- `NR52` low bits should continue to report channel-active state rather than DAC-enabled state.
+
+## NR51 stereo-routing baseline
+
+- `NR51` should be modeled as a true routing matrix from each channel DAC output into the left and right analog buses, not as a musical mute or volume control.
+- The left mixer input should sum only the channel DAC outputs whose left-routing bits are enabled in `NR51`.
+- The right mixer input should sum only the channel DAC outputs whose right-routing bits are enabled in `NR51`.
+- Writes to `NR51` should affect routing immediately on the shared T-cycle timeline.
+- `NR51` changes should occur before the HPF stage, because they change the DC offset seen by the filter and can therefore produce the documented pops.
+
+## NR50 master-volume baseline
+
+- `NR50` should scale each stereo output after analog summation and before the HPF stage.
+- `NR50` output volume level `0` should not mute a non-silent signal; it should remain the documented minimum non-zero factor, while level `7` should remain the documented maximum factor.
+- `NR50` should not be treated as a backend-oriented "final gain" knob that is free to renormalize the core's analog range arbitrarily.
+- Writes to `NR50` should affect output immediately on the shared T-cycle timeline.
+- `NR50` changes should remain part of the same DC-offset / pop-sensitive hardware path as routing and DAC-enable changes rather than being deferred to host-buffer boundaries.
+- Keep an explicit slot for `VIN` in the master mixer path even if the current DMG target leaves it neutral.
+
+## HPF, DC-offset, and pops baseline
+
+- The APU should keep one independent high-pass filter state per stereo output.
+- The HPF should be placed after stereo routing and `NR50` master-volume scaling, not before them.
+- The HPF must keep persistent state across captured samples; it is not a memoryless per-sample transform.
+- Leaving the HPF out may exist as a temporary debug mode, but not as the target DMG-family behavior.
+- The design should leave room for later model-specific HPF aggressiveness differences instead of hard-wiring one backend-oriented filter constant forever.
+- Documented pops caused by DAC enable changes, `NR51` routing changes, or `NR50` volume changes should emerge from the modeled DC-offset step plus HPF response rather than from ad hoc smoothing or suppression in the host backend.
+- A debug tool may visualize DC offset or pop-inducing events, but the default emulation path should not erase those hardware-visible artifacts.
+
+## Channel-output ownership baseline
+
+- Each channel should own the logic that resolves its current digital output before DAC conversion:
+  - CH1 / CH2 after duty and current envelope-derived volume
+  - CH3 after wave-sample buffering and `NR32` output-level attenuation
+  - CH4 as digital `0` or current envelope-derived volume according to the LFSR output bit
+- The master APU path should own the digital-to-analog conversion, stereo routing, master-volume scaling, and HPF stages.
+- The stereo mixer should not need to know channel-internal concepts such as duty step, sample index, or LFSR state; it should consume resolved DAC inputs from the channels rather than re-deriving channel behavior from MMIO or internal waveform state.
+
+## APU power-off and mixer-state baseline
+
+- Powering the APU off through `NR52` should stop active channel contributions from reaching the live stereo mix.
+- That power-off path should not clear wave RAM or reset `DIV-APU`, but it should clear channel-active state, DAC-visible routing participation, and ordinary audio-register state coherently enough that the master mix no longer behaves as if stale channels were still alive.
+- Powering the APU back on should restart from a coherent mixer state rather than from partially preserved per-channel contributions.
+- After power restoration, later software-visible DAC, routing, and volume changes should still be able to produce the documented pop behavior through the ordinary modeled output path.
+
+## Host-facing output-boundary baseline
+
+- Internal APU state should continue to advance on the shared T-cycle timeline of the emulator rather than on the host audio callback cadence.
+- Keep one explicit boundary between:
+  - the T-cycle-accurate APU core producing analog stereo state
+  - the later host-facing sample capture / resampler / export path
+- The host sample rate, host buffer size, or host callback timing must not feed back into channel timers, mixer semantics, HPF behavior, or pop generation.
+- The host-facing resampler should only change representation and cadence, not hardware semantics.
+- The core APU should therefore remain runnable without a real host audio backend, exposing deterministic internal analog output or captured samples for tests and offline validation.
+
+## Sample-capture and normalization baseline
+
+- The project should keep an explicit sample-capture policy that snapshots the internal post-HPF stereo analog output into a host-facing stream.
+- That sample-capture policy should remain independent from the T-cycle scheduler logic that advances the hardware itself.
+- Changing host output rate, such as `44.1` kHz versus `48` kHz, should not require changing the internal APU hardware model.
+- The design should leave room for replacing the host-facing resampler later without rewriting the DAC, mixer, or HPF logic.
+- Conversion from the core's internal analog representation into host `float` or `int16` output should be a final representation step after HPF, not part of the hardware model itself.
+- The core should keep a sufficiently precise internal analog representation so host-format conversion does not force the hardware model to clip or renormalize early.
+
 ## CH1 baseline (pulse + sweep)
 
 - CH1 should be modeled as a composition of explicit sub-blocks rather than as one helper that emits a square wave with a few extra flags attached.
@@ -225,7 +312,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - CH1 sweep overflow
 - CH1 should not be disabled merely because the envelope reached volume `0`.
 - `NR52` bit `0` should track CH1 activity according to those rules.
-- The mixer should consume CH1's resolved current digital output together with its DAC/active state; it should not reconstruct CH1 output by re-reading `NR10` through `NR14`.
+- The master APU output path should consume CH1's resolved current digital output together with its DAC/active state through the channel-export boundary, while the stereo mixer itself should operate on the resulting DAC output rather than re-reading `NR10` through `NR14`.
 - CH1 timing integration should remain split into:
   - fast waveform/period timing on the shared T-cycle timeline
   - slow frame-sequencer clocks for length, envelope, and sweep
@@ -312,7 +399,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - low frequency-timer bits preserved on trigger
   - extra length clocking on `NR24` writes
 - These quirks should live in CH2 trigger/timer state rather than in post-mix audio patches.
-- The mixer should consume CH2's resolved current digital output together with its DAC/active state; it should not reconstruct CH2 output by re-reading `NR21` through `NR24`.
+- The master APU output path should consume CH2's resolved current digital output together with its DAC/active state through the channel-export boundary, while the stereo mixer itself should operate on the resulting DAC output rather than re-reading `NR21` through `NR24`.
 - CH2 should expose distinct temporal inputs for:
   - fast pulse timing on the shared T-cycle timeline
   - slow frame-sequencer clocks for length and envelope
@@ -429,7 +516,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - length expiry
 - CH3 should not invent a shutdown path merely because the buffered sample is `0`, because `NR32` is mute, or because the waveform content looks silent.
 - `NR52` bit `2` should track CH3 activity according to those rules.
-- The mixer should consume CH3's resolved current digital output together with its DAC/active state; it should not reconstruct CH3 output by re-reading `NR30` through `NR34`.
+- The master APU output path should consume CH3's resolved current digital output together with its DAC/active state through the channel-export boundary, while the stereo mixer itself should operate on the resulting DAC output rather than re-reading `NR30` through `NR34`.
 - CH3 should expose distinct temporal inputs for:
   - fast sample timing and wave-RAM fetch progression on the shared T-cycle timeline
   - slow frame-sequencer clocks for length only
@@ -525,7 +612,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - length expiry
 - CH4 LFSR lock-up should not be modeled as `channel_active = false`; the channel may remain logically active while the resolved output is effectively silent until retrigger.
 - `NR52` bit `3` should track CH4 activity according to those rules rather than merely reflecting whether CH4 is currently audible.
-- The mixer should consume CH4's resolved current digital output together with its DAC/active state; it should not reconstruct CH4 output by re-reading `NR41` through `NR44`.
+- The master APU output path should consume CH4's resolved current digital output together with its DAC/active state through the channel-export boundary, while the stereo mixer itself should operate on the resulting DAC output rather than re-reading `NR41` through `NR44`.
 - CH4 should expose distinct temporal inputs for:
   - fast noise-timer / LFSR timing on the shared T-cycle timeline
   - slow frame-sequencer clocks for length and envelope
@@ -582,6 +669,11 @@ Priority order:
 - tests for `dac_enabled` versus `channel_active`, including DAC-off forcing the channel off and DAC-on plus inactive-channel remaining distinct
 - tests for `NR50` / `NR51` routing, master-volume scaling, and the documented "volume 0 still means factor 1" behavior
 - tests that HPF-visible state changes when routing, master volume, or DAC state changes produce DC-offset changes
+- tests for per-channel DAC conversion where enabled-DAC digital `0..15` output maps through the documented negative-slope analog range instead of being treated as host PCM directly
+- tests that DAC-off output remains distinct from "inactive channel with DAC still enabled and therefore outputting digital `0` through the DAC"
+- tests for immediate `NR51` routing changes, `NR50` immediate volume changes, and the documented pop-producing DC-offset path through the HPF
+- tests that the HPF keeps persistent left/right state across captured samples rather than acting as a memoryless per-sample post-process
+- tests that host sample-rate changes or host-buffer sizing do not alter the core APU's internal timing, mixing semantics, HPF behavior, or pop generation
 - tests for `NR10`-`NR14` ownership and MMIO semantics, including `NR13` write-only readback policy
 - tests for CH1 duty-step behavior, including "retrigger resets timer but not duty step"
 - tests for CH1 period-write delay where `NR13` / `NR14` changes apply after the current sample ends
@@ -616,6 +708,7 @@ Priority order:
 - `SkipBoot` should also synthesize coherent hidden APU timing state such as `DIV-APU`, frame-sequencer phase, channel-active/DAC state, and HPF-visible history rather than pairing the published post-boot `NRxx` values with a contradictory zeroed internal audio phase.
 - Wave RAM accessibility policy should stay explicit and separate from the ordinary `NRxx` register bank contract.
 - A shape such as `Apu { powered, div_apu, nr50, nr51, nr52, hpf_left, hpf_right, ch1, ch2, ch3, ch4 }` is a good fit for this repo's ownership model, even if names differ.
+- A stage split such as `ChannelDigitalOutput -> ChannelDac -> StereoMixer -> MasterVolume -> HighPassFilter -> HostSampleBridge` is a good fit for keeping hardware semantics and host-output concerns separate, even if final type names differ.
 - Each channel should expose at least:
   - current digital output
   - `dac_enabled`
@@ -623,8 +716,9 @@ Priority order:
   - trigger handling
   - slow control clocks it consumes
   - its own fast timer state
-- The mixer should consume already-resolved channel output and DAC state rather than peeking back into raw register storage to reconstruct behavior indirectly.
-- Keep a clear API boundary between exact internal audio state and the later host-facing sample or resampler path.
+- The master APU path should own DAC conversion, stereo routing, master-volume scaling, HPF state, and host-facing sample capture rather than scattering those stages across per-channel code and frontend backends.
+- The stereo mixer should consume DAC outputs derived from already-resolved channel digital output and DAC state rather than peeking back into raw register storage or channel-internal waveform state to reconstruct behavior indirectly.
+- Keep a clear API boundary between exact internal audio state and the later host-facing sample or resampler path, including a distinct final normalization step for host `float` / `int16` output.
 - Reserve explicit follow-up work items for per-channel quirks such as extra length clocking, CH1 sweep details, CH3 retrigger/wave-RAM edge cases, CH4 lock-up, and envelope zombie-mode behavior.
 - A channel shape such as `Channel1 { active, dac_enabled, period_value, period_timer, duty, duty_step, length_counter, length_enabled, envelope, sweep }` is a good fit for keeping CH1 readable and testable, even if field names differ.
 - Keep CH1 sweep logic isolated enough that trigger-time setup, timed sweep iterations, overflow checks, and shadow-register behavior can each be tested directly.
@@ -640,9 +734,13 @@ Priority order:
 - confusing `channel_active` with `dac_enabled`
 - letting the frame sequencer drive the channels' main waveform timer instead of only their slow control units
 - modeling `NR50` / `NR51` as stateless mixer knobs and losing HPF/DC-offset consequences
+- converting channel state directly into host PCM without an explicit DAC -> mixer -> `NR50` -> HPF pipeline
+- treating `NR50` volume `0` as mute instead of the documented minimum non-zero factor
+- hiding documented pops behind backend smoothing or resampler-side "click removal"
+- normalizing or clipping the core's internal analog output early just to match host sample format
 - treating CH3 as a pulse channel with a custom waveform and thereby losing wave RAM, buffered-sample, output-level, and retrigger-specific behavior
 - treating CH4 as random noise or a cached pseudo-random table and thereby losing explicit `NR43`, LFSR, width-mode, and lock-up behavior
 
 ## Open questions
 
-- what internal sampling interface best preserves determinism and portability
+- what internal sample-capture and resampler boundary best preserves determinism and portability without feeding host cadence back into the hardware model
