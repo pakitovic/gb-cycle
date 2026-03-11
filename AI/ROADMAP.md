@@ -775,7 +775,7 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 
 #### Deliverables
 
-- banking support for MBC1
+- standard MBC1 support with explicit wiring validation, immediate access-ordered bank effects, and reserved future MBC1M variant space
 - banking support for MBC2
 - banking and RTC support for MBC3
 - banking support for MBC5
@@ -783,10 +783,32 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 - portable persistence boundaries across frontends and tools
 - clear separation between emulation logic and host storage APIs
 
+#### MBC1 sequencing inside Phase 6
+
+1. Establish the MBC1 register model and power-up state.
+   Scope: `ram_enabled`, raw `rom_bank_low5`, raw `secondary_bank`, `banking_mode`, deterministic startup for both `RealBoot` and `SkipBoot`, and `0 -> 1` handling for the primary register field.
+   Acceptance criteria: power-up state is `ram_enabled = false`, `rom_bank_low5 = 0`, `secondary_bank = 0`, and `banking_mode = 0`; `0x4000-0x7FFF` starts on bank `1`; and writes to `0x0000-0x7FFF` update the intended MBC1 register immediately for later accesses on the shared T-cycle timeline.
+2. Implement standard MBC1 ROM banking and size masking.
+   Scope: high-region bank selection for `64 KiB`, `128 KiB`, `256 KiB`, and `512 KiB` ROMs, raw low-register preservation, `0 -> 1` before final size masking, and the documented special-bank behavior.
+   Acceptance criteria: `0x4000-0x7FFF` selects the correct bank across the supported small-ROM sizes, the documented small-ROM case where bank `0` can appear in the high region after masking is reproducible, and dedicated tests cover banks `0x01` and `0x1F` plus the raw-register edge case.
+3. Add large-ROM alternate wiring and mode-dependent low-region mapping.
+   Scope: `1 MiB` and `2 MiB` standard MBC1 wiring, secondary-register high ROM bits, mode `0` versus mode `1`, and low-region bank selection for large cartridges.
+   Acceptance criteria: banks `0x20`, `0x40`, and `0x60` are unreachable in the switchable high region while `0x21`, `0x41`, and `0x61` are reachable, `0x0000-0x3FFF` stays on bank `0` in mode `0`, mode `1` exposes the documented secondary-controlled low-region banks on large cartridges, and dedicated tests cover `0x21`, `0x41`, and `0x61` explicitly.
+4. Implement external RAM enable and RAM-bank behavior.
+   Scope: RAM-enable decode, disabled-RAM open-bus policy, ignored writes while disabled, fixed `8 KiB` RAM on large-ROM alternate wiring, and banked `32 KiB` RAM on compatible small-ROM cartridges.
+   Acceptance criteria: disabled RAM reads follow an explicit policy and writes are ignored, mode `0` fixes RAM to bank `0`, mode `1` selects RAM banks `0..=3` on compatible cartridges, and large-ROM cartridges keep one fixed `8 KiB` visible RAM window.
+5. Add MBC1 validation and diagnostics.
+   Scope: consistency checks across `0x0147`, `0x0148`, `0x0149`, real ROM size, RAM size, and chosen MBC1 wiring / variant metadata.
+   Acceptance criteria: impossible combinations produce clear diagnostics, large-ROM cartridges do not silently masquerade as `32 KiB` banked-RAM cartridges, and MBC1M is either detected explicitly or reserved through a first-class variant flag.
+6. Close with dedicated MBC1 tests and oracle comparisons.
+   Scope: unit tests, integration tests, ROM-based coverage, and at least one trusted oracle comparison for bank-selection edge cases.
+   Acceptance criteria: tests cover RAM enable, `0 -> 1`, banks `0x01`, `0x1F`, `0x21`, `0x41`, `0x61`, the `0x20` / `0x40` / `0x60` anomaly, the small-ROM high-region bank-`0` case, mode `0` versus mode `1`, `8 KiB` versus `32 KiB` RAM behavior, and explicit configuration diagnostics.
+
 #### Done criteria
 
 - the bus uses a clean interface toward the cartridge
 - each MBC lives inside `cartridge/` without polluting the rest of the system
+- standard MBC1 behavior is modeled inside cartridge devices with explicit wiring / variant metadata rather than bus-side heuristics or one opaque active-bank field
 - RTC and persistence are properly encapsulated
 - persistence does not break portability between CLI, desktop, and web
 

@@ -1,6 +1,6 @@
 # AI Handbook Index
 
-Read the matching file directly; this index is only a routing guide.
+Read the matching file directly; this index is a routing guide plus a summary of document authority boundaries, but detailed behavioral rules still live in the owning file.
 
 ## Global docs
 
@@ -15,6 +15,9 @@ Read the matching file directly; this index is only a routing guide.
 ## Authority map
 
 - `ARCHITECTURE.md` owns crate/module layout, subsystem boundaries, and ownership rules.
+- `EXECUTION.md` owns implementation workflow, change-scope discipline, and roadmap-follow-up recording policy.
+- `CODING-RULES.md` owns Rust-facing code style, API clarity expectations, and optimization discipline.
+- `REFERENCES.md` owns the generic source-consultation order and open-source reference tier unless a subsystem handbook overrides it explicitly.
 - `TIMING-AND-ACCURACY.md` owns shared timing vocabulary and project-wide temporal constraints.
 - `TESTING.md` owns project-wide validation policy and cross-subsystem testing expectations.
 - `ROADMAP.md` owns implementation sequencing, phase context, and carried TODOs; it does not redefine subsystem behavior.
@@ -24,6 +27,8 @@ When guidance overlaps, the more specific document wins:
 
 - `hardware/*.md` over generic docs for subsystem behavior
 - `ARCHITECTURE.md` over `README.md` or roadmap prose for layout and ownership
+- `TIMING-AND-ACCURACY.md` over `README.md` or roadmap prose for shared timing claims
+- `REFERENCES.md` over generic prose for consultation order unless a subsystem handbook explicitly refines it
 - `TESTING.md` over roadmap prose for generic validation policy
 - `ROADMAP.md` only for implementation order and remaining work tracking
 

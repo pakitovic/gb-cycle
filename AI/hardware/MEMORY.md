@@ -2,20 +2,20 @@
 
 ## Scope
 
-Own internal memory regions and the backing storage behind WRAM, HRAM, and their documented alias relationships, plus any MMIO-facing storage not owned by another subsystem.
+Own internal memory regions and the backing storage behind WRAM, HRAM, and their documented alias relationships, plus only simple storage-backed MMIO fields whose semantics are not owned by another subsystem.
 
 ## Hardware model
 
 Memory should reflect distinct hardware regions, not a single flat array with ad hoc exceptions.
 
 DMG may expose only simple WRAM behavior today, but the overall memory architecture should leave room for future bank-selectable regions where the hardware family later requires them.
-VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this subsystem focuses on plain storage regions and their ownership boundaries.
+VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this subsystem focuses on plain storage regions, aliasing, and backing storage rather than complex MMIO semantics.
 
 ## Responsibilities
 
 - represent WRAM and HRAM explicitly
 - provide storage-level support for internal RAM aliasing and mirroring
-- define ownership boundaries between plain memory and MMIO devices
+- define ownership boundaries between plain memory, simple storage-backed MMIO, and device-owned MMIO behavior
 - provide the underlying storage reached through WRAM and HRAM address aliases without turning those aliases into duplicate buffers
 
 ## Registers / MMIO
@@ -62,6 +62,7 @@ VRAM access rules and VRAM/OAM visibility remain a bus-plus-PPU concern; this su
 ## Implementation notes for this repo
 
 - Keep plain storage separate from device-backed MMIO.
+- If a mapped field has mixed bits, timing-sensitive readback, or access side effects, its semantics belong to the owning subsystem or routed MMIO contract rather than to `memory/`.
 - Avoid closed abstractions that assume WRAM and VRAM can never gain bank-selection behavior.
 - Treat extensibility of the I/O block and memory-backed regions as part of the baseline design, even before CGB functionality exists.
 - Prefer designs where extra CGB banks can be disabled by machine mode rather than requiring a different memory architecture.

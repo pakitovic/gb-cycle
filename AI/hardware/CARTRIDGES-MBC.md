@@ -118,6 +118,51 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - It should contain at least `rom: Vec<u8>`, `ram: Option<Vec<u8>>`, `has_battery: bool`, and `header: CartridgeHeader`.
 - It should not carry `active_rom_bank`, `active_ram_bank`, RAM-enable latches, or similar mutable mapper state because No MBC has none.
 
+## MBC1 baseline
+
+- Treat MBC1 as a real mapper family with four pieces of live state: RAM enable, a `5`-bit primary ROM-bank register, a `2`-bit secondary register, and a `1`-bit banking-mode register. Do not collapse it to one `active_rom_bank`.
+- The repo should distinguish at least three MBC1 configuration shapes:
+  - standard wiring for up to `512 KiB` ROM with up to `32 KiB` banked external RAM
+  - large-ROM / alternate wiring for `1 MiB` or `2 MiB` ROM, where the secondary register extends ROM selection and only one fixed `8 KiB` external RAM window remains practical
+  - a reserved future `Mbc1Variant::Mbc1M` or equivalent, because multi-cart MBC1M uses a different bank-selection formula from standard MBC1
+- Header codes `0x01`, `0x02`, and `0x03` should be recognized explicitly as the MBC1 family.
+- `0x01` means MBC1 with no external RAM, `0x02` means MBC1 + RAM, and `0x03` means MBC1 + RAM + battery.
+- Battery presence changes persistence expectations only; it must not change live banking behavior.
+- MBC1 configuration must be validated from header metadata and real image size rather than accepted indiscriminately.
+- Treat `32 KiB` external RAM as the standard small-ROM wiring case.
+- Treat `1 MiB` or `2 MiB` ROM as the alternate large-ROM wiring case, not as banked-`32 KiB` RAM cartridges.
+- If declared ROM size, RAM size, real file size, and derived MBC1 wiring disagree, report an explicit diagnostic under the chosen validation policy instead of guessing silently.
+- If the cartridge is too small to observe the secondary register or banking mode, writes may still update the stored register state, but they must not invent visible effects.
+- Power-up state must be deterministic for both `RealBoot` and `SkipBoot`: `ram_enabled = false`, `rom_bank_low5 = 0`, `secondary_bank = 0`, and `banking_mode = 0`.
+- Even though `rom_bank_low5` powers up as `0`, the switchable ROM window at `0x4000-0x7FFF` must initially expose bank `1`, not bank `0`.
+- Direct-boot setup must not depend on accidentally zeroed host memory or allocator behavior.
+- `0x0000-0x1FFF` is a write-only RAM-enable register. Any write whose low nibble is `0xA` enables cartridge RAM; any other write disables it.
+- When RAM is disabled, `0xA000-0xBFFF` reads should follow an explicit disabled-RAM open-bus policy rather than normal SRAM semantics. `0xFF` is a reasonable default, but the policy should stay explicit and ideally configurable for tests.
+- When RAM is disabled, `0xA000-0xBFFF` writes must be ignored.
+- `0x2000-0x3FFF` is a write-only `5`-bit primary ROM-bank register. Store `value & 0x1F` as raw register state; bits above bit `4` are discarded.
+- The `0 -> 1` translation applies to the raw `5`-bit primary register field used by the high ROM window, not to a later final bank number after ROM-size masking.
+- `0x4000-0x5FFF` is a write-only `2`-bit secondary register. Its meaning depends on cartridge wiring and banking mode: RAM bank on compatible `32 KiB` RAM cartridges, or high ROM bits on large-ROM cartridges.
+- `0x6000-0x7FFF` is a write-only `1`-bit banking-mode register. Mode `0` fixes `0x0000-0x3FFF` to ROM bank `0` and `0xA000-0xBFFF` to RAM bank `0`. Mode `1` allows the secondary register to affect the low ROM region and/or external RAM selection when the cartridge wiring actually supports it.
+- Keep raw register values, intermediate MBC1 bank calculations, and final size-masked bank numbers as separate concepts in code.
+- The switchable region `0x4000-0x7FFF` should be resolved from the raw `5`-bit primary register after applying its `0 -> 1` rule, plus secondary bits where the cartridge wiring uses them, then masked to the real ROM size.
+- Because the low `5`-bit field translates `0 -> 1` before final size masking, large standard MBC1 cartridges must reproduce the documented inaccessibility of banks `0x20`, `0x40`, and `0x60` in the high region, exposing `0x21`, `0x41`, and `0x61` instead.
+- Small ROMs of `256 KiB` or less must still preserve the documented exception where the high region can end up on bank `0` after real-size masking even though the raw low register went through the `0 -> 1` translation.
+- In mode `0`, or on cartridges too small to use the secondary register, `0x0000-0x3FFF` reads should resolve to ROM bank `0`.
+- On large-ROM cartridges in mode `1`, `0x0000-0x3FFF` must be able to resolve the secondary-register-controlled low-region banks documented by Pan Docs.
+- Keep standard MBC1 and future MBC1M formulas distinct rather than mixing them behind ad hoc conditionals.
+- The bus must not implement any MBC1 bank math; all of it belongs inside the cartridge device.
+- `0xA000-0xBFFF` should delegate to cartridge-owned external RAM only when the MBC1 configuration actually provides RAM.
+- In mode `0`, visible RAM stays on bank `0`.
+- On compatible `32 KiB` RAM cartridges in mode `1`, the secondary register selects RAM banks `0..=3`, masked by the real RAM size.
+- On large-ROM alternate-wiring cartridges, visible RAM remains one fixed `8 KiB` window even when the secondary register changes.
+- Effective RAM-bank selection should also be masked by the real RAM bank count without destroying the pre-mask MBC1 rules that produced it.
+- ROM-space writes to MBC1 are ordered cartridge commands on the shared T-cycle timeline.
+- A write to `0x0000-0x7FFF` must update mapper state immediately for later bus accesses; do not defer bank changes until the end of the instruction or frame.
+- A concrete `Mbc1Cartridge` implementing `CartridgeDevice` is the intended implementation shape for this repo.
+- It should contain at least `rom`, optional `ram`, `has_battery`, `ram_enabled`, `rom_bank_low5`, `secondary_bank`, `banking_mode`, header-derived size and capability metadata, and explicit wiring / variant metadata.
+- Prefer explicit helpers such as `effective_low_region_rom_bank()`, `effective_high_region_rom_bank()`, and `effective_ram_bank()` so raw register state, wiring decisions, and final masked bank numbers stay inspectable.
+- Reserve an explicit variant or flag for future MBC1M support instead of letting the first standard implementation accrete scattered special cases.
+
 ## Timing / accuracy requirements
 
 - Access behavior must remain compatible with bus ordering.
@@ -125,6 +170,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Direct-boot initialization should not assume external RAM starts clean unless that follows from persisted save data or an explicit uninitialized-memory policy.
 - Writes in ROM address space should be interpreted as cartridge/MBC control behavior where applicable, not as attempts to mutate ROM contents.
 - Cartridge-visible reads and writes should remain ordinary bus transactions on the shared T-cycle timeline; mapper side effects must occur in access order rather than in a deferred per-instruction batch.
+- For MBC1 and later banked mappers, RAM-enable and bank-select writes should become visible on the access T-cycle for all later cartridge reads and writes.
 - Header parsing is configuration work at load time, but runtime visibility of header bytes at `0x0100-0x014F` must still emerge from normal ROM bank `0` reads after boot-ROM handoff.
 - For No MBC specifically, linear ROM reads, ignored ROM-space writes, and optional external-RAM accesses should still happen through the same ordered T-cycle cartridge transactions rather than through a bus-local fast path.
 
@@ -160,6 +206,9 @@ Priority order:
 - tests that No MBC `0x0000-0x7FFF` reads are linear and bankless, and that `0x0100-0x014F` remains visible through ordinary reads after boot handoff
 - tests that No MBC ROM-space writes are ignored without mutating ROM or mapper state, while still traveling through the normal cartridge command path
 - tests that No MBC `0xA000-0xBFFF` behavior distinguishes absent RAM from present linear `8 KiB` RAM and that battery only changes persistence policy
+- explicit MBC1 tests for `0x01`, `0x02`, and `0x03`, deterministic power-up state, register writes to each control range, and immediate visibility of mapper writes to later accesses
+- tests that MBC1 reproduces raw-register `0 -> 1`, dedicated access to banks `0x01`, `0x1F`, `0x21`, `0x41`, and `0x61`, the documented small-ROM case where bank `0` becomes visible in `0x4000-0x7FFF` after size masking, and the large-ROM `0x20` / `0x40` / `0x60` to `0x21` / `0x41` / `0x61` anomaly
+- tests that MBC1 distinguishes standard `32 KiB` banked-RAM wiring from large-ROM alternate wiring, including mode `0` versus mode `1`, disabled-RAM open-bus reads and ignored writes, fixed `8 KiB` RAM, banked `32 KiB` RAM, and explicit diagnostics for impossible ROM/RAM/wiring combinations
 - mapper-specific ROM tests
 - save RAM behavior tests
 - RTC behavior tests when implemented
@@ -181,6 +230,9 @@ Priority order:
 - Keep No MBC absent-RAM behavior under an explicit and configurable policy instead of accidental zero-backed memory.
 - Keep active-ROM-bank selection, RAM enable, RAM banking, RTC mapping, and any bank-wrap quirks inside cartridge/MBC implementations rather than generic bus region logic.
 - Keep header validation policy explicit and centralized rather than hiding it inside individual mapper constructors.
+- For MBC1, keep raw register fields, resolved effective bank helpers, and validated wiring / variant metadata as separate layers instead of one opaque "current bank" state blob.
+- For MBC1, derive an explicit standard-versus-large-ROM wiring classification, plus a reserved future MBC1M variant, from validated cartridge metadata instead of branching ad hoc during each access.
+- Keep disabled external-RAM open-bus behavior explicit and configurable enough that tests can pin the chosen policy.
 
 ## Known pitfalls
 
@@ -197,6 +249,11 @@ Priority order:
 - dropping `cgb_flag` or `sgb_flag` because they are not immediately used by the DMG baseline
 - silently accepting No MBC headers that declare more than `32 KiB` ROM or more than `8 KiB` RAM without diagnostics
 - silently coercing unsupported or inconsistent headers into a nearby supported configuration
+- collapsing MBC1 to one `active_rom_bank` and losing the raw register semantics that drive its quirks
+- applying the MBC1 `0 -> 1` rule after final ROM-size masking instead of on the raw `5`-bit primary register field
+- assuming bank `0` can never appear in `0x4000-0x7FFF` on small MBC1 ROMs
+- treating all MBC1 cartridges as if the secondary register always means the same thing regardless of wiring and banking mode
+- folding future MBC1M behavior into standard MBC1 bank math with scattered conditionals
 
 ## Open questions
 

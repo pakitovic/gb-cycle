@@ -56,7 +56,11 @@ Antes de implementar subsistemas, consulta primero los handbooks principales en 
 
 La jerarquía documental resumida es:
 
+- `AI/index.md` como punto de entrada para rutas de lectura y límites de autoridad entre documentos
 - `AI/ARCHITECTURE.md` para layout, ownership y límites entre subsistemas
+- `AI/TIMING-AND-ACCURACY.md` para vocabulario temporal compartido y restricciones globales de timing
+- `AI/EXECUTION.md` y `AI/CODING-RULES.md` para workflow y disciplina de cambios/código
+- `AI/REFERENCES.md` para el orden de consulta de fuentes y oráculos
 - `AI/hardware/*.md` para comportamiento y contratos del subsistema correspondiente
 - `AI/TESTING.md` para la política global de validación
 - `AI/ROADMAP.md` para orden recomendado, contexto de fase y TODOs pendientes

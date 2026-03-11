@@ -92,7 +92,7 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 
 - CPU: instruction flow, register state, decode/execution state, fine-grained fetch/read/write/internal steps, IME state, interrupt acceptance/dispatch, HALT/STOP semantics, and micro-operation visibility for timing-sensitive hardware interactions
 - Bus: address decoding, subsystem routing, dynamic mapping, visible access ordering, temporal arbitration of blocked accesses, delegation to the base cartridge interface for cartridge-owned regions, and routing of access attempts that carry hardware-visible side effects such as DMG OAM corruption triggers
-- Memory and MMIO: WRAM, HRAM, echo behavior, plain storage ownership, and MMIO-backed state not owned by another subsystem
+- Memory and MMIO: WRAM, HRAM, echo behavior, plain storage ownership, and only simple storage-backed MMIO state whose semantics are not owned by a dedicated subsystem
 - Interrupt controller: IF/IE state, interrupt request paths, priority-ordered pending selection, and acknowledge flow
 - Timer: DIV/TIMA/TMA/TAC behavior and edge-sensitive increment logic
 - PPU: LCD modes, fetcher/FIFO behavior, rendering state, VRAM/OAM restrictions, Mode 2 OAM-scan row state, and DMG-family OAM corruption behavior
@@ -142,7 +142,7 @@ to immediately materialize as a separate directory.
 
 - WRAM and HRAM backing storage
 - echo-RAM alias backing without duplicate storage
-- plain storage ownership for regions that are not device-defined MMIO
+- plain storage ownership for regions that are not device-defined MMIO, plus any simple storage-backed MMIO fields that remain bus-owned and have no dedicated device semantics
 - explicit uninitialized-memory policy inputs for direct-boot paths
 - narrow storage helpers that remain subordinate to bus-owned address decode and access policy
 
@@ -226,9 +226,11 @@ to immediately materialize as a separate directory.
 - typed cartridge-header parsing over `0x0100-0x014F`
 - decoded cartridge capability model including cartridge type, ROM size, RAM size, CGB flag, and SGB flag
 - central cartridge factory and validation policy
+- concrete cartridge devices such as `NoMbcCartridge` and `Mbc1Cartridge`
 - No MBC family support, including the `0x00`, `0x08`, and `0x09` header variants
 - MBC implementations
 - explicit first-pass taxonomy such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, and `Unsupported`
+- explicit separation between raw mapper register state, header-derived wiring / variant metadata, and helper logic that resolves effective ROM and RAM banks
 - external RAM
 - RTC-backed cartridges
 - bus-facing ownership of `0x0000-0x7FFF` and `0xA000-0xBFFF` through one stable device contract
