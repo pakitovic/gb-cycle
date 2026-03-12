@@ -326,9 +326,9 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 - Treat MBC3 as its own mapper family, not as "MBC1 plus RTC."
 - MBC3 has three coupled cartridge-local behaviors that must stay explicit in code: ROM banking, external-RAM banking, and an RTC register file that shares the `0xA000-0xBFFF` window through a selector.
-- The implementation must not collapse "RAM bank `0x00..=0x07`" and "RTC register `0x08..=0x0C`" into one undifferentiated bank number. They share an address window, not a meaning.
+- The implementation must not collapse standard MBC3 RAM-bank selection `0x00..=0x03`, reserved selector values `0x04..=0x07`, and RTC-register selection `0x08..=0x0C` into one undifferentiated bank number. They share an address window, not a meaning.
 - The RTC must keep its own live state separate from any external-RAM backing and separate from bus-owned state; it is not a bus patch layered on top of SRAM.
-- MBC3 should keep explicit live state for at least `ram_rtc_enabled`, a raw `7`-bit ROM-bank register such as `rom_bank`, an explicit `ram_or_rtc_select`, RTC live state, RTC latched snapshot state, latch-edge detection for the `0x00 -> 0x01` command sequence, battery / RTC capability flags, and header-derived metadata.
+- MBC3 should keep explicit live state for at least `ram_rtc_enabled`, a raw `7`-bit ROM-bank register such as `rom_bank`, an explicit typed `ram_or_rtc_select` state that can represent RAM banks, reserved selectors, and RTC registers, RTC live state, RTC latched snapshot state, latch-edge detection for the `0x00 -> 0x01` command sequence, battery / RTC capability flags, and header-derived metadata.
 - Header codes `0x0F`, `0x10`, `0x11`, `0x12`, and `0x13` should be recognized explicitly as the MBC3 family.
 - `0x0F` means MBC3 + timer + battery, `0x10` means MBC3 + timer + RAM + battery, `0x11` means plain MBC3, `0x12` means MBC3 + RAM, and `0x13` means MBC3 + RAM + battery.
 - Header-derived capability state must distinguish plain MBC3 from RTC-backed MBC3 cartridges; not every MBC3 cartridge has timer hardware.
@@ -339,13 +339,13 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The visible MBC3 memory map should be:
   - `0x0000-0x3FFF`: fixed ROM bank `0`
   - `0x4000-0x7FFF`: switchable ROM bank `0x01..=0x7F`
-  - `0xA000-0xBFFF`: external RAM bank `0x00..=0x07` or RTC register `0x08..=0x0C`, depending on the current selector
+  - `0xA000-0xBFFF`: external RAM bank `0x00..=0x03`, reserved selector states `0x04..=0x07`, or RTC register `0x08..=0x0C`, depending on the current selector
 - The bus should still delegate `0xA000-0xBFFF` completely to the cartridge device; it must not infer from the address alone whether the active target is SRAM or RTC.
 - `0x0000-0x1FFF` is a write-only RAM / RTC-enable register. Any write whose low nibble is `0xA` enables both external RAM and RTC-register access; other values disable both.
 - With RAM / RTC disabled, `0xA000-0xBFFF` reads and writes should follow one explicit project policy rather than accidental backing-store behavior. A default of `0xFF` is acceptable, but the policy should remain explicit and testable.
 - `0x2000-0x3FFF` is a write-only raw `7`-bit ROM-bank register. Store `value & 0x7F`, ignore upper data bits, apply the documented `0 -> 1` translation for the switchable ROM window, and then mask the effective bank by the real number of loaded ROM banks.
-- `0x4000-0x5FFF` is a write-only selector for the `0xA000-0xBFFF` window. Values `0x00..=0x07` select RAM banks, while `0x08..=0x0C` select RTC registers.
-- Represent the `0x4000-0x5FFF` selector as an explicit mapping target such as `RamBank(u8)` versus `RtcRegister(RtcRegisterId)` instead of as one raw numeric field whose meaning is reconstructed ad hoc during each access.
+- `0x4000-0x5FFF` is a write-only selector for the `0xA000-0xBFFF` window. Standard MBC3 values `0x00..=0x03` select RAM banks, values `0x08..=0x0C` select RTC registers, and values `0x04..=0x07` should remain explicit reserved or invalid selector states unless a later typed variant such as `MBC30` gives them meaning.
+- Represent the `0x4000-0x5FFF` selector as an explicit mapping target such as `RamBank(u8)`, `ReservedSelector(u8)`, or `RtcRegister(RtcRegisterId)` instead of as one raw numeric field whose meaning is reconstructed ad hoc during each access.
 - External RAM banking must be masked by the real number of available RAM banks declared by validated cartridge metadata; standard MBC3 should not silently treat a `64 KiB` RAM declaration as ordinary banked SRAM support.
 - `0x6000-0x7FFF` is a write-only RTC latch command register. Latch only on the logical edge formed by writing `0x00` and then `0x01`; writing `0x01` without the preceding `0x00` must not refresh the snapshot.
 - Keep RTC live state and RTC latched state as separate concepts. RTC register reads should come from the latched snapshot, while RTC register writes should target the live RTC state.
@@ -466,7 +466,7 @@ Priority order:
 - tests that MBC2 models one logical `512 x 4-bit` internal RAM array with low-`9`-bit echo aliasing across `0xA000-0xBFFF`, stores only the low nibble on writes, uses the documented repo high-nibble read policy explicitly, ignores writes while RAM is disabled, and persists that internal RAM only for `0x06`
 - explicit MBC3 tests for `0x0F`, `0x10`, `0x11`, `0x12`, and `0x13`, deterministic power-up state, immediate visibility of RAM / RTC-enable and selector writes, and the documented `0 -> 1` behavior for the raw `7`-bit ROM-bank register
 - tests that MBC3 supports up to `2 MiB` ROM, preserves access to banks `0x20`, `0x40`, and `0x60`, masks effective ROM and RAM banks by real cartridge size, and reserves or diagnoses MBC30-like `64 KiB` SRAM declarations explicitly
-- tests that MBC3 distinguishes external RAM-bank selection from RTC-register selection in `0xA000-0xBFFF`, routes reads through the correct target, and keeps disabled RAM / RTC behavior under one explicit project policy
+- tests that MBC3 distinguishes standard RAM-bank selectors `0x00..=0x03`, reserved selector values `0x04..=0x07`, and RTC-register selectors `0x08..=0x0C` in `0xA000-0xBFFF`, routes reads through the correct target, and keeps disabled RAM / RTC behavior under one explicit project policy
 - tests that MBC3 latches RTC state only on the `0x00 -> 0x01` sequence, keeps snapshots stable across multiple reads while live RTC state can advance independently, and routes RTC writes to live state rather than to the latched copy
 - tests that MBC3 implements seconds, minutes, hours, day low, and day high / flags correctly, including writes to `DH.bit0`, `DH.bit6`, and `DH.bit7`, sticky carry on day overflow, and `halt` freezing live RTC advancement
 - tests that MBC3 RTC / persistence can run from an injected deterministic time source, including elapsed time across powered-off sessions without coupling the expected result to host wall-clock timing during tests
@@ -514,7 +514,7 @@ Priority order:
 - For MBC2, keep address-bit-`8` control decode, raw `rom_bank_low4`, internal nibble RAM organization, effective ROM-bank helpers, and explicit disabled-RAM / high-nibble readback policies as separate layers instead of hiding them in generic byte-RAM helpers.
 - For MBC2, treat `0x0149` as validation metadata only; runtime RAM capacity comes from the mapper family itself rather than from the ordinary external-RAM table.
 - For MBC3, derive `has_rtc` from the header type itself, not from battery presence or RAM presence alone.
-- For MBC3, keep `ram_or_rtc_select` as a typed mapping target rather than one raw bank number whose meaning changes implicitly.
+- For MBC3, keep `ram_or_rtc_select` as a typed mapping target that can represent RAM, reserved, and RTC selector states rather than one raw bank number whose meaning changes implicitly.
 - For MBC3, keep `rtc_live` and `rtc_latched` as separate state objects, and route RTC reads versus writes intentionally.
 - For MBC3, keep the visible RTC model inside the cartridge device while the save / persistence layer only owns serialization, storage, and time-source integration.
 - For MBC3, persist live RTC state plus elapsed-time bookkeeping, not the latched snapshot shown through the read latch.
@@ -559,7 +559,7 @@ Priority order:
 - forgetting that `0xA200-0xBFFF` aliases the same MBC2 RAM cells as `0xA000-0xA1FF`
 - letting MBC2 high-nibble readback or disabled-RAM behavior emerge accidentally from host memory instead of one explicit project policy
 - modeling MBC3 as if it were just MBC1 plus a decorative clock register
-- treating MBC3 RAM-bank values `0x00..=0x07` and RTC-register values `0x08..=0x0C` as one interchangeable selector namespace
+- treating standard MBC3 RAM-bank values `0x00..=0x03`, reserved selector values `0x04..=0x07`, and RTC-register values `0x08..=0x0C` as one interchangeable selector namespace
 - reading MBC3 RTC registers from live state instead of the latched snapshot
 - writing MBC3 RTC register updates into the latched snapshot instead of the live RTC state
 - deriving MBC3 RTC progression directly from executed CPU cycles instead of from an explicit time / persistence source

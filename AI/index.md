@@ -15,6 +15,7 @@ Read the matching file directly; this index is a routing guide plus a summary of
 ## Authority map
 
 - `ARCHITECTURE.md` owns crate/module layout, subsystem boundaries, and ownership rules.
+- `ARCHITECTURE.md` plus `TIMING-AND-ACCURACY.md` jointly own the project-level global scheduler contract and shared per-T-cycle ordering.
 - `EXECUTION.md` owns implementation workflow, change-scope discipline, and roadmap-follow-up recording policy.
 - `CODING-RULES.md` owns Rust-facing code style, API clarity expectations, and optimization discipline.
 - `REFERENCES.md` owns the generic source-consultation order and open-source reference tier unless a subsystem handbook overrides it explicitly.
@@ -22,6 +23,7 @@ Read the matching file directly; this index is a routing guide plus a summary of
 - `TESTING.md` owns project-wide validation policy and cross-subsystem testing expectations.
 - `ROADMAP.md` owns implementation sequencing, phase context, and carried TODOs; it does not redefine subsystem behavior.
 - `hardware/*.md` own subsystem-specific behavior, MMIO semantics, timing expectations, and subsystem-specific validation detail.
+- `hardware/BOOT-ROM.md` owns startup-path semantics such as real boot, skip boot, `FF50` handoff, and post-boot snapshot policy.
 
 When guidance overlaps, the more specific document wins:
 
@@ -34,9 +36,10 @@ When guidance overlaps, the more specific document wins:
 
 Subsystem handbooks may refine the generic reference consultation order from `REFERENCES.md` when a specific subsystem has a stronger oracle.
 
-The project-wide timing baseline is T-cycle based; see `TIMING-AND-ACCURACY.md` and `hardware/CPU.md`.
+The project-wide timing baseline is T-cycle based; see `ARCHITECTURE.md`, `TIMING-AND-ACCURACY.md`, and `hardware/CPU.md`.
 The project-wide CPU baseline is a fine-grained fetch/decode/execute model with explicit bus-visible steps; see `hardware/CPU.md`.
 The project-wide PPU baseline is dot-by-dot with explicit fetcher/FIFO behavior; see `hardware/PPU.md`.
+The global scheduler phase contract lives in `ARCHITECTURE.md` and `TIMING-AND-ACCURACY.md`.
 The cartridge handbook owns header-driven mapper selection, special-cartridge taxonomy, and unsupported-policy rules; see `hardware/CARTRIDGES-MBC.md`.
 Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work, or when documenting known remaining gaps after an implementation.
 

@@ -2,7 +2,7 @@
 
 A hardware-accuracy-focused Game Boy emulator written in Rust.
 
-The target temporal foundation of the core is `1 tick = 1 T-cycle`.
+The core's base temporal unit is `1 T-cycle`, advanced on one shared scheduler timeline.
 The target CPU foundation is a `fetch / decode / execute` core with real bus accesses.
 The target graphics foundation is a `dot-by-dot` PPU with `tile fetcher + pixel FIFO`.
 
@@ -99,6 +99,7 @@ The documentation hierarchy, in summary, is:
 - `AI/index.md` as the entry point for reading order and document authority boundaries
 - `AI/ARCHITECTURE.md` for layout, ownership, and subsystem boundaries
 - `AI/TIMING-AND-ACCURACY.md` for shared timing vocabulary and project-wide timing constraints
+- `AI/ARCHITECTURE.md` plus `AI/TIMING-AND-ACCURACY.md` together for the global T-cycle scheduler contract
 - `AI/EXECUTION.md` and `AI/CODING-RULES.md` for workflow and code-change discipline
 - `AI/REFERENCES.md` for source and oracle consultation order
 - `AI/hardware/*.md` for the behavior and contracts of the corresponding subsystem

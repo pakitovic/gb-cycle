@@ -867,8 +867,8 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 #### MBC3 sequencing inside Phase 6
 
 1. Establish the MBC3 control model and power-up state.
-   Scope: `ram_rtc_enabled`, raw `rom_bank`, explicit `ram_or_rtc_select`, latch-sequence detection for `0x00 -> 0x01`, deterministic startup for both `RealBoot` and `SkipBoot`, and typed distinction between RAM-bank and RTC-register selection.
-   Acceptance criteria: `0x0000-0x1FFF` enables RAM / RTC on low-nibble `0xA` and disables otherwise, raw ROM bank `0` maps to effective bank `1`, `0x4000-0x5FFF` distinguishes `0x00..=0x07` RAM-bank targets from `0x08..=0x0C` RTC-register targets, and control writes become visible immediately on the shared T-cycle timeline.
+   Scope: `ram_rtc_enabled`, raw `rom_bank`, explicit typed `ram_or_rtc_select`, latch-sequence detection for `0x00 -> 0x01`, deterministic startup for both `RealBoot` and `SkipBoot`, and typed distinction between RAM-bank, reserved-selector, and RTC-register selection.
+   Acceptance criteria: `0x0000-0x1FFF` enables RAM / RTC on low-nibble `0xA` and disables otherwise, raw ROM bank `0` maps to effective bank `1`, `0x4000-0x5FFF` distinguishes standard MBC3 RAM-bank targets `0x00..=0x03`, reserved selector values `0x04..=0x07`, and RTC-register targets `0x08..=0x0C`, and control writes become visible immediately on the shared T-cycle timeline.
 2. Implement standard MBC3 ROM and RAM banking.
    Scope: fixed low ROM bank `0`, switchable high ROM bank `0x01..=0x7F`, raw `7`-bit ROM-bank register, real-size masking, standard external-RAM banking up to `32 KiB`, and explicit MBC30 reservation.
    Acceptance criteria: MBC3 supports up to `2 MiB` ROM, the switchable region honors raw `0 -> 1` while still masking by real ROM size, banks `0x20`, `0x40`, and `0x60` are reachable unlike MBC1, RAM banking is masked by real RAM size, and `64 KiB` SRAM configurations are reserved or diagnosed explicitly instead of being treated as standard MBC3.

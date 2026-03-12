@@ -17,6 +17,8 @@
 - When in doubt, preserve debuggability over micro-optimizations.
 - Before refactoring behavior-sensitive paths, verify coverage exists for the target behavior; add it first if missing.
 - Keep bug fixes minimal and isolated from unrelated cleanup.
+- New production code should normally land with automated unit tests or integration tests in the same change.
+- If a code change cannot reasonably add automated tests yet, document the reason, the remaining validation gap, and the associated risk explicitly in the change report.
 
 ## Roadmap coordination policy
 
@@ -44,6 +46,7 @@
 ## Definition of done
 
 - Behavior is implemented consistently with hardware semantics and project architecture.
+- New code paths are covered by unit tests or integration tests unless a documented limitation makes that temporarily impossible.
 - Unit, integration, and ROM-based validation are updated where applicable.
 - Non-executed validation steps are reported explicitly with the remaining risk.
 - If the change only partially satisfies the relevant roadmap phase or leaves concrete follow-up work, that remainder is recorded in `AI/ROADMAP.md`.

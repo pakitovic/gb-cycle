@@ -19,6 +19,7 @@
 - Keep code and code comments in English.
 - Use explicit integer types when register width, wrapping, masking, or overflow semantics matter.
 - Use named constants for registers, bit masks, timing windows, and memory ranges.
+- When adding new production code, add unit tests or integration tests with it unless a documented limitation blocks that in the same change.
 
 ## Architecture discipline
 
@@ -75,3 +76,4 @@ Avoid without evidence:
 - Structural refactors should be behavior-neutral.
 - Do not mix layout churn with timing fixes unless the change cannot be separated cleanly.
 - For CPU, PPU, APU, timer, interrupt, DMA, and bus paths, keep or add characterization tests before reshaping the code.
+- For new logic in those paths, prefer shipping the behavior together with direct automated coverage rather than relying only on manual validation or later follow-up tests.
