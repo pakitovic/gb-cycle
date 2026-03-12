@@ -1175,9 +1175,84 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 
 ---
 
-### Phase 8 — Block AP: final DMG hardening, differential validation, and closure
+### Phase 8 — Full emulator save states and global serialization strategy
+
+38. **Whole-machine snapshot contract and ownership**
+39. **Global serialization envelope, versioning, and metadata**
+40. **Core save/load restore path and validation**
+
+#### Goal
+
+Establish one explicit full-emulator save-state system, separate from cartridge persistence, only after the hardware subsystems already own their live runtime state and before final DMG closure depends on save/load determinism.
+
+#### Modules involved
+
+- `scheduler/`
+- `cpu/`
+- `bus/`
+- `ppu/`
+- `dma/`
+- `timer/`
+- `apu/`
+- `joypad/`
+- `serial/`
+- `cartridge/`
+- `boot/`
+- `debugger/`
+- frontend/tooling persistence adapters
+
+#### Deliverables
+
+- typed whole-machine save-state contracts with explicit ownership by subsystem
+- explicit capture and restore of hidden temporal state such as scheduler phase, CPU internal execution state, DMA lifecycle, PPU pipeline state, timer hidden counters, serial in-flight transfer state, and APU frame-sequencer / channel / HPF state
+- cartridge runtime snapshot integration for continued execution, kept distinct from cartridge-local persistent-storage payloads
+- one global versioned serialization envelope with mandatory model, execution mode, active override, and compatibility metadata
+- portable core-facing save/load API boundaries that do not couple `gb-core` to disk, desktop, web, or tool-specific storage APIs
+- debugger and tooling hooks for capture, restore, and structured snapshot inspection
+- automated round-trip and continuation validation for full-machine save/load
+
+#### Done criteria
+
+- every subsystem that owns live machine state exposes an explicit save/restore contract rather than relying on ad hoc debugger dumps or MMIO readback reconstruction
+- restoring a save state recreates in-flight temporal state coherently instead of replaying writes to rebuild hidden state from visible registers alone
+- whole-machine save states remain clearly separate from cartridge persistence, with cartridge runtime state included only through cartridge-owned snapshot semantics
+- save-state metadata records execution mode and active overrides, and mismatched-mode restore is rejected by default
+- the serialization contract is versioned and portable across CLI, desktop, web, tests, and tooling without moving host storage policy into the emulation core
+- tests cover exact round-trip restore plus save/load continuation versus uninterrupted execution, including at least one timing-sensitive mid-run restore case
+- debugger and tooling capture or load states through the same core-owned contract instead of through parallel bespoke snapshot paths
+
+#### Recommended sequencing inside Phase 8
+
+1. Define the whole-machine snapshot boundary and invariants.
+   Scope: separation between emulator save states, cartridge persistence, debugger snapshots, and later replay metadata, plus required metadata such as model, execution mode, overrides, and startup context.
+   Acceptance criteria: ownership of every saved field is assigned to one subsystem, save states are explicitly distinct from battery persistence, and no host-storage concern leaks into subsystem snapshot semantics.
+2. Add typed subsystem snapshot contracts.
+   Scope: scheduler, CPU, bus-visible mapping, memory, DMA, PPU pipeline, timer hidden state, APU internals, joypad, serial, boot/startup context, and cartridge runtime state needed for continued execution.
+   Acceptance criteria: subsystems export and import explicit typed state, in-flight temporal details are preserved, and restore does not depend on replaying MMIO writes to reconstruct hidden state.
+3. Define the global serialization envelope.
+   Scope: versioned schema, canonical metadata for execution mode and overrides, and room for future compatibility evolution without silent breakage.
+   Acceptance criteria: incompatible versions fail clearly, mode and override metadata are mandatory, and the format remains suitable for disk, in-memory, and web backends without changing core semantics.
+4. Implement capture and restore through the core boundary.
+   Scope: one authoritative save/load API, compatibility validation for model, cartridge, and mode metadata, and integration points for debugger and frontends.
+   Acceptance criteria: save/load goes through one authoritative path, mismatched-mode restore is rejected by default, and restore resumes the shared T-cycle timeline from the recorded point rather than from a reconstructed approximation.
+5. Lock round-trip and continuation validation.
+   Scope: focused restore tests per subsystem, integration tests for continued execution equivalence, and at least one strict-mode end-to-end save/load case with banked-cartridge and active timing-sensitive subsystem coverage.
+   Acceptance criteria: exact round-trip invariants are checked automatically, save/load continuation matches uninterrupted execution in covered scenarios, and failures retain enough metadata or snapshots to localize the first divergence quickly.
+
+#### Risks if delayed or underspecified
+
+- final hardening work lacks a stable save/load foundation
+- frontend-specific storage decisions leak into core semantics
+- restore paths reconstruct only visible registers and lose hidden temporal state
+- cartridge persistence and whole-machine save states become conflated
+- debugger or replay tooling grows a second incompatible serialization path
+
+---
+
+### Phase 9 — Final DMG hardening, differential validation, and closure
 
 This phase is the roadmap home for the final DMG closure work. Parts of it should begin earlier, but the block only closes once the project can justify DMG correctness through layered evidence on the shared T-cycle model rather than through informal game compatibility.
+It assumes the dedicated save-state and serialization infrastructure from Phase 8 already exists and uses it as part of closure evidence.
 
 #### Goal
 
@@ -1201,7 +1276,7 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 - minimum closure-ready debugging tooling: traces, breakpoints, watchpoints, snapshots, and targeted subsystem viewers
 - explicit DMG closure checklist covering internal suites, external suites, differential comparison, determinism, save/load determinism, and primary cartridge families
 
-#### Recommended sequencing inside Phase 8
+#### Recommended sequencing inside Phase 9
 
 1. Formalize the DMG hardening matrix and closure severity policy.
    Scope: define layers `A/B/C/D/E`, `must-pass` versus non-blocking categories, minimum DMG closure suites, and the rule that no single layer substitutes for another.
@@ -1283,11 +1358,14 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 35. APU channel 3
 36. APU channel 4
 37. Mixing, output, DACs, power control, and audio edge cases
-38. Formal DMG hardening matrix, severity classes, and closure checklist
-39. Automated external ROM harness and minimum closure suites
-40. Differential comparison against SameBoy and Gambatte
-41. Deterministic replay, save/load determinism, and soak coverage
-42. Final DMG closure and regression-retention pass
+38. Whole-machine snapshot contract and ownership
+39. Global serialization envelope, versioning, and metadata
+40. Core save/load restore path and validation
+41. Formal DMG hardening matrix, severity classes, and closure checklist
+42. Automated external ROM harness and minimum closure suites
+43. Differential comparison against SameBoy and Gambatte
+44. Deterministic replay, save/load determinism, and soak coverage
+45. Final DMG closure and regression-retention pass
 
 ---
 
@@ -1337,7 +1415,11 @@ Suggested entry style:
 
 - None currently.
 
-### Phase 8 — Block AP: final DMG hardening, differential validation, and closure
+### Phase 8 — Full emulator save states and global serialization strategy
+
+- None currently.
+
+### Phase 9 — Final DMG hardening, differential validation, and closure
 
 - None currently.
 
