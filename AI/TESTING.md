@@ -61,6 +61,15 @@ Every subsystem change should aim to leave behind one of these:
 - When SameBoy and Gambatte agree and this project differs, treat the discrepancy as a project bug by default until evidence shows otherwise.
 - When the oracles disagree, mark the case as requiring arbitration rather than silently accepting one side as correct.
 
+## Execution-mode validation policy
+
+- `Strict` is the only mode that counts as the project's oracle path for CI, differential comparison, DMG closure, and official accuracy claims.
+- `Permissive` is for tolerant interactive use and loader-validation coverage around odd but still unambiguous supported cartridges; it must not change the runtime semantics of admitted supported hardware.
+- `Experimental` is for research and bring-up; its results must stay segregated from official closure metrics, oracle comparisons, and compatibility claims.
+- Mode-sensitive loader tests should cover the documented category matrix for `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`.
+- When a test exercises heuristics, partial implementations, or manual overrides, the captured artifacts should say so explicitly rather than looking like ordinary strict-mode evidence.
+- Differential comparison against SameBoy or Gambatte should always run under `Strict`, not under `Permissive` or `Experimental`.
+
 ## Validation tooling requirements
 
 - Hardening-ready validation requires trace logging at instruction level, micro-op level, and short T-cycle windows.
@@ -219,13 +228,15 @@ When a change affects observable timing or ordering:
 
 ## Determinism policy
 
-- Core execution should be deterministic for the same inputs and model configuration.
+- Core execution should be deterministic for the same inputs, model configuration, execution mode, and explicit override set.
 - Tests should prefer reproducible stepping and explicit expected state over fuzzy assertions.
 - Instrumentation should not change hardware-visible behavior.
 - Battery-backed RTC persistence tests must use an injected or otherwise explicit time source rather than the host wall clock.
 - Determinism coverage should include replay from the same ROM plus input stream, save/load determinism, and at least some longer-running soak cases.
-- "Same ROM + same input stream + same injected time source => same result" is the intended project contract.
-- Save/load determinism should prove that saving, restoring, and continuing produces the same result as uninterrupted execution.
+- "Same ROM + same execution mode + same explicit overrides + same input stream + same injected time source => same result" is the intended project contract.
+- Save/load determinism should prove that saving, restoring, and continuing produces the same result as uninterrupted execution under the same recorded execution mode.
+- Save states and replay logs should record the execution mode and active overrides that produced them.
+- Restoring or replaying under a different execution mode should be rejected by default; if a later explicit developer conversion path is added, tests should cover that path separately and mark it as non-oracle.
 - Soak coverage should include at least one real game, one longer-running test ROM, and one or two cases with APU activity plus banked cartridges.
 
 ## Regression policy
@@ -235,7 +246,7 @@ When a change affects observable timing or ordering:
 - Use a ROM-based reproduction case when the bug is systemic or easiest to demonstrate through an external suite.
 - Use a stored differential case when the bug was discovered by comparison against SameBoy, Gambatte, or another explicit oracle.
 - Keep regression organization by subsystem or hardware area so repeated failures do not disappear into one catch-all bucket.
-- Differential regressions should preserve enough reproduction context to rerun them quickly, including the ROM, input stream, injected seed or time source when relevant, first divergence point, and an optional snapshot when that reduces debug time.
+- Differential regressions should preserve enough reproduction context to rerun them quickly, including the ROM, execution mode, active overrides, input stream, injected seed or time source when relevant, first divergence point, and an optional snapshot when that reduces debug time.
 
 ## Severity and DMG closure policy
 
@@ -248,7 +259,8 @@ When a change affects observable timing or ordering:
 
 ## CI stratification policy
 
-- The regular CI path should always run critical unit tests, critical short integration tests, a stable subset of external ROMs, and save/load determinism coverage.
+- The regular CI path should always run critical unit tests, critical short integration tests, a stable subset of external ROMs, and save/load determinism coverage under `Strict`.
+- Experimental suites may exist in nightly or manual jobs, but they must publish artifacts separately and must not gate or dilute the official strict-mode closure signal.
 - Longer differential runs, soak tests, and broader external ROM inventories may live in nightly or manual suites, but they must remain documented and runnable.
 - Failure artifacts should include enough information to debug without rerunning blindly, such as logs, optional snapshots, framebuffer output when relevant, and a diff against the reference output when one exists.
 

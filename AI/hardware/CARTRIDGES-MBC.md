@@ -56,7 +56,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
   - `AccessorySpecialCase`
   - `UnknownCode`
 - `NoMbc` should be the non-banked family covering header codes `0x00`, `0x08`, and `0x09`, while preserving the raw header type for RAM/battery distinctions and diagnostics.
-- The cartridge type must drive more than bank switching. It also defines whether the cartridge has external RAM, mapper-local RAM such as MBC2 internal RAM, battery-backed save state, RTC, rumble, or other mapper-local hardware.
+- The cartridge type must drive more than bank switching. It also defines whether the cartridge has external RAM, mapper-local RAM such as MBC2 internal RAM, battery-backed persistence, RTC, rumble, or other mapper-local hardware.
 - The classification result must preserve at least the raw `0x0147` type byte, the detected name, the category, and a concise reason suitable for diagnostics or frontend display.
 - Less common types such as `MMM01`, `MBC6`, `MBC7`, `HuC1`, `HuC-3`, camera, or sensor cartridges may begin life under a structured special / unsupported classification, but they should remain explicitly identified rather than silently coerced into a nearby supported mapper.
 
@@ -97,9 +97,61 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
   - declared RAM configuration
   - raw header type byte and detected cartridge name where known
   - suspicious or unsupported special size codes
-- Validation should follow an explicit project policy such as `Strict`, `PermissiveWithWarning`, or `TestMode`.
+- Validation should follow one explicit typed compatibility policy rooted in `ExecutionMode::{Strict, Permissive, Experimental}` plus sub-policies for validation, heuristics, overrides, and diagnostics.
 - Unsupported or inconsistent cartridges should produce explicit diagnostics rather than a silent fallback mapper choice.
-- Experimental heuristic detection for partially documented multicarts should remain an explicit opt-in loader policy and must be disabled by default in `Strict` mode.
+- Experimental heuristic detection for partially documented multicarts should remain an explicit opt-in loader policy and must be disabled by default in `Strict` and `Permissive`.
+
+## Compatibility policy and execution modes
+
+- Compatibility policy is a stable loader/config layer that consumes typed cartridge classification; it is not a license to change the hardware truth of already supported cartridges.
+- This project is T-cycle based. Once a supported cartridge device exists, cartridge-visible reads, writes, mapper commands, and mapper-side effects still happen on the access T-cycle regardless of execution mode.
+- The loader should classify the cartridge once from the header and validated metadata, then hand that typed classification to one policy decision point.
+- Mode-dependent code should not reparse `0x0147`, `0x0148`, or `0x0149` independently in the frontend, loader, or cartridge constructors.
+
+### Supported-hardware invariant
+
+- For already supported runtime families such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, and `Mbc5`, switching between `Strict`, `Permissive`, and `Experimental` must not change T-cycle-visible cartridge semantics.
+- That invariant covers at least ROM and RAM banking behavior, RTC register mapping, mapper-local enable state, persistence capability interpretation, and any later cartridge-local accessory or IRQ behavior once implemented.
+- Mode differences belong in admission, validation severity, heuristic enablement, explicit overrides, diagnostics, and access to experimental or partial implementations.
+- Any temporary case where a mode changes runtime behavior for already supported hardware should be documented as technical debt, not normalized as expected behavior.
+
+### Mode definitions
+
+- `Strict` is the reference mode for CI, differential comparison, DMG closure, and official accuracy claims.
+- In `Strict`, only `Supported` cartridges should load by default; relevant header inconsistencies are fatal; heuristics are disabled; and manual mapper/model overrides should be disabled by default or require an explicit debug path with visible trace output.
+- `Permissive` is the tolerant normal-use mode for cartridges that still map unambiguously to already supported hardware.
+- In `Permissive`, all `Supported` cartridges should load with identical runtime semantics to `Strict`; only unambiguous header inconsistencies may degrade from error to warning; automatic heuristic mapper detection stays off; and manual overrides may be allowed, but never silently.
+- `Experimental` is the research and bring-up mode.
+- In `Experimental`, `Supported` cartridges still keep the same runtime semantics as the other modes, but explicit heuristic paths, partial planned-variant implementations, and clearly marked stub or placeholder paths for special hardware may be enabled behind explicit policy gates.
+- `Experimental` results must be marked as non-oracle in diagnostics, tooling, and project claims.
+
+### Category decision matrix
+
+| Category | `Strict` | `Permissive` | `Experimental` |
+| --- | --- | --- | --- |
+| `Supported` | load | load | load |
+| `PlannedVariant` | reject | reject by default | load only when an explicit partial or complete implementation path exists |
+| `DocumentedButUnsupported` | reject | reject | optionally load only through explicit stub or partial feature paths with prominent diagnostics |
+| `ExperimentalHeuristic` | reject | reject by default | allow only when heuristics are explicitly enabled |
+| `AccessorySpecialCase` | reject | reject | allow only when a stub or partial accessory path exists explicitly |
+| `UnknownCode` | reject | reject | reject unless an ultra-explicit development override bypasses classification |
+
+- User-facing diagnostics should name both the detected category and the current execution mode when explaining why a cartridge was admitted, warned, or rejected.
+- `Permissive` must not invent new mapper families; it only relaxes validation when the supported hardware mapping is still unambiguous.
+
+### Manual overrides and diagnostics
+
+- Manual overrides are a separate layer from execution modes.
+- Overrides should be able to force at least console model, mapper, execution mode, and validation policy.
+- In `Strict`, overrides should require an explicit debug pathway and remain visible in logs, debugger UI, save states, and replay metadata.
+- In `Experimental`, overrides may be used freely, but the run must be marked clearly as non-oracle.
+- Loader failures should report at least raw `0x0147`, detected cartridge name, classification category, current execution mode, and the precise rejection reason.
+- Warnings should distinguish at least:
+  - inconsistent header but unambiguous supported mapper
+  - heuristic classification active
+  - partially supported or stub-backed hardware path
+  - manual override active
+- Avoid context-free messages such as "unsupported cartridge" when a more precise detected type exists.
 
 ## Special-cartridge taxonomy and unsupported policy
 
@@ -110,9 +162,12 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 ### MBC30
 
 - Treat `MBC30` as a real `MBC3`-family variant, not as an informal alias for ordinary `MBC3`.
+- `MBC30` should classify as `PlannedVariant`.
 - Pan Docs identifies "MBC3 with `64 KiB` of SRAM" as `MBC30`; for this repo that should map to an explicit typed entry such as `Mbc30Cartridge` or `Mbc3Variant::Mbc30`.
 - Detection should trigger when the validated cartridge is in the `MBC3` family and header metadata implies the `64 KiB` SRAM configuration associated with `MBC30`.
 - The factory must not silently construct ordinary standard `MBC3` with oversized SRAM when this case is detected.
+- `Strict` and `Permissive` should reject `MBC30` clearly as a known reserved variant rather than as an invalid or unknown header.
+- `Experimental` may admit `MBC30` only when an explicit partial or complete implementation path exists behind a visible policy gate.
 - `MBC30` banking, RAM persistence, and validation should remain a priority future block because it is a concrete shipping variant, not a speculative edge case.
 
 ### Priority order for special variants
@@ -130,27 +185,34 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 ### Multicarts: MMM01, MBC1M, and M161
 
 - Treat `MMM01` as its own mapper family, not as a small `MBC1` patch.
+- `MMM01` should currently classify as `DocumentedButUnsupported` unless and until the project promotes it to an explicitly planned bring-up target.
 - Header codes `0x0B`, `0x0C`, and `0x0D` should classify as `MMM01`.
 - `MMM01` should live in a dedicated multicart path because Pan Docs documents additional game-selection state and an initial unmapped boot mode where the last `32 KiB` of the ROM is visible first.
 - The loader must not assume that the only meaningful boot header for every cartridge necessarily lives at the physical start of the ROM image once `MMM01` support is under consideration.
 - Future `MBC1M` support should also be a distinct typed variant rather than being mixed into standard `MBC1` banking formulas with ad hoc conditionals.
+- `MBC1M` should classify as `PlannedVariant`.
 - `MBC1M` is still a near-family variant of `MBC1`, but it is not interchangeable with standard `MBC1`; the factory should reserve explicit variant space for it.
 - Treat `M161` as a separate multicart special case rather than as `NoMbc` or `MBC1`.
 - Until implemented, `M161` should classify as `DocumentedButUnsupported` or an equivalent multicart-special bucket because its whole-`32 KiB` switching and "only one bankswitch until power-off" rule are not compatible with standard MBC assumptions.
+- `Strict` and `Permissive` must not enable multicart heuristics for `MMM01`, `MBC1M`, `EMS`, or `Bung`.
+- `Experimental` may enable explicit multicart heuristics, but diagnostics must state that the classification did not come from a standard header-backed supported path.
 
 ### HuC1 and HuC-3
 
 - Treat `HuC1` as its own mapper family, not as "`MBC1` with IR."
+- `HuC1` should classify as `DocumentedButUnsupported`, not as ordinary `MBC1`.
 - Header code `0xFF` should classify as `HuC1 + RAM + BATTERY`.
 - The unsupported policy should state explicitly that `HuC1` needs cartridge-local IR-mode semantics, because `0x0000-0x1FFF` selects RAM mode versus IR mode rather than acting as ordinary MBC1 RAM enable.
 - If and when implemented, `HuC1` should have its own cartridge device with explicit `ram_mode` versus `ir_mode` state rather than inheriting standard `MBC1` behavior and overriding a few accesses.
 - Treat `HuC-3` as a documented but poorly understood special cartridge, not as a close `MBC3` derivative.
+- `HuC-3` should classify as `DocumentedButUnsupported`, not as ordinary `MBC3`.
 - Header code `0xFE` should classify as `HuC-3`.
 - Loader diagnostics for `HuC-3` should explain that the type requires cartridge-local RTC / IR / speaker behavior with its own protocol, and must not fall back automatically to ordinary `MBC3`.
 
 ### MBC6 and MBC7
 
 - Treat `MBC6` and `MBC7` as documented but unsupported hardware, not as unknown codes.
+- `MBC6` and `MBC7` should classify as `DocumentedButUnsupported`.
 - Header code `0x20` should classify as `MBC6`, and header code `0x22` should classify as `MBC7`.
 - `MBC6` must not fall back to `MBC3` or `MBC5`; Pan Docs documents split `8 KiB` ROM windows, split `4 KiB` RAM windows, and on-cartridge flash behavior.
 - `MBC7` must not fall back to `MBC5 + rumble + RAM`; Pan Docs documents EEPROM-register access plus accelerometer-backed behavior that is not standard SRAM mapping.
@@ -158,6 +220,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 ### Accessory cartridges
 
 - Treat `Pocket Camera` and `Bandai TAMA5` as accessory special cases rather than ordinary MBCs.
+- `Pocket Camera` and `Bandai TAMA5` should classify as `AccessorySpecialCase`.
 - Header code `0xFC` should classify as `Pocket Camera`, and `0xFD` should classify as `Bandai TAMA5`.
 - Diagnostics for these types should state explicitly that they require dedicated cartridge-local accessory hardware rather than only ROM / RAM banking.
 - The loader must not try to execute them under an approximate supported mapper "just to see if they boot."
@@ -167,7 +230,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Some Pan Docs "Other MBCs" cases are partially documented or heuristic by nature; keep them in `ExperimentalHeuristic` rather than mixing them into ordinary validation.
 - `EMS`, `Bung`, and `Wisdom Tree` should live in that category.
 - `Wisdom Tree` in particular must stay separate from standard MBC families because it switches the whole `0x0000-0x7FFF` range and derives bank selection from written address bits rather than standard data-register semantics.
-- Heuristic identification for `EMS`, `Bung`, or future `MBC1M`-style multicart detection should remain disabled by default in strict mode and only activate under an explicit dev / experimental loader policy.
+- Heuristic identification for `EMS`, `Bung`, or future `MBC1M`-style multicart detection should remain disabled by default in `Strict` and `Permissive` and only activate under an explicit `Experimental` loader policy.
 
 ### Fallback policy
 
@@ -453,6 +516,9 @@ Priority order:
 - tests for `0x0149` RAM-size decoding, including the `MBC2` special case where internal RAM is not described by the ordinary RAM-size table
 - tests for explicit diagnostics on unknown cartridge types and size mismatches
 - tests that the loader distinguishes `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`, preserving the raw `0x0147` byte, detected name, and diagnostic reason
+- tests that the central compatibility-policy table consumes typed cartridge classification rather than reparsing header bytes differently per mode
+- tests that `Supported` cartridges keep identical runtime mapper behavior across `Strict`, `Permissive`, and `Experimental` once admitted
+- tests that loader diagnostics include current execution mode, category, and clear visibility for manual overrides, heuristic activation, and partial-support paths
 - explicit No MBC tests for `0x00`, `0x08`, and `0x09`, including warning-only handling for rare RAM variants
 - tests that No MBC enforces or diagnoses `32 KiB` ROM and at most linear `8 KiB` RAM instead of silently accepting banked expectations
 - tests that No MBC `0x0000-0x7FFF` reads are linear and bankless, and that `0x0100-0x014F` remains visible through ordinary reads after boot handoff
@@ -499,6 +565,7 @@ Priority order:
 - Preserve `cgb_flag` and `sgb_flag` now even if the current core is still DMG-only.
 - A `CartridgeKind` plus device factory is a good fit for early bring-up, as long as unsupported raw type codes remain reportable.
 - Prefer one central special-cartridge classifier that converts raw header metadata into either a supported cartridge build path or a typed `UnsupportedCartridgeKind` carrying `header_type_code`, detected name, category, and reason.
+- Prefer one central compatibility-policy evaluator that consumes typed cartridge classification plus explicit overrides rather than reparsing raw header bytes per mode.
 - Model No MBC as its own concrete device, not as a generic blob-reader fallback.
 - Keep mapper traits or enums narrow and explicit.
 - Avoid hard-coding cartridge logic into generic bus code.
@@ -523,6 +590,7 @@ Priority order:
 - Keep multicarts as a first-class classification concern distinct from standard MBC families; `MMM01`, future `MBC1M`, and `M161` should not be redistributed across `MBC1` or `NoMbc` code paths by default.
 - Keep accessory cartridges such as `Pocket Camera` and `Bandai TAMA5` in a separate classification lane from ordinary MBCs so frontends can report them accurately without reparsing headers.
 - Keep heuristic detection policy outside the supported-mapper fast path, and default strict-mode behavior to "no heuristics unless explicitly enabled."
+- Keep execution-mode policy out of runtime mapper semantics for already supported hardware; mode should change admission and diagnostics, not T-cycle-visible cartridge behavior.
 - For MBC5, keep the raw low `8` ROM-bank bits and raw high `1` ROM-bank bit separate instead of flattening them into one opaque field too early.
 - For MBC5, remember that bank `0` is valid in the switchable ROM window; do not cargo-cult the MBC1/MBC3 `0 -> 1` rule here.
 - For MBC5, keep `ram_bank_raw`, `effective_ram_bank()`, and `rumble_on` distinct instead of pretending the rumble-capable RAM-bank register is identical to standard non-rumble MBC5.
@@ -548,6 +616,7 @@ Priority order:
 - dropping `cgb_flag` or `sgb_flag` because they are not immediately used by the DMG baseline
 - silently accepting No MBC headers that declare more than `32 KiB` ROM or more than `8 KiB` RAM without diagnostics
 - silently coercing unsupported or inconsistent headers into a nearby supported configuration
+- letting `Strict`, `Permissive`, or `Experimental` change the runtime banking, timing, or register semantics of already supported cartridges
 - collapsing MBC1 to one `active_rom_bank` and losing the raw register semantics that drive its quirks
 - applying the MBC1 `0 -> 1` rule after final ROM-size masking instead of on the raw `5`-bit primary register field
 - assuming bank `0` can never appear in `0x4000-0x7FFF` on small MBC1 ROMs
@@ -570,6 +639,8 @@ Priority order:
 - treating `MMM01` as ordinary `MBC1` and assuming the only relevant boot header always sits at physical ROM offset `0x0100`
 - treating `HuC1` as "good enough" `MBC1`, `HuC-3` as "good enough" `MBC3`, or `MBC7` as "good enough" `MBC5`
 - auto-enabling heuristic `EMS` / `Bung` / `Wisdom Tree` detection in strict mode and then mistaking heuristic guesses for header-backed truth
+- spreading compatibility-policy decisions across loader, frontend, debugger, and persistence code instead of routing them through one central matrix
+- allowing manual mapper or mode overrides to become invisible in logs, save states, replays, or debugging UI
 - applying the MBC1/MBC3 `0 -> 1` bank rule to MBC5 and accidentally making bank `0` unreachable in `0x4000-0x7FFF`
 - collapsing MBC5's `9`-bit ROM-bank register into one lossy `8`-bit field and losing banks above `0xFF`
 - silently treating rumble-capable MBC5 header types as if their RAM-bank register were identical to standard non-rumble MBC5
@@ -579,8 +650,7 @@ Priority order:
 ## Open questions
 
 - enum-based versus trait-based mapper organization for this codebase
-- which validation mode should be the default for interactive use versus automated test runs
-- where the optional experimental-heuristic loader policy should live in the public API so tests and tools can enable it without contaminating strict default behavior
+- what public API surface should expose the optional experimental-heuristic loader policy so tests and tools can enable it without contaminating strict default behavior
 - which explicit default policy should govern MBC3 RAM / RTC-disabled reads and writes at `0xA000-0xBFFF`
 - whether the Pan Docs RTC access-spacing recommendation should remain documented-only or later become an enforced `16`-T-cycle timing rule
 - what persisted RTC serialization shape best separates visible RTC state, elapsed-time bookkeeping, and frontend-specific storage adapters

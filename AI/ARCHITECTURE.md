@@ -114,6 +114,27 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - When CGB arrives, prefer one standard CGB model before attempting fine-grained CGB hardware revision support.
 - Architecture should allow the same core to run in DMG-family mode or CGB mode without duplicating subsystem implementations.
 
+## Compatibility-policy architecture
+
+- Compatibility policy is a loader/config contract around the T-cycle core, not a second hardware model.
+- The project should expose a typed execution-mode concept such as `ExecutionMode::{Strict, Permissive, Experimental}` rather than scattered booleans.
+- The project should expose one central `CompatibilityPolicy`-style structure, or an equally explicit equivalent, that at least carries:
+  - `execution_mode`
+  - `validation_policy`
+  - `heuristic_policy`
+  - `override_policy`
+  - `diagnostic_policy`
+- One central decision point should translate typed cartridge classification, the active compatibility policy, and explicit manual overrides into a final load decision.
+- That decision point must not reparse cartridge headers differently per frontend, per mode, or per call site.
+- For already supported hardware, switching execution mode must not change T-cycle-visible hardware truth such as timing, arbitration, memory mapping, IRQ behavior, or mapper semantics.
+- Mode changes are allowed to affect admission, validation severity, heuristic enablement, manual overrides, diagnostics, and access to explicitly experimental implementations.
+- Any temporary exception where a mode changes supported-hardware runtime behavior should be documented as technical debt rather than normalized as ordinary behavior.
+- `Strict` is the oracle and CI mode for official accuracy claims.
+- `Permissive` is the intended tolerant interactive mode for ordinary users once frontends expose mode selection.
+- `Experimental` is for research, bring-up, and partial hardware paths; it must not be treated as evidence for official accuracy claims.
+- Save states, replays, and official test artifacts must record the execution mode and active overrides that produced them.
+- Restoring or replaying under a different execution mode should fail by default unless a later explicit developer-only conversion workflow is designed on top of the recorded metadata.
+
 ## Suggested subsystem boundaries
 
 - CPU: instruction flow, register state, decode/execution state, fine-grained fetch/read/write/internal steps, IME state, interrupt acceptance/dispatch, HALT/STOP semantics, and micro-operation visibility for timing-sensitive hardware interactions
@@ -142,6 +163,7 @@ to immediately materialize as a separate directory.
 - system base types
 - enums for hardware variants and shared configuration
 - structural core configuration
+- shared compatibility-policy types such as execution mode and override metadata
 - architectural extension points for future variants such as CGB
 
 ### `scheduler/`
@@ -266,8 +288,9 @@ to immediately materialize as a separate directory.
 - typed cartridge-header parsing over `0x0100-0x014F`
 - decoded cartridge capability model including cartridge type, ROM size, RAM size, CGB flag, and SGB flag
 - explicit capability metadata for battery-backed RAM, RTC, and rumble derived from the validated header type
-- central cartridge factory and validation policy
+- central cartridge factory, compatibility-policy consumption, and validation policy
 - typed loader result that separates supported cartridge construction from structured special / unsupported classification, preserving raw `0x0147`, detected name, category, and reason
+- one central load-decision path that combines cartridge classification, compatibility policy, and explicit overrides into admit / warn / reject results
 - concrete cartridge devices such as `NoMbcCartridge`, `Mbc1Cartridge`, `Mbc2Cartridge`, `Mbc3Cartridge`, and `Mbc5Cartridge`
 - No MBC family support, including the `0x00`, `0x08`, and `0x09` header variants
 - MBC implementations
@@ -313,6 +336,7 @@ to immediately materialize as a separate directory.
 - Storage backends such as disk or in-memory adapters should own serialization format, versioning, file naming, path mapping, timestamps, and atomic replacement policy, not cartridge semantics.
 - Frontend and tooling layers may decide when to flush, such as on close, on explicit manual save, or via optional auto-flush, but they should do so through the persistence backend rather than through bus hooks or cartridge-local file I/O.
 - Cartridge persistence and emulator save states must remain separate systems. Cartridge persistence stores only cartridge-owned hardware state; emulator save states may snapshot the whole machine.
+- Emulator save states and replays should also preserve the execution mode and active compatibility overrides that were in effect when they were created.
 - Tests and tools must be able to use an in-memory persistence backend so cartridge persistence can be validated without host file I/O.
 
 ## Module mapping notes

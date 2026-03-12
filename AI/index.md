@@ -40,7 +40,7 @@ The project-wide timing baseline is T-cycle based; see `ARCHITECTURE.md`, `TIMIN
 The project-wide CPU baseline is a fine-grained fetch/decode/execute model with explicit bus-visible steps; see `hardware/CPU.md`.
 The project-wide PPU baseline is dot-by-dot with explicit fetcher/FIFO behavior; see `hardware/PPU.md`.
 The global scheduler phase contract lives in `ARCHITECTURE.md` and `TIMING-AND-ACCURACY.md`.
-The cartridge handbook owns header-driven mapper selection, special-cartridge taxonomy, and unsupported-policy rules; see `hardware/CARTRIDGES-MBC.md`.
+The cartridge handbook owns header-driven mapper classification, special-cartridge taxonomy, cartridge-specific compatibility rules, and cartridge-persistence semantics; `ARCHITECTURE.md` owns the central compatibility-policy shape and `TESTING.md` owns CI/oracle usage of execution modes; see `hardware/CARTRIDGES-MBC.md`.
 Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work, or when documenting known remaining gaps after an implementation.
 
 ## Hardware docs

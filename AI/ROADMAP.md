@@ -383,8 +383,11 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
    Acceptance criteria: the bus can read `0x0000-0x7FFF` and `0xA000-0xBFFF` without knowing the active MBC, ROM-space writes route to cartridge commands, and header bytes remain visible through ordinary ROM bank `0` reads.
 3. Add the cartridge factory.
    Acceptance criteria: the loader selects `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or a structured special / unsupported classification from `0x0147`, and unsupported types preserve raw `0x0147`, detected name, category, and reason for diagnostics.
-4. Close validation and diagnostics policy.
-   Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, documented-but-unsupported cartridge types fail in a controlled way without mapper fallback, and the project exposes a configurable strict-versus-permissive policy with heuristics disabled by default in strict mode.
+4. Define the typed compatibility-policy model.
+   Scope: one real `ExecutionMode::{Strict, Permissive, Experimental}` type plus a central `CompatibilityPolicy`-style structure carrying validation, heuristic, override, and diagnostic policy.
+   Acceptance criteria: execution modes are not represented as scattered booleans, one shared policy object exists for loader, tooling, and frontends, and the T-cycle core does not need to read ad hoc global compatibility flags.
+5. Close validation and diagnostics policy.
+   Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, documented-but-unsupported cartridge types fail in a controlled way without mapper fallback, and the project exposes a central strict / permissive / experimental policy with heuristics disabled by default in strict and permissive modes.
 
 ##### No MBC milestone
 
@@ -397,9 +400,24 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
 4. Add optional external RAM.
    Acceptance criteria: `0xA000-0xBFFF` is either explicit "RAM absent" behavior or one linear `8 KiB` RAM window; there is no RAM enable, no RAM banking, no RTC, and battery only changes persistence policy.
 5. Harden validation and diagnostics.
-   Acceptance criteria: No MBC expects `32 KiB` ROM and at most `8 KiB` RAM, inconsistent headers report declared type, declared ROM size, declared RAM size, and actual file size, `0x08` and `0x09` may warn as rare but are not rejected solely for rarity, and strict/permissive/test modes remain configurable.
+   Acceptance criteria: No MBC expects `32 KiB` ROM and at most `8 KiB` RAM, inconsistent headers report declared type, declared ROM size, declared RAM size, and actual file size, `0x08` and `0x09` may warn as rare but are not rejected solely for rarity, and strict / permissive / experimental mode handling stays centralized.
 6. Close integration coverage.
    Acceptance criteria: skip-boot and post-`FF50` mapping tests use No MBC as the first closed cartridge baseline in this phase; once Phase 2 real-boot execution exists, the first real-boot cartridge coverage also lands on No MBC before any MBC-dependent validation.
+
+#### Compatibility-policy sequencing across cartridge bring-up
+
+1. Model the policy types.
+   Scope: `ExecutionMode::{Strict, Permissive, Experimental}` plus a central `CompatibilityPolicy` or equivalent.
+   Acceptance criteria: execution modes are real types rather than loose booleans, and loader, tooling, and frontends consume one shared compatibility-policy shape.
+2. Centralize the category-by-mode decision table.
+   Scope: resolve `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode` through one shared matrix driven by typed cartridge classification.
+   Acceptance criteria: load / warn / reject behavior is decided centrally, the loader does not duplicate per-mode classification logic, and `Strict`, `Permissive`, and `Experimental` keep supported-hardware runtime semantics identical.
+3. Close diagnostics and manual overrides.
+   Scope: explicit rejection and warning reasons, visible heuristic and partial-path diagnostics, and manual overrides for model, mapper, mode, and validation policy.
+   Acceptance criteria: loader messages report raw `0x0147`, detected name, category, current mode, and precise reason; overrides are visible in logs and tooling; and no silent mapper invention remains.
+4. Integrate execution mode into save states, replays, CI, and tooling.
+   Scope: persist execution-mode metadata, reject mismatched-mode restore by default, keep CI and oracle comparison on `Strict`, and segregate `Experimental` artifacts.
+   Acceptance criteria: save states and replay logs record the originating mode and active overrides, strict-mode CI remains the official closure path, and experimental runs cannot be mistaken for oracle evidence.
 
 ---
 
@@ -1198,15 +1216,15 @@ Close the DMG core with a formal validation matrix, strong differential and dete
    Scope: instruction / micro-op / short-window T-cycle tracing, breakpoints and watchpoints on `PC`, memory, MMIO, and cartridge-bank state, plus fast inspection of CPU, scheduler, bus owner, PPU mode / dot / `LY`, DMA, timer, APU, and cartridge / MBC state.
    Acceptance criteria: a blocking divergence can be localized without a long blind rerun, and the project has practical viewers or equivalent dumps for PPU, cartridge / MBC, APU, and IRQ state.
 5. Lock determinism, replay, save/load determinism, soak, and regression retention.
-   Scope: same-ROM replay with identical input stream and injected time source, mid-run save/load equivalence, longer-running soak cases, and a permanent regression path for every important hardening bug.
-   Acceptance criteria: repeated runs converge exactly under the same inputs and injected time source, save/load continuation matches uninterrupted execution, soak coverage includes at least one real game plus long-running synthetic coverage, and fixed hardening bugs leave behind permanent regression assets.
+   Scope: same-ROM replay with identical execution mode, explicit overrides, input stream, and injected time source, mid-run save/load equivalence, longer-running soak cases, and a permanent regression path for every important hardening bug.
+   Acceptance criteria: repeated runs converge exactly under the same recorded mode, overrides, inputs, and injected time source; save/load continuation matches uninterrupted execution; mismatched-mode restore is rejected by default; soak coverage includes at least one real game plus long-running synthetic coverage; and fixed hardening bugs leave behind permanent regression assets.
 
 #### Done criteria
 
 - core unit and short integration suites for the blocking DMG areas are green
 - the minimum external closure suites are green
 - differential comparison either shows no unexplained divergence in the covered scenarios or records the remaining arbitrations explicitly
-- deterministic replay and save/load determinism are green
+- deterministic replay and save/load determinism are green under `Strict`, with execution-mode metadata recorded in the relevant artifacts
 - no severe open correctness bugs remain in `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, or `Mbc5`
 - the project has an explicit DMG closure checklist instead of relying on a general compatibility impression
 
