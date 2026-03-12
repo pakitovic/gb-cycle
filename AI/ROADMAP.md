@@ -41,6 +41,7 @@ This roadmap sequences work, but it is not the behavioral source of truth.
 - For crate layout, ownership, and subsystem boundaries, follow `AI/ARCHITECTURE.md`.
 - For subsystem behavior, MMIO semantics, and timing contracts, follow the matching `AI/hardware/*.md` file plus `AI/TIMING-AND-ACCURACY.md`.
 - For project-wide validation policy, follow `AI/TESTING.md`.
+- For the boundary between cartridge persistence and whole-machine save states, follow `AI/ARCHITECTURE.md`; for cartridge-persistence semantics, follow `AI/hardware/CARTRIDGES-MBC.md`; for save/load determinism and oracle usage, follow `AI/TESTING.md`.
 
 If roadmap prose ever drifts from those documents, update the roadmap to match the authoritative source instead of treating the mismatch as two valid policies.
 
@@ -170,6 +171,27 @@ coherent without refactoring.
    Goal: lock down the scheduler invariants at cross-subsystem boundaries.
    Acceptance criteria: focused tests cover DMA versus CPU, delayed timer `IF`, serial completion plus IRQ, joypad visible `High -> Low` plus IRQ, `HALT` / IRQ priority, and `STAT`-versus-bus coherence.
 
+## Cross-cutting state persistence workstream
+
+This workstream spans cartridge bring-up, snapshot infrastructure, and final
+hardening because the project intentionally separates cartridge-local
+persistence from whole-machine save states.
+
+1. **Cartridge persistence boundary** (`Phase 6`)
+   Goal: persist only cartridge-owned backing stores such as SRAM, MBC2 nibble RAM, and MBC3 live RTC state.
+   Acceptance criteria: payloads remain cartridge-owned, frontends and storage backends never infer mapper layout from the currently visible `0xA000-0xBFFF` window, and no CPU, PPU, APU, WRAM, or other console-owned state leaks into hardware-style saves.
+2. **Whole-machine save-state boundary** (`Phase 8`)
+   Goal: snapshot live machine state across scheduler, CPU, PPU, DMA, timer, APU, peripherals, bus-visible mapping, boot state, and cartridge runtime state.
+   Acceptance criteria: restore recreates hidden temporal state coherently, whole-machine metadata records model plus execution mode and active overrides, and save states remain explicitly distinct from cartridge persistence.
+3. **Determinism and closure integration** (`Phase 9`)
+   Goal: use the Phase 8 save-state system as the foundation for replay, save/load determinism, and DMG closure evidence.
+   Acceptance criteria: save/load continuation matches uninterrupted execution under the recorded mode and overrides, and Phase 6 cartridge persistence is never treated as a substitute for whole-machine save/load determinism.
+
+Source-of-truth note: `AI/ARCHITECTURE.md` owns the top-level boundary between
+cartridge persistence and whole-machine save states, `AI/hardware/CARTRIDGES-MBC.md`
+owns cartridge-persistence semantics, and `AI/TESTING.md` owns save/load
+determinism and oracle-usage policy.
+
 ---
 
 ## Recommended implementation order
@@ -249,6 +271,10 @@ This phase must define:
 - tests that are not useful for debugging fine timing issues
 - incorrect coupling between frontend and core
 - DMG decisions that are too rigid and make a future CGB extension harder
+
+Boundary note: Phase `0` fixes architecture, tracing, and the scheduler
+skeleton. Phase `1` is where that skeleton becomes hardware-visible stepping,
+arbitration, MMIO, and startup behavior.
 
 ---
 
@@ -383,11 +409,11 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
    Acceptance criteria: the bus can read `0x0000-0x7FFF` and `0xA000-0xBFFF` without knowing the active MBC, ROM-space writes route to cartridge commands, and header bytes remain visible through ordinary ROM bank `0` reads.
 3. Add the cartridge factory.
    Acceptance criteria: the loader selects `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or a structured special / unsupported classification from `0x0147`, and unsupported types preserve raw `0x0147`, detected name, category, and reason for diagnostics.
-4. Define the typed compatibility-policy model.
-   Scope: one real `ExecutionMode::{Strict, Permissive, Experimental}` type plus a central `CompatibilityPolicy`-style structure carrying validation, heuristic, override, and diagnostic policy.
+4. Introduce the typed compatibility-policy foundation.
+   Scope: one real `ExecutionMode::{Strict, Permissive, Experimental}` type plus a central `CompatibilityPolicy`-style structure carrying validation, heuristic, override, and diagnostic policy, as defined authoritatively in `AI/ARCHITECTURE.md`.
    Acceptance criteria: execution modes are not represented as scattered booleans, one shared policy object exists for loader, tooling, and frontends, and the T-cycle core does not need to read ad hoc global compatibility flags.
-5. Close validation and diagnostics policy.
-   Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, documented-but-unsupported cartridge types fail in a controlled way without mapper fallback, and the project exposes a central strict / permissive / experimental policy with heuristics disabled by default in strict and permissive modes.
+5. Close initial validation and diagnostics plumbing against that shared policy.
+   Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, documented-but-unsupported cartridge types fail in a controlled way without mapper fallback, and strict / permissive / experimental admission already goes through the shared policy foundation instead of per-call-site booleans.
 
 ##### No MBC milestone
 
@@ -406,16 +432,19 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
 
 #### Compatibility-policy sequencing across cartridge bring-up
 
-1. Model the policy types.
-   Scope: `ExecutionMode::{Strict, Permissive, Experimental}` plus a central `CompatibilityPolicy` or equivalent.
-   Acceptance criteria: execution modes are real types rather than loose booleans, and loader, tooling, and frontends consume one shared compatibility-policy shape.
-2. Centralize the category-by-mode decision table.
+This subsection operationalizes the cartridge-specific decision matrix defined
+authoritatively in `AI/hardware/CARTRIDGES-MBC.md` on top of the Phase `1`
+policy foundation above. `AI/ARCHITECTURE.md` remains the source of truth for
+the policy shape and supported-hardware invariant, and `AI/TESTING.md` remains
+the source of truth for CI/oracle usage of execution modes.
+
+1. Centralize the category-by-mode decision table.
    Scope: resolve `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode` through one shared matrix driven by typed cartridge classification.
    Acceptance criteria: load / warn / reject behavior is decided centrally, the loader does not duplicate per-mode classification logic, and `Strict`, `Permissive`, and `Experimental` keep supported-hardware runtime semantics identical.
-3. Close diagnostics and manual overrides.
+2. Close diagnostics and manual overrides.
    Scope: explicit rejection and warning reasons, visible heuristic and partial-path diagnostics, and manual overrides for model, mapper, mode, and validation policy.
    Acceptance criteria: loader messages report raw `0x0147`, detected name, category, current mode, and precise reason; overrides are visible in logs and tooling; and no silent mapper invention remains.
-4. Integrate execution mode into save states, replays, CI, and tooling.
+3. Integrate execution mode into save states, replays, CI, and tooling.
    Scope: persist execution-mode metadata, reject mismatched-mode restore by default, keep CI and oracle comparison on `Strict`, and segregate `Experimental` artifacts.
    Acceptance criteria: save states and replay logs record the originating mode and active overrides, strict-mode CI remains the official closure path, and experimental runs cannot be mistaken for oracle evidence.
 
@@ -833,18 +862,19 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 
 ---
 
-### Phase 6 — Banked cartridges, special cartridges, and persistence
+### Phase 6 — Banked cartridges, special cartridges, and cartridge persistence
 
 25. **MBC1**
 26. **MBC2**
 27. **MBC3**
 28. **MBC5**
 29. **Special cartridges and unsupported policy**
-30. **Banked external RAM, battery, RTC, persistence**
+30. **Banked external RAM, battery, RTC, and cartridge persistence**
 
 #### Goal
 
 Extend `cartridge/` from the closed No MBC baseline to banked commercial cartridge families and generalized cartridge-local persistence without contaminating the rest of the core.
+This phase closes cartridge-local persistence only; whole-machine save states remain dedicated Phase `8` work.
 
 #### Modules involved
 
@@ -863,7 +893,7 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 - special-cartridge taxonomy and unsupported policy covering `MBC30`, multicarts, documented-but-unsupported mapper families, accessory cartridges, and optional heuristics
 - functional mapper-controlled external RAM beyond the No MBC linear baseline
 - typed cartridge persistence contracts for full backing stores such as linear SRAM, banked SRAM, MBC2 nibble RAM, and MBC3 SRAM plus RTC
-- portable persistence boundaries across frontends and tools
+- portable cartridge-persistence boundaries across frontends and tools
 - clear separation between emulation logic and host storage APIs
 
 #### MBC1 sequencing inside Phase 6
@@ -965,7 +995,7 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
    Scope: isolate `EMS`, `Bung`, and `Wisdom Tree` detection behind an explicit dev / experimental loader policy, keep strict default behavior header-driven, and document that heuristic paths are lower priority than `MBC30`, multicarts, and documented special hardware.
    Acceptance criteria: heuristic detection is off by default, can be enabled explicitly for development and research, and diagnostics clearly state when a classification came from heuristics instead of a standard header mapping.
 
-#### Persistence sequencing inside Phase 6
+#### Cartridge-persistence sequencing inside Phase 6
 
 1. Define the cartridge persistent-state contract.
    Scope: a typed contract such as `PersistentCartState` that each supported cartridge family exposes, explicit per-mapper payload shapes, and strict separation from full-emulator save-state serialization.
@@ -1011,13 +1041,13 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 
 ### Phase 7 — Audio
 
-30. **General APU architecture**
-31. **APU frame sequencer**
-32. **APU channel 1**
-33. **APU channel 2**
-34. **APU channel 3**
-35. **APU channel 4**
-36. **Mixing, output, DACs, power control, and audio edge cases**
+31. **General APU architecture**
+32. **APU frame sequencer**
+33. **APU channel 1**
+34. **APU channel 2**
+35. **APU channel 3**
+36. **APU channel 4**
+37. **Mixing, output, DACs, power control, and audio edge cases**
 
 #### Goal
 
@@ -1184,6 +1214,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 #### Goal
 
 Establish one explicit full-emulator save-state system, separate from cartridge persistence, only after the hardware subsystems already own their live runtime state and before final DMG closure depends on save/load determinism.
+Phase `6` cartridge persistence is intentionally not a substitute for this whole-machine snapshot block.
 
 #### Modules involved
 
@@ -1349,7 +1380,7 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 27. MBC3  
 28. MBC5  
 29. Special cartridges and unsupported policy
-30. Banked external RAM, battery, RTC, persistence
+30. Banked external RAM, battery, RTC, and cartridge persistence
 
 31. General APU architecture
 32. APU frame sequencer
@@ -1407,7 +1438,7 @@ Suggested entry style:
 
 - None currently.
 
-### Phase 6 — Banked cartridges, special cartridges, and persistence
+### Phase 6 — Banked cartridges, special cartridges, and cartridge persistence
 
 - None currently.
 

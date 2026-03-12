@@ -98,13 +98,13 @@ The documentation hierarchy, in summary, is:
 
 - `AI/index.md` as the entry point for reading order and document authority boundaries
 - `AI/ARCHITECTURE.md` for layout, ownership, and subsystem boundaries
-- `AI/ARCHITECTURE.md` also for the central compatibility-policy structure and execution-mode ownership boundaries
+- `AI/ARCHITECTURE.md` also for the central compatibility-policy structure, execution-mode ownership boundaries, and the top-level separation between cartridge persistence and full emulator save states
 - `AI/TIMING-AND-ACCURACY.md` for shared timing vocabulary and project-wide timing constraints
 - `AI/ARCHITECTURE.md` plus `AI/TIMING-AND-ACCURACY.md` together for the global T-cycle scheduler contract
 - `AI/EXECUTION.md` and `AI/CODING-RULES.md` for workflow and code-change discipline
 - `AI/REFERENCES.md` for source and oracle consultation order
 - `AI/hardware/*.md` for the behavior and contracts of the corresponding subsystem
-- `AI/hardware/CARTRIDGES-MBC.md` specifically for mapper classification, special-cartridge taxonomy, compatibility-category policy, and cartridge persistence rules distinct from full emulator save states
+- `AI/hardware/CARTRIDGES-MBC.md` specifically for mapper classification, special-cartridge taxonomy, cartridge-side compatibility-category policy, and cartridge persistence rules distinct from full emulator save states
 - `AI/TESTING.md` for the global validation, differential, determinism, DMG-hardening policy, and official `Strict` CI/oracle usage
 - `AI/ROADMAP.md` for recommended implementation order, phase context, and outstanding TODOs
 

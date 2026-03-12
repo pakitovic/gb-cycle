@@ -175,6 +175,12 @@ Include persistence tests that `0x0147` capability decoding, not filename heuris
 Include persistence tests that `ram_enabled` gating does not affect the saved payload contents and that disabled-but-existing cartridge RAM can still round-trip through persistence.
 Include `MBC3` persistence tests that serialize live RTC state plus elapsed-time bookkeeping, restore powered-off advancement from an injected deterministic clock, and do not confuse the latched RTC snapshot with the persistent live clock.
 Include contract-level tests for in-memory and disk save backends, format versioning, explicit load/save APIs, save-on-close, forced save, optional auto-flush-after-write behavior, and atomic file replacement when storage robustness is under test.
+
+## Cartridge persistence versus full save-state coverage
+
+- Cartridge-persistence tests validate cartridge-owned backing stores and RTC state only; they must not require CPU, PPU, APU, WRAM, or other console-state serialization.
+- Full-emulator save-state tests validate whole-machine snapshot ownership, hidden temporal-state restore, and save/load continuation determinism under the recorded execution mode and overrides.
+
 Keep hardware-style cartridge persistence tests separate from full-emulator save-state tests; the former must not require CPU, PPU, APU, WRAM, or other console-state serialization.
 For DMA behavior, include `FF46` source-page selection, full `160`-byte copy correctness, DMG total duration of `640` dots, transfer-progress timing, CPU blocking outside HRAM, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
 For APU behavior, include tests that `NR52` power-off clears ordinary audio registers, preserves wave RAM accessibility, and does not reset the `DIV-APU` source relationship whenever suitable tests exist.

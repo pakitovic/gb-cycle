@@ -103,6 +103,9 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 ## Compatibility policy and execution modes
 
+- `AI/ARCHITECTURE.md` is the authoritative home for the typed `CompatibilityPolicy` shape, execution-mode invariants, and cross-system metadata requirements.
+- This handbook owns the cartridge-specific classification categories, decision matrix, loader diagnostics, and mapper-specific compatibility implications that plug into that shared policy shape.
+- `AI/TESTING.md` owns CI/oracle usage of execution modes and the save/load determinism expectations attached to `Strict`.
 - Compatibility policy is a stable loader/config layer that consumes typed cartridge classification; it is not a license to change the hardware truth of already supported cartridges.
 - This project is T-cycle based. Once a supported cartridge device exists, cartridge-visible reads, writes, mapper commands, and mapper-side effects still happen on the access T-cycle regardless of execution mode.
 - The loader should classify the cartridge once from the header and validated metadata, then hand that typed classification to one policy decision point.
@@ -249,6 +252,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 ## Persistence baseline
 
+- Full emulator save states remain a separate whole-machine snapshot system owned by the global save-state boundary in `AI/ARCHITECTURE.md` and phased in `AI/ROADMAP.md` Phase `8`.
 - Battery-backed persistence must be modeled as cartridge-owned state, not as "dump the currently visible `0xA000-0xBFFF` window."
 - `0xA000-0xBFFF` is only a mapper-controlled access window on the shared T-cycle runtime. The persistible payload is the cartridge's full backing store, not whichever bank or register file happens to be visible on one access.
 - The decision that a cartridge should produce hardware-style persistent state must come from header byte `0x0147`, not from filename heuristics, game title, or RAM-size guesses.

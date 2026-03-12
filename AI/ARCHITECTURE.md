@@ -328,16 +328,25 @@ to immediately materialize as a separate directory.
 - internal analysis and comparison tools
 - utilities for synchronization and trace-debug workflows
 
-## Cartridge persistence boundary
+## State persistence and snapshot boundaries
+
+### Cartridge persistence
 
 - The powered-on core remains T-cycle driven. Cartridge persistence is a boundary around cartridge-owned state, not a second bus or scheduler path.
 - If the core exposes persistence hooks, keep them narrow and typed, for example through `PersistentCartState` or `CartridgePersistentPayload`, and make the cartridge implementation the owner of payload semantics.
 - That contract should be able to represent no persistent storage, persistent RAM only, persistent RTC only, or combined RAM plus RTC without forcing the backend to reverse-engineer mapper details from the visible `0xA000-0xBFFF` window.
 - Storage backends such as disk or in-memory adapters should own serialization format, versioning, file naming, path mapping, timestamps, and atomic replacement policy, not cartridge semantics.
 - Frontend and tooling layers may decide when to flush, such as on close, on explicit manual save, or via optional auto-flush, but they should do so through the persistence backend rather than through bus hooks or cartridge-local file I/O.
-- Cartridge persistence and emulator save states must remain separate systems. Cartridge persistence stores only cartridge-owned hardware state; emulator save states may snapshot the whole machine.
-- Emulator save states and replays should also preserve the execution mode and active compatibility overrides that were in effect when they were created.
 - Tests and tools must be able to use an in-memory persistence backend so cartridge persistence can be validated without host file I/O.
+
+### Full emulator save states and replays
+
+- Cartridge persistence and emulator save states must remain separate systems. Cartridge persistence stores only cartridge-owned hardware state; emulator save states may snapshot the whole machine.
+- Whole-machine save states should capture subsystem-owned live state through explicit typed snapshot contracts rather than by reverse-engineering hidden state from MMIO readback.
+- Cartridge data included inside a whole-machine save state should enter through cartridge-owned runtime snapshot semantics, not by reusing the hardware-style persistence payload as a proxy for full console state.
+- Emulator save states and replays should preserve the execution mode and active compatibility overrides that were in effect when they were created.
+- Restoring or replaying under a different execution mode should fail by default unless a later explicit conversion workflow is designed on top of recorded metadata.
+- Debugger or tooling snapshots should layer on top of the same core-owned save-state contracts instead of creating a second incompatible serialization path.
 
 ## Module mapping notes
 
