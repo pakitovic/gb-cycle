@@ -16,7 +16,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - derive cartridge model, capacity, and capability metadata from that header
 - ROM banking and cartridge-visible RAM mapping
 - mapper register writes
-- RTC support and future rumble support
+- RTC support and rumble support
 - cartridge metadata and model capability handling
 - ownership of cartridge-visible address ranges `0x0000-0x7FFF` and `0xA000-0xBFFF` once the bus has decoded the access into cartridge space
 - validate declared ROM/RAM configuration against the loaded image with an explicit project policy
@@ -259,30 +259,47 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 ## MBC5 baseline
 
 - Treat MBC5 as its own mapper family, not as "MBC3 with more ROM bits."
-- Standard MBC5 should keep explicit live state for `ram_enabled`, raw low `8` ROM-bank bits, raw high `1` ROM-bank bit, a raw RAM-bank register, optional external RAM, battery / rumble capability flags, and header-derived metadata.
-- Header codes `0x19`, `0x1A`, and `0x1B` should be recognized explicitly as the standard non-rumble MBC5 family.
-- `0x19` means MBC5 with no external RAM, `0x1A` means MBC5 + RAM, and `0x1B` means MBC5 + RAM + battery.
-- Header codes `0x1C`, `0x1D`, and `0x1E` should be reserved as explicit rumble-capable MBC5 variants rather than being silently folded into standard MBC5 RAM banking.
-- Standard non-rumble MBC5 must support up to `8 MiB` ROM, meaning up to `512` total `16 KiB` ROM banks with bank `0` fixed in `0x0000-0x3FFF` and banks `0x000..=0x1FF` visible in `0x4000-0x7FFF`.
-- Standard non-rumble MBC5 should support ordinary external RAM sizes up to `128 KiB`, meaning up to `16` visible `8 KiB` RAM banks.
+- MBC5 is the large and comparatively direct classic Game Boy mapper family: up to `8 MiB` ROM, up to `128 KiB` banked external RAM, a raw `9`-bit ROM-bank selector split as low `8` bits plus high `1` bit, fixed ROM bank `0` in `0x0000-0x3FFF`, and a switchable ROM window that legitimately allows bank `0`.
+- Pan Docs also notes that MBC5 was the first MBC family that behaved correctly with CGB double-speed mode. For this repo, that should translate to one T-cycle-ordered cartridge model that can later sit under double-speed scheduling without introducing mapper-local timing shortcuts.
+- MBC5 should keep explicit live state for `ram_enabled`, raw `rom_bank_low8`, raw `rom_bank_high1`, raw `ram_bank_raw`, optional external RAM, `has_battery`, `has_rumble`, `rumble_on`, and header-derived metadata.
+- Header codes `0x19`, `0x1A`, `0x1B`, `0x1C`, `0x1D`, and `0x1E` should be recognized explicitly as the MBC5 family.
+- `0x19` means MBC5 with no external RAM.
+- `0x1A` means MBC5 + RAM.
+- `0x1B` means MBC5 + RAM + battery.
+- `0x1C` means MBC5 + rumble.
+- `0x1D` means MBC5 + rumble + RAM.
+- `0x1E` means MBC5 + rumble + RAM + battery.
+- Loader-visible variant metadata should distinguish at least no-RAM, RAM, RAM+battery, rumble-only, rumble+RAM, and rumble+RAM+battery shapes rather than flattening them into one generic `Mbc5`.
+- Battery presence changes persistence expectations only. Rumble changes cartridge-local motor state and must not change ROM banking semantics.
+- MBC5 must validate up to `8 MiB` ROM, meaning up to `512` total `16 KiB` ROM banks with bank `0` fixed in `0x0000-0x3FFF` and banks `0x000..=0x1FF` visible in `0x4000-0x7FFF`.
+- MBC5 external RAM support should cover ordinary `8 KiB`, `32 KiB`, and `128 KiB` SRAM configurations, meaning up to `16` visible `8 KiB` RAM banks.
+- MBC5 external RAM should be modeled as linear `8 KiB` banks selected directly by the RAM-bank register, with no MBC1-style dual banking mode.
+- If a cartridge declares an MBC5 header type but validated ROM size exceeds `8 MiB`, the loader should emit an explicit diagnostic instead of guessing another mapper.
+- If a cartridge declares an MBC5 header type with impossible RAM metadata, such as RAM omitted by `0x0147` while `0x0149 != 0x00`, or a declared MBC5 RAM size larger than `128 KiB`, the loader should emit an explicit diagnostic under the chosen validation policy.
 - The visible MBC5 memory map should be:
   - `0x0000-0x3FFF`: fixed ROM bank `0`
   - `0x4000-0x7FFF`: switchable ROM bank `0x000..=0x1FF`
-  - `0xA000-0xBFFF`: external RAM bank `0x00..=0x0F`, if any
+  - `0xA000-0xBFFF`: external RAM bank `0x00..=0x0F`, if present and enabled
+- The bus must not know MBC5's `9`-bit ROM-bank math or rumble wiring. It should continue delegating cartridge-owned regions to the cartridge device through the stable cartridge interface.
 - `0x0000-0x1FFF` is a write-only RAM-enable register. Any write whose low nibble is `0xA` enables external RAM; other values disable it.
 - With RAM disabled, `0xA000-0xBFFF` reads and writes should follow one explicit project policy rather than accidental backing-store behavior. A default of `0xFF` is acceptable, but the policy should remain explicit and testable.
 - `0x2000-0x2FFF` should store the low `8` bits of the ROM-bank register.
 - `0x3000-0x3FFF` should store the high `1` bit of the ROM-bank register.
 - Keep those raw ROM-bank fields separate in code instead of collapsing them immediately into one opaque current-bank value.
 - Unlike MBC1, MBC2, and MBC3, MBC5 must not apply a `0 -> 1` translation to the high ROM window. Writing bank `0` should really expose bank `0` in `0x4000-0x7FFF`.
-- Effective MBC5 ROM-bank selection should combine the raw `8+1` register bits and then mask by the real number of loaded ROM banks without inventing a synthetic `0 -> 1` rule.
-- `0x4000-0x5FFF` should select the external RAM bank for standard non-rumble MBC5. Use the low `4` bits as the raw RAM-bank register and then mask by the real RAM-bank count.
-- Rumble-capable MBC5 cartridges should remain an explicit future variant because bit `3` of that register is wired differently there; do not quietly treat rumble control as ordinary RAM-bank state.
+- Effective MBC5 ROM-bank selection should combine `rom_bank_low8` plus `rom_bank_high1` into one `9`-bit value and then mask by the real number of loaded ROM banks without inventing a synthetic `0 -> 1` rule.
+- Do not reuse MBC1 or MBC3 helper paths if they carry the `0 -> 1` rule, because that would make valid MBC5 high-window bank `0` unreachable.
+- `0x4000-0x5FFF` is a write-only RAM-bank / rumble control register.
+- On standard non-rumble MBC5, use the low `4` bits as the raw RAM-bank register and then mask by the real RAM-bank count.
+- On rumble-capable MBC5, `bit 3` of that control register should update `rumble_on`, while the remaining RAM-bank-relevant bits should still resolve the effective RAM bank according to the validated cartridge wiring.
+- Keep `ram_bank_raw`, `effective_ram_bank()`, and `effective_rumble_state()` as distinct concepts. Do not collapse rumble-capable MBC5 behavior into one integer whose meaning is reconstructed ad hoc.
+- For the current project scope, rumble modeling should stop at the digital hardware-visible motor state. No physical inertia or analog intensity model is required yet.
+- The cartridge should expose `rumble_on` as observable cartridge-local state. A frontend may translate that state into host vibration, but it must not authoritatively set rumble state without going through cartridge writes.
+- In cartridges without external RAM, `0xA000-0xBFFF` must not behave like SRAM merely because `ram_bank_raw` exists. RAM presence still comes from validated header capabilities.
 - MBC5 control writes are ordinary cartridge commands on the shared T-cycle timeline. RAM-enable, ROM-bank, and RAM-bank changes must become visible on the access T-cycle for all later cartridge accesses; do not defer them to instruction or frame boundaries.
 - A concrete `Mbc5Cartridge` implementing `CartridgeDevice` is the intended implementation shape for this repo.
-- It should contain at least `rom`, optional `ram`, `has_battery`, explicit MBC5 variant metadata, `ram_enabled`, raw low/high ROM-bank fields, raw RAM-bank state, and `header`.
-- Prefer explicit helpers such as `effective_rom_bank()` and `effective_ram_bank()` so raw register state, variant decisions, and final masked bank numbers remain inspectable.
-- The first MBC5 implementation should close standard non-rumble MBC5 before enabling rumble-capable variants. Leave the extension point explicit instead of burying rumble behavior inside the normal RAM-bank path.
+- It should contain at least `rom`, optional `ram`, `has_battery`, `has_rumble`, explicit MBC5 variant metadata, `ram_enabled`, `rom_bank_low8`, `rom_bank_high1`, `ram_bank_raw`, `rumble_on`, and `header`.
+- Prefer explicit helpers such as `effective_rom_bank()`, `effective_ram_bank()`, and `effective_rumble_state()` so raw register state, variant decisions, final masked bank numbers, and observable rumble state remain inspectable.
 
 ## Timing / accuracy requirements
 
@@ -340,9 +357,11 @@ Priority order:
 - tests that MBC3 implements seconds, minutes, hours, day low, and day high / flags correctly, including writes to `DH.bit0`, `DH.bit6`, and `DH.bit7`, sticky carry on day overflow, and `halt` freezing live RTC advancement
 - tests that MBC3 RTC / persistence can run from an injected deterministic time source, including elapsed time across powered-off sessions without coupling the expected result to host wall-clock timing during tests
 - if fine RTC-access delay emulation is implemented, tests that the chosen `16`-T-cycle access-spacing policy matches the documented model; until then, base MBC3 tests should not assume that fine delay is enforced
-- explicit MBC5 tests for `0x19`, `0x1A`, and `0x1B`, deterministic power-up state, immediate visibility of RAM-enable and bank-register writes, and explicit preservation of bank `0` in the switchable ROM window
-- tests that MBC5 supports up to `8 MiB` ROM with full `9`-bit bank selection, masks effective ROM and RAM banks by real cartridge size, and does not apply an MBC1/MBC3-style `0 -> 1` translation
-- tests that standard non-rumble MBC5 RAM banking covers the documented `0x00..=0x0F` bank space, respects disabled-RAM policy, and keeps rumble-capable header types reserved or explicitly variant-gated
+- explicit MBC5 tests for `0x19`, `0x1A`, `0x1B`, `0x1C`, `0x1D`, and `0x1E`, deterministic power-up state, immediate visibility of RAM-enable and bank-register writes, and explicit preservation of bank `0` in the switchable ROM window
+- tests that MBC5 supports up to `8 MiB` ROM with full `9`-bit bank selection, including bank `0x1FF`, masks effective ROM and RAM banks by real cartridge size, and does not apply an MBC1/MBC3-style `0 -> 1` translation
+- tests that MBC5 RAM banking covers the documented `8 KiB`, `32 KiB`, and `128 KiB` SRAM cases, respects disabled-RAM policy, uses linear `8 KiB` banks with no MBC1-style dual banking mode, and does not expose SRAM on header variants that do not actually provide RAM
+- tests that rumble-capable MBC5 distinguishes effective RAM-bank selection from `rumble_on`, that `bit 3` of the `0x4000-0x5FFF` control register keeps the motor on until software clears it, and that rumble state is observable without moving that responsibility into the bus or frontend
+- tests that MBC5 validation reports clear diagnostics for ROM sizes above `8 MiB`, impossible RAM declarations, and rumble-capable header types loaded without an observable rumble state
 - mapper-specific ROM tests
 - cartridge RAM persistence behavior tests
 - additional cross-session RTC persistence and integration tests once save/time-source plumbing is active
@@ -377,7 +396,8 @@ Priority order:
 - For MBC3, reserve MBC30 as a first-class future extension point rather than folding it into standard MBC3 conditionals.
 - For MBC5, keep the raw low `8` ROM-bank bits and raw high `1` ROM-bank bit separate instead of flattening them into one opaque field too early.
 - For MBC5, remember that bank `0` is valid in the switchable ROM window; do not cargo-cult the MBC1/MBC3 `0 -> 1` rule here.
-- For MBC5, reserve rumble-capable variants as explicit variant metadata instead of pretending their RAM-bank register is identical to standard MBC5.
+- For MBC5, keep `ram_bank_raw`, `effective_ram_bank()`, and `rumble_on` distinct instead of pretending the rumble-capable RAM-bank register is identical to standard non-rumble MBC5.
+- For MBC5, emit explicit validation diagnostics when `0x0147`, `0x0148`, and `0x0149` describe an impossible MBC5 combination instead of silently coercing the cartridge into a nearby supported shape.
 
 ## Known pitfalls
 
@@ -415,6 +435,7 @@ Priority order:
 - applying the MBC1/MBC3 `0 -> 1` bank rule to MBC5 and accidentally making bank `0` unreachable in `0x4000-0x7FFF`
 - collapsing MBC5's `9`-bit ROM-bank register into one lossy `8`-bit field and losing banks above `0xFF`
 - silently treating rumble-capable MBC5 header types as if their RAM-bank register were identical to standard non-rumble MBC5
+- loading `0x1C`, `0x1D`, or `0x1E` as plain non-rumble MBC5 and thereby hiding cartridge-local rumble state from the rest of the system
 
 ## Open questions
 
@@ -423,4 +444,3 @@ Priority order:
 - which explicit default policy should govern MBC3 RAM / RTC-disabled reads and writes at `0xA000-0xBFFF`
 - whether the Pan Docs RTC access-spacing recommendation should remain documented-only or later become an enforced `16`-T-cycle timing rule
 - what persisted RTC serialization shape best separates visible RTC state, elapsed-time bookkeeping, and frontend-specific storage adapters
-- which exact MBC5 variant taxonomy is clearest for this repo once rumble support is introduced

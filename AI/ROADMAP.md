@@ -282,7 +282,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - boot ROM integration into the memory map
 - correct boot ROM unmapping
 - system-visible startup configuration
-- explicit `RealBoot` and `SkipBoot` startup modes
+- explicit startup-mode configuration, with a functional `SkipBoot` path in this phase and a first-class `RealBoot` path reserved for Phase 2 execution
 - DMG-family boot-ROM kind selection for `DMG0`, `DMG`, and `MGB`
 - `FF50`-driven handoff infrastructure in the bus mapping layer
 - skip-boot initialization path with model-aware post-boot state entry
@@ -309,6 +309,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - boot-ROM overlay versus cartridge visibility is controlled explicitly by bus-visible mapping state
 - MMIO side effects occur on the access itself on the shared timeline rather than in an end-of-instruction cleanup pass
 - `SkipBoot` reaches `0x0100` through explicit post-boot initialization rather than partial boot-ROM execution
+- startup configuration already distinguishes direct post-boot entry from later executed boot-ROM flow rather than overloading both behind one ambiguous "boot" mode
 - deterministic and cartridge-derived visible post-boot state are initialized through one documented path rather than scattered startup literals
 - the infrastructure is ready for a later real-boot path to start CPU execution at `0x0000` with boot ROM mapped and hand off through a real `FF50` write once the CPU core exists
 
@@ -846,20 +847,23 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 #### MBC5 sequencing inside Phase 6
 
 1. Establish the MBC5 control model and power-up state.
-   Scope: `ram_enabled`, raw low `8` ROM-bank bits, raw high `1` ROM-bank bit, raw RAM-bank state, deterministic startup for both `RealBoot` and `SkipBoot`, and explicit standard-versus-rumble variant metadata.
-   Acceptance criteria: `0x0000-0x1FFF` enables RAM on low-nibble `0xA` and disables otherwise, the switchable ROM window really allows bank `0`, the low and high ROM-bank register pieces stay explicit, and control writes become visible immediately on the shared T-cycle timeline.
-2. Implement standard MBC5 ROM banking and size masking.
-   Scope: fixed low ROM bank `0`, switchable high ROM bank `0x000..=0x1FF`, raw `8+1` ROM-bank register state, real-size masking, and explicit preservation of bank `0` semantics in the high region.
-   Acceptance criteria: standard MBC5 supports up to `8 MiB` ROM, bank `0` is reachable in `0x4000-0x7FFF`, banks above `0xFF` are reachable through the high ROM-bank bit, and final bank selection remains masked by real ROM size without introducing an MBC1/MBC3-style `0 -> 1` rule.
-3. Implement standard external RAM banking.
-   Scope: non-rumble RAM-bank selection through `0x4000-0x5FFF`, disabled-RAM policy, ignored writes while disabled, and real-size masking for standard MBC5 RAM.
-   Acceptance criteria: standard MBC5 supports the documented RAM-bank range `0x00..=0x0F`, disabled RAM reads and writes follow one explicit policy, and effective RAM banks are masked by the real RAM-bank count.
-4. Add validation, battery persistence, and rumble-variant reservation.
-   Scope: header-type coverage for `0x19`, `0x1A`, `0x1B`, battery-backed persistence expectations, and explicit reservation or first-class variant handling for rumble-capable header types `0x1C`, `0x1D`, and `0x1E`.
-   Acceptance criteria: standard non-rumble MBC5 headers validate cleanly, battery variants persist RAM without changing live mapping rules, and rumble-capable types do not silently masquerade as standard RAM-only MBC5.
-5. Close with dedicated MBC5 tests and oracle comparisons.
-   Scope: unit tests, integration tests, ROM-based coverage, and at least one trusted oracle comparison for bank-selection edge cases.
-   Acceptance criteria: tests cover header types `0x19`, `0x1A`, and `0x1B`, bank `0` visibility in the switchable region, `9`-bit ROM-bank selection across the `0xFF -> 0x100` boundary, RAM-enable behavior, RAM-bank masking, battery persistence expectations, and explicit variant handling for rumble-capable types.
+   Scope: `ram_enabled`, raw low `8` ROM-bank bits, raw high `1` ROM-bank bit, raw `ram_bank_raw`, deterministic startup for both `RealBoot` and `SkipBoot`, and explicit variant metadata for RAM / battery / rumble capability.
+   Acceptance criteria: `0x0000-0x1FFF` enables RAM on low-nibble `0xA` and disables otherwise, the switchable ROM window really allows bank `0`, the low and high ROM-bank register pieces stay explicit, `0x4000-0x5FFF` updates raw RAM-bank state immediately, and control writes become visible immediately on the shared T-cycle timeline.
+2. Implement `9`-bit MBC5 ROM banking and size masking.
+   Scope: fixed low ROM bank `0`, switchable high ROM bank `0x000..=0x1FF`, combined `rom_bank_low8 + rom_bank_high1` resolution, real-size masking, and explicit preservation of bank `0` semantics in the high region.
+   Acceptance criteria: MBC5 supports up to `8 MiB` ROM, bank `0` is reachable in `0x4000-0x7FFF`, bank `0x1FF` is reachable on full-size images, banks above `0xFF` are reachable through the high ROM-bank bit, and final bank selection remains masked by real ROM size without introducing an MBC1/MBC3-style `0 -> 1` rule.
+3. Implement MBC5 SRAM enable and linear RAM banking.
+   Scope: RAM-enable gating, linear `8 KiB` bank selection through `ram_bank_raw`, no MBC1-style dual banking mode, disabled-RAM policy, ignored writes while disabled, real-size masking, and the ordinary `8 KiB`, `32 KiB`, and `128 KiB` SRAM shapes.
+   Acceptance criteria: MBC5 SRAM does not behave like normal RAM while disabled, `8 KiB`, `32 KiB`, and `128 KiB` RAM configurations map correctly, effective RAM banks are masked by the real RAM-bank count, no MBC1-style dual banking mode exists, and header variants without RAM do not expose fake SRAM behavior merely because the bank register exists.
+4. Implement rumble-capable MBC5 variants.
+   Scope: explicit handling for `0x1C`, `0x1D`, and `0x1E`, observable `rumble_on`, `bit 3` ownership in the `0x4000-0x5FFF` control register, separation between effective RAM-bank selection and motor state, and cartridge-local ownership of rumble behavior.
+   Acceptance criteria: `bit 3` of the `0x4000-0x5FFF` control register updates `rumble_on`, the motor state remains latched until software changes it, rumble handling does not break effective RAM-bank selection, and the bus / frontend do not own rumble semantics.
+5. Add MBC5 validation, diagnostics, and persistence expectations.
+   Scope: header-type coverage for `0x19..=0x1E`, battery-backed persistence expectations, ROM-size validation up to `8 MiB`, RAM-size validation up to `128 KiB`, and explicit diagnostics for impossible header combinations.
+   Acceptance criteria: `0x19..=0x1E` are distinguished cleanly, battery variants persist RAM without changing live mapping rules, ROM sizes above `8 MiB` produce clear errors, type / RAM mismatches such as "no RAM type with nonzero `0x0149`" produce clear errors, and rumble-capable types are not accepted unless the implementation exposes observable rumble state.
+6. Close with dedicated MBC5 tests and oracle comparisons.
+   Scope: unit tests, integration tests, ROM-based coverage, and at least one trusted oracle comparison for bank-selection and rumble edge cases.
+   Acceptance criteria: tests cover header types `0x19..=0x1E`, bank `0` visibility in the switchable region, bank `0x1FF`, `9`-bit ROM-bank selection across the `0xFF -> 0x100` boundary, RAM-enable behavior, SRAM behavior for `8 KiB` / `32 KiB` / `128 KiB`, RAM-bank masking, rumble on/off, and size-validation diagnostics.
 
 #### Done criteria
 
@@ -868,7 +872,7 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 - standard MBC1 behavior is modeled inside cartridge devices with explicit wiring / variant metadata rather than bus-side heuristics or one opaque active-bank field
 - standard MBC2 behavior is modeled inside cartridge devices with explicit address-bit-`8` control decode, internal nibble RAM semantics, and mapper-local validation rather than generic external-SRAM assumptions
 - standard MBC3 behavior is modeled inside cartridge devices with explicit RAM-bank versus RTC-register selection, live-versus-latched RTC state, and a reserved future MBC30 extension point
-- standard MBC5 behavior is modeled inside cartridge devices with explicit `9`-bit ROM-bank state, valid switchable-region bank `0`, and a reserved future rumble-variant extension point
+- MBC5 behavior is modeled inside cartridge devices with explicit `9`-bit ROM-bank state, valid switchable-region bank `0`, explicit RAM / battery / rumble variant handling, and observable cartridge-local rumble state
 - RTC and persistence are properly encapsulated
 - persistence does not break portability between CLI, desktop, and web
 
