@@ -79,6 +79,9 @@ When implementing timing:
 - For the CPU specifically, opcode fetch, immediate fetch, stack transfer, indirect memory access, conditional timing splits, and internal no-bus steps should all remain expressible as ordered events on that timeline.
 - Long-running hardware activity started by a register write, such as OAM DMA, should become explicit in-flight state on the shared timeline rather than a one-shot side effect.
 - When a subsystem progresses in repeated temporal slices, such as one DMA byte every four dots on DMG OAM DMA, that phase relationship should remain visible in code and tests.
+- The timing model must support both fixed-duration burst transfers and windowed or block transfers that only advance in eligible windows such as HBlank, while keeping both on the same shared T-cycle timeline.
+- A transfer's CPU or bus impact and its data-copy action should be expressible separately per T-cycle, because arbitration may be visible on cycles where no byte commits and future block DMA may stall only for selected windows.
+- Future transfer advance may depend on other live machine state such as PPU HBlank visibility or CPU `HALT` state; keep that dependency explicit in the transfer model rather than hiding it in bus code.
 - Edge-driven subsystems such as the timer should derive visible events from clocked internal state transitions, not from coarse accumulated-period shortcuts.
 - CPU interrupt acceptance, delayed `EI`, `HALT` wake-up, and `HALT` bug behavior should be expressed as ordered events on that same shared timeline rather than as opaque instruction-level shortcuts.
 - For the PPU specifically, dot-by-dot progression is the intended interpretation of the shared T-cycle timeline.

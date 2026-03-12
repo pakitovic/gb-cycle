@@ -222,10 +222,15 @@ to immediately materialize as a separate directory.
 
 ### `dma/`
 
+- shared DMA controller and active-transfer state
 - DMG OAM DMA
+- transfer lifecycle such as `Idle`, `Starting`, `Active`, `Completed`, and future `Cancelled`
 - transfer timing over the shared scheduler timeline
+- per-transfer timing policy, block granularity, and advance-condition modeling
+- publication of CPU-impact and memory-region-impact state for bus and PPU consumption
+- DMA-owned validation and normalization of source and destination contracts
 - integration with bus arbitration
-- architectural preparation for future transfer mechanisms outside current DMG scope
+- architectural preparation for future GDMA and HDMA without scheduler redesign
 
 ### `timer/`
 
@@ -326,6 +331,7 @@ to immediately materialize as a separate directory.
 - The boot subsystem owns firmware assets, model-aware boot configuration, and boot-ROM enable/disable state.
 - The boot subsystem also owns the source-of-truth startup snapshot for direct-boot entry, while the target subsystems still own the live semantics of their registers once execution begins.
 - The DMA subsystem owns transfer state and transfer requests over time.
+- The DMA subsystem also owns transfer-kind-specific validation, lifecycle, progress, CPU-impact policy, and region-impact publication; the bus and PPU should consume that common state instead of reverse-engineering DMA behavior from MMIO register details.
 - The PPU owns LCD mode state and the rules that determine when VRAM/OAM are accessible.
 - The PPU also owns the live Mode `2` OAM-row state and the DMG-family OAM corruption formulas, while the bus routes relevant access attempts and the CPU exposes the micro-events needed to classify IDU-driven triggers.
 - The interrupt controller owns `IF`/`IE` register state and pending-request bookkeeping, while the CPU owns `IME`, `halted`, `stopped`, and the final decision to accept and service an interrupt.

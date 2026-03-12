@@ -19,6 +19,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - pixel priority rules
 - STAT/LY/LYC and LCD-visible interrupts
 - DMG-family OAM corruption behavior
+- reaction to DMA-declared OAM/VRAM contention without owning DMA scheduling
 - tile fetcher state
 - background and object FIFO state
 - pixel FIFO state and output timing
@@ -32,6 +33,13 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `WX`, `WY`
 - `BGP`, `OBP0`, `OBP1`
 - OAM and VRAM ownership rules
+
+## DMA interaction baseline
+
+- The PPU should not infer live DMA behavior from `FF46` or future `HDMA1-5` register contents.
+- The DMA subsystem should publish a common current-cycle memory-region impact such as `Oam`, `Vram`, or no special region, and the PPU should consume that signal when concurrent transfer activity affects PPU-visible behavior.
+- OAM DMA active state and duration belong to DMA; the PPU keeps ownership of the visible consequences such as OAM read failure, Mode `2/3` interaction, and DMG-family OAM corruption behavior.
+- Future HBlank-conditioned transfers should use the PPU's live mode or HBlank-visible state as an input to DMA advance conditions without moving HDMA scheduling logic into the PPU or the bus.
 
 ## LCD MMIO contract baseline
 

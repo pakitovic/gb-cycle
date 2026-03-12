@@ -21,6 +21,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - distinguish requester-specific access semantics when CPU, DMA, or other actors do not obey the same rules
 - coordinate dynamic mapping between boot ROM, cartridge ROM, and later model-specific extensions
 - consume subsystem-owned state such as PPU mode, DMA progress, and boot-ROM enable state when deciding the observable result of an access
+- consume DMA-published constraint state from the common transfer controller rather than re-deriving live DMA policy from MMIO register values or ad hoc per-kind branches
 - delegate all cartridge-owned accesses through one stable cartridge-device contract instead of embedding per-MBC logic in the bus
 
 ## Registers / MMIO
@@ -173,6 +174,8 @@ Address alone is not enough: the bus must also consider the current temporal har
 - After nominal ownership is known, the owning region or device may still block or modify the access according to live policy, such as VRAM in Mode `3`, OAM in Mode `2/3`, `FEA0-FEFF`, disabled cartridge RAM, or cartridge-selected RTC behavior.
 - CPU, DMA, and any future transfer engine must all use this one central arbitration path; no caller-specific fast path may bypass decode or access policy.
 - On the shared scheduler timeline, the arbitration decision for a T-cycle should see the already-updated current-cycle DMA and PPU state before the CPU micro-operation issues its access for that same T-cycle.
+- The bus should consult DMA-owned published constraints such as CPU impact, region impact, and current-cycle transfer activity instead of peeking at `FF46` or future `HDMA1-5` register state directly.
+- DMA policy questions such as "HRAM-only", "fully stalled until done", or "stalled only during a block" belong to the DMA subsystem; the bus should only apply the resulting requester-visible constraints.
 
 ## Model-aware MMIO baseline
 
@@ -202,6 +205,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - OAM access blocking during PPU Mode 2 must be represented as observable bus behavior, not as a render-only detail.
 - During PPU Mode 3, both OAM and VRAM access restrictions must be represented as observable bus behavior.
 - During DMG OAM DMA, CPU accesses should retain normal HRAM behavior while non-HRAM CPU accesses observe DMA-blocked semantics instead of normal memory-region behavior.
+- DMA-visible blocking and DMA data movement should remain separable on the T-cycle timeline; a transfer may affect CPU-visible access policy on a cycle even if no byte commit occurs on that same cycle.
 - With LCD disabled, access rules should return to the hardware state expected for LCD-off behavior.
 - LCD-off accessibility should remove ordinary PPU mode locks, but it must not erase independent blocking rules coming from DMA or any later bus actor.
 - The same PPU-disabled state that makes `STAT.mode` read as `0` should also be the state the bus uses to release ordinary VRAM/OAM mode restrictions.
@@ -279,6 +283,7 @@ Priority order:
 - A bus context or equivalent state bundle is a good fit for carrying model, PPU mode, LCD enable, DMA activity, boot ROM mapping, and later CGB-specific selectors.
 - A caller-aware access split or equivalent internal distinction between CPU-initiated and DMA-initiated accesses is recommended when the observable rules differ.
 - Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers.
+- A DMA-facing query such as `bus_constraints()` plus a separate transfer-commit path is a good fit for keeping arbitration policy separate from byte-copy mechanics.
 - Prefer a centralized MMIO descriptor table or equivalent routed register map over scattered `match` blocks that each know only part of a register's semantics.
 - Let subsystem-owned handlers compose readback from live state, latched state, and forced bits; do not teach the bus to fake those register internals.
 - Do not special-case CPU opcode fetch, operand fetch, or stack accesses outside the common bus contract; they should use the same routed access path as any other CPU-visible memory transaction.

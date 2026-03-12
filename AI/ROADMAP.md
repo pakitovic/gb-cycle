@@ -162,7 +162,7 @@ coherent without refactoring.
    Acceptance criteria: CPU and DMA use the same arbitration route, decode/ownership and access-policy layers stay distinct, and DMG OAM DMA correctly leaves CPU with HRAM only.
 3. **IRQ aggregation layer** (`Phase 2`)
    Goal: separate source request, `IF` visibility, and CPU acceptance.
-   Acceptance criteria: PPU, timer, serial, and joypad only request; the CPU accepts by `IME/IE/IF` and fixed priority; timer keeps its delayed one-M-cycle request timing.
+   Acceptance criteria: PPU, timer, serial, and joypad only request; the CPU accepts by `IME/IE/IF` and fixed priority; timer keeps its delayed `4`-T-cycle (`1` M-cycle) request timing.
 4. **Cycle logging** (`Phase 0`, expanded later)
    Goal: make the actual ordering visible per T-cycle.
    Acceptance criteria: traces can expose phase, bus owner, CPU micro-op, PPU mode, DMA activity, timer or serial events, and `IF/IE/IME`.
@@ -488,7 +488,7 @@ Build a truly temporal CPU core, where observable behavior emerges from internal
 
 #### Goal
 
-Integrate OAM DMA as a real transfer mechanism inside the system architecture, coordinated with the scheduler and bus.
+Integrate DMG OAM DMA as a real transfer mechanism inside the system architecture through a reusable DMA-controller foundation, coordinated with the scheduler and bus and already prepared for future CGB transfer families without implementing them yet.
 
 #### Modules involved
 
@@ -500,18 +500,40 @@ Integrate OAM DMA as a real transfer mechanism inside the system architecture, c
 
 #### Deliverables
 
+- common `DmaController`-style infrastructure with explicit active-transfer state
 - writing to the DMA register triggers the transfer
-- real temporal copy progression
+- OAM DMA as the first concrete transfer kind inside that common infrastructure
+- real temporal copy progression on the shared T-cycle timeline
 - integration with bus arbitration
+- separation between transfer progression and DMA-published arbitration state
+- explicit lifecycle and status visibility for active transfers
 - observability of DMA start, progress, and completion
 - scheduler-visible DMA state that bus arbitration can use on the same T-cycle
+- transfer fields that already leave room for block or windowed progression without wiring CGB MMIO yet
 
 #### Done criteria
 
 - the transfer is not implemented as an instantaneous memory copy
+- OAM DMA is implemented as an instance of the common DMA transfer infrastructure rather than a one-off path outside it
 - arbitration correctly reflects DMA effects on concurrent accesses
 - CPU-versus-DMA precedence is decided centrally through bus arbitration instead of CPU-local blocking logic
+- DMG OAM DMA still leaves the CPU with HRAM access only while active
+- DMA lifecycle and active-state visibility are explicit and traceable
+- the infrastructure can already represent future block or windowed transfers without requiring a later scheduler redesign, even though GDMA and HDMA remain out of scope here
 - the system can trace DMA over time
+
+#### Recommended sequencing inside Phase 3
+
+1. Extract OAM DMA into the common controller.
+   Acceptance criteria: OAM DMA no longer lives on an ad hoc path, visible DMG behavior does not regress, CPU still remains HRAM-only during active OAM DMA, and the PPU still sees the same OAM-conflict state.
+2. Separate transfer mechanics from arbitration policy.
+   Acceptance criteria: the bus consults one common DMA constraint API, the DMA subsystem does not reimplement bus decode, and the PPU can react to common OAM or VRAM impact state rather than to transfer-specific register knowledge.
+3. Add common lifecycle and status visibility.
+   Acceptance criteria: OAM DMA uses `Idle -> Starting -> Active -> Completed`, the common API can already represent future cancellation, and code can query active-versus-finished state without depending on one specific origin register.
+4. Prepare block or windowed progression hooks.
+   Acceptance criteria: fields such as `block_size` and `advance_condition` exist in the controller contract, including room for future `0x10`-byte HDMA-style blocks, they are not yet wired to real HDMA registers, and Phase 3 does not need another scheduler redesign when CGB transfer work starts.
+5. Lock the infrastructure with focused tests.
+   Acceptance criteria: tests cover OAM DMA on the new controller, published bus constraints, lifecycle visibility, completion, and at least one simulated `0x10`-byte block-style transfer shape that is not yet mapped to real CGB MMIO.
 
 #### Risks if delayed too much
 
@@ -793,13 +815,14 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 
 ---
 
-### Phase 6 — Banked cartridges and persistence
+### Phase 6 — Banked cartridges, special cartridges, and persistence
 
 25. **MBC1**
 26. **MBC2**
 27. **MBC3**
 28. **MBC5**
-29. **Banked external RAM, battery, RTC, persistence**
+29. **Special cartridges and unsupported policy**
+30. **Banked external RAM, battery, RTC, persistence**
 
 #### Goal
 
@@ -1221,7 +1244,7 @@ Suggested entry style:
 
 - None currently.
 
-### Phase 6 — Banked cartridges and persistence
+### Phase 6 — Banked cartridges, special cartridges, and persistence
 
 - None currently.
 

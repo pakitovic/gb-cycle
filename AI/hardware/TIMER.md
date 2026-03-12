@@ -38,7 +38,7 @@ The source of truth should be an internal `16`-bit system counter advanced by th
   - `10 -> bit 5`
   - `11 -> bit 7`
 - Timer overflow should be modeled as a temporal process with explicit pending/reload state; do not collapse overflow, reload from `TMA`, and interrupt request into one instant write-like event.
-- On DMG, the timer interrupt request does not become visible at the same logical moment as overflow detection. The `TMA` reload and timer request into `IF` arrive one M-cycle later.
+- On DMG, the timer interrupt request does not become visible at the same logical moment as overflow detection. The `TMA` reload and timer request into `IF` arrive `4` T-cycles later (`1` M-cycle).
 
 ## MMIO contract baseline
 
@@ -107,7 +107,7 @@ Priority order:
 - focused edge-detection and cadence tests for each TAC frequency
 - focused write-order and overflow tests
 - TIMA overflow-window tests, including reads and writes around pending reload
-- delayed timer-request tests that verify `IF.Timer` becomes visible one M-cycle after logical overflow
+- delayed timer-request tests that verify `IF.Timer` becomes visible `4` T-cycles (`1` M-cycle) after logical overflow
 - separate TIMA-write tests for before overflow, at overflow, during reload, and after reload
 - TMA-write timing tests around reload
 - separate TMA-write tests for before overflow, just before reload, at reload, and after reload

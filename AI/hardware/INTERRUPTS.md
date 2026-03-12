@@ -69,7 +69,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Timer keeps an explicit exception to any naive "request on source edge" simplification: logical TIMA overflow is not the same moment as the timer bit becoming set in `IF`.
 - Serial keeps its own completion point: the request belongs to the T-cycle that completes the eighth shift and clears `SC.7`.
 - Joypad keeps its own visibility rule: the request belongs only to a newly visible `High -> Low` transition in the `P1` low nibble.
-- Once the CPU accepts an interrupt, servicing it must still consume the documented DMG `5` M-cycles through the CPU's ordinary temporal model rather than as an immediate vector jump.
+- Once the CPU accepts an interrupt, servicing it must still consume the documented DMG `20` T-cycles (`5` M-cycles) through the CPU's ordinary temporal model rather than as an immediate vector jump.
 
 ## Timing / accuracy requirements
 
