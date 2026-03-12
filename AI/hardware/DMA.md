@@ -52,6 +52,8 @@ Treat DMA as another bus actor competing for access over time, not as a side eff
 - Interactions between DMA source access, CPU-visible blocking, and OAM visibility should remain explicit and testable.
 - CPU execution should continue during OAM DMA, but on DMG the CPU should only retain normal HRAM access while the transfer is active.
 - DMA destination writes into OAM must still flow through the same central access-arbitration model used elsewhere; do not create a magical OAM backdoor.
+- On the scheduler timeline, DMA progress should be advanced before current-cycle bus arbitration and CPU access decisions so the bus sees the live DMA state for that same T-cycle.
+- DMA owns transfer progress and source/destination stepping; the bus owns the resulting blocked-access policy observed by CPU and other requesters.
 - Do not model DMA at instruction granularity or as a deferred "consume N cycles at the end" event.
 
 ## Dependencies
@@ -86,6 +88,7 @@ Priority order:
 - DMG total-duration tests for `640` dots / `160` M-cycles
 - HRAM-only CPU access tests during active DMG OAM DMA
 - transfer-progress and completion-order tests
+- tests that DMA-visible blocking for a T-cycle matches the DMA state produced by that same cycle's scheduler step
 
 ## Implementation notes for this repo
 

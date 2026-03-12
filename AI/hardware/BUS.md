@@ -163,6 +163,17 @@ Address alone is not enough: the bus must also consider the current temporal har
 - MMIO side effects should occur at the time of the actual access on the shared T-cycle timeline, not in a deferred end-of-instruction cleanup pass.
 - Reads of dynamic MMIO registers should sample the subsystem's live hardware state at that exact access point.
 
+## Arbitration layering baseline
+
+- Bus arbitration should be split into two explicit layers:
+  - decode and nominal ownership from address plus current mapping state
+  - requester-aware access policy over that resolved region or owner
+- Boot ROM overlay versus cartridge visibility belongs to decode and ownership resolution, not to a CPU-local shortcut.
+- Transfer engines must win over CPU accesses wherever the hardware documents that precedence; on DMG, active OAM DMA is the mandatory case.
+- After nominal ownership is known, the owning region or device may still block or modify the access according to live policy, such as VRAM in Mode `3`, OAM in Mode `2/3`, `FEA0-FEFF`, disabled cartridge RAM, or cartridge-selected RTC behavior.
+- CPU, DMA, and any future transfer engine must all use this one central arbitration path; no caller-specific fast path may bypass decode or access policy.
+- On the shared scheduler timeline, the arbitration decision for a T-cycle should see the already-updated current-cycle DMA and PPU state before the CPU micro-operation issues its access for that same T-cycle.
+
 ## Model-aware MMIO baseline
 
 - Register availability must stay model-aware rather than being inferred from whether a backing field exists today.
@@ -201,6 +212,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - When an access is blocked, the bus should model the correct observable result for that situation instead of falling through to normal RAM semantics.
 - CPU opcode fetch, immediate fetch, stack traffic, and read-modify-write memory operations should appear as ordinary ordered bus accesses, not as post-instruction aggregated effects.
 - MMIO reads and writes should remain ordinary ordered bus transactions whose visible result and side effects depend on the exact temporal hardware state at that access point.
+- `STAT` mode visibility, VRAM/OAM access policy, DMA blocking, and other bus-facing dynamic state must stay coherent within the same T-cycle; the bus must not read one subsystem snapshot while software observes another.
 - `SkipBoot` should begin with the same ordinary routing rules the machine would have after handoff, not with a hidden "skip mode" that bypasses normal boot-ROM and cartridge visibility logic.
 - In DMG mode, reads from CGB-only registers that are not functionally implemented should return `0xFF` through the normal MMIO routing path rather than through ad hoc call-site checks.
 - Each region should have explicit read, write, blocked-access, and model-specific policy rather than being treated as RAM or ROM with only a different backing store.
@@ -253,6 +265,9 @@ Priority order:
 - full MMIO descriptor-coverage tests for `0xFF00-0xFF7F` and `0xFFFF`
 - tests for write-only readback policy and mixed-register bit composition through the routed MMIO path
 - tests that MMIO side effects such as `DIV` reset, `FF46` DMA start, and `FF50` unmapping occur on the access itself rather than a later deferred phase
+- tests that decode / ownership resolution and access-policy resolution stay distinct and observable
+- tests that DMA precedence over CPU access is decided through the same central arbitration path rather than a CPU-local special case
+- tests that `STAT`-visible mode and the bus's VRAM/OAM restrictions remain coherent on the same T-cycle
 
 ## Implementation notes for this repo
 

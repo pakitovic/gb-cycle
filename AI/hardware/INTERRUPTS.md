@@ -61,6 +61,16 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Serial completion should clear `SC.7` and request the serial interrupt as part of the same logical transfer-complete point.
 - The serial producer should hand the interrupt controller an ordinary serial request event rather than mutating CPU dispatch flow or jumping to vector `0x58` directly.
 
+## IRQ aggregation versus CPU acceptance baseline
+
+- Hardware producers should only emit source requests; they must not call CPU interrupt-dispatch logic directly.
+- The scheduler should aggregate those source requests into `IF` after current-cycle MMIO side effects have committed, not during unrelated device-internal helper calls.
+- CPU wake from `HALT` / `STOP`, pending selection, and interrupt acceptance are later CPU-owned decisions based on live `IF`, `IE`, `IME`, priority, and CPU state.
+- Timer keeps an explicit exception to any naive "request on source edge" simplification: logical TIMA overflow is not the same moment as the timer bit becoming set in `IF`.
+- Serial keeps its own completion point: the request belongs to the T-cycle that completes the eighth shift and clears `SC.7`.
+- Joypad keeps its own visibility rule: the request belongs only to a newly visible `High -> Low` transition in the `P1` low nibble.
+- Once the CPU accepts an interrupt, servicing it must still consume the documented DMG `5` M-cycles through the CPU's ordinary temporal model rather than as an immediate vector jump.
+
 ## Timing / accuracy requirements
 
 - Preserve ordering with CPU execution, `EI`, `DI`, `HALT`, and timer/PPU requests.
@@ -70,6 +80,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - LCD/STAT timing should stay aligned with PPU mode transitions, including entry into Mode 2.
 - Joypad interrupt timing should stay aligned with the T-cycle at which the visible `P1` low nibble actually gains a new low bit, whether that change came from an `FF00` selection write, a hardware-facing input transition, or both.
 - Serial interrupt timing should stay aligned with the T-cycle at which the eighth serial shift completes and `SC.7` clears, whether the clocks came from the DMG internal serial clock or from externally supplied pulses.
+- `IF` visibility and CPU acceptance must remain separate ordered events on the shared timeline; a producer request becoming visible in `IF` is not itself the same event as CPU service.
 - When STAT behavior is implemented in detail, preserve the documented DMG-specific STAT write quirk and do not assume the same behavior on GBC running in DMG mode.
 
 ## Dependencies
@@ -109,6 +120,8 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - joypad interrupt tests that verify visible `High -> Low` detection rather than generic "button changed" behavior
 - serial interrupt tests that verify request-on-completion rather than request-on-start
 - serial interrupt tests that verify `SC.7` clear and serial request occur at the same completion point
+- tests that hardware producers only request through `IF` and never bypass CPU acceptance ordering
+- tests that `HALT` wake, fixed-priority selection, and later CPU acceptance remain distinguishable ordered events
 - direct-boot readback tests for documented startup `IF`/`IE` values when firmware execution is bypassed
 
 ## Implementation notes for this repo

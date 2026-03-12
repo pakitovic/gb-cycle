@@ -35,6 +35,8 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - The corresponding vectors are `0x40`, `0x48`, `0x50`, `0x58`, and `0x60`.
 - The CPU should only accept maskable interrupts at defined points in the instruction-flow pipeline, effectively at instruction boundaries or an equivalent explicitly modeled acceptance point.
 - When an interrupt is accepted, the CPU should clear `IME`, clear the selected bit in `IF`, push `PC`, and jump to the matching vector as part of one explicit service sequence.
+- The CPU should make that accept-or-not decision only after current-cycle MMIO side effects and interrupt aggregation are already visible; interrupt producers do not bypass that CPU-owned decision point.
+- Once accepted, interrupt servicing must consume the documented DMG `5` M-cycles through the same ordered CPU execution model used for normal stack and control-flow work.
 
 ## IME, HALT, and STOP baseline
 
@@ -88,6 +90,8 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - Interrupt dispatch must not be modeled as an instantaneous jump detached from the CPU timing flow; the service sequence should consume its real CPU-side steps.
 - `HALT` wake-up and interrupt dispatch are related but distinct events; waking from `HALT` with `IME = 0` must not be collapsed into automatic interrupt service.
 - `STOP` wake-up, joypad interrupt request, and any later interrupt service must remain separable ordered events on the shared T-cycle timeline rather than one collapsed "input resumes CPU" shortcut.
+- The CPU should consume the scheduler's already-arbitrated bus result for each micro-op; it must not decide on its own that a blocked VRAM/OAM/cart/MMIO access should succeed anyway.
+- CPU wake from `HALT` / `STOP` and CPU interrupt acceptance should happen after the current cycle's device updates are visible, even though the resulting service sequence unfolds across later CPU micro-operations.
 - The `HALT` bug condition is `HALT` executed with `IME = 0` and `IE & IF != 0`; it must alter the next fetch without pretending an interrupt was serviced.
 - The CPU must expose enough ordered micro-event detail for the DMG-family OAM corruption bug to observe `read`, `write`, `read + inc/dec`, and `write + inc/dec` cases on the shared timeline.
 - `PC` increments through the OAM range must remain observable as address-bearing events rather than as a hidden decode-side counter update.
@@ -131,6 +135,7 @@ Priority order:
 - tests for correct push of `PC`, clearing of `IF`, and `IME -> 0` on interrupt service
 - tests for `EI ; NOP`, `EI ; DI`, `DI ; EI ; NOP`, and pending-IRQ visibility around delayed `EI`
 - tests for `HALT` wake-up with `IME = 1`, `IME = 0`, and `IME = 0` plus already-pending interrupt
+- tests that interrupt acceptance starts a real `5` M-cycle service sequence instead of an immediate vector jump
 - tests for `STOP` wake-up driven through the relevant hardware source path rather than by directly poking CPU state
 - tests for `RETI` re-enabling interrupts and allowing later pending requests to be serviced
 - tests that `inc rr` / `dec rr` with `BC`, `DE`, or `HL` in `FE00-FEFF` expose the IDU event needed by the OAM-corruption path

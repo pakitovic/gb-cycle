@@ -148,6 +148,30 @@ For the authoritative structure and boundaries, see
 
 ---
 
+## Cross-cutting scheduler foundation workstream
+
+This workstream spans the early roadmap because the scheduler contract must be
+fixed before later CPU, DMA, PPU, timer, serial, joypad, and APU work can stay
+coherent without refactoring.
+
+1. **Explicit scheduler phases** (`Phase 0`)
+   Goal: refactor stepping around one visible `step_t_cycle()`-style entry point with fixed per-T-cycle phases.
+   Acceptance criteria: the phase order is explicit and stable, there are no hidden cross-calls that bypass it, the scheduler owns ordering rather than reimplementing subsystem rules, and one `CycleContext`-style object or equivalent carries current-cycle events, derived signals, ownership facts, and queued side effects or IRQ requests.
+2. **Central arbitration** (`Phase 1`)
+   Goal: unify decode, ownership, and access policy behind one requester-aware bus path.
+   Acceptance criteria: CPU and DMA use the same arbitration route, decode/ownership and access-policy layers stay distinct, and DMG OAM DMA correctly leaves CPU with HRAM only.
+3. **IRQ aggregation layer** (`Phase 2`)
+   Goal: separate source request, `IF` visibility, and CPU acceptance.
+   Acceptance criteria: PPU, timer, serial, and joypad only request; the CPU accepts by `IME/IE/IF` and fixed priority; timer keeps its delayed one-M-cycle request timing.
+4. **Cycle logging** (`Phase 0`, expanded later)
+   Goal: make the actual ordering visible per T-cycle.
+   Acceptance criteria: traces can expose phase, bus owner, CPU micro-op, PPU mode, DMA activity, timer or serial events, and `IF/IE/IME`.
+5. **Global-order regression tests** (`Phase 2` onward)
+   Goal: lock down the scheduler invariants at cross-subsystem boundaries.
+   Acceptance criteria: focused tests cover DMA versus CPU, delayed timer `IF`, serial completion plus IRQ, joypad visible `High -> Low` plus IRQ, `HALT` / IRQ priority, and `STAT`-versus-bus coherence.
+
+---
+
 ## Recommended implementation order
 
 ### Phase 0 — Verification, debugging, and base architecture infrastructure
@@ -200,8 +224,10 @@ This phase must define:
 
 - base hardware types in `model/`
 - T-cycle scheduler skeleton
+- explicit per-T-cycle phase order with one `step_t_cycle()`-style top-level entry point
 - definition of responsibilities by module
 - initial interfaces between CPU, bus, PPU, DMA, timer, cartridge, and debugger
+- a cycle-local context shape carrying external events, derived signals, ownership facts, and queued side effects or IRQ requests
 - conventions to avoid mixing frontend logic with core logic
 
 #### Done criteria
@@ -210,7 +236,9 @@ This phase must define:
 - the project can run base tests against `gb-core`
 - there is a reusable minimum tracing infrastructure
 - the scheduler has a defined notion of T-cycle advancement
+- the scheduler phase order is explicit in code and docs rather than implicit in subsystem call chains
 - the responsibility split between modules is fixed
+- cycle traces can expose enough per-T-cycle state to debug scheduler ordering issues
 - the core does not depend on `gb-cli`, `gb-desktop`, or `gb-web` to function
 - the architecture is prepared to incorporate CGB without contaminating DMG behavior yet
 
@@ -253,6 +281,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - global stepping by T-cycle
 - explicit notion of dot compatible with the PPU
 - stable stepping order for subsystems inside the scheduler
+- explicit ordering between external-event ingress, shared-counter advance, derived edges, free-running peripherals, bus arbitration, CPU micro-ops, MMIO commit, IRQ aggregation, and CPU wake / accept
 
 ##### Bus and memory map
 
@@ -261,6 +290,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - modeling of echo RAM and unusable areas
 - access arbitration infrastructure
 - one central decode path across `0x0000-0xFFFF` with explicit owner and access policy per region
+- distinct decode / ownership and access-policy layers in that arbitration path
 - centralized MMIO register routing instead of a generic RAM-like `FF00-FF7F` block
 
 ##### Base cartridge
@@ -293,9 +323,11 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 #### Done criteria
 
 - the system can advance by T-cycles consistently
+- the scheduler phase order is stable, explicit, and shared across subsystems instead of encoded through call-site accidents
 - all memory accesses go through `bus/`
 - the memory map is modeled completely for DMG
 - every DMG address region has an explicit owner, read behavior, write behavior, and blocked-access policy where applicable
+- bus arbitration resolves decode/ownership before applying requester-specific restrictions, and DMA-versus-CPU precedence is centralized instead of duplicated
 - every MMIO address in `0xFF00-0xFF7F` and `0xFFFF` has an explicit routed owner and contract rather than accidental default byte-storage behavior
 - mixed MMIO registers are represented as per-field contracts rather than as plain read/write bytes plus a coarse mask
 - the cartridge subsystem parses `0x0100-0x014F` into a typed header structure and preserves CGB/SGB compatibility flags for later work
@@ -423,6 +455,7 @@ Build a truly temporal CPU core, where observable behavior emerges from internal
 - real temporal effect of EI and DI
 - interrupt priority
 - interrupt acceptance timing
+- explicit separation between source request, `IF` aggregation, CPU wake, and CPU interrupt acceptance
 - HALT
 - STOP
 - HALT bug
@@ -433,6 +466,7 @@ Build a truly temporal CPU core, where observable behavior emerges from internal
 - instructions generate their real bus accesses
 - the timer advances with the global scheduler
 - interrupts and HALT are integrated into the real execution flow
+- source requests become visible in `IF` before the CPU accepts them, and timer keeps its delayed request timing instead of being flattened into same-cycle overflow service
 - direct-boot timer state does not fake `DIV` or related registers through disconnected visible-only initialization
 - real boot executes through the same CPU fetch/decode/execute engine used for the rest of the machine
 - real boot reaches cartridge code only through an executed `FF50` write and next-fetch handoff
@@ -470,11 +504,13 @@ Integrate OAM DMA as a real transfer mechanism inside the system architecture, c
 - real temporal copy progression
 - integration with bus arbitration
 - observability of DMA start, progress, and completion
+- scheduler-visible DMA state that bus arbitration can use on the same T-cycle
 
 #### Done criteria
 
 - the transfer is not implemented as an instantaneous memory copy
 - arbitration correctly reflects DMA effects on concurrent accesses
+- CPU-versus-DMA precedence is decided centrally through bus arbitration instead of CPU-local blocking logic
 - the system can trace DMA over time
 
 #### Risks if delayed too much
@@ -697,6 +733,7 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 - serial interrupt generation driven by real transfer completion rather than by transfer start
 - serial port functional at the emulated hardware level
 - trace tools to observe both peripherals
+- scheduler-visible regression coverage for their IRQ timing and CPU wake interactions
 
 #### Done criteria
 
@@ -716,6 +753,7 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 - serial interrupt requests occur only at transfer completion, when the eighth shift clears `SC.7`
 - both are integrated through the bus and scheduler
 - their interrupts and states are observable and testable
+- their event timing does not depend on frame callbacks or host timers bypassing the T-cycle scheduler
 
 #### Joypad implementation breakdown
 

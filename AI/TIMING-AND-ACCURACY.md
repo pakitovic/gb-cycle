@@ -52,6 +52,25 @@ When implementing timing:
 - When external documentation expresses a timing rule in M-cycles or microseconds, restate the corresponding T-cycle value in project docs and code whenever that rule becomes behaviorally relevant or is recorded as deferred validation work.
 - Keep the timing model clean enough that future CGB double-speed behavior can be expressed as an extension of the same temporal foundation rather than a separate clocking design.
 
+## Global scheduler rule
+
+- The core should advance through one fixed per-T-cycle scheduler contract, not through ad hoc call chains between subsystems.
+- The recommended ordering is:
+  1. external event ingress
+  2. master clock / shared system-counter tick
+  3. free-running counter-derived edge resolution
+  4. autonomous peripheral ticks
+  5. bus arbitration
+  6. CPU micro-operation
+  7. MMIO side-effect commit
+  8. interrupt aggregation into `IF`
+  9. CPU wake / interrupt-accept evaluation
+- This is a project-level deterministic ordering rule chosen to preserve documented dependencies; it is not presented as the one true internal Nintendo implementation.
+- Free-running divider-derived events such as timer input edges and `DIV-APU` edge detection belong to step `3`, after the shared counter advances and before autonomous peripherals consume those edges.
+- Immediate MMIO effects produced by a write on the access T-cycle, such as `DIV` reset behavior, `FF46` DMA start, `SC.7` transfer start, or `LCDC.7` LCD transitions, still belong to the owning device when the access commits in step `7`.
+- `IF` updates from hardware sources belong to step `8`; CPU acceptance is a later CPU-owned decision and must not be collapsed into the producer path.
+- Another internal implementation shape is acceptable only if these same observable dependencies remain true.
+
 ## Practical timing rule
 
 - CPU, PPU, timer, APU, DMA, and bus-visible effects should be expressible on a shared T-cycle timeline.
@@ -80,3 +99,5 @@ When implementing timing:
 - Slow APU control clocks such as length, envelope, and CH1 sweep must remain distinct from each channel's own fast waveform timer and from the host sample or resampler cadence.
 - Host-rate sample production should observe already-stepped hardware state; it must not become the clock that drives the APU core.
 - When cartridge hardware uses wall-clock-like progression outside powered-on execution, such as battery-backed `MBC3` RTC advance between sessions, model that through an explicit elapsed-time source at the persistence boundary and restate any powered-on bus-visible timing rule in T-cycles when it becomes behaviorally relevant.
+- Timer, joypad, serial, and the APU frame sequencer must not be tied to video-frame or VBlank callbacks; they live on the shared machine timeline even when their visible effects are unrelated to the LCD.
+- Bus restrictions and MMIO-visible state must tell one coherent story on that timeline. For example, `STAT.mode`, VRAM/OAM accessibility, DMA blocking, `SC.7`, `TIMA/TMA/IF`, and visible `JOYP` state must align with the same current-cycle machine state the scheduler uses internally.

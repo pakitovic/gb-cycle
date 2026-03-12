@@ -38,6 +38,7 @@ The source of truth should be an internal `16`-bit system counter advanced by th
   - `10 -> bit 5`
   - `11 -> bit 7`
 - Timer overflow should be modeled as a temporal process with explicit pending/reload state; do not collapse overflow, reload from `TMA`, and interrupt request into one instant write-like event.
+- On DMG, the timer interrupt request does not become visible at the same logical moment as overflow detection. The `TMA` reload and timer request into `IF` arrive one M-cycle later.
 
 ## MMIO contract baseline
 
@@ -69,6 +70,8 @@ The source of truth should be an internal `16`-bit system counter advanced by th
 - The same `DIV` reset event should remain observable enough for the APU to see whether the `DIV-APU` source edge occurred on that T-cycle.
 - A write to `TAC` must reevaluate both the selected counter bit and the enable contribution; TAC writes can therefore trigger the timer glitch behavior and immediate TIMA increment in the relevant cases.
 - TIMA overflow must enter an explicit pending/reload sequence before `TMA` is copied and the timer interrupt is requested.
+- The shared scheduler should first advance the internal divider/system-counter for the T-cycle, then let the timer derive falling edges and overflow-pipeline transitions from that updated state.
+- The timer's delayed `IF` request belongs to the timer-owned overflow pipeline, not to a generic interrupt rule in the scheduler or interrupt controller.
 - Writes to `TIMA` and `TMA` near overflow/reload must be modeled against that internal overflow state machine rather than as unconditional register stores.
 - When `SkipBoot` synthesizes a post-boot machine state, the timer's hidden `system_counter` and any overflow-related state must be initialized coherently with the visible `DIV`, `TIMA`, `TMA`, and `TAC` snapshot rather than being reset independently.
 
@@ -104,6 +107,7 @@ Priority order:
 - focused edge-detection and cadence tests for each TAC frequency
 - focused write-order and overflow tests
 - TIMA overflow-window tests, including reads and writes around pending reload
+- delayed timer-request tests that verify `IF.Timer` becomes visible one M-cycle after logical overflow
 - separate TIMA-write tests for before overflow, at overflow, during reload, and after reload
 - TMA-write timing tests around reload
 - separate TMA-write tests for before overflow, just before reload, at reload, and after reload

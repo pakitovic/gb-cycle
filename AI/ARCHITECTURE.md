@@ -66,6 +66,32 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - For the PPU, that shared T-cycle timeline is also the dot timeline; dot-by-dot behavior is the intended baseline.
 - Long-running hardware operations triggered by MMIO writes, such as OAM DMA, should become explicit in-flight subsystem state on that shared timeline rather than immediate bulk side effects.
 
+## Global scheduler policy
+
+- The DMG core must have one global scheduler that advances the whole machine on one deterministic T-cycle timeline.
+- A `GlobalScheduler` plus `step_t_cycle()`-style entry point, or an equally explicit equivalent, is the preferred architectural shape.
+- Do not run PPU, timer, APU, serial, joypad, DMA, or interrupt production as unsynchronized threads or independently clocked loops inside the core.
+- The recommended per-T-cycle phase order is:
+  1. external event ingress
+  2. master clock / shared system-counter tick
+  3. resolution of free-running counter-derived edges
+  4. autonomous peripheral ticks
+  5. bus arbitration for the current T-cycle
+  6. CPU micro-operation
+  7. MMIO side-effect commit
+  8. interrupt aggregation into `IF`
+  9. CPU wake / interrupt-accept evaluation
+- This phase order is an architectural contract for observable behavior, not a claim that Nintendo published one canonical internal scheduler.
+- Another internal decomposition is acceptable only if it preserves the same observable dependencies for PPU mode visibility, DMA blocking, timer overflow delay, serial completion timing, joypad visible-edge timing, MMIO visibility, and CPU interrupt acceptance.
+- Phase `3` is for events derived from the free-running shared clock. Device-local MMIO semantics such as `DIV` reset effects, `FF46` DMA start, `SC.7` transfer start, or `LCDC.7` LCD transitions still belong to the device that owns the register when the access commits in phase `7`.
+- The scheduler should keep one cycle-local context object or equivalent that can carry at least:
+  - the global T-cycle index
+  - current-cycle external events
+  - already-derived counter-edge signals
+  - current ownership or arbitration facts
+  - queued side effects and interrupt requests
+- The scheduler coordinates ordering and synchronization points; it must not reimplement timer, PPU, DMA, serial, joypad, APU, cartridge, or CPU-local quirks internally.
+
 ## Console model policy
 
 - The core must expose an explicit console model concept.
@@ -125,6 +151,10 @@ to immediately materialize as a separate directory.
 - stable per-T-cycle subsystem stepping order
 - explicit global synchronization points
 - orchestration between CPU, PPU, DMA, timer, APU, and peripherals
+- ingress of timestamped external events such as host input changes or external serial clocks
+- explicit separation between free-running device ticks, bus arbitration, MMIO commit, interrupt aggregation, and CPU wake / accept points
+- cycle-local context and tracing support so phase order remains visible in code and logs
+- subsystem-facing APIs that keep stage boundaries explicit, for example free-running tick, CPU step, MMIO commit, and interrupt-request aggregation steps, even if final names differ
 
 ### `bus/`
 
@@ -134,6 +164,7 @@ to immediately materialize as a separate directory.
 - access arbitration
 - integration of cartridge, VRAM, WRAM, OAM, I/O, HRAM, IE, and boot ROM mapping
 - modeling of access restrictions and conflicts when hardware makes them visible
+- two-layer arbitration made of decode / nominal ownership followed by requester-aware access policy
 - routing of OAM and `FEA0-FEFF` access attempts and CPU-provided address-bearing micro-events into the DMG-family OAM corruption path when applicable
 - MMIO routing to the subsystem-owned register contract for each mapped address
 - one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
@@ -154,6 +185,7 @@ to immediately materialize as a separate directory.
 - fixed-priority pending selection
 - MMIO exposure of `FF0F` and `FFFF`
 - separation between controller-owned request state and CPU-owned `IME` / acceptance flow
+- aggregation of source requests into `IF` without collapsing that step into CPU dispatch
 
 ### `boot/`
 
@@ -200,6 +232,7 @@ to immediately materialize as a separate directory.
 - DIV / TIMA / TMA / TAC
 - edge-sensitive timer timing
 - timer interrupt request generation
+- ownership of the timer overflow pipeline, including the delayed `IF` request relative to logical overflow
 
 ### `joypad/`
 
@@ -210,6 +243,7 @@ to immediately materialize as a separate directory.
 - joypad interrupt generation through the shared interrupt-controller path
 - input-driven wake signaling for CPU `STOP` integration
 - separation between frontend input collection and emulated joypad semantics
+- distinction between hardware-facing button changes, visible `JOYP` changes, joypad IRQ requests, and `STOP` wake signaling
 
 ### `serial/`
 
@@ -219,6 +253,7 @@ to immediately materialize as a separate directory.
 - peer or link-endpoint boundary
 - serial interrupt generation through the shared interrupt-controller path
 - separation between emulated serial hardware and any host transport implementation
+- ownership of transfer-complete detection, `SC.7` clear timing, and completion-triggered serial IRQ requests
 
 ### `cartridge/`
 
@@ -287,6 +322,7 @@ to immediately materialize as a separate directory.
 
 ## Ownership boundary notes
 
+- The scheduler owns phase order, cycle context, and subsystem call order; it must not become a second implementation of timer, PPU, DMA, serial, joypad, or CPU rules.
 - The boot subsystem owns firmware assets, model-aware boot configuration, and boot-ROM enable/disable state.
 - The boot subsystem also owns the source-of-truth startup snapshot for direct-boot entry, while the target subsystems still own the live semantics of their registers once execution begins.
 - The DMA subsystem owns transfer state and transfer requests over time.
@@ -298,8 +334,10 @@ to immediately materialize as a separate directory.
 - Frontends, test harnesses, and tooling should provide serial peers, scripted bits, loopback, or external clock pulses through a serial-endpoint boundary rather than by writing received bytes directly into `SB`.
 - The serial subsystem owns the translation from MMIO-visible `SB` / `SC` plus peer-provided bits and clocks into live transfer progress, `SB` intermediate state, and serial interrupt requests.
 - The timer owns the shared divider/system-counter state and visible `DIV`, while the APU owns `DIV-APU`, frame-sequencer state, channel-active state, DAC state, mixer state, and HPF state derived from that shared timing source.
+- The bus owns central decode, requester arbitration, and blocked-access policy; CPU, DMA, and future transfer engines must not bypass that one policy path with caller-specific memory shortcuts.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
 - The bus owns address decode and MMIO dispatch, but the device that owns a register must own its read, write, and side-effect semantics.
+- The interrupt controller owns `IF` / `IE` state and fixed-priority pending selection, but it does not decide when the CPU actually accepts an interrupt or wakes from `HALT` / `STOP`.
 - The cartridge owns the meaning of persistent RAM and RTC content, while the save backend owns durable storage mechanics such as file format, paths, versioning, and atomic replacement.
 - Save-state machinery must not be smuggled into the cartridge persistence boundary; CPU, PPU, APU, WRAM, and other console-owned state belong to a different system.
 - MMIO metadata should be centralized enough that readable bits, writable bits, dynamic bits, reserved bits, and model-specific availability are not re-declared ad hoc in several modules.

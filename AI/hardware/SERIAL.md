@@ -84,6 +84,13 @@ Keep these concerns distinct:
 - On transfer completion, `SC.7` should clear automatically and the serial interrupt should be requested through the shared interrupt-controller path.
 - The serial subsystem should not jump to vector `0x58` directly; it should only raise the ordinary serial interrupt request.
 
+## Scheduler integration baseline
+
+- External serial clock pulses, peer-provided input bits, and other link-endpoint events should enter the core as timestamped events for a specific T-cycle before serial hardware advances for that cycle.
+- After that ingress point, serial shift work should happen as part of the shared autonomous-peripheral phase on the same T-cycle timeline.
+- On the T-cycle that completes the eighth shift, the serial subsystem should update live `SB`, clear `SC.7`, and emit its completion request so the interrupt controller can aggregate it into `IF` in that same cycle.
+- The scheduler must not defer serial-completion visibility to the end of an instruction, scanline, or video frame.
+
 ## Timing / accuracy requirements
 
 - Transfer timing and completion signaling should remain explicit.
@@ -91,6 +98,7 @@ Keep these concerns distinct:
 - In DMG master mode, the `8192` Hz serial clock must derive from the emulated machine timeline rather than from host sleeps or wall-clock timers.
 - In slave mode, externally supplied clock pulses must be injectable at precise points on that same shared timeline.
 - `SB`, `SC`, and the serial interrupt request should become visible at the exact transfer-completion point rather than through a deferred end-of-instruction cleanup.
+- Serial start and serial completion are distinct events: writing `SC.7` arms or starts transfer state on the access T-cycle, while completion visibility belongs only to the later eighth-shift T-cycle.
 
 ## Dependencies
 
@@ -120,6 +128,7 @@ Keep these concerns distinct:
 - tests for disconnected-peer behavior returning incoming `1` bits and tending toward `0xFF`
 - tests for loopback or scripted-peer integration without direct MMIO byte injection
 - tests that serial completion requests the interrupt through `IF`
+- tests that transfer-complete `SB` update, `SC.7` clear, and serial request occur together on the eighth-shift T-cycle
 
 ## Implementation notes for this repo
 

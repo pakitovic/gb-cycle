@@ -33,6 +33,14 @@
 - Prefer reproducible validation over intuition.
 - Preserve the project's T-cycle timing foundation; do not introduce M-cycle-first scheduling shortcuts as a local convenience.
 
+## When touching the global scheduler or cross-subsystem ordering
+
+- Preserve the fixed per-T-cycle phase contract defined by `AI/ARCHITECTURE.md` and `AI/TIMING-AND-ACCURACY.md`.
+- Update the matching hardware docs together when the observable ordering of DMA, PPU mode visibility, MMIO side effects, interrupt visibility, or CPU acceptance changes.
+- Keep requester arbitration, MMIO commit, and interrupt aggregation explicit; do not replace them with ad hoc subsystem-to-subsystem calls just because one local test passes.
+- Add or update focused cross-subsystem tests such as DMA-vs-CPU, delayed timer `IF`, serial completion plus IRQ, joypad visible-edge IRQ, `HALT` / IRQ priority, and `STAT`-versus-bus coherence.
+- Prefer cycle traces over aggregate instruction summaries when validating scheduler work.
+
 ## Definition of done
 
 - Behavior is implemented consistently with hardware semantics and project architecture.

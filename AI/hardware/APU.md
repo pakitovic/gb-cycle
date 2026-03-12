@@ -73,6 +73,12 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - envelope at `64` Hz
 - For future CGB work, keep room for the documented double-speed edge-source change without reworking the ownership model; for the current DMG target, bit `4` is the relevant source.
 
+## Scheduler integration baseline
+
+- The shared scheduler should advance the shared divider/system-counter and resolve `DIV`-derived edge events before ticking the APU for that T-cycle.
+- The APU should then consume those already-derived slow-control events together with its own fast per-channel timers on the same T-cycle timeline.
+- The scheduler must not rederive frame-sequencer rules internally; it only provides ordered clock inputs and calls into the APU at the correct phase.
+
 ## Slow control clocks versus fast channel clocks
 
 - The frame sequencer should not clock the base waveform generation of CH1, CH2, CH3, or CH4 directly.

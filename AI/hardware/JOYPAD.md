@@ -60,6 +60,13 @@ Keep these layers distinct:
 - `STOP` wake handling and joypad interrupt generation are related but not identical concerns; keep them explicitly connected through shared joypad state without merging them into one opaque shortcut.
 - Joypad interrupt generation must still follow the stricter visible-`JOYP` `High -> Low` rule after row selection has been applied; `STOP` wake must not be silently treated as equivalent to "joypad interrupt requested".
 
+## Scheduler integration baseline
+
+- Host or tool input changes should enter the core as timestamped hardware-facing button transitions for a specific T-cycle before joypad logic runs for that cycle.
+- Joypad should recompute the visible low nibble from the current selection bits plus the current button matrix state on the shared timeline rather than from a frontend frame callback.
+- A write to `FF00` can itself change which low bits are visible, so selection writes must participate in the same ordered visible-edge detection path as physical button changes.
+- Joypad should expose separate outputs for visible low-nibble change, joypad interrupt request, and `STOP` wake eligibility; the CPU decides later whether to wake, service an interrupt, or both.
+
 ## Timing / accuracy requirements
 
 - Preserve hardware-visible register semantics even if host input arrives asynchronously.
@@ -102,6 +109,7 @@ Keep these layers distinct:
 - tests that repeated input transitions can request the interrupt repeatedly rather than being collapsed to one request per press
 - tests that interrupt generation is driven from the same underlying input-state transitions observed through `JOYP`
 - tests that `JOYP` bits `7-6` read back high in the current DMG-family baseline instead of mirroring arbitrary storage
+- tests that an `FF00` selection write can create the relevant visible `High -> Low` edge without requiring a second physical input change
 - tests that the current repo `STOP` wake policy is selection-independent across the `8` hardware-facing buttons while still remaining separate from joypad-interrupt visibility rules
 - tests that the documented repo `STOP` wake policy uses the joypad subsystem path rather than a frontend-only shortcut
 
