@@ -270,7 +270,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - base cartridge interface for the No MBC family and later MBC-backed devices
 - `No MBC` as the first closed reference cartridge rather than a generic fallback path
 - cartridge integration with the bus
-- central cartridge factory that selects `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or explicit `Unsupported` from `0x0147`
+- central cartridge factory that selects a supported device or a structured special / unsupported classification from `0x0147`
 - explicit validation of declared ROM/RAM metadata against the loaded image with a configurable policy
 - clean separation between bus logic and cartridge-specific logic
 
@@ -301,6 +301,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - the cartridge subsystem parses `0x0100-0x014F` into a typed header structure and preserves CGB/SGB compatibility flags for later work
 - a functional No MBC cartridge family exists as the first closed reference cartridge, covering `0x00`, `0x08`, `0x09`, linear `32 KiB` ROM, optional linear `8 KiB` RAM, and ignored ROM-space writes with no hidden bank state
 - cartridge implementation selection comes from `0x0147` rather than from ROM-size heuristics
+- special and unsupported cartridge types are classified explicitly with raw `0x0147`, detected name, category, and reason rather than one opaque fallback bucket
 - declared ROM size and RAM size are validated explicitly instead of being trusted silently
 - the bus can access `0x0000-0x7FFF` and `0xA000-0xBFFF` through a base cartridge interface without knowing which MBC is active
 - ROM-space writes are routed as cartridge commands instead of fake ROM mutations
@@ -349,9 +350,9 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
 2. Define the base cartridge interface.
    Acceptance criteria: the bus can read `0x0000-0x7FFF` and `0xA000-0xBFFF` without knowing the active MBC, ROM-space writes route to cartridge commands, and header bytes remain visible through ordinary ROM bank `0` reads.
 3. Add the cartridge factory.
-   Acceptance criteria: the loader selects `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or explicit `Unsupported` from `0x0147`, and unsupported types produce clear diagnostics.
+   Acceptance criteria: the loader selects `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or a structured special / unsupported classification from `0x0147`, and unsupported types preserve raw `0x0147`, detected name, category, and reason for diagnostics.
 4. Close validation and diagnostics policy.
-   Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, and the project exposes a configurable strict-versus-permissive policy.
+   Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, documented-but-unsupported cartridge types fail in a controlled way without mapper fallback, and the project exposes a configurable strict-versus-permissive policy with heuristics disabled by default in strict mode.
 
 ##### No MBC milestone
 
@@ -780,6 +781,7 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 - standard MBC2 support with address-bit-`8` control decode, internal `512 x 4-bit` RAM, echo aliasing, and explicit header validation
 - banking and RTC support for MBC3
 - banking support for MBC5
+- special-cartridge taxonomy and unsupported policy covering `MBC30`, multicarts, documented-but-unsupported mapper families, accessory cartridges, and optional heuristics
 - functional mapper-controlled external RAM beyond the No MBC linear baseline
 - typed cartridge persistence contracts for full backing stores such as linear SRAM, banked SRAM, MBC2 nibble RAM, and MBC3 SRAM plus RTC
 - portable persistence boundaries across frontends and tools
@@ -866,6 +868,24 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
    Scope: unit tests, integration tests, ROM-based coverage, and at least one trusted oracle comparison for bank-selection and rumble edge cases.
    Acceptance criteria: tests cover header types `0x19..=0x1E`, bank `0` visibility in the switchable region, bank `0x1FF`, `9`-bit ROM-bank selection across the `0xFF -> 0x100` boundary, RAM-enable behavior, SRAM behavior for `8 KiB` / `32 KiB` / `128 KiB`, RAM-bank masking, rumble on/off, and size-validation diagnostics.
 
+#### Special-cartridge and unsupported-policy sequencing inside Phase 6
+
+1. Establish the special-cartridge taxonomy and unsupported categories.
+   Scope: one central classification path for `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`, plus stable names for `MBC30`, `MBC1M`, `MMM01`, `M161`, `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, `Bandai TAMA5`, `EMS`, `Bung`, and `Wisdom Tree`.
+   Acceptance criteria: the loader produces stable classification for all of those cases, the frontend does not need to reparse headers to explain them, and the classification preserves raw `0x0147`, detected name, category, and reason.
+2. Add explicit `MBC30` detection.
+   Scope: detect the `MBC3`-family plus `64 KiB` SRAM case as `MBC30`, return a typed planned variant or supported variant entry point instead of ordinary standard `MBC3`, and reserve matching persistence / banking work.
+   Acceptance criteria: `MBC3 + 64 KiB SRAM` never falls through to standard `MBC3`, loader diagnostics name `MBC30` explicitly, and the code path is ready for future concrete `MBC30` implementation.
+3. Add multicart and near-variant classification.
+   Scope: classify `MMM01` from `0x0B..=0x0D`, reserve future `MBC1M` as a distinct `MBC1`-family variant, keep `M161` in a multicart-special path, and avoid assuming that `MMM01` boot/header handling is identical to standard cartridges.
+   Acceptance criteria: `0x0B`, `0x0C`, and `0x0D` are emitted as `MMM01`, `MBC1M` remains a separate future variant instead of being merged into standard `MBC1`, and multicarts do not silently degrade to ordinary `MBC1` or `NoMbc`.
+4. Enforce controlled failure for documented special hardware.
+   Scope: explicit diagnostics for `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, `Bandai TAMA5`, and `M161`, plus a hard rule against automatic fallback to `MBC1`, `MBC3`, `MBC5`, or other nearby supported mappers.
+   Acceptance criteria: those types fail with clear messages naming the exact detected cartridge, `UnknownCode` reports the raw `0x0147` byte, and no silent degradations or fake "best effort" mapper substitutions remain.
+5. Add optional experimental heuristic mode.
+   Scope: isolate `EMS`, `Bung`, and `Wisdom Tree` detection behind an explicit dev / experimental loader policy, keep strict default behavior header-driven, and document that heuristic paths are lower priority than `MBC30`, multicarts, and documented special hardware.
+   Acceptance criteria: heuristic detection is off by default, can be enabled explicitly for development and research, and diagnostics clearly state when a classification came from heuristics instead of a standard header mapping.
+
 #### Persistence sequencing inside Phase 6
 
 1. Define the cartridge persistent-state contract.
@@ -892,6 +912,7 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 - standard MBC2 behavior is modeled inside cartridge devices with explicit address-bit-`8` control decode, internal nibble RAM semantics, and mapper-local validation rather than generic external-SRAM assumptions
 - standard MBC3 behavior is modeled inside cartridge devices with explicit RAM-bank versus RTC-register selection, live-versus-latched RTC state, and a reserved future MBC30 extension point
 - MBC5 behavior is modeled inside cartridge devices with explicit `9`-bit ROM-bank state, valid switchable-region bank `0`, explicit RAM / battery / rumble variant handling, and observable cartridge-local rumble state
+- special cartridges and unsupported cases are classified explicitly, fail in a controlled way, and do not silently fall back to nearby supported mappers
 - RTC and persistence are properly encapsulated
 - hardware-style persistence stores full cartridge backing stores rather than whichever `0xA000-0xBFFF` mapping happened to be visible
 - only battery-backed cartridges auto-persist by default, while full emulator save states remain a separate system
@@ -1111,15 +1132,16 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 26. MBC2  
 27. MBC3  
 28. MBC5  
-29. Banked external RAM, battery, RTC, persistence  
+29. Special cartridges and unsupported policy
+30. Banked external RAM, battery, RTC, persistence
 
-30. General APU architecture
-31. APU frame sequencer
-32. APU channel 1
-33. APU channel 2
-34. APU channel 3
-35. APU channel 4
-36. Mixing, output, DACs, power control, and audio edge cases
+31. General APU architecture
+32. APU frame sequencer
+33. APU channel 1
+34. APU channel 2
+35. APU channel 3
+36. APU channel 4
+37. Mixing, output, DACs, power control, and audio edge cases
 
 ---
 

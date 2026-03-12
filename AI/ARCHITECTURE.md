@@ -227,10 +227,13 @@ to immediately materialize as a separate directory.
 - decoded cartridge capability model including cartridge type, ROM size, RAM size, CGB flag, and SGB flag
 - explicit capability metadata for battery-backed RAM, RTC, and rumble derived from the validated header type
 - central cartridge factory and validation policy
+- typed loader result that separates supported cartridge construction from structured special / unsupported classification, preserving raw `0x0147`, detected name, category, and reason
 - concrete cartridge devices such as `NoMbcCartridge`, `Mbc1Cartridge`, `Mbc2Cartridge`, `Mbc3Cartridge`, and `Mbc5Cartridge`
 - No MBC family support, including the `0x00`, `0x08`, and `0x09` header variants
 - MBC implementations
-- explicit first-pass taxonomy such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, and `Unsupported`
+- explicit supported-family taxonomy such as `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, and `Mbc5`, plus structured unsupported categories rather than one opaque `Unsupported`
+- reserved typed variant space for close derivatives such as `MBC30` and future `MBC1M`
+- separate classification path for special multicarts, documented-but-unsupported mappers, accessory cartridges, experimental heuristics, and unknown codes
 - explicit separation between raw mapper register state, header-derived wiring / variant metadata, mapper-local RAM organization, and helper logic that resolves effective ROM and RAM banks
 - cartridge-visible RAM, whether external or mapper-local to the mapper
 - RTC-backed cartridges

@@ -37,6 +37,7 @@ Subsystem handbooks may refine the generic reference consultation order from `RE
 The project-wide timing baseline is T-cycle based; see `TIMING-AND-ACCURACY.md` and `hardware/CPU.md`.
 The project-wide CPU baseline is a fine-grained fetch/decode/execute model with explicit bus-visible steps; see `hardware/CPU.md`.
 The project-wide PPU baseline is dot-by-dot with explicit fetcher/FIFO behavior; see `hardware/PPU.md`.
+The cartridge handbook owns header-driven mapper selection, special-cartridge taxonomy, and unsupported-policy rules; see `hardware/CARTRIDGES-MBC.md`.
 Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work, or when documenting known remaining gaps after an implementation.
 
 ## Hardware docs
