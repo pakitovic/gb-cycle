@@ -1,0 +1,8 @@
+[alias]
+fmt-check = "fmt --all --check"
+lint = "clippy --workspace --all-targets -- -D warnings"
+tests = "test --workspace"
+cov = "llvm-cov --workspace --summary-only"
+cov-html = "llvm-cov --workspace --html"
+cov-lcov = "llvm-cov --workspace --lcov --output-path lcov.info"
+deny-check = "deny check"

@@ -1,0 +1,65 @@
+[files]
+extend-exclude = [
+  "*.gb",
+  "*.gbc",
+  "*.gba",
+  "*.bin",
+  "*.rom",
+  "*.sav",
+  "*.rtc",
+  "*.png",
+  "*.jpg",
+  "*.jpeg",
+  "*.webp",
+  "*.bmp",
+  "*.gif",
+  "*.info",
+  "roms/**",
+  "test-roms/**",
+  "bootroms/**",
+  "assets/**",
+  "screenshots/**",
+  "target/**",
+]
+
+[default.extend-words]
+dmg = "dmg"
+cgb = "cgb"
+sgb = "sgb"
+mbc = "mbc"
+bootrom = "bootrom"
+hram = "hram"
+vram = "vram"
+tima = "tima"
+tma = "tma"
+lyc = "lyc"
+stat = "stat"
+opcode = "opcode"
+
+[default.extend-identifiers]
+AntonioND = "AntonioND"
+DMG = "DMG"
+CGB = "CGB"
+SGB = "SGB"
+AGS = "AGS"
+MBC1 = "MBC1"
+MBC2 = "MBC2"
+MBC3 = "MBC3"
+MBC5 = "MBC5"
+VRAM = "VRAM"
+HRAM = "HRAM"
+OAM = "OAM"
+PPU = "PPU"
+LCD = "LCD"
+LY = "LY"
+LYC = "LYC"
+TIMA = "TIMA"
+TMA = "TMA"
+TAC = "TAC"
+DIV = "DIV"
+IE = "IE"
+IF = "IF"
+IME = "IME"
+DMA = "DMA"
+ROM0 = "ROM0"
+ROMX = "ROMX"

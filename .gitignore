@@ -3,6 +3,7 @@
 
 # Rust / Cargo
 /target/
+/lcov.info
 
 # Editors
 .idea/

@@ -39,15 +39,8 @@ Mid-term planned extensions, not yet materialized as separate crates:
 
 ### Requirements
 
-- Rust via `rustup`
-
-### Install local tooling
-
-```bash
-cargo install --locked cargo-llvm-cov
-cargo install --locked cargo-deny
-cargo install --locked typos-cli
-```
+- Rust `1.93.1` via `rustup`
+- Workspace MSRV: `1.93`
 
 ## Tooling
 
@@ -59,11 +52,17 @@ This repository uses:
 - `cargo-deny` for dependency, advisory and license checks
 - `typos` for spellchecking
 
-### Setup
+### Install local tooling
 
 ```bash
 make setup
 ```
+
+`make setup` configures the repository git hooks and installs the required local cargo tools:
+
+- `cargo-llvm-cov`
+- `cargo-deny`
+- `typos-cli`
 
 ### Coverage
 
@@ -107,3 +106,12 @@ The documentation hierarchy, in summary, is:
 - `AI/ROADMAP.md` for recommended implementation order, phase context, and outstanding TODOs
 
 Use `AI/research/*.md` as secondary comparison material when you need implementation examples, additional validation, or comparison against reference oracles.
+
+## License
+
+Licensed under either of:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
