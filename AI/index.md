@@ -9,7 +9,7 @@ Read the matching file directly; this index is a routing guide plus a summary of
 - `CODING-RULES.md`: Rust design rules, API style, and optimization discipline.
 - `REFERENCES.md`: primary documentation, hardware research, and open-source consultation order.
 - `ROADMAP.md`: living implementation order, phase goals, done criteria, and open TODO tracking for deferred work.
-- `TESTING.md`: unit, integration, ROM-based, and oracle-comparison strategy.
+- `TESTING.md`: unit, integration, ROM-based, differential, determinism, and DMG-closure validation strategy.
 - `TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
 
 ## Authority map

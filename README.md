@@ -103,7 +103,7 @@ The documentation hierarchy, in summary, is:
 - `AI/EXECUTION.md` and `AI/CODING-RULES.md` for workflow and code-change discipline
 - `AI/REFERENCES.md` for source and oracle consultation order
 - `AI/hardware/*.md` for the behavior and contracts of the corresponding subsystem
-- `AI/TESTING.md` for the global validation policy
+- `AI/TESTING.md` for the global validation, differential, determinism, and DMG-hardening policy
 - `AI/ROADMAP.md` for recommended implementation order, phase context, and outstanding TODOs
 
 Use `AI/research/*.md` as secondary comparison material when you need implementation examples, additional validation, or comparison against reference oracles.

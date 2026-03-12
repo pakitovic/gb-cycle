@@ -39,6 +39,15 @@ When implementing timing:
 - state which source supports the model
 - avoid claiming global cycle accuracy from local evidence
 
+## Closure and validation claims
+
+- Do not treat "boots a few games" as evidence that DMG timing is closed.
+- Do not treat one matching final framebuffer as sufficient evidence for a timing-sensitive subsystem when the path to that output is still unverified.
+- Closing a timing-sensitive DMG subsystem should rest on layered evidence: focused automated tests, ROM-based validation, trusted-oracle comparison, and determinism checks.
+- Because this project is T-cycle based, the validation stack should be able to compare behavior at end-of-test, end-of-instruction, and short per-T-cycle windows when locating the first divergence matters.
+- If coarser summaries are used for ergonomics, keep a path back to the underlying T-cycle ordering rather than hiding it behind aggregate instruction or frame-level claims.
+- Trace, comparison, and debugging instrumentation must preserve the same hardware-visible T-cycle behavior they are trying to explain.
+
 ## Modeling policy
 
 - Prefer explicit clock ownership.

@@ -8,6 +8,7 @@ Use multiple layers:
 - subsystem integration tests
 - ROM-based validation
 - oracle comparisons where useful
+- determinism, replay, and longer-running regression coverage
 
 ## Authority and scope
 
@@ -24,6 +25,49 @@ Every subsystem change should aim to leave behind one of these:
 - a ROM-based reproduction case
 - a documented oracle comparison when timing or ordering is under review
 - a characterization test before structural refactors in behavior-sensitive code
+
+## Final DMG hardening policy
+
+- Do not treat "boots a few commercial games" or "one final framebuffer looks right" as DMG closure.
+- Final DMG hardening must demonstrate, at the same time, subsystem-local correctness, deterministic behavior on the shared T-cycle timeline, differential agreement with trusted oracles, and enough tooling to explain a divergence without blind refactoring.
+- Use a formal multilayer validation matrix rather than one oversized suite or informal compatibility anecdotes.
+- No single layer substitutes for another: unit tests do not replace test ROMs, test ROMs do not replace differential comparison, and differential comparison does not replace determinism or replay.
+
+## Final DMG hardening matrix
+
+- `Layer A`: focused unit tests per subsystem, including CPU micro-ops and state machine behavior, interrupts and `IME` / `HALT` / `STOP`, timer and divider edges, bus arbitration, PPU mode timing plus fetcher/FIFOs/window/sprites, DMA, joypad, serial, cartridge/MBC behavior, APU channel and mixer behavior, and exact save-state restore paths.
+- `Layer B`: short integration tests for timing-coupled interactions such as timer plus interrupts, DMA plus bus plus CPU, PPU plus DMA plus VRAM/OAM blocking, serial plus interrupt plus scheduler, joypad plus `STOP` / `HALT` plus interrupt, cartridge plus bus plus boot-ROM overlay, and APU plus `DIV-APU` plus MMIO writes.
+- `Layer C`: external test ROM suites grouped by hardware category and run through automation rather than manual screen inspection.
+- `Layer D`: differential comparison against trusted emulator oracles, with the ability to localize the first divergence instead of reporting only one final mismatch.
+- `Layer E`: determinism, replay, save/load determinism, soak, and regression-retention coverage over medium and long runs.
+- For this T-cycle-based core, the matrix should support several validation granularities: end of test, end of instruction, and short per-T-cycle windows when a timing-sensitive divergence needs to be isolated.
+- Every corrected bug should end up attached to at least one permanent layer in this matrix.
+
+## External ROM harness policy
+
+- Test ROM execution must be automatable; manual inspection of the LCD is an auxiliary debugging aid, not the primary acceptance path.
+- The harness should support at least framebuffer capture and serial / link-port capture when the ROM exposes machine-readable output there.
+- Prefer serial / link-port capture for suites such as Blargg `cpu_instrs` when that path is available, because it avoids treating a scrolling framebuffer as the primary machine-readable result channel.
+- Each ROM case should define a timeout, an explicit pass/fail rule, and retained failure artifacts such as serial output, framebuffer output, trace excerpts, and optional snapshots.
+- The minimum DMG closure baseline should include automated CPU / interrupt coverage through `retrio/gb-test-roms` or equivalent Blargg automation, `dmg-acid2` for basic DMG PPU validation, and `mealybug-tearoom-tests` for fine PPU rendering / timing validation.
+- Keep explicit roadmap space for broader closure suites such as Mooneye / Gekkio coverage, SameSuite, GB Accuracy Tests, 144p Test Suite, and MBC3 RTC-focused ROMs.
+
+## Differential oracle policy
+
+- Use SameBoy as the primary differential oracle for DMG behavior whenever comparable observables are available.
+- Use Gambatte as a secondary oracle when triangulation adds value or when a SameBoy-only result still needs corroboration.
+- Differential comparison should support at least three granularities: end of test, end of instruction, and short T-cycle windows for reduced scenarios.
+- Prefer a clear "first point of divergence" workflow over one final hash or framebuffer mismatch.
+- When SameBoy and Gambatte agree and this project differs, treat the discrepancy as a project bug by default until evidence shows otherwise.
+- When the oracles disagree, mark the case as requiring arbitration rather than silently accepting one side as correct.
+
+## Validation tooling requirements
+
+- Hardening-ready validation requires trace logging at instruction level, micro-op level, and short T-cycle windows.
+- Breakpoints and watchpoints should cover at least `PC`, memory addresses, MMIO registers, and cartridge-bank or mapper-visible state.
+- Fast state inspection should expose CPU, scheduler, current bus owner, PPU mode / dot / `LY`, active DMA state, timer pipeline state, APU state, and cartridge / MBC state.
+- Specialized debug views for PPU internals, cartridge / MBC banks and raw registers, APU channels plus final mix, and IRQ / `IF` / `IE` / `IME` state are strongly recommended because they shorten divergence analysis substantially.
+- Instrumentation must not alter the core's hardware-visible behavior or reorder the shared T-cycle timeline.
 
 ## New-code baseline
 
@@ -155,10 +199,15 @@ Include dedicated CH4 quirk tests for ordinary `15`-bit mode, ordinary `7`-bit m
 
 ## Recommended external validation sources
 
+- retrio/gb-test-roms
 - blargg test ROMs
 - Mooneye tests
 - dmg-acid2 / cgb-acid2
 - mealybug-tearoom-tests
+- SameSuite
+- GB Accuracy Tests
+- 144p Test Suite
+- MBC3 RTC test ROMs
 
 ## Behavioral cross-check policy
 
@@ -174,13 +223,34 @@ When a change affects observable timing or ordering:
 - Tests should prefer reproducible stepping and explicit expected state over fuzzy assertions.
 - Instrumentation should not change hardware-visible behavior.
 - Battery-backed RTC persistence tests must use an injected or otherwise explicit time source rather than the host wall clock.
+- Determinism coverage should include replay from the same ROM plus input stream, save/load determinism, and at least some longer-running soak cases.
+- "Same ROM + same input stream + same injected time source => same result" is the intended project contract.
+- Save/load determinism should prove that saving, restoring, and continuing produces the same result as uninterrupted execution.
+- Soak coverage should include at least one real game, one longer-running test ROM, and one or two cases with APU activity plus banked cartridges.
 
 ## Regression policy
 
-Every fixed bug should leave behind:
+- Every fixed bug should leave behind at least one permanent regression asset.
+- Use a focused unit or integration test when the bug is local to one subsystem or one cross-subsystem interaction.
+- Use a ROM-based reproduction case when the bug is systemic or easiest to demonstrate through an external suite.
+- Use a stored differential case when the bug was discovered by comparison against SameBoy, Gambatte, or another explicit oracle.
+- Keep regression organization by subsystem or hardware area so repeated failures do not disappear into one catch-all bucket.
+- Differential regressions should preserve enough reproduction context to rerun them quickly, including the ROM, input stream, injected seed or time source when relevant, first divergence point, and an optional snapshot when that reduces debug time.
 
-- a focused automated test, or
-- a documented ROM-based reproduction case
+## Severity and DMG closure policy
+
+- Classify failures by closure impact instead of treating all red tests as equally important.
+- Treat scheduler ordering, CPU / interrupts, timer, PPU timing, DMA, primary cartridge families, basic joypad / serial behavior, and save/load determinism as `must-pass` DMG closure areas.
+- Treat finer APU behavior, serial edge cases beyond the baseline path, and RTC-specific long-tail work as high-importance compatibility items unless the roadmap explicitly promotes them to `must-pass`.
+- Keep optional tooling polish, special-cartridge heuristics, and experimental paths outside the `must-pass` gate unless they are needed to explain or reproduce a blocking core bug.
+- Do not declare DMG closed while `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, or `Mbc5` still have open severe correctness bugs, or while CPU / interrupts, timer, PPU, DMA, basic joypad / serial, or save/load determinism coverage is still failing.
+- Keep a project-visible DMG closure checklist that includes internal core suites, minimum external suites, differential comparison, determinism, save/load determinism, and primary cartridge-family status.
+
+## CI stratification policy
+
+- The regular CI path should always run critical unit tests, critical short integration tests, a stable subset of external ROMs, and save/load determinism coverage.
+- Longer differential runs, soak tests, and broader external ROM inventories may live in nightly or manual suites, but they must remain documented and runnable.
+- Failure artifacts should include enough information to debug without rerunning blindly, such as logs, optional snapshots, framebuffer output when relevant, and a diff against the reference output when one exists.
 
 ## Test organization policy
 

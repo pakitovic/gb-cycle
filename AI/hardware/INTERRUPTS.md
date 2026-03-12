@@ -37,6 +37,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 
 - `IF` and `IE` are MMIO-visible registers, but they should not be treated as generic CPU-private bytes.
 - `IF` must accept both program-visible MMIO writes and asynchronous hardware requests coming from timer, PPU, serial, joypad, and other producers.
+- For the current DMG-family baseline, `IF` bits `7..=5` should read back as `1`, while bits `4..=0` carry the live interrupt request state.
 - `IE` should remain owned by the interrupt controller even though it is exposed at `0xFFFF`.
 - Prefer helpers such as `request_interrupt(kind)` and `clear_interrupt(kind)` alongside the routed MMIO read/write path.
 - Program writes to `IF` should coexist with hardware requests without bypassing the interrupt controller's source-of-truth state.
@@ -110,6 +111,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Mooneye interrupt timing tests
 - focused tests for priority, masking, and delayed enable behavior
 - tests for `IF`/`IE` read-write behavior at `FF0F` and `FFFF`
+- tests that `IF` keeps bits `7..=5` forced high while bits `4..=0` follow live request state
 - tests for pending-request visibility with `IME = 0`
 - tests for multiple simultaneous pending requests resolving in fixed priority order
 - timer interrupt timing tests that verify IF request timing relative to TIMA overflow/reload

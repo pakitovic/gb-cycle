@@ -80,7 +80,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - `SkipBoot` should initialize a centralized model-aware post-boot I/O snapshot rather than scattering startup literals across subsystems.
 - For DMG and MGB, the visible post-boot snapshot should include at least `P1=0xCF`, `SB=0x00`, `SC=0x7E`, `DIV=0xAB`, `TIMA=0x00`, `TMA=0x00`, `TAC=0xF8`, `IF=0xE1`, `LCDC=0x91`, `STAT=0x85`, `SCY=0x00`, `SCX=0x00`, `LY=0x00`, `LYC=0x00`, `DMA=0xFF`, `BGP=0xFC`, `WY=0x00`, `WX=0x00`, and `IE=0x00`.
 - The direct post-boot snapshot should also include the published DMG-family audio-register values rather than leaving the APU block in a made-up default state.
-- Mixed-register snapshots such as `P1`, `STAT`, `DIV`, and `NR52` should be realized through subsystem-owned latched/live state synthesis rather than through blind raw-byte stores that would contradict their MMIO contract.
+- Mixed-register snapshots such as `P1`, `SC`, `TAC`, `IF`, `STAT`, `DIV`, and `NR52` should be realized through subsystem-owned latched/live or forced-bit state synthesis rather than through blind raw-byte stores that would contradict their MMIO contract.
 - Serial startup values such as `SB` and `SC` should likewise be applied through serial-owned control and idle-transfer state rather than through a fake generic I/O byte array.
 - `OBP0` and `OBP1` should not be treated as reliable fixed hardware constants in `SkipBoot`; keep them under an explicit emulator policy for uninitialized state instead of inventing a false canonical value.
 - Values that remain undefined or unreliable after power-up should stay explicitly classified as such even when `SkipBoot` is used.

@@ -301,6 +301,7 @@ to immediately materialize as a separate directory.
 - watchpoints
 - snapshots
 - state inspection
+- targeted subsystem viewers or equivalent structured dumps for CPU, scheduler, PPU, DMA, APU, IRQ, and cartridge state
 - internal analysis and comparison tools
 - utilities for synchronization and trace-debug workflows
 

@@ -1157,6 +1157,68 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 
 ---
 
+### Phase 8 — Block AP: final DMG hardening, differential validation, and closure
+
+This phase is the roadmap home for the final DMG closure work. Parts of it should begin earlier, but the block only closes once the project can justify DMG correctness through layered evidence on the shared T-cycle model rather than through informal game compatibility.
+
+#### Goal
+
+Close the DMG core with a formal validation matrix, strong differential and determinism tooling, and explicit closure criteria that leave no major blind hardware areas behind.
+
+#### Modules involved
+
+- `tests/`
+- `gb-test-runner/`
+- `debugger/`
+- `scheduler/`
+- subsystem cores as needed for per-area traces and inspections
+- frontend or tooling adapters only where they are needed for capture, visualization, or artifact export
+
+#### Deliverables
+
+- formal DMG hardening matrix with layers `A/B/C/D/E`, severity classes, and explicit `must-pass` areas
+- automated external-ROM harness with timeout, pass/fail policy, framebuffer and serial capture, and retained failure artifacts
+- differential comparison tooling for SameBoy and Gambatte with first-divergence reporting and short T-cycle windows
+- deterministic replay, save/load determinism, and longer-running soak coverage
+- minimum closure-ready debugging tooling: traces, breakpoints, watchpoints, snapshots, and targeted subsystem viewers
+- explicit DMG closure checklist covering internal suites, external suites, differential comparison, determinism, save/load determinism, and primary cartridge families
+
+#### Recommended sequencing inside Phase 8
+
+1. Formalize the DMG hardening matrix and closure severity policy.
+   Scope: define layers `A/B/C/D/E`, `must-pass` versus non-blocking categories, minimum DMG closure suites, and the rule that no single layer substitutes for another.
+   Acceptance criteria: the project docs name the closure layers explicitly, identify the blocking hardware areas for DMG closure, and define a stable checklist instead of relying on informal compatibility claims.
+2. Build the external ROM harness and minimum closure suites.
+   Scope: automate CPU / interrupt ROMs, `dmg-acid2`, and `mealybug-tearoom-tests`; support framebuffer and serial capture; define timeouts, pass/fail rules, and retained artifacts; and keep explicit reserved follow-up slots for broader closure suites such as Mooneye / Gekkio coverage, SameSuite, GB Accuracy Tests, 144p Test Suite, and MBC3 RTC-focused ROMs.
+   Acceptance criteria: the minimum DMG closure ROM suites run without manual screen inspection, every case has a timeout plus explicit pass/fail policy, and the harness can preserve enough output to debug failures offline.
+3. Add differential comparison against SameBoy and Gambatte.
+   Scope: end-of-test comparison, end-of-instruction comparison, short T-cycle-window comparison, and first-divergence localization with archived context.
+   Acceptance criteria: SameBoy acts as the default primary DMG oracle, Gambatte is available for triangulation, disagreements between the oracles are marked for arbitration rather than auto-pass, and the tooling can report the first divergence instead of only a final mismatch.
+4. Close the minimum debugging and inspection tooling.
+   Scope: instruction / micro-op / short-window T-cycle tracing, breakpoints and watchpoints on `PC`, memory, MMIO, and cartridge-bank state, plus fast inspection of CPU, scheduler, bus owner, PPU mode / dot / `LY`, DMA, timer, APU, and cartridge / MBC state.
+   Acceptance criteria: a blocking divergence can be localized without a long blind rerun, and the project has practical viewers or equivalent dumps for PPU, cartridge / MBC, APU, and IRQ state.
+5. Lock determinism, replay, save/load determinism, soak, and regression retention.
+   Scope: same-ROM replay with identical input stream and injected time source, mid-run save/load equivalence, longer-running soak cases, and a permanent regression path for every important hardening bug.
+   Acceptance criteria: repeated runs converge exactly under the same inputs and injected time source, save/load continuation matches uninterrupted execution, soak coverage includes at least one real game plus long-running synthetic coverage, and fixed hardening bugs leave behind permanent regression assets.
+
+#### Done criteria
+
+- core unit and short integration suites for the blocking DMG areas are green
+- the minimum external closure suites are green
+- differential comparison either shows no unexplained divergence in the covered scenarios or records the remaining arbitrations explicitly
+- deterministic replay and save/load determinism are green
+- no severe open correctness bugs remain in `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, or `Mbc5`
+- the project has an explicit DMG closure checklist instead of relying on a general compatibility impression
+
+#### Risks if omitted or overly simplified
+
+- false confidence from a few booting games or one passing smoke suite
+- unresolved blind spots in scheduler ordering, timing, or cartridge behavior
+- repeated rediscovery of the same bugs because regressions were never turned into permanent assets
+- inability to explain oracle divergences without expensive manual debugging sessions
+
+---
+
 ## Final order summary
 
 1. Test model and test ROM strategy  
@@ -1203,6 +1265,11 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 35. APU channel 3
 36. APU channel 4
 37. Mixing, output, DACs, power control, and audio edge cases
+38. Formal DMG hardening matrix, severity classes, and closure checklist
+39. Automated external ROM harness and minimum closure suites
+40. Differential comparison against SameBoy and Gambatte
+41. Deterministic replay, save/load determinism, and soak coverage
+42. Final DMG closure and regression-retention pass
 
 ---
 
@@ -1249,6 +1316,10 @@ Suggested entry style:
 - None currently.
 
 ### Phase 7 — Audio
+
+- None currently.
+
+### Phase 8 — Block AP: final DMG hardening, differential validation, and closure
 
 - None currently.
 

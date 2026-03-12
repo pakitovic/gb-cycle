@@ -79,6 +79,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## STAT register baseline
 
 - `STAT` should remain a mixed register whose writable portion is the software-configured interrupt-enable mask and whose read-only portion is derived from live PPU state.
+- In the current DMG-family baseline, `STAT` bit `7` should read back as `1`; it is not a writable software-owned bit.
 - Bits `6-3` should be treated as writable enables for the `LYC==LY`, Mode `2`, Mode `1`, and Mode `0` STAT sources.
 - Bit `2` should expose the live `LYC==LY` coincidence state as a read-only flag.
 - Bits `1-0` should expose the live current PPU mode as a read-only value: `0` HBlank, `1` VBlank, `2` OAM scan, `3` drawing.
@@ -398,7 +399,7 @@ Priority order:
 - tests for DMG `LCDC.0` suppressing window rendering even when `LCDC.5 = 1`
 - tests for mid-frame `WX`, `WY`, and `LCDC.5` writes when relevant glitches are implemented or intentionally isolated
 - tests for window-start and window-glitch cases that continue into later BG/OBJ mixing without resetting the OBJ/OAM FIFO incorrectly
-- tests for live `STAT` readback composition: writable enable bits plus live mode and coincidence bits
+- tests for live `STAT` readback composition: forced-high bit `7`, writable enable bits, plus live mode and coincidence bits
 - tests for `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
 - tests for immediate `LYC` write reevaluation of `STAT.2` and the internal STAT interrupt line
 - tests for each enabled LCD STAT mode source path for Mode `0`, Mode `1`, and Mode `2`

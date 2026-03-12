@@ -18,15 +18,21 @@ Primary documentation should be consulted before using emulator source code as g
 ## Test ROMs and executable references
 
 - blargg test ROMs
+- retrio/gb-test-roms — https://github.com/retrio/gb-test-roms
 - dmg-acid2 — https://github.com/mattcurrie/dmg-acid2
 - cgb-acid2 — https://github.com/mattcurrie/cgb-acid2
 - mealybug-tearoom-tests — https://github.com/mattcurrie/mealybug-tearoom-tests
 - Mooneye GB test suite — https://github.com/Gekkio/mooneye-gb
+- SameSuite — https://github.com/LIJI32/SameSuite
+- GB Accuracy Tests — see the awesome-gbdev testing section below
+- 144p Test Suite — see the awesome-gbdev testing section below
+- MBC3 RTC test ROMs — see the awesome-gbdev testing section below
 
 ## Community indexes
 
 - gbdev resources — https://gbdev.io/resources/
 - awesome-gbdev — https://github.com/gbdev/awesome-gbdev
+- use the awesome-gbdev testing section to discover and cross-check broader external DMG-closure suites that are not listed above directly
 
 ## Audio references
 
@@ -61,10 +67,10 @@ This default order balances coverage, maintainability, and accessibility; it is 
 
 ## Practical specialization by reference
 
-- SameBoy: best general reference and the practical ceiling for DMG/CGB behavior, LCD timing, audio, and compatibility study.
+- SameBoy: best general reference and the practical ceiling for DMG/CGB behavior, LCD timing, audio, and compatibility study; use it as the primary DMG differential oracle when comparable traces or observables are available.
 - binjgb: strong reference for timing, CPU/bus behavior, and compact architecture.
 - GameRoy: useful reference for idiomatic Rust-oriented structure.
 - accurateboy: especially valuable for PPU, fetcher, and pixel FIFO behavior.
 - Mooneye GB: strong documentary and edge-case reasoning reference.
 - Danger Boy: useful smaller codebase for DMG timing study.
-- Gambatte: historical high-accuracy reference and a strong corroborating oracle for practical accuracy and corner cases.
+- Gambatte: historical high-accuracy reference and a strong corroborating oracle for practical accuracy and corner cases; use it as the secondary DMG differential oracle when triangulation or arbitration is needed.
