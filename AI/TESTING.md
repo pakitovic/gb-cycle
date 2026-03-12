@@ -98,11 +98,20 @@ Include MBC1 tests for mode `0` versus mode `1`, low-region bank changes on larg
 For MBC2, include explicit coverage for header types `0x05` and `0x06`, deterministic power-up state, address-bit-`8` decode across `0x0000-0x3FFF`, raw `4`-bit ROM-bank-register behavior, and the documented `0 -> 1` translation for the switchable ROM window.
 Include MBC2 tests for `0x4000-0x7FFF` bank selection across the supported ROM sizes, explicit `256 KiB` maximum validation, and clear diagnostics when an MBC2 image exceeds that ROM limit or declares inconsistent RAM metadata.
 Include MBC2 tests for internal `512 x 4-bit` RAM, low-nibble write masking, the chosen high-nibble readback policy, low-`9`-bit echo aliasing between `0xA000-0xA1FF` and `0xA200-0xBFFF`, disabled-RAM open-bus reads plus ignored writes, immediate visibility of MBC2 control writes to later accesses on the shared T-cycle timeline, battery-backed persistence on `0x06`, and warning/error policy when `0x0149 != 0x00` without reinterpreting the cartridge as ordinary external SRAM.
+For MBC3, include explicit coverage for header types `0x0F`, `0x10`, `0x11`, `0x12`, and `0x13`, deterministic power-up state, raw `7`-bit ROM-bank-register behavior, typed RAM-versus-RTC selection, and the documented `0 -> 1` translation for the switchable ROM window.
+Include MBC3 tests for `0x4000-0x7FFF` bank selection across supported ROM sizes up to `2 MiB`, ordinary access to banks `0x20`, `0x40`, and `0x60`, RAM banking up to standard `32 KiB`, and explicit reservation or diagnostics for MBC30-like `64 KiB` SRAM declarations.
+Include MBC3 tests for RAM / RTC enable behavior, latch `0x00 -> 0x01`, live-versus-latched RTC state, halt/carry/day-counter behavior, disabled-RAM / RTC policy, and powered-off elapsed-time handling through an injected deterministic clock.
 For MBC5, include explicit coverage for header types `0x19`, `0x1A`, `0x1B`, `0x1C`, `0x1D`, and `0x1E`, deterministic power-up state, raw low-`8` plus high-`1` ROM-bank-register behavior, and the rule that bank `0` remains valid in `0x4000-0x7FFF`.
 Include MBC5 tests for `0x4000-0x7FFF` bank selection across supported ROM sizes up to `8 MiB`, including bank `0`, bank `0x1FF`, the `0xFF -> 0x100` boundary, and real-size masking without any MBC1/MBC3-style `0 -> 1` translation.
 Include MBC5 tests for RAM-enable behavior, disabled-RAM open-bus reads plus ignored writes, linear `8 KiB` bank selection for `8 KiB`, `32 KiB`, and `128 KiB` SRAM configurations, the absence of any MBC1-style dual banking mode, and the rule that header variants without RAM do not expose fake SRAM semantics merely because the RAM-bank register exists.
 Include rumble-capable MBC5 tests that prove `bit 3` of the control register in `0x4000-0x5FFF` updates observable `rumble_on`, that the state remains active until software clears it, and that rumble handling stays distinct from effective RAM-bank selection rather than collapsing both meanings into one opaque integer.
 Include MBC5 validation tests for ROM sizes above `8 MiB`, impossible RAM declarations, no-RAM header variants with nonzero `0x0149`, and the failure case where a rumble-capable header is loaded without exposing observable rumble state.
+For cartridge persistence, include tests that the saved hardware-style payload is the complete cartridge backing store rather than the currently visible `0xA000-0xBFFF` window, including linear SRAM on `No MBC`, banked SRAM on `MBC1`, `MBC3`, and `MBC5`, plus nibble RAM on `MBC2`.
+Include persistence tests that `0x0147` capability decoding, not filename heuristics or `0x0149` alone, decides whether a cartridge auto-produces hardware-style saves, and that cartridges with non-persistent RAM do not do so by default.
+Include persistence tests that `ram_enabled` gating does not affect the saved payload contents and that disabled-but-existing cartridge RAM can still round-trip through persistence.
+Include `MBC3` persistence tests that serialize live RTC state plus elapsed-time bookkeeping, restore powered-off advancement from an injected deterministic clock, and do not confuse the latched RTC snapshot with the persistent live clock.
+Include contract-level tests for in-memory and disk save backends, format versioning, explicit load/save APIs, save-on-close, forced save, optional auto-flush-after-write behavior, and atomic file replacement when storage robustness is under test.
+Keep hardware-style cartridge persistence tests separate from full-emulator save-state tests; the former must not require CPU, PPU, APU, WRAM, or other console-state serialization.
 For DMA behavior, include `FF46` source-page selection, full `160`-byte copy correctness, DMG total duration of `640` dots, transfer-progress timing, CPU blocking outside HRAM, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
 For APU behavior, include tests that `NR52` power-off clears ordinary audio registers, preserves wave RAM accessibility, and does not reset the `DIV-APU` source relationship whenever suitable tests exist.
 Include tests that `DIV-APU` advances from the falling edge of `DIV` bit `4`, including `DIV`-write-induced extra ticks when the edge is produced.
@@ -153,6 +162,7 @@ When a change affects observable timing or ordering:
 - Core execution should be deterministic for the same inputs and model configuration.
 - Tests should prefer reproducible stepping and explicit expected state over fuzzy assertions.
 - Instrumentation should not change hardware-visible behavior.
+- Battery-backed RTC persistence tests must use an injected or otherwise explicit time source rather than the host wall clock.
 
 ## Regression policy
 

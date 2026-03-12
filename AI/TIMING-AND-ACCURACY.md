@@ -47,6 +47,7 @@ When implementing timing:
 - Favor clarity and testability over shortcuts that obscure the phase model.
 - Use T-cycles as the fundamental execution unit for the core timing model.
 - Use dot or T-cycle level reasoning as the baseline timing vocabulary for the core.
+- The shared T-cycle timeline governs powered-on hardware execution; it does not imply that battery-backed off-session progression, such as `MBC3` RTC advance while the console is off, is derived from CPU T-cycles.
 - Treat M-cycles only as a descriptive grouping of four T-cycles, not as the project's primary timing abstraction.
 - When external documentation expresses a timing rule in M-cycles or microseconds, restate the corresponding T-cycle value in project docs and code whenever that rule becomes behaviorally relevant or is recorded as deferred validation work.
 - Keep the timing model clean enough that future CGB double-speed behavior can be expressed as an extension of the same temporal foundation rather than a separate clocking design.
@@ -65,6 +66,7 @@ When implementing timing:
 - MMIO reads and writes should also be modeled as ordered T-cycle events on that same timeline, not as timeless getters/setters attached to instruction completion.
 - Read or write side effects triggered by MMIO, such as `DIV` reset, `LCDC.7` LCD enable changes, `FF46` DMA start, `FF50` boot-ROM unmapping, `SC.7` transfer control, or `NRx4` channel triggers, should occur on the access T-cycle unless hardware evidence says otherwise.
 - Reads of dynamic MMIO state such as `LY`, `STAT` mode bits, interrupt flags, in-progress serial state, or APU channel-status bits should observe the live hardware state at the instant of the read.
+- Host-side persistence work such as save flushes, timestamp capture, or atomic file replacement is outside the emulated T-cycle timeline; it must not be used to reorder or retroactively redefine already-committed hardware-visible cartridge state.
 - `JOYP` should follow that same MMIO rule: `FF00` selection writes take effect on the access T-cycle, and later reads should observe the currently selected rows and current hardware-facing button state at the instant of the read.
 - `SB` and `SC` should follow that same MMIO rule: writes change serial state on the access T-cycle, and reads during transfer should be able to observe live serial progress rather than a deferred final-byte snapshot.
 - If hardware truly defers an MMIO-visible effect, model that deferral explicitly as timed state rather than as an informal "apply MMIO side effects later" queue.
@@ -77,3 +79,4 @@ When implementing timing:
 - The APU frame sequencer should derive its slow control clock from the same shared divider timeline as `DIV`; for the current DMG target, that means reacting to the falling edge of `DIV` bit `4`, including `DIV`-write-induced extra ticks when the edge occurs.
 - Slow APU control clocks such as length, envelope, and CH1 sweep must remain distinct from each channel's own fast waveform timer and from the host sample or resampler cadence.
 - Host-rate sample production should observe already-stepped hardware state; it must not become the clock that drives the APU core.
+- When cartridge hardware uses wall-clock-like progression outside powered-on execution, such as battery-backed `MBC3` RTC advance between sessions, model that through an explicit elapsed-time source at the persistence boundary and restate any powered-on bus-visible timing rule in T-cycles when it becomes behaviorally relevant.

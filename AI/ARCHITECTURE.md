@@ -225,6 +225,7 @@ to immediately materialize as a separate directory.
 - base cartridge interface
 - typed cartridge-header parsing over `0x0100-0x014F`
 - decoded cartridge capability model including cartridge type, ROM size, RAM size, CGB flag, and SGB flag
+- explicit capability metadata for battery-backed RAM, RTC, and rumble derived from the validated header type
 - central cartridge factory and validation policy
 - concrete cartridge devices such as `NoMbcCartridge`, `Mbc1Cartridge`, `Mbc2Cartridge`, `Mbc3Cartridge`, and `Mbc5Cartridge`
 - No MBC family support, including the `0x00`, `0x08`, and `0x09` header variants
@@ -234,7 +235,8 @@ to immediately materialize as a separate directory.
 - cartridge-visible RAM, whether external or mapper-local to the mapper
 - RTC-backed cartridges
 - bus-facing ownership of `0x0000-0x7FFF` and `0xA000-0xBFFF` through one stable device contract
-- persistence boundaries kept outside the core runtime API when possible
+- typed cartridge persistence contract for full cartridge-owned backing stores such as linear SRAM, banked SRAM, MBC2 nibble RAM, or MBC3 SRAM plus RTC
+- host storage backends kept outside the core runtime API, with only a narrow typed cartridge-persistence surface exposed when needed
 
 ### `apu/`
 
@@ -258,6 +260,16 @@ to immediately materialize as a separate directory.
 - state inspection
 - internal analysis and comparison tools
 - utilities for synchronization and trace-debug workflows
+
+## Cartridge persistence boundary
+
+- The powered-on core remains T-cycle driven. Cartridge persistence is a boundary around cartridge-owned state, not a second bus or scheduler path.
+- If the core exposes persistence hooks, keep them narrow and typed, for example through `PersistentCartState` or `CartridgePersistentPayload`, and make the cartridge implementation the owner of payload semantics.
+- That contract should be able to represent no persistent storage, persistent RAM only, persistent RTC only, or combined RAM plus RTC without forcing the backend to reverse-engineer mapper details from the visible `0xA000-0xBFFF` window.
+- Storage backends such as disk or in-memory adapters should own serialization format, versioning, file naming, path mapping, timestamps, and atomic replacement policy, not cartridge semantics.
+- Frontend and tooling layers may decide when to flush, such as on close, on explicit manual save, or via optional auto-flush, but they should do so through the persistence backend rather than through bus hooks or cartridge-local file I/O.
+- Cartridge persistence and emulator save states must remain separate systems. Cartridge persistence stores only cartridge-owned hardware state; emulator save states may snapshot the whole machine.
+- Tests and tools must be able to use an in-memory persistence backend so cartridge persistence can be validated without host file I/O.
 
 ## Module mapping notes
 
@@ -285,6 +297,8 @@ to immediately materialize as a separate directory.
 - The timer owns the shared divider/system-counter state and visible `DIV`, while the APU owns `DIV-APU`, frame-sequencer state, channel-active state, DAC state, mixer state, and HPF state derived from that shared timing source.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
 - The bus owns address decode and MMIO dispatch, but the device that owns a register must own its read, write, and side-effect semantics.
+- The cartridge owns the meaning of persistent RAM and RTC content, while the save backend owns durable storage mechanics such as file format, paths, versioning, and atomic replacement.
+- Save-state machinery must not be smuggled into the cartridge persistence boundary; CPU, PPU, APU, WRAM, and other console-owned state belong to a different system.
 - MMIO metadata should be centralized enough that readable bits, writable bits, dynamic bits, reserved bits, and model-specific availability are not re-declared ad hoc in several modules.
 - CPU code, DMA helpers, and frontend input/audio/video layers must not bypass MMIO-owned subsystem state by poking internal register-shaped fields directly.
 - The memory subsystem owns plain storage regions such as WRAM and HRAM; it must not bypass bus-visible access restrictions defined elsewhere.

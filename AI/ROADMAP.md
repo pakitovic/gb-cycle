@@ -781,6 +781,7 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 - banking and RTC support for MBC3
 - banking support for MBC5
 - functional mapper-controlled external RAM beyond the No MBC linear baseline
+- typed cartridge persistence contracts for full backing stores such as linear SRAM, banked SRAM, MBC2 nibble RAM, and MBC3 SRAM plus RTC
 - portable persistence boundaries across frontends and tools
 - clear separation between emulation logic and host storage APIs
 
@@ -865,6 +866,24 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
    Scope: unit tests, integration tests, ROM-based coverage, and at least one trusted oracle comparison for bank-selection and rumble edge cases.
    Acceptance criteria: tests cover header types `0x19..=0x1E`, bank `0` visibility in the switchable region, bank `0x1FF`, `9`-bit ROM-bank selection across the `0xFF -> 0x100` boundary, RAM-enable behavior, SRAM behavior for `8 KiB` / `32 KiB` / `128 KiB`, RAM-bank masking, rumble on/off, and size-validation diagnostics.
 
+#### Persistence sequencing inside Phase 6
+
+1. Define the cartridge persistent-state contract.
+   Scope: a typed contract such as `PersistentCartState` that each supported cartridge family exposes, explicit per-mapper payload shapes, and strict separation from full-emulator save-state serialization.
+   Acceptance criteria: `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, and `Mbc5` expose cartridge-owned persistent payloads, `Mbc2` and `Mbc3` use dedicated payload shapes for nibble RAM and RTC state, and no CPU, PPU, APU, WRAM, or other console-owned state leaks into the contract.
+2. Build the save backend.
+   Scope: disk and in-memory adapters, versioned save format, path / name mapping, load and save APIs, backend metadata separation from raw cartridge payloads, and portability across CLI, desktop, web, and tests.
+   Acceptance criteria: the backend can round-trip complete cartridge backing stores rather than only visible windows, supports battery-backed RAM and RTC payloads, and can be tested without real file I/O.
+3. Integrate battery-gated hardware persistence.
+   Scope: binding persistence eligibility to validated `0x0147` capability data such as `has_battery`, preserving non-persistent RAM semantics, and avoiding automatic hardware-style saves for cartridges that do not provide battery-backed storage.
+   Acceptance criteria: only battery-backed cartridges generate hardware-style persistence by default, `MBC2` restores nibble RAM correctly, `MBC3` restores SRAM plus RTC correctly, and non-battery cartridges do not silently produce hardware-save payloads unless an explicit non-faithful option is added.
+4. Fix the off-session RTC time policy.
+   Scope: explicit elapsed-real-time handling for battery-backed `MBC3`, support for both real clocks and injected deterministic clocks, preservation of live-versus-latched RTC separation, and clear T-cycle versus powered-off-time boundaries.
+   Acceptance criteria: real and injected clocks are both supported, elapsed powered-off time is applied without coupling RTC advancement to accumulated CPU cycles alone, and day counter, halt, and carry survive persistence round-trips correctly.
+5. Harden save writes and flush policy.
+   Scope: save-on-close, manual or forced save, optional auto-flush after writes to persistible cartridge state, atomic replacement or equivalent corruption-avoidance strategy, format versioning, and clear error reporting.
+   Acceptance criteria: the save backend exposes explicit flush policy choices outside the bus, versioned payloads are written atomically or through an equivalent safe strategy, and persistence errors surface clearly instead of failing silently.
+
 #### Done criteria
 
 - the bus uses a clean interface toward the cartridge
@@ -874,6 +893,9 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 - standard MBC3 behavior is modeled inside cartridge devices with explicit RAM-bank versus RTC-register selection, live-versus-latched RTC state, and a reserved future MBC30 extension point
 - MBC5 behavior is modeled inside cartridge devices with explicit `9`-bit ROM-bank state, valid switchable-region bank `0`, explicit RAM / battery / rumble variant handling, and observable cartridge-local rumble state
 - RTC and persistence are properly encapsulated
+- hardware-style persistence stores full cartridge backing stores rather than whichever `0xA000-0xBFFF` mapping happened to be visible
+- only battery-backed cartridges auto-persist by default, while full emulator save states remain a separate system
+- the save backend supports versioned payloads, an injected RTC time source, and atomic or equivalent safe writes
 - persistence does not break portability between CLI, desktop, and web
 
 #### Risks if integrated poorly
@@ -881,6 +903,8 @@ Extend `cartridge/` from the closed No MBC baseline to banked commercial cartrid
 - cartridge logic spread throughout the bus
 - persistence coupled directly to the core
 - MBC3 treated as "MBC1 with a clock" and split across bus, cartridge, and persistence layers
+- visible `0xA000-0xBFFF` windows mistaken for full save payloads
+- `ram_enabled` or latched RTC state mistaken for persistence truth
 - difficulty extending to more mappers or future variants
 
 ---

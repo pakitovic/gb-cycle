@@ -95,6 +95,30 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Validation should follow an explicit project policy such as `Strict`, `PermissiveWithWarning`, or `TestMode`.
 - Unsupported or inconsistent cartridges should produce explicit diagnostics rather than a silent fallback mapper choice.
 
+## Persistence baseline
+
+- Battery-backed persistence must be modeled as cartridge-owned state, not as "dump the currently visible `0xA000-0xBFFF` window."
+- `0xA000-0xBFFF` is only a mapper-controlled access window on the shared T-cycle runtime. The persistible payload is the cartridge's full backing store, not whichever bank or register file happens to be visible on one access.
+- The decision that a cartridge should produce hardware-style persistent state must come from header byte `0x0147`, not from filename heuristics, game title, or RAM-size guesses.
+- Loaded cartridge metadata should expose explicit capability data such as `has_battery`, `has_rtc`, and a typed distinction between persistent RAM, persistent RTC, non-persistent RAM, and no persistible storage.
+- Persistible RAM sizing must come from validated `0x0147 + 0x0149` capability data rather than from `0x0149` alone.
+- `MBC2` is a required exception: its persistible store is the internal `512 x 4-bit` nibble array, and `0x0149` must not size it.
+- Validation must reject or warn on header combinations where cartridge type, battery capability, RTC capability, and declared RAM size are incoherent before the save layer creates any hardware-style payload.
+- `ram_enabled` or equivalent access gating must never decide whether RAM exists or whether it should be saved. Disabled RAM is still cartridge-owned state.
+- `NoMbc` persistence covers at most one linear `8 KiB` RAM store when the validated header type actually provides battery-backed RAM, such as `0x09`.
+- `MBC1` persistence must cover the full validated SRAM backing, not only the currently visible bank in `0xA000-0xBFFF`.
+- `MBC2` persistence must cover all `512` logical nibbles, not an invented `8 KiB` byte array and not only the currently addressed echo window.
+- `MBC3` persistence must cover the full validated SRAM backing plus live RTC state when the header type includes timer and battery support.
+- `MBC5` persistence must cover the full validated SRAM backing up to `128 KiB`; rumble state is not part of the ordinary battery-backed save payload.
+- For `MBC3`, the persistible RTC payload must preserve at least seconds, minutes, hours, visible `9`-bit day counter, halt, carry, and enough elapsed-time bookkeeping to reconstruct powered-off advancement on reload.
+- The persistible RTC payload must reflect live RTC state, not the latched snapshot exposed for reads through the `0x00 -> 0x01` latch sequence.
+- Hardware-style cartridge saves and full emulator save states are different systems. Cartridge persistence must not serialize CPU, PPU, APU, WRAM, HRAM, or other console-owned state.
+- Cartridges without battery support should not produce automatic hardware-style save files unless the emulator explicitly exposes a non-hardware-faithful opt-in policy.
+- The cartridge side should expose an explicit typed persistence contract such as `PersistentCartState` or `CartridgePersistentPayload` that the storage backend consumes.
+- The save backend should own physical serialization, format versioning, path policy, flush policy, and atomic write strategy, but it must not infer the mapper's persistible layout on its own.
+- Supported save triggers should include save-on-close, manual or forced save, and optional auto-flush after writes to persistible cartridge state.
+- Auto-flush and durable file I/O belong to the persistence layer around the cartridge contract, not to the bus. The shared runtime still observes mapper writes on the access T-cycle even though host-side flush timing is outside the emulated hardware timeline.
+
 ## No MBC family baseline
 
 - Treat No MBC as the first closed cartridge implementation for this repo, not as a generic "no mapper" fallback path.
@@ -362,6 +386,10 @@ Priority order:
 - tests that MBC5 RAM banking covers the documented `8 KiB`, `32 KiB`, and `128 KiB` SRAM cases, respects disabled-RAM policy, uses linear `8 KiB` banks with no MBC1-style dual banking mode, and does not expose SRAM on header variants that do not actually provide RAM
 - tests that rumble-capable MBC5 distinguishes effective RAM-bank selection from `rumble_on`, that `bit 3` of the `0x4000-0x5FFF` control register keeps the motor on until software clears it, and that rumble state is observable without moving that responsibility into the bus or frontend
 - tests that MBC5 validation reports clear diagnostics for ROM sizes above `8 MiB`, impossible RAM declarations, and rumble-capable header types loaded without an observable rumble state
+- tests that hardware-style persistence round-trips the complete cartridge backing store rather than the currently visible `0xA000-0xBFFF` window, including linear SRAM on `NoMbc`, banked SRAM on `MBC1`, `MBC3`, and `MBC5`, plus nibble RAM on `MBC2`
+- tests that persistence eligibility comes from `0x0147` capability decoding, that `ram_enabled` does not gate save contents, and that non-battery cartridges do not auto-produce hardware-style saves by default
+- tests that `MBC3` persistence serializes live RTC state plus elapsed-time bookkeeping, restores powered-off advancement from an injected clock, and does not confuse the latched RTC snapshot with the persistible live clock
+- tests that save-backend versioning, in-memory adapters, disk adapters, manual save, save-on-close, optional auto-flush, and atomic replacement behavior are covered at the contract layer rather than through bus-side file I/O
 - mapper-specific ROM tests
 - cartridge RAM persistence behavior tests
 - additional cross-session RTC persistence and integration tests once save/time-source plumbing is active
@@ -379,6 +407,8 @@ Priority order:
 - Model No MBC as its own concrete device, not as a generic blob-reader fallback.
 - Keep mapper traits or enums narrow and explicit.
 - Avoid hard-coding cartridge logic into generic bus code.
+- Keep explicit cartridge capability data for battery-backed RAM, RTC, and non-persistent RAM instead of re-deriving persistence policy from ad hoc conditions later.
+- Keep the typed persistence contract attached to the cartridge layer, and make its payload describe full cartridge-owned backing stores rather than bus-visible windows.
 - Treat cartridge RAM power-up contents, whether external or mapper-local, as separate from deterministic post-boot CPU/MMIO state; if the emulator chooses a direct-boot initialization policy, keep it explicit and configurable.
 - Keep No MBC absent-RAM behavior under an explicit and configurable policy instead of accidental zero-backed memory.
 - Keep active-ROM-bank selection, RAM enable, RAM banking, RTC mapping, and any bank-wrap quirks inside cartridge/MBC implementations rather than generic bus region logic.
@@ -392,11 +422,14 @@ Priority order:
 - For MBC3, keep `ram_or_rtc_select` as a typed mapping target rather than one raw bank number whose meaning changes implicitly.
 - For MBC3, keep `rtc_live` and `rtc_latched` as separate state objects, and route RTC reads versus writes intentionally.
 - For MBC3, keep the visible RTC model inside the cartridge device while the save / persistence layer only owns serialization, storage, and time-source integration.
+- For MBC3, persist live RTC state plus elapsed-time bookkeeping, not the latched snapshot shown through the read latch.
 - For MBC3, restate the optional RTC access-spacing note in T-cycles when it becomes behaviorally relevant: the Pan Docs `4 us` recommendation corresponds to `16` T-cycles at normal-speed DMG.
 - For MBC3, reserve MBC30 as a first-class future extension point rather than folding it into standard MBC3 conditionals.
 - For MBC5, keep the raw low `8` ROM-bank bits and raw high `1` ROM-bank bit separate instead of flattening them into one opaque field too early.
 - For MBC5, remember that bank `0` is valid in the switchable ROM window; do not cargo-cult the MBC1/MBC3 `0 -> 1` rule here.
 - For MBC5, keep `ram_bank_raw`, `effective_ram_bank()`, and `rumble_on` distinct instead of pretending the rumble-capable RAM-bank register is identical to standard non-rumble MBC5.
+- For MBC5, keep rumble state out of the ordinary battery-backed save payload unless the project intentionally adds a separate transient-state feature beyond normal cartridge persistence.
+- Keep save flush policy, file replacement strategy, and path naming out of the bus; they belong to the persistence backend around the cartridge contract.
 - For MBC5, emit explicit validation diagnostics when `0x0147`, `0x0148`, and `0x0149` describe an impossible MBC5 combination instead of silently coercing the cartridge into a nearby supported shape.
 
 ## Known pitfalls
@@ -407,6 +440,8 @@ Priority order:
 - under-designing the cartridge boundary so later MBCs become invasive
 - silently zeroing cartridge RAM during direct boot and then treating that as hardware-accurate startup behavior
 - teaching the generic bus how a specific MBC banks ROM or RAM instead of delegating that behavior to the cartridge subsystem
+- dumping the currently visible `0xA000-0xBFFF` contents as if that were always the full save payload
+- deciding save eligibility from `ram_enabled`, filename heuristics, or `0x0149` alone instead of validated cartridge capabilities
 - inferring the mapper from ROM size or other heuristics instead of using `0x0147`
 - adding fake active-bank or latch state to No MBC
 - using `0x0149` alone to decide whether external RAM exists
@@ -429,6 +464,7 @@ Priority order:
 - reading MBC3 RTC registers from live state instead of the latched snapshot
 - writing MBC3 RTC register updates into the latched snapshot instead of the live RTC state
 - deriving MBC3 RTC progression directly from executed CPU cycles instead of from an explicit time / persistence source
+- persisting the latched MBC3 RTC snapshot as if it were the live battery-backed clock
 - assuming MBC3 cannot select ROM banks `0x20`, `0x40`, or `0x60` because MBC1 cannot
 - silently treating `64 KiB` SRAM declarations as ordinary standard MBC3 instead of reserving MBC30 explicitly
 - deferring MBC3 bank, selector, enable, or latch effects until instruction end instead of applying them on the access T-cycle
@@ -436,6 +472,7 @@ Priority order:
 - collapsing MBC5's `9`-bit ROM-bank register into one lossy `8`-bit field and losing banks above `0xFF`
 - silently treating rumble-capable MBC5 header types as if their RAM-bank register were identical to standard non-rumble MBC5
 - loading `0x1C`, `0x1D`, or `0x1E` as plain non-rumble MBC5 and thereby hiding cartridge-local rumble state from the rest of the system
+- persisting `rumble_on` or full-console state inside the cartridge save payload instead of keeping hardware-style saves limited to cartridge-owned persistent state
 
 ## Open questions
 
@@ -444,3 +481,4 @@ Priority order:
 - which explicit default policy should govern MBC3 RAM / RTC-disabled reads and writes at `0xA000-0xBFFF`
 - whether the Pan Docs RTC access-spacing recommendation should remain documented-only or later become an enforced `16`-T-cycle timing rule
 - what persisted RTC serialization shape best separates visible RTC state, elapsed-time bookkeeping, and frontend-specific storage adapters
+- which default flush policy should be enabled for hardware-style saves: close-only, manual plus close, or optional auto-flush after persistible writes

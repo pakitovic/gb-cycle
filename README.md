@@ -34,7 +34,7 @@ Mid-term planned extensions, not yet materialized as separate crates:
 - `gb-desktop`
 - `gb-web`
 - additional tooling such as a test runner, debugger, and utilities
-- persistence/save adapters outside the core
+- host persistence/save adapters outside the core, with any cartridge-facing persistence contract kept narrow and typed inside `gb-core`
 - broader integration tests and ROM suites
 
 ### Requirements
