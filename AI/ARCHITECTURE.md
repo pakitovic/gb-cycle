@@ -324,6 +324,9 @@ to immediately materialize as a separate directory.
 - watchpoints
 - snapshots
 - state inspection
+- freeze typed breakpoint/watchpoint target categories early enough that `PC`,
+  memory, MMIO, and cartridge-visible state do not need a public API redesign
+  once CPU and bus hooks become real
 - targeted subsystem viewers or equivalent structured dumps for CPU, scheduler, PPU, DMA, APU, IRQ, and cartridge state
 - internal analysis and comparison tools
 - utilities for synchronization and trace-debug workflows

@@ -1,0 +1,3 @@
+seq=0 subsystem=core level=info message="trace initialized"
+seq=1 subsystem=scheduler level=debug message="scheduler hook reserved"
+seq=2 subsystem=cpu level=trace message="cpu hook reserved"

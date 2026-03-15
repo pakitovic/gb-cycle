@@ -12,3 +12,10 @@ dependencies = [
 [[package]]
 name = "gb-core"
 version = "0.1.0"
+
+[[package]]
+name = "gb-test-runner"
+version = "0.1.0"
+dependencies = [
+ "gb-core",
+]

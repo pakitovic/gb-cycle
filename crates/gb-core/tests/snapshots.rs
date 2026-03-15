@@ -1,0 +1,40 @@
+mod common;
+
+use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode, TCycle};
+
+#[test]
+fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.step_t_cycle();
+    machine.step_t_cycle();
+
+    let snapshot = machine.snapshot();
+
+    assert_eq!(snapshot.config.console_model, ConsoleModel::Dmg);
+    assert_eq!(snapshot.config.startup_mode, StartupMode::SkipBoot);
+    assert_eq!(snapshot.scheduler.next_t_cycle, TCycle::new(2));
+    assert_eq!(snapshot.trace.buffered_event_count, 32);
+    assert_eq!(snapshot.debug_controls.breakpoint_count, 0);
+    assert_eq!(snapshot.debug_controls.watchpoint_count, 0);
+    assert_eq!(snapshot.boot.startup_mode, StartupMode::SkipBoot);
+    assert!(snapshot.cartridge.state == gb_core::CartridgeSlotState::Empty);
+}
+
+#[test]
+fn machine_snapshot_rendering_matches_the_golden_fixture() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.step_t_cycle();
+    machine.step_t_cycle();
+
+    let snapshot = machine.snapshot();
+    let fixture_path = common::trace_fixtures_dir().join("machine_snapshot_after_two_cycles.txt");
+    let expected = common::read_text_fixture(&fixture_path).expect("fixture should be readable");
+
+    assert_eq!(snapshot.render_text(), expected);
+}

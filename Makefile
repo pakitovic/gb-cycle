@@ -1,4 +1,4 @@
-.PHONY: help setup hooks tools typos check ci
+.PHONY: help setup hooks tools typos check ci cov-check
 
 help:
 	@echo "Available targets:"
@@ -8,6 +8,7 @@ help:
 	@echo "  make typos  - Run typos spellcheck"
 	@echo "  make check  - Run local checks (fmt, clippy, test, typos, deny)"
 	@echo "  make ci     - Run CI-like pipeline locally including LCOV coverage"
+	@echo "  make cov-check - Enforce >=90% coverage on gb-core and gb-test-runner"
 
 setup: hooks tools
 
@@ -32,4 +33,8 @@ check:
 	cargo deny-check
 
 ci: check
+	cargo cov-check
 	cargo cov-lcov
+
+cov-check:
+	cargo cov-check
