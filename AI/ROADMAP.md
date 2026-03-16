@@ -160,7 +160,7 @@ coherent without refactoring.
    Acceptance criteria: the phase order is explicit and stable, there are no hidden cross-calls that bypass it, the scheduler owns ordering rather than reimplementing subsystem rules, and one `CycleContext`-style object or equivalent carries current-cycle events, derived signals, ownership facts, and queued side effects or IRQ requests.
 2. **Central arbitration** (`Phase 1`)
    Goal: unify decode, ownership, and access policy behind one requester-aware bus path.
-   Acceptance criteria: CPU and DMA use the same arbitration route, decode/ownership and access-policy layers stay distinct, and DMG OAM DMA correctly leaves CPU with HRAM only.
+   Acceptance criteria: CPU and DMA-ready requesters use the same arbitration route, decode/ownership and access-policy layers stay distinct, and Phase `1` closes the requester-aware bus contract that Phase `3` later reuses for DMG OAM DMA HRAM-only behavior.
 3. **IRQ aggregation layer** (`Phase 2`)
    Goal: separate source request, `IF` visibility, and CPU acceptance.
    Acceptance criteria: PPU, timer, serial, and joypad only request; the CPU accepts by `IME/IE/IF` and fixed priority; timer keeps its delayed `4`-T-cycle (`1` M-cycle) request timing.
@@ -360,7 +360,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - all memory accesses go through `bus/`
 - the memory map is modeled completely for DMG
 - every DMG address region has an explicit owner, read behavior, write behavior, and blocked-access policy where applicable
-- bus arbitration resolves decode/ownership before applying requester-specific restrictions, and DMA-versus-CPU precedence is centralized instead of duplicated
+- bus arbitration resolves decode/ownership before applying requester-specific restrictions, and the requester-aware path is already ready for later DMA integration instead of duplicating CPU-only checks
 - every MMIO address in `0xFF00-0xFF7F` and `0xFFFF` has an explicit routed owner and contract rather than accidental default byte-storage behavior
 - mixed MMIO registers are represented as per-field contracts rather than as plain read/write bytes plus a coarse mask
 - the cartridge subsystem parses `0x0100-0x014F` into a typed header structure and preserves CGB/SGB compatibility flags for later work
@@ -386,6 +386,102 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 - boot ROM treated as a hack rather than real hardware
 - rewriting the bus when introducing DMA, PPU, or MBCs
 - scattering mapper detection and header parsing across bus, boot, and frontend code and having to undo that later
+
+#### Recommended subphase breakdown
+
+Phase `1` should be delivered in five subphases.
+The intent is to close one hardware-facing boundary at a time, with focused
+tests and local done criteria before moving on.
+Do not merge two adjacent subphases together unless the later one is blocked on
+purely mechanical wiring that does not widen hardware scope.
+
+1. **Phase 1A — Bus skeleton and DMG region ownership**
+   Goal: replace the current stub bus with a real DMG region-decode and storage baseline while preserving the Phase `0` scheduler contract.
+   Scope:
+   - ordered bus read/write entry points for the full `0x0000-0xFFFF` map
+   - explicit region taxonomy and decode results
+   - WRAM and HRAM backing storage plus echo-RAM alias behavior
+   - explicit region ownership for ROM, VRAM, WRAM, external range, OAM, unusable area, MMIO, HRAM, and `IE`
+   Done criteria:
+   - every address resolves through one central decode path with an explicit region owner
+   - WRAM, HRAM, and echo RAM behave through bus-owned routing rather than direct ad hoc storage access
+   - unusable-space, MMIO, and cartridge ranges already have explicit routed placeholders instead of accidental generic RAM behavior
+   Validation gate:
+   - unit tests cover each DMG region boundary and decode result
+   - integration tests prove echo-RAM aliasing in both directions
+   - smoke tests prove memory traffic enters `bus/` rather than bypassing it
+2. **Phase 1B — Requester-aware arbitration and blocked-access policy**
+   Goal: separate decode/ownership from live access policy so PPU, DMA, boot, and model-specific constraints can attach without rewriting the bus.
+   Scope:
+   - requester identity for CPU, DMA, and future bus actors
+   - decode result plus requester-aware access-policy evaluation
+   - explicit blocked-read and blocked-write result handling
+   - policy inputs for boot-ROM overlay, PPU visibility, DMA-published constraints, and model availability
+   Note: this subphase closes the arbitration contract only; functional DMG OAM DMA timing remains Phase `3`.
+   Done criteria:
+   - decode/ownership and access-policy layers are distinct in both code and tests
+   - CPU and a synthetic DMA requester already exercise the same arbitration entry point
+   - blocked accesses have explicit observable results rather than falling through to normal storage semantics
+   Validation gate:
+   - focused tests cover requester-specific arbitration through one common path
+   - tests cover VRAM, OAM, unusable-space, and HRAM policy decisions through injected hardware state
+   - trace or snapshot tests lock the ordering between scheduler bus-arbitration phase and evaluated access policy
+3. **Phase 1C — Cartridge foundation and No MBC closed baseline**
+   Goal: replace the empty cartridge placeholder with typed header parsing, centralized classification, and `No MBC` as the first real device family.
+   Scope:
+   - strongly typed cartridge-header parser and metadata
+   - base cartridge interface for `0x0000-0x7FFF` and `0xA000-0xBFFF`
+   - central factory and compatibility-policy-driven load decision
+   - `No MBC` support for `0x00`, `0x08`, and `0x09`
+   Done criteria:
+   - cartridge implementation selection comes from `0x0147` through one central factory
+   - declared ROM and RAM metadata are validated explicitly against the loaded image
+   - `No MBC` closes linear `32 KiB` ROM, optional linear `8 KiB` RAM, and ignored ROM-space writes with no hidden bank state
+   Validation gate:
+   - unit tests cover header parsing, size validation, and unsupported-type diagnostics
+   - integration tests prove the bus reaches cartridge ROM and external-RAM ranges only through the cartridge interface
+   - `No MBC` tests cover `0x0100-0x014F` visibility, optional RAM presence, and ignored ROM-space writes
+4. **Phase 1D — MMIO contract table and mixed-register baseline**
+   Goal: remove any possibility of treating `0xFF00-0xFF7F` and `0xFFFF` like generic RAM by routing every register through an explicit owner contract.
+   Scope:
+   - central MMIO descriptor table or equivalent routed-owner mechanism
+   - mixed-register composition for latched, dynamic, forced, and unimplemented bits
+   - first closed register set: `JOYP`, `DIV`, `TIMA`, `TMA`, `TAC`, `IF`, `IE`, `FF46`, and `FF50`
+   - explicit DMG fallback policy for unavailable CGB-only registers
+   Done criteria:
+   - every MMIO address resolves to an explicit owner and access contract
+   - mixed registers are represented per field rather than as coarse masked byte storage
+   - immediate MMIO side effects are visible on the routed access path rather than in deferred cleanup code
+   Validation gate:
+   - completeness tests fail if any MMIO address falls back to generic storage
+   - unit tests cover mixed-register readback and write masking behavior
+   - integration tests cover immediate side effects for `FF46` and `FF50` plus DMG `0xFF` readback on unavailable CGB-only registers
+5. **Phase 1E — Boot mapping, startup presets, and handoff**
+   Goal: connect boot-ROM overlay, `SkipBoot`, and future real-boot handoff infrastructure to the real bus, MMIO, and cartridge routing established earlier in the phase.
+   Scope:
+   - DMG-family boot-ROM kind selection and mapped/unmapped boot state
+   - `FF50`-driven overlay handoff in the bus mapping layer
+   - centralized visible post-boot snapshot tables and model-aware direct-boot entry, including serial-owned `SB` / `SC`, APU-owned `NRxx` readback, and PPU-owned LCD-visible register readback
+   - explicit policy for unreliable startup state in WRAM, HRAM, and other non-deterministic regions
+   Done criteria:
+   - `SkipBoot` reaches `0x0100` through one documented post-boot initialization path rather than partial boot-ROM execution
+   - boot-ROM overlay versus cartridge visibility is observable through the ordinary bus route before and after `FF50`
+   - real-boot overlay bytes come from configured boot-ROM assets or an explicit "missing asset reads as `0xFF`" path, never from synthetic placeholder firmware
+   - direct-boot visible state includes the published DMG-family audio-register snapshot, while wave RAM stays under an explicit startup policy rather than pretending to be a published hardware constant
+   - the infrastructure is ready for Phase `2` real-boot execution without introducing a hidden "skip mode" routing path
+   Validation gate:
+   - integration tests cover pre- and post-`FF50` visibility at `0x0000`, `0x0100`, and cartridge-owned ranges
+   - snapshot and startup tests cover model-aware post-boot visible state
+   - trace tests lock the handoff ordering relative to MMIO side-effect commit
+
+#### Subphase exit rule
+
+Every Phase `1` subphase should end with:
+
+- targeted unit and integration coverage for the newly closed contract
+- updated golden traces or snapshots when observable ordering changes
+- `make check` passing locally
+- a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
 
 #### MMIO contract sequencing
 

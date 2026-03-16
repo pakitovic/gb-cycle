@@ -6,10 +6,14 @@ trace.buffered_event_count=32
 trace.last_event=seq=31 subsystem=scheduler level=trace message="t_cycle=1 phase=cpu_wake_interrupt_evaluation"
 debug.breakpoint_count=0 debug.enabled_breakpoint_count=0
 debug.watchpoint_count=0 debug.enabled_watchpoint_count=0
-cpu.console_model=Dmg cpu.status=Stub
-bus.console_model=Dmg bus.status=Stub
-ppu.console_model=Dmg ppu.status=Stub
-dma.console_model=Dmg dma.status=Stub
-timer.console_model=Dmg timer.status=Stub
-boot.console_model=Dmg boot.startup_mode=SkipBoot boot.status=Stub
+cpu.console_model=Dmg cpu.status=Stub cpu.startup_pc=0x0100
+bus.console_model=Dmg bus.status=Ready
+apu.console_model=Dmg apu.status=Ready apu.powered=true apu.div_apu=0
+ppu.console_model=Dmg ppu.status=RegistersReady
+dma.console_model=Dmg dma.status=Ready
+timer.console_model=Dmg timer.status=Ready
+serial.console_model=Dmg serial.status=Ready
+boot.console_model=Dmg boot.startup_mode=SkipBoot boot.status=Ready boot.boot_rom_kind=Dmg boot.boot_rom_mapped=false boot.asset_configured=false boot.memory_policy=DeterministicZeroed
+interrupts.console_model=Dmg interrupts.status=Ready
+joypad.console_model=Dmg joypad.status=Ready
 cartridge.state=Empty

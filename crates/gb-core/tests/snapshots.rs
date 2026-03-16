@@ -20,6 +20,12 @@ fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
     assert_eq!(snapshot.debug_controls.breakpoint_count, 0);
     assert_eq!(snapshot.debug_controls.watchpoint_count, 0);
     assert_eq!(snapshot.boot.startup_mode, StartupMode::SkipBoot);
+    assert_eq!(snapshot.cpu.startup_state.pc, 0x0100);
+    assert!(snapshot.apu.powered);
+    assert_eq!(snapshot.apu.div_apu, 0);
+    assert_eq!(snapshot.serial.sb, 0x00);
+    assert!(!snapshot.boot.boot_rom_mapped);
+    assert!(!snapshot.boot.boot_rom_asset_configured);
     assert!(snapshot.cartridge.state == gb_core::CartridgeSlotState::Empty);
 }
 

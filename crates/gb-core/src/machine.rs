@@ -1,14 +1,18 @@
+use crate::apu::Apu;
 use crate::boot::BootController;
-use crate::bus::Bus;
-use crate::cartridge::CartridgeSlot;
+use crate::bus::{Bus, BusArbitrationState, BusRequester};
+use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError, CartridgeSlot};
 use crate::cpu::CpuCore;
 use crate::debugger::{
     DebugControl, MachineSnapshot, TraceBuffer, TraceLevel, TraceSink, TraceSubsystem, Tracer,
 };
 use crate::dma::DmaController;
+use crate::interrupts::InterruptController;
+use crate::joypad::Joypad;
 use crate::model::MachineConfig;
 use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, GlobalScheduler, SchedulerPhase, TCycle};
+use crate::serial::Serial;
 use crate::timer::Timer;
 
 #[derive(Debug, Clone)]
@@ -19,10 +23,14 @@ pub struct Machine<S = TraceBuffer> {
     debug_controls: DebugControl,
     cpu: CpuCore,
     bus: Bus,
+    apu: Apu,
     ppu: Ppu,
     dma: DmaController,
     timer: Timer,
+    serial: Serial,
     boot: BootController,
+    interrupts: InterruptController,
+    joypad: Joypad,
     cartridge: CartridgeSlot,
 }
 
@@ -34,10 +42,14 @@ pub struct MachineParts<S = TraceBuffer> {
     pub debug_controls: DebugControl,
     pub cpu: CpuCore,
     pub bus: Bus,
+    pub apu: Apu,
     pub ppu: Ppu,
     pub dma: DmaController,
     pub timer: Timer,
+    pub serial: Serial,
     pub boot: BootController,
+    pub interrupts: InterruptController,
+    pub joypad: Joypad,
     pub cartridge: CartridgeSlot,
 }
 
@@ -54,10 +66,14 @@ impl Machine<TraceBuffer> {
             debug_controls: self.debug_controls.snapshot(),
             cpu: self.cpu.snapshot(),
             bus: self.bus.snapshot(),
+            apu: self.apu.snapshot(),
             ppu: self.ppu.snapshot(),
             dma: self.dma.snapshot(),
             timer: self.timer.snapshot(),
+            serial: self.serial.snapshot(),
             boot: self.boot.snapshot(),
+            interrupts: self.interrupts.snapshot(),
+            joypad: self.joypad.snapshot(),
             cartridge: self.cartridge.snapshot(),
         }
     }
@@ -67,20 +83,28 @@ impl<S: TraceSink> Machine<S> {
     pub fn with_tracer(config: MachineConfig, tracer: Tracer<S>) -> Self {
         let console_model = config.console_model;
         let startup_mode = config.startup_mode;
+        let boot_rom_assets = config.boot_rom_assets.clone();
 
-        Self {
+        let mut machine = Self {
             config,
             scheduler: GlobalScheduler::new(),
             tracer,
             debug_controls: DebugControl::new(),
             cpu: CpuCore::new(console_model),
             bus: Bus::new(console_model),
+            apu: Apu::new(console_model),
             ppu: Ppu::new(console_model),
             dma: DmaController::new(console_model),
             timer: Timer::new(console_model),
-            boot: BootController::new(console_model, startup_mode),
+            serial: Serial::new(console_model),
+            boot: BootController::new(console_model, startup_mode, boot_rom_assets),
+            interrupts: InterruptController::new(console_model),
+            joypad: Joypad::new(console_model),
             cartridge: CartridgeSlot::empty(),
-        }
+        };
+
+        machine.apply_startup_configuration();
+        machine
     }
 
     pub fn config(&self) -> &MachineConfig {
@@ -119,6 +143,10 @@ impl<S: TraceSink> Machine<S> {
         &self.ppu
     }
 
+    pub fn apu(&self) -> &Apu {
+        &self.apu
+    }
+
     pub fn dma(&self) -> &DmaController {
         &self.dma
     }
@@ -127,12 +155,78 @@ impl<S: TraceSink> Machine<S> {
         &self.timer
     }
 
+    pub fn serial(&self) -> &Serial {
+        &self.serial
+    }
+
     pub fn boot(&self) -> &BootController {
         &self.boot
     }
 
+    pub fn interrupts(&self) -> &InterruptController {
+        &self.interrupts
+    }
+
+    pub fn joypad(&self) -> &Joypad {
+        &self.joypad
+    }
+
     pub fn cartridge(&self) -> &CartridgeSlot {
         &self.cartridge
+    }
+
+    pub fn read_bus(&mut self, address: u16) -> u8 {
+        let state = self.current_bus_arbitration_state();
+
+        self.bus.read_with_context(
+            address,
+            BusRequester::Cpu,
+            &state,
+            Some(&self.cartridge),
+            crate::bus::BusIoReadView {
+                apu: Some(&self.apu),
+                timer: Some(&self.timer),
+                serial: Some(&self.serial),
+                dma: Some(&self.dma),
+                boot: Some(&self.boot),
+                interrupts: Some(&self.interrupts),
+                joypad: Some(&self.joypad),
+                ppu: Some(&self.ppu),
+            },
+        )
+    }
+
+    pub fn write_bus(&mut self, address: u16, value: u8) {
+        let state = self.current_bus_arbitration_state();
+
+        self.bus.write_with_context(
+            address,
+            value,
+            BusRequester::Cpu,
+            &state,
+            Some(&mut self.cartridge),
+            crate::bus::BusIoWriteView {
+                apu: Some(&mut self.apu),
+                timer: Some(&mut self.timer),
+                serial: Some(&mut self.serial),
+                dma: Some(&mut self.dma),
+                boot: Some(&mut self.boot),
+                interrupts: Some(&mut self.interrupts),
+                joypad: Some(&mut self.joypad),
+                ppu: Some(&mut self.ppu),
+            },
+        );
+    }
+
+    pub fn load_cartridge(
+        &mut self,
+        rom_bytes: Vec<u8>,
+    ) -> Result<Vec<CartridgeDiagnostic>, CartridgeLoadError> {
+        let report = CartridgeSlot::load(rom_bytes, &self.config.compatibility)?;
+        let (cartridge, diagnostics) = report.into_parts();
+        self.cartridge = cartridge;
+        self.apply_startup_configuration();
+        Ok(diagnostics)
     }
 
     pub fn next_t_cycle(&self) -> TCycle {
@@ -199,6 +293,28 @@ impl<S: TraceSink> Machine<S> {
             })
     }
 
+    fn current_bus_arbitration_state(&self) -> BusArbitrationState {
+        BusArbitrationState::default()
+            .with_boot_rom(self.boot.bus_state())
+            .with_ppu(self.ppu.bus_state())
+    }
+
+    fn apply_startup_configuration(&mut self) {
+        if let Some(startup_state) = self.boot.direct_boot_state(Some(&self.cartridge)) {
+            self.cpu.apply_startup_state(startup_state.cpu);
+            self.apu.apply_startup_state(startup_state.apu);
+            self.ppu.apply_startup_state(startup_state.ppu);
+            self.timer.apply_startup_state(startup_state.timer);
+            self.serial.apply_startup_state(startup_state.serial);
+            self.dma.apply_startup_state(startup_state.dma);
+            self.interrupts
+                .apply_startup_state(startup_state.interrupts);
+            self.joypad.apply_startup_state(startup_state.joypad);
+            self.bus
+                .apply_startup_memory_policy(startup_state.startup_memory_policy);
+        }
+    }
+
     pub fn into_parts(self) -> MachineParts<S> {
         MachineParts {
             config: self.config,
@@ -207,10 +323,14 @@ impl<S: TraceSink> Machine<S> {
             debug_controls: self.debug_controls,
             cpu: self.cpu,
             bus: self.bus,
+            apu: self.apu,
             ppu: self.ppu,
             dma: self.dma,
             timer: self.timer,
+            serial: self.serial,
             boot: self.boot,
+            interrupts: self.interrupts,
+            joypad: self.joypad,
             cartridge: self.cartridge,
         }
     }
@@ -249,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn machine_parts_keep_stubbed_subsystem_boundaries_explicit() {
+    fn machine_parts_keep_the_current_subsystem_boundaries_explicit() {
         let machine = Machine::new(
             MachineConfig::new(ConsoleModel::Mgb).with_startup_mode(StartupMode::RealBoot),
         );
@@ -260,16 +380,20 @@ mod tests {
         assert!(parts.debug_controls.watchpoints().is_empty());
         assert_eq!(parts.cpu.console_model(), ConsoleModel::Mgb);
         assert_eq!(parts.bus.console_model(), ConsoleModel::Mgb);
+        assert_eq!(parts.apu.console_model(), ConsoleModel::Mgb);
         assert_eq!(parts.ppu.console_model(), ConsoleModel::Mgb);
         assert_eq!(parts.dma.console_model(), ConsoleModel::Mgb);
         assert_eq!(parts.timer.console_model(), ConsoleModel::Mgb);
+        assert_eq!(parts.serial.console_model(), ConsoleModel::Mgb);
         assert_eq!(parts.boot.console_model(), ConsoleModel::Mgb);
+        assert_eq!(parts.interrupts.console_model(), ConsoleModel::Mgb);
+        assert_eq!(parts.joypad.console_model(), ConsoleModel::Mgb);
         assert_eq!(parts.boot.startup_mode(), StartupMode::RealBoot);
         assert!(parts.cartridge.is_empty());
     }
 
     #[test]
-    fn machine_snapshot_exposes_scheduler_trace_and_stubbed_subsystems() {
+    fn machine_snapshot_exposes_scheduler_trace_and_live_phase_1_subsystems() {
         let mut machine = Machine::new(
             MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
         );
@@ -285,6 +409,10 @@ mod tests {
         assert_eq!(snapshot.debug_controls.breakpoint_count, 0);
         assert_eq!(snapshot.debug_controls.watchpoint_count, 0);
         assert_eq!(snapshot.cpu.console_model, ConsoleModel::Dmg);
+        assert_eq!(snapshot.apu.console_model, ConsoleModel::Dmg);
+        assert_eq!(snapshot.serial.console_model, ConsoleModel::Dmg);
+        assert_eq!(snapshot.interrupts.console_model, ConsoleModel::Dmg);
+        assert_eq!(snapshot.joypad.console_model, ConsoleModel::Dmg);
         assert!(matches!(
             snapshot.cartridge.state,
             crate::CartridgeSlotState::Empty

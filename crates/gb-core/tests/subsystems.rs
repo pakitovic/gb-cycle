@@ -1,20 +1,28 @@
 use gb_core::{
-    BootStatus, BusStatus, CartridgeSlotState, ConsoleModel, CpuStatus, DmaStatus, Machine,
-    MachineConfig, PpuStatus, StartupMode, TimerStatus,
+    ApuStatus, BootStatus, BusStatus, CartridgeSlotState, ConsoleModel, CpuStatus, DmaStatus,
+    InterruptControllerStatus, JoypadStatus, Machine, MachineConfig, PpuStatus, SerialStatus,
+    StartupMode, TimerStatus,
 };
 
 #[test]
-fn machine_owns_all_phase0_stubbed_subsystems() {
+fn machine_keeps_phase_1_foundations_ready_while_cpu_execution_remains_stubbed() {
     let machine = Machine::new(
         MachineConfig::new(ConsoleModel::Mgb).with_startup_mode(StartupMode::RealBoot),
     );
 
     assert_eq!(machine.cpu().status(), CpuStatus::Stub);
-    assert_eq!(machine.bus().status(), BusStatus::Stub);
-    assert_eq!(machine.ppu().status(), PpuStatus::Stub);
-    assert_eq!(machine.dma().status(), DmaStatus::Stub);
-    assert_eq!(machine.timer().status(), TimerStatus::Stub);
-    assert_eq!(machine.boot().status(), BootStatus::Stub);
+    assert_eq!(machine.bus().status(), BusStatus::Ready);
+    assert_eq!(machine.apu().status(), ApuStatus::Ready);
+    assert_eq!(machine.ppu().status(), PpuStatus::RegistersReady);
+    assert_eq!(machine.dma().status(), DmaStatus::Ready);
+    assert_eq!(machine.timer().status(), TimerStatus::Ready);
+    assert_eq!(machine.serial().status(), SerialStatus::Ready);
+    assert_eq!(machine.boot().status(), BootStatus::Ready);
+    assert_eq!(
+        machine.interrupts().status(),
+        InterruptControllerStatus::Ready
+    );
+    assert_eq!(machine.joypad().status(), JoypadStatus::Ready);
     assert_eq!(machine.cartridge().state(), CartridgeSlotState::Empty);
 }
 
@@ -26,9 +34,13 @@ fn model_and_startup_configuration_flow_into_the_stubbed_boundaries() {
 
     assert_eq!(machine.cpu().console_model(), ConsoleModel::Dmg0);
     assert_eq!(machine.bus().console_model(), ConsoleModel::Dmg0);
+    assert_eq!(machine.apu().console_model(), ConsoleModel::Dmg0);
     assert_eq!(machine.ppu().console_model(), ConsoleModel::Dmg0);
     assert_eq!(machine.dma().console_model(), ConsoleModel::Dmg0);
     assert_eq!(machine.timer().console_model(), ConsoleModel::Dmg0);
+    assert_eq!(machine.serial().console_model(), ConsoleModel::Dmg0);
     assert_eq!(machine.boot().console_model(), ConsoleModel::Dmg0);
+    assert_eq!(machine.interrupts().console_model(), ConsoleModel::Dmg0);
+    assert_eq!(machine.joypad().console_model(), ConsoleModel::Dmg0);
     assert_eq!(machine.boot().startup_mode(), StartupMode::SkipBoot);
 }

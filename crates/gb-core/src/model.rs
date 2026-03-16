@@ -1,3 +1,5 @@
+use crate::boot::BootRomAssets;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConsoleFamily {
     Dmg,
@@ -143,6 +145,7 @@ impl Default for CompatibilityPolicy {
 pub struct MachineConfig {
     pub console_model: ConsoleModel,
     pub startup_mode: StartupMode,
+    pub boot_rom_assets: BootRomAssets,
     pub compatibility: CompatibilityPolicy,
 }
 
@@ -164,6 +167,11 @@ impl MachineConfig {
         self
     }
 
+    pub fn with_boot_rom_assets(mut self, boot_rom_assets: BootRomAssets) -> Self {
+        self.boot_rom_assets = boot_rom_assets;
+        self
+    }
+
     pub fn with_compatibility(mut self, compatibility: CompatibilityPolicy) -> Self {
         self.compatibility = compatibility;
         self
@@ -180,6 +188,7 @@ impl Default for MachineConfig {
         Self {
             console_model: ConsoleModel::Dmg,
             startup_mode: StartupMode::SkipBoot,
+            boot_rom_assets: BootRomAssets::none(),
             compatibility: CompatibilityPolicy::strict(),
         }
     }
@@ -234,5 +243,6 @@ mod tests {
             config.compatibility.validation_policy,
             ValidationPolicy::Strict
         );
+        assert!(config.boot_rom_assets.is_empty());
     }
 }

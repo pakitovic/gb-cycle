@@ -712,6 +712,8 @@ Priority order:
 - Favor correctness and clarity before micro-optimizations.
 - Visible post-boot `NRxx` register values for `SkipBoot` should come from the centralized boot snapshot rather than ad hoc per-register reset literals spread through APU code.
 - `SkipBoot` should also synthesize coherent hidden APU timing state such as `DIV-APU`, frame-sequencer phase, channel-active/DAC state, and HPF-visible history rather than pairing the published post-boot `NRxx` values with a contradictory zeroed internal audio phase.
+- When direct boot cannot prove a canonical wave RAM contents value, keep wave RAM under an explicit startup policy; a deterministic zeroed policy is acceptable for tests and tooling as long as it is documented as emulator policy rather than hardware fact.
+- Before full APU timing lands, seed direct-boot `div_apu` from the same divider preset that produces visible `DIV` rather than leaving audio on an unrelated all-zero phase.
 - Wave RAM accessibility policy should stay explicit and separate from the ordinary `NRxx` register bank contract.
 - A shape such as `Apu { powered, div_apu, nr50, nr51, nr52, hpf_left, hpf_right, ch1, ch2, ch3, ch4 }` is a good fit for this repo's ownership model, even if names differ.
 - A stage split such as `ChannelDigitalOutput -> ChannelDac -> StereoMixer -> MasterVolume -> HighPassFilter -> HostSampleBridge` is a good fit for keeping hardware semantics and host-output concerns separate, even if final type names differ.
