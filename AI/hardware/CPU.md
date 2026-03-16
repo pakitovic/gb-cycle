@@ -37,18 +37,21 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - When an interrupt is accepted, the CPU should clear `IME`, clear the selected bit in `IF`, push `PC`, and jump to the matching vector as part of one explicit service sequence.
 - The CPU should make that accept-or-not decision only after current-cycle MMIO side effects and interrupt aggregation are already visible; interrupt producers do not bypass that CPU-owned decision point.
 - Once accepted, interrupt servicing must consume the documented DMG `20` T-cycles (`5` M-cycles) through the same ordered CPU execution model used for normal stack and control-flow work.
+- In the current Phase `2.5` baseline for this repo, interrupt acceptance happens from the explicit instruction-boundary fetch state after scheduler phase `8` has already aggregated requests into `IF`, and the service sequence reuses the same bytewise stack model as `CALL`/`RET`.
 
 ## IME, HALT, and STOP baseline
 
 - `IME` is a CPU-internal acceptance gate, distinct from the `IE` register mask.
 - `DI` clears `IME` immediately.
 - `EI` must not enable `IME` immediately; it should arm a delayed enable that becomes visible only after the following instruction completes.
+- `RETI` should restore `PC` through the ordinary return sequence and re-enable `IME` immediately at completion rather than through the delayed-`EI` path.
 - `HALT` should be represented as an explicit CPU state distinct from ordinary instruction execution.
 - `STOP` should be represented distinctly from `HALT`; even before full DMG/CGB STOP behavior is implemented, the architecture must leave it as a separate CPU control state.
 - The architecture must allow `STOP` to be released by an explicit hardware-originated wake path owned by the relevant subsystem, with joypad as the current DMG-family baseline owner, rather than by a frontend-only shortcut.
 - The CPU must consume that documented subsystem-owned `STOP` wake policy; it must not define a second local wake rule in parallel.
 - For the current repo baseline, the CPU should treat `STOP` wake as the joypad-defined selection-independent button-press wake event, while keeping that wake distinct from any later joypad interrupt service.
 - The `HALT` bug must be represented explicitly as a pending effect on the next opcode fetch rather than flattened into a generic "PC did not increment" shortcut.
+- In the current Phase `2.6` baseline for this repo, `HALT` entry is resolved during scheduler phase `9`, `HALT` wake and later interrupt service remain separate ordered decisions, and `STOP` resumes only through a joypad-owned wake event instead of a CPU-local or frontend-local shortcut.
 
 ## Execution-model baseline
 
@@ -148,6 +151,14 @@ Priority order:
 - If helper APIs summarize instruction timing, they should still expand into per-T-cycle execution internally.
 - Separate CPU state, decode tables, execution/micro-op planning, ALU helpers, interrupt control flow, and the fine-grained tick engine instead of letting one opcode table own everything.
 - Keep explicit state for the instruction in flight, including the current fetch/execute/service phase and any temporary bytes or addresses needed by the next micro-step.
+- Keep the configured direct-boot startup snapshot separate from the live CPU
+  register file so tests, debugger snapshots, and real execution can compare
+  the handoff state against the current in-flight machine state explicitly.
+- Prefer decode-time completion for instructions that truly end on the opcode
+  fetch machine cycle, and reserve explicit execute steps for instructions that
+  need extra immediate fetches, indirect memory traffic, or distinct read and
+  write phases, so register-only and `(HL)` forms cannot accidentally collapse
+  onto one fake timing path.
 - A shape like `FetchOpcode`, `ExecuteMicroOp`, `ServiceInterrupt`, `Halted`, and `Stopped` is a good conceptual fit even if final enum names differ.
 - Expose either a `tick_tcycle()`-style API or a micro-step API that expands explicitly into visible T-cycle progress; the scheduler should never need to wait for a whole instruction to retire before other hardware advances.
 - Decode and execution should stay distinct enough that base opcodes and CB-prefixed opcodes can reuse the same execution machinery without collapsing their separate fetches.
@@ -161,6 +172,40 @@ Priority order:
 - `RETI` should be implemented as a real instruction with return plus interrupt re-enable semantics, not as `RET` plus an informal external patch.
 - Prefer micro-op metadata or callbacks that let the bus/PPU observe "read", "write", and address-bearing `inc/dec` events without hard-coding an opcode blacklist for the OAM corruption bug.
 - Keep implicit `HL`, `SP`, and `PC` updates explicit enough that the IDU path can be observed as part of the same T-cycle-accurate CPU model.
+- In the current Phase `2.8` baseline for this repo, the scheduler-aligned CPU
+  trace should expose `PC`, execution state, `IME`, delayed-`IME` state, and
+  the last phase-`5` bus activity for the current T-cycle, distinguishing at
+  least opcode fetches from operand and data accesses. Phase `9` should also
+  emit a post-wake/post-accept CPU trace so interrupt acceptance is visible on
+  the same timeline as the already-visible `IF` state.
+
+## Real-boot prerequisite matrix
+
+Before the first `RealBoot` execution attempt in Phase `2.4`, treat the DMG
+boot path as blocked until this minimum opcode matrix is satisfied or an
+explicit narrower boot target is documented.
+
+| Status | Group | Minimum expectation |
+| --- | --- | --- |
+| Landed by Phase `2.3` | fetch/decode foundation | opcode fetch, `imm8`, `imm16`, `(HL)`, `(a16)`, explicit register-vs-memory timing |
+| Landed by Phase `2.3` | control flow | `JR`, `JP`, `CALL`, `RET`, and `RST`, including conditional taken-vs-untaken timing splits |
+| Landed by Phase `2.3` | stack traffic | bytewise `PUSH` and `POP`, plus reuse of the same push/pop ordering in `CALL`, `RET`, and `RST` |
+| Landed by Phase `2.3` | CB-prefixed control path | explicit second fetch for `0xCB`, plus register and `(HL)` timing distinction for representative prefixed operations such as `RL` and `BIT` |
+| Pending before Phase `2.4` | boot-facing MMIO loads/stores | `LDH (a8),A`, `LDH A,(a8)`, `LD (C),A`, `LD A,(C)`, and other MMIO-visible load/store forms used by the boot ROM |
+| Pending before Phase `2.4` | implicit-address transfer forms | `[hli]` / `[hld]` style transfers and other implicit address-update flows exercised by the boot ROM |
+| Pending before full DMG boot ROM | subtract/accumulator rotates | the remaining boot-visible subtract and non-CB accumulator-rotate families where the production DMG boot ROM depends on them |
+
+Keep this matrix explicit in roadmap and change reports. Real boot should not
+quietly start "just to see what happens" while the remaining pending rows stay
+unresolved.
+
+Phase `2.4` in this repo currently closes against an explicit narrower boot
+target: a synthetic DMG boot ROM that performs representative header reads
+through `(a16)`, validates them with `CP d8`, remains in boot on failed
+conditional `JR`, and reaches cartridge execution only through an executed
+`LD (a16),A` write to `FF50`. Full production DMG boot-ROM execution remains
+deferred until the pending MMIO, implicit-address, and accumulator-rotate
+groups above land.
 
 ## Recommended implementation order
 

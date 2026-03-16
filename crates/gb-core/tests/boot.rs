@@ -1,6 +1,6 @@
 use gb_core::{
-    BootRomAssets, BootRomKind, CartridgeSlotState, ConsoleModel, Machine, MachineConfig,
-    StartupMemoryPolicy, StartupMode,
+    BootRomAssets, BootRomKind, CartridgeSlotState, ConsoleModel, CpuExecutionState, Machine,
+    MachineConfig, StartupMemoryPolicy, StartupMode,
 };
 use std::env;
 use std::fs;
@@ -18,6 +18,8 @@ const CARTRIDGE_TYPE_ADDRESS: usize = 0x0147;
 const ROM_SIZE_ADDRESS: usize = 0x0148;
 const RAM_SIZE_ADDRESS: usize = 0x0149;
 const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
+const PHASE_2_REAL_BOOT_HANDOFF_T_CYCLE_LIMIT: usize = 256;
+const PHASE_2_ENTRY_OPCODE: u8 = 0xD3;
 
 fn build_test_rom(header_checksum: u8) -> Vec<u8> {
     let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
@@ -42,6 +44,53 @@ fn build_boot_rom_image(first_byte: u8) -> Vec<u8> {
     rom
 }
 
+fn build_phase_2_boot_rom(expected_logo_byte: u8, expected_checksum: u8) -> Vec<u8> {
+    let mut rom = vec![0x00; BOOT_ROM_LEN];
+    let program = [
+        0xFA,
+        0x04,
+        0x01,
+        0xFE,
+        expected_logo_byte,
+        0x20,
+        0xFE,
+        0xFA,
+        0x4D,
+        0x01,
+        0xFE,
+        expected_checksum,
+        0x20,
+        0xFE,
+        0x06,
+        0x24,
+        0x3E,
+        0x42,
+        0xC3,
+        0xFD,
+        0x00,
+    ];
+
+    rom[..program.len()].copy_from_slice(&program);
+    rom[0x00FD..0x0100].copy_from_slice(&[0xEA, 0x50, 0xFF]);
+    rom
+}
+
+fn build_phase_2_real_boot_rom(logo_byte: u8, header_checksum: u8) -> Vec<u8> {
+    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+    rom[0x0000] = 0x12;
+    rom[ENTRY_POINT_START] = PHASE_2_ENTRY_OPCODE;
+    rom[LOGO_START..LOGO_START + 48].copy_from_slice(&[0xCE; 48]);
+    rom[LOGO_START] = logo_byte;
+    rom[TITLE_START..TITLE_START + 8].copy_from_slice(b"PHASE2.4");
+    rom[CGB_FLAG_ADDRESS] = 0x80;
+    rom[SGB_FLAG_ADDRESS] = 0x03;
+    rom[CARTRIDGE_TYPE_ADDRESS] = 0x00;
+    rom[ROM_SIZE_ADDRESS] = 0x00;
+    rom[RAM_SIZE_ADDRESS] = 0x00;
+    rom[HEADER_CHECKSUM_ADDRESS] = header_checksum;
+    rom
+}
+
 fn unique_temp_dir() -> PathBuf {
     env::temp_dir().join(format!(
         "gb-cycle-boot-test-{}-{}",
@@ -51,6 +100,30 @@ fn unique_temp_dir() -> PathBuf {
             .expect("system clock should be after unix epoch")
             .as_nanos()
     ))
+}
+
+fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
+    for _ in 0..steps {
+        machine.step_t_cycle();
+    }
+}
+
+fn step_machine_until(
+    machine: &mut Machine,
+    max_steps: usize,
+    predicate: impl Fn(&Machine) -> bool,
+) {
+    for _ in 0..max_steps {
+        if predicate(machine) {
+            return;
+        }
+        machine.step_t_cycle();
+    }
+
+    assert!(
+        predicate(machine),
+        "predicate was not satisfied within {max_steps} T-cycles"
+    );
 }
 
 #[test]
@@ -124,6 +197,104 @@ fn real_boot_reads_boot_rom_at_0000_until_ff50_handoff_restores_cartridge_visibi
     assert_eq!(machine.read_bus(0x0000), 0x12);
     assert_eq!(machine.read_bus(0x0100), 0x31);
     assert_eq!(machine.read_bus(0x4000), 0x56);
+}
+
+#[test]
+fn real_boot_executes_a_boot_rom_handoff_and_fetches_the_cartridge_entry_next() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(
+                BootRomAssets::none()
+                    .with_bytes(BootRomKind::Dmg, build_phase_2_boot_rom(0xCE, 0x7F))
+                    .expect("phase 2.4 synthetic DMG boot ROM should validate"),
+            ),
+    );
+
+    machine
+        .load_cartridge(build_phase_2_real_boot_rom(0xCE, 0x7F))
+        .expect("supported NoMBC image should load");
+
+    step_machine_until(
+        &mut machine,
+        PHASE_2_REAL_BOOT_HANDOFF_T_CYCLE_LIMIT,
+        |machine| !machine.boot().is_boot_rom_mapped(),
+    );
+
+    assert!(!machine.boot().is_boot_rom_mapped());
+    assert_eq!(machine.cpu().registers().pc, 0x0100);
+    assert_eq!(machine.cpu().registers().a, 0x42);
+    assert_eq!(machine.cpu().registers().b, 0x24);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.cpu().current_opcode(), None);
+    assert_eq!(machine.read_bus(0x0000), 0x12);
+    assert_eq!(machine.read_bus(0x0100), PHASE_2_ENTRY_OPCODE);
+
+    step_machine_t_cycles(&mut machine, 4);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0101);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::Execute {
+            opcode: PHASE_2_ENTRY_OPCODE,
+            step: 0,
+            t_cycle: 0,
+        }
+    );
+    assert_eq!(machine.cpu().current_opcode(), Some(PHASE_2_ENTRY_OPCODE));
+}
+
+#[test]
+fn real_boot_with_an_invalid_logo_stays_mapped_and_never_reaches_cartridge_entry() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(
+                BootRomAssets::none()
+                    .with_bytes(BootRomKind::Dmg, build_phase_2_boot_rom(0xCE, 0x7F))
+                    .expect("phase 2.4 synthetic DMG boot ROM should validate"),
+            ),
+    );
+
+    machine
+        .load_cartridge(build_phase_2_real_boot_rom(0x00, 0x7F))
+        .expect("supported NoMBC image should load");
+
+    step_machine_t_cycles(&mut machine, PHASE_2_REAL_BOOT_HANDOFF_T_CYCLE_LIMIT);
+
+    assert!(machine.boot().is_boot_rom_mapped());
+    assert!(machine.cpu().registers().pc <= 0x0007);
+    assert_eq!(machine.cpu().registers().b, 0x00);
+    assert_eq!(machine.read_bus(0x0000), 0xFA);
+    assert_eq!(machine.read_bus(0x0100), PHASE_2_ENTRY_OPCODE);
+}
+
+#[test]
+fn real_boot_with_an_invalid_checksum_stays_mapped_and_never_reaches_cartridge_entry() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(
+                BootRomAssets::none()
+                    .with_bytes(BootRomKind::Dmg, build_phase_2_boot_rom(0xCE, 0x7F))
+                    .expect("phase 2.4 synthetic DMG boot ROM should validate"),
+            ),
+    );
+
+    machine
+        .load_cartridge(build_phase_2_real_boot_rom(0xCE, 0x00))
+        .expect("supported NoMBC image should load");
+
+    step_machine_t_cycles(&mut machine, PHASE_2_REAL_BOOT_HANDOFF_T_CYCLE_LIMIT);
+
+    assert!(machine.boot().is_boot_rom_mapped());
+    assert!(machine.cpu().registers().pc <= 0x000E);
+    assert_eq!(machine.cpu().registers().b, 0x00);
+    assert_eq!(machine.read_bus(0x0000), 0xFA);
+    assert_eq!(machine.read_bus(0x0100), PHASE_2_ENTRY_OPCODE);
 }
 
 #[test]

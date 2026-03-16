@@ -4,6 +4,7 @@ use gb_core::{ConsoleModel, ExecutionMode, StartupMode};
 use gb_test_runner::{
     CaptureKind, CapturePlan, FailureArtifactPolicy, PassCondition, RomCaseValidationError,
     RomSuite, RomSuiteValidationError, RomTestCase, TestSubsystem, Timeout,
+    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
 };
 
 #[test]
@@ -240,4 +241,41 @@ fn rom_suite_can_be_built_incrementally_with_push_case() {
 
     assert_eq!(suite.cases.len(), 1);
     assert_eq!(suite.validate(), Ok(()));
+}
+
+#[test]
+fn phase_2_rom_automation_targets_validate_for_cpu_and_interrupt_timing() {
+    let cpu_suite = phase_2_cpu_timing_suite();
+    let interrupt_suite = phase_2_interrupt_timing_suite();
+
+    assert_eq!(cpu_suite.subsystem, TestSubsystem::Cpu);
+    assert_eq!(interrupt_suite.subsystem, TestSubsystem::Interrupts);
+    assert_eq!(cpu_suite.validate(), Ok(()));
+    assert_eq!(interrupt_suite.validate(), Ok(()));
+    assert!(
+        cpu_suite
+            .cases
+            .iter()
+            .all(|case| case.execution_mode == ExecutionMode::Strict)
+    );
+    assert!(
+        interrupt_suite
+            .cases
+            .iter()
+            .all(|case| case.execution_mode == ExecutionMode::Strict)
+    );
+    assert!(
+        cpu_suite
+            .cases
+            .iter()
+            .chain(interrupt_suite.cases.iter())
+            .all(|case| case.capture_plan.contains(CaptureKind::Trace))
+    );
+    assert!(
+        cpu_suite
+            .cases
+            .iter()
+            .chain(interrupt_suite.cases.iter())
+            .all(|case| case.failure_artifacts.contains(CaptureKind::Snapshot))
+    );
 }

@@ -14,9 +14,9 @@ use crate::scheduler::SchedulerSnapshot;
 use crate::serial::SerialSnapshot;
 use crate::timer::TimerSnapshot;
 
-pub const TRACE_FORMAT_VERSION: u16 = 1;
+pub const TRACE_FORMAT_VERSION: u16 = 2;
 
-const SUPPORTED_TRACE_SUBSYSTEMS: [TraceSubsystem; 10] = [
+const SUPPORTED_TRACE_SUBSYSTEMS: [TraceSubsystem; 11] = [
     TraceSubsystem::Core,
     TraceSubsystem::Scheduler,
     TraceSubsystem::Cpu,
@@ -26,6 +26,7 @@ const SUPPORTED_TRACE_SUBSYSTEMS: [TraceSubsystem; 10] = [
     TraceSubsystem::Timer,
     TraceSubsystem::Cartridge,
     TraceSubsystem::Boot,
+    TraceSubsystem::Interrupts,
     TraceSubsystem::Debugger,
 ];
 
@@ -40,6 +41,7 @@ pub enum TraceSubsystem {
     Timer,
     Cartridge,
     Boot,
+    Interrupts,
     Debugger,
 }
 
@@ -55,6 +57,7 @@ impl fmt::Display for TraceSubsystem {
             Self::Timer => "timer",
             Self::Cartridge => "cartridge",
             Self::Boot => "boot",
+            Self::Interrupts => "interrupts",
             Self::Debugger => "debugger",
         };
 
@@ -487,7 +490,7 @@ impl MachineSnapshot {
                 "trace.last_event={}\n",
                 "debug.breakpoint_count={} debug.enabled_breakpoint_count={}\n",
                 "debug.watchpoint_count={} debug.enabled_watchpoint_count={}\n",
-                "cpu.console_model={:?} cpu.status={:?} cpu.startup_pc={:#06X}\n",
+                "cpu.console_model={:?} cpu.status={:?} cpu.startup_pc={:#06X} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?}\n",
                 "bus.console_model={:?} bus.status={:?}\n",
                 "apu.console_model={:?} apu.status={:?} apu.powered={} apu.div_apu={}\n",
                 "ppu.console_model={:?} ppu.status={:?}\n",
@@ -512,6 +515,9 @@ impl MachineSnapshot {
             self.cpu.console_model,
             self.cpu.status,
             self.cpu.startup_state.pc,
+            self.cpu.registers.pc,
+            self.cpu.execution_state,
+            self.cpu.current_opcode,
             self.bus.console_model,
             self.bus.status,
             self.apu.console_model,

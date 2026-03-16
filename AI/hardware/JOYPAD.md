@@ -59,6 +59,7 @@ Keep these layers distinct:
 - That current wake policy is a repo-level behavioral choice for now, not a claim that every remaining electrical detail of DMG-family `STOP` wake has already been proven.
 - `STOP` wake handling and joypad interrupt generation are related but not identical concerns; keep them explicitly connected through shared joypad state without merging them into one opaque shortcut.
 - Joypad interrupt generation must still follow the stricter visible-`JOYP` `High -> Low` rule after row selection has been applied; `STOP` wake must not be silently treated as equivalent to "joypad interrupt requested".
+- In the current Phase `2.6` baseline for this repo, the joypad exposes a dedicated wake event consumed later by the CPU during scheduler phase `9`, so `STOP` wake remains ordered separately from any later joypad-interrupt request or interrupt service.
 
 ## Scheduler integration baseline
 

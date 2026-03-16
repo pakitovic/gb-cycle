@@ -31,6 +31,7 @@ pub struct Joypad {
     status: JoypadStatus,
     selection_bits: u8,
     pressed_mask: u8,
+    stop_wake_pending: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +49,7 @@ impl Joypad {
             status: JoypadStatus::Ready,
             selection_bits: SELECT_MASK,
             pressed_mask: 0,
+            stop_wake_pending: false,
         }
     }
 
@@ -69,17 +71,23 @@ impl Joypad {
 
     pub fn set_button_pressed(&mut self, button: JoypadButton, pressed: bool) {
         let bit = button_mask(button);
+        let was_pressed = self.pressed_mask & bit != 0;
 
         if pressed {
             self.pressed_mask |= bit;
         } else {
             self.pressed_mask &= !bit;
         }
+
+        if pressed && !was_pressed {
+            self.stop_wake_pending = true;
+        }
     }
 
     pub fn apply_startup_state(&mut self, startup_state: JoypadStartupState) {
         self.selection_bits = startup_state.selection_bits & SELECT_MASK;
         self.pressed_mask = startup_state.pressed_mask;
+        self.stop_wake_pending = false;
     }
 
     pub fn snapshot(&self) -> JoypadSnapshot {
@@ -89,6 +97,12 @@ impl Joypad {
             selection_bits: self.selection_bits,
             pressed_mask: self.pressed_mask,
         }
+    }
+
+    pub(crate) fn consume_stop_wake_event(&mut self) -> bool {
+        let was_pending = self.stop_wake_pending;
+        self.stop_wake_pending = false;
+        was_pending
     }
 
     fn visible_low_nibble(&self) -> u8 {

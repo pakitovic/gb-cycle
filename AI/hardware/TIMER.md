@@ -39,6 +39,7 @@ The source of truth should be an internal `16`-bit system counter advanced by th
   - `11 -> bit 7`
 - Timer overflow should be modeled as a temporal process with explicit pending/reload state; do not collapse overflow, reload from `TMA`, and interrupt request into one instant write-like event.
 - On DMG, the timer interrupt request does not become visible at the same logical moment as overflow detection. The `TMA` reload and timer request into `IF` arrive `4` T-cycles later (`1` M-cycle).
+- In the current Phase `2.7` baseline for this repo, the implemented closed path includes falling-edge TIMA increments, `DIV` / `TAC` glitch-triggered increments, `TIMA` writes that cancel a pending reload before it commits, `TMA` writes that affect a later pending reload, and timer-request visibility through the shared scheduler after the `4` T-cycle delay.
 
 ## MMIO contract baseline
 
@@ -74,6 +75,7 @@ The source of truth should be an internal `16`-bit system counter advanced by th
 - The shared scheduler should first advance the internal divider/system-counter for the T-cycle, then let the timer derive falling edges and overflow-pipeline transitions from that updated state.
 - The timer's delayed `IF` request belongs to the timer-owned overflow pipeline, not to a generic interrupt rule in the scheduler or interrupt controller.
 - Writes to `TIMA` and `TMA` near overflow/reload must be modeled against that internal overflow state machine rather than as unconditional register stores.
+- Exact same-cycle `TIMA` / `TMA` write arbitration on the reload T-cycle itself should remain explicit work; do not silently claim that the current baseline already closes every reload-window corner case just because pre-reload writes and delayed `IF` timing are covered.
 - When `SkipBoot` synthesizes a post-boot machine state, the timer's hidden `system_counter` and any overflow-related state must be initialized coherently with the visible `DIV`, `TIMA`, `TMA`, and `TAC` snapshot rather than being reset independently.
 
 ## Dependencies

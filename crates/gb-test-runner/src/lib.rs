@@ -291,3 +291,51 @@ impl RomSuite {
         Ok(())
     }
 }
+
+fn phase_2_rom_path(name: &str) -> PathBuf {
+    PathBuf::from("crates/gb-core/tests/fixtures/roms/phase2").join(name)
+}
+
+fn phase_2_trace_path(name: &str) -> PathBuf {
+    PathBuf::from("crates/gb-core/tests/fixtures/traces").join(name)
+}
+
+pub fn phase_2_cpu_timing_suite() -> RomSuite {
+    RomSuite::new("phase-2-cpu-timing", TestSubsystem::Cpu)
+        .with_case(RomTestCase::new(
+            "phase2-fetch-immediate-order",
+            phase_2_rom_path("phase2_fetch_immediate_order.gb"),
+            Timeout::TCycles(256),
+            PassCondition::TraceFixture(phase_2_trace_path("phase2_fetch_immediate_order.trace")),
+        ))
+        .with_case(RomTestCase::new(
+            "phase2-control-flow-stack-cb",
+            phase_2_rom_path("phase2_control_flow_stack_cb.gb"),
+            Timeout::TCycles(512),
+            PassCondition::TraceFixture(phase_2_trace_path("phase2_control_flow_stack_cb.trace")),
+        ))
+}
+
+pub fn phase_2_interrupt_timing_suite() -> RomSuite {
+    RomSuite::new("phase-2-interrupt-timing", TestSubsystem::Interrupts)
+        .with_case(RomTestCase::new(
+            "phase2-ei-delay-priority",
+            phase_2_rom_path("phase2_ei_delay_priority.gb"),
+            Timeout::TCycles(256),
+            PassCondition::TraceFixture(phase_2_trace_path("phase2_ei_delay_priority.trace")),
+        ))
+        .with_case(RomTestCase::new(
+            "phase2-halt-stop-and-halt-bug",
+            phase_2_rom_path("phase2_halt_stop_and_halt_bug.gb"),
+            Timeout::TCycles(512),
+            PassCondition::TraceFixture(phase_2_trace_path("phase2_halt_stop_and_halt_bug.trace")),
+        ))
+        .with_case(RomTestCase::new(
+            "phase2-timer-if-visibility-and-service",
+            phase_2_rom_path("phase2_timer_if_visibility_and_service.gb"),
+            Timeout::TCycles(512),
+            PassCondition::TraceFixture(phase_2_trace_path(
+                "phase2_timer_if_visibility_and_service.trace",
+            )),
+        ))
+}
