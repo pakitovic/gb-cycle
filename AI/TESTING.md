@@ -84,6 +84,8 @@ Every subsystem change should aim to leave behind one of these:
 - New production code should normally introduce automated unit tests or integration tests in the same change.
 - Prefer unit tests for local logic and integration tests when the behavior only becomes meaningful across subsystem boundaries.
 - Treat "code first, tests later" as an exception that must be justified explicitly, not as the default workflow.
+- Before opening or updating a pull request, run at least `make check` locally so formatting, clippy, tests, typos, and `cargo deny` failures do not first surface in CI.
+- When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make ci` locally as well before the PR is updated.
 - For the current infrastructure-heavy stage, keep `gb-core` and `gb-test-runner` at or above `90%` line, region, and function coverage as a guardrail, but do not satisfy that threshold with hollow tests that only exercise trivial getters or app placeholders.
 - When immediate automated coverage is temporarily impractical, record the missing test coverage, the reason it is deferred, and the remaining risk in the change report; add a roadmap TODO as well if the gap is concrete and non-trivial.
 - ROM-based validation and oracle comparison complement automated tests; they do not replace the expectation that new code should usually leave behind unit or integration coverage.

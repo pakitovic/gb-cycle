@@ -6,4 +6,4 @@ rust-version = "1.93"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-gb-core = { path = "../gb-core" }
+gb-core = { version = "0.1.0", path = "../gb-core" }

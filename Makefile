@@ -6,8 +6,8 @@ help:
 	@echo "  make hooks  - Configure git hooks path to .githooks"
 	@echo "  make tools  - Install local cargo tools used by this repository"
 	@echo "  make typos  - Run typos spellcheck"
-	@echo "  make check  - Run local checks (fmt, clippy, test, typos, deny)"
-	@echo "  make ci     - Run CI-like pipeline locally including LCOV coverage"
+	@echo "  make check  - Run the required local checks before push/PR (fmt, clippy, test, typos, deny)"
+	@echo "  make ci     - Run the full CI-like pipeline locally including coverage artifacts"
 	@echo "  make cov-check - Enforce >=90% coverage on gb-core and gb-test-runner"
 
 setup: hooks tools

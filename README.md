@@ -81,6 +81,9 @@ make check
 make ci
 ```
 
+Before opening or updating a PR, run at least `make check` locally.
+When changing CI, coverage, dependency policy, or repository tooling, run `make ci` locally as well so failures such as `cargo deny` do not first appear in GitHub Actions.
+
 
 ## Documentation
 
