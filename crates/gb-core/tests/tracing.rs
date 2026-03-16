@@ -58,4 +58,5 @@ fn supported_trace_subsystems_include_scheduler_and_debugger_hooks() {
     assert!(subsystems.contains(&TraceSubsystem::Timer));
     assert!(subsystems.contains(&TraceSubsystem::Cartridge));
     assert!(subsystems.contains(&TraceSubsystem::Boot));
+    assert!(subsystems.contains(&TraceSubsystem::Interrupts));
 }

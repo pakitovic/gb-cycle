@@ -1,14 +1,15 @@
 use crate::apu::Apu;
 use crate::boot::BootController;
-use crate::bus::{Bus, BusArbitrationState, BusRequester};
+use crate::bus::{Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusRequester};
 use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError, CartridgeSlot};
-use crate::cpu::CpuCore;
+use crate::cpu::{CpuBusOperation, CpuCore};
 use crate::debugger::{
     DebugControl, MachineSnapshot, TraceBuffer, TraceLevel, TraceSink, TraceSubsystem, Tracer,
 };
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
+use crate::joypad::JoypadButton;
 use crate::model::MachineConfig;
 use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, GlobalScheduler, SchedulerPhase, TCycle};
@@ -171,6 +172,10 @@ impl<S: TraceSink> Machine<S> {
         &self.joypad
     }
 
+    pub fn set_joypad_button_pressed(&mut self, button: JoypadButton, pressed: bool) {
+        self.joypad.set_button_pressed(button, pressed);
+    }
+
     pub fn cartridge(&self) -> &CartridgeSlot {
         &self.cartridge
     }
@@ -234,17 +239,22 @@ impl<S: TraceSink> Machine<S> {
     }
 
     pub fn step_t_cycle(&mut self) -> CycleContext {
-        let cpu = &self.cpu;
-        let bus = &self.bus;
-        let ppu = &self.ppu;
-        let dma = &self.dma;
-        let timer = &self.timer;
-        let boot = &self.boot;
-        let cartridge = &self.cartridge;
+        let cpu = &mut self.cpu;
+        let bus = &mut self.bus;
+        let apu = &mut self.apu;
+        let ppu = &mut self.ppu;
+        let dma = &mut self.dma;
+        let timer = &mut self.timer;
+        let serial = &mut self.serial;
+        let boot = &mut self.boot;
+        let interrupts = &mut self.interrupts;
+        let joypad = &mut self.joypad;
+        let cartridge = &mut self.cartridge;
 
         self.scheduler
             .step_with_trace(&mut self.tracer, |context, tracer| match context.phase() {
                 SchedulerPhase::DerivedEdgeResolution => {
+                    timer.tick_t_cycle(context);
                     tracer.emit(
                         TraceSubsystem::Timer,
                         TraceLevel::Trace,
@@ -276,6 +286,47 @@ impl<S: TraceSink> Machine<S> {
                     );
                 }
                 SchedulerPhase::CpuMicroOperation => {
+                    let arbitration_state = BusArbitrationState::default()
+                        .with_boot_rom(boot.bus_state())
+                        .with_ppu(ppu.bus_state());
+                    cpu.tick_t_cycle(|operation| match operation {
+                        CpuBusOperation::Read { address } => Some(bus.read_with_context(
+                            address,
+                            BusRequester::Cpu,
+                            &arbitration_state,
+                            Some(&*cartridge),
+                            BusIoReadView {
+                                apu: Some(apu),
+                                timer: Some(timer),
+                                serial: Some(serial),
+                                dma: Some(dma),
+                                boot: Some(boot),
+                                interrupts: Some(interrupts),
+                                joypad: Some(joypad),
+                                ppu: Some(ppu),
+                            },
+                        )),
+                        CpuBusOperation::Write { address, value } => {
+                            bus.write_with_context(
+                                address,
+                                value,
+                                BusRequester::Cpu,
+                                &arbitration_state,
+                                Some(cartridge),
+                                BusIoWriteView {
+                                    apu: Some(apu),
+                                    timer: Some(timer),
+                                    serial: Some(serial),
+                                    dma: Some(dma),
+                                    boot: Some(boot),
+                                    interrupts: Some(interrupts),
+                                    joypad: Some(joypad),
+                                    ppu: Some(ppu),
+                                },
+                            );
+                            None
+                        }
+                    });
                     tracer.emit(
                         TraceSubsystem::Cpu,
                         TraceLevel::Trace,
@@ -287,6 +338,29 @@ impl<S: TraceSink> Machine<S> {
                         TraceSubsystem::Boot,
                         TraceLevel::Trace,
                         boot.scheduler_trace_message(context),
+                    );
+                }
+                SchedulerPhase::InterruptAggregation => {
+                    for &source in context.interrupt_requests() {
+                        interrupts.request(source);
+                    }
+                    tracer.emit(
+                        TraceSubsystem::Interrupts,
+                        TraceLevel::Trace,
+                        interrupts.scheduler_trace_message(context),
+                    );
+                }
+                SchedulerPhase::CpuWakeInterruptEvaluation => {
+                    cpu.evaluate_wake_and_interrupts(interrupts, joypad);
+                    tracer.emit(
+                        TraceSubsystem::Interrupts,
+                        TraceLevel::Trace,
+                        interrupts.scheduler_trace_message(context),
+                    );
+                    tracer.emit(
+                        TraceSubsystem::Cpu,
+                        TraceLevel::Trace,
+                        cpu.scheduler_trace_message(context),
                     );
                 }
                 _ => {}
@@ -405,7 +479,7 @@ mod tests {
 
         assert_eq!(snapshot.config.console_model, ConsoleModel::Dmg);
         assert_eq!(snapshot.scheduler.next_t_cycle, TCycle::new(2));
-        assert_eq!(snapshot.trace.buffered_event_count, 32);
+        assert_eq!(snapshot.trace.buffered_event_count, 38);
         assert_eq!(snapshot.debug_controls.breakpoint_count, 0);
         assert_eq!(snapshot.debug_controls.watchpoint_count, 0);
         assert_eq!(snapshot.cpu.console_model, ConsoleModel::Dmg);

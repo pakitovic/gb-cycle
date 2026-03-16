@@ -5,12 +5,12 @@ use gb_core::{
 };
 
 #[test]
-fn machine_keeps_phase_1_foundations_ready_while_cpu_execution_remains_stubbed() {
+fn machine_keeps_phase_2_1_foundations_ready_with_a_live_cpu_scaffold() {
     let machine = Machine::new(
         MachineConfig::new(ConsoleModel::Mgb).with_startup_mode(StartupMode::RealBoot),
     );
 
-    assert_eq!(machine.cpu().status(), CpuStatus::Stub);
+    assert_eq!(machine.cpu().status(), CpuStatus::Ready);
     assert_eq!(machine.bus().status(), BusStatus::Ready);
     assert_eq!(machine.apu().status(), ApuStatus::Ready);
     assert_eq!(machine.ppu().status(), PpuStatus::RegistersReady);
@@ -32,6 +32,7 @@ fn model_and_startup_configuration_flow_into_the_stubbed_boundaries() {
         MachineConfig::new(ConsoleModel::Dmg0).with_startup_mode(StartupMode::SkipBoot),
     );
 
+    assert_eq!(machine.cpu().status(), CpuStatus::Ready);
     assert_eq!(machine.cpu().console_model(), ConsoleModel::Dmg0);
     assert_eq!(machine.bus().console_model(), ConsoleModel::Dmg0);
     assert_eq!(machine.apu().console_model(), ConsoleModel::Dmg0);

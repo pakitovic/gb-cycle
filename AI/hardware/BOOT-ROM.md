@@ -187,6 +187,7 @@ Priority order:
 - DMG-family observable differences should initially be assumed to come from firmware and startup state unless a proven hardware-level difference matters to the emulator.
 - `FF50` should integrate with system or bus mapping control, not as a CPU-local shortcut.
 - Real-boot header validation should emerge from executed boot-ROM code reading cartridge bytes, not from a parallel emulator-side validator.
+- The first closed `Phase 2.4` real-boot baseline may be a synthetic DMG boot ROM that validates representative header bytes and reaches cartridge entry through an executed `FF50` write on the real CPU, bus, and scheduler path; keep the remaining production-DMG opcode gap tracked separately instead of conflating that baseline with full firmware coverage.
 - Boot should consume cartridge-derived metadata such as checksum-dependent post-boot flags, `cgb_flag`, or `sgb_flag` through the cartridge subsystem's canonical parsed header view rather than by reparsing header bytes in multiple places.
 - A central routine such as `initialize_post_boot_state(model, cartridge)` is the preferred shape for `SkipBoot`, with one source of truth for model-specific CPU state, visible I/O state, and hidden-state synthesis inputs.
 - Keep direct-boot snapshot data centralized in typed structures rather than copying startup literals into CPU, timer, PPU, APU, or bus modules independently.
@@ -195,6 +196,10 @@ Priority order:
 - Uninitialized-state policy for WRAM, HRAM, cartridge RAM whether external or mapper-local, `OBP0`, and `OBP1` should be explicit and testable.
 - Do not hard-code boot ROM support around a fixed 256-byte assumption; CGB boot ROM is larger and uses a split mapped layout.
 - When CGB is implemented, boot should be able to inspect cartridge header compatibility information and choose CGB mode or DMG-compatibility mode accordingly.
+- In the current Phase `2.8` baseline for this repo, the boot trace should make
+  the `FF50` mapping state visible at phase `6` on the same timeline as the
+  preceding CPU write and the following cartridge fetch, so handoff ordering can
+  be debugged without a separate boot-only trace path.
 
 ## Known pitfalls
 

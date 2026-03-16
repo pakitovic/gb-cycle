@@ -71,6 +71,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Serial keeps its own completion point: the request belongs to the T-cycle that completes the eighth shift and clears `SC.7`.
 - Joypad keeps its own visibility rule: the request belongs only to a newly visible `High -> Low` transition in the `P1` low nibble.
 - Once the CPU accepts an interrupt, servicing it must still consume the documented DMG `20` T-cycles (`5` M-cycles) through the CPU's ordinary temporal model rather than as an immediate vector jump.
+- In the current Phase `2.5` baseline for this repo, step `8` aggregation into `IF` and step `9` CPU acceptance are both wired explicitly even though the concrete producer-side request rules still land later in timer, PPU, serial, and joypad work.
 
 ## Timing / accuracy requirements
 
@@ -132,11 +133,17 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - A helper such as `request_interrupt(kind)` is preferred over handwritten bit-twiddling at each producer site.
 - A helper such as `clear_interrupt(kind)` is also preferred over ad hoc bit masking outside the interrupt controller when software-visible acknowledge logic needs it.
 - Keep the final decision to accept and dispatch an interrupt in CPU flow, even if priority selection and `IF`/`IE` ownership live here.
+- Keep scheduler-phase aggregation explicit: producers should queue source requests for phase `8`, while the CPU should only observe the resulting live `IF` state during phase `9`.
 - Direct-boot startup values for `IF` and `IE` should be sourced from the centralized post-boot snapshot rather than inferred from CPU-local interrupt state.
 - Keep the semantic ownership of `IF` and `IE` here even though bus decode must route `0xFF0F` and `0xFFFF` correctly.
 - Let the PPU own the generation rules for LCD STAT requests, including rising-edge detection and DMG STAT-write quirks; the interrupt controller should only observe the resulting request events.
 - Let the joypad subsystem own the `P1` visibility comparison that decides whether a joypad request happened; the interrupt controller should consume the resulting request event, not re-derive it from raw button state.
 - Let the serial subsystem own the transfer-complete detection that decides whether a serial request happened; the interrupt controller should consume the resulting request event, not infer completion from raw `SB` or `SC` bytes.
+- In the current Phase `2.8` baseline for this repo, traces should show the
+  interrupt controller after phase `8` aggregation and again after phase `9`
+  CPU wake/accept evaluation, so `IF` / `IE` visibility and any acceptance-side
+  clear become observable as separate ordered events on the same T-cycle
+  timeline.
 
 ## Known pitfalls
 

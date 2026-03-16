@@ -31,7 +31,7 @@ pub use cartridge::{
     CartridgeSlot, CartridgeSlotState, CartridgeSnapshot, CgbFlag, RamSizeInfo, RomSizeInfo,
     SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
 };
-pub use cpu::{CpuCore, CpuSnapshot, CpuStartupState, CpuStatus};
+pub use cpu::{CpuCore, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus};
 pub use debugger::{
     Breakpoint, BreakpointCondition, BreakpointId, BreakpointProbe, CartridgeWatchTarget,
     DebugControl, DebugControlSnapshot, DebugSnapshot, MachineSnapshot, Watchpoint,
