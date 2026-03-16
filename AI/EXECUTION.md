@@ -15,6 +15,8 @@
 - One behavioral change at a time.
 - Avoid mixing refactors with timing fixes unless required.
 - When in doubt, preserve debuggability over micro-optimizations.
+- Use Conventional Commits for commit messages.
+- Use Conventional Commits for pull request titles as well, so branch history and PR metadata follow the same naming contract.
 - Before refactoring behavior-sensitive paths, verify coverage exists for the target behavior; add it first if missing.
 - Keep bug fixes minimal and isolated from unrelated cleanup.
 - New production code should normally land with automated unit tests or integration tests in the same change.
