@@ -1,3 +1,3 @@
 fn main() {
-    println!("{}", gb_core::version());
+    let _ = gb_core::Machine::new(gb_core::MachineConfig::new(gb_core::ConsoleModel::Dmg));
 }

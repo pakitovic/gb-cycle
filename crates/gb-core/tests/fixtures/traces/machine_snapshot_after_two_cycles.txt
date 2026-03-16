@@ -1,0 +1,15 @@
+config.console_model=Dmg
+config.startup_mode=SkipBoot
+config.execution_mode=Strict
+scheduler.next_t_cycle=2
+trace.buffered_event_count=32
+trace.last_event=seq=31 subsystem=scheduler level=trace message="t_cycle=1 phase=cpu_wake_interrupt_evaluation"
+debug.breakpoint_count=0 debug.enabled_breakpoint_count=0
+debug.watchpoint_count=0 debug.enabled_watchpoint_count=0
+cpu.console_model=Dmg cpu.status=Stub
+bus.console_model=Dmg bus.status=Stub
+ppu.console_model=Dmg ppu.status=Stub
+dma.console_model=Dmg dma.status=Stub
+timer.console_model=Dmg timer.status=Stub
+boot.console_model=Dmg boot.startup_mode=SkipBoot boot.status=Stub
+cartridge.state=Empty

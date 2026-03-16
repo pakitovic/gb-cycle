@@ -24,6 +24,7 @@ The current workspace already uses the `crates/`-based layout, leaving other com
 ```text
 crates/
   gb-core/    Pure emulation logic
+  gb-test-runner/  Typed ROM-harness contracts and validation helpers
   gb-cli/     Current CLI frontend
 AI/           Architecture, roadmap, and technical documentation
 Makefile      Local verification pipeline and utilities
@@ -33,7 +34,7 @@ Mid-term planned extensions, not yet materialized as separate crates:
 
 - `gb-desktop`
 - `gb-web`
-- additional tooling such as a test runner, debugger, and utilities
+- additional tooling such as richer debugger and utilities
 - host persistence/save adapters outside the core, with any cartridge-facing persistence contract kept narrow and typed inside `gb-core`
 - broader integration tests and ROM suites
 
@@ -68,6 +69,7 @@ make setup
 
 ```bash
 cargo cov
+cargo cov-check
 cargo cov-html
 cargo cov-lcov
 ```
@@ -78,6 +80,9 @@ cargo cov-lcov
 make check
 make ci
 ```
+
+Before opening or updating a PR, run at least `make check` locally.
+When changing CI, coverage, dependency policy, or repository tooling, run `make ci` locally as well so failures such as `cargo deny` do not first appear in GitHub Actions.
 
 
 ## Documentation

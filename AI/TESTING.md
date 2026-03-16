@@ -49,6 +49,7 @@ Every subsystem change should aim to leave behind one of these:
 - The harness should support at least framebuffer capture and serial / link-port capture when the ROM exposes machine-readable output there.
 - Prefer serial / link-port capture for suites such as Blargg `cpu_instrs` when that path is available, because it avoids treating a scrolling framebuffer as the primary machine-readable result channel.
 - Each ROM case should define a timeout, an explicit pass/fail rule, and retained failure artifacts such as serial output, framebuffer output, trace excerpts, and optional snapshots.
+- During early Phase `0`, `gb-test-runner` may still be a contract-only crate, but it should already own typed ROM-case and suite metadata including console model, startup mode, execution mode, emulation-progress timeout, explicit pass/fail rule, requested captures, and retained failure-artifact policy.
 - The minimum DMG closure baseline should include automated CPU / interrupt coverage through `retrio/gb-test-roms` or equivalent Blargg automation, `dmg-acid2` for basic DMG PPU validation, and `mealybug-tearoom-tests` for fine PPU rendering / timing validation.
 - Keep explicit roadmap space for broader closure suites such as Mooneye / Gekkio coverage, SameSuite, GB Accuracy Tests, 144p Test Suite, and MBC3 RTC-focused ROMs.
 
@@ -83,8 +84,29 @@ Every subsystem change should aim to leave behind one of these:
 - New production code should normally introduce automated unit tests or integration tests in the same change.
 - Prefer unit tests for local logic and integration tests when the behavior only becomes meaningful across subsystem boundaries.
 - Treat "code first, tests later" as an exception that must be justified explicitly, not as the default workflow.
+- Before opening or updating a pull request, run at least `make check` locally so formatting, clippy, tests, typos, and `cargo deny` failures do not first surface in CI.
+- When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make ci` locally as well before the PR is updated.
+- For the current infrastructure-heavy stage, keep `gb-core` and `gb-test-runner` at or above `90%` line, region, and function coverage as a guardrail, but do not satisfy that threshold with hollow tests that only exercise trivial getters or app placeholders.
 - When immediate automated coverage is temporarily impractical, record the missing test coverage, the reason it is deferred, and the remaining risk in the change report; add a roadmap TODO as well if the gap is concrete and non-trivial.
 - ROM-based validation and oracle comparison complement automated tests; they do not replace the expectation that new code should usually leave behind unit or integration coverage.
+
+## Phase 0 baseline test layout
+
+- Until dedicated tooling such as `gb-test-runner` exists, keep the initial automated-validation baseline inside `crates/gb-core`.
+- Keep subsystem-local invariant tests close to the production code under `crates/gb-core/src/**`.
+- Keep public-API and cross-module smoke coverage under `crates/gb-core/tests/*.rs`.
+- Keep shared integration-test helpers under `crates/gb-core/tests/common/`.
+- Reserve `crates/gb-core/tests/fixtures/roms/` for ROM fixtures and synthetic cartridge images used by automated harnesses.
+- Reserve `crates/gb-core/tests/fixtures/traces/` for golden trace artifacts and other debugger-facing snapshots.
+- During early Phase `0`, prefer stable UTF-8 text trace fixtures with explicit `seq=`, `subsystem=`, `level=`, and quoted `message=` fields so ordering regressions can be locked down before richer scheduler-visible traces exist.
+- During early Phase `0`, cover `ConsoleModel`, `StartupMode`, `ExecutionMode`, and `CompatibilityPolicy` defaults explicitly so DMG-first behavior and future CGB extension seams remain stable before scheduler and loader work land.
+- During early Phase `0`, cover `SchedulerPhase` order, the global T-cycle counter, and `CycleContext` reset semantics explicitly so later subsystem work cannot smuggle timing assumptions in through accidental call order.
+- During early Phase `0`, cover the single top-level `step_t_cycle()` machine entry point explicitly so the core keeps one deterministic timing boundary instead of growing multiple unsynchronized stepping APIs.
+- During early Phase `0`, cover subsystem-boundary wiring explicitly so `Machine` ownership of CPU, bus, PPU, DMA, timer, boot, and cartridge remains stable before Phase `1` introduces hardware-visible behavior.
+- During early Phase `0`, lock one deterministic trace order for stubbed CPU, bus, PPU, DMA, timer, boot, and cartridge hooks relative to scheduler phases so later subsystem implementation can grow observability without silently redefining trace chronology.
+- During early Phase `0`, expose typed breakpoint and watchpoint contracts for `PC`, memory, MMIO, and cartridge-visible state even before CPU and bus evaluation hooks are fully wired, so debugger tooling can grow without redefining its public targets later.
+- During early Phase `0`, treat debugger snapshots as typed inspection artifacts only; lock their contents with tests, but keep them explicitly separate from the whole-machine save-state work reserved for Phase `8`.
+- Keep the Phase `0` baseline fast, deterministic, and frontend-independent; `gb-core` validation must not require `gb-cli`, desktop, web, or host-specific I/O.
 
 ## ROM-based validation policy
 

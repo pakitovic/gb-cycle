@@ -18,11 +18,23 @@ jobs:
         with:
           components: rustfmt, clippy, llvm-tools
 
-      - name: Install cargo tools
-        run: |
-          cargo install --locked cargo-llvm-cov
-          cargo install --locked cargo-deny
-          cargo install --locked typos-cli
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: Install typos-cli
+        uses: taiki-e/install-action@v2
+        with:
+          tool: typos-cli
 
       - name: Rustfmt
         run: cargo fmt-check

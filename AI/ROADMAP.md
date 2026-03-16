@@ -276,6 +276,13 @@ Boundary note: Phase `0` fixes architecture, tracing, and the scheduler
 skeleton. Phase `1` is where that skeleton becomes hardware-visible stepping,
 arbitration, MMIO, and startup behavior.
 
+Status note (`2026-03-15`): Phase `0` baseline is closed in the current repo.
+The project now has the documented test layout, `gb-test-runner` contract
+crate, typed debugger breakpoints/watchpoints, `Machine` plus
+`step_t_cycle()`, explicit scheduler phases, stubbed subsystem boundaries,
+typed debug snapshots, and deterministic scheduler-aligned subsystem trace
+hooks. Remaining work moves to Phase `1`.
+
 ---
 
 ### Phase 1 — Temporal foundation and hardware access
