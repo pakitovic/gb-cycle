@@ -1,6 +1,6 @@
 use gb_core::{
-    CompatibilityPolicy, ConsoleFamily, ConsoleModel, DiagnosticPolicy, ExecutionMode,
-    HeuristicPolicy, MachineConfig, OverridePolicy, StartupMode, ValidationPolicy,
+    BootRomAssets, BootRomKind, CompatibilityPolicy, ConsoleFamily, ConsoleModel, DiagnosticPolicy,
+    ExecutionMode, HeuristicPolicy, MachineConfig, OverridePolicy, StartupMode, ValidationPolicy,
 };
 
 #[test]
@@ -9,6 +9,7 @@ fn default_machine_config_is_dmg_skip_boot_and_strict() {
 
     assert_eq!(config.console_model, ConsoleModel::Dmg);
     assert_eq!(config.startup_mode, StartupMode::SkipBoot);
+    assert!(config.boot_rom_assets.is_empty());
     assert_eq!(config.compatibility.execution_mode, ExecutionMode::Strict);
     assert_eq!(
         config.compatibility.validation_policy,
@@ -102,4 +103,14 @@ fn machine_config_can_replace_the_full_compatibility_policy() {
         DiagnosticPolicy::Verbose
     );
     assert_eq!(config.compatibility, compatibility);
+}
+
+#[test]
+fn machine_config_can_carry_explicit_boot_rom_assets() {
+    let boot_rom_assets = BootRomAssets::none()
+        .with_bytes(BootRomKind::Dmg, vec![0xAA; 0x0100])
+        .expect("dmg boot ROM asset should validate");
+    let config = MachineConfig::new(ConsoleModel::Dmg).with_boot_rom_assets(boot_rom_assets);
+
+    assert!(config.boot_rom_assets.has_image(BootRomKind::Dmg));
 }

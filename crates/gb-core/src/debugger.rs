@@ -1,13 +1,17 @@
 use std::fmt;
 
+use crate::apu::ApuSnapshot;
 use crate::boot::BootSnapshot;
 use crate::bus::BusSnapshot;
 use crate::cartridge::CartridgeSnapshot;
 use crate::cpu::CpuSnapshot;
 use crate::dma::DmaSnapshot;
+use crate::interrupts::InterruptControllerSnapshot;
+use crate::joypad::JoypadSnapshot;
 use crate::model::MachineConfig;
 use crate::ppu::PpuSnapshot;
 use crate::scheduler::SchedulerSnapshot;
+use crate::serial::SerialSnapshot;
 use crate::timer::TimerSnapshot;
 
 pub const TRACE_FORMAT_VERSION: u16 = 1;
@@ -453,10 +457,14 @@ pub struct MachineSnapshot {
     pub debug_controls: DebugControlSnapshot,
     pub cpu: CpuSnapshot,
     pub bus: BusSnapshot,
+    pub apu: ApuSnapshot,
     pub ppu: PpuSnapshot,
     pub dma: DmaSnapshot,
     pub timer: TimerSnapshot,
+    pub serial: SerialSnapshot,
     pub boot: BootSnapshot,
+    pub interrupts: InterruptControllerSnapshot,
+    pub joypad: JoypadSnapshot,
     pub cartridge: CartridgeSnapshot,
 }
 
@@ -479,12 +487,16 @@ impl MachineSnapshot {
                 "trace.last_event={}\n",
                 "debug.breakpoint_count={} debug.enabled_breakpoint_count={}\n",
                 "debug.watchpoint_count={} debug.enabled_watchpoint_count={}\n",
-                "cpu.console_model={:?} cpu.status={:?}\n",
+                "cpu.console_model={:?} cpu.status={:?} cpu.startup_pc={:#06X}\n",
                 "bus.console_model={:?} bus.status={:?}\n",
+                "apu.console_model={:?} apu.status={:?} apu.powered={} apu.div_apu={}\n",
                 "ppu.console_model={:?} ppu.status={:?}\n",
                 "dma.console_model={:?} dma.status={:?}\n",
                 "timer.console_model={:?} timer.status={:?}\n",
-                "boot.console_model={:?} boot.startup_mode={:?} boot.status={:?}\n",
+                "serial.console_model={:?} serial.status={:?}\n",
+                "boot.console_model={:?} boot.startup_mode={:?} boot.status={:?} boot.boot_rom_kind={:?} boot.boot_rom_mapped={} boot.asset_configured={} boot.memory_policy={:?}\n",
+                "interrupts.console_model={:?} interrupts.status={:?}\n",
+                "joypad.console_model={:?} joypad.status={:?}\n",
                 "cartridge.state={:?}\n"
             ),
             self.config.console_model,
@@ -499,17 +511,32 @@ impl MachineSnapshot {
             self.debug_controls.enabled_watchpoint_count,
             self.cpu.console_model,
             self.cpu.status,
+            self.cpu.startup_state.pc,
             self.bus.console_model,
             self.bus.status,
+            self.apu.console_model,
+            self.apu.status,
+            self.apu.powered,
+            self.apu.div_apu,
             self.ppu.console_model,
             self.ppu.status,
             self.dma.console_model,
             self.dma.status,
             self.timer.console_model,
             self.timer.status,
+            self.serial.console_model,
+            self.serial.status,
             self.boot.console_model,
             self.boot.startup_mode,
             self.boot.status,
+            self.boot.boot_rom_kind,
+            self.boot.boot_rom_mapped,
+            self.boot.boot_rom_asset_configured,
+            self.boot.startup_memory_policy,
+            self.interrupts.console_model,
+            self.interrupts.status,
+            self.joypad.console_model,
+            self.joypad.status,
             self.cartridge.state,
         )
     }
