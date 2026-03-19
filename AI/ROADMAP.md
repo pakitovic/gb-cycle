@@ -959,6 +959,60 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
 - LCD on/off and reactivation
 - OAM corruption bug
 
+#### Recommended subphase rollout for the current implementation pass
+
+1. `4.1` PPU scheduler spine and explicit state ownership.
+   Scope: grow the current register-only PPU baseline into one explicit dot/line/mode state machine with a stable internal source of truth for LCD state, raster position, visible-output state, and direct-boot hidden-state synthesis. If the single-file layout starts obscuring ownership, split `ppu.rs` into focused child modules before timing logic accumulates further.
+   Validation: unit tests for MMIO contract preservation, live bus-state derivation, startup-state import, and raster-state reset/snapshot behavior; integration tests that step the shared machine timeline and prove the PPU-visible state stays coherent with scheduler order.
+   Exit criteria: one explicit PPU temporal state model exists, later Mode `2` / `3` work does not need to invent parallel counters, and no scanline-level renderer shortcut is introduced.
+2. `4.2` Mode `2` scan and line candidate capture.
+   Scope: land live Mode `2` timing, current scanline bookkeeping, and the per-line selected-sprite list driven by `Y`, live `LCDC.2`, OAM order, and the hard `10`-sprite limit.
+   Validation: unit tests for sprite selection, `8x8` versus `8x16`, off-screen-`X` still counting, and OAM-order preservation; integration tests for OAM access restriction timing composed with existing DMA behavior.
+   Exit criteria: the current line's sprite candidates are stable explicit state and the Mode `2` schedule is available for later fetch, mixing, and OAM-corruption work.
+3. `4.3` BG-only Mode `3` fetcher, FIFO, and visible pixel output.
+   Scope: implement the background fetcher, BG FIFO, per-dot pixel production, scroll discard/application, and a deterministic visible-output path without yet layering sprites or window over a finished scanline image.
+   Validation: unit tests for fetch-step progression, FIFO fill/pop invariants, and scroll-driven startup behavior; integration tests with synthetic VRAM fixtures that assert visible pixel sequences and Mode `3`-driven VRAM blocking on the shared timeline.
+   Exit criteria: a visible BG-only frame emerges from the real pipeline, Mode `3` is no longer a placeholder duration, and the design keeps a clean seam for later window restarts and OBJ fetch stalls.
+4. `4.4` Window activation, fetcher restart, and internal window line counter.
+   Scope: add WY latch timing, WX trigger timing, BG FIFO clear plus fetcher restart on window start, the dedicated window line counter, and the first explicit `WX = 0` / `WX = 166` edge paths.
+   Validation: unit tests for WY latch semantics, WX trigger timing, and window-line-counter increment rules; integration tests for mid-scanline BG-to-window transition and status-bar style window usage without recomputing the whole line.
+   Exit criteria: BG and window share one pipeline, the window starts as a temporal event rather than a scanline compositor, and later OBJ mixing can consume one BG/window stream instead of two ad hoc renderers.
+5. `4.5` OBJ fetch, OBJ FIFO, priority, transparency, and BG/OBJ mixing.
+   Scope: add object-fetch stalls, explicit OBJ FIFO state, DMG OBJ/OBJ priority, OBJ transparency, BG-over-OBJ handling, and the key clipping/size cases needed for the base DMG sprite model.
+   Validation: unit tests for selection-versus-drawing priority, transparent OBJ color `0`, `8x16` row calculation, and partial top/bottom clipping; integration tests for Mode `3` lengthening, object-fetch cancellation boundaries, and window-plus-sprite interaction on the live pipeline.
+   Exit criteria: sprites participate inside Mode `3` rather than after it, BG/OBJ mixing is resolved per popped pixel, and sprite timing remains explicit instead of collapsing into a scalar line penalty.
+6. `4.6` STAT, `LY`, `LYC`, coincidence, and LCD IRQ closure.
+   Scope: implement mixed `STAT` readback, live `LY` / `LYC` coincidence, the internal edge-detected LCD STAT line, real VBlank/LCD IRQ timing, and coherence between the exposed mode bits and bus-facing access policy now that variable Mode `3` timing exists.
+   Validation: unit tests for mixed readback, immediate `LYC` reevaluation, rising-edge-only LCD STAT requests, and source blocking; integration tests at machine level for `IF` request timing, `STAT.mode`, and bus restriction coherence during mode transitions.
+   Exit criteria: MMIO reads, IRQ requests, and bus policy all observe the same current PPU temporal state, without treating `STAT` sources as unrelated level-triggered checks.
+7. `4.7` LCD disable/re-enable, raster restart, and blank-first-frame policy.
+   Scope: model `LCDC.7` power transitions, the explicit LCD-disabled state, one documented raster restart state, clean pipeline reset, and the visible blank-first-frame rule after re-enable.
+   Validation: unit tests for disabled-state readback, pipeline invalidation, restart-state initialization, and `LY` policy while LCD is off; integration tests for mid-scanline disable/enable, coexistence with DMA-side blocking, and the separation between internal draw restart and panel-visible blank output.
+   Exit criteria: the PPU truly turns off and back on in hardware-facing terms, the implementation does not resume stale FIFOs or stale fetch state, and re-enable does not inherit stale `STAT` edge/coincidence state.
+8. `4.8` DMG-family OAM corruption bug.
+   Scope: expose the live Mode `2` OAM row, route bus and CPU micro-events into one corruption trigger model, implement the deterministic corruption formulas, include the unusable-area path, and keep DMG-family gating explicit.
+   Validation: unit tests for row tracking, first-row immunity, read/write/combined corruption formulas, and DMG-versus-CGB family gating; integration tests with CPU-driven trigger sequences and direct bus accesses during live Mode `2`.
+   Exit criteria: OAM corruption depends on the live Mode `2` row plus routed events rather than opcode blacklists or generic OAM-blocking shortcuts.
+
+#### Phase 4 interleave policy with earlier open TODOs
+
+- Phase `3` leaves no open TODOs, so DMA is not a sequencing blocker for entering Phase `4`.
+- The Phase `2` CPU diagnostic TODO that previously turned unsupported opcodes into a silent non-retiring loop is now closed through one explicit unsupported-opcode diagnostic trap, so deeper Phase `4` ROM or trace debugging no longer fails silently on unknown opcodes.
+- The shared Phase `2` CPU subset that Phase `4.8` depends on is now landed ahead of OAM-corruption closure: `[hli]` / `[hld]`, fetch-time `PC` increments, observable `inc rr` / `dec rr`, and the common address-bearing event model reused by stack/control-flow and interrupt-service paths. The remaining boot-facing MMIO transfer shapes stay deferred because they do not block `4.8`.
+- The remaining Phase `2` HALT-edge verification and exact same-cycle `TIMA` / `TMA` reload-write arbitration stay deferred. They should not block early Phase `4` bring-up unless a concrete failing test proves a direct dependency.
+- If a Phase `4` subphase lands with a deliberately isolated gap, record the remainder in `Open TODOs` immediately instead of carrying it informally into the next graphics task.
+
+#### Subphase exit rule
+
+Every Phase `4` subphase should end with:
+
+- focused unit tests for the local state machine, pipeline step, or register contract that was introduced
+- integration tests when the behavior only becomes meaningful across `ppu`, `bus`, `dma`, `interrupts`, or `machine`
+- synthetic VRAM/OAM fixtures or retained trace/snapshot coverage when visible pixel order or timing changes
+- `cargo test -q` passing locally at minimum, and `make check` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
+- at least one explicit note about remaining risk when external ROM or oracle validation is still intentionally deferred
+- a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
+
 #### Sprite sequencing inside Phase 4
 
 1. Implement Mode 2 sprite selection.
@@ -1700,9 +1754,11 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 35. APU channel 3
 36. APU channel 4
 37. Mixing, output, DACs, power control, and audio edge cases
+
 38. Whole-machine snapshot contract and ownership
 39. Global serialization envelope, versioning, and metadata
 40. Core save/load restore path and validation
+
 41. Formal DMG hardening matrix, severity classes, and closure checklist
 42. Automated external ROM harness and minimum closure suites
 43. Differential comparison against SameBoy and Gambatte
@@ -1735,11 +1791,17 @@ Suggested entry style:
 
 ### Phase 2 — CPU and real temporal control
 
-- [CPU][BOOT] Full DMG boot ROM execution beyond the Phase `2.4` synthetic handoff baseline still needs MMIO-facing `LDH` / `(C)` transfers, `[hli]` / `[hld]` address-update transfers, and the remaining subtract plus non-CB accumulator-rotate families used by the production DMG firmware. Phase dependency: the full boot-facing group does not block general Phase `4` PPU bring-up, but the shared `[hli]` / `[hld]` subset is also consumed by the Phase `4` OAM-corruption event model.
-- [CPU][OPCODES] General CPU opcode coverage beyond the narrow Phase `2.4` synthetic boot target is still intentionally partial. Before commercial-ROM execution can be treated as a supported goal, the remaining MMIO-visible transfers, implicit-address transfer forms, wider ALU families (`SUB` / `SBC`, `AND`, `XOR`, `OR`, and the remaining `CP` variants), and the broader CB-prefixed rotate / shift / bit-manipulation matrix still need closure through the same T-cycle execution model. Phase dependency: this does not reopen Phase `2` as a prerequisite for entering Phase `4`, but the micro-event-relevant subset already feeds Phase `4` OAM-corruption closure, especially implicit address-update forms plus the common event model for stack/control-flow, interrupt service, and observable address-bearing `inc/dec` paths.
-- [CPU][DIAGNOSTICS] Unsupported decoded opcodes currently fall into a non-retiring execute loop instead of surfacing a first-class diagnostic. Replace that bring-up placeholder with an explicit unsupported-opcode reporting or trap policy that preserves scheduler visibility and avoids silent hangs during ROM and test investigation. Phase dependency: this is not a hardware-model blocker for Phase `4`, but it is strongly recommended before deeper Phase `4` ROM or trace-based validation so unsupported opcodes do not surface as silent hangs.
+- [CPU][BOOT] Full DMG boot ROM execution beyond the Phase `2.4` synthetic handoff baseline still needs MMIO-facing `LDH` / `(C)` transfers and the remaining subtract plus non-CB accumulator-rotate families used by the production DMG firmware. Phase dependency: the shared `[hli]` / `[hld]` subset that also fed Phase `4` OAM-corruption prep is already landed, so the remaining boot-facing group does not block `Phase 4`.
+- [CPU][OPCODES] General CPU opcode coverage beyond the narrow Phase `2.4` synthetic boot target is still intentionally partial. Before commercial-ROM execution can be treated as a supported goal, the remaining MMIO-visible transfers, wider ALU families (`SUB` / `SBC`, `AND`, `XOR`, `OR`, and the remaining `CP` variants), and the broader CB-prefixed rotate / shift / bit-manipulation matrix still need closure through the same T-cycle execution model. Phase dependency: this does not reopen Phase `2` as a prerequisite for entering Phase `4`, and the micro-event-relevant subset for `4.8` is now closed through `[hli]` / `[hld]`, fetch-time `PC` increments, stack/control-flow, interrupt service, and observable address-bearing `inc/dec` publication.
 - [CPU] Phase `2.6` still needs explicit verification and, if necessary, refinement for the `EI ; HALT` pending-IRQ edge case before the HALT-control path can be considered fully hardened. Phase dependency: no current downstream phase is blocked on this edge case, but Phase `9` hardening should not claim the HALT path as fully closed while it remains unverified.
 - [TIMER] Phase `2.7` still needs exact same-cycle `TIMA` / `TMA` write semantics on the reload T-cycle itself; the current baseline closes overflow delay, pre-reload writes, and CPU-visible IRQ ordering, but not yet the finest reload-cycle write arbitration cases. Phase dependency: no current downstream phase is blocked on this timer corner case, but later Phase `9` timer/oracle closure should not claim exact reload-cycle behavior until this arbitration is finished.
+
+#### Done:
+
+- [CPU][DIAGNOSTICS] Unsupported decoded opcodes now enter one explicit unsupported-opcode diagnostic trap immediately after the real fetch retires, keeping the failure visible in CPU snapshots and scheduler traces instead of falling into a silent non-retiring execute loop.
+- [CPU][OAM-PREP] The shared address-bearing event subset required by Phase `4.8` is already landed through `[hli]` / `[hld]`, fetch-time `PC` increments, stack/control-flow, interrupt service, and observable address-bearing `inc/dec` publication.
+- [CPU][PHASE2-SYNTHETIC-ROMS] The first full synthetic Phase `2` asset family now ships: reproducible `NoMBC` ROMs and golden traces for fetch/immediate order, control-flow plus stack plus CB timing, `EI` delay plus priority, `HALT` / `STOP` / `HALT` bug chronology, and timer `IF` visibility plus interrupt service. `crates/gb-core/tests/phase2.rs` is now the source of truth for those builders, traces, and expected end states.
+- [TEST-RUNNER][EXTERNAL-STIMULI] `gb-test-runner` metadata now supports deterministic external stimuli, and the shipped `phase2_halt_stop_and_halt_bug` contract uses one explicit joypad `A` press at `t_cycle = 412` so the `STOP` wake is part of the typed suite definition instead of a hidden local-harness assumption.
 
 ### Phase 3 — Base DMA
 
@@ -1747,7 +1809,17 @@ Suggested entry style:
 
 ### Phase 4 — Base PPU and visible pipeline
 
-- None currently.
+- [PPU][SKIPBOOT-ORACLE] The Phase `4.1` `SkipBoot` startup-mode latch is still validated only against repo-local continuity tests and the documented post-boot snapshot contract. Before Phase `9` hardening treats the direct-boot PPU handoff as externally validated, this path still needs comparison against a trusted oracle or hardware-derived capture proving that the first LCD-visible dots after `SkipBoot` remain coherent with the published `LCDC`, `STAT`, and `LY` state rather than with an overfit local latch assumption. Phase dependency: this does not block Phase `5`, but later DMG closure should not claim externally validated direct-boot PPU continuity until this check lands.
+- [PPU][WINDOW-GLITCH-ORACLE] The current Phase `4.4` window baseline includes explicit tested paths for `WX = 0` and `WX = 166`, but they remain provisional baseline behavior rather than oracle-backed glitch closure. The project still needs stricter validation and, if necessary, refinement for `WX` / `WY` / `LCDC.5` mid-frame glitch behavior, including the DMG-specific `WX = 0 && (SCX & 7) > 0` path and the special `WX = 166` continuation behavior. Phase dependency: this does not block entering Phase `5`, but Phase `9` hardening should not mark detailed DMG window-glitch behavior as closed until this oracle pass is finished.
+- [PPU][LCDC2-8X16-ARTIFACTS] The Phase `4.5` sprite baseline already treats `LCDC.2` as live state and covers the core `8x16` row-selection rules, but the finer DMG-visible artifacts and leaks caused by mid-frame `LCDC.2` size changes, especially around the lower half of `8x16` sprites, remain only documented follow-up work. Before Phase `9` hardening claims detailed sprite-size behavior as externally validated, this path still needs targeted ROM or oracle coverage and, if needed, refinement that keeps those artifacts explicit instead of leaving them as accidental baseline behavior. Phase dependency: this does not block Phase `5`, but later DMG closure should not claim fully hardened `LCDC.2` / `8x16` edge behavior until this validation lands.
+- [PPU][OAM-CORRUPTION-ORACLE] Phase `4.8` now has deterministic unit/integration coverage, a shipped synthetic ROM/trace family for direct Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]` / `[hld]`, stack plus interrupt-service paths, DMG-family model variants, and the CGB negative path, but it still lacks comparison against an independent trusted oracle or hardware-derived capture before the bug can be treated as externally validated across instruction families and hardware revisions. Phase dependency: this does not block moving into later PPU or APU work, but Phase `9` hardening should not mark OAM corruption as fully closed until that independent-validation pass is done.
+
+#### Done:
+
+- [PPU][BASELINE] The implementation side of Phase `4.1` through `4.8` is landed: scheduler spine, Mode `2`, BG/window/OBJ Mode `3`, `STAT/LY/LYC/IRQ`, LCD power transitions, and the routed DMG-family OAM-corruption model. The remaining Phase `4` work is validation-grade closure rather than another missing baseline implementation block.
+- [PPU][OAM-CORRUPTION-CONTRACT] The external-validation skeleton for OAM corruption is now explicit in `gb-test-runner`, including reserved Phase `4` ROM/trace targets for direct Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr` / `dec rr`, `[hli]` / `[hld]`, stack plus interrupt-service paths, DMG-family model coverage, and one CGB negative case.
+- [PPU][OAM-CORRUPTION-DIRECT-ROM] One first locally generated `NoMBC` ROM plus golden trace now ships for the direct Mode `2` OAM-write path, proving the reserved Phase `4` names can be backed by real executable assets and locking the baseline write-corruption timing to one reproducible machine trace.
+- [PPU][OAM-CORRUPTION-SYNTHETIC-ROMS] The full first synthetic Phase `4` asset family now ships: dedicated `NoMBC` ROMs and golden traces for direct Mode `2` OAM access, `FEA0-FEFF` reads, DMG-family and CGB `inc rr` model coverage, one `[hli]` / `[hld]` combined-event ROM, and one stack-plus-interrupt-service ROM. The checked-in builders in `crates/gb-core/tests/phase4.rs` are now the reproducible source of truth for those assets.
 
 ### Phase 5 — Input and simple peripherals
 

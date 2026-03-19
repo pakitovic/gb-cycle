@@ -31,7 +31,10 @@ pub use cartridge::{
     CartridgeSlot, CartridgeSlotState, CartridgeSnapshot, CgbFlag, RamSizeInfo, RomSizeInfo,
     SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
 };
-pub use cpu::{CpuCore, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus};
+pub use cpu::{
+    CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuCore, CpuDiagnosticTrap,
+    CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
+};
 pub use debugger::{
     Breakpoint, BreakpointCondition, BreakpointId, BreakpointProbe, CartridgeWatchTarget,
     DebugControl, DebugControlSnapshot, DebugSnapshot, MachineSnapshot, Watchpoint,
@@ -53,8 +56,9 @@ pub use model::{
     HeuristicPolicy, MachineConfig, OverridePolicy, StartupMode, ValidationPolicy,
 };
 pub use ppu::{
-    DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBusState, PpuSnapshot, PpuStartupState,
-    PpuStatus,
+    DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBgFetcherSource, PpuBgFetcherStage,
+    PpuBusState, PpuLcdState, PpuObjFetcherStage, PpuSelectedSprite, PpuSnapshot, PpuStartupState,
+    PpuStatus, PpuVisibleOutputState,
 };
 pub use scheduler::{
     BusOwner, CycleContext, DerivedEdge, ExternalEvent, GlobalScheduler, InterruptSource,

@@ -22,6 +22,29 @@ pub enum CpuStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CpuAddressEventKind {
+    Read,
+    Write,
+    IncDec,
+    ReadWithIncDec,
+    WriteWithIncDec,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CpuAddressUpdateDirection {
+    Increment,
+    Decrement,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CpuAddressEvent {
+    pub kind: CpuAddressEventKind,
+    pub access_address: Option<u16>,
+    pub idu_address: Option<u16>,
+    pub update_direction: Option<CpuAddressUpdateDirection>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CpuStartupState {
     pub a: u8,
     pub f: u8,
@@ -64,8 +87,16 @@ pub enum CpuExecutionState {
         step: u8,
         t_cycle: u8,
     },
+    DiagnosticTrap {
+        trap: CpuDiagnosticTrap,
+    },
     Halted,
     Stopped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CpuDiagnosticTrap {
+    UnsupportedOpcode { opcode: u8, address: u16 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +117,7 @@ pub struct CpuCore {
     operand8_latch: u8,
     operand16_latch: u16,
     last_bus_activity: Option<CpuTraceBusActivity>,
+    last_address_event: Option<CpuAddressEvent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,26 +215,64 @@ enum CbInstructionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum CpuInstructionKind {
-    LoadRegisterImmediate { target: Register8 },
-    LoadRegisterPairImmediate { target: Register16 },
-    LoadRegisterFromHl { target: Register8 },
-    StoreRegisterToHl { source: Register8 },
+    LoadRegisterImmediate {
+        target: Register8,
+    },
+    LoadRegisterPairImmediate {
+        target: Register16,
+    },
+    LoadRegisterFromHl {
+        target: Register8,
+    },
+    StoreRegisterToHl {
+        source: Register8,
+    },
     StoreImmediateToHl,
-    LoadAFromAddress { source: MemoryAddressSource },
-    StoreAToAddress { destination: MemoryAddressSource },
+    LoadAFromHlWithUpdate {
+        direction: CpuAddressUpdateDirection,
+    },
+    StoreAToHlWithUpdate {
+        direction: CpuAddressUpdateDirection,
+    },
+    LoadAFromAddress {
+        source: MemoryAddressSource,
+    },
+    StoreAToAddress {
+        destination: MemoryAddressSource,
+    },
+    IncrementRegisterPair {
+        target: Register16,
+    },
+    DecrementRegisterPair {
+        target: Register16,
+    },
     IncrementHlMemory,
     DecrementHlMemory,
     AddAImmediate,
     CompareAImmediate,
-    RelativeJump { condition: Option<ConditionCode> },
-    AbsoluteJump { condition: Option<ConditionCode> },
-    Call { condition: Option<ConditionCode> },
-    Return { condition: Option<ConditionCode> },
+    RelativeJump {
+        condition: Option<ConditionCode>,
+    },
+    AbsoluteJump {
+        condition: Option<ConditionCode>,
+    },
+    Call {
+        condition: Option<ConditionCode>,
+    },
+    Return {
+        condition: Option<ConditionCode>,
+    },
     ReturnFromInterrupt,
     Stop,
-    Restart { vector: u16 },
-    PushRegisterPair { source: StackRegister16 },
-    PopRegisterPair { target: StackRegister16 },
+    Restart {
+        vector: u16,
+    },
+    PushRegisterPair {
+        source: StackRegister16,
+    },
+    PopRegisterPair {
+        target: StackRegister16,
+    },
     CbPrefixed,
 }
 
@@ -234,6 +304,7 @@ impl CpuCore {
             operand8_latch: 0,
             operand16_latch: 0,
             last_bus_activity: None,
+            last_address_event: None,
         }
     }
 
@@ -269,6 +340,10 @@ impl CpuCore {
         self.delayed_ime_enable
     }
 
+    pub fn last_address_event(&self) -> Option<CpuAddressEvent> {
+        self.last_address_event
+    }
+
     pub fn apply_startup_state(&mut self, startup_state: CpuStartupState) {
         self.startup_state = startup_state;
         self.registers = CpuRegisters::from_startup_state(startup_state);
@@ -284,6 +359,7 @@ impl CpuCore {
         self.operand8_latch = 0;
         self.operand16_latch = 0;
         self.last_bus_activity = None;
+        self.last_address_event = None;
     }
 
     pub(crate) fn tick_t_cycle<F>(&mut self, mut bus_operation: F)
@@ -291,6 +367,7 @@ impl CpuCore {
         F: FnMut(CpuBusOperation) -> Option<u8>,
     {
         self.last_bus_activity = None;
+        self.last_address_event = None;
 
         match self.execution_state {
             CpuExecutionState::FetchOpcode { t_cycle } => {
@@ -335,7 +412,9 @@ impl CpuCore {
 
                 self.complete_interrupt_service_machine_cycle(source, step, &mut bus_operation);
             }
-            CpuExecutionState::Halted | CpuExecutionState::Stopped => {}
+            CpuExecutionState::DiagnosticTrap { .. }
+            | CpuExecutionState::Halted
+            | CpuExecutionState::Stopped => {}
         }
     }
 
@@ -344,6 +423,13 @@ impl CpuCore {
         interrupts: &mut InterruptController,
         joypad: &mut Joypad,
     ) {
+        if matches!(
+            self.execution_state,
+            CpuExecutionState::DiagnosticTrap { .. }
+        ) {
+            return;
+        }
+
         if matches!(self.execution_state, CpuExecutionState::Stopped) {
             if joypad.consume_stop_wake_event() {
                 self.execution_state = CpuExecutionState::fetch_opcode();
@@ -402,7 +488,7 @@ impl CpuCore {
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
         format!(
-            "t_cycle={} phase={} console_model={:?} status={:?} pc={:#06X} execution_state={:?} current_opcode={:?} ime={} delayed_ime_enable={} last_bus_activity={}",
+            "t_cycle={} phase={} console_model={:?} status={:?} pc={:#06X} execution_state={:?} current_opcode={:?} ime={} delayed_ime_enable={} last_bus_activity={} last_address_event={}",
             context.t_cycle().get(),
             context.phase(),
             self.console_model,
@@ -413,6 +499,7 @@ impl CpuCore {
             self.ime,
             self.delayed_ime_enable,
             self.last_bus_activity_trace_value(),
+            self.last_address_event_trace_value(),
         )
     }
 
@@ -426,14 +513,7 @@ impl CpuCore {
         match self.decode_fetched_opcode(opcode) {
             DecodedOpcode::Complete => self.finish_instruction(),
             DecodedOpcode::Execute(kind) => self.begin_instruction(opcode, kind),
-            DecodedOpcode::Unsupported => {
-                self.instruction_kind = None;
-                self.execution_state = CpuExecutionState::Execute {
-                    opcode,
-                    step: 0,
-                    t_cycle: 0,
-                };
-            }
+            DecodedOpcode::Unsupported => self.enter_unsupported_opcode_trap(opcode),
         }
     }
 
@@ -498,6 +578,21 @@ impl CpuCore {
                 }
                 _ => self.stall_instruction(opcode, step),
             },
+            CpuInstructionKind::LoadAFromHlWithUpdate { direction } => match step {
+                0 => {
+                    let value = self.read_hl_with_update(direction, bus_operation);
+                    self.registers.a = value;
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
+            CpuInstructionKind::StoreAToHlWithUpdate { direction } => match step {
+                0 => {
+                    self.write_hl_with_update(self.registers.a, direction, bus_operation);
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
             CpuInstructionKind::LoadAFromAddress { source } => match (source, step) {
                 (MemoryAddressSource::BC | MemoryAddressSource::DE, 0) => {
                     let value = self.read_byte(self.resolve_memory_address(source), bus_operation);
@@ -540,6 +635,26 @@ impl CpuCore {
                 }
                 (MemoryAddressSource::Immediate16, 2) => {
                     self.write_byte(self.operand16_latch, self.registers.a, bus_operation);
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
+            CpuInstructionKind::IncrementRegisterPair { target } => match step {
+                0 => {
+                    self.increment_or_decrement_register_pair(
+                        target,
+                        CpuAddressUpdateDirection::Increment,
+                    );
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
+            CpuInstructionKind::DecrementRegisterPair { target } => match step {
+                0 => {
+                    self.increment_or_decrement_register_pair(
+                        target,
+                        CpuAddressUpdateDirection::Decrement,
+                    );
                     self.finish_instruction();
                 }
                 _ => self.stall_instruction(opcode, step),
@@ -647,14 +762,12 @@ impl CpuCore {
                 }
                 3 => {
                     let [low, high] = self.registers.pc.to_le_bytes();
-                    self.registers.sp = self.registers.sp.wrapping_sub(1);
-                    self.write_byte(self.registers.sp, high, bus_operation);
+                    self.write_byte_with_decremented_sp(high, bus_operation);
                     self.operand8_latch = low;
                     self.advance_instruction(opcode, 4);
                 }
                 4 => {
-                    self.registers.sp = self.registers.sp.wrapping_sub(1);
-                    self.write_byte(self.registers.sp, self.operand8_latch, bus_operation);
+                    self.write_byte_with_decremented_sp(self.operand8_latch, bus_operation);
                     self.registers.pc = self.operand16_latch;
                     self.finish_instruction();
                 }
@@ -669,29 +782,25 @@ impl CpuCore {
                             self.finish_instruction();
                         }
                     } else {
-                        let low = self.read_byte(self.registers.sp, bus_operation);
-                        self.registers.sp = self.registers.sp.wrapping_add(1);
+                        let low = self.read_byte_and_increment_sp(bus_operation);
                         self.operand16_latch = u16::from(low);
                         self.advance_instruction(opcode, 1);
                     }
                 }
                 1 => {
                     if condition.is_some() {
-                        let low = self.read_byte(self.registers.sp, bus_operation);
-                        self.registers.sp = self.registers.sp.wrapping_add(1);
+                        let low = self.read_byte_and_increment_sp(bus_operation);
                         self.operand16_latch = u16::from(low);
                         self.advance_instruction(opcode, 2);
                     } else {
-                        let high = self.read_byte(self.registers.sp, bus_operation);
-                        self.registers.sp = self.registers.sp.wrapping_add(1);
+                        let high = self.read_byte_and_increment_sp(bus_operation);
                         self.operand16_latch |= u16::from(high) << 8;
                         self.advance_instruction(opcode, 2);
                     }
                 }
                 2 => {
                     if condition.is_some() {
-                        let high = self.read_byte(self.registers.sp, bus_operation);
-                        self.registers.sp = self.registers.sp.wrapping_add(1);
+                        let high = self.read_byte_and_increment_sp(bus_operation);
                         self.operand16_latch |= u16::from(high) << 8;
                         self.advance_instruction(opcode, 3);
                     } else {
@@ -707,14 +816,12 @@ impl CpuCore {
             },
             CpuInstructionKind::ReturnFromInterrupt => match step {
                 0 => {
-                    let low = self.read_byte(self.registers.sp, bus_operation);
-                    self.registers.sp = self.registers.sp.wrapping_add(1);
+                    let low = self.read_byte_and_increment_sp(bus_operation);
                     self.operand16_latch = u16::from(low);
                     self.advance_instruction(opcode, 1);
                 }
                 1 => {
-                    let high = self.read_byte(self.registers.sp, bus_operation);
-                    self.registers.sp = self.registers.sp.wrapping_add(1);
+                    let high = self.read_byte_and_increment_sp(bus_operation);
                     self.operand16_latch |= u16::from(high) << 8;
                     self.advance_instruction(opcode, 2);
                 }
@@ -739,14 +846,12 @@ impl CpuCore {
                 }
                 1 => {
                     let [low, high] = self.registers.pc.to_le_bytes();
-                    self.registers.sp = self.registers.sp.wrapping_sub(1);
-                    self.write_byte(self.registers.sp, high, bus_operation);
+                    self.write_byte_with_decremented_sp(high, bus_operation);
                     self.operand8_latch = low;
                     self.advance_instruction(opcode, 2);
                 }
                 2 => {
-                    self.registers.sp = self.registers.sp.wrapping_sub(1);
-                    self.write_byte(self.registers.sp, self.operand8_latch, bus_operation);
+                    self.write_byte_with_decremented_sp(self.operand8_latch, bus_operation);
                     self.registers.pc = vector;
                     self.finish_instruction();
                 }
@@ -758,28 +863,24 @@ impl CpuCore {
                 }
                 1 => {
                     let [low, high] = self.read_stack_register16(source).to_le_bytes();
-                    self.registers.sp = self.registers.sp.wrapping_sub(1);
-                    self.write_byte(self.registers.sp, high, bus_operation);
+                    self.write_byte_with_decremented_sp(high, bus_operation);
                     self.operand8_latch = low;
                     self.advance_instruction(opcode, 2);
                 }
                 2 => {
-                    self.registers.sp = self.registers.sp.wrapping_sub(1);
-                    self.write_byte(self.registers.sp, self.operand8_latch, bus_operation);
+                    self.write_byte_with_decremented_sp(self.operand8_latch, bus_operation);
                     self.finish_instruction();
                 }
                 _ => self.stall_instruction(opcode, step),
             },
             CpuInstructionKind::PopRegisterPair { target } => match step {
                 0 => {
-                    let low = self.read_byte(self.registers.sp, bus_operation);
-                    self.registers.sp = self.registers.sp.wrapping_add(1);
+                    let low = self.read_byte_and_increment_sp(bus_operation);
                     self.operand16_latch = u16::from(low);
                     self.advance_instruction(opcode, 1);
                 }
                 1 => {
-                    let high = self.read_byte(self.registers.sp, bus_operation);
-                    self.registers.sp = self.registers.sp.wrapping_add(1);
+                    let high = self.read_byte_and_increment_sp(bus_operation);
                     let value = self.operand16_latch | (u16::from(high) << 8);
                     self.write_stack_register16(target, value);
                     self.finish_instruction();
@@ -951,6 +1052,12 @@ impl CpuCore {
             });
         }
 
+        if matches!(opcode, 0x22 | 0x32) {
+            return DecodedOpcode::Execute(CpuInstructionKind::StoreAToHlWithUpdate {
+                direction: decode_hl_update_direction(opcode),
+            });
+        }
+
         if matches!(opcode, 0x0A | 0x1A | 0xFA) {
             return DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
                 source: match opcode {
@@ -959,6 +1066,24 @@ impl CpuCore {
                     0xFA => MemoryAddressSource::Immediate16,
                     _ => unreachable!("opcode filter already constrained"),
                 },
+            });
+        }
+
+        if matches!(opcode, 0x2A | 0x3A) {
+            return DecodedOpcode::Execute(CpuInstructionKind::LoadAFromHlWithUpdate {
+                direction: decode_hl_update_direction(opcode),
+            });
+        }
+
+        if opcode & 0xCF == 0x03 {
+            return DecodedOpcode::Execute(CpuInstructionKind::IncrementRegisterPair {
+                target: decode_register16((opcode >> 4) & 0x03),
+            });
+        }
+
+        if opcode & 0xCF == 0x0B {
+            return DecodedOpcode::Execute(CpuInstructionKind::DecrementRegisterPair {
+                target: decode_register16((opcode >> 4) & 0x03),
             });
         }
 
@@ -1142,6 +1267,20 @@ impl CpuCore {
         self.execution_state = CpuExecutionState::fetch_opcode();
     }
 
+    fn enter_unsupported_opcode_trap(&mut self, opcode: u8) {
+        let address = self
+            .last_address_event
+            .and_then(|event| event.access_address)
+            .unwrap_or_else(|| self.registers.pc.wrapping_sub(1));
+        self.instruction_kind = None;
+        self.cb_instruction_kind = None;
+        self.operand8_latch = 0;
+        self.operand16_latch = 0;
+        self.execution_state = CpuExecutionState::DiagnosticTrap {
+            trap: CpuDiagnosticTrap::UnsupportedOpcode { opcode, address },
+        };
+    }
+
     fn last_bus_activity_trace_value(&self) -> String {
         match self.last_bus_activity {
             Some(CpuTraceBusActivity {
@@ -1153,12 +1292,23 @@ impl CpuCore {
         }
     }
 
+    fn last_address_event_trace_value(&self) -> String {
+        match self.last_address_event {
+            Some(event) => event.trace_value(),
+            None => "none".to_string(),
+        }
+    }
+
     fn record_bus_activity(&mut self, kind: CpuTraceBusAccessKind, address: u16, value: u8) {
         self.last_bus_activity = Some(CpuTraceBusActivity {
             kind,
             address,
             value,
         });
+    }
+
+    fn record_address_event(&mut self, event: CpuAddressEvent) {
+        self.last_address_event = Some(event);
     }
 
     fn read_opcode_u8<F>(&mut self, bus_operation: &mut F) -> u8
@@ -1184,8 +1334,14 @@ impl CpuCore {
 
         if self.halt_bug_pending {
             self.halt_bug_pending = false;
+            self.record_address_event(CpuAddressEvent::read(address));
         } else {
             self.registers.pc = self.registers.pc.wrapping_add(1);
+            self.record_address_event(CpuAddressEvent::read_with_incdec(
+                address,
+                self.registers.pc,
+                CpuAddressUpdateDirection::Increment,
+            ));
         }
         value
     }
@@ -1194,7 +1350,10 @@ impl CpuCore {
     where
         F: FnMut(CpuBusOperation) -> Option<u8>,
     {
-        self.read_byte_with_kind(address, bus_operation, CpuTraceBusAccessKind::DataRead)
+        let value =
+            self.read_byte_with_kind(address, bus_operation, CpuTraceBusAccessKind::DataRead);
+        self.record_address_event(CpuAddressEvent::read(address));
+        value
     }
 
     fn read_byte_with_kind<F>(
@@ -1218,6 +1377,7 @@ impl CpuCore {
     {
         let _ = bus_operation(CpuBusOperation::Write { address, value });
         self.record_bus_activity(CpuTraceBusAccessKind::DataWrite, address, value);
+        self.record_address_event(CpuAddressEvent::write(address));
     }
 
     fn resolve_memory_address(&self, source: MemoryAddressSource) -> u16 {
@@ -1226,6 +1386,96 @@ impl CpuCore {
             MemoryAddressSource::DE => self.de(),
             MemoryAddressSource::Immediate16 => self.operand16_latch,
         }
+    }
+
+    fn read_hl_with_update<F>(
+        &mut self,
+        direction: CpuAddressUpdateDirection,
+        bus_operation: &mut F,
+    ) -> u8
+    where
+        F: FnMut(CpuBusOperation) -> Option<u8>,
+    {
+        let address = self.hl();
+        let value = self.read_byte(address, bus_operation);
+        let updated = self.increment_or_decrement_register16(Register16::HL, direction);
+        self.record_address_event(CpuAddressEvent::read_with_incdec(
+            address, updated, direction,
+        ));
+        value
+    }
+
+    fn write_hl_with_update<F>(
+        &mut self,
+        value: u8,
+        direction: CpuAddressUpdateDirection,
+        bus_operation: &mut F,
+    ) where
+        F: FnMut(CpuBusOperation) -> Option<u8>,
+    {
+        let address = self.hl();
+        self.write_byte(address, value, bus_operation);
+        let updated = self.increment_or_decrement_register16(Register16::HL, direction);
+        self.record_address_event(CpuAddressEvent::write_with_incdec(
+            address, updated, direction,
+        ));
+    }
+
+    fn read_byte_and_increment_sp<F>(&mut self, bus_operation: &mut F) -> u8
+    where
+        F: FnMut(CpuBusOperation) -> Option<u8>,
+    {
+        let address = self.registers.sp;
+        let value = self.read_byte(address, bus_operation);
+        self.registers.sp = self.registers.sp.wrapping_add(1);
+        self.record_address_event(CpuAddressEvent::read_with_incdec(
+            address,
+            self.registers.sp,
+            CpuAddressUpdateDirection::Increment,
+        ));
+        value
+    }
+
+    fn write_byte_with_decremented_sp<F>(&mut self, value: u8, bus_operation: &mut F)
+    where
+        F: FnMut(CpuBusOperation) -> Option<u8>,
+    {
+        self.registers.sp = self.registers.sp.wrapping_sub(1);
+        let address = self.registers.sp;
+        self.write_byte(address, value, bus_operation);
+        self.record_address_event(CpuAddressEvent::write_with_incdec(
+            address,
+            address,
+            CpuAddressUpdateDirection::Decrement,
+        ));
+    }
+
+    fn increment_or_decrement_register_pair(
+        &mut self,
+        target: Register16,
+        direction: CpuAddressUpdateDirection,
+    ) {
+        let updated = self.increment_or_decrement_register16(target, direction);
+        self.record_address_event(CpuAddressEvent::incdec(updated, direction));
+    }
+
+    fn increment_or_decrement_register16(
+        &mut self,
+        target: Register16,
+        direction: CpuAddressUpdateDirection,
+    ) -> u16 {
+        let current = match target {
+            Register16::BC => self.bc(),
+            Register16::DE => self.de(),
+            Register16::HL => self.hl(),
+            Register16::SP => self.registers.sp,
+        };
+        let updated = match direction {
+            CpuAddressUpdateDirection::Increment => current.wrapping_add(1),
+            CpuAddressUpdateDirection::Decrement => current.wrapping_sub(1),
+        };
+        self.write_register16(target, updated);
+        updated
     }
 
     fn complete_interrupt_service_machine_cycle<F>(
@@ -1240,14 +1490,12 @@ impl CpuCore {
             0 | 1 => self.advance_interrupt_service(source, step + 1),
             2 => {
                 let [low, high] = self.registers.pc.to_le_bytes();
-                self.registers.sp = self.registers.sp.wrapping_sub(1);
-                self.write_byte(self.registers.sp, high, bus_operation);
+                self.write_byte_with_decremented_sp(high, bus_operation);
                 self.operand8_latch = low;
                 self.advance_interrupt_service(source, 3);
             }
             3 => {
-                self.registers.sp = self.registers.sp.wrapping_sub(1);
-                self.write_byte(self.registers.sp, self.operand8_latch, bus_operation);
+                self.write_byte_with_decremented_sp(self.operand8_latch, bus_operation);
                 self.advance_interrupt_service(source, 4);
             }
             4 => {
@@ -1511,6 +1759,117 @@ impl CpuCore {
     }
 }
 
+impl CpuAddressEvent {
+    const fn read(address: u16) -> Self {
+        Self {
+            kind: CpuAddressEventKind::Read,
+            access_address: Some(address),
+            idu_address: None,
+            update_direction: None,
+        }
+    }
+
+    const fn write(address: u16) -> Self {
+        Self {
+            kind: CpuAddressEventKind::Write,
+            access_address: Some(address),
+            idu_address: None,
+            update_direction: None,
+        }
+    }
+
+    const fn incdec(address: u16, direction: CpuAddressUpdateDirection) -> Self {
+        Self {
+            kind: CpuAddressEventKind::IncDec,
+            access_address: None,
+            idu_address: Some(address),
+            update_direction: Some(direction),
+        }
+    }
+
+    const fn read_with_incdec(
+        access_address: u16,
+        idu_address: u16,
+        direction: CpuAddressUpdateDirection,
+    ) -> Self {
+        Self {
+            kind: CpuAddressEventKind::ReadWithIncDec,
+            access_address: Some(access_address),
+            idu_address: Some(idu_address),
+            update_direction: Some(direction),
+        }
+    }
+
+    const fn write_with_incdec(
+        access_address: u16,
+        idu_address: u16,
+        direction: CpuAddressUpdateDirection,
+    ) -> Self {
+        Self {
+            kind: CpuAddressEventKind::WriteWithIncDec,
+            access_address: Some(access_address),
+            idu_address: Some(idu_address),
+            update_direction: Some(direction),
+        }
+    }
+
+    fn trace_value(self) -> String {
+        match self.kind {
+            CpuAddressEventKind::Read => {
+                let address = self
+                    .access_address
+                    .expect("read event must carry an access address");
+                format!("read@{address:#06X}")
+            }
+            CpuAddressEventKind::Write => {
+                let address = self
+                    .access_address
+                    .expect("write event must carry an access address");
+                format!("write@{address:#06X}")
+            }
+            CpuAddressEventKind::IncDec => {
+                let address = self
+                    .idu_address
+                    .expect("inc/dec event must carry an IDU address");
+                format!(
+                    "{}@{address:#06X}",
+                    self.update_direction
+                        .expect("inc/dec event must carry a direction")
+                        .trace_label()
+                )
+            }
+            CpuAddressEventKind::ReadWithIncDec | CpuAddressEventKind::WriteWithIncDec => {
+                let access_address = self
+                    .access_address
+                    .expect("combined event must carry an access address");
+                let idu_address = self
+                    .idu_address
+                    .expect("combined event must carry an IDU address");
+                let access_label = match self.kind {
+                    CpuAddressEventKind::ReadWithIncDec => "read",
+                    CpuAddressEventKind::WriteWithIncDec => "write",
+                    _ => unreachable!("combined event match already constrained"),
+                };
+                format!(
+                    "{access_label}+{}@{access_address:#06X}->{idu_address:#06X}",
+                    self.update_direction
+                        .expect("combined event must carry a direction")
+                        .trace_label()
+                )
+            }
+        }
+    }
+}
+
+impl CpuAddressUpdateDirection {
+    const fn trace_label(self) -> &'static str {
+        match self {
+            Self::Increment => "inc",
+            Self::Decrement => "dec",
+        }
+    }
+}
+
 impl CpuStartupState {
     pub const fn power_on_reset() -> Self {
         Self {
@@ -1639,6 +1998,14 @@ fn decode_return_condition(opcode: u8) -> Option<ConditionCode> {
     }
 }
 
+fn decode_hl_update_direction(opcode: u8) -> CpuAddressUpdateDirection {
+    match opcode {
+        0x22 | 0x2A => CpuAddressUpdateDirection::Increment,
+        0x32 | 0x3A => CpuAddressUpdateDirection::Decrement,
+        _ => unreachable!("opcode must be an [hli]/[hld] transfer form"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1754,6 +2121,169 @@ mod tests {
         );
         assert_eq!(cpu.registers().pc, 0x0101);
         assert_eq!(cpu.current_opcode(), Some(0xCB));
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: Some(0x0100),
+                idu_address: Some(0x0101),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })
+        );
+    }
+
+    #[test]
+    fn unsupported_opcode_enters_an_explicit_diagnostic_trap() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut cartridge = build_test_cartridge(&[0xD3]);
+
+        cpu.apply_startup_state(CpuStartupState {
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+
+        assert_eq!(cpu.registers().pc, 0x0101);
+        assert_eq!(cpu.current_opcode(), Some(0xD3));
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::DiagnosticTrap {
+                trap: CpuDiagnosticTrap::UnsupportedOpcode {
+                    opcode: 0xD3,
+                    address: 0x0100,
+                },
+            }
+        );
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: Some(0x0100),
+                idu_address: Some(0x0101),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })
+        );
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 8);
+
+        assert_eq!(cpu.registers().pc, 0x0101);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::DiagnosticTrap {
+                trap: CpuDiagnosticTrap::UnsupportedOpcode {
+                    opcode: 0xD3,
+                    address: 0x0100,
+                },
+            }
+        );
+        assert_eq!(cpu.last_address_event(), None);
+    }
+
+    #[test]
+    fn hli_and_hld_transfer_forms_publish_combined_access_and_idu_events() {
+        let mut load_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut load_bus = Bus::new(ConsoleModel::Dmg);
+        let mut load_cartridge = build_test_cartridge(&[0x2A]);
+
+        load_cpu.apply_startup_state(CpuStartupState {
+            h: 0xC0,
+            l: 0x00,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+        load_bus.write(0xC000, 0x77);
+
+        tick_cpu_n(&mut load_cpu, &mut load_bus, &mut load_cartridge, 8);
+
+        assert_eq!(load_cpu.registers().a, 0x77);
+        assert_eq!(load_cpu.hl(), 0xC001);
+        assert_eq!(
+            load_cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: Some(0xC000),
+                idu_address: Some(0xC001),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })
+        );
+
+        let mut store_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut store_bus = Bus::new(ConsoleModel::Dmg);
+        let mut store_cartridge = build_test_cartridge(&[0x32]);
+
+        store_cpu.apply_startup_state(CpuStartupState {
+            a: 0x5A,
+            h: 0xC0,
+            l: 0x01,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut store_cpu, &mut store_bus, &mut store_cartridge, 8);
+
+        assert_eq!(store_bus.read(0xC001), 0x5A);
+        assert_eq!(store_cpu.hl(), 0xC000);
+        assert_eq!(
+            store_cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: Some(0xC001),
+                idu_address: Some(0xC000),
+                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+            })
+        );
+    }
+
+    #[test]
+    fn inc_and_dec_register_pairs_publish_pure_idu_events() {
+        let mut inc_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut inc_bus = Bus::new(ConsoleModel::Dmg);
+        let mut inc_cartridge = build_test_cartridge(&[0x23]);
+
+        inc_cpu.apply_startup_state(CpuStartupState {
+            h: 0xFE,
+            l: 0xFF,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut inc_cpu, &mut inc_bus, &mut inc_cartridge, 8);
+
+        assert_eq!(inc_cpu.hl(), 0xFF00);
+        assert_eq!(
+            inc_cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::IncDec,
+                access_address: None,
+                idu_address: Some(0xFF00),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })
+        );
+
+        let mut dec_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut dec_bus = Bus::new(ConsoleModel::Dmg);
+        let mut dec_cartridge = build_test_cartridge(&[0x3B]);
+
+        dec_cpu.apply_startup_state(CpuStartupState {
+            sp: 0xFE00,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut dec_cpu, &mut dec_bus, &mut dec_cartridge, 8);
+
+        assert_eq!(dec_cpu.registers().sp, 0xFDFF);
+        assert_eq!(
+            dec_cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::IncDec,
+                access_address: None,
+                idu_address: Some(0xFDFF),
+                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+            })
+        );
     }
 
     #[test]
@@ -2027,6 +2557,15 @@ mod tests {
                 t_cycle: 0,
             }
         );
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: Some(0xFFFD),
+                idu_address: Some(0xFFFD),
+                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+            })
+        );
 
         tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
 
@@ -2037,6 +2576,15 @@ mod tests {
         assert_eq!(
             cpu.execution_state(),
             CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: Some(0xFFFC),
+                idu_address: Some(0xFFFC),
+                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+            })
         );
 
         tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 12);
@@ -2050,6 +2598,15 @@ mod tests {
                 step: 2,
                 t_cycle: 0,
             }
+        );
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: Some(0xFFFD),
+                idu_address: Some(0xFFFE),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })
         );
 
         tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
@@ -2084,6 +2641,15 @@ mod tests {
             cpu.execution_state(),
             CpuExecutionState::FetchOpcode { t_cycle: 0 }
         );
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: Some(0xFFFC),
+                idu_address: Some(0xFFFC),
+                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+            })
+        );
 
         tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 12);
 
@@ -2093,6 +2659,15 @@ mod tests {
         assert_eq!(
             cpu.execution_state(),
             CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: Some(0xFFFD),
+                idu_address: Some(0xFFFE),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })
         );
     }
 
@@ -2274,6 +2849,15 @@ mod tests {
                 t_cycle: 0,
             }
         );
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: Some(0xFFFD),
+                idu_address: Some(0xFFFD),
+                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+            })
+        );
 
         tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
 
@@ -2286,6 +2870,15 @@ mod tests {
                 step: 4,
                 t_cycle: 0,
             }
+        );
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: Some(0xFFFC),
+                idu_address: Some(0xFFFC),
+                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+            })
         );
 
         tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);

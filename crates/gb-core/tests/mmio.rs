@@ -75,7 +75,7 @@ fn machine_routes_phase_1_mmio_registers_through_real_subsystem_owners() {
     assert_eq!(machine.read_bus(0xFF07), 0xFF);
     assert_eq!(machine.read_bus(0xFF0F), 0xE4);
     assert_eq!(machine.read_bus(0xFF40), 0x83);
-    assert_eq!(machine.read_bus(0xFF41), 0xFD);
+    assert_eq!(machine.read_bus(0xFF41), 0xFE);
     assert_eq!(machine.read_bus(0xFF42), 0x56);
     assert_eq!(machine.read_bus(0xFF43), 0x78);
     assert_eq!(machine.read_bus(0xFF44), 0x00);

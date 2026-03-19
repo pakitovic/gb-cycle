@@ -1,6 +1,6 @@
 use gb_core::{
-    BootRomAssets, BootRomKind, CartridgeSlotState, ConsoleModel, CpuExecutionState, Machine,
-    MachineConfig, StartupMemoryPolicy, StartupMode,
+    BootRomAssets, BootRomKind, CartridgeSlotState, ConsoleModel, CpuDiagnosticTrap,
+    CpuExecutionState, Machine, MachineConfig, StartupMemoryPolicy, StartupMode,
 };
 use std::env;
 use std::fs;
@@ -238,10 +238,11 @@ fn real_boot_executes_a_boot_rom_handoff_and_fetches_the_cartridge_entry_next() 
     assert_eq!(machine.cpu().registers().pc, 0x0101);
     assert_eq!(
         machine.cpu().execution_state(),
-        CpuExecutionState::Execute {
-            opcode: PHASE_2_ENTRY_OPCODE,
-            step: 0,
-            t_cycle: 0,
+        CpuExecutionState::DiagnosticTrap {
+            trap: CpuDiagnosticTrap::UnsupportedOpcode {
+                opcode: PHASE_2_ENTRY_OPCODE,
+                address: 0x0100,
+            },
         }
     );
     assert_eq!(machine.cpu().current_opcode(), Some(PHASE_2_ENTRY_OPCODE));

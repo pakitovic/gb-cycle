@@ -49,7 +49,9 @@ Every subsystem change should aim to leave behind one of these:
 - The harness should support at least framebuffer capture and serial / link-port capture when the ROM exposes machine-readable output there.
 - Prefer serial / link-port capture for suites such as Blargg `cpu_instrs` when that path is available, because it avoids treating a scrolling framebuffer as the primary machine-readable result channel.
 - Each ROM case should define a timeout, an explicit pass/fail rule, and retained failure artifacts such as serial output, framebuffer output, trace excerpts, and optional snapshots.
-- During early Phase `0`, `gb-test-runner` may still be a contract-only crate, but it should already own typed ROM-case and suite metadata including console model, startup mode, execution mode, emulation-progress timeout, explicit pass/fail rule, requested captures, and retained failure-artifact policy.
+- When a ROM needs deterministic host-side interaction, the typed case metadata should also carry the external stimulus schedule explicitly instead of burying that behavior in ad hoc test-only closures.
+- During early Phase `0`, `gb-test-runner` may still be a contract-only crate, but it should already own typed ROM-case and suite metadata including console model, startup mode, execution mode, emulation-progress timeout, explicit pass/fail rule, external stimulus schedule when needed, requested captures, and retained failure-artifact policy.
+- When a typed suite is landed before its redistributable assets, reserve the exact ROM and trace filenames in the repo with per-phase README stubs so later automation and oracle work reuse one stable target contract instead of inventing new names ad hoc.
 - The minimum DMG closure baseline should include automated CPU / interrupt coverage through `retrio/gb-test-roms` or equivalent Blargg automation, `dmg-acid2` for basic DMG PPU validation, and `mealybug-tearoom-tests` for fine PPU rendering / timing validation.
 - Keep explicit roadmap space for broader closure suites such as Mooneye / Gekkio coverage, SameSuite, GB Accuracy Tests, 144p Test Suite, and MBC3 RTC-focused ROMs.
 
@@ -99,6 +101,7 @@ Every subsystem change should aim to leave behind one of these:
 - Reserve `crates/gb-core/tests/fixtures/roms/` for ROM fixtures and synthetic cartridge images used by automated harnesses.
 - Reserve `crates/gb-core/tests/fixtures/traces/` for golden trace artifacts and other debugger-facing snapshots.
 - During early Phase `0`, prefer stable UTF-8 text trace fixtures with explicit `seq=`, `subsystem=`, `level=`, and quoted `message=` fields so ordering regressions can be locked down before richer scheduler-visible traces exist.
+- Once `gb-test-runner` reserves typed phase-scoped ROM automation targets, keep the corresponding placeholder assets in matching `crates/gb-core/tests/fixtures/roms/<phase>/` and `crates/gb-core/tests/fixtures/traces/<phase>/` directories even if the actual ROMs or oracle traces are not checked in yet.
 - During early Phase `0`, cover `ConsoleModel`, `StartupMode`, `ExecutionMode`, and `CompatibilityPolicy` defaults explicitly so DMG-first behavior and future CGB extension seams remain stable before scheduler and loader work land.
 - During early Phase `0`, cover `SchedulerPhase` order, the global T-cycle counter, and `CycleContext` reset semantics explicitly so later subsystem work cannot smuggle timing assumptions in through accidental call order.
 - During early Phase `0`, cover the single top-level `step_t_cycle()` machine entry point explicitly so the core keeps one deterministic timing boundary instead of growing multiple unsynchronized stepping APIs.

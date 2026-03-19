@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use gb_core::{ConsoleModel, ExecutionMode, StartupMode};
+use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TestSubsystem {
@@ -39,6 +39,63 @@ impl Timeout {
             Self::TCycles(limit) => limit > 0,
             Self::Frames(limit) => limit > 0,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StimulusTime {
+    TCycle(u64),
+    Frame(u32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExternalStimulusAction {
+    JoypadSetButton { button: JoypadButton, pressed: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExternalStimulus {
+    pub when: StimulusTime,
+    pub action: ExternalStimulusAction,
+}
+
+impl ExternalStimulus {
+    pub const fn at_t_cycle(t_cycle: u64, action: ExternalStimulusAction) -> Self {
+        Self {
+            when: StimulusTime::TCycle(t_cycle),
+            action,
+        }
+    }
+
+    pub const fn at_frame(frame: u32, action: ExternalStimulusAction) -> Self {
+        Self {
+            when: StimulusTime::Frame(frame),
+            action,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ExternalStimulusPlan {
+    stimuli: Vec<ExternalStimulus>,
+}
+
+impl ExternalStimulusPlan {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_stimulus(mut self, stimulus: ExternalStimulus) -> Self {
+        self.stimuli.push(stimulus);
+        self
+    }
+
+    pub fn contains(&self, stimulus: ExternalStimulus) -> bool {
+        self.stimuli.contains(&stimulus)
+    }
+
+    pub fn stimuli(&self) -> &[ExternalStimulus] {
+        &self.stimuli
     }
 }
 
@@ -131,6 +188,7 @@ pub enum RomCaseValidationError {
     MissingRequiredFailureArtifact(CaptureKind),
     ArtifactNotCaptured(CaptureKind),
     MissingFailureArtifacts,
+    DuplicateExternalStimulus(ExternalStimulus),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,6 +198,7 @@ pub struct RomTestCase {
     pub console_model: ConsoleModel,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
+    pub external_stimuli: ExternalStimulusPlan,
     pub timeout: Timeout,
     pub pass_condition: PassCondition,
     pub capture_plan: CapturePlan,
@@ -162,6 +221,7 @@ impl RomTestCase {
             console_model: ConsoleModel::Dmg,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
+            external_stimuli: ExternalStimulusPlan::new(),
             timeout,
             pass_condition,
             capture_plan,
@@ -181,6 +241,16 @@ impl RomTestCase {
 
     pub fn with_execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
         self.execution_mode = execution_mode;
+        self
+    }
+
+    pub fn with_external_stimuli(mut self, external_stimuli: ExternalStimulusPlan) -> Self {
+        self.external_stimuli = external_stimuli;
+        self
+    }
+
+    pub fn with_external_stimulus(mut self, stimulus: ExternalStimulus) -> Self {
+        self.external_stimuli = self.external_stimuli.with_stimulus(stimulus);
         self
     }
 
@@ -227,6 +297,12 @@ impl RomTestCase {
         for artifact in self.failure_artifacts.retained() {
             if !self.capture_plan.contains(*artifact) {
                 return Err(RomCaseValidationError::ArtifactNotCaptured(*artifact));
+            }
+        }
+
+        for (index, stimulus) in self.external_stimuli.stimuli().iter().enumerate() {
+            if self.external_stimuli.stimuli()[index + 1..].contains(stimulus) {
+                return Err(RomCaseValidationError::DuplicateExternalStimulus(*stimulus));
             }
         }
 
@@ -297,7 +373,15 @@ fn phase_2_rom_path(name: &str) -> PathBuf {
 }
 
 fn phase_2_trace_path(name: &str) -> PathBuf {
-    PathBuf::from("crates/gb-core/tests/fixtures/traces").join(name)
+    PathBuf::from("crates/gb-core/tests/fixtures/traces/phase2").join(name)
+}
+
+fn phase_4_rom_path(name: &str) -> PathBuf {
+    PathBuf::from("crates/gb-core/tests/fixtures/roms/phase4").join(name)
+}
+
+fn phase_4_trace_path(name: &str) -> PathBuf {
+    PathBuf::from("crates/gb-core/tests/fixtures/traces/phase4").join(name)
 }
 
 pub fn phase_2_cpu_timing_suite() -> RomSuite {
@@ -324,12 +408,23 @@ pub fn phase_2_interrupt_timing_suite() -> RomSuite {
             Timeout::TCycles(256),
             PassCondition::TraceFixture(phase_2_trace_path("phase2_ei_delay_priority.trace")),
         ))
-        .with_case(RomTestCase::new(
-            "phase2-halt-stop-and-halt-bug",
-            phase_2_rom_path("phase2_halt_stop_and_halt_bug.gb"),
-            Timeout::TCycles(512),
-            PassCondition::TraceFixture(phase_2_trace_path("phase2_halt_stop_and_halt_bug.trace")),
-        ))
+        .with_case(
+            RomTestCase::new(
+                "phase2-halt-stop-and-halt-bug",
+                phase_2_rom_path("phase2_halt_stop_and_halt_bug.gb"),
+                Timeout::TCycles(512),
+                PassCondition::TraceFixture(phase_2_trace_path(
+                    "phase2_halt_stop_and_halt_bug.trace",
+                )),
+            )
+            .with_external_stimulus(ExternalStimulus::at_t_cycle(
+                412,
+                ExternalStimulusAction::JoypadSetButton {
+                    button: JoypadButton::A,
+                    pressed: true,
+                },
+            )),
+        )
         .with_case(RomTestCase::new(
             "phase2-timer-if-visibility-and-service",
             phase_2_rom_path("phase2_timer_if_visibility_and_service.gb"),
@@ -338,4 +433,69 @@ pub fn phase_2_interrupt_timing_suite() -> RomSuite {
                 "phase2_timer_if_visibility_and_service.trace",
             )),
         ))
+}
+
+pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
+    RomSuite::new("phase-4-ppu-oam-corruption", TestSubsystem::Ppu)
+        .with_case(RomTestCase::new(
+            "phase4-oam-direct-mode2-oam-access",
+            phase_4_rom_path("phase4_oam_bug_direct_mode2_oam_access.gb"),
+            Timeout::TCycles(1_024),
+            PassCondition::TraceFixture(phase_4_trace_path(
+                "phase4_oam_bug_direct_mode2_oam_access.trace",
+            )),
+        ))
+        .with_case(RomTestCase::new(
+            "phase4-oam-fea0-mode2-read",
+            phase_4_rom_path("phase4_oam_bug_fea0_mode2_read.gb"),
+            Timeout::TCycles(1_024),
+            PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_fea0_mode2_read.trace")),
+        ))
+        .with_case(
+            RomTestCase::new(
+                "phase4-oam-inc-hl-dmg0",
+                phase_4_rom_path("phase4_oam_bug_inc_hl.gb"),
+                Timeout::TCycles(1_024),
+                PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_dmg0.trace")),
+            )
+            .with_console_model(ConsoleModel::Dmg0),
+        )
+        .with_case(RomTestCase::new(
+            "phase4-oam-inc-hl-dmg",
+            phase_4_rom_path("phase4_oam_bug_inc_hl.gb"),
+            Timeout::TCycles(1_024),
+            PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_dmg.trace")),
+        ))
+        .with_case(
+            RomTestCase::new(
+                "phase4-oam-inc-hl-mgb",
+                phase_4_rom_path("phase4_oam_bug_inc_hl.gb"),
+                Timeout::TCycles(1_024),
+                PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_mgb.trace")),
+            )
+            .with_console_model(ConsoleModel::Mgb),
+        )
+        .with_case(RomTestCase::new(
+            "phase4-oam-hli-hld",
+            phase_4_rom_path("phase4_oam_bug_hli_hld.gb"),
+            Timeout::TCycles(1_536),
+            PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_hli_hld.trace")),
+        ))
+        .with_case(RomTestCase::new(
+            "phase4-oam-stack-and-interrupt-service",
+            phase_4_rom_path("phase4_oam_bug_stack_and_interrupt_service.gb"),
+            Timeout::TCycles(2_048),
+            PassCondition::TraceFixture(phase_4_trace_path(
+                "phase4_oam_bug_stack_and_interrupt_service.trace",
+            )),
+        ))
+        .with_case(
+            RomTestCase::new(
+                "phase4-oam-cgb-negative",
+                phase_4_rom_path("phase4_oam_bug_inc_hl.gb"),
+                Timeout::TCycles(1_024),
+                PassCondition::TraceFixture(phase_4_trace_path("phase4_oam_bug_inc_hl_cgb.trace")),
+            )
+            .with_console_model(ConsoleModel::Cgb),
+        )
 }

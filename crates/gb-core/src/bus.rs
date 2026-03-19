@@ -1,11 +1,12 @@
 use crate::apu::Apu;
 use crate::boot::{BootController, StartupMemoryPolicy};
 use crate::cartridge::CartridgeSlot;
+use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection};
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
 use crate::model::ConsoleModel;
-use crate::ppu::{Ppu, PpuAccessMode, PpuBusState};
+use crate::ppu::{OamCorruptionEventKind, Ppu, PpuAccessMode, PpuBusState};
 use crate::scheduler::CycleContext;
 use crate::serial::Serial;
 use crate::timer::Timer;
@@ -733,6 +734,27 @@ impl Bus {
         }
     }
 
+    pub(crate) fn route_cpu_address_event(
+        &mut self,
+        event: CpuAddressEvent,
+        state: &BusArbitrationState,
+        ppu: &mut Ppu,
+    ) {
+        let Some(kind) = self.classify_oam_corruption_event(event, state) else {
+            return;
+        };
+
+        let _ = ppu.apply_oam_corruption_event(kind, &mut self.oam);
+    }
+
+    pub(crate) fn oam_bytes(&self) -> &[u8] {
+        &self.oam
+    }
+
+    pub(crate) fn vram_bytes(&self) -> &[u8] {
+        &self.vram
+    }
+
     pub fn scheduler_trace_message(
         &self,
         context: &CycleContext,
@@ -1121,11 +1143,157 @@ impl Bus {
             _ => panic!("address {address:#06X} does not map to WRAM storage"),
         }
     }
+
+    fn classify_oam_corruption_event(
+        &self,
+        event: CpuAddressEvent,
+        state: &BusArbitrationState,
+    ) -> Option<OamCorruptionEventKind> {
+        match event.kind {
+            CpuAddressEventKind::IncDec => {
+                let glitched_address = idu_glitched_address(event)?;
+                if self.idu_event_reaches_oam(glitched_address, state) {
+                    Some(OamCorruptionEventKind::Write)
+                } else {
+                    None
+                }
+            }
+            CpuAddressEventKind::Read
+            | CpuAddressEventKind::Write
+            | CpuAddressEventKind::ReadWithIncDec
+            | CpuAddressEventKind::WriteWithIncDec => {
+                let access_address = event.access_address?;
+                let access_kind = access_kind_for_cpu_address_event(event.kind);
+                let resolution =
+                    self.resolve_access(BusRequester::Cpu, access_kind, access_address, state);
+
+                match resolution.target().region() {
+                    BusRegion::Oam
+                        if resolution.disposition().blocked_reason()
+                            == Some(BusBlockReason::PpuOamBlockedDuringMode2) =>
+                    {
+                        Some(oam_corruption_event_kind(event.kind))
+                    }
+                    BusRegion::Unusable
+                        if access_kind == BusAccessKind::Read
+                            && resolution.disposition().blocked_reason()
+                                == Some(BusBlockReason::UnusableRegionDuringOamBlock) =>
+                    {
+                        Some(oam_corruption_event_kind(event.kind))
+                    }
+                    _ => None,
+                }
+            }
+        }
+    }
+
+    fn idu_event_reaches_oam(&self, address: u16, state: &BusArbitrationState) -> bool {
+        self.console_model.is_dmg_family()
+            && state.ppu.is_lcd_enabled()
+            && state.ppu.mode() == PpuAccessMode::OamScan
+            && (0xFE00..=0xFEFF).contains(&address)
+    }
+}
+
+fn access_kind_for_cpu_address_event(kind: CpuAddressEventKind) -> BusAccessKind {
+    match kind {
+        CpuAddressEventKind::Read | CpuAddressEventKind::ReadWithIncDec => BusAccessKind::Read,
+        CpuAddressEventKind::Write | CpuAddressEventKind::WriteWithIncDec => BusAccessKind::Write,
+        CpuAddressEventKind::IncDec => {
+            unreachable!("pure IDU events do not have an ordinary bus access kind")
+        }
+    }
+}
+
+fn oam_corruption_event_kind(kind: CpuAddressEventKind) -> OamCorruptionEventKind {
+    match kind {
+        CpuAddressEventKind::Read => OamCorruptionEventKind::Read,
+        CpuAddressEventKind::Write => OamCorruptionEventKind::Write,
+        CpuAddressEventKind::IncDec => OamCorruptionEventKind::Write,
+        CpuAddressEventKind::ReadWithIncDec => OamCorruptionEventKind::ReadWithIncDec,
+        CpuAddressEventKind::WriteWithIncDec => OamCorruptionEventKind::WriteWithIncDec,
+    }
+}
+
+fn idu_glitched_address(event: CpuAddressEvent) -> Option<u16> {
+    let driven_address = event.idu_address?;
+    match event.update_direction? {
+        CpuAddressUpdateDirection::Increment => Some(driven_address.wrapping_sub(1)),
+        CpuAddressUpdateDirection::Decrement => Some(driven_address.wrapping_add(1)),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ppu::{DmgObjPaletteReadPolicy, PpuStartupState};
+    use crate::scheduler::{CycleContext, TCycle};
+
+    const TEST_VRAM_BYTES: usize = 0x2000;
+
+    fn tick_ppu(ppu: &mut Ppu, t_cycle: u64) {
+        let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
+        ppu.tick_t_cycle(&mut context, &[0; 160], &[0; TEST_VRAM_BYTES]);
+    }
+
+    fn prepare_mode2_ppu_at_row(console_model: ConsoleModel, row: u8) -> Ppu {
+        let mut ppu = Ppu::new(console_model);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x80,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+
+        for t_cycle in 0..u64::from(row) * 4 {
+            tick_ppu(&mut ppu, t_cycle);
+        }
+
+        assert_eq!(ppu.snapshot().current_oam_scan_row, Some(row));
+        ppu
+    }
+
+    fn prepare_mode3_ppu(console_model: ConsoleModel) -> Ppu {
+        let mut ppu = prepare_mode2_ppu_at_row(console_model, 0);
+        for t_cycle in 0..80 {
+            tick_ppu(&mut ppu, t_cycle);
+        }
+        assert_eq!(ppu.snapshot().mode, PpuAccessMode::Drawing);
+        ppu
+    }
+
+    fn write_oam_word_bytes(oam_bytes: &mut [u8], row: u8, word_index: usize, value: u16) {
+        let word_start = row as usize * 8 + word_index * 2;
+        let [low, high] = value.to_le_bytes();
+        oam_bytes[word_start] = low;
+        oam_bytes[word_start + 1] = high;
+    }
+
+    fn read_oam_word_bytes(oam_bytes: &[u8], row: u8, word_index: usize) -> u16 {
+        let word_start = row as usize * 8 + word_index * 2;
+        u16::from_le_bytes([oam_bytes[word_start], oam_bytes[word_start + 1]])
+    }
+
+    fn seed_oam_corruption_rows(oam_bytes: &mut [u8]) {
+        write_oam_word_bytes(oam_bytes, 0, 0, 0x1357);
+        write_oam_word_bytes(oam_bytes, 0, 1, 0x2468);
+        write_oam_word_bytes(oam_bytes, 0, 2, 0xAAAA);
+        write_oam_word_bytes(oam_bytes, 0, 3, 0xBBBB);
+        write_oam_word_bytes(oam_bytes, 1, 0, 0x0F0F);
+        write_oam_word_bytes(oam_bytes, 1, 1, 0x1111);
+        write_oam_word_bytes(oam_bytes, 1, 2, 0x2222);
+        write_oam_word_bytes(oam_bytes, 1, 3, 0x3333);
+        write_oam_word_bytes(oam_bytes, 2, 0, 0x5555);
+        write_oam_word_bytes(oam_bytes, 2, 1, 0x6666);
+        write_oam_word_bytes(oam_bytes, 2, 2, 0x7777);
+        write_oam_word_bytes(oam_bytes, 2, 3, 0x8888);
+    }
 
     #[test]
     fn decode_address_covers_each_dmg_region_boundary() {
@@ -1308,5 +1476,100 @@ mod tests {
             resolution.disposition().blocked_reason(),
             Some(BusBlockReason::DmaCpuRestrictedToHram)
         );
+    }
+
+    #[test]
+    fn route_cpu_address_event_turns_mode2_oam_reads_into_corruption_events() {
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 1);
+        seed_oam_corruption_rows(&mut bus.oam);
+
+        let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
+        bus.route_cpu_address_event(
+            CpuAddressEvent {
+                kind: CpuAddressEventKind::Read,
+                access_address: Some(0xFE20),
+                idu_address: None,
+                update_direction: None,
+            },
+            &state,
+            &mut ppu,
+        );
+
+        let expected_first = 0x1357_u16 | (0x0F0F & 0xAAAA);
+        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 0), expected_first);
+        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 1), 0x2468);
+        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 2), 0xAAAA);
+        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 3), 0xBBBB);
+    }
+
+    #[test]
+    fn route_cpu_address_event_uses_the_unusable_mode2_read_path_for_corruption() {
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 1);
+        seed_oam_corruption_rows(&mut bus.oam);
+
+        let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
+        bus.route_cpu_address_event(
+            CpuAddressEvent {
+                kind: CpuAddressEventKind::Read,
+                access_address: Some(0xFEA0),
+                idu_address: None,
+                update_direction: None,
+            },
+            &state,
+            &mut ppu,
+        );
+
+        let expected_first = 0x1357_u16 | (0x0F0F & 0xAAAA);
+        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 0), expected_first);
+        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 1), 0x2468);
+    }
+
+    #[test]
+    fn route_cpu_address_event_uses_pure_idu_activity_in_fe_range() {
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 2);
+        seed_oam_corruption_rows(&mut bus.oam);
+
+        let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
+        bus.route_cpu_address_event(
+            CpuAddressEvent {
+                kind: CpuAddressEventKind::IncDec,
+                access_address: None,
+                idu_address: Some(0xFE11),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            },
+            &state,
+            &mut ppu,
+        );
+
+        let expected_first = ((0x5555_u16 ^ 0x2222) & (0x0F0F ^ 0x2222)) ^ 0x2222;
+        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 0), expected_first);
+        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 1), 0x1111);
+        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 2), 0x2222);
+        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 3), 0x3333);
+    }
+
+    #[test]
+    fn route_cpu_address_event_does_not_turn_mode3_oam_blocking_into_corruption() {
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut ppu = prepare_mode3_ppu(ConsoleModel::Dmg);
+        seed_oam_corruption_rows(&mut bus.oam);
+        let before = bus.oam;
+
+        let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
+        bus.route_cpu_address_event(
+            CpuAddressEvent {
+                kind: CpuAddressEventKind::Read,
+                access_address: Some(0xFE20),
+                idu_address: None,
+                update_direction: None,
+            },
+            &state,
+            &mut ppu,
+        );
+
+        assert_eq!(bus.oam, before);
     }
 }

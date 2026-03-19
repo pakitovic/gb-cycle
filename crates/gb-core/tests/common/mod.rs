@@ -23,6 +23,10 @@ pub fn read_text_fixture(path: &Path) -> io::Result<String> {
     fs::read_to_string(path)
 }
 
+pub fn read_binary_fixture(path: &Path) -> io::Result<Vec<u8>> {
+    fs::read(path)
+}
+
 #[track_caller]
 pub fn assert_directory_exists(path: &Path) {
     assert!(

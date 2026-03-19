@@ -178,6 +178,18 @@ Priority order:
   least opcode fetches from operand and data accesses. Phase `9` should also
   emit a post-wake/post-accept CPU trace so interrupt acceptance is visible on
   the same timeline as the already-visible `IF` state.
+- In the current diagnostic baseline for this repo, an unsupported decoded
+  opcode enters one explicit `DiagnosticTrap::UnsupportedOpcode { opcode,
+  address }` state immediately after the real opcode-fetch bus read retires.
+  That trap leaves `PC` at the post-fetch position, keeps the fetched opcode
+  visible, and avoids the previous silent non-retiring execute-loop placeholder.
+- In the current pre-`4.8` interleave baseline for this repo, the CPU also
+  exposes one address-bearing event for the current T-cycle when relevant:
+  opcode and operand fetch publish `read + inc` with the post-fetch `PC`,
+  `[hli]` / `[hld]` publish `read/write + inc/dec`, `inc rr` / `dec rr`
+  publish pure address-bearing `inc/dec`, and stack/control-flow plus
+  interrupt-service paths reuse that same combined access-plus-IDU event model
+  instead of leaving those updates implicit.
 
 ## Real-boot prerequisite matrix
 
@@ -192,7 +204,7 @@ explicit narrower boot target is documented.
 | Landed by Phase `2.3` | stack traffic | bytewise `PUSH` and `POP`, plus reuse of the same push/pop ordering in `CALL`, `RET`, and `RST` |
 | Landed by Phase `2.3` | CB-prefixed control path | explicit second fetch for `0xCB`, plus register and `(HL)` timing distinction for representative prefixed operations such as `RL` and `BIT` |
 | Pending before Phase `2.4` | boot-facing MMIO loads/stores | `LDH (a8),A`, `LDH A,(a8)`, `LD (C),A`, `LD A,(C)`, and other MMIO-visible load/store forms used by the boot ROM |
-| Pending before Phase `2.4` | implicit-address transfer forms | `[hli]` / `[hld]` style transfers and other implicit address-update flows exercised by the boot ROM |
+| Landed during Phase `4` interleave | implicit-address transfer forms | `[hli]` / `[hld]` style transfers and the shared address-event publication that Phase `4.8` also consumes |
 | Pending before full DMG boot ROM | subtract/accumulator rotates | the remaining boot-visible subtract and non-CB accumulator-rotate families where the production DMG boot ROM depends on them |
 
 Keep this matrix explicit in roadmap and change reports. Real boot should not
@@ -204,8 +216,7 @@ target: a synthetic DMG boot ROM that performs representative header reads
 through `(a16)`, validates them with `CP d8`, remains in boot on failed
 conditional `JR`, and reaches cartridge execution only through an executed
 `LD (a16),A` write to `FF50`. Full production DMG boot-ROM execution remains
-deferred until the pending MMIO, implicit-address, and accumulator-rotate
-groups above land.
+deferred until the pending MMIO and accumulator-rotate groups above land.
 
 ## Recommended implementation order
 

@@ -1,5 +1,6 @@
 use gb_core::{
-    BootRomAssets, BootRomKind, ConsoleModel, CpuExecutionState, JoypadButton, Machine,
+    BootRomAssets, BootRomKind, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
+    CpuAddressUpdateDirection, CpuDiagnosticTrap, CpuExecutionState, JoypadButton, Machine,
     MachineConfig, StartupMode,
 };
 
@@ -64,6 +65,15 @@ fn skip_boot_fetches_the_entry_opcode_from_the_cartridge_bus_path() {
         }
     );
     assert_eq!(machine.cpu().current_opcode(), Some(0xCB));
+    assert_eq!(
+        machine.cpu().last_address_event(),
+        Some(CpuAddressEvent {
+            kind: CpuAddressEventKind::ReadWithIncDec,
+            access_address: Some(0x0100),
+            idu_address: Some(0x0101),
+            update_direction: Some(CpuAddressUpdateDirection::Increment),
+        })
+    );
 }
 
 #[test]
@@ -88,10 +98,11 @@ fn real_boot_fetches_from_boot_rom_while_the_overlay_is_mapped() {
     assert_eq!(machine.cpu().registers().pc, 0x0001);
     assert_eq!(
         machine.cpu().execution_state(),
-        CpuExecutionState::Execute {
-            opcode: 0x99,
-            step: 0,
-            t_cycle: 0,
+        CpuExecutionState::DiagnosticTrap {
+            trap: CpuDiagnosticTrap::UnsupportedOpcode {
+                opcode: 0x99,
+                address: 0x0000,
+            },
         }
     );
     assert_eq!(machine.cpu().current_opcode(), Some(0x99));
@@ -149,6 +160,120 @@ fn machine_executes_control_flow_stack_and_cb_prefix_program() {
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
     assert_eq!(machine.cpu().current_opcode(), None);
+}
+
+#[test]
+fn machine_exposes_hli_hld_and_incdec_address_events_through_the_public_cpu_api() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(
+            &[
+                0x21, 0x00, 0xC0, 0x2A, 0x21, 0x01, 0xC0, 0x32, 0x21, 0xFF, 0xFE, 0x23,
+            ],
+            0x12,
+        ))
+        .expect("NoMBC test ROM should load");
+    machine.write_bus(0xC000, 0x77);
+
+    step_machine_t_cycles(&mut machine, 20);
+
+    assert_eq!(machine.cpu().registers().a, 0x77);
+    assert_eq!(
+        machine.cpu().last_address_event(),
+        Some(CpuAddressEvent {
+            kind: CpuAddressEventKind::ReadWithIncDec,
+            access_address: Some(0xC000),
+            idu_address: Some(0xC001),
+            update_direction: Some(CpuAddressUpdateDirection::Increment),
+        })
+    );
+
+    step_machine_t_cycles(&mut machine, 20);
+
+    assert_eq!(machine.read_bus(0xC001), 0x77);
+    assert_eq!(
+        machine.cpu().last_address_event(),
+        Some(CpuAddressEvent {
+            kind: CpuAddressEventKind::WriteWithIncDec,
+            access_address: Some(0xC001),
+            idu_address: Some(0xC000),
+            update_direction: Some(CpuAddressUpdateDirection::Decrement),
+        })
+    );
+
+    step_machine_t_cycles(&mut machine, 20);
+
+    assert_eq!(machine.cpu().registers().h, 0xFF);
+    assert_eq!(machine.cpu().registers().l, 0x00);
+    assert_eq!(
+        machine.cpu().last_address_event(),
+        Some(CpuAddressEvent {
+            kind: CpuAddressEventKind::IncDec,
+            access_address: None,
+            idu_address: Some(0xFF00),
+            update_direction: Some(CpuAddressUpdateDirection::Increment),
+        })
+    );
+}
+
+#[test]
+fn cpu_trace_mentions_the_last_address_event_next_to_the_last_bus_activity() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0x00], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 4);
+
+    let trace = machine.tracer().sink().render_text();
+
+    assert!(trace.contains("last_bus_activity=opcode_fetch@0x0100=0x00"));
+    assert!(trace.contains("last_address_event=read+inc@0x0100->0x0101"));
+}
+
+#[test]
+fn unsupported_opcode_enters_a_visible_machine_level_diagnostic_trap() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0xD3], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 4);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0101);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::DiagnosticTrap {
+            trap: CpuDiagnosticTrap::UnsupportedOpcode {
+                opcode: 0xD3,
+                address: 0x0100,
+            },
+        }
+    );
+
+    let trapped_cycle = machine.next_t_cycle();
+    step_machine_t_cycles(&mut machine, 4);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::DiagnosticTrap {
+            trap: CpuDiagnosticTrap::UnsupportedOpcode {
+                opcode: 0xD3,
+                address: 0x0100,
+            },
+        }
+    );
+    assert_eq!(machine.cpu().registers().pc, 0x0101);
+    assert_eq!(machine.next_t_cycle().get(), trapped_cycle.get() + 4);
 }
 
 #[test]

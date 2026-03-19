@@ -193,7 +193,7 @@ fn dma_and_bus_traces_show_the_same_cycle_arbitration_constraints() {
         "subsystem=dma level=trace message=\"t_cycle=0 phase=autonomous_peripheral_ticks console_model=Dmg status=Ready transfer_state=Starting transfer_kind=Oam transfer_family=FullBurst block_size=1 advance_condition=EveryTCycle first_byte_delay_t_cycles=2 first_byte_delay_remaining_t_cycles=1 cpu_bus_restriction_delay_t_cycles=2 cpu_bus_restriction_delay_remaining_t_cycles=1 cpu_bus_restriction_active=false elapsed_t_cycles=1 completed_bytes=0 remaining_bytes=160 completed_blocks=0 remaining_blocks=160"
     ));
     assert!(trace.contains(
-        "subsystem=bus level=trace message=\"t_cycle=0 phase=bus_arbitration console_model=Dmg status=Ready ppu_lcd_enabled=true ppu_mode=VBlank dma_cpu_access_policy=Unrestricted dma_active_region=None\""
+        "subsystem=bus level=trace message=\"t_cycle=0 phase=bus_arbitration console_model=Dmg status=Ready ppu_lcd_enabled=true ppu_mode=OamScan dma_cpu_access_policy=Unrestricted dma_active_region=None\""
     ));
 }
 
@@ -219,13 +219,15 @@ fn oam_dma_copies_the_latched_source_page_contents_into_oam_after_completion() {
     assert_eq!(completed_progress.completed_bytes(), 160);
     assert_eq!(completed_progress.remaining_bytes(), 0);
 
+    let mut bus = machine.bus().clone();
+
     for byte_index in 0..160u16 {
         assert_eq!(
-            machine.read_bus(0xFE00 + byte_index),
+            bus.read(0xFE00 + byte_index),
             dma_source_byte(0x5C, byte_index)
         );
         assert_ne!(
-            machine.read_bus(0xFE00 + byte_index),
+            bus.read(0xFE00 + byte_index),
             dma_source_byte(0x19, byte_index)
         );
     }
@@ -398,7 +400,9 @@ fn oam_dma_completion_happens_after_the_last_active_transfer_t_cycle() {
     };
     assert_eq!(completed_progress.elapsed_t_cycles(), 640);
     assert_eq!(machine.dma().bus_state(), DmaBusState::unrestricted());
-    assert_eq!(machine.read_bus(0xFE9F), dma_source_byte(0x47, 159));
+
+    let mut completed_bus = machine.bus().clone();
+    assert_eq!(completed_bus.read(0xFE9F), dma_source_byte(0x47, 159));
 }
 
 fn seed_dma_source_page(machine: &mut Machine, source_page: u8, seed: u8) {

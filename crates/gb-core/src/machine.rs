@@ -2,7 +2,7 @@ use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusRequester};
 use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError, CartridgeSlot};
-use crate::cpu::{CpuBusOperation, CpuCore};
+use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuBusOperation, CpuCore};
 use crate::debugger::{
     DebugControl, MachineSnapshot, TraceBuffer, TraceLevel, TraceSink, TraceSubsystem, Tracer,
 };
@@ -182,8 +182,7 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn read_bus(&mut self, address: u16) -> u8 {
         let state = self.current_bus_arbitration_state();
-
-        self.bus.read_with_context(
+        let value = self.bus.read_with_context(
             address,
             BusRequester::Cpu,
             &state,
@@ -198,7 +197,18 @@ impl<S: TraceSink> Machine<S> {
                 joypad: Some(&self.joypad),
                 ppu: Some(&self.ppu),
             },
-        )
+        );
+        self.bus.route_cpu_address_event(
+            CpuAddressEvent {
+                kind: CpuAddressEventKind::Read,
+                access_address: Some(address),
+                idu_address: None,
+                update_direction: None,
+            },
+            &state,
+            &mut self.ppu,
+        );
+        value
     }
 
     pub fn write_bus(&mut self, address: u16, value: u8) {
@@ -220,6 +230,16 @@ impl<S: TraceSink> Machine<S> {
                 joypad: Some(&mut self.joypad),
                 ppu: Some(&mut self.ppu),
             },
+        );
+        self.bus.route_cpu_address_event(
+            CpuAddressEvent {
+                kind: CpuAddressEventKind::Write,
+                access_address: Some(address),
+                idu_address: None,
+                update_direction: None,
+            },
+            &state,
+            &mut self.ppu,
         );
     }
 
@@ -262,6 +282,7 @@ impl<S: TraceSink> Machine<S> {
                     );
                 }
                 SchedulerPhase::AutonomousPeripheralTicks => {
+                    ppu.tick_t_cycle(context, bus.oam_bytes(), bus.vram_bytes());
                     let dma_transfer_work = dma.tick_t_cycle(context);
                     if let Some(transfer_work) = dma_transfer_work {
                         let arbitration_state = BusArbitrationState::default()
@@ -363,6 +384,9 @@ impl<S: TraceSink> Machine<S> {
                             None
                         }
                     });
+                    if let Some(event) = cpu.last_address_event() {
+                        bus.route_cpu_address_event(event, &arbitration_state, ppu);
+                    }
                     tracer.emit(
                         TraceSubsystem::Cpu,
                         TraceLevel::Trace,
@@ -378,6 +402,9 @@ impl<S: TraceSink> Machine<S> {
                 }
                 SchedulerPhase::InterruptAggregation => {
                     for &source in context.interrupt_requests() {
+                        interrupts.request(source);
+                    }
+                    for source in ppu.drain_pending_interrupt_requests() {
                         interrupts.request(source);
                     }
                     tracer.emit(

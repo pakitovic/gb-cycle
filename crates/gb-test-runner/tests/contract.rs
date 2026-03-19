@@ -1,10 +1,11 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use gb_core::{ConsoleModel, ExecutionMode, StartupMode};
+use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
 use gb_test_runner::{
-    CaptureKind, CapturePlan, FailureArtifactPolicy, PassCondition, RomCaseValidationError,
-    RomSuite, RomSuiteValidationError, RomTestCase, TestSubsystem, Timeout,
-    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
+    CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
+    FailureArtifactPolicy, PassCondition, RomCaseValidationError, RomSuite,
+    RomSuiteValidationError, RomTestCase, StimulusTime, TestSubsystem, Timeout,
+    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
 };
 
 #[test]
@@ -19,6 +20,7 @@ fn new_rom_test_case_defaults_to_dmg_skip_boot_strict_with_debug_artifacts() {
     assert_eq!(case.console_model, ConsoleModel::Dmg);
     assert_eq!(case.startup_mode, StartupMode::SkipBoot);
     assert_eq!(case.execution_mode, ExecutionMode::Strict);
+    assert!(case.external_stimuli.stimuli().is_empty());
     assert!(case.capture_plan.contains(CaptureKind::Serial));
     assert!(case.capture_plan.contains(CaptureKind::Trace));
     assert!(case.capture_plan.contains(CaptureKind::Snapshot));
@@ -70,6 +72,35 @@ fn rom_test_case_rejects_failure_artifacts_that_are_not_captured() {
         case.validate(),
         Err(RomCaseValidationError::ArtifactNotCaptured(
             CaptureKind::Snapshot
+        ))
+    );
+}
+
+#[test]
+fn rom_test_case_rejects_duplicate_external_stimuli() {
+    let duplicated = ExternalStimulus::at_t_cycle(
+        412,
+        ExternalStimulusAction::JoypadSetButton {
+            button: JoypadButton::A,
+            pressed: true,
+        },
+    );
+    let case = RomTestCase::new(
+        "phase2-halt-stop-and-halt-bug",
+        PathBuf::from("phase2_halt_stop_and_halt_bug.gb"),
+        Timeout::TCycles(512),
+        PassCondition::TraceFixture(PathBuf::from("phase2_halt_stop_and_halt_bug.trace")),
+    )
+    .with_external_stimuli(
+        ExternalStimulusPlan::new()
+            .with_stimulus(duplicated)
+            .with_stimulus(duplicated),
+    );
+
+    assert_eq!(
+        case.validate(),
+        Err(RomCaseValidationError::DuplicateExternalStimulus(
+            duplicated
         ))
     );
 }
@@ -230,6 +261,33 @@ fn capture_and_artifact_builders_expose_their_registered_sets() {
 }
 
 #[test]
+fn external_stimulus_plan_builders_expose_the_registered_schedule() {
+    let t_cycle_stimulus = ExternalStimulus::at_t_cycle(
+        412,
+        ExternalStimulusAction::JoypadSetButton {
+            button: JoypadButton::A,
+            pressed: true,
+        },
+    );
+    let frame_stimulus = ExternalStimulus::at_frame(
+        3,
+        ExternalStimulusAction::JoypadSetButton {
+            button: JoypadButton::Start,
+            pressed: false,
+        },
+    );
+    let plan = ExternalStimulusPlan::new()
+        .with_stimulus(t_cycle_stimulus)
+        .with_stimulus(frame_stimulus);
+
+    assert_eq!(plan.stimuli().len(), 2);
+    assert!(plan.contains(t_cycle_stimulus));
+    assert!(plan.contains(frame_stimulus));
+    assert_eq!(plan.stimuli()[0].when, StimulusTime::TCycle(412));
+    assert_eq!(plan.stimuli()[1].when, StimulusTime::Frame(3));
+}
+
+#[test]
 fn rom_suite_can_be_built_incrementally_with_push_case() {
     let mut suite = RomSuite::new("boot", TestSubsystem::Boot);
     suite.push_case(RomTestCase::new(
@@ -269,6 +327,23 @@ fn phase_2_rom_automation_targets_validate_for_cpu_and_interrupt_timing() {
             .cases
             .iter()
             .chain(interrupt_suite.cases.iter())
+            .all(|case| case
+                .rom_path
+                .starts_with(Path::new("crates/gb-core/tests/fixtures/roms/phase2")))
+    );
+    assert!(
+        cpu_suite
+            .cases
+            .iter()
+            .chain(interrupt_suite.cases.iter())
+            .all(|case| trace_fixture_path(case)
+                .starts_with(Path::new("crates/gb-core/tests/fixtures/traces/phase2")))
+    );
+    assert!(
+        cpu_suite
+            .cases
+            .iter()
+            .chain(interrupt_suite.cases.iter())
             .all(|case| case.capture_plan.contains(CaptureKind::Trace))
     );
     assert!(
@@ -278,4 +353,104 @@ fn phase_2_rom_automation_targets_validate_for_cpu_and_interrupt_timing() {
             .chain(interrupt_suite.cases.iter())
             .all(|case| case.failure_artifacts.contains(CaptureKind::Snapshot))
     );
+    let halt_stop_case = interrupt_suite
+        .cases
+        .iter()
+        .find(|case| case.id == "phase2-halt-stop-and-halt-bug")
+        .expect("halt/stop case should exist");
+    assert_eq!(halt_stop_case.external_stimuli.stimuli().len(), 1);
+    assert_eq!(
+        halt_stop_case.external_stimuli.stimuli()[0],
+        ExternalStimulus::at_t_cycle(
+            412,
+            ExternalStimulusAction::JoypadSetButton {
+                button: JoypadButton::A,
+                pressed: true,
+            }
+        )
+    );
+    assert!(
+        interrupt_suite
+            .cases
+            .iter()
+            .filter(|case| !case.external_stimuli.stimuli().is_empty())
+            .all(|case| case.id == "phase2-halt-stop-and-halt-bug")
+    );
+}
+
+#[test]
+fn phase_4_rom_automation_targets_validate_for_ppu_oam_corruption() {
+    let suite = phase_4_ppu_oam_corruption_suite();
+
+    assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+    assert_eq!(suite.validate(), Ok(()));
+    assert!(
+        suite
+            .cases
+            .iter()
+            .all(|case| case.execution_mode == ExecutionMode::Strict)
+    );
+    assert!(suite.cases.iter().all(|case| {
+        case.rom_path
+            .starts_with(Path::new("crates/gb-core/tests/fixtures/roms/phase4"))
+    }));
+    assert!(suite.cases.iter().all(|case| {
+        trace_fixture_path(case)
+            .starts_with(Path::new("crates/gb-core/tests/fixtures/traces/phase4"))
+    }));
+    assert!(
+        suite
+            .cases
+            .iter()
+            .all(|case| case.capture_plan.contains(CaptureKind::Trace))
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .all(|case| case.capture_plan.contains(CaptureKind::Snapshot))
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .all(|case| case.failure_artifacts.contains(CaptureKind::Trace))
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .all(|case| case.failure_artifacts.contains(CaptureKind::Snapshot))
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.console_model == ConsoleModel::Dmg0)
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.console_model == ConsoleModel::Dmg)
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.console_model == ConsoleModel::Mgb)
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.console_model == ConsoleModel::Cgb)
+    );
+}
+
+fn trace_fixture_path(case: &RomTestCase) -> &Path {
+    match &case.pass_condition {
+        PassCondition::TraceFixture(path) => path.as_path(),
+        _ => panic!("expected trace fixture pass condition"),
+    }
 }

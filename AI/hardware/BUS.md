@@ -213,6 +213,8 @@ Address alone is not enough: the bus must also consider the current temporal har
 - The bus must distinguish ordinary blocked OAM semantics from the DMG-family OAM corruption bug; not every blocked OAM or unusable-area access should trigger corruption.
 - CPU-originated OAM or `FEA0-FEFF` access attempts during Mode `2` on affected models should enter the OAM-corruption event path using the live current row reported by the PPU.
 - CPU-provided address-bearing `16`-bit inc/dec events in `FE00-FEFF` should also route into that same corruption controller even when no ordinary memory access occurs.
+- In the current Phase `4.8` baseline, classify ordinary CPU access triggers through the same bus-resolution path used for blocked-access semantics, so Mode `2` OAM reads/writes and Mode `2` unusable-range reads reuse the existing blocked-reason model instead of bypassing it with a parallel check.
+- In the current Phase `4.8` baseline, keep pure IDU `inc/dec` trigger routing separate from normal access resolution: reconstruct the driven pre-update address from the CPU event, require live LCD-enabled Mode `2`, and do not let Mode `3` OAM blocking imply corruption automatically.
 - When an access is blocked, the bus should model the correct observable result for that situation instead of falling through to normal RAM semantics.
 - CPU opcode fetch, immediate fetch, stack traffic, and read-modify-write memory operations should appear as ordinary ordered bus accesses, not as post-instruction aggregated effects.
 - MMIO reads and writes should remain ordinary ordered bus transactions whose visible result and side effects depend on the exact temporal hardware state at that access point.

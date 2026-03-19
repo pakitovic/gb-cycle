@@ -1,14 +1,43 @@
-use gb_core::{BootRomAssets, BootRomKind, ConsoleModel, Machine, MachineConfig, StartupMode};
+mod common;
 
+use std::env;
+use std::fs;
+use std::path::Path;
+
+use gb_core::{
+    BootRomAssets, BootRomKind, ConsoleModel, CpuExecutionState, JoypadButton, Machine,
+    MachineConfig, StartupMode,
+};
+
+const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_PHASE2_FIXTURES";
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const BOOT_ROM_LEN: usize = 0x0100;
+const PROGRAM_ENTRY_ADDRESS: usize = 0x0150;
+const TEST_ROM_BOOT_OPCODE: u8 = 0x12;
 const PHASE_2_ENTRY_OPCODE: u8 = 0xD3;
+const SENTINEL_ADDRESS: u16 = 0xC010;
+const SENTINEL_VALUE: u8 = 0xA5;
 
-fn build_test_rom(program: &[u8], boot_opcode: u8) -> Vec<u8> {
+const FETCH_IMMEDIATE_ROM_NAME: &str = "phase2_fetch_immediate_order.gb";
+const FETCH_IMMEDIATE_TRACE_NAME: &str = "phase2_fetch_immediate_order.trace";
+const CONTROL_FLOW_STACK_CB_ROM_NAME: &str = "phase2_control_flow_stack_cb.gb";
+const CONTROL_FLOW_STACK_CB_TRACE_NAME: &str = "phase2_control_flow_stack_cb.trace";
+const EI_DELAY_PRIORITY_ROM_NAME: &str = "phase2_ei_delay_priority.gb";
+const EI_DELAY_PRIORITY_TRACE_NAME: &str = "phase2_ei_delay_priority.trace";
+const HALT_STOP_AND_HALT_BUG_ROM_NAME: &str = "phase2_halt_stop_and_halt_bug.gb";
+const HALT_STOP_AND_HALT_BUG_TRACE_NAME: &str = "phase2_halt_stop_and_halt_bug.trace";
+const TIMER_IF_VISIBILITY_ROM_NAME: &str = "phase2_timer_if_visibility_and_service.gb";
+const TIMER_IF_VISIBILITY_TRACE_NAME: &str = "phase2_timer_if_visibility_and_service.trace";
+
+fn build_test_rom(program: &[u8], boot_opcode: u8, extra_segments: &[(usize, &[u8])]) -> Vec<u8> {
     let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
     rom[0x0000] = boot_opcode;
+    rom[0x0100..0x0103].copy_from_slice(&[0xC3, 0x50, 0x01]);
     for (offset, byte) in program.iter().copied().enumerate() {
-        rom[0x0100 + offset] = byte;
+        rom[PROGRAM_ENTRY_ADDRESS + offset] = byte;
+    }
+    for &(address, bytes) in extra_segments {
+        rom[address..address + bytes.len()].copy_from_slice(bytes);
     }
     rom[0x0147] = 0x00;
     rom[0x0148] = 0x00;
@@ -25,9 +54,157 @@ fn build_phase_2_trace_boot_rom() -> Vec<u8> {
 }
 
 fn build_phase_2_real_boot_rom(entry_opcode: u8) -> Vec<u8> {
-    let mut rom = build_test_rom(&[entry_opcode], 0x12);
+    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+    rom[0x0000] = TEST_ROM_BOOT_OPCODE;
     rom[0x0100] = entry_opcode;
+    rom[0x0147] = 0x00;
+    rom[0x0148] = 0x00;
+    rom[0x0149] = 0x00;
     rom
+}
+
+fn build_phase_2_fragment_rom(program: &[u8], boot_opcode: u8) -> Vec<u8> {
+    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+    rom[0x0000] = boot_opcode;
+    for (offset, byte) in program.iter().copied().enumerate() {
+        rom[0x0100 + offset] = byte;
+    }
+    rom[0x0147] = 0x00;
+    rom[0x0148] = 0x00;
+    rom[0x0149] = 0x00;
+    rom
+}
+
+#[derive(Default)]
+struct ProgramBuilder {
+    bytes: Vec<u8>,
+}
+
+impl ProgramBuilder {
+    fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+
+    fn current_address(&self) -> u16 {
+        (PROGRAM_ENTRY_ADDRESS + self.bytes.len()) as u16
+    }
+
+    fn xor_a(&mut self) {
+        self.bytes.push(0xAF);
+    }
+
+    fn nop(&mut self) {
+        self.bytes.push(0x00);
+    }
+
+    fn ld_a_imm(&mut self, value: u8) {
+        self.bytes.extend_from_slice(&[0x3E, value]);
+    }
+
+    fn ld_sp_imm(&mut self, value: u16) {
+        let [low, high] = value.to_le_bytes();
+        self.bytes.extend_from_slice(&[0x31, low, high]);
+    }
+
+    fn ld_a_from_c(&mut self) {
+        self.bytes.push(0x79);
+    }
+
+    fn add_a_imm(&mut self, value: u8) {
+        self.bytes.extend_from_slice(&[0xC6, value]);
+    }
+
+    fn ld_a16_from_a(&mut self, address: u16) {
+        let [low, high] = address.to_le_bytes();
+        self.bytes.extend_from_slice(&[0xEA, low, high]);
+    }
+
+    fn jr_offset(&mut self, offset: i8) {
+        self.bytes.extend_from_slice(&[0x18, offset as u8]);
+    }
+
+    fn jr_self(&mut self) {
+        self.jr_offset(-2);
+    }
+
+    fn call(&mut self, address: u16) {
+        let [low, high] = address.to_le_bytes();
+        self.bytes.extend_from_slice(&[0xCD, low, high]);
+    }
+
+    fn ret(&mut self) {
+        self.bytes.push(0xC9);
+    }
+
+    fn cb(&mut self, opcode: u8) {
+        self.bytes.extend_from_slice(&[0xCB, opcode]);
+    }
+
+    fn ei(&mut self) {
+        self.bytes.push(0xFB);
+    }
+
+    fn halt(&mut self) {
+        self.bytes.push(0x76);
+    }
+
+    fn stop(&mut self) {
+        self.bytes.extend_from_slice(&[0x10, 0x00]);
+    }
+
+    fn inc_a(&mut self) {
+        self.bytes.push(0x3C);
+    }
+}
+
+fn fixture_accept_writes_enabled() -> bool {
+    env::var_os(FIXTURE_ACCEPT_ENV).is_some()
+}
+
+fn ensure_binary_fixture(path: &Path, expected: &[u8]) -> Vec<u8> {
+    if fixture_accept_writes_enabled() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("fixture directory should be creatable");
+        }
+        fs::write(path, expected).expect("binary fixture should be writable");
+    }
+
+    let fixture = common::read_binary_fixture(path).expect("binary fixture should be readable");
+    assert_eq!(fixture, expected);
+    fixture
+}
+
+fn ensure_text_fixture(path: &Path, expected: &str) -> String {
+    if fixture_accept_writes_enabled() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("fixture directory should be creatable");
+        }
+        fs::write(path, expected).expect("text fixture should be writable");
+    }
+
+    let fixture = common::read_text_fixture(path).expect("text fixture should be readable");
+    assert_eq!(fixture, expected);
+    fixture
+}
+
+fn load_fixture_machine(
+    rom_name: &str,
+    expected_rom: &[u8],
+    console_model: ConsoleModel,
+) -> Machine {
+    let rom_fixture_path = common::rom_fixtures_dir().join("phase2").join(rom_name);
+    let rom_fixture = ensure_binary_fixture(&rom_fixture_path, expected_rom);
+    let mut machine =
+        Machine::new(MachineConfig::new(console_model).with_startup_mode(StartupMode::SkipBoot));
+    machine
+        .load_cartridge(rom_fixture)
+        .expect("NoMBC test ROM should load");
+    machine
+}
+
+fn assert_trace_fixture(trace_name: &str, trace: &str) {
+    let trace_fixture_path = common::trace_fixtures_dir().join("phase2").join(trace_name);
+    ensure_text_fixture(&trace_fixture_path, trace);
 }
 
 fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
@@ -54,6 +231,39 @@ fn step_machine_until(
     );
 }
 
+fn step_until_wram_sentinel_with_driver<F>(
+    machine: &mut Machine,
+    address: u16,
+    value: u8,
+    max_steps: usize,
+    mut driver: F,
+) where
+    F: FnMut(&mut Machine),
+{
+    for _ in 0..max_steps {
+        if machine.read_bus(address) == value {
+            return;
+        }
+        driver(machine);
+        if machine.read_bus(address) == value {
+            return;
+        }
+        machine.step_t_cycle();
+    }
+
+    panic!(
+        "sentinel was not reached: observed={:#04X} pc={:#06X} state={:?} opcode={:?}",
+        machine.read_bus(address),
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.cpu().current_opcode()
+    );
+}
+
+fn step_until_wram_sentinel(machine: &mut Machine, address: u16, value: u8, max_steps: usize) {
+    step_until_wram_sentinel_with_driver(machine, address, value, max_steps, |_| {});
+}
+
 fn assert_trace_fragments_in_order(trace: &str, fragments: &[&str]) {
     let mut search_start = 0;
 
@@ -65,6 +275,315 @@ fn assert_trace_fragments_in_order(trace: &str, fragments: &[&str]) {
     }
 }
 
+fn build_fetch_immediate_order_program() -> Vec<u8> {
+    let mut program = ProgramBuilder::default();
+    program.ld_sp_imm(0x1234);
+    program.ld_a_imm(0x0F);
+    program.add_a_imm(0x01);
+    program.ld_a16_from_a(0xC011);
+    program.ld_a_imm(SENTINEL_VALUE);
+    program.ld_a16_from_a(SENTINEL_ADDRESS);
+    program.jr_self();
+    program.into_bytes()
+}
+
+fn build_control_flow_stack_cb_program() -> Vec<u8> {
+    let mut program = ProgramBuilder::default();
+    let subroutine_address = (PROGRAM_ENTRY_ADDRESS as u16) + 18;
+
+    program.jr_offset(2);
+    program.nop();
+    program.nop();
+    program.call(subroutine_address);
+    program.ld_a_from_c();
+    program.ld_a16_from_a(0xC011);
+    program.ld_a_imm(SENTINEL_VALUE);
+    program.ld_a16_from_a(SENTINEL_ADDRESS);
+    program.jr_self();
+    program.cb(0x11);
+    program.ret();
+
+    program.into_bytes()
+}
+
+fn build_ei_delay_priority_program() -> Vec<u8> {
+    let mut program = ProgramBuilder::default();
+    program.ld_a_imm(0x05);
+    program.ld_a16_from_a(0xFFFF);
+    program.ld_a16_from_a(0xFF0F);
+    program.ei();
+    program.nop();
+    program.jr_self();
+    program.into_bytes()
+}
+
+fn build_ei_delay_priority_vector() -> [u8; 13] {
+    [
+        0xFA,
+        0x0F,
+        0xFF,
+        0xEA,
+        0x11,
+        0xC0,
+        0x3E,
+        SENTINEL_VALUE,
+        0xEA,
+        0x10,
+        0xC0,
+        0x18,
+        0xFE,
+    ]
+}
+
+fn build_halt_stop_and_halt_bug_program() -> (Vec<u8>, u16) {
+    let mut program = ProgramBuilder::default();
+
+    program.xor_a();
+    program.ld_a16_from_a(0xFF0F);
+    program.ld_a_imm(0x04);
+    program.ld_a16_from_a(0xFFFF);
+    program.ld_a_imm(0xFF);
+    program.ld_a16_from_a(0xFF05);
+    program.ld_a_imm(0x66);
+    program.ld_a16_from_a(0xFF06);
+    program.ld_a_imm(0x05);
+    program.ld_a16_from_a(0xFF07);
+    program.ei();
+    program.nop();
+    program.halt();
+    program.jr_self();
+
+    let phase_two_address = program.current_address();
+
+    program.xor_a();
+    program.ld_a16_from_a(0xFF07);
+    program.ld_a16_from_a(0xFF0F);
+    program.ld_a16_from_a(0xFFFF);
+    program.ld_a_imm(0x01);
+    program.ld_a16_from_a(0xFFFF);
+    program.ld_a16_from_a(0xFF0F);
+    program.halt();
+    program.inc_a();
+    program.ld_a16_from_a(0xC011);
+    program.xor_a();
+    program.ld_a16_from_a(0xFF0F);
+    program.ld_a16_from_a(0xFFFF);
+    program.ld_a_imm(0x30);
+    program.ld_a16_from_a(0xFF00);
+    program.ld_a_imm(0x01);
+    program.ld_a16_from_a(0xFFFF);
+    program.ld_a16_from_a(0xFF0F);
+    program.stop();
+    program.ei();
+    program.nop();
+    program.jr_self();
+
+    (program.into_bytes(), phase_two_address)
+}
+
+fn build_jump_vector(address: u16) -> [u8; 3] {
+    let [low, high] = address.to_le_bytes();
+    [0xC3, low, high]
+}
+
+fn build_halt_stop_and_halt_bug_vblank_vector() -> [u8; 13] {
+    [
+        0xFA,
+        0x0F,
+        0xFF,
+        0xEA,
+        0x12,
+        0xC0,
+        0x3E,
+        SENTINEL_VALUE,
+        0xEA,
+        0x10,
+        0xC0,
+        0x18,
+        0xFE,
+    ]
+}
+
+fn build_timer_if_visibility_and_service_program() -> Vec<u8> {
+    let mut program = ProgramBuilder::default();
+    program.xor_a();
+    program.ld_a16_from_a(0xFF0F);
+    program.ld_a_imm(0x04);
+    program.ld_a16_from_a(0xFFFF);
+    program.ld_a_imm(0xFF);
+    program.ld_a16_from_a(0xFF05);
+    program.ld_a_imm(0x66);
+    program.ld_a16_from_a(0xFF06);
+    program.ld_a_imm(0x05);
+    program.ld_a16_from_a(0xFF07);
+    program.ei();
+    program.nop();
+    program.halt();
+    program.jr_self();
+    program.into_bytes()
+}
+
+fn build_timer_if_visibility_and_service_vector() -> [u8; 19] {
+    [
+        0xFA,
+        0x05,
+        0xFF,
+        0xEA,
+        0x11,
+        0xC0,
+        0xFA,
+        0x0F,
+        0xFF,
+        0xEA,
+        0x12,
+        0xC0,
+        0x3E,
+        SENTINEL_VALUE,
+        0xEA,
+        0x10,
+        0xC0,
+        0x18,
+        0xFE,
+    ]
+}
+
+#[test]
+fn phase_2_fetch_immediate_order_rom_fixture_matches_expected_trace_and_state() {
+    let expected_rom = build_test_rom(
+        &build_fetch_immediate_order_program(),
+        TEST_ROM_BOOT_OPCODE,
+        &[],
+    );
+    let mut machine =
+        load_fixture_machine(FETCH_IMMEDIATE_ROM_NAME, &expected_rom, ConsoleModel::Dmg);
+
+    step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 512);
+
+    assert_eq!(machine.cpu().registers().sp, 0x1234);
+    assert_eq!(machine.read_bus(0xC011), 0x10);
+    assert_eq!(machine.cpu().registers().f, 0x20);
+    assert_trace_fixture(
+        FETCH_IMMEDIATE_TRACE_NAME,
+        &machine.tracer().sink().render_text(),
+    );
+}
+
+#[test]
+fn phase_2_control_flow_stack_cb_rom_fixture_matches_expected_trace_and_state() {
+    let expected_rom = build_test_rom(
+        &build_control_flow_stack_cb_program(),
+        TEST_ROM_BOOT_OPCODE,
+        &[],
+    );
+    let mut machine = load_fixture_machine(
+        CONTROL_FLOW_STACK_CB_ROM_NAME,
+        &expected_rom,
+        ConsoleModel::Dmg,
+    );
+
+    step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 1_024);
+
+    assert_eq!(machine.read_bus(0xC011), 0x27);
+    assert_eq!(machine.cpu().registers().c, 0x27);
+    assert_eq!(machine.cpu().registers().sp, 0xFFFE);
+    assert_eq!(machine.cpu().registers().f, 0x00);
+    assert_trace_fixture(
+        CONTROL_FLOW_STACK_CB_TRACE_NAME,
+        &machine.tracer().sink().render_text(),
+    );
+}
+
+#[test]
+fn phase_2_ei_delay_priority_rom_fixture_matches_expected_trace_and_state() {
+    let vector = build_ei_delay_priority_vector();
+    let expected_rom = build_test_rom(
+        &build_ei_delay_priority_program(),
+        TEST_ROM_BOOT_OPCODE,
+        &[(0x0040, &vector)],
+    );
+    let mut machine =
+        load_fixture_machine(EI_DELAY_PRIORITY_ROM_NAME, &expected_rom, ConsoleModel::Dmg);
+
+    step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 1_024);
+
+    assert_eq!(machine.read_bus(0xC011), 0xE4);
+    assert_eq!(machine.cpu().registers().sp, 0xFFFC);
+    assert_eq!(machine.read_bus(0xFFFD), 0x01);
+    assert_eq!(machine.read_bus(0xFFFC), 0x5A);
+    assert_trace_fixture(
+        EI_DELAY_PRIORITY_TRACE_NAME,
+        &machine.tracer().sink().render_text(),
+    );
+}
+
+#[test]
+fn phase_2_halt_stop_and_halt_bug_rom_fixture_matches_expected_trace_and_state() {
+    let (program, phase_two_address) = build_halt_stop_and_halt_bug_program();
+    let timer_vector = build_jump_vector(phase_two_address);
+    let vblank_vector = build_halt_stop_and_halt_bug_vblank_vector();
+    let expected_rom = build_test_rom(
+        &program,
+        TEST_ROM_BOOT_OPCODE,
+        &[(0x0040, &vblank_vector), (0x0050, &timer_vector)],
+    );
+    let mut machine = load_fixture_machine(
+        HALT_STOP_AND_HALT_BUG_ROM_NAME,
+        &expected_rom,
+        ConsoleModel::Dmg,
+    );
+    let mut stop_wake_injected = false;
+
+    step_until_wram_sentinel_with_driver(
+        &mut machine,
+        SENTINEL_ADDRESS,
+        SENTINEL_VALUE,
+        2_048,
+        |machine| {
+            if !stop_wake_injected
+                && matches!(machine.cpu().execution_state(), CpuExecutionState::Stopped)
+            {
+                machine.set_joypad_button_pressed(JoypadButton::A, true);
+                stop_wake_injected = true;
+            }
+        },
+    );
+
+    assert!(stop_wake_injected);
+    assert_eq!(machine.read_bus(0xC011), 0x03);
+    assert_eq!(machine.read_bus(0xC012), 0xE0);
+    assert_trace_fixture(
+        HALT_STOP_AND_HALT_BUG_TRACE_NAME,
+        &machine.tracer().sink().render_text(),
+    );
+}
+
+#[test]
+fn phase_2_timer_if_visibility_and_service_rom_fixture_matches_expected_trace_and_state() {
+    let vector = build_timer_if_visibility_and_service_vector();
+    let expected_rom = build_test_rom(
+        &build_timer_if_visibility_and_service_program(),
+        TEST_ROM_BOOT_OPCODE,
+        &[(0x0050, &vector)],
+    );
+    let mut machine = load_fixture_machine(
+        TIMER_IF_VISIBILITY_ROM_NAME,
+        &expected_rom,
+        ConsoleModel::Dmg,
+    );
+
+    step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 1_024);
+
+    assert_eq!(machine.read_bus(0xC011), 0x68);
+    assert_eq!(machine.read_bus(0xC012), 0xE0);
+    assert_eq!(machine.cpu().registers().sp, 0xFFFC);
+    assert_eq!(machine.read_bus(0xFFFD), 0x01);
+    assert_eq!(machine.read_bus(0xFFFC), 0x6B);
+    assert_trace_fixture(
+        TIMER_IF_VISIBILITY_TRACE_NAME,
+        &machine.tracer().sink().render_text(),
+    );
+}
+
 #[test]
 fn phase_2_trace_shows_fetch_operand_if_visibility_and_interrupt_acceptance() {
     let mut machine = Machine::new(
@@ -72,7 +591,7 @@ fn phase_2_trace_shows_fetch_operand_if_visibility_and_interrupt_acceptance() {
     );
 
     machine
-        .load_cartridge(build_test_rom(&[0x3E, 0x12, 0xFB, 0x00], 0x12))
+        .load_cartridge(build_phase_2_fragment_rom(&[0x3E, 0x12, 0xFB, 0x00], 0x12))
         .expect("NoMBC test ROM should load");
 
     machine.write_bus(0xFFFF, 0x01);
