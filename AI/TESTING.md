@@ -204,7 +204,7 @@ Include contract-level tests for in-memory and disk save backends, format versio
 - Full-emulator save-state tests validate whole-machine snapshot ownership, hidden temporal-state restore, and save/load continuation determinism under the recorded execution mode and overrides.
 
 Keep hardware-style cartridge persistence tests separate from full-emulator save-state tests; the former must not require CPU, PPU, APU, WRAM, or other console-state serialization.
-For DMA behavior, include `FF46` source-page selection, full `160`-byte copy correctness, DMG total duration of `640` dots, transfer-progress timing, CPU blocking outside HRAM, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
+For DMA behavior, include `FF46` source-page selection, full `160`-byte copy correctness, DMG total duration of `640` dots, the `2`-T-cycle OAM-DMA start-up seam before the first byte commit, the separate onset of published CPU bus restriction after that seam, transfer-progress timing, CPU blocking outside HRAM, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
 For APU behavior, include tests that `NR52` power-off clears ordinary audio registers, preserves wave RAM accessibility, and does not reset the `DIV-APU` source relationship whenever suitable tests exist.
 Include tests that `DIV-APU` advances from the falling edge of `DIV` bit `4`, including `DIV`-write-induced extra ticks when the edge is produced.
 Include tests that the frame sequencer clocks length, envelope, and CH1 sweep without becoming the waveform timer for the channels themselves.

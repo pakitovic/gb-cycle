@@ -37,7 +37,11 @@ pub use debugger::{
     DebugControl, DebugControlSnapshot, DebugSnapshot, MachineSnapshot, Watchpoint,
     WatchpointCondition, WatchpointId, WatchpointObservation, WatchpointProbe, WatchpointTarget,
 };
-pub use dma::{DmaController, DmaSnapshot, DmaStartupState, DmaStatus, DmaTransferState};
+pub use dma::{
+    DmaAdvanceCondition, DmaController, DmaCpuImpactPolicy, DmaSnapshot, DmaStartupState,
+    DmaStatus, DmaTransfer, DmaTransferFamily, DmaTransferKind, DmaTransferLifecycle,
+    DmaTransferProgress, DmaTransferState, DmaTransferStatusView, DmaTransferTiming,
+};
 pub use interrupts::{
     InterruptController, InterruptControllerSnapshot, InterruptControllerStatus,
     InterruptStartupState,

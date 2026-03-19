@@ -786,18 +786,112 @@ Integrate DMG OAM DMA as a real transfer mechanism inside the system architectur
 - the infrastructure can already represent future block or windowed transfers without requiring a later scheduler redesign, even though GDMA and HDMA remain out of scope here
 - the system can trace DMA over time
 
+Status note (`2026-03-19`): the current repo closes `Phase 3.5` and therefore
+closes `Phase 3` as a whole. The DMA subsystem now exposes one common transfer
+contract with explicit lifecycle/status queries independent of `FF46` readback,
+published bus-impact state, and future-family hooks such as `block_size`,
+`transfer_family`, and `advance_condition`. OAM DMA runs on the shared T-cycle
+timeline as a real `160`-byte bus-routed transfer, and traces carry
+start/progress/completion plus the published DMA bus-impact metadata from the
+same cycle.
+
+Timing refinement note (`2026-03-19`): source-analysis cross-check against
+SameBoy commit `208ba4afabffab9edde416f2dbb8ae459e34adb8` (`Core/memory.c`,
+`GB_IO_DMA` setup, `GB_dma_run`, and `is_addr_in_dma_use`) is now reflected in
+the repo's DMG OAM-DMA model. The transfer keeps the `640`-T-cycle DMG burst
+duration, but exposes an explicit `2`-T-cycle start-up seam before the first
+byte commit. The first byte becomes visible at elapsed T-cycle `2`, later bytes
+continue every `4` T-cycles, the last byte lands at elapsed T-cycle `638`, and
+the final `Completed` transition remains visible after the remaining
+`2`-T-cycle tail.
+
+Oracle-validation note (`2026-03-19`): the same SameBoy cross-check also shows
+that CPU-side non-HRAM conflict handling is not published during the internal
+warm-up markers. The repo therefore now keeps the DMA transfer `in flight`
+through the start-up seam while leaving the published CPU bus state
+`Unrestricted` until that seam ends, and only then switches to the DMG
+`HRAM-only` restriction. This keeps bus-impact onset explicit in the DMA timing
+contract instead of inferring it from "transfer armed" alone.
+
 #### Recommended sequencing inside Phase 3
 
-1. Extract OAM DMA into the common controller.
-   Acceptance criteria: OAM DMA no longer lives on an ad hoc path, visible DMG behavior does not regress, CPU still remains HRAM-only during active OAM DMA, and the PPU still sees the same OAM-conflict state.
-2. Separate transfer mechanics from arbitration policy.
-   Acceptance criteria: the bus consults one common DMA constraint API, the DMA subsystem does not reimplement bus decode, and the PPU can react to common OAM or VRAM impact state rather than to transfer-specific register knowledge.
-3. Add common lifecycle and status visibility.
-   Acceptance criteria: OAM DMA uses `Idle -> Starting -> Active -> Completed`, the common API can already represent future cancellation, and code can query active-versus-finished state without depending on one specific origin register.
-4. Prepare block or windowed progression hooks.
-   Acceptance criteria: fields such as `block_size` and `advance_condition` exist in the controller contract, including room for future `0x10`-byte HDMA-style blocks, they are not yet wired to real HDMA registers, and Phase 3 does not need another scheduler redesign when CGB transfer work starts.
-5. Lock the infrastructure with focused tests.
-   Acceptance criteria: tests cover OAM DMA on the new controller, published bus constraints, lifecycle visibility, completion, and at least one simulated `0x10`-byte block-style transfer shape that is not yet mapped to real CGB MMIO.
+Phase `3` should be executed as narrow subphases. No subphase counts as closed
+unless its local acceptance criteria land together with focused automated
+coverage and move the phase-level DMA/bus/scheduler contract forward without
+reintroducing CPU-local blocking logic, instant-copy shortcuts, or DMA-owned
+bus decode.
+
+1. `Phase 3.1` - Common DMA transfer contract and `FF46`-owned OAM descriptor.
+   Acceptance criteria: the DMA subsystem replaces the ad hoc
+   `OamStartRequested`-style placeholder with one typed active-transfer shape,
+   `FF46` writes still latch the visible source page immediately, OAM DMA start
+   normalization derives the effective `XX00-XX9F` source range plus fixed
+   `FE00-FE9F` destination inside DMA-owned code, and the transfer record
+   already carries explicit DMG properties such as total length, timing policy,
+   CPU-impact policy, and memory-region impact.
+   Validation gate: focused unit tests cover `FF46` readback, source-page
+   normalization, fixed OAM destination, `160`-byte length, DMG timing-policy
+   metadata, CPU-impact metadata, and direct-boot startup state without yet
+   requiring whole-machine copy progression.
+2. `Phase 3.2` - Scheduler-driven DMA timeline and current-cycle state
+   publication.
+   Acceptance criteria: DMA gains an autonomous-peripheral `tick` path on the
+   shared scheduler timeline, transfer progression becomes explicit per T-cycle
+   rather than implicit in one later bulk copy, `Starting -> Active ->
+   Completed` becomes observable on that timeline, current-cycle DMA state is
+   published before bus arbitration for the same T-cycle, and DMG OAM DMA
+   duration is modeled as `640` dots with byte-phase visibility.
+   Validation gate: focused unit and integration tests cover state progression
+   across `Idle`, `Starting`, `Active`, and `Completed`, `1` byte every `4`
+   dots progression metadata, `640`-dot total duration, deterministic stepping,
+   and trace visibility for start and completion points.
+3. `Phase 3.3` - Central arbitration closure and DMG CPU HRAM-only behavior.
+   Acceptance criteria: the bus consumes one common DMA constraint view instead
+   of peeking at `FF46` or transfer internals, CPU-versus-DMA precedence stays
+   centralized in arbitration rather than in CPU-local special cases, live DMG
+   OAM DMA leaves the CPU with ordinary HRAM access only while active, and the
+   PPU can consume one common OAM-impact signal rather than transfer-specific
+   register knowledge.
+   Validation gate: focused arbitration tests cover CPU HRAM-only access during
+   active DMA, non-HRAM CPU blocked-read and ignored-write behavior, unrestricted
+   DMA requester access through the same arbitration path, DMA precedence over
+   ordinary PPU region-policy checks, and same-cycle coherence between published
+   DMA state and the bus decision the CPU observes.
+4. `Phase 3.4` - Real OAM data movement through the shared bus model.
+   Acceptance criteria: DMA source reads and OAM destination writes happen
+   through the same central bus/arbitration model used by the rest of the
+   machine, OAM DMA copies the full `160` bytes from the latched source page to
+   OAM over time instead of by side effect, transfer-progress state and copied
+   bytes remain separately observable on the timeline, and completion clears the
+   in-flight transfer state without bypassing lifecycle visibility.
+   Validation gate: integration tests cover source-page selection, correct
+   `160`-byte copy contents, partial-progress snapshots before completion,
+   OAM contents after completion, and completion ordering relative to the last
+   transfer T-cycle.
+5. `Phase 3.5` - Future transfer-family hooks, observability, and phase
+   closure.
+   Acceptance criteria: the common DMA API exposes lifecycle and status queries
+   without depending on one origin register, the transfer contract already
+   carries fields such as `block_size` and `advance_condition` for future
+   block/windowed DMA families, traces expose DMA start/progress/completion plus
+   published bus-impact state, and the phase closes with explicit TODOs only if
+   a concrete remaining gap still blocks full Phase `3` done criteria.
+   Validation gate: focused tests cover lifecycle/status visibility, current
+   bus-impact publication, and at least one simulated `0x10`-byte block-style
+   transfer shape that is not yet wired to real CGB MMIO; before closing the
+   phase, the resulting DMA ordering is cross-checked against SameBoy at the
+   source-analysis level when a timing-sensitive question remains.
+
+#### Subphase exit rule
+
+Every Phase `3` subphase should end with:
+
+- targeted unit and integration coverage for the newly closed DMA contract
+- updated traces or snapshots when observable DMA ordering changes
+- `cargo test -q` passing locally at minimum, and `make check` when the
+  subphase changes repo tooling or shared workflow-critical infrastructure
+- a roadmap TODO recorded immediately if the subphase ships with a concrete
+  uncovered gap
 
 #### Risks if delayed too much
 
@@ -1641,9 +1735,11 @@ Suggested entry style:
 
 ### Phase 2 — CPU and real temporal control
 
-- [CPU][BOOT] Full DMG boot ROM execution beyond the Phase `2.4` synthetic handoff baseline still needs MMIO-facing `LDH` / `(C)` transfers, `[hli]` / `[hld]` address-update transfers, and the remaining subtract plus non-CB accumulator-rotate families used by the production DMG firmware.
-- [CPU] Phase `2.6` still needs explicit verification and, if necessary, refinement for the `EI ; HALT` pending-IRQ edge case before the HALT-control path can be considered fully hardened.
-- [TIMER] Phase `2.7` still needs exact same-cycle `TIMA` / `TMA` write semantics on the reload T-cycle itself; the current baseline closes overflow delay, pre-reload writes, and CPU-visible IRQ ordering, but not yet the finest reload-cycle write arbitration cases.
+- [CPU][BOOT] Full DMG boot ROM execution beyond the Phase `2.4` synthetic handoff baseline still needs MMIO-facing `LDH` / `(C)` transfers, `[hli]` / `[hld]` address-update transfers, and the remaining subtract plus non-CB accumulator-rotate families used by the production DMG firmware. Phase dependency: the full boot-facing group does not block general Phase `4` PPU bring-up, but the shared `[hli]` / `[hld]` subset is also consumed by the Phase `4` OAM-corruption event model.
+- [CPU][OPCODES] General CPU opcode coverage beyond the narrow Phase `2.4` synthetic boot target is still intentionally partial. Before commercial-ROM execution can be treated as a supported goal, the remaining MMIO-visible transfers, implicit-address transfer forms, wider ALU families (`SUB` / `SBC`, `AND`, `XOR`, `OR`, and the remaining `CP` variants), and the broader CB-prefixed rotate / shift / bit-manipulation matrix still need closure through the same T-cycle execution model. Phase dependency: this does not reopen Phase `2` as a prerequisite for entering Phase `4`, but the micro-event-relevant subset already feeds Phase `4` OAM-corruption closure, especially implicit address-update forms plus the common event model for stack/control-flow, interrupt service, and observable address-bearing `inc/dec` paths.
+- [CPU][DIAGNOSTICS] Unsupported decoded opcodes currently fall into a non-retiring execute loop instead of surfacing a first-class diagnostic. Replace that bring-up placeholder with an explicit unsupported-opcode reporting or trap policy that preserves scheduler visibility and avoids silent hangs during ROM and test investigation. Phase dependency: this is not a hardware-model blocker for Phase `4`, but it is strongly recommended before deeper Phase `4` ROM or trace-based validation so unsupported opcodes do not surface as silent hangs.
+- [CPU] Phase `2.6` still needs explicit verification and, if necessary, refinement for the `EI ; HALT` pending-IRQ edge case before the HALT-control path can be considered fully hardened. Phase dependency: no current downstream phase is blocked on this edge case, but Phase `9` hardening should not claim the HALT path as fully closed while it remains unverified.
+- [TIMER] Phase `2.7` still needs exact same-cycle `TIMA` / `TMA` write semantics on the reload T-cycle itself; the current baseline closes overflow delay, pre-reload writes, and CPU-visible IRQ ordering, but not yet the finest reload-cycle write arbitration cases. Phase dependency: no current downstream phase is blocked on this timer corner case, but later Phase `9` timer/oracle closure should not claim exact reload-cycle behavior until this arbitration is finished.
 
 ### Phase 3 — Base DMA
 
