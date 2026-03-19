@@ -262,6 +262,37 @@ impl<S: TraceSink> Machine<S> {
                     );
                 }
                 SchedulerPhase::AutonomousPeripheralTicks => {
+                    let dma_transfer_work = dma.tick_t_cycle(context);
+                    if let Some(transfer_work) = dma_transfer_work {
+                        let arbitration_state = BusArbitrationState::default()
+                            .with_boot_rom(boot.bus_state())
+                            .with_ppu(ppu.bus_state())
+                            .with_dma(dma.bus_state());
+                        let value = bus.read_with_context(
+                            transfer_work.source_address(),
+                            BusRequester::Dma,
+                            &arbitration_state,
+                            Some(&*cartridge),
+                            BusIoReadView {
+                                apu: Some(&*apu),
+                                timer: Some(&*timer),
+                                serial: Some(&*serial),
+                                dma: Some(&*dma),
+                                boot: Some(&*boot),
+                                interrupts: Some(&*interrupts),
+                                joypad: Some(&*joypad),
+                                ppu: Some(&*ppu),
+                            },
+                        );
+                        bus.write_with_context(
+                            transfer_work.destination_address(),
+                            value,
+                            BusRequester::Dma,
+                            &arbitration_state,
+                            None,
+                            BusIoWriteView::default(),
+                        );
+                    }
                     tracer.emit(
                         TraceSubsystem::Dma,
                         TraceLevel::Trace,
@@ -274,10 +305,14 @@ impl<S: TraceSink> Machine<S> {
                     );
                 }
                 SchedulerPhase::BusArbitration => {
+                    let arbitration_state = BusArbitrationState::default()
+                        .with_boot_rom(boot.bus_state())
+                        .with_ppu(ppu.bus_state())
+                        .with_dma(dma.bus_state());
                     tracer.emit(
                         TraceSubsystem::Bus,
                         TraceLevel::Trace,
-                        bus.scheduler_trace_message(context),
+                        bus.scheduler_trace_message(context, &arbitration_state),
                     );
                     tracer.emit(
                         TraceSubsystem::Cartridge,
@@ -288,7 +323,8 @@ impl<S: TraceSink> Machine<S> {
                 SchedulerPhase::CpuMicroOperation => {
                     let arbitration_state = BusArbitrationState::default()
                         .with_boot_rom(boot.bus_state())
-                        .with_ppu(ppu.bus_state());
+                        .with_ppu(ppu.bus_state())
+                        .with_dma(dma.bus_state());
                     cpu.tick_t_cycle(|operation| match operation {
                         CpuBusOperation::Read { address } => Some(bus.read_with_context(
                             address,
@@ -371,6 +407,7 @@ impl<S: TraceSink> Machine<S> {
         BusArbitrationState::default()
             .with_boot_rom(self.boot.bus_state())
             .with_ppu(self.ppu.bus_state())
+            .with_dma(self.dma.bus_state())
     }
 
     fn apply_startup_configuration(&mut self) {

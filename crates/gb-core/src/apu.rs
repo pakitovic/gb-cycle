@@ -523,4 +523,94 @@ mod tests {
             WaveRamStartupPolicy::DeterministicZeroed
         );
     }
+
+    #[test]
+    fn channel_2_3_and_4_register_paths_keep_dac_enable_and_trigger_distinct() {
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+        apu.write_register(0xFF26, 0x80);
+
+        apu.write_register(0xFF16, 0xC7);
+        apu.write_register(0xFF17, 0x00);
+        apu.write_register(0xFF18, 0x12);
+        apu.write_register(0xFF19, 0x80);
+        assert_eq!(apu.read_register(0xFF26), 0xF0);
+
+        apu.write_register(0xFF17, 0xF3);
+        apu.write_register(0xFF19, 0x80);
+        assert_eq!(apu.read_register(0xFF26), 0xF2);
+
+        apu.write_register(0xFF1A, 0x80);
+        apu.write_register(0xFF1B, 0x55);
+        apu.write_register(0xFF1D, 0x34);
+        apu.write_register(0xFF1E, 0x80);
+        assert_eq!(apu.read_register(0xFF26), 0xF6);
+
+        apu.write_register(0xFF21, 0xF3);
+        apu.write_register(0xFF22, 0x20);
+        apu.write_register(0xFF23, 0x80);
+        assert_eq!(apu.read_register(0xFF26), 0xFE);
+
+        apu.write_register(0xFF24, 0x77);
+        apu.write_register(0xFF25, 0xF3);
+        apu.write_register(0xFF15, 0x34);
+        apu.write_register(0xFF1F, 0x12);
+        apu.write_register(0xFF27, 0x56);
+        apu.write_register(0xFF40, 0x78);
+
+        assert_eq!(apu.read_register(0xFF16), 0xFF);
+        assert_eq!(apu.read_register(0xFF17), 0xF3);
+        assert_eq!(apu.read_register(0xFF18), 0xFF);
+        assert_eq!(apu.read_register(0xFF19), 0xBF);
+        assert_eq!(apu.read_register(0xFF1A), 0xFF);
+        assert_eq!(apu.read_register(0xFF1B), 0xFF);
+        assert_eq!(apu.read_register(0xFF1D), 0xFF);
+        assert_eq!(apu.read_register(0xFF1E), 0xBF);
+        assert_eq!(apu.read_register(0xFF21), 0xF3);
+        assert_eq!(apu.read_register(0xFF22), 0x20);
+        assert_eq!(apu.read_register(0xFF24), 0x77);
+        assert_eq!(apu.read_register(0xFF25), 0xF3);
+        assert_eq!(apu.read_register(0xFF1F), 0xFF);
+        assert_eq!(apu.read_register(0xFF40), 0xFF);
+    }
+
+    #[test]
+    fn powered_off_startup_state_clears_channel_mask_and_scheduler_trace_is_stable() {
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+
+        apu.apply_startup_state(ApuStartupState {
+            powered: false,
+            nr10: 0x7F,
+            nr11: 0xFF,
+            nr12: 0xF3,
+            nr13: 0x12,
+            nr14: 0xFF,
+            nr21: 0xFF,
+            nr22: 0xF3,
+            nr23: 0x34,
+            nr24: 0xFF,
+            nr30: 0xFF,
+            nr31: 0x56,
+            nr32: 0xFF,
+            nr33: 0x78,
+            nr34: 0xFF,
+            nr41: 0x9A,
+            nr42: 0xF3,
+            nr43: 0xBC,
+            nr44: 0xFF,
+            nr50: 0x77,
+            nr51: 0xF3,
+            channel_active_mask: 0x0F,
+            div_apu: 0xFF,
+            wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
+        });
+
+        assert_eq!(apu.read_register(0xFF26), 0x70);
+
+        let context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+        let trace = apu.scheduler_trace_message(&context);
+        assert_eq!(
+            trace,
+            "t_cycle=0 phase=external_event_ingress console_model=Dmg status=Ready"
+        );
+    }
 }

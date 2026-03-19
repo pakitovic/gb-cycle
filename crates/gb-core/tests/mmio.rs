@@ -100,10 +100,10 @@ fn ff46_and_ff50_writes_take_effect_immediately_on_their_owners() {
 
     assert_eq!(machine.read_bus(0xFF46), 0x12);
     assert_eq!(machine.dma().source_page_latch(), 0x12);
-    assert_eq!(
+    assert!(matches!(
         machine.dma().transfer_state(),
-        DmaTransferState::OamStartRequested { source_page: 0x12 }
-    );
+        DmaTransferState::Starting(_)
+    ));
     assert!(!machine.boot().is_boot_rom_mapped());
     assert_eq!(machine.read_bus(0xFF50), 0xFF);
 }

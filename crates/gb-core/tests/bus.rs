@@ -166,6 +166,44 @@ fn dma_hram_only_policy_blocks_cpu_but_not_dma_requesters() {
 }
 
 #[test]
+fn dma_hram_only_policy_ignores_cpu_writes_outside_hram_but_keeps_hram_writable() {
+    let bus = Bus::new(ConsoleModel::Dmg);
+    let state = BusArbitrationState::default()
+        .with_dma(DmaBusState::cpu_hram_only(Some(DmaMemoryRegionImpact::Oam)));
+
+    let blocked_wram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0xC000, &state);
+    let allowed_hram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0xFF80, &state);
+
+    assert_eq!(
+        blocked_wram.disposition(),
+        BusAccessDisposition::IgnoredWrite {
+            reason: BusBlockReason::DmaCpuRestrictedToHram,
+        }
+    );
+    assert!(allowed_hram.disposition().is_allowed());
+}
+
+#[test]
+fn dma_published_constraints_take_precedence_over_ppu_mode_restrictions() {
+    let bus = Bus::new(ConsoleModel::Dmg);
+    let state = BusArbitrationState::default()
+        .with_dma(DmaBusState::cpu_hram_only(Some(DmaMemoryRegionImpact::Oam)))
+        .with_ppu(PpuBusState::lcd_enabled(PpuAccessMode::Drawing));
+
+    let vram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x8000, &state);
+    let oam = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xFE00, &state);
+
+    assert_eq!(
+        vram.disposition().blocked_reason(),
+        Some(BusBlockReason::DmaCpuRestrictedToHram)
+    );
+    assert_eq!(
+        oam.disposition().blocked_reason(),
+        Some(BusBlockReason::DmaCpuRestrictedToHram)
+    );
+}
+
+#[test]
 fn unusable_area_readback_tracks_oam_blocked_periods() {
     let bus = Bus::new(ConsoleModel::Dmg);
     let oam_blocked =

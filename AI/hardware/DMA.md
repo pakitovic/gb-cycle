@@ -113,9 +113,12 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 - OAM DMA should be modeled as a `160`-byte transfer whose observable effects unfold over time rather than as a single commit.
 - For the current DMG-family target, OAM DMA lasts `160` M-cycles = `640` dots at normal speed.
 - Treat those `640` dots as the current hard requirement for DMG-family work; future CGB speed differences should extend the model later rather than weaken the DMG baseline.
-- On the shared T-cycle timeline, DMG OAM DMA should conceptually progress at `1` byte every `4` dots.
+- On the shared T-cycle timeline, DMG OAM DMA should expose the documented internal start-up seam before the first byte commit rather than pretending the transfer begins directly on the first regular `4`-dot cadence boundary.
+- For the current DMG-family target, model OAM DMA with a `2`-T-cycle delay before the first byte commit, then `1` committed byte every `4` dots thereafter while still keeping the full burst at `640` dots.
+- The resulting DMG OAM timeline should therefore make the first byte observable on elapsed T-cycle `2`, the last byte on elapsed T-cycle `638`, and leave the remaining `2` T-cycles visible before the transfer reaches `Completed`.
 - Interactions between DMA source access, CPU-visible blocking, and OAM visibility should remain explicit and testable.
-- CPU execution should continue during OAM DMA, but on DMG the CPU should only retain normal HRAM access while the transfer is active.
+- CPU execution should continue during OAM DMA, but on DMG the CPU should only retain normal HRAM access once the transfer has exited its start-up seam and published its live bus-impact state.
+- Keep the start-up seam and the CPU-visible bus-impact onset as separate timing edges in the common DMA model, even when the current DMG OAM transfer happens to align both at elapsed T-cycle `2`.
 - DMA destination writes into OAM must still flow through the same central access-arbitration model used elsewhere; do not create a magical OAM backdoor.
 - On the scheduler timeline, DMA progress should be advanced before current-cycle bus arbitration and CPU access decisions so the bus sees the live DMA state for that same T-cycle.
 - DMA owns transfer progress and source/destination stepping; the bus owns the resulting blocked-access policy observed by CPU and other requesters.
@@ -193,6 +196,7 @@ Priority order:
 - lifecycle-visibility tests covering `Idle`, active start, completion, and future-compatible cancellation hooks
 - tests that bus-constraint publication is observable separately from actual byte-copy work on a T-cycle
 - tests for common DMA-controller state such as `kind`, `remaining_bytes`, and current CPU-impact policy
+- warm-up-seam tests covering the `2`-T-cycle delay before the first DMG OAM byte commit and the remaining tail before `Completed`
 - unit tests for a simulated `0x10`-byte block or windowed transfer shape that is not yet wired to CGB MMIO
 
 ## Implementation notes for this repo
@@ -201,6 +205,7 @@ Priority order:
 - Keep DMG OAM DMA and future CGB HDMA conceptually separated.
 - Prefer designs where DMA consumes bus activity over time so CPU-visible restrictions arise naturally from arbitration rather than a one-shot special case.
 - Keep bus arbitration centralized: DMA should request transfer work, while the bus should expose the resulting blocked-access semantics.
+- Keep the first-byte start-up seam explicit in the DMA-owned progress model rather than burying it in bus code or by inflating the overall burst duration.
 - A scheduler shape where `cpu.tick()`, `dma.tick()`, `ppu.tick()`, `timer.tick()`, and `apu.tick()` all advance on the same T-cycle timeline is the intended baseline, even if orchestration details differ internally.
 - Keep `FF46` as the MMIO trigger that configures DMA state; do not bury the whole transfer inside a bus write handler.
 - Even if the first implementation only supports `DmaKind::Oam`, structure the subsystem so later `Gdma` and `Hdma` kinds fit without redesigning the contract.

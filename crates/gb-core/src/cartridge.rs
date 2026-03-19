@@ -948,4 +948,92 @@ mod tests {
             other => panic!("unexpected error: {other:?}"),
         }
     }
+
+    #[test]
+    fn size_decoders_cover_extended_and_unknown_header_codes() {
+        assert_eq!(
+            RomSizeInfo::decode(0x52),
+            RomSizeInfo {
+                raw_code: 0x52,
+                decoded_bytes: Some(72 * 16 * 1024),
+                bank_count: Some(72),
+            }
+        );
+        assert_eq!(
+            RomSizeInfo::decode(0x53),
+            RomSizeInfo {
+                raw_code: 0x53,
+                decoded_bytes: Some(80 * 16 * 1024),
+                bank_count: Some(80),
+            }
+        );
+        assert_eq!(
+            RomSizeInfo::decode(0x54),
+            RomSizeInfo {
+                raw_code: 0x54,
+                decoded_bytes: Some(96 * 16 * 1024),
+                bank_count: Some(96),
+            }
+        );
+        assert_eq!(
+            RomSizeInfo::decode(0xFF),
+            RomSizeInfo {
+                raw_code: 0xFF,
+                decoded_bytes: None,
+                bank_count: None,
+            }
+        );
+
+        assert_eq!(
+            RamSizeInfo::decode(0x01),
+            RamSizeInfo {
+                raw_code: 0x01,
+                decoded_bytes: Some(2 * 1024),
+                bank_count: Some(1),
+            }
+        );
+        assert_eq!(
+            RamSizeInfo::decode(0x04),
+            RamSizeInfo {
+                raw_code: 0x04,
+                decoded_bytes: Some(128 * 1024),
+                bank_count: Some(16),
+            }
+        );
+        assert_eq!(
+            RamSizeInfo::decode(0x05),
+            RamSizeInfo {
+                raw_code: 0x05,
+                decoded_bytes: Some(64 * 1024),
+                bank_count: Some(8),
+            }
+        );
+        assert_eq!(
+            RamSizeInfo::decode(0xFF),
+            RamSizeInfo {
+                raw_code: 0xFF,
+                decoded_bytes: None,
+                bank_count: None,
+            }
+        );
+    }
+
+    #[test]
+    fn header_parser_rejects_small_images_and_keeps_full_titles_without_terminators() {
+        let error = CartridgeHeader::parse(&vec![0x00; HEADER_MINIMUM_ROM_LEN - 1])
+            .expect_err("undersized images must be rejected");
+        assert_eq!(
+            error,
+            CartridgeHeaderParseError::ImageTooSmall {
+                actual_size: HEADER_MINIMUM_ROM_LEN - 1,
+                minimum_size: HEADER_MINIMUM_ROM_LEN,
+            }
+        );
+
+        let mut rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
+        rom[TITLE_START..=TITLE_END_INCLUSIVE].copy_from_slice(b"FULLTITLE1234567");
+
+        let header = CartridgeHeader::parse(&rom).expect("header should parse");
+        assert_eq!(header.title, "FULLTITLE123456");
+    }
 }

@@ -175,4 +175,36 @@ mod tests {
         assert_eq!(serial.clock_mode, SerialClockMode::External);
         assert_eq!(serial.transfer_state, SerialTransferState::Idle);
     }
+
+    #[test]
+    fn startup_state_and_sc_writes_cover_internal_and_external_transfer_modes() {
+        let startup_state = SerialStartupState::from_registers(0xA5, 0x81);
+        assert_eq!(startup_state.sb, 0xA5);
+        assert_eq!(startup_state.clock_mode, SerialClockMode::Internal);
+        assert_eq!(
+            startup_state.transfer_state,
+            SerialTransferState::TransferRequested
+        );
+
+        let mut serial = Serial::new(ConsoleModel::Dmg);
+        serial.apply_startup_state(startup_state);
+        assert_eq!(serial.read_sc(), 0xFF);
+
+        serial.write_sc(0x00);
+        assert_eq!(serial.read_sc(), 0x7E);
+        assert_eq!(serial.clock_mode, SerialClockMode::External);
+        assert_eq!(serial.transfer_state, SerialTransferState::Idle);
+    }
+
+    #[test]
+    fn scheduler_trace_message_reports_cycle_phase_and_console_model() {
+        let serial = Serial::new(ConsoleModel::Dmg);
+        let context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+        let trace = serial.scheduler_trace_message(&context);
+
+        assert_eq!(
+            trace,
+            "t_cycle=0 phase=external_event_ingress console_model=Dmg status=Ready"
+        );
+    }
 }
