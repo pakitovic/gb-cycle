@@ -2,8 +2,8 @@ config.console_model=Dmg
 config.startup_mode=SkipBoot
 config.execution_mode=Strict
 scheduler.next_t_cycle=2
-trace.buffered_event_count=38
-trace.last_event=seq=37 subsystem=cpu level=trace message="t_cycle=1 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready pc=0x0100 execution_state=FetchOpcode { t_cycle: 2 } current_opcode=None ime=false delayed_ime_enable=false last_bus_activity=none last_address_event=none"
+trace.buffered_event_count=40
+trace.last_event=seq=39 subsystem=cpu level=trace message="t_cycle=1 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready pc=0x0100 execution_state=FetchOpcode { t_cycle: 2 } current_opcode=None ime=false delayed_ime_enable=false last_bus_activity=none last_address_event=none"
 debug.breakpoint_count=0 debug.enabled_breakpoint_count=0
 debug.watchpoint_count=0 debug.enabled_watchpoint_count=0
 cpu.console_model=Dmg cpu.status=Ready cpu.startup_pc=0x0100 cpu.pc=0x0100 cpu.execution_state=FetchOpcode { t_cycle: 2 } cpu.current_opcode=None
@@ -12,7 +12,7 @@ apu.console_model=Dmg apu.status=Ready apu.powered=true apu.div_apu=0
 ppu.console_model=Dmg ppu.status=RegistersReady
 dma.console_model=Dmg dma.status=Ready
 timer.console_model=Dmg timer.status=Ready
-serial.console_model=Dmg serial.status=Ready
+serial.console_model=Dmg serial.status=Ready serial.sb=0x00 serial.clock_mode=External serial.transfer_state=Idle
 boot.console_model=Dmg boot.startup_mode=SkipBoot boot.status=Ready boot.boot_rom_kind=Dmg boot.boot_rom_mapped=false boot.asset_configured=false boot.memory_policy=DeterministicZeroed
 interrupts.console_model=Dmg interrupts.status=Ready
 joypad.console_model=Dmg joypad.status=Ready

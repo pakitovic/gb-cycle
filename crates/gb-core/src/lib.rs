@@ -65,6 +65,7 @@ pub use scheduler::{
     SCHEDULER_PHASE_COUNT, SchedulerPhase, SchedulerSideEffect, SchedulerSnapshot, TCycle,
 };
 pub use serial::{
-    Serial, SerialClockMode, SerialSnapshot, SerialStartupState, SerialStatus, SerialTransferState,
+    Serial, SerialClockMode, SerialPeer, SerialSnapshot, SerialStartupState, SerialStatus,
+    SerialTransferState,
 };
 pub use timer::{Timer, TimerSnapshot, TimerStartupState, TimerStatus};

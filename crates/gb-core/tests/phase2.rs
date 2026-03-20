@@ -101,6 +101,10 @@ impl ProgramBuilder {
         self.bytes.extend_from_slice(&[0x3E, value]);
     }
 
+    fn ld_c_imm(&mut self, value: u8) {
+        self.bytes.extend_from_slice(&[0x0E, value]);
+    }
+
     fn ld_sp_imm(&mut self, value: u16) {
         let [low, high] = value.to_le_bytes();
         self.bytes.extend_from_slice(&[0x31, low, high]);
@@ -117,6 +121,26 @@ impl ProgramBuilder {
     fn ld_a16_from_a(&mut self, address: u16) {
         let [low, high] = address.to_le_bytes();
         self.bytes.extend_from_slice(&[0xEA, low, high]);
+    }
+
+    #[allow(dead_code)]
+    fn ldh_a8_from_a(&mut self, offset: u8) {
+        self.bytes.extend_from_slice(&[0xE0, offset]);
+    }
+
+    #[allow(dead_code)]
+    fn ldh_a_from_a8(&mut self, offset: u8) {
+        self.bytes.extend_from_slice(&[0xF0, offset]);
+    }
+
+    #[allow(dead_code)]
+    fn ld_ff00_plus_c_from_a(&mut self) {
+        self.bytes.push(0xE2);
+    }
+
+    #[allow(dead_code)]
+    fn ld_a_from_ff00_plus_c(&mut self) {
+        self.bytes.push(0xF2);
     }
 
     fn jr_offset(&mut self, offset: i8) {
@@ -310,18 +334,17 @@ fn build_ei_delay_priority_program() -> Vec<u8> {
     let mut program = ProgramBuilder::default();
     program.ld_a_imm(0x05);
     program.ld_a16_from_a(0xFFFF);
-    program.ld_a16_from_a(0xFF0F);
+    program.ldh_a8_from_a(0x0F);
     program.ei();
     program.nop();
     program.jr_self();
     program.into_bytes()
 }
 
-fn build_ei_delay_priority_vector() -> [u8; 13] {
+fn build_ei_delay_priority_vector() -> [u8; 12] {
     [
-        0xFA,
+        0xF0,
         0x0F,
-        0xFF,
         0xEA,
         0x11,
         0xC0,
@@ -339,15 +362,15 @@ fn build_halt_stop_and_halt_bug_program() -> (Vec<u8>, u16) {
     let mut program = ProgramBuilder::default();
 
     program.xor_a();
-    program.ld_a16_from_a(0xFF0F);
+    program.ldh_a8_from_a(0x0F);
     program.ld_a_imm(0x04);
     program.ld_a16_from_a(0xFFFF);
     program.ld_a_imm(0xFF);
-    program.ld_a16_from_a(0xFF05);
+    program.ldh_a8_from_a(0x05);
     program.ld_a_imm(0x66);
-    program.ld_a16_from_a(0xFF06);
+    program.ldh_a8_from_a(0x06);
     program.ld_a_imm(0x05);
-    program.ld_a16_from_a(0xFF07);
+    program.ldh_a8_from_a(0x07);
     program.ei();
     program.nop();
     program.halt();
@@ -356,23 +379,25 @@ fn build_halt_stop_and_halt_bug_program() -> (Vec<u8>, u16) {
     let phase_two_address = program.current_address();
 
     program.xor_a();
-    program.ld_a16_from_a(0xFF07);
-    program.ld_a16_from_a(0xFF0F);
+    program.ldh_a8_from_a(0x07);
+    program.ldh_a8_from_a(0x0F);
     program.ld_a16_from_a(0xFFFF);
     program.ld_a_imm(0x01);
     program.ld_a16_from_a(0xFFFF);
-    program.ld_a16_from_a(0xFF0F);
+    program.ldh_a8_from_a(0x0F);
     program.halt();
     program.inc_a();
     program.ld_a16_from_a(0xC011);
     program.xor_a();
-    program.ld_a16_from_a(0xFF0F);
+    program.ldh_a8_from_a(0x0F);
     program.ld_a16_from_a(0xFFFF);
     program.ld_a_imm(0x30);
-    program.ld_a16_from_a(0xFF00);
+    program.ld_c_imm(0x00);
+    program.ld_ff00_plus_c_from_a();
     program.ld_a_imm(0x01);
     program.ld_a16_from_a(0xFFFF);
-    program.ld_a16_from_a(0xFF0F);
+    program.ld_c_imm(0x0F);
+    program.ld_ff00_plus_c_from_a();
     program.stop();
     program.ei();
     program.nop();
@@ -386,11 +411,10 @@ fn build_jump_vector(address: u16) -> [u8; 3] {
     [0xC3, low, high]
 }
 
-fn build_halt_stop_and_halt_bug_vblank_vector() -> [u8; 13] {
+fn build_halt_stop_and_halt_bug_vblank_vector() -> [u8; 12] {
     [
-        0xFA,
+        0xF0,
         0x0F,
-        0xFF,
         0xEA,
         0x12,
         0xC0,
@@ -407,15 +431,15 @@ fn build_halt_stop_and_halt_bug_vblank_vector() -> [u8; 13] {
 fn build_timer_if_visibility_and_service_program() -> Vec<u8> {
     let mut program = ProgramBuilder::default();
     program.xor_a();
-    program.ld_a16_from_a(0xFF0F);
+    program.ldh_a8_from_a(0x0F);
     program.ld_a_imm(0x04);
     program.ld_a16_from_a(0xFFFF);
     program.ld_a_imm(0xFF);
-    program.ld_a16_from_a(0xFF05);
+    program.ldh_a8_from_a(0x05);
     program.ld_a_imm(0x66);
-    program.ld_a16_from_a(0xFF06);
+    program.ldh_a8_from_a(0x06);
     program.ld_a_imm(0x05);
-    program.ld_a16_from_a(0xFF07);
+    program.ldh_a8_from_a(0x07);
     program.ei();
     program.nop();
     program.halt();
@@ -423,17 +447,15 @@ fn build_timer_if_visibility_and_service_program() -> Vec<u8> {
     program.into_bytes()
 }
 
-fn build_timer_if_visibility_and_service_vector() -> [u8; 19] {
+fn build_timer_if_visibility_and_service_vector() -> [u8; 17] {
     [
-        0xFA,
+        0xF0,
         0x05,
-        0xFF,
         0xEA,
         0x11,
         0xC0,
-        0xFA,
+        0xF0,
         0x0F,
-        0xFF,
         0xEA,
         0x12,
         0xC0,
@@ -509,7 +531,7 @@ fn phase_2_ei_delay_priority_rom_fixture_matches_expected_trace_and_state() {
     assert_eq!(machine.read_bus(0xC011), 0xE4);
     assert_eq!(machine.cpu().registers().sp, 0xFFFC);
     assert_eq!(machine.read_bus(0xFFFD), 0x01);
-    assert_eq!(machine.read_bus(0xFFFC), 0x5A);
+    assert_eq!(machine.read_bus(0xFFFC), 0x59);
     assert_trace_fixture(
         EI_DELAY_PRIORITY_TRACE_NAME,
         &machine.tracer().sink().render_text(),
@@ -577,7 +599,7 @@ fn phase_2_timer_if_visibility_and_service_rom_fixture_matches_expected_trace_an
     assert_eq!(machine.read_bus(0xC012), 0xE0);
     assert_eq!(machine.cpu().registers().sp, 0xFFFC);
     assert_eq!(machine.read_bus(0xFFFD), 0x01);
-    assert_eq!(machine.read_bus(0xFFFC), 0x6B);
+    assert_eq!(machine.read_bus(0xFFFC), 0x67);
     assert_trace_fixture(
         TIMER_IF_VISIBILITY_TRACE_NAME,
         &machine.tracer().sink().render_text(),

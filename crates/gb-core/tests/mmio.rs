@@ -1,6 +1,7 @@
 use gb_core::{
     BootStatus, Bus, ConsoleModel, DmaTransferState, IoRegisterAvailability, IoRegisterKind,
-    IoRegisterOwner, Machine, MachineConfig, StartupMode,
+    IoRegisterOwner, JoypadButton, Machine, MachineConfig, SerialClockMode, SerialTransferState,
+    StartupMode,
 };
 
 #[test]
@@ -87,6 +88,72 @@ fn machine_routes_phase_1_mmio_registers_through_real_subsystem_owners() {
 }
 
 #[test]
+fn joyp_readback_comes_from_hardware_button_state_plus_selected_rows() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+    machine.set_joypad_button_pressed(JoypadButton::Right, true);
+
+    machine.write_bus(0xFF00, 0x30);
+    assert_eq!(machine.read_bus(0xFF00), 0xFF);
+
+    machine.write_bus(0xFF00, 0x10);
+    assert_eq!(machine.read_bus(0xFF00), 0xDE);
+
+    machine.write_bus(0xFF00, 0x20);
+    assert_eq!(machine.read_bus(0xFF00), 0xEE);
+
+    machine.write_bus(0xFF00, 0x00);
+    assert_eq!(machine.read_bus(0xFF00), 0xCE);
+
+    machine.write_bus(0xFF00, 0x3F);
+    assert_eq!(machine.read_bus(0xFF00), 0xFF);
+}
+
+#[test]
+fn joypad_irq_reaches_if_only_after_scheduler_aggregation_and_only_for_visible_edges() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF00, 0x30);
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x00);
+
+    machine.step_t_cycle();
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x00);
+
+    machine.write_bus(0xFF00, 0x10);
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x00);
+
+    machine.step_t_cycle();
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x10);
+}
+
+#[test]
+fn joypad_irq_can_retrigger_after_a_new_visible_high_to_low_transition() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF00, 0x10);
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+    machine.step_t_cycle();
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x10);
+
+    machine.write_bus(0xFF0F, 0x00);
+    machine.set_joypad_button_pressed(JoypadButton::A, false);
+    machine.step_t_cycle();
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x00);
+
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+    machine.step_t_cycle();
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x10);
+}
+
+#[test]
 fn ff46_and_ff50_writes_take_effect_immediately_on_their_owners() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::RealBoot),
@@ -106,6 +173,56 @@ fn ff46_and_ff50_writes_take_effect_immediately_on_their_owners() {
     ));
     assert!(!machine.boot().is_boot_rom_mapped());
     assert_eq!(machine.read_bus(0xFF50), 0xFF);
+}
+
+#[test]
+fn serial_mmio_arming_keeps_transfer_pending_without_instant_completion() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF01, 0xA5);
+    machine.write_bus(0xFF02, 0x81);
+
+    assert_eq!(machine.read_bus(0xFF01), 0xA5);
+    assert_eq!(machine.read_bus(0xFF02), 0xFF);
+    assert_eq!(machine.serial().clock_mode(), SerialClockMode::Internal);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+
+    machine.step_t_cycle();
+
+    assert_eq!(machine.read_bus(0xFF01), 0xA5);
+    assert_eq!(machine.read_bus(0xFF02), 0xFF);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+}
+
+#[test]
+fn serial_snapshot_and_debug_view_expose_the_pending_transfer_shape() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF01, 0x3C);
+    machine.write_bus(0xFF02, 0x80);
+
+    let snapshot = machine.snapshot();
+    let rendered = snapshot.render_text();
+
+    assert_eq!(snapshot.serial.sb, 0x3C);
+    assert_eq!(snapshot.serial.clock_mode, SerialClockMode::External);
+    assert_eq!(
+        snapshot.serial.transfer_state,
+        SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+    assert!(rendered.contains("serial.sb=0x3C"));
+    assert!(rendered.contains("serial.clock_mode=External"));
+    assert!(rendered.contains("serial.transfer_state=TransferRequested { bits_shifted: 0 }"));
 }
 
 #[test]

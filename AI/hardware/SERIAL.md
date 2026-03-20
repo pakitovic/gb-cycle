@@ -139,13 +139,18 @@ Keep these concerns distinct:
   - `SC`
   - transfer-active or transfer-requested state
   - selected clock mode
-  - bits shifted
+  - bits shifted, even in the current pre-shift baseline where an armed
+    transfer is only exposed as `bits_shifted = 0`
   - outgoing and incoming shift state or equivalent
   - master-clock timing state for DMG internal clock mode
   - optional connected peer or endpoint
 - Request the serial interrupt through the shared interrupt-controller path instead of reaching into CPU interrupt state directly.
 - Direct-boot startup values for `SB` and `SC` should come from the centralized post-boot snapshot rather than from serial-local guessed reset defaults.
 - Keep disconnected, loopback, scripted, and future transport-backed peers behind one narrow serial-peer boundary so the core stays transport-agnostic.
+- In the current baseline, the peer boundary is already explicit enough to
+  distinguish disconnected input from loopback and to queue external slave-mode
+  clock pulses on the shared timeline, while fuller scripted peers can land
+  later without reopening MMIO ownership or transfer timing.
 
 ## Known pitfalls
 

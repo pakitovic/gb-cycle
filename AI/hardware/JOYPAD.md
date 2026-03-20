@@ -67,6 +67,11 @@ Keep these layers distinct:
 - Joypad should recompute the visible low nibble from the current selection bits plus the current button matrix state on the shared timeline rather than from a frontend frame callback.
 - A write to `FF00` can itself change which low bits are visible, so selection writes must participate in the same ordered visible-edge detection path as physical button changes.
 - Joypad should expose separate outputs for visible low-nibble change, joypad interrupt request, and `STOP` wake eligibility; the CPU decides later whether to wake, service an interrupt, or both.
+- For retained timing visibility in this repo baseline, scheduler traces should
+  make the joypad-owned selection bits, hardware-facing pressed-mask state,
+  visible low nibble, interrupt-request latch, and `STOP`-wake latch observable
+  at the points where interrupt aggregation and CPU wake evaluation consume
+  them.
 
 ## Timing / accuracy requirements
 
@@ -123,7 +128,16 @@ Keep these layers distinct:
   - latched `JOYP` selection bits
   - current visible low nibble
   - previous visible low nibble or equivalent edge-detection state
+- In the current baseline, let both `FF00` selection writes and hardware-facing
+  button transitions feed that same visible-edge detector, while the resulting
+  joypad request remains latched locally until the scheduler's interrupt
+  aggregation step publishes it into `IF`.
 - Request the joypad interrupt through the shared interrupt-controller path instead of mutating CPU interrupt state directly.
+- Keep the `STOP` wake latch separate from the joypad-interrupt latch even when
+  one hardware-facing button press produces both on the same shared T-cycle; in
+  the current baseline, the CPU consumes wake during scheduler phase `9` and
+  only later reaches any interrupt-acceptance point through normal instruction
+  flow.
 - Feed any input-driven `STOP` wake path from the same joypad-owned state transition logic rather than from a frontend callback that bypasses emulated hardware.
 - Direct-boot startup values such as the documented post-boot `P1` snapshot should be injected through the centralized boot-state path rather than hard-coded as a local joypad reset default.
 
