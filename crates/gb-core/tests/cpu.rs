@@ -135,6 +135,54 @@ fn machine_executes_imm16_load_and_immediate_alu_with_real_fetches() {
 }
 
 #[test]
+fn machine_executes_ldh_a8_reads_and_writes_through_ff00_offset() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(
+            &[0x3E, 0x34, 0xE0, 0x01, 0x3E, 0x00, 0xF0, 0x01],
+            0x12,
+        ))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 40);
+
+    assert_eq!(machine.read_bus(0xFF01), 0x34);
+    assert_eq!(machine.cpu().registers().a, 0x34);
+    assert_eq!(machine.cpu().registers().pc, 0x0108);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
+fn machine_executes_ld_ff00_plus_c_reads_and_writes_through_the_same_bus_path() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(
+            &[0x0E, 0x01, 0x3E, 0x56, 0xE2, 0x3E, 0x00, 0xF2],
+            0x12,
+        ))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 40);
+
+    assert_eq!(machine.read_bus(0xFF01), 0x56);
+    assert_eq!(machine.cpu().registers().a, 0x56);
+    assert_eq!(machine.cpu().registers().pc, 0x0108);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
 fn machine_executes_control_flow_stack_and_cb_prefix_program() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -384,6 +432,59 @@ fn machine_keeps_interrupts_blocked_for_ei_di() {
 }
 
 #[test]
+fn ei_halt_with_a_pending_irq_services_once_and_returns_to_halt() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom_with_patches(
+            &[0xFB, 0x76, 0x3C, 0x00],
+            0x12,
+            &[(0x0040, 0xD9)],
+        ))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFFFF, 0x01);
+    machine.write_bus(0xFF0F, 0x01);
+
+    step_machine_t_cycles(&mut machine, 8);
+
+    assert!(!machine.cpu().ime());
+    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::VBlank,
+            step: 0,
+            t_cycle: 0,
+        }
+    );
+
+    step_machine_t_cycles(&mut machine, 20);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0040);
+    assert_eq!(machine.cpu().registers().sp, 0xFFFC);
+    assert_eq!(machine.read_bus(0xFFFD), 0x01);
+    assert_eq!(machine.read_bus(0xFFFC), 0x01);
+
+    step_machine_t_cycles(&mut machine, 16);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0101);
+    assert!(machine.cpu().ime());
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+
+    step_machine_t_cycles(&mut machine, 4);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0102);
+    assert_eq!(machine.cpu().registers().a, 0x01);
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Halted);
+}
+
+#[test]
 fn reti_reenables_interrupts_and_allows_a_remaining_pending_source_to_service() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -588,4 +689,123 @@ fn stop_wakes_from_the_joypad_path_independently_of_selection_and_services_irq_l
             t_cycle: 0,
         }
     );
+}
+
+#[test]
+fn stop_wake_and_joypad_irq_remain_separate_ordered_events_on_the_same_input_change() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0x10, 0x00, 0xFB, 0x00], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFFFF, 0x10);
+    machine.write_bus(0xFF0F, 0x00);
+    machine.write_bus(0xFF00, 0x10);
+    step_machine_t_cycles(&mut machine, 8);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0102);
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x00);
+
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+    step_machine_t_cycles(&mut machine, 1);
+
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x10);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.cpu().registers().pc, 0x0102);
+
+    step_machine_t_cycles(&mut machine, 4);
+    assert!(machine.cpu().delayed_ime_enable());
+    assert!(!machine.cpu().ime());
+    assert_eq!(machine.cpu().registers().pc, 0x0103);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x10);
+
+    step_machine_t_cycles(&mut machine, 4);
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x00);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::Joypad,
+            step: 0,
+            t_cycle: 0,
+        }
+    );
+}
+
+#[test]
+fn stop_does_not_wake_again_while_the_same_button_remains_held() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0x10, 0x00, 0x10, 0x00, 0x00], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 8);
+
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+    assert_eq!(machine.cpu().registers().pc, 0x0102);
+
+    machine.set_joypad_button_pressed(JoypadButton::Start, true);
+    step_machine_t_cycles(&mut machine, 1);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.cpu().registers().pc, 0x0102);
+
+    step_machine_t_cycles(&mut machine, 8);
+
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+    assert_eq!(machine.cpu().registers().pc, 0x0104);
+
+    machine.set_joypad_button_pressed(JoypadButton::Start, true);
+    step_machine_t_cycles(&mut machine, 2);
+
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+    assert_eq!(machine.cpu().registers().pc, 0x0104);
+}
+
+#[test]
+fn stop_can_wake_again_after_the_button_is_released_and_pressed_again() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0x10, 0x00, 0x10, 0x00, 0x00], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 8);
+    machine.set_joypad_button_pressed(JoypadButton::Start, true);
+    step_machine_t_cycles(&mut machine, 1);
+    step_machine_t_cycles(&mut machine, 8);
+
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+    assert_eq!(machine.cpu().registers().pc, 0x0104);
+
+    machine.set_joypad_button_pressed(JoypadButton::Start, false);
+    step_machine_t_cycles(&mut machine, 1);
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+
+    machine.set_joypad_button_pressed(JoypadButton::Start, true);
+    step_machine_t_cycles(&mut machine, 1);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.cpu().registers().pc, 0x0104);
 }

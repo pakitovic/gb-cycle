@@ -13,7 +13,7 @@ use crate::joypad::JoypadButton;
 use crate::model::MachineConfig;
 use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, GlobalScheduler, SchedulerPhase, TCycle};
-use crate::serial::Serial;
+use crate::serial::{Serial, SerialPeer};
 use crate::timer::Timer;
 
 #[derive(Debug, Clone)]
@@ -160,6 +160,14 @@ impl<S: TraceSink> Machine<S> {
         &self.serial
     }
 
+    pub fn set_serial_peer(&mut self, peer: SerialPeer) {
+        self.serial.set_peer(peer);
+    }
+
+    pub fn queue_external_serial_clock(&mut self) {
+        self.serial.queue_external_clock_pulse();
+    }
+
     pub fn boot(&self) -> &BootController {
         &self.boot
     }
@@ -283,6 +291,7 @@ impl<S: TraceSink> Machine<S> {
                 }
                 SchedulerPhase::AutonomousPeripheralTicks => {
                     ppu.tick_t_cycle(context, bus.oam_bytes(), bus.vram_bytes());
+                    serial.tick_t_cycle(context);
                     let dma_transfer_work = dma.tick_t_cycle(context);
                     if let Some(transfer_work) = dma_transfer_work {
                         let arbitration_state = BusArbitrationState::default()
@@ -323,6 +332,11 @@ impl<S: TraceSink> Machine<S> {
                         TraceSubsystem::Ppu,
                         TraceLevel::Trace,
                         ppu.scheduler_trace_message(context),
+                    );
+                    tracer.emit(
+                        TraceSubsystem::Serial,
+                        TraceLevel::Trace,
+                        serial.scheduler_trace_message(context),
                     );
                 }
                 SchedulerPhase::BusArbitration => {
@@ -401,11 +415,21 @@ impl<S: TraceSink> Machine<S> {
                     );
                 }
                 SchedulerPhase::InterruptAggregation => {
+                    if joypad.should_emit_scheduler_trace() {
+                        tracer.emit(
+                            TraceSubsystem::Joypad,
+                            TraceLevel::Trace,
+                            joypad.scheduler_trace_message(context),
+                        );
+                    }
                     for &source in context.interrupt_requests() {
                         interrupts.request(source);
                     }
                     for source in ppu.drain_pending_interrupt_requests() {
                         interrupts.request(source);
+                    }
+                    if joypad.consume_interrupt_request() {
+                        interrupts.request(crate::scheduler::InterruptSource::Joypad);
                     }
                     tracer.emit(
                         TraceSubsystem::Interrupts,
@@ -415,6 +439,13 @@ impl<S: TraceSink> Machine<S> {
                 }
                 SchedulerPhase::CpuWakeInterruptEvaluation => {
                     cpu.evaluate_wake_and_interrupts(interrupts, joypad);
+                    if joypad.should_emit_scheduler_trace() {
+                        tracer.emit(
+                            TraceSubsystem::Joypad,
+                            TraceLevel::Trace,
+                            joypad.scheduler_trace_message(context),
+                        );
+                    }
                     tracer.emit(
                         TraceSubsystem::Interrupts,
                         TraceLevel::Trace,
@@ -543,7 +574,7 @@ mod tests {
 
         assert_eq!(snapshot.config.console_model, ConsoleModel::Dmg);
         assert_eq!(snapshot.scheduler.next_t_cycle, TCycle::new(2));
-        assert_eq!(snapshot.trace.buffered_event_count, 38);
+        assert_eq!(snapshot.trace.buffered_event_count, 40);
         assert_eq!(snapshot.debug_controls.breakpoint_count, 0);
         assert_eq!(snapshot.debug_controls.watchpoint_count, 0);
         assert_eq!(snapshot.cpu.console_model, ConsoleModel::Dmg);

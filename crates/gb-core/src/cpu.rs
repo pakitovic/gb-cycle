@@ -111,6 +111,8 @@ pub struct CpuCore {
     delayed_ime_enable: bool,
     delayed_ime_enable_steps: u8,
     halt_request_pending: bool,
+    halt_request_ime: bool,
+    halt_request_had_delayed_ei: bool,
     halt_bug_pending: bool,
     instruction_kind: Option<CpuInstructionKind>,
     cb_instruction_kind: Option<CbInstructionKind>,
@@ -204,6 +206,8 @@ enum MemoryAddressSource {
     BC,
     DE,
     Immediate16,
+    HighImmediate8,
+    HighC,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -298,6 +302,8 @@ impl CpuCore {
             delayed_ime_enable: false,
             delayed_ime_enable_steps: 0,
             halt_request_pending: false,
+            halt_request_ime: false,
+            halt_request_had_delayed_ei: false,
             halt_bug_pending: false,
             instruction_kind: None,
             cb_instruction_kind: None,
@@ -353,6 +359,8 @@ impl CpuCore {
         self.delayed_ime_enable = false;
         self.delayed_ime_enable_steps = 0;
         self.halt_request_pending = false;
+        self.halt_request_ime = false;
+        self.halt_request_had_delayed_ei = false;
         self.halt_bug_pending = false;
         self.instruction_kind = None;
         self.cb_instruction_kind = None;
@@ -441,10 +449,19 @@ impl CpuCore {
 
         if self.halt_request_pending {
             self.halt_request_pending = false;
+            let halt_request_ime = self.halt_request_ime;
+            let halt_request_had_delayed_ei = self.halt_request_had_delayed_ei;
+            self.halt_request_ime = false;
+            self.halt_request_had_delayed_ei = false;
 
-            if !self.ime && pending {
-                self.halt_bug_pending = true;
-                self.execution_state = CpuExecutionState::fetch_opcode();
+            if !halt_request_ime && pending {
+                if halt_request_had_delayed_ei && self.ime {
+                    self.registers.pc = self.registers.pc.wrapping_sub(1);
+                    self.accept_pending_interrupt(interrupts);
+                } else {
+                    self.halt_bug_pending = true;
+                    self.execution_state = CpuExecutionState::fetch_opcode();
+                }
             } else if pending {
                 self.accept_pending_interrupt(interrupts);
             } else {
@@ -594,7 +611,10 @@ impl CpuCore {
                 _ => self.stall_instruction(opcode, step),
             },
             CpuInstructionKind::LoadAFromAddress { source } => match (source, step) {
-                (MemoryAddressSource::BC | MemoryAddressSource::DE, 0) => {
+                (
+                    MemoryAddressSource::BC | MemoryAddressSource::DE | MemoryAddressSource::HighC,
+                    0,
+                ) => {
                     let value = self.read_byte(self.resolve_memory_address(source), bus_operation);
                     self.registers.a = value;
                     self.finish_instruction();
@@ -603,10 +623,19 @@ impl CpuCore {
                     self.operand16_latch = u16::from(self.read_pc_u8(bus_operation));
                     self.advance_instruction(opcode, 1);
                 }
+                (MemoryAddressSource::HighImmediate8, 0) => {
+                    self.operand8_latch = self.read_pc_u8(bus_operation);
+                    self.advance_instruction(opcode, 1);
+                }
                 (MemoryAddressSource::Immediate16, 1) => {
                     let high = self.read_pc_u8(bus_operation);
                     self.operand16_latch |= u16::from(high) << 8;
                     self.advance_instruction(opcode, 2);
+                }
+                (MemoryAddressSource::HighImmediate8, 1) => {
+                    let value = self.read_byte(self.resolve_memory_address(source), bus_operation);
+                    self.registers.a = value;
+                    self.finish_instruction();
                 }
                 (MemoryAddressSource::Immediate16, 2) => {
                     let value = self.read_byte(self.operand16_latch, bus_operation);
@@ -616,7 +645,10 @@ impl CpuCore {
                 _ => self.stall_instruction(opcode, step),
             },
             CpuInstructionKind::StoreAToAddress { destination } => match (destination, step) {
-                (MemoryAddressSource::BC | MemoryAddressSource::DE, 0) => {
+                (
+                    MemoryAddressSource::BC | MemoryAddressSource::DE | MemoryAddressSource::HighC,
+                    0,
+                ) => {
                     self.write_byte(
                         self.resolve_memory_address(destination),
                         self.registers.a,
@@ -628,10 +660,22 @@ impl CpuCore {
                     self.operand16_latch = u16::from(self.read_pc_u8(bus_operation));
                     self.advance_instruction(opcode, 1);
                 }
+                (MemoryAddressSource::HighImmediate8, 0) => {
+                    self.operand8_latch = self.read_pc_u8(bus_operation);
+                    self.advance_instruction(opcode, 1);
+                }
                 (MemoryAddressSource::Immediate16, 1) => {
                     let high = self.read_pc_u8(bus_operation);
                     self.operand16_latch |= u16::from(high) << 8;
                     self.advance_instruction(opcode, 2);
+                }
+                (MemoryAddressSource::HighImmediate8, 1) => {
+                    self.write_byte(
+                        self.resolve_memory_address(destination),
+                        self.registers.a,
+                        bus_operation,
+                    );
+                    self.finish_instruction();
                 }
                 (MemoryAddressSource::Immediate16, 2) => {
                     self.write_byte(self.operand16_latch, self.registers.a, bus_operation);
@@ -1052,6 +1096,16 @@ impl CpuCore {
             });
         }
 
+        if matches!(opcode, 0xE0 | 0xE2) {
+            return DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
+                destination: match opcode {
+                    0xE0 => MemoryAddressSource::HighImmediate8,
+                    0xE2 => MemoryAddressSource::HighC,
+                    _ => unreachable!("opcode filter already constrained"),
+                },
+            });
+        }
+
         if matches!(opcode, 0x22 | 0x32) {
             return DecodedOpcode::Execute(CpuInstructionKind::StoreAToHlWithUpdate {
                 direction: decode_hl_update_direction(opcode),
@@ -1064,6 +1118,16 @@ impl CpuCore {
                     0x0A => MemoryAddressSource::BC,
                     0x1A => MemoryAddressSource::DE,
                     0xFA => MemoryAddressSource::Immediate16,
+                    _ => unreachable!("opcode filter already constrained"),
+                },
+            });
+        }
+
+        if matches!(opcode, 0xF0 | 0xF2) {
+            return DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
+                source: match opcode {
+                    0xF0 => MemoryAddressSource::HighImmediate8,
+                    0xF2 => MemoryAddressSource::HighC,
                     _ => unreachable!("opcode filter already constrained"),
                 },
             });
@@ -1243,6 +1307,8 @@ impl CpuCore {
         self.cb_instruction_kind = None;
         self.operand8_latch = 0;
         self.operand16_latch = 0;
+        self.halt_request_ime = self.ime;
+        self.halt_request_had_delayed_ei = self.delayed_ime_enable;
         self.advance_delayed_ime_enable();
         self.halt_request_pending = true;
         self.execution_state = CpuExecutionState::fetch_opcode();
@@ -1385,6 +1451,8 @@ impl CpuCore {
             MemoryAddressSource::BC => self.bc(),
             MemoryAddressSource::DE => self.de(),
             MemoryAddressSource::Immediate16 => self.operand16_latch,
+            MemoryAddressSource::HighImmediate8 => 0xFF00 | u16::from(self.operand8_latch),
+            MemoryAddressSource::HighC => 0xFF00 | u16::from(self.registers.c),
         }
     }
 
@@ -2908,6 +2976,37 @@ mod tests {
         cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
 
         assert_eq!(interrupts.read_if(), 0xE0);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::ServiceInterrupt {
+                source: InterruptSource::VBlank,
+                step: 0,
+                t_cycle: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn ei_halt_with_a_pending_interrupt_services_and_preserves_the_halt_return_address() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
+        let mut joypad = Joypad::new(ConsoleModel::Dmg);
+
+        cpu.apply_startup_state(CpuStartupState {
+            pc: 0x0151,
+            ..CpuStartupState::power_on_reset()
+        });
+        cpu.schedule_delayed_ime_enable();
+        cpu.advance_delayed_ime_enable();
+        cpu.finish_and_request_halt();
+        interrupts.write_ie(0x01);
+        interrupts.write_if(0x01);
+
+        cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
+
+        assert!(!cpu.ime());
+        assert_eq!(interrupts.read_if(), 0xE0);
+        assert_eq!(cpu.registers().pc, 0x0150);
         assert_eq!(
             cpu.execution_state(),
             CpuExecutionState::ServiceInterrupt {

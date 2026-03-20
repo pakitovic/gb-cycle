@@ -1189,6 +1189,108 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 - their interrupts and states are observable and testable
 - their event timing does not depend on frame callbacks or host timers bypassing the T-cycle scheduler
 
+#### Recommended sequencing inside Phase 5
+
+Phase `5` should be executed as narrow subphases. No subphase counts as closed
+unless its local acceptance criteria land together with focused automated
+coverage and preserve the existing scheduler, bus, and interrupt-controller
+contracts instead of reopening them through peripheral-local shortcuts.
+
+1. `Phase 5.1` - Joypad register closure and hardware-facing input boundary.
+   Acceptance criteria: `JOYP` remains joypad-owned as a mixed register, the
+   frontend-facing API only updates hardware-facing button state instead of
+   precomposed `FF00` bytes, bits `7-6` read back high, `0x30` reads back with
+   low nibble `0xF`, and selecting one or both rows resolves the low nibble
+   from one explicit `2x4` matrix rule rather than from row-priority shortcuts.
+   Validation gate: focused unit and MMIO integration tests cover row
+   selection, active-low semantics, simultaneous-row combination, direct-boot
+   startup state, and the guarantee that selection writes affect readback on
+   the same shared machine timeline.
+2. `Phase 5.2` - Joypad visible-edge interrupt generation through the shared
+   interrupt path.
+   Acceptance criteria: joypad tracks the previously visible low nibble, raises
+   a request only on visible `High -> Low` transitions after row selection is
+   applied, repeated visible transitions can request multiple interrupts, and
+   the request enters `IF` only through the shared interrupt controller.
+   Validation gate: focused unit and integration tests cover selected-row,
+   unselected-row, both-rows-selected, and selection-write-created edge cases,
+   plus machine-level verification that `IF` changes only when the visible
+   `JOYP` low nibble actually transitions.
+   Status: done in the current branch baseline. `Joypad` now owns previous
+   visible-low-nibble tracking, both `FF00` selection writes and hardware-side
+   button transitions feed the same edge detector, and the resulting request is
+   drained into `IF` only during scheduler phase `8` aggregation rather than by
+   direct `FF00` or frontend-side mutation of the interrupt controller.
+3. `Phase 5.3` - Joypad-driven `STOP` wake closure on the shared scheduler
+   timeline.
+   Acceptance criteria: the repo's current DMG-family `STOP` wake policy
+   remains explicit as selection-independent `released -> pressed` wake on any
+   hardware-facing button, that wake originates from the joypad subsystem path
+   rather than from frontend or CPU bypasses, and wake ordering stays distinct
+   from joypad-interrupt generation even when both happen around the same input
+   change.
+   Validation gate: focused CPU/joypad integration tests cover `STOP` wake with
+   no visible joypad IRQ, `STOP` wake plus later interrupt servicing, repeated
+   wake-producing input transitions, and one negative case proving that a
+   non-transition or already-held button does not produce an extra wake event.
+   Status: done in the current branch baseline. `STOP` wake continues to come
+   only from the joypad-owned released-to-pressed path, remains selection
+   independent across the `8` hardware-facing buttons, and stays temporally
+   distinct from any same-input-change joypad interrupt request or later CPU
+   interrupt service.
+4. `Phase 5.4` - Serial MMIO closure and explicit transfer-state baseline.
+   Acceptance criteria: `SB` and `SC` stay serial-owned, `SC.7` means
+   transfer-requested or in-progress rather than instant completion, DMG
+   non-functional bits still read high, the serial subsystem exposes one
+   explicit in-flight transfer shape with bit count and clock-source state, and
+   startup-state injection continues to come from the centralized boot path.
+   Validation gate: focused unit and MMIO integration tests cover `SB` / `SC`
+   readback, transfer arming without instant completion, internal versus
+   external clock selection, direct-boot startup state, and snapshot/debug
+   visibility of the new transfer state.
+   Status: done in the current branch baseline. `SB` / `SC` remain
+   serial-owned, `SC.7` still means transfer requested rather than completed,
+   and the serial snapshot/debug surface now exposes one explicit pending
+   transfer shape with selected clock mode plus `bits_shifted = 0` ahead of the
+   later bit-level engine work in `Phase 5.5`.
+5. `Phase 5.5` - Bit-level serial engine, peer boundary, and completion-driven
+   IRQ timing.
+   Acceptance criteria: DMG master mode advances one serial shift per internal
+   clock pulse at `8192` Hz on the T-cycle timeline, slave mode does not
+   advance without externally injected clocks, disconnected peers yield incoming
+   `1` bits tending toward `0xFF`, `SB` evolves during transfer rather than
+   jumping at the end, and the serial interrupt is requested only when the
+   eighth shift clears `SC.7`.
+   Validation gate: focused unit and integration tests cover intermediate `SB`
+   states, master-mode timing, slave-mode pending state, disconnected-peer
+   behavior, one loopback or scripted-peer case, and the same-cycle coherence
+   of final `SB`, cleared `SC.7`, and serial `IF` request on transfer
+   completion.
+   Status: done in the current branch baseline. DMG master mode now shifts one
+   bit every `512` T-cycles (`8192` Hz), slave mode remains pending without
+   externally queued clocks, disconnected input tends toward `0xFF`, loopback
+   is explicit through the serial peer boundary, and completion clears `SC.7`
+   while requesting the serial interrupt in the same scheduler-visible cycle.
+6. `Phase 5.6` - Traceability, regression assets, and phase closure.
+   Acceptance criteria: scheduler-visible traces expose joypad selection/input
+   edges, joypad IRQ requests, `STOP` wake eligibility, serial start/progress /
+   completion, and peer-driven external-clock events; the phase closes only
+   once the resulting peripheral behavior is covered by targeted unit tests,
+   subsystem integration tests, and retained artifacts where timing visibility
+   matters.
+   Validation gate: phase-level regression tests retain at least one
+   joypad-and-`STOP` timing artifact and one serial timing artifact, and any
+   timing-sensitive open question is either cross-checked against a trusted
+   oracle or recorded immediately as a roadmap TODO instead of being carried
+   informally.
+   Status: done in the current branch baseline. Scheduler-visible traces now
+   expose joypad state during interrupt aggregation and CPU wake evaluation,
+   serial progress during autonomous-peripheral ticks, and retained Phase `5`
+   trace fixtures now lock one joypad-plus-`STOP` chronology and one
+   peer-driven external-clock serial chronology without introducing any new
+   timer-driven open question that would force the deferred Phase `2.7`
+   `TIMA` / `TMA` arbitration work into this phase.
+
 #### Joypad implementation breakdown
 
 1. **`JOYP` mixed-register baseline**
@@ -1224,6 +1326,26 @@ Complete basic system peripherals on top of an already consolidated bus, schedul
 5. **Interrupt and scheduler closure**
    Scope: full `SB` / `SC` -> transfer -> `IF` route plus timing-visible reads and writes.
    Acceptance criteria: `IF` receives the serial request at the correct completion point, `SC.7` clears at that same point, and tests cover master mode, slave mode, disconnected peer, loopback or scripted peer, and intermediate `SB` states.
+
+#### Phase 5 interleave policy with earlier open TODOs
+
+- Phase `3` and Phase `5`'s own section currently leave no open TODOs, so DMA and cartridge work are not sequencing blockers for entering the input/peripheral phase.
+- The resolved Phase `2.6` `EI ; HALT` pending-IRQ edge no longer blocks `Phase 5.3`; keep using that path as a regression target when extending joypad-driven wake and interrupt coverage so later refactors do not silently reopen it.
+- The remaining Phase `2` exact reload-cycle `TIMA` / `TMA` arbitration is still deferred and should stay isolated unless a serial-completion or joypad-interrupt test proves that the shared interrupt timeline is modeled incorrectly for reasons broader than the timer itself.
+- The remaining Phase `4` TODOs are validation-grade PPU follow-ups, not architectural blockers for Phase `5`; only interleave one of them if shared scheduler traces, oracle tooling, or retained artifact plumbing can be improved once and reused immediately by the active joypad or serial subphase.
+- If a Phase `5` subphase depends on a missing helper, fixture pattern, or trace hook that also resolves a concrete earlier TODO, land that smallest reusable seam first instead of duplicating temporary peripheral-local scaffolding.
+- If a Phase `5` subphase lands with a deliberately isolated gap, record the remainder in `Open TODOs` immediately instead of carrying it informally into later cartridge or APU work.
+
+#### Subphase exit rule
+
+Every Phase `5` subphase should end with:
+
+- focused unit tests for the local register contract, edge detector, transfer state machine, or peer boundary that was introduced
+- integration tests when the behavior only becomes meaningful across `joypad`, `serial`, `cpu`, `interrupts`, `bus`, or `machine`
+- retained trace or snapshot coverage when timing visibility, `STOP` wake ordering, or serial progress would otherwise be hard to audit after a refactor
+- `cargo test -q` passing locally at minimum, and `make check` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
+- at least one explicit note about remaining risk when oracle comparison or external-ROM validation is still intentionally deferred
+- a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
 
 ---
 
@@ -1791,14 +1913,15 @@ Suggested entry style:
 
 ### Phase 2 — CPU and real temporal control
 
-- [CPU][BOOT] Full DMG boot ROM execution beyond the Phase `2.4` synthetic handoff baseline still needs MMIO-facing `LDH` / `(C)` transfers and the remaining subtract plus non-CB accumulator-rotate families used by the production DMG firmware. Phase dependency: the shared `[hli]` / `[hld]` subset that also fed Phase `4` OAM-corruption prep is already landed, so the remaining boot-facing group does not block `Phase 4`.
+- [CPU][BOOT] Full DMG boot ROM execution beyond the Phase `2.4` synthetic handoff baseline still needs the remaining subtract plus non-CB accumulator-rotate families used by the production DMG firmware. The MMIO-facing `LDH` / `(C)` transfer bridge is now landed, so the outstanding boot-facing gap is narrower and no longer blocks synthetic MMIO-oriented ROM work for later phases. Phase dependency: the shared `[hli]` / `[hld]` subset that also fed Phase `4` OAM-corruption prep is already landed, so the remaining boot-facing group does not block `Phase 4`.
 - [CPU][OPCODES] General CPU opcode coverage beyond the narrow Phase `2.4` synthetic boot target is still intentionally partial. Before commercial-ROM execution can be treated as a supported goal, the remaining MMIO-visible transfers, wider ALU families (`SUB` / `SBC`, `AND`, `XOR`, `OR`, and the remaining `CP` variants), and the broader CB-prefixed rotate / shift / bit-manipulation matrix still need closure through the same T-cycle execution model. Phase dependency: this does not reopen Phase `2` as a prerequisite for entering Phase `4`, and the micro-event-relevant subset for `4.8` is now closed through `[hli]` / `[hld]`, fetch-time `PC` increments, stack/control-flow, interrupt service, and observable address-bearing `inc/dec` publication.
-- [CPU] Phase `2.6` still needs explicit verification and, if necessary, refinement for the `EI ; HALT` pending-IRQ edge case before the HALT-control path can be considered fully hardened. Phase dependency: no current downstream phase is blocked on this edge case, but Phase `9` hardening should not claim the HALT path as fully closed while it remains unverified.
 - [TIMER] Phase `2.7` still needs exact same-cycle `TIMA` / `TMA` write semantics on the reload T-cycle itself; the current baseline closes overflow delay, pre-reload writes, and CPU-visible IRQ ordering, but not yet the finest reload-cycle write arbitration cases. Phase dependency: no current downstream phase is blocked on this timer corner case, but later Phase `9` timer/oracle closure should not claim exact reload-cycle behavior until this arbitration is finished.
 
 #### Done:
 
 - [CPU][DIAGNOSTICS] Unsupported decoded opcodes now enter one explicit unsupported-opcode diagnostic trap immediately after the real fetch retires, keeping the failure visible in CPU snapshots and scheduler traces instead of falling into a silent non-retiring execute loop.
+- [CPU][HALT] Phase `2.6` now includes explicit `EI ; HALT` pending-IRQ verification and one targeted refinement: when `HALT` is the delayed-`EI` follower with an already pending interrupt, the interrupt is serviced once and returns to the `HALT` opcode instead of falling into the ordinary HALT-bug wake path or skipping ahead past `HALT`.
+- [CPU][MMIO-BRIDGE] The minimum MMIO-facing opcode bridge is now landed through `LDH (a8),A`, `LDH A,(a8)`, `LD (C),A`, and `LD A,(C)`, with direct CPU integration tests and synthetic-ROM builder helpers so later joypad, serial, and boot-adjacent validation can target `FF00-FF7F` without raw-byte boilerplate.
 - [CPU][OAM-PREP] The shared address-bearing event subset required by Phase `4.8` is already landed through `[hli]` / `[hld]`, fetch-time `PC` increments, stack/control-flow, interrupt service, and observable address-bearing `inc/dec` publication.
 - [CPU][PHASE2-SYNTHETIC-ROMS] The first full synthetic Phase `2` asset family now ships: reproducible `NoMBC` ROMs and golden traces for fetch/immediate order, control-flow plus stack plus CB timing, `EI` delay plus priority, `HALT` / `STOP` / `HALT` bug chronology, and timer `IF` visibility plus interrupt service. `crates/gb-core/tests/phase2.rs` is now the source of truth for those builders, traces, and expected end states.
 - [TEST-RUNNER][EXTERNAL-STIMULI] `gb-test-runner` metadata now supports deterministic external stimuli, and the shipped `phase2_halt_stop_and_halt_bug` contract uses one explicit joypad `A` press at `t_cycle = 412` so the `STOP` wake is part of the typed suite definition instead of a hidden local-harness assumption.
