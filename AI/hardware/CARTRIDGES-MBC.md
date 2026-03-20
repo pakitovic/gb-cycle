@@ -581,9 +581,44 @@ Priority order:
 - Keep header validation policy explicit and centralized rather than hiding it inside individual mapper constructors.
 - For MBC1, keep raw register fields, resolved effective bank helpers, and validated wiring / variant metadata as separate layers instead of one opaque "current bank" state blob.
 - For MBC1, derive an explicit standard-versus-large-ROM wiring classification, plus a reserved future MBC1M variant, from validated cartridge metadata instead of branching ad hoc during each access.
+- In the current baseline, `MBC1` already exists as a dedicated cartridge
+  device with explicit raw register fields and immediate control-write
+  visibility on the shared T-cycle timeline; the remaining Phase `6` work is to
+  extend that baseline through the documented small-ROM and large-ROM banking
+  edge cases, fuller diagnostics, and later persistence.
+- In the current baseline, standard-wiring `MBC1` high-ROM banking and final
+  size masking are already live for `32 KiB` through `512 KiB` images,
+  including raw-register preservation, `0 -> 1` translation before masking, and
+  the documented small-ROM case where `bank 0` can reappear in
+  `0x4000-0x7FFF` after the final mask. Remaining `MBC1` work is the
+  large-ROM alternate wiring, fuller diagnostics, and later persistence.
+- In the current baseline, large-ROM `MBC1` wiring is also live: the high
+  window exposes `0x21`, `0x41`, and `0x61` while preserving the documented
+  `0x20` / `0x40` / `0x60` anomaly, mode `0` keeps the low window on bank `0`,
+  mode `1` remaps the low window from the secondary register, and large-ROM RAM
+  stays on one fixed `8 KiB` window instead of pretending to be `32 KiB`
+  banked SRAM.
+- The remaining `MBC1` work after this baseline is validation-grade rather than
+  runtime-grade: one trusted oracle comparison for the documented bank-selection
+  edge cases, then later persistence once the phase reaches cartridge-owned save
+  payloads.
 - Keep disabled external-RAM open-bus behavior explicit and configurable enough that tests can pin the chosen policy.
 - For MBC2, keep address-bit-`8` control decode, raw `rom_bank_low4`, internal nibble RAM organization, effective ROM-bank helpers, and explicit disabled-RAM / high-nibble readback policies as separate layers instead of hiding them in generic byte-RAM helpers.
 - For MBC2, treat `0x0149` as validation metadata only; runtime RAM capacity comes from the mapper family itself rather than from the ordinary external-RAM table.
+- In the current baseline, `MBC2` now exists as a dedicated cartridge device
+  with explicit `ram_enabled`, raw `rom_bank_low4`, internal `512 x 4-bit`
+  RAM, low-`9`-bit aliasing across `0xA000-0xBFFF`, and the repo's explicit
+  `0xF0 | nibble` readback policy rather than accidental byte-wide SRAM
+  behavior.
+- In the current baseline, `MBC2` header validation now enforces the `256 KiB`
+  ROM ceiling, treats nonzero `0x0149` as validation-only metadata instead of
+  external SRAM sizing, and preserves immediate visibility of address-bit-`8`
+  control writes on the shared T-cycle timeline.
+- The remaining `MBC2` work after this baseline is validation-grade and
+  persistence-grade rather than runtime-grade: one trusted oracle comparison
+  for control-decode / nibble-RAM edge cases, plus the later shared cartridge
+  persistence contract that will decide how battery-backed `0x06` exports and
+  restores its nibble array.
 - For MBC3, derive `has_rtc` from the header type itself, not from battery presence or RAM presence alone.
 - For MBC3, keep `ram_or_rtc_select` as a typed mapping target that can represent RAM, reserved, and RTC selector states rather than one raw bank number whose meaning changes implicitly.
 - For MBC3, keep `rtc_live` and `rtc_latched` as separate state objects, and route RTC reads versus writes intentionally.
@@ -591,6 +626,98 @@ Priority order:
 - For MBC3, persist live RTC state plus elapsed-time bookkeeping, not the latched snapshot shown through the read latch.
 - For MBC3, restate the optional RTC access-spacing note in T-cycles when it becomes behaviorally relevant: the Pan Docs `4 us` recommendation corresponds to `16` T-cycles at normal-speed DMG.
 - For MBC3, reserve MBC30 as a first-class future extension point rather than folding it into standard MBC3 conditionals.
+- In the current baseline, `MBC3` now exists as a dedicated cartridge device
+  with explicit `ram_rtc_enabled`, raw `7`-bit ROM-bank state, typed RAM /
+  reserved / RTC selector state, separate live versus latched RTC state, and a
+  deterministic RTC-advance hook for tests instead of coupling the RTC to CPU
+  T-cycle counts or host wall clock reads.
+- In the current baseline, standard `MBC3` ROM banking and RAM banking are live
+  up to `2 MiB` ROM and `32 KiB` RAM, banks `0x20`, `0x40`, and `0x60` remain
+  reachable as documented, reserved selectors `0x04..=0x07` stay explicit, the
+  latch edge is `0x00 -> 0x01`, and writes target live RTC state while reads
+  come from the latched snapshot.
+- In the current baseline, `MBC3` validation now rejects oversized ROMs, keeps
+  MBC30-like `64 KiB` SRAM declarations reserved as a future variant rather
+  than silently treating them as standard MBC3, and emits validation warnings
+  when no-RAM MBC3 types still declare external RAM metadata.
+- The remaining `MBC3` work after this baseline is split in two: one trusted
+  oracle comparison for MBC3 banking / RTC edge cases, and the later shared
+  cartridge persistence contract that will decide how battery-backed RTC plus
+  SRAM payloads are exported and restored across sessions.
+- In the current baseline, `MBC5` now exists as a dedicated cartridge device
+  with explicit variant metadata for no-RAM, RAM, RAM+battery, rumble-only,
+  rumble+RAM, and rumble+RAM+battery shapes, plus raw `rom_bank_low8`,
+  `rom_bank_high1`, `ram_bank_raw`, `ram_enabled`, and observable
+  `rumble_on` state.
+- In the current baseline, `MBC5` ROM banking is live up to `8 MiB`, keeps
+  bank `0` valid in `0x4000-0x7FFF`, reaches bank `0x1FF`, crosses the
+  `0xFF -> 0x100` boundary through the explicit high bit, and masks the final
+  effective bank by the real loaded ROM size without any MBC1/MBC3-style
+  `0 -> 1` translation.
+- In the current baseline, standard non-rumble `MBC5` SRAM now supports linear
+  `8 KiB`, `32 KiB`, and `128 KiB` backing stores under the explicit
+  RAM-enable gate, while rumble-capable variants keep `bit 3` of the
+  `0x4000-0x5FFF` control register attached to the motor state instead of the
+  RAM chip and therefore validate only the compatible smaller RAM layouts.
+- The remaining `MBC5` work after this baseline is split in two: one trusted
+  oracle comparison for the bank-selection and rumble edge cases, and the later
+  shared cartridge persistence contract that will decide how battery-backed
+  `MBC5` SRAM payloads are exported and restored across sessions.
+- In the current baseline, the loader now owns one central special-cartridge
+  classification path covering `Supported`, `PlannedVariant`,
+  `DocumentedButUnsupported`, `ExperimentalHeuristic`,
+  `AccessorySpecialCase`, and `UnknownCode`, so frontends no longer need to
+  rediscover those categories or their reasons by reparsing header bytes.
+- In the current baseline, `MBC30` now classifies as an explicit
+  `PlannedVariant` instead of falling through standard `MBC3` validation, and
+  the currently wired experimental heuristic path can reclassify `EMS`, `Bung`,
+  and `Wisdom Tree` signatures only when the loader is in explicit
+  experimental-heuristic mode.
+- The remaining special-cartridge policy gap after this baseline is explicit
+  `M161` identification. The taxonomy and controlled-failure path are in place,
+  but the repo still lacks a trusted deliberate detection rule for `M161`, so
+  that cartridge should remain a tracked special-policy TODO rather than an
+  accidental unknown-code outcome.
+- In the current baseline, `cartridge` now exposes a typed persistence contract
+  directly from the mapper layer, including explicit capability metadata plus
+  per-mapper payload shapes for `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, and `Mbc5`.
+  The contract now represents no persistent storage, non-persistent RAM,
+  persistent RAM, persistent RTC, and combined RAM plus RTC without forcing the
+  backend to infer mapper details from the visible `0xA000-0xBFFF` window.
+- In the current baseline, persistence export and restore already operate on
+  full cartridge-owned backing stores rather than the currently visible RAM
+  bank, and they remain independent from live RAM-enable state. `MBC2` exports
+  its `512 x 4-bit` nibble array explicitly, while `MBC3` persistence now
+  serializes the live RTC state rather than the latched read snapshot.
+- In the current baseline, the host-side save backend now exists as a separate
+  workspace crate outside `gb-core`, with a versioned envelope format,
+  explicit logical save keys, shared encode/decode helpers, in-memory and disk
+  adapters, deterministic injected timestamp support, and safe-replacement
+  filesystem writes. The cartridge contract remains mapper-owned, while path
+  policy, serialization format, and durable file handling stay outside the
+  core as required by the architecture handbook.
+- In the current baseline, the default host-side hardware-persistence helper is
+  now battery-gated through validated cartridge capability metadata. Battery
+  presence and the typed persistence profile decide whether the helper will
+  auto-load or auto-save a hardware-style payload; cartridges that only expose
+  `NonPersistentRam` are skipped by default even though the lower-level backend
+  can still encode explicit envelopes for tests or future non-faithful tools.
+- In the current baseline, powered-off `MBC3` RTC elapsed time is now applied
+  during hardware-persistence load through the backend-owned time source rather
+  than through CPU T-cycles. The arithmetic used for off-session advancement
+  lives in the cartridge-side persistent RTC type, so halt, carry, wraparound,
+  and the visible `9`-bit day counter follow the same rules as the live RTC
+  model while the latched snapshot remains a runtime-local concern.
+- In the current baseline, higher-level save triggering and flush policy are
+  now also closed in the host-side persistence layer. The repo now exposes
+  explicit manual flush, force-save, save-on-close, and optional auto-flush
+  entrypoints around the hardware-persistence helpers, keeps dirty-state
+  tracking outside the bus, and surfaces filesystem failures synchronously
+  rather than treating them as best-effort background events.
+- The remaining cartridge-persistence work after this baseline is no longer a
+  local implementation gap in Phase `6`; further work from here is validation-
+  or frontend-integration-grade rather than mapper- or persistence-contract-
+  grade.
 - Keep multicarts as a first-class classification concern distinct from standard MBC families; `MMM01`, future `MBC1M`, and `M161` should not be redistributed across `MBC1` or `NoMbc` code paths by default.
 - Keep accessory cartridges such as `Pocket Camera` and `Bandai TAMA5` in a separate classification lane from ordinary MBCs so frontends can report them accurately without reparsing headers.
 - Keep heuristic detection policy outside the supported-mapper fast path, and default strict-mode behavior to "no heuristics unless explicitly enabled."

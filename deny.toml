@@ -10,6 +10,8 @@ unused-allowed-license = "warn"
 allow = [
   "MIT",
   "Apache-2.0",
+  # Required transitively by `unicode-ident` in the proc-macro stack.
+  "Unicode-3.0",
 ]
 
 [licenses.private]

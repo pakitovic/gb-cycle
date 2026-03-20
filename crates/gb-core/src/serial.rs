@@ -69,6 +69,8 @@ pub struct Serial {
     peer: SerialPeer,
     ticks_until_next_shift: Option<u16>,
     external_clock_pulses_pending: u8,
+    current_outgoing_byte: u8,
+    completed_output_bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,6 +94,8 @@ impl Serial {
             peer: SerialPeer::Disconnected,
             ticks_until_next_shift: None,
             external_clock_pulses_pending: 0,
+            current_outgoing_byte: 0,
+            completed_output_bytes: Vec::new(),
         }
     }
 
@@ -146,6 +150,7 @@ impl Serial {
         } else {
             SerialTransferState::Idle
         };
+        self.current_outgoing_byte = 0;
         self.reset_transfer_timing();
     }
 
@@ -155,6 +160,8 @@ impl Serial {
         self.transfer_state = startup_state.transfer_state;
         self.peer = SerialPeer::Disconnected;
         self.external_clock_pulses_pending = 0;
+        self.current_outgoing_byte = 0;
+        self.completed_output_bytes.clear();
         self.reset_transfer_timing();
     }
 
@@ -164,6 +171,10 @@ impl Serial {
 
     pub fn queue_external_clock_pulse(&mut self) {
         self.external_clock_pulses_pending = self.external_clock_pulses_pending.saturating_add(1);
+    }
+
+    pub fn take_completed_output_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.completed_output_bytes)
     }
 
     pub fn snapshot(&self) -> SerialSnapshot {
@@ -246,6 +257,7 @@ impl Serial {
         };
 
         let outgoing_bit = self.sb & 0x80 != 0;
+        self.current_outgoing_byte = (self.current_outgoing_byte << 1) | u8::from(outgoing_bit);
         let incoming_bit = incoming_bit_from_peer(self.peer, outgoing_bit);
         self.sb = (self.sb << 1) | u8::from(incoming_bit);
 
@@ -253,6 +265,8 @@ impl Serial {
         if bits_shifted == 8 {
             self.transfer_state = SerialTransferState::Idle;
             self.ticks_until_next_shift = None;
+            self.completed_output_bytes.push(self.current_outgoing_byte);
+            self.current_outgoing_byte = 0;
             context.queue_interrupt_request(InterruptSource::Serial);
         } else {
             self.transfer_state = SerialTransferState::TransferRequested { bits_shifted };
@@ -362,6 +376,8 @@ mod tests {
         assert_eq!(serial.read_sc(), 0x7F);
         assert_eq!(serial.transfer_state(), SerialTransferState::Idle);
         assert_eq!(context.interrupt_requests(), &[InterruptSource::Serial]);
+        assert_eq!(serial.take_completed_output_bytes(), vec![0x81]);
+        assert!(serial.take_completed_output_bytes().is_empty());
     }
 
     #[test]
@@ -383,6 +399,7 @@ mod tests {
             SerialTransferState::TransferRequested { bits_shifted: 0 }
         );
         assert!(context.interrupt_requests().is_empty());
+        assert!(serial.take_completed_output_bytes().is_empty());
     }
 
     #[test]
@@ -401,5 +418,6 @@ mod tests {
         assert_eq!(serial.read_sb(), 0x96);
         assert_eq!(serial.transfer_state(), SerialTransferState::Idle);
         assert_eq!(context.interrupt_requests(), &[InterruptSource::Serial]);
+        assert_eq!(serial.take_completed_output_bytes(), vec![0x96]);
     }
 }

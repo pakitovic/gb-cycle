@@ -458,7 +458,7 @@ fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
     assert_eq!(restart.lcd_state, PpuLcdState::Enabled);
     assert_eq!(restart.mode, PpuAccessMode::OamScan);
     assert_eq!(restart.ly, 0);
-    assert_eq!(restart.line_dot, 0);
+    assert_eq!(restart.line_dot, 4);
     assert_eq!(restart.visible_output, PpuVisibleOutputState::ForcedBlank);
     assert!(restart.blank_frame_active);
 

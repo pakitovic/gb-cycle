@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
 use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
-    FailureArtifactPolicy, PassCondition, RomCaseValidationError, RomSuite,
+    FailureArtifactPolicy, MemoryTextOutputSpec, PassCondition, RomCaseValidationError, RomSuite,
     RomSuiteValidationError, RomTestCase, StimulusTime, TestSubsystem, Timeout,
     phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
 };
@@ -54,6 +54,63 @@ fn rom_test_case_requires_capture_matching_the_pass_condition() {
 }
 
 #[test]
+fn rom_test_case_requires_memory_text_capture_for_memory_text_output_conditions() {
+    let case = RomTestCase::new(
+        "mem-text-case",
+        PathBuf::from("mem_text.gb"),
+        Timeout::Frames(60),
+        PassCondition::MemoryTextOutputContains {
+            spec: MemoryTextOutputSpec::new(
+                0xA000,
+                0x80,
+                0x00,
+                0xA001,
+                [0xDE, 0xB0, 0x61],
+                0xA004,
+                128,
+            ),
+            expected_substring: "Passed".to_string(),
+        },
+    )
+    .with_capture_plan(CapturePlan::new().with_capture(CaptureKind::Snapshot))
+    .with_failure_artifacts(
+        FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::MemoryTextOutput)
+            .with_artifact(CaptureKind::Snapshot),
+    );
+
+    assert_eq!(
+        case.validate(),
+        Err(RomCaseValidationError::MissingRequiredCapture(
+            CaptureKind::MemoryTextOutput
+        ))
+    );
+}
+
+#[test]
+fn rom_test_case_requires_blargg_console_capture_for_console_text_conditions() {
+    let case = RomTestCase::new(
+        "blargg-console-case",
+        PathBuf::from("lcd.gb"),
+        Timeout::Frames(60),
+        PassCondition::BlarggConsoleTextContains("Passed".to_string()),
+    )
+    .with_capture_plan(CapturePlan::new().with_capture(CaptureKind::Snapshot))
+    .with_failure_artifacts(
+        FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::BlarggConsoleText)
+            .with_artifact(CaptureKind::Snapshot),
+    );
+
+    assert_eq!(
+        case.validate(),
+        Err(RomCaseValidationError::MissingRequiredCapture(
+            CaptureKind::BlarggConsoleText
+        ))
+    );
+}
+
+#[test]
 fn rom_test_case_rejects_failure_artifacts_that_are_not_captured() {
     let case = RomTestCase::new(
         "mealybug_ly",
@@ -79,7 +136,7 @@ fn rom_test_case_rejects_failure_artifacts_that_are_not_captured() {
 #[test]
 fn rom_test_case_rejects_duplicate_external_stimuli() {
     let duplicated = ExternalStimulus::at_t_cycle(
-        412,
+        380,
         ExternalStimulusAction::JoypadSetButton {
             button: JoypadButton::A,
             pressed: true,
@@ -168,6 +225,13 @@ fn rom_test_case_rejects_empty_id_empty_rom_path_and_zero_timeout() {
         Timeout::TCycles(0),
         PassCondition::SerialExact("ok".to_string()),
     );
+    let empty_external_root_key = RomTestCase::new(
+        "valid-id",
+        PathBuf::from("rom.gb"),
+        Timeout::Frames(1),
+        PassCondition::SerialExact("ok".to_string()),
+    )
+    .with_external_rom_root_key("   ");
 
     assert_eq!(
         empty_id.validate(),
@@ -180,6 +244,10 @@ fn rom_test_case_rejects_empty_id_empty_rom_path_and_zero_timeout() {
     assert_eq!(
         zero_timeout.validate(),
         Err(RomCaseValidationError::InvalidTimeout)
+    );
+    assert_eq!(
+        empty_external_root_key.validate(),
+        Err(RomCaseValidationError::EmptyExternalRomRootKey)
     );
 }
 
@@ -263,7 +331,7 @@ fn capture_and_artifact_builders_expose_their_registered_sets() {
 #[test]
 fn external_stimulus_plan_builders_expose_the_registered_schedule() {
     let t_cycle_stimulus = ExternalStimulus::at_t_cycle(
-        412,
+        380,
         ExternalStimulusAction::JoypadSetButton {
             button: JoypadButton::A,
             pressed: true,
@@ -283,7 +351,7 @@ fn external_stimulus_plan_builders_expose_the_registered_schedule() {
     assert_eq!(plan.stimuli().len(), 2);
     assert!(plan.contains(t_cycle_stimulus));
     assert!(plan.contains(frame_stimulus));
-    assert_eq!(plan.stimuli()[0].when, StimulusTime::TCycle(412));
+    assert_eq!(plan.stimuli()[0].when, StimulusTime::TCycle(380));
     assert_eq!(plan.stimuli()[1].when, StimulusTime::Frame(3));
 }
 
@@ -362,7 +430,7 @@ fn phase_2_rom_automation_targets_validate_for_cpu_and_interrupt_timing() {
     assert_eq!(
         halt_stop_case.external_stimuli.stimuli()[0],
         ExternalStimulus::at_t_cycle(
-            412,
+            380,
             ExternalStimulusAction::JoypadSetButton {
                 button: JoypadButton::A,
                 pressed: true,

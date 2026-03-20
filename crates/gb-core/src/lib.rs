@@ -27,9 +27,11 @@ pub use bus::{
 };
 pub use cartridge::{
     CartridgeClassification, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeHeader,
-    CartridgeHeaderParseError, CartridgeLoadError, CartridgeLoadReport, CartridgeSelection,
-    CartridgeSlot, CartridgeSlotState, CartridgeSnapshot, CgbFlag, RamSizeInfo, RomSizeInfo,
-    SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
+    CartridgeHeaderParseError, CartridgeLoadError, CartridgeLoadReport,
+    CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
+    CartridgeRamPayloadKind, CartridgeSelection, CartridgeSlot, CartridgeSlotState,
+    CartridgeSnapshot, CgbFlag, Mbc3RtcPersistentState, PersistentCartState, RamSizeInfo,
+    RomSizeInfo, SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
 };
 pub use cpu::{
     CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuCore, CpuDiagnosticTrap,
@@ -37,7 +39,8 @@ pub use cpu::{
 };
 pub use debugger::{
     Breakpoint, BreakpointCondition, BreakpointId, BreakpointProbe, CartridgeWatchTarget,
-    DebugControl, DebugControlSnapshot, DebugSnapshot, MachineSnapshot, Watchpoint,
+    DebugControl, DebugControlSnapshot, DebugSnapshot, MachineSnapshot, TraceBuffer,
+    TraceSnapshotProvider, TraceSummaryBuffer, TraceTextRenderer, Tracer, Watchpoint,
     WatchpointCondition, WatchpointId, WatchpointObservation, WatchpointProbe, WatchpointTarget,
 };
 pub use dma::{

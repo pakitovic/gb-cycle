@@ -21,6 +21,12 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Cache external ROM store
+        uses: actions/cache@v4
+        with:
+          path: .roms/external-test
+          key: ${{ runner.os }}-external-roms-${{ hashFiles('crates/gb-test-runner/external-rom-sources.toml') }}
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
@@ -36,20 +42,8 @@ jobs:
         with:
           tool: typos-cli
 
-      - name: Rustfmt
-        run: cargo fmt-check
-
-      - name: Clippy
-        run: cargo lint
-
-      - name: Tests
-        run: cargo tests
-
-      - name: Typos
-        run: make typos
-
-      - name: Cargo deny
-        run: cargo deny-check
+      - name: Repository checks
+        run: make check
 
       - name: Coverage
         run: cargo cov-lcov

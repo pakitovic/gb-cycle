@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod synthetic_cartridge;
+
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
