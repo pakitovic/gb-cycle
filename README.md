@@ -81,11 +81,11 @@ coverage across `gb-core`, `gb-test-runner`, and `gb-persistence`.
 
 ```bash
 make check
-make ci
+make local
 ```
 
 Before opening or updating a PR, run at least `make check` locally.
-When changing CI, coverage, dependency policy, or repository tooling, run `make ci` locally as well so failures such as `cargo deny` do not first appear in GitHub Actions.
+When changing CI, coverage, dependency policy, or repository tooling, run `make local` locally as well so the external Blargg DMG gate and coverage pipeline do not first fail in GitHub Actions.
 Use Conventional Commits for commit messages and PR titles so the repository history and review metadata follow the same naming scheme.
 
 ### External ROM suites
@@ -107,10 +107,15 @@ make test-external-mem-timing-individual
 - `make fetch-external-roms` populates the gitignored `/.roms/external-test/`
   store from the pinned manifest in
   `crates/gb-test-runner/external-rom-sources.toml`
-- `make check` now fetches and runs the repository-gated green Blargg DMG block
-  automatically
+- `make check` stays as the fast local pre-push gate and does not fetch or run
+  external ROM suites
+- `make local` fetches and runs the repository-gated green Blargg DMG block
+  before the coverage steps
   that block intentionally includes only the currently supported non-APU,
   non-CGB suites and intentionally excludes `oam_bug` for now
+- GitHub uses two workflows:
+  `ci` for Rust checks plus coverage
+  `external-roms` for the supported external Blargg DMG block
 - `make test-external-blargg-dmg` runs the same repository-gated external DMG
   block explicitly
 - `make test-external-smoke` runs the current release-mode external CPU smoke
@@ -135,7 +140,8 @@ make test-external-mem-timing-individual
 - `retrio/blargg interrupt_time` is wired in the harness with `ConsoleModel::Cgb`
   because the upstream source explicitly requires CGB, but it is not green yet;
   the remaining blocker is CGB CPU-speed support in the core, not asset wiring
-- `retrio/blargg oam_bug` stays outside `make check` and the default CI gate for
+- `retrio/blargg oam_bug` stays outside `make local` and the default external
+  ROM workflow for
   now because the suite is not fully green yet, even though some single-ROM
   cases are already passing
 - if `GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT` is unset, `gb-test-runner` falls back

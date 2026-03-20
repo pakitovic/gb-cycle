@@ -1,4 +1,4 @@
-.PHONY: help setup hooks tools typos check ci cov-check fetch-external-roms test-external-smoke test-external-cpu-instrs-full test-external-instr-timing test-external-halt-bug test-external-mem-timing test-external-mem-timing-individual test-external-oam-bug test-external-blargg-dmg
+.PHONY: help setup hooks tools typos check local cov-check fetch-external-roms test-external-smoke test-external-cpu-instrs-full test-external-instr-timing test-external-halt-bug test-external-mem-timing test-external-mem-timing-individual test-external-oam-bug test-external-blargg-dmg
 
 help:
 	@echo "Available targets:"
@@ -6,8 +6,8 @@ help:
 	@echo "  make hooks  - Configure git hooks path to .githooks"
 	@echo "  make tools  - Install local cargo tools used by this repository"
 	@echo "  make typos  - Run typos spellcheck"
-	@echo "  make check  - Run the required local checks before push/PR (fmt, clippy, test, typos, deny, supported external Blargg DMG)"
-	@echo "  make ci     - Run the full CI-like pipeline locally including coverage artifacts"
+	@echo "  make check  - Run the required local checks before push/PR (fmt, clippy, test, typos, deny)"
+	@echo "  make local  - Run the full local pipeline including external Blargg DMG and coverage artifacts"
 	@echo "  make cov-check - Enforce >=90% aggregate coverage on gb-core, gb-test-runner, and gb-persistence"
 	@echo "  make fetch-external-roms - Download repo-managed external test ROM sources into .roms/external-test"
 	@echo "  make test-external-smoke - Run the current external CPU smoke suite in release mode"
@@ -40,10 +40,10 @@ check:
 	cargo tests
 	$(MAKE) typos
 	cargo deny-check
+
+local: check
 	$(MAKE) fetch-external-roms
 	$(MAKE) test-external-blargg-dmg
-
-ci: check
 	cargo cov-check
 	cargo cov-lcov
 

@@ -57,8 +57,9 @@ Current green official cases on top of the `cpu_instrs` individual block are:
 
 Repository-gated external DMG block:
 
-- `make check` and CI both fetch and run the green non-APU, non-CGB Blargg DMG
-  block automatically
+- `make local` fetches and runs the green non-APU, non-CGB Blargg DMG block
+  as the full local pipeline
+- GitHub runs the same block in the separate `external-roms` workflow
 - that block currently includes:
   `cpu_instrs` smoke
   `cpu_instrs/cpu_instrs.gb`
@@ -66,8 +67,11 @@ Repository-gated external DMG block:
   `halt_bug`
   `mem_timing`
   `mem_timing/individual`
+- `make check` intentionally stays lighter and does not fetch or execute the
+  external ROM block
 - it intentionally excludes `interrupt_time`, `oam_bug`, and the APU suites
-  until those ROMs are green and intentionally promoted into the default gate
+  until those ROMs are green and intentionally promoted into the default
+  external-ROM gate
 
 Current typed-but-not-green case:
 
