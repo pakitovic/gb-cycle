@@ -132,6 +132,18 @@ impl fmt::Display for TraceEvent {
 
 pub trait TraceSink {
     fn push(&mut self, event: TraceEvent);
+
+    fn records_events(&self) -> bool {
+        true
+    }
+}
+
+pub trait TraceSnapshotProvider {
+    fn snapshot(&self, next_sequence: u64) -> DebugSnapshot;
+}
+
+pub trait TraceTextRenderer {
+    fn render_text(&self) -> String;
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -146,6 +158,10 @@ impl TraceBuffer {
 
     pub fn events(&self) -> &[TraceEvent] {
         &self.events
+    }
+
+    pub fn clear(&mut self) {
+        self.events.clear();
     }
 
     pub fn render_text(&self) -> String {
@@ -163,6 +179,51 @@ impl TraceBuffer {
 impl TraceSink for TraceBuffer {
     fn push(&mut self, event: TraceEvent) {
         self.events.push(event);
+    }
+}
+
+impl TraceSnapshotProvider for TraceBuffer {
+    fn snapshot(&self, next_sequence: u64) -> DebugSnapshot {
+        DebugSnapshot {
+            trace_format_version: TRACE_FORMAT_VERSION,
+            next_sequence,
+            buffered_event_count: self.events.len(),
+            last_event: self.events.last().cloned(),
+        }
+    }
+}
+
+impl TraceTextRenderer for TraceBuffer {
+    fn render_text(&self) -> String {
+        self.render_text()
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct TraceSummaryBuffer;
+
+impl TraceSummaryBuffer {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl TraceSink for TraceSummaryBuffer {
+    fn push(&mut self, _event: TraceEvent) {}
+
+    fn records_events(&self) -> bool {
+        false
+    }
+}
+
+impl TraceSnapshotProvider for TraceSummaryBuffer {
+    fn snapshot(&self, next_sequence: u64) -> DebugSnapshot {
+        DebugSnapshot {
+            trace_format_version: TRACE_FORMAT_VERSION,
+            next_sequence,
+            buffered_event_count: 0,
+            last_event: None,
+        }
     }
 }
 
@@ -583,12 +644,42 @@ impl<S: TraceSink> Tracer<S> {
             .checked_add(1)
             .expect("trace sequence overflow");
 
-        self.sink.push(TraceEvent {
-            sequence,
-            subsystem,
-            level,
-            message: message.into(),
-        });
+        if self.sink.records_events() {
+            self.sink.push(TraceEvent {
+                sequence,
+                subsystem,
+                level,
+                message: message.into(),
+            });
+        }
+
+        sequence
+    }
+
+    pub fn emit_with<F, M>(
+        &mut self,
+        subsystem: TraceSubsystem,
+        level: TraceLevel,
+        message: F,
+    ) -> u64
+    where
+        F: FnOnce() -> M,
+        M: Into<String>,
+    {
+        let sequence = self.next_sequence;
+        self.next_sequence = self
+            .next_sequence
+            .checked_add(1)
+            .expect("trace sequence overflow");
+
+        if self.sink.records_events() {
+            self.sink.push(TraceEvent {
+                sequence,
+                subsystem,
+                level,
+                message: message().into(),
+            });
+        }
 
         sequence
     }
@@ -610,18 +701,21 @@ impl<S: TraceSink> Tracer<S> {
     }
 }
 
+impl<S: TraceSink + TraceSnapshotProvider> Tracer<S> {
+    pub fn snapshot(&self) -> DebugSnapshot {
+        self.sink.snapshot(self.next_sequence)
+    }
+}
+
 impl Tracer<TraceBuffer> {
     pub fn in_memory() -> Self {
         Self::new(TraceBuffer::new())
     }
+}
 
-    pub fn snapshot(&self) -> DebugSnapshot {
-        DebugSnapshot {
-            trace_format_version: TRACE_FORMAT_VERSION,
-            next_sequence: self.next_sequence,
-            buffered_event_count: self.sink.events.len(),
-            last_event: self.sink.events.last().cloned(),
-        }
+impl Tracer<TraceSummaryBuffer> {
+    pub fn summary() -> Self {
+        Self::new(TraceSummaryBuffer::new())
     }
 }
 
@@ -663,6 +757,50 @@ mod tests {
             snapshot.last_event.as_ref().map(TraceEvent::message),
             Some("trace ready")
         );
+    }
+
+    #[test]
+    fn trace_buffer_clear_drops_buffered_events() {
+        let mut buffer = TraceBuffer::new();
+        buffer.push(TraceEvent {
+            sequence: 0,
+            subsystem: TraceSubsystem::Core,
+            level: TraceLevel::Info,
+            message: "trace ready".to_string(),
+        });
+
+        buffer.clear();
+
+        assert!(buffer.events().is_empty());
+    }
+
+    #[test]
+    fn summary_tracer_keeps_sequence_without_buffering_events() {
+        let mut tracer = Tracer::summary();
+
+        tracer.emit_with(TraceSubsystem::Core, TraceLevel::Info, || "trace ready");
+
+        let snapshot = tracer.snapshot();
+
+        assert_eq!(snapshot.trace_format_version, TRACE_FORMAT_VERSION);
+        assert_eq!(snapshot.next_sequence, 1);
+        assert_eq!(snapshot.buffered_event_count, 0);
+        assert_eq!(snapshot.last_event, None);
+    }
+
+    #[test]
+    fn summary_tracer_skips_lazy_message_construction() {
+        use std::cell::Cell;
+
+        let mut tracer = Tracer::summary();
+        let built = Cell::new(false);
+
+        tracer.emit_with(TraceSubsystem::Core, TraceLevel::Info, || {
+            built.set(true);
+            "trace ready"
+        });
+
+        assert!(!built.get());
     }
 
     #[test]

@@ -274,11 +274,9 @@ impl GlobalScheduler {
         F: FnMut(&mut CycleContext, &mut Tracer<S>),
     {
         self.step(|context| {
-            tracer.emit(
-                TraceSubsystem::Scheduler,
-                TraceLevel::Trace,
-                scheduler_phase_trace_message(context),
-            );
+            tracer.emit_with(TraceSubsystem::Scheduler, TraceLevel::Trace, || {
+                scheduler_phase_trace_message(context)
+            });
             visit_phase(context, tracer);
         })
     }

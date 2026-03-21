@@ -17,6 +17,6 @@ Prefer short text traces that pinpoint the first timing divergence rather than
 large end-of-test dumps. The shipped traces are full golden machine traces
 generated from the reproducible builders in `crates/gb-core/tests/phase2.rs`.
 The `halt_stop_and_halt_bug` case now also has one explicit timed joypad wake
-recorded in `gb-test-runner` metadata at `t_cycle = 412`, so the external
+recorded in `gb-test-runner` metadata at `t_cycle = 380`, so the external
 stimulus is part of the typed test contract rather than an undocumented local
 detail.

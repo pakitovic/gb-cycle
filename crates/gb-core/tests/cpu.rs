@@ -83,7 +83,7 @@ fn real_boot_fetches_from_boot_rom_while_the_overlay_is_mapped() {
             .with_startup_mode(StartupMode::RealBoot)
             .with_boot_rom_assets(
                 BootRomAssets::none()
-                    .with_bytes(BootRomKind::Dmg, build_boot_rom_image(0x99))
+                    .with_bytes(BootRomKind::Dmg, build_boot_rom_image(0xD3))
                     .expect("DMG boot ROM image should validate"),
             ),
     );
@@ -100,12 +100,12 @@ fn real_boot_fetches_from_boot_rom_while_the_overlay_is_mapped() {
         machine.cpu().execution_state(),
         CpuExecutionState::DiagnosticTrap {
             trap: CpuDiagnosticTrap::UnsupportedOpcode {
-                opcode: 0x99,
+                opcode: 0xD3,
                 address: 0x0000,
             },
         }
     );
-    assert_eq!(machine.cpu().current_opcode(), Some(0x99));
+    assert_eq!(machine.cpu().current_opcode(), Some(0xD3));
 }
 
 #[test]
@@ -132,6 +132,31 @@ fn machine_executes_imm16_load_and_immediate_alu_with_real_fetches() {
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
     assert_eq!(machine.cpu().current_opcode(), None);
+}
+
+#[test]
+fn machine_executes_add_hl_register_pair_and_preserves_zero_flag() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(
+            &[0x3E, 0x01, 0xFE, 0x01, 0x21, 0x34, 0x12, 0x29],
+            0x12,
+        ))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 36);
+
+    assert_eq!(machine.cpu().registers().h, 0x24);
+    assert_eq!(machine.cpu().registers().l, 0x68);
+    assert_eq!(machine.cpu().registers().f, 0x80);
+    assert_eq!(machine.cpu().registers().pc, 0x0108);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
 }
 
 #[test]
@@ -268,6 +293,59 @@ fn machine_exposes_hli_hld_and_incdec_address_events_through_the_public_cpu_api(
 }
 
 #[test]
+fn machine_executes_alu_register_hl_and_immediate_families() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(
+            &[
+                0x21, 0x00, 0xC0, 0x3E, 0xF0, 0x06, 0x0F, 0xB0, 0xE6, 0x3C, 0xAE,
+            ],
+            0x12,
+        ))
+        .expect("NoMBC test ROM should load");
+    machine.write_bus(0xC000, 0x3C);
+
+    step_machine_t_cycles(&mut machine, 48);
+
+    assert_eq!(machine.cpu().registers().a, 0x00);
+    assert_eq!(machine.cpu().registers().f, 0x80);
+    assert_eq!(machine.cpu().registers().pc, 0x010B);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
+fn machine_executes_decimal_adjust_accumulator_flag_ops_accumulator_rotates_and_jp_hl() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(
+            &[
+                0x3E, 0x09, 0xC6, 0x09, 0x27, 0x37, 0x1F, 0x2F, 0x3F, 0x21, 0x0D, 0x01, 0xE9, 0x00,
+            ],
+            0x12,
+        ))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 56);
+
+    assert_eq!(machine.cpu().registers().a, 0x73);
+    assert_eq!(machine.cpu().registers().f, 0x10);
+    assert_eq!(machine.cpu().registers().pc, 0x010E);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
 fn cpu_trace_mentions_the_last_address_event_next_to_the_last_bus_activity() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -322,6 +400,26 @@ fn unsupported_opcode_enters_a_visible_machine_level_diagnostic_trap() {
     );
     assert_eq!(machine.cpu().registers().pc, 0x0101);
     assert_eq!(machine.next_t_cycle().get(), trapped_cycle.get() + 4);
+}
+
+#[test]
+fn supported_cb_set_opcode_completes_and_keeps_machine_running() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0xCB, 0xFF], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 8);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0102);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.cpu().current_opcode(), None);
 }
 
 #[test]

@@ -1,0 +1,33 @@
+name: external-roms
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  blargg-dmg:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache external ROM store
+        uses: actions/cache@v5
+        with:
+          path: .roms/external-test
+          key: ${{ runner.os }}-external-roms-${{ hashFiles('crates/gb-test-runner/external-rom-sources.toml') }}
+
+      - name: Fetch external ROMs
+        run: make fetch-external-roms
+
+      - name: Run supported external Blargg DMG suites
+        run: make test-external-blargg-dmg

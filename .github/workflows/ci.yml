@@ -36,20 +36,20 @@ jobs:
         with:
           tool: typos-cli
 
-      - name: Rustfmt
+      - name: Format
         run: cargo fmt-check
 
-      - name: Clippy
+      - name: Lint
         run: cargo lint
 
       - name: Tests
         run: cargo tests
 
       - name: Typos
-        run: make typos
+        run: typos
 
-      - name: Cargo deny
+      - name: Deny
         run: cargo deny-check
 
       - name: Coverage
-        run: cargo cov-lcov
+        run: cargo cov-check

@@ -24,8 +24,9 @@ The current workspace already uses the `crates/`-based layout, leaving other com
 ```text
 crates/
   gb-core/    Pure emulation logic
-  gb-test-runner/  Typed ROM-harness contracts and validation helpers
+  gb-test-runner/  Typed ROM harness, executable suites, and validation helpers
   gb-cli/     Current CLI frontend
+  gb-persistence/  Host-side cartridge save backends and format
 AI/           Architecture, roadmap, and technical documentation
 Makefile      Local verification pipeline and utilities
 ```
@@ -35,7 +36,6 @@ Mid-term planned extensions, not yet materialized as separate crates:
 - `gb-desktop`
 - `gb-web`
 - additional tooling such as richer debugger and utilities
-- host persistence/save adapters outside the core, with any cartridge-facing persistence contract kept narrow and typed inside `gb-core`
 - broader integration tests and ROM suites
 
 ### Requirements
@@ -74,16 +74,62 @@ cargo cov-html
 cargo cov-lcov
 ```
 
+`cargo cov-check` currently gates aggregate `>=90%` line, region, and function
+coverage across `gb-core`, `gb-test-runner`, and `gb-persistence`.
+
 ### Full local pipeline
 
 ```bash
 make check
-make ci
+make local
 ```
 
 Before opening or updating a PR, run at least `make check` locally.
-When changing CI, coverage, dependency policy, or repository tooling, run `make ci` locally as well so failures such as `cargo deny` do not first appear in GitHub Actions.
+When changing CI, coverage, dependency policy, or repository tooling, run `make local` locally as well so the external Blargg DMG gate and coverage pipeline do not first fail in GitHub Actions.
 Use Conventional Commits for commit messages and PR titles so the repository history and review metadata follow the same naming scheme.
+
+### External ROM suites
+
+The repository keeps synthetic ROM fixtures under version control, but official
+external ROM suites stay outside git in a repo-managed local store.
+
+```bash
+make fetch-external-roms
+make test-external-blargg-dmg
+```
+
+- `make fetch-external-roms` populates the gitignored `/.roms/external-test/`
+  store from the pinned manifest in
+  `crates/gb-test-runner/external-rom-sources.toml`
+- `make check` stays as the fast local pre-push gate and does not fetch or run
+  external ROM suites
+- `make local` fetches and runs the repository-gated green Blargg DMG block
+  before the coverage steps
+  that block intentionally includes only the currently supported non-APU,
+  non-CGB suites and intentionally excludes `oam_bug` for now
+- GitHub uses two workflows:
+  `ci` for Rust checks plus coverage
+  `external-roms` for the supported external Blargg DMG block
+- `make test-external-blargg-dmg` runs the same repository-gated external DMG
+  block explicitly:
+  `cpu_instrs` smoke,
+  `cpu_instrs/cpu_instrs.gb`,
+  `instr_timing`,
+  `halt_bug`,
+  `mem_timing`,
+  and `mem_timing` individual ROMs
+- `retrio/blargg interrupt_time` is wired in the harness with `ConsoleModel::Cgb`
+  because the upstream source explicitly requires CGB, but it is not green yet;
+  the remaining blocker is CGB CPU-speed support in the core, not asset wiring
+- `retrio/blargg oam_bug` stays outside `make local` and the default external
+  ROM workflow for
+  now because the suite is not fully green yet, even though some single-ROM
+  cases are already passing
+- if `GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT` is unset, `gb-test-runner` falls back
+  to the default repo-managed root automatically
+- keep private commercial ROMs out of that path; use the separate gitignored
+  `/.roms/local-commercial/` directory for local-only assets that must never be
+  referenced by CI
 
 
 ## Documentation

@@ -19,6 +19,7 @@ const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 const FRAMEBUFFER_PIXELS: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
 const DOTS_PER_SCANLINE: u16 = 456;
+const LCD_REENABLE_INITIAL_LINE_DOT: u16 = 4;
 const VISIBLE_SCANLINES: u8 = 144;
 const TOTAL_SCANLINES: u8 = 154;
 const MODE2_DOTS: u16 = 80;
@@ -496,6 +497,18 @@ impl Ppu {
             wx: self.wx,
             obj_palette_read_policy: self.obj_palette_read_policy,
         }
+    }
+
+    pub fn ly(&self) -> u8 {
+        self.ly
+    }
+
+    pub fn line_dot(&self) -> u16 {
+        self.line_dot
+    }
+
+    pub fn framebuffer(&self) -> &[u8] {
+        &self.framebuffer
     }
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
@@ -1220,7 +1233,7 @@ impl Ppu {
         self.lcd_state = PpuLcdState::Enabled;
         self.blank_frame_active = true;
         self.ly = 0;
-        self.line_dot = 0;
+        self.line_dot = LCD_REENABLE_INITIAL_LINE_DOT;
         self.reset_runtime_pipeline_state();
         self.clear_visible_buffers();
         self.refresh_visible_output();
@@ -2244,7 +2257,7 @@ mod tests {
         assert_eq!(reenabled.visible_output, PpuVisibleOutputState::ForcedBlank);
         assert!(reenabled.blank_frame_active);
         assert_eq!(reenabled.ly, 0);
-        assert_eq!(reenabled.line_dot, 0);
+        assert_eq!(reenabled.line_dot, LCD_REENABLE_INITIAL_LINE_DOT);
         assert!(reenabled.bg_fifo_pixels.is_empty());
         assert!(reenabled.obj_fifo_pixels.is_empty());
         assert!(reenabled.selected_sprites.is_empty());
@@ -2961,7 +2974,7 @@ mod tests {
 
         assert_eq!(ppu.snapshot().current_oam_scan_row, Some(0));
 
-        for t_cycle in 0..4 {
+        for t_cycle in 0..5 {
             tick_ppu(&mut ppu, t_cycle, &oam_bytes);
         }
 
@@ -3032,7 +3045,7 @@ mod tests {
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
         });
 
-        for t_cycle in 0..4 {
+        for t_cycle in 0..5 {
             tick_ppu(&mut ppu, t_cycle, &[0; 160]);
         }
 
@@ -3067,7 +3080,7 @@ mod tests {
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
         });
 
-        for t_cycle in 0..4 {
+        for t_cycle in 0..5 {
             tick_ppu(&mut ppu, t_cycle, &[0; 160]);
         }
 
@@ -3103,7 +3116,7 @@ mod tests {
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
         });
 
-        for t_cycle in 0..16 {
+        for t_cycle in 0..17 {
             tick_ppu(&mut ppu, t_cycle, &[0; 160]);
         }
 
@@ -3146,7 +3159,7 @@ mod tests {
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
         });
 
-        for t_cycle in 0..76 {
+        for t_cycle in 0..77 {
             tick_ppu(&mut ppu, t_cycle, &[0; 160]);
         }
 

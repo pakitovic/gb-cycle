@@ -1,0 +1,93 @@
+pub const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+pub const PROGRAM_ENTRY_ADDRESS: usize = 0x0150;
+
+pub fn rom_size_bytes_from_standard_code(rom_size_code: u8) -> usize {
+    match rom_size_code {
+        0x00..=0x08 => 32 * 1024 * (1usize << rom_size_code),
+        0x52 => 72 * 16 * 1024,
+        0x53 => 80 * 16 * 1024,
+        0x54 => 96 * 16 * 1024,
+        _ => panic!("unsupported ROM size code for synthetic cartridge fixture"),
+    }
+}
+
+pub struct BankedCartridgeBuilder {
+    rom: Vec<u8>,
+}
+
+impl BankedCartridgeBuilder {
+    pub fn new(rom_size_code: u8, cartridge_type: u8, ram_size_code: u8) -> Self {
+        let rom_size = rom_size_bytes_from_standard_code(rom_size_code);
+        let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(rom_size)];
+        rom[0x0100..0x0104].copy_from_slice(&[0xC3, 0x50, 0x01, 0x00]);
+        rom[0x0147] = cartridge_type;
+        rom[0x0148] = rom_size_code;
+        rom[0x0149] = ram_size_code;
+
+        Self { rom }
+    }
+
+    pub fn write_program(mut self, program: &[u8]) -> Self {
+        for (offset, byte) in program.iter().copied().enumerate() {
+            self.rom[PROGRAM_ENTRY_ADDRESS + offset] = byte;
+        }
+        self
+    }
+
+    pub fn stamp_bank_start_markers(mut self) -> Self {
+        let bank_count = self.rom.len() / 0x4000;
+        for bank in 0..bank_count {
+            self.rom[bank * 0x4000] = bank as u8;
+        }
+        self
+    }
+
+    pub fn stamp_bank_identity_markers(mut self) -> Self {
+        let bank_count = self.rom.len() / 0x4000;
+        for bank in 0..bank_count {
+            let start = bank * 0x4000;
+            self.rom[start] = bank as u8;
+            self.rom[start + 1] = ((bank >> 8) & 0x01) as u8;
+        }
+        self
+    }
+
+    pub fn write_bank_bytes(mut self, bank: usize, offset_in_bank: usize, bytes: &[u8]) -> Self {
+        let start = bank * 0x4000 + offset_in_bank;
+        self.rom[start..start + bytes.len()].copy_from_slice(bytes);
+        self
+    }
+
+    pub fn build(self) -> Vec<u8> {
+        self.rom
+    }
+}
+
+#[derive(Default)]
+pub struct ProgramBuilder {
+    bytes: Vec<u8>,
+}
+
+impl ProgramBuilder {
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+
+    pub fn ld_a_imm(&mut self, value: u8) {
+        self.bytes.extend_from_slice(&[0x3E, value]);
+    }
+
+    pub fn ld_a_from_a16(&mut self, address: u16) {
+        let [low, high] = address.to_le_bytes();
+        self.bytes.extend_from_slice(&[0xFA, low, high]);
+    }
+
+    pub fn ld_a16_from_a(&mut self, address: u16) {
+        let [low, high] = address.to_le_bytes();
+        self.bytes.extend_from_slice(&[0xEA, low, high]);
+    }
+
+    pub fn jr_self(&mut self) {
+        self.bytes.extend_from_slice(&[0x18, 0xFE]);
+    }
+}

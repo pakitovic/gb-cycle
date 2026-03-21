@@ -4,7 +4,8 @@ use crate::bus::{Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusReq
 use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError, CartridgeSlot};
 use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuBusOperation, CpuCore};
 use crate::debugger::{
-    DebugControl, MachineSnapshot, TraceBuffer, TraceLevel, TraceSink, TraceSubsystem, Tracer,
+    DebugControl, MachineSnapshot, TraceBuffer, TraceLevel, TraceSink, TraceSnapshotProvider,
+    TraceSubsystem, TraceSummaryBuffer, Tracer,
 };
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
@@ -58,7 +59,15 @@ impl Machine<TraceBuffer> {
     pub fn new(config: MachineConfig) -> Self {
         Self::with_tracer(config, Tracer::in_memory())
     }
+}
 
+impl Machine<TraceSummaryBuffer> {
+    pub fn new_summary(config: MachineConfig) -> Self {
+        Self::with_tracer(config, Tracer::summary())
+    }
+}
+
+impl<S: TraceSink + TraceSnapshotProvider> Machine<S> {
     pub fn snapshot(&self) -> MachineSnapshot {
         MachineSnapshot {
             config: self.config.clone(),
@@ -168,6 +177,10 @@ impl<S: TraceSink> Machine<S> {
         self.serial.queue_external_clock_pulse();
     }
 
+    pub fn take_serial_output_bytes(&mut self) -> Vec<u8> {
+        self.serial.take_completed_output_bytes()
+    }
+
     pub fn boot(&self) -> &BootController {
         &self.boot
     }
@@ -186,6 +199,10 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn cartridge(&self) -> &CartridgeSlot {
         &self.cartridge
+    }
+
+    pub fn advance_cartridge_rtc_seconds(&mut self, seconds: u64) {
+        self.cartridge.advance_rtc_seconds(seconds);
     }
 
     pub fn read_bus(&mut self, address: u16) -> u8 {
@@ -283,11 +300,9 @@ impl<S: TraceSink> Machine<S> {
             .step_with_trace(&mut self.tracer, |context, tracer| match context.phase() {
                 SchedulerPhase::DerivedEdgeResolution => {
                     timer.tick_t_cycle(context);
-                    tracer.emit(
-                        TraceSubsystem::Timer,
-                        TraceLevel::Trace,
-                        timer.scheduler_trace_message(context),
-                    );
+                    tracer.emit_with(TraceSubsystem::Timer, TraceLevel::Trace, || {
+                        timer.scheduler_trace_message(context)
+                    });
                 }
                 SchedulerPhase::AutonomousPeripheralTicks => {
                     ppu.tick_t_cycle(context, bus.oam_bytes(), bus.vram_bytes());
@@ -323,37 +338,27 @@ impl<S: TraceSink> Machine<S> {
                             BusIoWriteView::default(),
                         );
                     }
-                    tracer.emit(
-                        TraceSubsystem::Dma,
-                        TraceLevel::Trace,
-                        dma.scheduler_trace_message(context),
-                    );
-                    tracer.emit(
-                        TraceSubsystem::Ppu,
-                        TraceLevel::Trace,
-                        ppu.scheduler_trace_message(context),
-                    );
-                    tracer.emit(
-                        TraceSubsystem::Serial,
-                        TraceLevel::Trace,
-                        serial.scheduler_trace_message(context),
-                    );
+                    tracer.emit_with(TraceSubsystem::Dma, TraceLevel::Trace, || {
+                        dma.scheduler_trace_message(context)
+                    });
+                    tracer.emit_with(TraceSubsystem::Ppu, TraceLevel::Trace, || {
+                        ppu.scheduler_trace_message(context)
+                    });
+                    tracer.emit_with(TraceSubsystem::Serial, TraceLevel::Trace, || {
+                        serial.scheduler_trace_message(context)
+                    });
                 }
                 SchedulerPhase::BusArbitration => {
                     let arbitration_state = BusArbitrationState::default()
                         .with_boot_rom(boot.bus_state())
                         .with_ppu(ppu.bus_state())
                         .with_dma(dma.bus_state());
-                    tracer.emit(
-                        TraceSubsystem::Bus,
-                        TraceLevel::Trace,
-                        bus.scheduler_trace_message(context, &arbitration_state),
-                    );
-                    tracer.emit(
-                        TraceSubsystem::Cartridge,
-                        TraceLevel::Trace,
-                        cartridge.scheduler_trace_message(context),
-                    );
+                    tracer.emit_with(TraceSubsystem::Bus, TraceLevel::Trace, || {
+                        bus.scheduler_trace_message(context, &arbitration_state)
+                    });
+                    tracer.emit_with(TraceSubsystem::Cartridge, TraceLevel::Trace, || {
+                        cartridge.scheduler_trace_message(context)
+                    });
                 }
                 SchedulerPhase::CpuMicroOperation => {
                     let arbitration_state = BusArbitrationState::default()
@@ -401,26 +406,20 @@ impl<S: TraceSink> Machine<S> {
                     if let Some(event) = cpu.last_address_event() {
                         bus.route_cpu_address_event(event, &arbitration_state, ppu);
                     }
-                    tracer.emit(
-                        TraceSubsystem::Cpu,
-                        TraceLevel::Trace,
-                        cpu.scheduler_trace_message(context),
-                    );
+                    tracer.emit_with(TraceSubsystem::Cpu, TraceLevel::Trace, || {
+                        cpu.scheduler_trace_message(context)
+                    });
                 }
                 SchedulerPhase::MmioSideEffectCommit => {
-                    tracer.emit(
-                        TraceSubsystem::Boot,
-                        TraceLevel::Trace,
-                        boot.scheduler_trace_message(context),
-                    );
+                    tracer.emit_with(TraceSubsystem::Boot, TraceLevel::Trace, || {
+                        boot.scheduler_trace_message(context)
+                    });
                 }
                 SchedulerPhase::InterruptAggregation => {
                     if joypad.should_emit_scheduler_trace() {
-                        tracer.emit(
-                            TraceSubsystem::Joypad,
-                            TraceLevel::Trace,
-                            joypad.scheduler_trace_message(context),
-                        );
+                        tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
+                            joypad.scheduler_trace_message(context)
+                        });
                     }
                     for &source in context.interrupt_requests() {
                         interrupts.request(source);
@@ -431,31 +430,23 @@ impl<S: TraceSink> Machine<S> {
                     if joypad.consume_interrupt_request() {
                         interrupts.request(crate::scheduler::InterruptSource::Joypad);
                     }
-                    tracer.emit(
-                        TraceSubsystem::Interrupts,
-                        TraceLevel::Trace,
-                        interrupts.scheduler_trace_message(context),
-                    );
+                    tracer.emit_with(TraceSubsystem::Interrupts, TraceLevel::Trace, || {
+                        interrupts.scheduler_trace_message(context)
+                    });
                 }
                 SchedulerPhase::CpuWakeInterruptEvaluation => {
                     cpu.evaluate_wake_and_interrupts(interrupts, joypad);
                     if joypad.should_emit_scheduler_trace() {
-                        tracer.emit(
-                            TraceSubsystem::Joypad,
-                            TraceLevel::Trace,
-                            joypad.scheduler_trace_message(context),
-                        );
+                        tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
+                            joypad.scheduler_trace_message(context)
+                        });
                     }
-                    tracer.emit(
-                        TraceSubsystem::Interrupts,
-                        TraceLevel::Trace,
-                        interrupts.scheduler_trace_message(context),
-                    );
-                    tracer.emit(
-                        TraceSubsystem::Cpu,
-                        TraceLevel::Trace,
-                        cpu.scheduler_trace_message(context),
-                    );
+                    tracer.emit_with(TraceSubsystem::Interrupts, TraceLevel::Trace, || {
+                        interrupts.scheduler_trace_message(context)
+                    });
+                    tracer.emit_with(TraceSubsystem::Cpu, TraceLevel::Trace, || {
+                        cpu.scheduler_trace_message(context)
+                    });
                 }
                 _ => {}
             })

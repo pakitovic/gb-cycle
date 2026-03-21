@@ -97,6 +97,7 @@ pub enum CpuExecutionState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CpuDiagnosticTrap {
     UnsupportedOpcode { opcode: u8, address: u16 },
+    UnsupportedCbOpcode { opcode: u8, address: u16 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,6 +181,18 @@ enum Register16 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum AluOperation {
+    Add,
+    Adc,
+    Sub,
+    Sbc,
+    And,
+    Xor,
+    Or,
+    Compare,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum StackRegister16 {
     BC,
     DE,
@@ -213,8 +226,34 @@ enum MemoryAddressSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum CbInstructionKind {
     RotateLeftCarry { target: Register8Operand },
+    RotateRightCarry { target: Register8Operand },
     RotateLeftThroughCarry { target: Register8Operand },
+    RotateRightThroughCarry { target: Register8Operand },
+    ShiftLeftArithmetic { target: Register8Operand },
+    ShiftRightArithmetic { target: Register8Operand },
+    SwapNibbles { target: Register8Operand },
+    ShiftRightLogical { target: Register8Operand },
     BitTest { bit: u8, target: Register8Operand },
+    ResetBit { bit: u8, target: Register8Operand },
+    SetBit { bit: u8, target: Register8Operand },
+}
+
+impl CbInstructionKind {
+    fn target(self) -> Register8Operand {
+        match self {
+            Self::RotateLeftCarry { target }
+            | Self::RotateRightCarry { target }
+            | Self::RotateLeftThroughCarry { target }
+            | Self::RotateRightThroughCarry { target }
+            | Self::ShiftLeftArithmetic { target }
+            | Self::ShiftRightArithmetic { target }
+            | Self::SwapNibbles { target }
+            | Self::ShiftRightLogical { target }
+            | Self::BitTest { target, .. }
+            | Self::ResetBit { target, .. }
+            | Self::SetBit { target, .. } => target,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -244,6 +283,13 @@ enum CpuInstructionKind {
     StoreAToAddress {
         destination: MemoryAddressSource,
     },
+    StoreSpToImmediate16,
+    LoadHlFromSpPlusImmediate,
+    AddSpImmediate,
+    LoadSpFromHl,
+    AddHl {
+        source: Register16,
+    },
     IncrementRegisterPair {
         target: Register16,
     },
@@ -252,8 +298,12 @@ enum CpuInstructionKind {
     },
     IncrementHlMemory,
     DecrementHlMemory,
-    AddAImmediate,
-    CompareAImmediate,
+    AluImmediate {
+        operation: AluOperation,
+    },
+    AluFromHl {
+        operation: AluOperation,
+    },
     RelativeJump {
         condition: Option<ConditionCode>,
     },
@@ -683,6 +733,75 @@ impl CpuCore {
                 }
                 _ => self.stall_instruction(opcode, step),
             },
+            CpuInstructionKind::StoreSpToImmediate16 => match step {
+                0 => {
+                    self.operand16_latch = u16::from(self.read_pc_u8(bus_operation));
+                    self.advance_instruction(opcode, 1);
+                }
+                1 => {
+                    let high = self.read_pc_u8(bus_operation);
+                    self.operand16_latch |= u16::from(high) << 8;
+                    self.advance_instruction(opcode, 2);
+                }
+                2 => {
+                    let [low, _high] = self.registers.sp.to_le_bytes();
+                    self.write_byte(self.operand16_latch, low, bus_operation);
+                    self.advance_instruction(opcode, 3);
+                }
+                3 => {
+                    let [_low, high] = self.registers.sp.to_le_bytes();
+                    self.write_byte(self.operand16_latch.wrapping_add(1), high, bus_operation);
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
+            CpuInstructionKind::LoadHlFromSpPlusImmediate => match step {
+                0 => {
+                    self.operand8_latch = self.read_pc_u8(bus_operation);
+                    self.advance_instruction(opcode, 1);
+                }
+                1 => {
+                    let result = self.sp_plus_signed_immediate(self.operand8_latch);
+                    self.write_register16(Register16::HL, result);
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
+            CpuInstructionKind::AddSpImmediate => match step {
+                0 => {
+                    self.operand8_latch = self.read_pc_u8(bus_operation);
+                    self.advance_instruction(opcode, 1);
+                }
+                1 => {
+                    self.advance_instruction(opcode, 2);
+                }
+                2 => {
+                    let result = self.sp_plus_signed_immediate(self.operand8_latch);
+                    self.write_register16(Register16::SP, result);
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
+            CpuInstructionKind::LoadSpFromHl => match step {
+                0 => {
+                    self.write_register16(Register16::SP, self.hl());
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
+            CpuInstructionKind::AddHl { source } => match step {
+                0 => {
+                    let value = match source {
+                        Register16::BC => self.bc(),
+                        Register16::DE => self.de(),
+                        Register16::HL => self.hl(),
+                        Register16::SP => self.registers.sp,
+                    };
+                    self.add_to_hl(value);
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
             CpuInstructionKind::IncrementRegisterPair { target } => match step {
                 0 => {
                     self.increment_or_decrement_register_pair(
@@ -733,18 +852,18 @@ impl CpuCore {
                 }
                 _ => self.stall_instruction(opcode, step),
             },
-            CpuInstructionKind::AddAImmediate => match step {
+            CpuInstructionKind::AluImmediate { operation } => match step {
                 0 => {
                     let value = self.read_pc_u8(bus_operation);
-                    self.add_to_a(value);
+                    self.apply_alu_operation(operation, value);
                     self.finish_instruction();
                 }
                 _ => self.stall_instruction(opcode, step),
             },
-            CpuInstructionKind::CompareAImmediate => match step {
+            CpuInstructionKind::AluFromHl { operation } => match step {
                 0 => {
-                    let value = self.read_pc_u8(bus_operation);
-                    self.compare_a(value);
+                    let value = self.read_byte(self.hl(), bus_operation);
+                    self.apply_alu_operation(operation, value);
                     self.finish_instruction();
                 }
                 _ => self.stall_instruction(opcode, step),
@@ -802,11 +921,12 @@ impl CpuCore {
                     }
                 }
                 2 => {
+                    self.decrement_sp_and_record_idu_event();
                     self.advance_instruction(opcode, 3);
                 }
                 3 => {
                     let [low, high] = self.registers.pc.to_le_bytes();
-                    self.write_byte_with_decremented_sp(high, bus_operation);
+                    self.write_byte_at_sp(high, bus_operation);
                     self.operand8_latch = low;
                     self.advance_instruction(opcode, 4);
                 }
@@ -886,11 +1006,12 @@ impl CpuCore {
             },
             CpuInstructionKind::Restart { vector } => match step {
                 0 => {
+                    self.decrement_sp_and_record_idu_event();
                     self.advance_instruction(opcode, 1);
                 }
                 1 => {
                     let [low, high] = self.registers.pc.to_le_bytes();
-                    self.write_byte_with_decremented_sp(high, bus_operation);
+                    self.write_byte_at_sp(high, bus_operation);
                     self.operand8_latch = low;
                     self.advance_instruction(opcode, 2);
                 }
@@ -903,11 +1024,13 @@ impl CpuCore {
             },
             CpuInstructionKind::PushRegisterPair { source } => match step {
                 0 => {
+                    self.operand16_latch = self.read_stack_register16(source);
+                    self.decrement_sp_and_record_idu_event();
                     self.advance_instruction(opcode, 1);
                 }
                 1 => {
-                    let [low, high] = self.read_stack_register16(source).to_le_bytes();
-                    self.write_byte_with_decremented_sp(high, bus_operation);
+                    let [low, high] = self.operand16_latch.to_le_bytes();
+                    self.write_byte_at_sp(high, bus_operation);
                     self.operand8_latch = low;
                     self.advance_instruction(opcode, 2);
                 }
@@ -937,74 +1060,46 @@ impl CpuCore {
                     self.operand8_latch = cb_opcode;
 
                     match self.decode_cb_opcode(cb_opcode) {
-                        Some(CbInstructionKind::RotateLeftCarry { target }) => {
-                            if let Register8Operand::Register(target) = target {
-                                let result = self.rotate_left_carry(self.read_register8(target));
-                                self.write_register8(target, result);
+                        Some(kind) => match kind.target() {
+                            Register8Operand::Register(target) => {
+                                let value = self.read_register8(target);
+                                if let Some(result) = self.apply_cb_operation(kind, value) {
+                                    self.write_register8(target, result);
+                                }
                                 self.finish_instruction();
-                            } else {
-                                self.cb_instruction_kind =
-                                    Some(CbInstructionKind::RotateLeftCarry { target });
+                            }
+                            Register8Operand::IndirectHl => {
+                                self.cb_instruction_kind = Some(kind);
                                 self.advance_instruction(opcode, 1);
                             }
+                        },
+                        None => {
+                            self.execution_state = CpuExecutionState::DiagnosticTrap {
+                                trap: CpuDiagnosticTrap::UnsupportedCbOpcode {
+                                    opcode: cb_opcode,
+                                    address: self.registers.pc.wrapping_sub(1),
+                                },
+                            };
                         }
-                        Some(CbInstructionKind::RotateLeftThroughCarry { target }) => {
-                            if let Register8Operand::Register(target) = target {
-                                let result =
-                                    self.rotate_left_through_carry(self.read_register8(target));
-                                self.write_register8(target, result);
-                                self.finish_instruction();
-                            } else {
-                                self.cb_instruction_kind =
-                                    Some(CbInstructionKind::RotateLeftThroughCarry { target });
-                                self.advance_instruction(opcode, 1);
-                            }
-                        }
-                        Some(CbInstructionKind::BitTest { bit, target }) => {
-                            if let Register8Operand::Register(target) = target {
-                                self.bit_test(bit, self.read_register8(target));
-                                self.finish_instruction();
-                            } else {
-                                self.cb_instruction_kind =
-                                    Some(CbInstructionKind::BitTest { bit, target });
-                                self.advance_instruction(opcode, 1);
-                            }
-                        }
-                        None => self.stall_instruction(opcode, step),
                     }
                 }
                 1 => match self.cb_instruction_kind {
-                    Some(CbInstructionKind::RotateLeftCarry {
-                        target: Register8Operand::IndirectHl,
-                    }) => {
+                    Some(kind) if kind.target() == Register8Operand::IndirectHl => {
                         let value = self.read_byte(self.hl(), bus_operation);
-                        self.operand8_latch = self.rotate_left_carry(value);
-                        self.advance_instruction(opcode, 2);
-                    }
-                    Some(CbInstructionKind::RotateLeftThroughCarry {
-                        target: Register8Operand::IndirectHl,
-                    }) => {
-                        let value = self.read_byte(self.hl(), bus_operation);
-                        self.operand8_latch = self.rotate_left_through_carry(value);
-                        self.advance_instruction(opcode, 2);
-                    }
-                    Some(CbInstructionKind::BitTest {
-                        bit,
-                        target: Register8Operand::IndirectHl,
-                    }) => {
-                        let value = self.read_byte(self.hl(), bus_operation);
-                        self.bit_test(bit, value);
-                        self.finish_instruction();
+                        if let Some(result) = self.apply_cb_operation(kind, value) {
+                            self.operand8_latch = result;
+                            self.advance_instruction(opcode, 2);
+                        } else {
+                            self.finish_instruction();
+                        }
                     }
                     _ => self.stall_instruction(opcode, step),
                 },
                 2 => match self.cb_instruction_kind {
-                    Some(CbInstructionKind::RotateLeftCarry {
-                        target: Register8Operand::IndirectHl,
-                    })
-                    | Some(CbInstructionKind::RotateLeftThroughCarry {
-                        target: Register8Operand::IndirectHl,
-                    }) => {
+                    Some(kind)
+                        if kind.target() == Register8Operand::IndirectHl
+                            && !matches!(kind, CbInstructionKind::BitTest { .. }) =>
+                    {
                         self.write_byte(self.hl(), self.operand8_latch, bus_operation);
                         self.finish_instruction();
                     }
@@ -1023,6 +1118,54 @@ impl CpuCore {
         if opcode == 0xAF {
             self.registers.a = 0;
             self.write_flags(true, false, false, false);
+            return DecodedOpcode::Complete;
+        }
+
+        if opcode == 0x27 {
+            self.decimal_adjust_a();
+            return DecodedOpcode::Complete;
+        }
+
+        if opcode == 0x2F {
+            self.complement_a();
+            return DecodedOpcode::Complete;
+        }
+
+        if opcode == 0x37 {
+            self.set_carry_flag();
+            return DecodedOpcode::Complete;
+        }
+
+        if opcode == 0x3F {
+            self.complement_carry_flag();
+            return DecodedOpcode::Complete;
+        }
+
+        if opcode == 0x07 {
+            let result = self.rotate_left_carry(self.registers.a);
+            self.registers.a = result;
+            self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+            return DecodedOpcode::Complete;
+        }
+
+        if opcode == 0x17 {
+            let result = self.rotate_left_through_carry(self.registers.a);
+            self.registers.a = result;
+            self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+            return DecodedOpcode::Complete;
+        }
+
+        if opcode == 0x0F {
+            let result = self.rotate_right_carry(self.registers.a);
+            self.registers.a = result;
+            self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+            return DecodedOpcode::Complete;
+        }
+
+        if opcode == 0x1F {
+            let result = self.rotate_right_through_carry(self.registers.a);
+            self.registers.a = result;
+            self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
             return DecodedOpcode::Complete;
         }
 
@@ -1133,15 +1276,42 @@ impl CpuCore {
             });
         }
 
+        if opcode == 0x08 {
+            return DecodedOpcode::Execute(CpuInstructionKind::StoreSpToImmediate16);
+        }
+
+        if opcode == 0xF8 {
+            return DecodedOpcode::Execute(CpuInstructionKind::LoadHlFromSpPlusImmediate);
+        }
+
+        if opcode == 0xE8 {
+            return DecodedOpcode::Execute(CpuInstructionKind::AddSpImmediate);
+        }
+
+        if opcode == 0xF9 {
+            return DecodedOpcode::Execute(CpuInstructionKind::LoadSpFromHl);
+        }
+
         if matches!(opcode, 0x2A | 0x3A) {
             return DecodedOpcode::Execute(CpuInstructionKind::LoadAFromHlWithUpdate {
                 direction: decode_hl_update_direction(opcode),
             });
         }
 
+        if opcode == 0xE9 {
+            self.registers.pc = self.hl();
+            return DecodedOpcode::Complete;
+        }
+
         if opcode & 0xCF == 0x03 {
             return DecodedOpcode::Execute(CpuInstructionKind::IncrementRegisterPair {
                 target: decode_register16((opcode >> 4) & 0x03),
+            });
+        }
+
+        if opcode & 0xCF == 0x09 {
+            return DecodedOpcode::Execute(CpuInstructionKind::AddHl {
+                source: decode_register16((opcode >> 4) & 0x03),
             });
         }
 
@@ -1181,12 +1351,27 @@ impl CpuCore {
             };
         }
 
-        if opcode == 0xC6 {
-            return DecodedOpcode::Execute(CpuInstructionKind::AddAImmediate);
+        if matches!(
+            opcode,
+            0xC6 | 0xCE | 0xD6 | 0xDE | 0xE6 | 0xEE | 0xF6 | 0xFE
+        ) {
+            return DecodedOpcode::Execute(CpuInstructionKind::AluImmediate {
+                operation: decode_alu_operation((opcode >> 3) & 0x07),
+            });
         }
 
-        if opcode == 0xFE {
-            return DecodedOpcode::Execute(CpuInstructionKind::CompareAImmediate);
+        if (0x80..=0xBF).contains(&opcode) {
+            let operation = decode_alu_operation((opcode >> 3) & 0x07);
+            return match decode_register8_operand(opcode & 0x07) {
+                Register8Operand::Register(source) => {
+                    let value = self.read_register8(source);
+                    self.apply_alu_operation(operation, value);
+                    DecodedOpcode::Complete
+                }
+                Register8Operand::IndirectHl => {
+                    DecodedOpcode::Execute(CpuInstructionKind::AluFromHl { operation })
+                }
+            };
         }
 
         if opcode == 0xCB {
@@ -1504,6 +1689,21 @@ impl CpuCore {
         value
     }
 
+    fn decrement_sp_and_record_idu_event(&mut self) {
+        self.registers.sp = self.registers.sp.wrapping_sub(1);
+        self.record_address_event(CpuAddressEvent::incdec(
+            self.registers.sp,
+            CpuAddressUpdateDirection::Decrement,
+        ));
+    }
+
+    fn write_byte_at_sp<F>(&mut self, value: u8, bus_operation: &mut F)
+    where
+        F: FnMut(CpuBusOperation) -> Option<u8>,
+    {
+        self.write_byte(self.registers.sp, value, bus_operation);
+    }
+
     fn write_byte_with_decremented_sp<F>(&mut self, value: u8, bus_operation: &mut F)
     where
         F: FnMut(CpuBusOperation) -> Option<u8>,
@@ -1557,16 +1757,18 @@ impl CpuCore {
         match step {
             0 | 1 => self.advance_interrupt_service(source, step + 1),
             2 => {
-                let [low, high] = self.registers.pc.to_le_bytes();
-                self.write_byte_with_decremented_sp(high, bus_operation);
+                let [low, _high] = self.registers.pc.to_le_bytes();
                 self.operand8_latch = low;
+                self.decrement_sp_and_record_idu_event();
                 self.advance_interrupt_service(source, 3);
             }
             3 => {
-                self.write_byte_with_decremented_sp(self.operand8_latch, bus_operation);
+                let [_low, high] = self.registers.pc.to_le_bytes();
+                self.write_byte_at_sp(high, bus_operation);
                 self.advance_interrupt_service(source, 4);
             }
             4 => {
+                self.write_byte_with_decremented_sp(self.operand8_latch, bus_operation);
                 self.registers.pc = interrupt_vector(source);
                 self.finish_interrupt_service();
             }
@@ -1750,6 +1952,53 @@ impl CpuCore {
         self.write_flags(result == 0, false, half_carry, carry);
     }
 
+    fn adc_to_a(&mut self, value: u8) {
+        let a = self.registers.a;
+        let carry_in = u8::from(self.registers.f & FLAG_C != 0);
+        let result16 = u16::from(a) + u16::from(value) + u16::from(carry_in);
+        let result = result16 as u8;
+        let half_carry = (a & 0x0F) + (value & 0x0F) + carry_in > 0x0F;
+
+        self.registers.a = result;
+        self.write_flags(result == 0, false, half_carry, result16 > 0xFF);
+    }
+
+    fn sub_from_a(&mut self, value: u8) {
+        let a = self.registers.a;
+        let result = a.wrapping_sub(value);
+        let half_carry = (a & 0x0F) < (value & 0x0F);
+        let carry = a < value;
+
+        self.registers.a = result;
+        self.write_flags(result == 0, true, half_carry, carry);
+    }
+
+    fn sbc_from_a(&mut self, value: u8) {
+        let a = self.registers.a;
+        let carry_in = u8::from(self.registers.f & FLAG_C != 0);
+        let result = a.wrapping_sub(value).wrapping_sub(carry_in);
+        let half_carry = (a & 0x0F) < ((value & 0x0F) + carry_in);
+        let carry = u16::from(a) < (u16::from(value) + u16::from(carry_in));
+
+        self.registers.a = result;
+        self.write_flags(result == 0, true, half_carry, carry);
+    }
+
+    fn and_with_a(&mut self, value: u8) {
+        self.registers.a &= value;
+        self.write_flags(self.registers.a == 0, false, true, false);
+    }
+
+    fn xor_with_a(&mut self, value: u8) {
+        self.registers.a ^= value;
+        self.write_flags(self.registers.a == 0, false, false, false);
+    }
+
+    fn or_with_a(&mut self, value: u8) {
+        self.registers.a |= value;
+        self.write_flags(self.registers.a == 0, false, false, false);
+    }
+
     fn compare_a(&mut self, value: u8) {
         let a = self.registers.a;
         let result = a.wrapping_sub(value);
@@ -1759,6 +2008,90 @@ impl CpuCore {
         self.write_flags(result == 0, true, half_carry, carry);
     }
 
+    fn add_to_hl(&mut self, value: u16) {
+        let hl = self.hl();
+        let result = hl.wrapping_add(value);
+        let zero = self.registers.f & FLAG_Z != 0;
+        let half_carry = (hl & 0x0FFF) + (value & 0x0FFF) > 0x0FFF;
+        let carry = u32::from(hl) + u32::from(value) > 0xFFFF;
+
+        self.write_register16(Register16::HL, result);
+        self.write_flags(zero, false, half_carry, carry);
+    }
+
+    fn sp_plus_signed_immediate(&mut self, value: u8) -> u16 {
+        let sp = self.registers.sp;
+        let signed = i16::from(i8::from_ne_bytes([value]));
+        let result = sp.wrapping_add_signed(signed);
+        let half_carry = (sp & 0x000F) + u16::from(value & 0x0F) > 0x000F;
+        let carry = (sp & 0x00FF) + u16::from(value) > 0x00FF;
+
+        self.write_flags(false, false, half_carry, carry);
+        result
+    }
+
+    fn apply_alu_operation(&mut self, operation: AluOperation, value: u8) {
+        match operation {
+            AluOperation::Add => self.add_to_a(value),
+            AluOperation::Adc => self.adc_to_a(value),
+            AluOperation::Sub => self.sub_from_a(value),
+            AluOperation::Sbc => self.sbc_from_a(value),
+            AluOperation::And => self.and_with_a(value),
+            AluOperation::Xor => self.xor_with_a(value),
+            AluOperation::Or => self.or_with_a(value),
+            AluOperation::Compare => self.compare_a(value),
+        }
+    }
+
+    fn decimal_adjust_a(&mut self) {
+        let mut a = self.registers.a;
+        let subtract = self.registers.f & FLAG_N != 0;
+        let half_carry = self.registers.f & FLAG_H != 0;
+        let carry = self.registers.f & FLAG_C != 0;
+        let mut adjust = 0_u8;
+        let mut next_carry = carry;
+
+        if !subtract {
+            if half_carry || (a & 0x0F) > 0x09 {
+                adjust |= 0x06;
+            }
+            if carry || a > 0x99 {
+                adjust |= 0x60;
+                next_carry = true;
+            }
+            a = a.wrapping_add(adjust);
+        } else {
+            if half_carry {
+                adjust |= 0x06;
+            }
+            if carry {
+                adjust |= 0x60;
+            }
+            a = a.wrapping_sub(adjust);
+        }
+
+        self.registers.a = a;
+        self.write_flags(a == 0, subtract, false, next_carry);
+    }
+
+    fn complement_a(&mut self) {
+        self.registers.a = !self.registers.a;
+        let zero = self.registers.f & FLAG_Z != 0;
+        let carry = self.registers.f & FLAG_C != 0;
+        self.write_flags(zero, true, true, carry);
+    }
+
+    fn set_carry_flag(&mut self) {
+        let zero = self.registers.f & FLAG_Z != 0;
+        self.write_flags(zero, false, false, true);
+    }
+
+    fn complement_carry_flag(&mut self) {
+        let zero = self.registers.f & FLAG_Z != 0;
+        let carry = self.registers.f & FLAG_C == 0;
+        self.write_flags(zero, false, false, carry);
+    }
+
     fn decode_cb_opcode(&self, opcode: u8) -> Option<CbInstructionKind> {
         if opcode & 0xF8 == 0x00 {
             return Some(CbInstructionKind::RotateLeftCarry {
@@ -1766,8 +2099,44 @@ impl CpuCore {
             });
         }
 
+        if opcode & 0xF8 == 0x08 {
+            return Some(CbInstructionKind::RotateRightCarry {
+                target: decode_register8_operand(opcode & 0x07),
+            });
+        }
+
         if opcode & 0xF8 == 0x10 {
             return Some(CbInstructionKind::RotateLeftThroughCarry {
+                target: decode_register8_operand(opcode & 0x07),
+            });
+        }
+
+        if opcode & 0xF8 == 0x18 {
+            return Some(CbInstructionKind::RotateRightThroughCarry {
+                target: decode_register8_operand(opcode & 0x07),
+            });
+        }
+
+        if opcode & 0xF8 == 0x20 {
+            return Some(CbInstructionKind::ShiftLeftArithmetic {
+                target: decode_register8_operand(opcode & 0x07),
+            });
+        }
+
+        if opcode & 0xF8 == 0x28 {
+            return Some(CbInstructionKind::ShiftRightArithmetic {
+                target: decode_register8_operand(opcode & 0x07),
+            });
+        }
+
+        if opcode & 0xF8 == 0x30 {
+            return Some(CbInstructionKind::SwapNibbles {
+                target: decode_register8_operand(opcode & 0x07),
+            });
+        }
+
+        if opcode & 0xF8 == 0x38 {
+            return Some(CbInstructionKind::ShiftRightLogical {
                 target: decode_register8_operand(opcode & 0x07),
             });
         }
@@ -1779,7 +2148,48 @@ impl CpuCore {
             });
         }
 
+        if opcode & 0xC0 == 0x80 {
+            return Some(CbInstructionKind::ResetBit {
+                bit: (opcode >> 3) & 0x07,
+                target: decode_register8_operand(opcode & 0x07),
+            });
+        }
+
+        if opcode & 0xC0 == 0xC0 {
+            return Some(CbInstructionKind::SetBit {
+                bit: (opcode >> 3) & 0x07,
+                target: decode_register8_operand(opcode & 0x07),
+            });
+        }
+
         None
+    }
+
+    fn apply_cb_operation(&mut self, kind: CbInstructionKind, value: u8) -> Option<u8> {
+        match kind {
+            CbInstructionKind::RotateLeftCarry { .. } => Some(self.rotate_left_carry(value)),
+            CbInstructionKind::RotateRightCarry { .. } => Some(self.rotate_right_carry(value)),
+            CbInstructionKind::RotateLeftThroughCarry { .. } => {
+                Some(self.rotate_left_through_carry(value))
+            }
+            CbInstructionKind::RotateRightThroughCarry { .. } => {
+                Some(self.rotate_right_through_carry(value))
+            }
+            CbInstructionKind::ShiftLeftArithmetic { .. } => {
+                Some(self.shift_left_arithmetic(value))
+            }
+            CbInstructionKind::ShiftRightArithmetic { .. } => {
+                Some(self.shift_right_arithmetic(value))
+            }
+            CbInstructionKind::SwapNibbles { .. } => Some(self.swap_nibbles(value)),
+            CbInstructionKind::ShiftRightLogical { .. } => Some(self.shift_right_logical(value)),
+            CbInstructionKind::BitTest { bit, .. } => {
+                self.bit_test(bit, value);
+                None
+            }
+            CbInstructionKind::ResetBit { bit, .. } => Some(self.reset_bit(value, bit)),
+            CbInstructionKind::SetBit { bit, .. } => Some(self.set_bit(value, bit)),
+        }
     }
 
     fn rotate_left_carry(&mut self, value: u8) -> u8 {
@@ -1789,10 +2199,52 @@ impl CpuCore {
         result
     }
 
+    fn rotate_right_carry(&mut self, value: u8) -> u8 {
+        let carry = value & 0x01 != 0;
+        let result = value.rotate_right(1);
+        self.write_flags(result == 0, false, false, carry);
+        result
+    }
+
     fn rotate_left_through_carry(&mut self, value: u8) -> u8 {
         let carry_in = u8::from(self.registers.f & FLAG_C != 0);
         let carry_out = value & 0x80 != 0;
         let result = (value << 1) | carry_in;
+        self.write_flags(result == 0, false, false, carry_out);
+        result
+    }
+
+    fn rotate_right_through_carry(&mut self, value: u8) -> u8 {
+        let carry_in = u8::from(self.registers.f & FLAG_C != 0) << 7;
+        let carry_out = value & 0x01 != 0;
+        let result = (value >> 1) | carry_in;
+        self.write_flags(result == 0, false, false, carry_out);
+        result
+    }
+
+    fn shift_left_arithmetic(&mut self, value: u8) -> u8 {
+        let carry_out = value & 0x80 != 0;
+        let result = value << 1;
+        self.write_flags(result == 0, false, false, carry_out);
+        result
+    }
+
+    fn shift_right_arithmetic(&mut self, value: u8) -> u8 {
+        let carry_out = value & 0x01 != 0;
+        let result = (value >> 1) | (value & 0x80);
+        self.write_flags(result == 0, false, false, carry_out);
+        result
+    }
+
+    fn swap_nibbles(&mut self, value: u8) -> u8 {
+        let result = value.rotate_left(4);
+        self.write_flags(result == 0, false, false, false);
+        result
+    }
+
+    fn shift_right_logical(&mut self, value: u8) -> u8 {
+        let carry_out = value & 0x01 != 0;
+        let result = value >> 1;
         self.write_flags(result == 0, false, false, carry_out);
         result
     }
@@ -1807,6 +2259,14 @@ impl CpuCore {
         if carry {
             self.registers.f |= FLAG_C;
         }
+    }
+
+    fn reset_bit(&mut self, value: u8, bit: u8) -> u8 {
+        value & !(1 << bit)
+    }
+
+    fn set_bit(&mut self, value: u8, bit: u8) -> u8 {
+        value | (1 << bit)
     }
 
     fn write_flags(&mut self, zero: bool, subtract: bool, half_carry: bool, carry: bool) {
@@ -2022,6 +2482,20 @@ fn decode_stack_register16(bits: u8) -> StackRegister16 {
     }
 }
 
+fn decode_alu_operation(bits: u8) -> AluOperation {
+    match bits {
+        0 => AluOperation::Add,
+        1 => AluOperation::Adc,
+        2 => AluOperation::Sub,
+        3 => AluOperation::Sbc,
+        4 => AluOperation::And,
+        5 => AluOperation::Xor,
+        6 => AluOperation::Or,
+        7 => AluOperation::Compare,
+        _ => unreachable!("3-bit ALU selector must be in 0..=7"),
+    }
+}
+
 fn decode_relative_jump_condition(opcode: u8) -> Option<ConditionCode> {
     match opcode {
         0x18 => None,
@@ -2131,6 +2605,18 @@ mod tests {
         for _ in 0..steps {
             tick_cpu(cpu, bus, cartridge);
         }
+    }
+
+    fn crc32_iso_hdlc(mut crc: u32, byte: u8) -> u32 {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            if crc & 1 != 0 {
+                crc = (crc >> 1) ^ 0xEDB8_8320;
+            } else {
+                crc >>= 1;
+            }
+        }
+        crc
     }
 
     #[test]
@@ -2247,6 +2733,39 @@ mod tests {
             }
         );
         assert_eq!(cpu.last_address_event(), None);
+    }
+
+    #[test]
+    fn cb_set_opcode_executes_instead_of_entering_a_diagnostic_trap() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut cartridge = build_test_cartridge(&[0xCB, 0xFF]);
+
+        cpu.apply_startup_state(CpuStartupState {
+            f: FLAG_Z | FLAG_C,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 8);
+
+        assert_eq!(cpu.registers().pc, 0x0102);
+        assert_eq!(cpu.registers().a, 0x80);
+        assert_eq!(cpu.registers().f, FLAG_Z | FLAG_C);
+        assert_eq!(cpu.current_opcode(), None);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+        assert_eq!(
+            cpu.last_address_event(),
+            Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: Some(0x0101),
+                idu_address: Some(0x0102),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })
+        );
     }
 
     #[test]
@@ -2543,6 +3062,161 @@ mod tests {
     }
 
     #[test]
+    fn ld_hl_sp_plus_signed_immediate_uses_three_machine_cycles_and_sets_flags_from_sp_math() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut cartridge = build_test_cartridge(&[0xF8, 0x08]);
+
+        cpu.apply_startup_state(CpuStartupState {
+            sp: 0xFFF8,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 8);
+
+        assert_eq!(cpu.registers().pc, 0x0102);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::Execute {
+                opcode: 0xF8,
+                step: 1,
+                t_cycle: 0,
+            }
+        );
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+
+        assert_eq!(cpu.hl(), 0x0000);
+        assert_eq!(cpu.registers().sp, 0xFFF8);
+        assert_eq!(cpu.registers().f, FLAG_H | FLAG_C);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
+    fn add_sp_signed_immediate_uses_four_machine_cycles_and_sets_flags_from_sp_math() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut cartridge = build_test_cartridge(&[0xE8, 0x08]);
+
+        cpu.apply_startup_state(CpuStartupState {
+            sp: 0xFFF8,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 8);
+
+        assert_eq!(cpu.registers().pc, 0x0102);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::Execute {
+                opcode: 0xE8,
+                step: 1,
+                t_cycle: 0,
+            }
+        );
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+
+        assert_eq!(cpu.registers().sp, 0xFFF8);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::Execute {
+                opcode: 0xE8,
+                step: 2,
+                t_cycle: 0,
+            }
+        );
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+
+        assert_eq!(cpu.registers().sp, 0x0000);
+        assert_eq!(cpu.registers().f, FLAG_H | FLAG_C);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
+    fn ld_a16_sp_writes_sp_little_endian_over_five_machine_cycles() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut cartridge = build_test_cartridge(&[0x08, 0x00, 0xC0]);
+
+        cpu.apply_startup_state(CpuStartupState {
+            sp: 0x1234,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 12);
+
+        assert_eq!(bus.read(0xC000), 0x00);
+        assert_eq!(bus.read(0xC001), 0x00);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::Execute {
+                opcode: 0x08,
+                step: 2,
+                t_cycle: 0,
+            }
+        );
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+
+        assert_eq!(bus.read(0xC000), 0x34);
+        assert_eq!(bus.read(0xC001), 0x00);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::Execute {
+                opcode: 0x08,
+                step: 3,
+                t_cycle: 0,
+            }
+        );
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+
+        assert_eq!(bus.read(0xC000), 0x34);
+        assert_eq!(bus.read(0xC001), 0x12);
+        assert_eq!(cpu.registers().pc, 0x0103);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
+    fn ld_sp_hl_uses_two_machine_cycles_and_preserves_flags() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut cartridge = build_test_cartridge(&[0xF9]);
+
+        cpu.apply_startup_state(CpuStartupState {
+            h: 0xC1,
+            l: 0x23,
+            f: FLAG_Z | FLAG_C,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 8);
+
+        assert_eq!(cpu.registers().sp, 0xC123);
+        assert_eq!(cpu.registers().f, FLAG_Z | FLAG_C);
+        assert_eq!(cpu.registers().pc, 0x0101);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
     fn jr_nz_taken_and_untaken_use_different_temporal_sequences() {
         let startup_taken = CpuStartupState {
             f: 0x00,
@@ -2628,10 +3302,10 @@ mod tests {
         assert_eq!(
             cpu.last_address_event(),
             Some(CpuAddressEvent {
-                kind: CpuAddressEventKind::WriteWithIncDec,
+                kind: CpuAddressEventKind::Write,
                 access_address: Some(0xFFFD),
-                idu_address: Some(0xFFFD),
-                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+                idu_address: None,
+                update_direction: None,
             })
         );
 
@@ -2740,6 +3414,130 @@ mod tests {
     }
 
     #[test]
+    fn pop_af_masks_the_low_flag_nibble_across_the_full_blargg_special_loop() {
+        for high in u8::MIN..=u8::MAX {
+            for low in u8::MIN..=u8::MAX {
+                let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+                let mut bus = Bus::new(ConsoleModel::Dmg);
+                let mut cartridge = build_test_cartridge(&[0xC5, 0xF1, 0xF5, 0xD1]);
+
+                cpu.apply_startup_state(CpuStartupState {
+                    b: high,
+                    c: low,
+                    sp: 0xFFFE,
+                    pc: 0x0100,
+                    ..CpuStartupState::power_on_reset()
+                });
+
+                tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 56);
+
+                assert_eq!(cpu.registers().d, high);
+                assert_eq!(cpu.registers().e, low & 0xF0);
+                assert_eq!(cpu.registers().sp, 0xFFFE);
+                assert_eq!(
+                    cpu.execution_state(),
+                    CpuExecutionState::FetchOpcode { t_cycle: 0 }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn jr_positive_negative_and_jp_hl_match_blargg_special_control_flow_cases() {
+        let mut jr_negative_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut jr_negative_bus = Bus::new(ConsoleModel::Dmg);
+        let mut jr_negative_cartridge = build_test_cartridge(&[0x18, 0xFE]);
+
+        jr_negative_cpu.apply_startup_state(CpuStartupState {
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(
+            &mut jr_negative_cpu,
+            &mut jr_negative_bus,
+            &mut jr_negative_cartridge,
+            12,
+        );
+
+        assert_eq!(jr_negative_cpu.registers().pc, 0x0100);
+        assert_eq!(
+            jr_negative_cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+
+        let mut jr_positive_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut jr_positive_bus = Bus::new(ConsoleModel::Dmg);
+        let mut jr_positive_cartridge = build_test_cartridge(&[0x18, 0x01, 0x00, 0x00]);
+
+        jr_positive_cpu.apply_startup_state(CpuStartupState {
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(
+            &mut jr_positive_cpu,
+            &mut jr_positive_bus,
+            &mut jr_positive_cartridge,
+            12,
+        );
+
+        assert_eq!(jr_positive_cpu.registers().pc, 0x0103);
+        assert_eq!(
+            jr_positive_cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+
+        let mut jp_hl_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut jp_hl_bus = Bus::new(ConsoleModel::Dmg);
+        let mut jp_hl_cartridge = build_test_cartridge(&[0xE9]);
+
+        jp_hl_cpu.apply_startup_state(CpuStartupState {
+            h: 0xC1,
+            l: 0x23,
+            f: FLAG_Z | FLAG_C,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut jp_hl_cpu, &mut jp_hl_bus, &mut jp_hl_cartridge, 4);
+
+        assert_eq!(jp_hl_cpu.registers().pc, 0xC123);
+        assert_eq!(jp_hl_cpu.registers().f, FLAG_Z | FLAG_C);
+        assert_eq!(
+            jp_hl_cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
+    fn decimal_adjust_accumulator_crc_matches_blargg_01_special_reference() {
+        let mut crc = 0xFFFF_FFFF_u32;
+
+        for flags in (0_u8..=0xF0).step_by(0x10) {
+            for a in u8::MIN..=u8::MAX {
+                let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+                let mut bus = Bus::new(ConsoleModel::Dmg);
+                let mut cartridge = build_test_cartridge(&[0x27]);
+
+                cpu.apply_startup_state(CpuStartupState {
+                    a,
+                    f: flags,
+                    pc: 0x0100,
+                    ..CpuStartupState::power_on_reset()
+                });
+
+                tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+
+                crc = crc32_iso_hdlc(crc, cpu.registers().a);
+                crc = crc32_iso_hdlc(crc, cpu.registers().f);
+            }
+        }
+
+        assert_eq!(crc ^ 0xFFFF_FFFF, 0x6A9F_8D8A);
+    }
+
+    #[test]
     fn cb_prefix_register_and_hl_variants_keep_double_fetch_and_memory_timing_distinct() {
         let mut register_cpu = CpuCore::new(ConsoleModel::Dmg);
         let mut register_bus = Bus::new(ConsoleModel::Dmg);
@@ -2829,6 +3627,213 @@ mod tests {
     }
 
     #[test]
+    fn cb_rr_and_srl_support_the_blargg_crc_runtime_path() {
+        let mut rr_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut rr_bus = Bus::new(ConsoleModel::Dmg);
+        let mut rr_cartridge = build_test_cartridge(&[0xCB, 0x19]);
+        rr_cpu.apply_startup_state(CpuStartupState {
+            c: 0x80,
+            f: FLAG_C,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut rr_cpu, &mut rr_bus, &mut rr_cartridge, 8);
+
+        assert_eq!(rr_cpu.registers().c, 0xC0);
+        assert_eq!(rr_cpu.registers().f, 0x00);
+        assert_eq!(rr_cpu.registers().pc, 0x0102);
+        assert_eq!(
+            rr_cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+
+        let mut srl_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut srl_bus = Bus::new(ConsoleModel::Dmg);
+        let mut srl_cartridge = build_test_cartridge(&[0xCB, 0x3E]);
+        srl_cpu.apply_startup_state(CpuStartupState {
+            h: 0xC0,
+            l: 0x00,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+        srl_bus.write(0xC000, 0x81);
+
+        tick_cpu_n(&mut srl_cpu, &mut srl_bus, &mut srl_cartridge, 12);
+
+        assert_eq!(srl_bus.read(0xC000), 0x81);
+        assert_eq!(
+            srl_cpu.execution_state(),
+            CpuExecutionState::Execute {
+                opcode: 0xCB,
+                step: 2,
+                t_cycle: 0,
+            }
+        );
+
+        tick_cpu_n(&mut srl_cpu, &mut srl_bus, &mut srl_cartridge, 4);
+
+        assert_eq!(srl_bus.read(0xC000), 0x40);
+        assert_eq!(srl_cpu.registers().f, FLAG_C);
+        assert_eq!(srl_cpu.registers().pc, 0x0102);
+        assert_eq!(
+            srl_cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
+    fn cb_rrc_register_and_hl_variants_support_the_external_bitop_paths() {
+        let mut register_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut register_bus = Bus::new(ConsoleModel::Dmg);
+        let mut register_cartridge = build_test_cartridge(&[0xCB, 0x08]);
+        register_cpu.apply_startup_state(CpuStartupState {
+            b: 0x01,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(
+            &mut register_cpu,
+            &mut register_bus,
+            &mut register_cartridge,
+            8,
+        );
+
+        assert_eq!(register_cpu.registers().b, 0x80);
+        assert_eq!(register_cpu.registers().f, FLAG_C);
+        assert_eq!(register_cpu.registers().pc, 0x0102);
+        assert_eq!(
+            register_cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+
+        let mut hl_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut hl_bus = Bus::new(ConsoleModel::Dmg);
+        let mut hl_cartridge = build_test_cartridge(&[0xCB, 0x0E]);
+        hl_cpu.apply_startup_state(CpuStartupState {
+            h: 0xC0,
+            l: 0x00,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+        hl_bus.write(0xC000, 0x01);
+
+        tick_cpu_n(&mut hl_cpu, &mut hl_bus, &mut hl_cartridge, 12);
+
+        assert_eq!(hl_bus.read(0xC000), 0x01);
+        assert_eq!(
+            hl_cpu.execution_state(),
+            CpuExecutionState::Execute {
+                opcode: 0xCB,
+                step: 2,
+                t_cycle: 0,
+            }
+        );
+
+        tick_cpu_n(&mut hl_cpu, &mut hl_bus, &mut hl_cartridge, 4);
+
+        assert_eq!(hl_bus.read(0xC000), 0x80);
+        assert_eq!(hl_cpu.registers().f, FLAG_C);
+        assert_eq!(hl_cpu.registers().pc, 0x0102);
+        assert_eq!(
+            hl_cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
+    fn cb_sla_sra_and_swap_register_variants_update_flags_as_documented() {
+        let mut sla_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut sla_bus = Bus::new(ConsoleModel::Dmg);
+        let mut sla_cartridge = build_test_cartridge(&[0xCB, 0x20]);
+        sla_cpu.apply_startup_state(CpuStartupState {
+            b: 0x81,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut sla_cpu, &mut sla_bus, &mut sla_cartridge, 8);
+
+        assert_eq!(sla_cpu.registers().b, 0x02);
+        assert_eq!(sla_cpu.registers().f, FLAG_C);
+
+        let mut sra_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut sra_bus = Bus::new(ConsoleModel::Dmg);
+        let mut sra_cartridge = build_test_cartridge(&[0xCB, 0x28]);
+        sra_cpu.apply_startup_state(CpuStartupState {
+            b: 0x81,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut sra_cpu, &mut sra_bus, &mut sra_cartridge, 8);
+
+        assert_eq!(sra_cpu.registers().b, 0xC0);
+        assert_eq!(sra_cpu.registers().f, FLAG_C);
+
+        let mut swap_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut swap_bus = Bus::new(ConsoleModel::Dmg);
+        let mut swap_cartridge = build_test_cartridge(&[0xCB, 0x30]);
+        swap_cpu.apply_startup_state(CpuStartupState {
+            b: 0xF0,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(&mut swap_cpu, &mut swap_bus, &mut swap_cartridge, 8);
+
+        assert_eq!(swap_cpu.registers().b, 0x0F);
+        assert_eq!(swap_cpu.registers().f, 0x00);
+    }
+
+    #[test]
+    fn cb_res_and_set_preserve_flags_for_register_and_hl_targets() {
+        let mut register_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut register_bus = Bus::new(ConsoleModel::Dmg);
+        let mut register_cartridge = build_test_cartridge(&[0xCB, 0x80, 0xCB, 0xC0]);
+        register_cpu.apply_startup_state(CpuStartupState {
+            b: 0xFF,
+            f: FLAG_Z | FLAG_C,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+
+        tick_cpu_n(
+            &mut register_cpu,
+            &mut register_bus,
+            &mut register_cartridge,
+            16,
+        );
+
+        assert_eq!(register_cpu.registers().b, 0xFF);
+        assert_eq!(register_cpu.registers().f, FLAG_Z | FLAG_C);
+        assert_eq!(register_cpu.registers().pc, 0x0104);
+
+        let mut hl_cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut hl_bus = Bus::new(ConsoleModel::Dmg);
+        let mut hl_cartridge = build_test_cartridge(&[0xCB, 0x86, 0xCB, 0xC6]);
+        hl_cpu.apply_startup_state(CpuStartupState {
+            h: 0xC0,
+            l: 0x00,
+            f: FLAG_Z | FLAG_C,
+            pc: 0x0100,
+            ..CpuStartupState::power_on_reset()
+        });
+        hl_bus.write(0xC000, 0xFF);
+
+        tick_cpu_n(&mut hl_cpu, &mut hl_bus, &mut hl_cartridge, 32);
+
+        assert_eq!(hl_bus.read(0xC000), 0xFF);
+        assert_eq!(hl_cpu.registers().f, FLAG_Z | FLAG_C);
+        assert_eq!(hl_cpu.registers().pc, 0x0104);
+        assert_eq!(
+            hl_cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
     fn bit_cb_operation_preserves_carry_while_setting_half_carry() {
         let mut cpu = CpuCore::new(ConsoleModel::Dmg);
         let mut bus = Bus::new(ConsoleModel::Dmg);
@@ -2908,7 +3913,7 @@ mod tests {
         tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
 
         assert_eq!(cpu.registers().sp, 0xFFFD);
-        assert_eq!(bus.read(0xFFFD), 0x01);
+        assert_eq!(bus.read(0xFFFD), 0x00);
         assert_eq!(
             cpu.execution_state(),
             CpuExecutionState::ServiceInterrupt {
@@ -2920,8 +3925,8 @@ mod tests {
         assert_eq!(
             cpu.last_address_event(),
             Some(CpuAddressEvent {
-                kind: CpuAddressEventKind::WriteWithIncDec,
-                access_address: Some(0xFFFD),
+                kind: CpuAddressEventKind::IncDec,
+                access_address: None,
                 idu_address: Some(0xFFFD),
                 update_direction: Some(CpuAddressUpdateDirection::Decrement),
             })
@@ -2929,8 +3934,9 @@ mod tests {
 
         tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
 
-        assert_eq!(cpu.registers().sp, 0xFFFC);
-        assert_eq!(bus.read(0xFFFC), 0x50);
+        assert_eq!(cpu.registers().sp, 0xFFFD);
+        assert_eq!(bus.read(0xFFFD), 0x01);
+        assert_eq!(bus.read(0xFFFC), 0x00);
         assert_eq!(
             cpu.execution_state(),
             CpuExecutionState::ServiceInterrupt {
@@ -2942,15 +3948,17 @@ mod tests {
         assert_eq!(
             cpu.last_address_event(),
             Some(CpuAddressEvent {
-                kind: CpuAddressEventKind::WriteWithIncDec,
-                access_address: Some(0xFFFC),
-                idu_address: Some(0xFFFC),
-                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+                kind: CpuAddressEventKind::Write,
+                access_address: Some(0xFFFD),
+                idu_address: None,
+                update_direction: None,
             })
         );
 
         tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
 
+        assert_eq!(cpu.registers().sp, 0xFFFC);
+        assert_eq!(bus.read(0xFFFC), 0x50);
         assert_eq!(cpu.registers().pc, 0x0040);
         assert_eq!(
             cpu.execution_state(),
