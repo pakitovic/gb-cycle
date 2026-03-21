@@ -47,3 +47,4 @@ test-external-blargg-dmg:
 	cargo test --release -p gb-test-runner --test external retrio_blargg_halt_bug_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
 	cargo test --release -p gb-test-runner --test external retrio_blargg_mem_timing_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
 	cargo test --release -p gb-test-runner --test external retrio_blargg_mem_timing_individual_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external retrio_blargg_oam_bug_suite_runs_against_real_external_assets -- --ignored --exact --nocapture

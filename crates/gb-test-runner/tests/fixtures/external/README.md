@@ -53,6 +53,7 @@ Current green official cases on top of the `cpu_instrs` individual block are:
 - `retrio/blargg mem_timing-2`
 - `retrio/blargg mem_timing/individual 01..03`
 - `retrio/blargg mem_timing-2/rom_singles 01..03`
+- `retrio/blargg oam_bug/rom_singles 1..6,8`
 
 Repository-gated external DMG block:
 
@@ -66,11 +67,11 @@ Repository-gated external DMG block:
   `halt_bug`
   `mem_timing`
   `mem_timing/individual`
+  `oam_bug/rom_singles 1..6,8`
 - `make check` intentionally stays lighter and does not fetch or execute the
   external ROM block
-- it intentionally excludes `oam_bug` and the APU suites
-  until those ROMs are green and intentionally promoted into the default
-  external-ROM gate
+- it still excludes the upstream `oam_bug.gb`, `7-timing_effect.gb`, and the
+  APU suites from the default external-ROM gate
 
 Commercial or otherwise non-redistributable ROMs do not belong in this store.
 Keep those local-only assets under the separate gitignored

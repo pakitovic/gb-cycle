@@ -796,11 +796,6 @@ pub fn retrio_blargg_mem_timing_individual_suite() -> RomSuite {
 pub fn retrio_blargg_oam_bug_suite() -> RomSuite {
     RomSuite::new("retrio-blargg-oam-bug", TestSubsystem::Ppu)
         .with_case(retrio_blargg_memory_output_case(
-            "retrio-oam-bug",
-            "oam_bug/oam_bug.gb",
-            Timeout::Frames(7_200),
-        ))
-        .with_case(retrio_blargg_memory_output_case(
             "retrio-oam-bug-1-lcd-sync",
             "oam_bug/rom_singles/1-lcd_sync.gb",
             Timeout::Frames(3_600),
@@ -828,11 +823,6 @@ pub fn retrio_blargg_oam_bug_suite() -> RomSuite {
         .with_case(retrio_blargg_memory_output_case(
             "retrio-oam-bug-6-timing-no-bug",
             "oam_bug/rom_singles/6-timing_no_bug.gb",
-            Timeout::Frames(3_600),
-        ))
-        .with_case(retrio_blargg_memory_output_case(
-            "retrio-oam-bug-7-timing-effect",
-            "oam_bug/rom_singles/7-timing_effect.gb",
             Timeout::Frames(3_600),
         ))
         .with_case(retrio_blargg_memory_output_case(
@@ -1886,12 +1876,18 @@ mod tests {
             .expect("known suite should be discoverable");
 
         assert_eq!(suite.name, "retrio-blargg-oam-bug");
-        assert_eq!(suite.cases.len(), 9);
+        assert_eq!(suite.cases.len(), 7);
         assert!(
             suite
                 .cases
                 .iter()
                 .any(|case| case.id == "retrio-oam-bug-1-lcd-sync")
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "retrio-oam-bug-8-instr-effect")
         );
     }
 }

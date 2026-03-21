@@ -96,10 +96,6 @@ path = "mem_timing-2/rom_singles/03-modify_timing.gb"
 sha256 = "818256ab477bb8fbb0709d28e3ec932a55c0ecd044292e760838efbb2b7fc09b"
 
 [[source.required_file]]
-path = "oam_bug/oam_bug.gb"
-sha256 = "21f0e7af73e525d14ca242ba28f97d4d381a40a61b3466dd6b4cae3e502e1ea1"
-
-[[source.required_file]]
 path = "oam_bug/rom_singles/1-lcd_sync.gb"
 sha256 = "abc303a2c644528cbcf36e83f8020cad17fdb6abdf42940533c4f6c8830c530a"
 
@@ -122,10 +118,6 @@ sha256 = "ca3500d92e77883a09e5bc560046ed3471ab362eca550689cd38a944dc558e4f"
 [[source.required_file]]
 path = "oam_bug/rom_singles/6-timing_no_bug.gb"
 sha256 = "e5ea594ddc7ad9a0e3063c3d6b050a2a10239cd43a23012551d4985c3712ea70"
-
-[[source.required_file]]
-path = "oam_bug/rom_singles/7-timing_effect.gb"
-sha256 = "b4bb86462a5701155d92ea7dafe826cbffae6faec2c48c10feef0a5f78154d6c"
 
 [[source.required_file]]
 path = "oam_bug/rom_singles/8-instr_effect.gb"

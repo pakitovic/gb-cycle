@@ -6,6 +6,7 @@ use gb_test_runner::{
     FailureArtifactPolicy, MemoryTextOutputSpec, PassCondition, RomCaseValidationError, RomSuite,
     RomSuiteValidationError, RomTestCase, StimulusTime, TestSubsystem, Timeout,
     phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
+    retrio_blargg_oam_bug_suite,
 };
 
 #[test]
@@ -513,6 +514,27 @@ fn phase_4_rom_automation_targets_validate_for_ppu_oam_corruption() {
             .cases
             .iter()
             .any(|case| case.console_model == ConsoleModel::Cgb)
+    );
+}
+
+#[test]
+fn official_oam_bug_suite_tracks_the_curated_shootout_list() {
+    let suite = retrio_blargg_oam_bug_suite();
+
+    assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+    assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.cases.len(), 7);
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.id == "retrio-oam-bug-1-lcd-sync")
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.id == "retrio-oam-bug-8-instr-effect")
     );
 }
 
