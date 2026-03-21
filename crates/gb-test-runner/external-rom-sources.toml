@@ -60,10 +60,6 @@ path = "instr_timing/instr_timing.gb"
 sha256 = "646067b3d6c79fda810e9c3f1cb7c0efd5abb0a7ac06437c54e65720c15d9925"
 
 [[source.required_file]]
-path = "interrupt_time/interrupt_time.gb"
-sha256 = "1a8f8f3bc609a92a5838214c00906c81e7cc77b3b9a63be5a1ec6d513f234929"
-
-[[source.required_file]]
 path = "halt_bug.gb"
 sha256 = "ddebfb81f992132954a5580e16cfb97346a4e061c762634d7701328e23fea7c6"
 

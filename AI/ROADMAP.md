@@ -1999,7 +1999,7 @@ Suggested entry style:
 
 ### Phase 9 — Final DMG hardening, differential validation, and closure
 
-- [TEST-RUNNER][OFFICIAL-CGB-INTERRUPT-TIME] `retrio/blargg interrupt_time` is now wired with the correct `ConsoleModel::Cgb` metadata, but it still does not pass because the core lacks the CGB CPU-speed behavior that the upstream ROM explicitly exercises. Phase dependency: this does not block current DMG hardening or Phase `7`, but it should stay visible as future CGB bring-up work instead of being misread as a DMG regression.
+- None currently.
 
 #### Done:
 

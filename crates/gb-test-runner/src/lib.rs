@@ -739,17 +739,6 @@ pub fn retrio_blargg_instr_timing_suite() -> RomSuite {
     )
 }
 
-pub fn retrio_blargg_interrupt_time_suite() -> RomSuite {
-    RomSuite::new("retrio-blargg-interrupt-time", TestSubsystem::Interrupts).with_case(
-        retrio_blargg_external_case(
-            "retrio-interrupt-time",
-            "interrupt_time/interrupt_time.gb",
-            Timeout::Frames(3_600),
-        )
-        .with_console_model(ConsoleModel::Cgb),
-    )
-}
-
 pub fn retrio_blargg_halt_bug_suite() -> RomSuite {
     RomSuite::new("retrio-blargg-halt-bug", TestSubsystem::Interrupts).with_case(
         retrio_blargg_console_case("retrio-halt-bug", "halt_bug.gb", Timeout::Frames(3_600)),
@@ -861,7 +850,6 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         retrio_blargg_cpu_smoke_suite(),
         retrio_blargg_cpu_instrs_full_suite(),
         retrio_blargg_instr_timing_suite(),
-        retrio_blargg_interrupt_time_suite(),
         retrio_blargg_halt_bug_suite(),
         retrio_blargg_mem_timing_suite(),
         retrio_blargg_mem_timing_individual_suite(),

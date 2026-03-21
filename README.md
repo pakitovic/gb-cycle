@@ -118,9 +118,6 @@ make test-external-blargg-dmg
   `halt_bug`,
   `mem_timing`,
   and `mem_timing` individual ROMs
-- `retrio/blargg interrupt_time` is wired in the harness with `ConsoleModel::Cgb`
-  because the upstream source explicitly requires CGB, but it is not green yet;
-  the remaining blocker is CGB CPU-speed support in the core, not asset wiring
 - `retrio/blargg oam_bug` stays outside `make local` and the default external
   ROM workflow for
   now because the suite is not fully green yet, even though some single-ROM

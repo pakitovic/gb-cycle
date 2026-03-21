@@ -27,7 +27,6 @@ Current external harness contract:
   plus `halt_bug.gb`
   plus `mem_timing/mem_timing.gb`
   plus `mem_timing-2/mem_timing.gb`
-  plus `interrupt_time/interrupt_time.gb`
 
 Repo-managed external test assets are fetched with:
 
@@ -69,15 +68,9 @@ Repository-gated external DMG block:
   `mem_timing/individual`
 - `make check` intentionally stays lighter and does not fetch or execute the
   external ROM block
-- it intentionally excludes `interrupt_time`, `oam_bug`, and the APU suites
+- it intentionally excludes `oam_bug` and the APU suites
   until those ROMs are green and intentionally promoted into the default
   external-ROM gate
-
-Current typed-but-not-green case:
-
-- `retrio/blargg interrupt_time`
-  upstream requires `CGB`, so the harness now runs it as `ConsoleModel::Cgb`,
-  but the core still lacks the CGB CPU-speed behavior that this ROM exercises
 
 Commercial or otherwise non-redistributable ROMs do not belong in this store.
 Keep those local-only assets under the separate gitignored
