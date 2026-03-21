@@ -96,12 +96,6 @@ external ROM suites stay outside git in a repo-managed local store.
 ```bash
 make fetch-external-roms
 make test-external-blargg-dmg
-make test-external-smoke
-make test-external-cpu-instrs-full
-make test-external-instr-timing
-make test-external-halt-bug
-make test-external-mem-timing
-make test-external-mem-timing-individual
 ```
 
 - `make fetch-external-roms` populates the gitignored `/.roms/external-test/`
@@ -117,26 +111,13 @@ make test-external-mem-timing-individual
   `ci` for Rust checks plus coverage
   `external-roms` for the supported external Blargg DMG block
 - `make test-external-blargg-dmg` runs the same repository-gated external DMG
-  block explicitly
-- `make test-external-smoke` runs the current release-mode external CPU smoke
-  suite against that store
-  that smoke block covers the full `retrio/blargg cpu_instrs/individual` set
-  (`01` through `11`)
-- `make test-external-cpu-instrs-full` runs the official
-  `retrio/blargg cpu_instrs/cpu_instrs.gb` multi-ROM against the same
-  repo-managed store and checks the final serial report `Passed all tests`
-- `make test-external-instr-timing` runs the official
-  `retrio/blargg instr_timing` ROM against the same repo-managed store
-- `make test-external-halt-bug` runs the official `retrio/blargg halt_bug`
-  ROM against the same repo-managed store, using the typed Blargg LCD-console
-  text capture path rather than a frontend or manual screen inspection
-- `make test-external-mem-timing` runs both official `retrio/blargg mem_timing`
-  ROMs against the same repo-managed store; the first case uses serial output,
-  and `mem_timing-2` uses the typed external-RAM text/status channel from the
-  ROM's own contract
-- `make test-external-mem-timing-individual` runs the three
-  `retrio/blargg mem_timing/individual` ROMs plus the three
-  `mem_timing-2/rom_singles` ROMs against the same repo-managed store
+  block explicitly:
+  `cpu_instrs` smoke,
+  `cpu_instrs/cpu_instrs.gb`,
+  `instr_timing`,
+  `halt_bug`,
+  `mem_timing`,
+  and `mem_timing` individual ROMs
 - `retrio/blargg interrupt_time` is wired in the harness with `ConsoleModel::Cgb`
   because the upstream source explicitly requires CGB, but it is not green yet;
   the remaining blocker is CGB CPU-speed support in the core, not asset wiring
