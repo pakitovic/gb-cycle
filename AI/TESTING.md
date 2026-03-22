@@ -136,12 +136,13 @@ This checklist should move only when one of the following becomes true:
   This path enforces `Strict`, compares the suite's required-capture artifact
   against an imported oracle artifact bundle, and archives local context on
   divergence; it intentionally does not yet automate SameBoy/Gambatte launch or
-  provide end-of-instruction / short-window first-divergence tracing. The
-  current `sameboy-tester` layout support is limited to framebuffer-oracle
-  cases because SameBoy's internal tester emits image plus log artifacts rather
-  than the serial or memory-text channels used by the Blargg text suites. When
-  `--oracle-artifact-root` is omitted, the repo-local default is
-  `/.oracles/<oracle>/<layout>/`.
+  provide end-of-instruction / short-window first-divergence tracing, but it
+  now does report the first differing byte or pixel inside the compared final
+  artifact. The current `sameboy-tester` layout support is limited to
+  framebuffer-oracle cases because SameBoy's internal tester emits image plus
+  log artifacts rather than the serial or memory-text channels used by the
+  Blargg text suites. When `--oracle-artifact-root` is omitted, the repo-local
+  default is `/.oracles/<oracle>/<layout>/`.
 - The repo now also includes a companion SameBoy Tester materialization command
   under
   `cargo run -p gb-test-runner --bin run_sameboy_tester -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --tester-binary <path>]`.

@@ -112,9 +112,27 @@ pub enum DifferentialCaseMismatch {
         oracle: String,
         local: String,
     },
+    SnapshotMismatch {
+        oracle_artifact_path: PathBuf,
+        oracle: String,
+        local: String,
+    },
     FramebufferMismatch {
         oracle_artifact_path: PathBuf,
+        local_width: usize,
+        local_height: usize,
+        oracle_width: usize,
+        oracle_height: usize,
+        first_difference: Option<FramebufferDifferencePoint>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FramebufferDifferencePoint {
+    pub x: usize,
+    pub y: usize,
+    pub local_rank: u8,
+    pub oracle_rank: u8,
 }
 
 impl DifferentialCaseMismatch {
@@ -125,7 +143,41 @@ impl DifferentialCaseMismatch {
             Self::MemoryTextOutputMismatch { .. } => "memory-text-output-mismatch",
             Self::BlarggConsoleTextMismatch { .. } => "blargg-console-text-mismatch",
             Self::TraceMismatch { .. } => "trace-mismatch",
+            Self::SnapshotMismatch { .. } => "snapshot-mismatch",
             Self::FramebufferMismatch { .. } => "framebuffer-mismatch",
+        }
+    }
+
+    pub fn detail(&self) -> String {
+        match self {
+            Self::MissingOracleArtifact { path, capture } => format!(
+                "missing_path={} channel={}",
+                path.display(),
+                capture_name(*capture)
+            ),
+            Self::SerialMismatch { oracle, local, .. } => describe_text_difference(local, oracle),
+            Self::MemoryTextOutputMismatch { oracle, local, .. } => {
+                describe_memory_text_output_difference(local, oracle)
+            }
+            Self::BlarggConsoleTextMismatch { oracle, local, .. } => {
+                describe_text_difference(local, oracle)
+            }
+            Self::TraceMismatch { oracle, local, .. } => describe_text_difference(local, oracle),
+            Self::SnapshotMismatch { oracle, local, .. } => describe_text_difference(local, oracle),
+            Self::FramebufferMismatch {
+                local_width,
+                local_height,
+                oracle_width,
+                oracle_height,
+                first_difference,
+                ..
+            } => describe_framebuffer_difference(
+                *local_width,
+                *local_height,
+                *oracle_width,
+                *oracle_height,
+                first_difference.as_ref(),
+            ),
         }
     }
 }
@@ -403,7 +455,7 @@ impl DifferentialRunner {
                     },
                 )?;
 
-                let matched = match self.oracle_layout {
+                match self.oracle_layout {
                     DifferentialOracleLayout::CaseBundle => {
                         let oracle = fs::read(oracle_artifact_path).map_err(|source| {
                             DifferentialExecutionError::ReadOracleArtifact {
@@ -412,25 +464,55 @@ impl DifferentialRunner {
                                 source,
                             }
                         })?;
-                        local == oracle.as_slice()
+
+                        if local == oracle.as_slice() {
+                            DifferentialCaseOutcome::Matched
+                        } else {
+                            let local_normalized =
+                                decode_local_pgm_framebuffer(local_report.case_id.as_str(), local)?;
+                            let oracle_normalized = decode_local_pgm_framebuffer(
+                                &format!("oracle framebuffer for {}", local_report.case_id),
+                                oracle.as_slice(),
+                            )?;
+                            DifferentialCaseOutcome::Diverged(
+                                DifferentialCaseMismatch::FramebufferMismatch {
+                                    oracle_artifact_path: oracle_artifact_path.to_path_buf(),
+                                    local_width: local_normalized.width,
+                                    local_height: local_normalized.height,
+                                    oracle_width: oracle_normalized.width,
+                                    oracle_height: oracle_normalized.height,
+                                    first_difference: first_framebuffer_difference(
+                                        &local_normalized,
+                                        &oracle_normalized,
+                                    ),
+                                },
+                            )
+                        }
                     }
                     DifferentialOracleLayout::SameBoyTester => {
                         let local_normalized =
                             decode_local_pgm_framebuffer(local_report.case_id.as_str(), local)?;
                         let oracle_normalized =
                             decode_sameboy_tester_framebuffer(oracle_artifact_path)?;
-                        local_normalized == oracle_normalized
-                    }
-                };
 
-                if matched {
-                    DifferentialCaseOutcome::Matched
-                } else {
-                    DifferentialCaseOutcome::Diverged(
-                        DifferentialCaseMismatch::FramebufferMismatch {
-                            oracle_artifact_path: oracle_artifact_path.to_path_buf(),
-                        },
-                    )
+                        if local_normalized == oracle_normalized {
+                            DifferentialCaseOutcome::Matched
+                        } else {
+                            DifferentialCaseOutcome::Diverged(
+                                DifferentialCaseMismatch::FramebufferMismatch {
+                                    oracle_artifact_path: oracle_artifact_path.to_path_buf(),
+                                    local_width: local_normalized.width,
+                                    local_height: local_normalized.height,
+                                    oracle_width: oracle_normalized.width,
+                                    oracle_height: oracle_normalized.height,
+                                    first_difference: first_framebuffer_difference(
+                                        &local_normalized,
+                                        &oracle_normalized,
+                                    ),
+                                },
+                            )
+                        }
+                    }
                 }
             }
             CaptureKind::Trace => {
@@ -476,7 +558,7 @@ impl DifferentialRunner {
                 if local == oracle {
                     DifferentialCaseOutcome::Matched
                 } else {
-                    DifferentialCaseOutcome::Diverged(DifferentialCaseMismatch::TraceMismatch {
+                    DifferentialCaseOutcome::Diverged(DifferentialCaseMismatch::SnapshotMismatch {
                         oracle_artifact_path: oracle_artifact_path.to_path_buf(),
                         oracle,
                         local,
@@ -575,6 +657,92 @@ impl DifferentialRunner {
 
 fn replace_extension(path: &Path, extension: &str) -> PathBuf {
     path.with_extension(extension)
+}
+
+fn describe_memory_text_output_difference(
+    local: &CapturedMemoryTextOutput,
+    oracle: &CapturedMemoryTextOutput,
+) -> String {
+    if local.status != oracle.status {
+        return format!(
+            "field=status local=0x{:02X} oracle=0x{:02X}",
+            local.status, oracle.status
+        );
+    }
+
+    if local.signature != oracle.signature {
+        for index in 0..local.signature.len() {
+            if local.signature[index] != oracle.signature[index] {
+                return format!(
+                    "field=signature index={} local=0x{:02X} oracle=0x{:02X}",
+                    index, local.signature[index], oracle.signature[index]
+                );
+            }
+        }
+    }
+
+    format!(
+        "field=text {}",
+        describe_text_difference(&local.text, &oracle.text)
+    )
+}
+
+fn describe_text_difference(local: &str, oracle: &str) -> String {
+    let local_bytes = local.as_bytes();
+    let oracle_bytes = oracle.as_bytes();
+    let shared_len = local_bytes.len().min(oracle_bytes.len());
+    for index in 0..shared_len {
+        if local_bytes[index] != oracle_bytes[index] {
+            let (line, column) = line_and_column_for_prefix(&local_bytes[..index]);
+            return format!(
+                "first_difference_byte={} line={} column={} local={} oracle={}",
+                index,
+                line,
+                column,
+                format_difference_byte(Some(local_bytes[index])),
+                format_difference_byte(Some(oracle_bytes[index])),
+            );
+        }
+    }
+
+    if local_bytes.len() != oracle_bytes.len() {
+        let index = shared_len;
+        let (line, column) = line_and_column_for_prefix(&local_bytes[..shared_len]);
+        return format!(
+            "first_difference_byte={} line={} column={} local={} oracle={}",
+            index,
+            line,
+            column,
+            format_difference_byte(local_bytes.get(index).copied()),
+            format_difference_byte(oracle_bytes.get(index).copied()),
+        );
+    }
+
+    "content differs but no differing byte was localized".to_string()
+}
+
+fn line_and_column_for_prefix(prefix: &[u8]) -> (usize, usize) {
+    let mut line = 1_usize;
+    let mut column = 1_usize;
+    for byte in prefix {
+        if *byte == b'\n' {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+    (line, column)
+}
+
+fn format_difference_byte(byte: Option<u8>) -> String {
+    match byte {
+        Some(value) if value.is_ascii_graphic() || value == b' ' => {
+            format!("0x{value:02X}({:?})", char::from(value))
+        }
+        Some(value) => format!("0x{value:02X}"),
+        None => "eof".to_string(),
+    }
 }
 
 fn write_captured_artifact(
@@ -1017,6 +1185,60 @@ fn normalize_rgb_pixels(width: usize, height: usize, pixels: &[[u8; 3]]) -> Norm
     }
 }
 
+fn first_framebuffer_difference(
+    local: &NormalizedFramebuffer,
+    oracle: &NormalizedFramebuffer,
+) -> Option<FramebufferDifferencePoint> {
+    if local.width != oracle.width || local.height != oracle.height {
+        return None;
+    }
+
+    local
+        .palette_ranks
+        .iter()
+        .zip(&oracle.palette_ranks)
+        .enumerate()
+        .find_map(|(index, (local_rank, oracle_rank))| {
+            if local_rank == oracle_rank {
+                return None;
+            }
+
+            Some(FramebufferDifferencePoint {
+                x: index % local.width,
+                y: index / local.width,
+                local_rank: *local_rank,
+                oracle_rank: *oracle_rank,
+            })
+        })
+}
+
+fn describe_framebuffer_difference(
+    local_width: usize,
+    local_height: usize,
+    oracle_width: usize,
+    oracle_height: usize,
+    first_difference: Option<&FramebufferDifferencePoint>,
+) -> String {
+    if local_width != oracle_width || local_height != oracle_height {
+        return format!(
+            "dimensions local={}x{} oracle={}x{}",
+            local_width, local_height, oracle_width, oracle_height
+        );
+    }
+
+    if let Some(first_difference) = first_difference {
+        return format!(
+            "first_difference_pixel=x={},y={} local_rank={} oracle_rank={}",
+            first_difference.x,
+            first_difference.y,
+            first_difference.local_rank,
+            first_difference.oracle_rank,
+        );
+    }
+
+    "dimensions match but no differing pixel was localized".to_string()
+}
+
 fn luminance(color: &[u8; 3]) -> u32 {
     u32::from(color[0]) * 299 + u32::from(color[1]) * 587 + u32::from(color[2]) * 114
 }
@@ -1101,6 +1323,7 @@ fn render_differential_summary(
         DifferentialCaseOutcome::Diverged(mismatch) => {
             summary.push_str("differential_outcome=diverged\n");
             summary.push_str(&format!("mismatch={}\n", mismatch.name()));
+            summary.push_str(&format!("mismatch_detail={}\n", mismatch.detail()));
         }
     }
     summary
@@ -1121,9 +1344,9 @@ fn capture_name(capture: CaptureKind) -> &'static str {
 mod tests {
     use super::{
         DifferentialCaseMismatch, DifferentialCaseOutcome, DifferentialOracle,
-        DifferentialOracleLayout, DifferentialRunner, NormalizedFramebuffer,
-        decode_local_pgm_framebuffer, decode_sameboy_tester_framebuffer, parse_pgm,
-        parse_sameboy_tester_bmp, render_differential_summary,
+        DifferentialOracleLayout, DifferentialRunner, FramebufferDifferencePoint,
+        NormalizedFramebuffer, decode_local_pgm_framebuffer, decode_sameboy_tester_framebuffer,
+        parse_pgm, parse_sameboy_tester_bmp, render_differential_summary,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, RomCaseOutcome, RomCaseReport, gbdev_dmg_acid2_suite,
@@ -1250,11 +1473,36 @@ mod tests {
             },
             &DifferentialCaseOutcome::Diverged(DifferentialCaseMismatch::FramebufferMismatch {
                 oracle_artifact_path: PathBuf::from("/tmp/framebuffer.bmp"),
+                local_width: 160,
+                local_height: 144,
+                oracle_width: 160,
+                oracle_height: 144,
+                first_difference: Some(FramebufferDifferencePoint {
+                    x: 12,
+                    y: 34,
+                    local_rank: 1,
+                    oracle_rank: 2,
+                }),
             }),
             PathBuf::from("/tmp/framebuffer.bmp").as_path(),
         );
 
         assert!(summary.contains("oracle_layout=sameboy-tester"));
+        assert!(summary.contains("mismatch_detail=first_difference_pixel=x=12,y=34"));
+    }
+
+    #[test]
+    fn trace_mismatch_detail_reports_first_difference_location() {
+        let mismatch = DifferentialCaseMismatch::TraceMismatch {
+            oracle_artifact_path: PathBuf::from("/tmp/oracle.trace"),
+            oracle: "aa\nbd\n".to_string(),
+            local: "aa\nbc\n".to_string(),
+        };
+
+        let detail = mismatch.detail();
+        assert!(detail.contains("first_difference_byte=4"));
+        assert!(detail.contains("line=2"));
+        assert!(detail.contains("column=2"));
     }
 
     #[test]

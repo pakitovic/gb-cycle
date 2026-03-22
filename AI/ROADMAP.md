@@ -1827,10 +1827,13 @@ from this phase before APU work. The current early deliverables are:
   `cargo run -p gb-test-runner --bin run_differential -- --oracle <sameboy|gambatte> [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`,
   which compares the built-in suite's required-capture artifact against an
   imported oracle artifact bundle, enforces `Strict`, and archives local
-  context plus the compared oracle artifact on divergence. The current
-  `sameboy-tester` layout support is intentionally framebuffer-only and is
-  aimed at PPU/image-oracle cases such as `dmg-acid2`. When the oracle root is
-  omitted, the repo-local default is `/.oracles/<oracle>/<layout>/`
+  context plus the compared oracle artifact on divergence. The current path
+  also reports the first differing byte or pixel inside the compared final
+  artifact, even though full instruction-level or short-window first-divergence
+  tooling is still deferred. The current `sameboy-tester` layout support is
+  intentionally framebuffer-only and is aimed at PPU/image-oracle cases such as
+  `dmg-acid2`. When the oracle root is omitted, the repo-local default is
+  `/.oracles/<oracle>/<layout>/`
 - one SameBoy Tester materialization path,
   `cargo run -p gb-test-runner --bin run_sameboy_tester -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --tester-binary <path>]`,
   which stages ROMs under the oracle root, runs SameBoy's internal `tester`

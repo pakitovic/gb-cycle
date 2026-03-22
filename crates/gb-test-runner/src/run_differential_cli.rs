@@ -265,6 +265,7 @@ fn write_suite_report<W: Write>(
         )?;
         if let DifferentialCaseOutcome::Diverged(mismatch) = &case.outcome {
             writeln_checked(output, &format!("mismatch={}", mismatch.name()))?;
+            writeln_checked(output, &format!("mismatch_detail={}", mismatch.detail()))?;
         }
         if !case.archived_context_artifacts.is_empty() {
             writeln_checked(
@@ -463,5 +464,38 @@ mod tests {
         assert!(output.contains("suite=phase-2-cpu-timing subsystem=Cpu oracle=sameboy"));
         assert!(output.contains("case=phase2-fetch-immediate-order"));
         assert!(output.contains("differential_outcome=matched"));
+    }
+
+    #[test]
+    fn run_command_reports_mismatch_detail_for_trace_case() {
+        let oracle_root = unique_temp_dir("phase2-mismatch");
+        let case_dir = oracle_root.join("phase2-fetch-immediate-order");
+        fs::create_dir_all(&case_dir).expect("case dir should be creatable");
+        fs::write(
+            case_dir.join(artifact_file_name(crate::CaptureKind::Trace)),
+            "wrong trace\n",
+        )
+        .expect("oracle trace should be writable");
+
+        let mut output = Vec::new();
+        let error = run_differential_command(
+            [
+                "--oracle",
+                "sameboy",
+                "--oracle-artifact-root",
+                oracle_root.to_str().expect("temp path should be utf-8"),
+                "--suite",
+                "phase-2-cpu-timing",
+                "--case",
+                "phase2-fetch-immediate-order",
+            ],
+            &mut output,
+        )
+        .expect_err("mismatch should fail the command");
+        assert!(error.contains("diverged"));
+
+        let output = String::from_utf8(output).expect("command output should be utf-8");
+        assert!(output.contains("mismatch=trace-mismatch"));
+        assert!(output.contains("mismatch_detail=first_difference_byte="));
     }
 }
