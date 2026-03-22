@@ -1805,6 +1805,29 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 This phase is the roadmap home for the final DMG closure work. Parts of it should begin earlier, but the block only closes once the project can justify DMG correctness through layered evidence on the shared T-cycle model rather than through informal game compatibility.
 It assumes the dedicated save-state and serialization infrastructure from Phase 8 already exists and uses it as part of closure evidence.
 
+Status note (`2026-03-22`): the repo now starts a narrow early hardening lane
+from this phase before APU work. The current early deliverables are:
+
+- one explicit partial subsystem checklist in `AI/TESTING.md` that distinguishes
+  repo-gated external evidence from internal-only evidence for the already-landed
+  DMG subsystems
+- one `gb-test-runner` catalog path,
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed`, that
+  exposes the built-in suite set together with oracle channel, capture, and
+  retained-artifact policy
+- one `gb-test-runner` checklist path,
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist`, that
+  exposes the current early hardening status per subsystem together with the
+  evidence already landed and the still-open closure gaps
+- one repo-gated PPU framebuffer-oracle suite,
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2`,
+  sourced from `GBEmulatorShootout` and now part of the supported external DMG
+  block used by `make local` and the `external-roms` workflow
+
+This does not count as closing Phase `9.2` or `9.3`; SameBoy/Gambatte
+differential tooling, save/load determinism, and the final DMG matrix still
+remain Phase `7/8/9` work.
+
 #### Goal
 
 Close the DMG core with a formal validation matrix, strong differential and determinism tooling, and explicit closure criteria that leave no major blind hardware areas behind.

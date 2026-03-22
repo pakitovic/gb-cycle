@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  blargg-dmg:
+  dmg-gate:
     runs-on: ubuntu-latest
 
     steps:
@@ -29,5 +29,5 @@ jobs:
       - name: Fetch external ROMs
         run: make fetch-external-roms
 
-      - name: Run supported external Blargg DMG suites
-        run: make test-external-blargg-dmg
+      - name: Run supported external DMG suites
+        run: make test-external-dmg

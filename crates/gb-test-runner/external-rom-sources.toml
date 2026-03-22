@@ -122,3 +122,18 @@ sha256 = "e5ea594ddc7ad9a0e3063c3d6b050a2a10239cd43a23012551d4985c3712ea70"
 [[source.required_file]]
 path = "oam_bug/rom_singles/8-instr_effect.gb"
 sha256 = "11b372a91f65dd3bd2570aafc6f26e201fc0f05955ba3bb57f4c17cd642f7b2d"
+
+[[source]]
+id = "gbemu-shootout"
+git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
+git_rev = "5fca2efde856f3929b72f40b0901c85b011665ee"
+local_dir = "gbemu-shootout"
+root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
+
+[[source.required_file]]
+path = "testroms/acid/dmg-acid2.gb"
+sha256 = "464e14b7d42e7feea0b7ede42be7071dc88913f75b9ffa444299424b63d1dff1"
+
+[[source.required_file]]
+path = "testroms/acid/dmg-acid2.png"
+sha256 = "8b5e31c2b1d449e90fc0ac08bf1f0dd95509d3e953d6940513a3ce3161572ac4"

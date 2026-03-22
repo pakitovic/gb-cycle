@@ -32,17 +32,30 @@ Repo-managed external test assets are fetched with:
 
 ```bash
 make fetch-external-roms
-make test-external-blargg-dmg
+make test-external-dmg
 ```
 
-That command reads `crates/gb-test-runner/external-rom-sources.toml`, downloads
-the pinned upstream revision, verifies the required file hashes, and populates
+Those commands read `crates/gb-test-runner/external-rom-sources.toml`, download
+the pinned upstream revision, verify the required file hashes, and populate
 the gitignored `/.roms/external-test/` store that both local runs and CI use.
 
 The ignored integration tests in
 `crates/gb-test-runner/tests/external.rs` use that environment variable and
 path contract directly. The ROM binaries remain external; the repo stores only
 the typed suite metadata, the fetch manifest, and the harness behavior.
+
+To inspect the current built-in suite catalog together with oracle channel,
+capture plan, and retained-artifact policy, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed
+```
+
+To inspect the current early hardening checklist by subsystem, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
+```
 
 Current green official cases on top of the `cpu_instrs` individual block are:
 
@@ -55,9 +68,19 @@ Current green official cases on top of the `cpu_instrs` individual block are:
 - `retrio/blargg mem_timing-2/rom_singles 01..03`
 - `retrio/blargg oam_bug/rom_singles 1..6,8`
 
+Current repo-gated external PPU suite:
+
+- `gbdev/GBEmulatorShootout acid/dmg-acid2.gb`
+- oracle channel: framebuffer fixture derived from the upstream
+  `testroms/acid/dmg-acid2.png` reference
+- current built-in suite name: `gbdev-dmg-acid2`
+- current source env var: `GB_CYCLE_GBEMU_SHOOTOUT_ROOT`
+- this suite is part of `make test-external-dmg`, `make local`, and the
+  `external-roms` workflow
+
 Repository-gated external DMG block:
 
-- `make local` fetches and runs the green non-APU, non-CGB Blargg DMG block
+- `make local` fetches and runs the green non-APU, non-CGB external DMG block
   as the full local pipeline
 - GitHub runs the same block in the separate `external-roms` workflow
 - that block currently includes:
@@ -68,6 +91,7 @@ Repository-gated external DMG block:
   `mem_timing`
   `mem_timing/individual`
   `oam_bug/rom_singles 1..6,8`
+  `gbdev-dmg-acid2`
 - `make check` intentionally stays lighter and does not fetch or execute the
   external ROM block
 - it still excludes the upstream `oam_bug.gb`, `7-timing_effect.gb`, and the

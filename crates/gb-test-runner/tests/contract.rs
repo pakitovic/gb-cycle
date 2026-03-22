@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
 use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
-    FailureArtifactPolicy, MemoryTextOutputSpec, PassCondition, RomCaseValidationError, RomSuite,
-    RomSuiteValidationError, RomTestCase, StimulusTime, TestSubsystem, Timeout,
-    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
-    retrio_blargg_oam_bug_suite,
+    FailureArtifactPolicy, GBEMU_SHOOTOUT_ROOT_ENV_VAR, MemoryTextOutputSpec, PassCondition,
+    RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase, StimulusTime,
+    TestSubsystem, Timeout, gbdev_dmg_acid2_suite, phase_2_cpu_timing_suite,
+    phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite, retrio_blargg_oam_bug_suite,
 };
 
 #[test]
@@ -536,6 +536,28 @@ fn official_oam_bug_suite_tracks_the_curated_shootout_list() {
             .iter()
             .any(|case| case.id == "retrio-oam-bug-8-instr-effect")
     );
+}
+
+#[test]
+fn dmg_acid2_suite_uses_a_framebuffer_fixture_contract() {
+    let suite = gbdev_dmg_acid2_suite();
+
+    assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+    assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.cases.len(), 1);
+    let case = &suite.cases[0];
+    assert_eq!(case.id, "gbdev-dmg-acid2");
+    assert_eq!(
+        case.external_rom_root_key.as_deref(),
+        Some(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+    );
+    assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+    assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+    assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
+    assert!(matches!(
+        case.pass_condition,
+        PassCondition::FramebufferFixture(_)
+    ));
 }
 
 fn trace_fixture_path(case: &RomTestCase) -> &Path {

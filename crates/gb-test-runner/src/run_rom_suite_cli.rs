@@ -2,14 +2,16 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use crate::{
-    CapturedArtifacts, RomRunner, RomSuite, RomSuiteReport, Timeout, built_in_rom_suite_by_name,
-    built_in_rom_suites,
+    CapturedArtifacts, EarlyHardeningStatus, RomRunner, RomSuite, RomSuiteReport, Timeout,
+    built_in_rom_suite_by_name, built_in_rom_suites, early_phase_9_partial_checklist,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RomSuiteCliAction {
     ShowHelp,
     ListSuites,
+    ListSuitesDetailed,
+    ShowEarlyChecklist,
     Run(RomSuiteCliOptions),
 }
 
@@ -25,6 +27,8 @@ pub fn rom_suite_cli_help_text() -> &'static str {
     concat!(
         "Usage:\n",
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --list\n",
+        "  cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed\n",
+        "  cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist\n",
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --suite <suite-name> [--case <case-id>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>]\n",
     )
 }
@@ -51,6 +55,8 @@ where
     match parse_rom_suite_arguments(arguments)? {
         RomSuiteCliAction::ShowHelp => write_all(output, rom_suite_cli_help_text()),
         RomSuiteCliAction::ListSuites => write_suite_catalog(output),
+        RomSuiteCliAction::ListSuitesDetailed => write_detailed_suite_catalog(output),
+        RomSuiteCliAction::ShowEarlyChecklist => write_early_hardening_checklist(output),
         RomSuiteCliAction::Run(options) => run_selected_suite(options, runner, output),
     }
 }
@@ -111,6 +117,8 @@ where
                 timeout_override = Some(Timeout::TCycles(parsed));
             }
             "--list" => return Ok(RomSuiteCliAction::ListSuites),
+            "--list-detailed" => return Ok(RomSuiteCliAction::ListSuitesDetailed),
+            "--early-checklist" => return Ok(RomSuiteCliAction::ShowEarlyChecklist),
             "--help" | "-h" => return Ok(RomSuiteCliAction::ShowHelp),
             other => return Err(format!("unknown argument {other:?}; run with --help")),
         }
@@ -193,6 +201,67 @@ fn write_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
     Ok(())
 }
 
+fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
+    for suite in built_in_rom_suites() {
+        let (suite_sources, suite_oracles, suite_captures, suite_artifacts) =
+            summarize_suite_contract(&suite);
+        writeln_checked(
+            output,
+            &format!(
+                "suite={} subsystem={} cases={} sources={} oracles={} captures={} artifacts={}",
+                suite.name,
+                subsystem_name(suite.subsystem),
+                suite.cases.len(),
+                join_csv(&suite_sources),
+                join_csv(&suite_oracles),
+                join_csv(&suite_captures),
+                join_csv(&suite_artifacts),
+            ),
+        )?;
+        for case in &suite.cases {
+            writeln_checked(
+                output,
+                &format!(
+                    "  case={} source={} oracle={} console={} startup={} mode={} timeout={} rom={} external_root_key={} captures={} artifacts={}",
+                    case.id,
+                    case_source_name(case),
+                    pass_condition_name(&case.pass_condition),
+                    console_model_name(case.console_model),
+                    startup_mode_name(case.startup_mode),
+                    execution_mode_name(case.execution_mode),
+                    timeout_name(case.timeout),
+                    case.rom_path.display(),
+                    case.external_rom_root_key.as_deref().unwrap_or("-"),
+                    join_csv(&capture_names(case.capture_plan.captures().iter().copied())),
+                    join_csv(&capture_names(
+                        case.failure_artifacts.retained().iter().copied()
+                    )),
+                ),
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn write_early_hardening_checklist<W: Write>(output: &mut W) -> Result<(), String> {
+    for entry in early_phase_9_partial_checklist() {
+        writeln_checked(
+            output,
+            &format!(
+                "subsystem={} status={} evidence={} oracles={} gaps={}",
+                subsystem_name(entry.subsystem),
+                early_hardening_status_name(entry.status),
+                entry.current_evidence.join(","),
+                entry.active_oracles.join(","),
+                entry.remaining_gaps.join(","),
+            ),
+        )?;
+    }
+
+    Ok(())
+}
+
 fn write_suite_report<W: Write>(output: &mut W, report: &RomSuiteReport) -> Result<(), String> {
     writeln_checked(
         output,
@@ -267,6 +336,142 @@ fn write_artifacts<W: Write>(output: &mut W, artifacts: &CapturedArtifacts) -> R
     Ok(())
 }
 
+fn summarize_suite_contract(
+    suite: &crate::RomSuite,
+) -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
+    let mut sources = Vec::new();
+    let mut oracles = Vec::new();
+    let mut captures = Vec::new();
+    let mut artifacts = Vec::new();
+
+    for case in &suite.cases {
+        push_unique(&mut sources, case_source_name(case).to_string());
+        push_unique(
+            &mut oracles,
+            pass_condition_name(&case.pass_condition).to_string(),
+        );
+
+        for capture in case.capture_plan.captures().iter().copied() {
+            push_unique(&mut captures, capture_name(capture).to_string());
+        }
+
+        for artifact in case.failure_artifacts.retained().iter().copied() {
+            push_unique(&mut artifacts, capture_name(artifact).to_string());
+        }
+    }
+
+    (sources, oracles, captures, artifacts)
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.contains(&value) {
+        values.push(value);
+    }
+}
+
+fn join_csv(values: &[String]) -> String {
+    if values.is_empty() {
+        "-".to_string()
+    } else {
+        values.join(",")
+    }
+}
+
+fn subsystem_name(subsystem: crate::TestSubsystem) -> &'static str {
+    match subsystem {
+        crate::TestSubsystem::Cpu => "cpu",
+        crate::TestSubsystem::Interrupts => "interrupts",
+        crate::TestSubsystem::Bus => "bus",
+        crate::TestSubsystem::Cartridge => "cartridge",
+        crate::TestSubsystem::Timer => "timer",
+        crate::TestSubsystem::Ppu => "ppu",
+        crate::TestSubsystem::Dma => "dma",
+        crate::TestSubsystem::Apu => "apu",
+        crate::TestSubsystem::Boot => "boot",
+        crate::TestSubsystem::Joypad => "joypad",
+        crate::TestSubsystem::Serial => "serial",
+        crate::TestSubsystem::Scheduler => "scheduler",
+    }
+}
+
+fn early_hardening_status_name(status: EarlyHardeningStatus) -> &'static str {
+    match status {
+        EarlyHardeningStatus::InternalGateOnly => "internal-gate-only",
+        EarlyHardeningStatus::RepoGatePresent => "repo-gate-present",
+    }
+}
+
+fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
+    match pass_condition {
+        crate::PassCondition::SerialExact(_) => "serial-exact",
+        crate::PassCondition::SerialContains(_) => "serial-contains",
+        crate::PassCondition::MemoryTextOutputContains { .. } => "memory-text-output",
+        crate::PassCondition::BlarggConsoleTextContains(_) => "blargg-console-text",
+        crate::PassCondition::FramebufferFixture(_) => "framebuffer-fixture",
+        crate::PassCondition::TraceFixture(_) => "trace-fixture",
+    }
+}
+
+fn capture_name(capture: crate::CaptureKind) -> &'static str {
+    match capture {
+        crate::CaptureKind::Serial => "serial",
+        crate::CaptureKind::MemoryTextOutput => "memory-text-output",
+        crate::CaptureKind::BlarggConsoleText => "blargg-console-text",
+        crate::CaptureKind::Framebuffer => "framebuffer",
+        crate::CaptureKind::Trace => "trace",
+        crate::CaptureKind::Snapshot => "snapshot",
+    }
+}
+
+fn capture_names<I>(captures: I) -> Vec<String>
+where
+    I: IntoIterator<Item = crate::CaptureKind>,
+{
+    captures
+        .into_iter()
+        .map(|capture| capture_name(capture).to_string())
+        .collect()
+}
+
+fn case_source_name(case: &crate::RomTestCase) -> &'static str {
+    if case.external_rom_root_key.is_some() {
+        "external-rom"
+    } else {
+        "repo-fixture"
+    }
+}
+
+fn console_model_name(console_model: gb_core::ConsoleModel) -> &'static str {
+    match console_model {
+        gb_core::ConsoleModel::Dmg0 => "dmg0",
+        gb_core::ConsoleModel::Dmg => "dmg",
+        gb_core::ConsoleModel::Mgb => "mgb",
+        gb_core::ConsoleModel::Cgb => "cgb",
+    }
+}
+
+fn startup_mode_name(startup_mode: gb_core::StartupMode) -> &'static str {
+    match startup_mode {
+        gb_core::StartupMode::SkipBoot => "skip-boot",
+        gb_core::StartupMode::RealBoot => "real-boot",
+    }
+}
+
+fn execution_mode_name(execution_mode: gb_core::ExecutionMode) -> &'static str {
+    match execution_mode {
+        gb_core::ExecutionMode::Strict => "strict",
+        gb_core::ExecutionMode::Permissive => "permissive",
+        gb_core::ExecutionMode::Experimental => "experimental",
+    }
+}
+
+fn timeout_name(timeout: crate::Timeout) -> String {
+    match timeout {
+        crate::Timeout::TCycles(limit) => format!("tcycles:{limit}"),
+        crate::Timeout::Frames(limit) => format!("frames:{limit}"),
+    }
+}
+
 fn write_all<W: Write>(output: &mut W, text: &str) -> Result<(), String> {
     output
         .write_all(text.as_bytes())
@@ -301,6 +506,14 @@ mod tests {
         assert_eq!(
             parse_rom_suite_arguments(["--list"]).expect("list should parse"),
             RomSuiteCliAction::ListSuites
+        );
+        assert_eq!(
+            parse_rom_suite_arguments(["--list-detailed"]).expect("detailed list should parse"),
+            RomSuiteCliAction::ListSuitesDetailed
+        );
+        assert_eq!(
+            parse_rom_suite_arguments(["--early-checklist"]).expect("checklist should parse"),
+            RomSuiteCliAction::ShowEarlyChecklist
         );
         assert_eq!(
             parse_rom_suite_arguments([
@@ -372,6 +585,40 @@ mod tests {
         let list_output = String::from_utf8(list_output).expect("list output should be utf-8");
         assert!(list_output.contains("suite=phase-2-cpu-timing"));
         assert!(list_output.contains("case=phase2-fetch-immediate-order"));
+
+        let mut detailed_output = Vec::new();
+        run_rom_suite_command_with_runner(
+            ["--list-detailed"],
+            RomRunner::new(),
+            &mut detailed_output,
+        )
+        .expect("detailed list command should succeed");
+        let detailed_output =
+            String::from_utf8(detailed_output).expect("detailed output should be utf-8");
+        assert!(
+            detailed_output
+                .contains("suite=retrio-blargg-oam-bug subsystem=ppu cases=7 sources=external-rom")
+        );
+        assert!(
+            detailed_output
+                .contains("oracles=memory-text-output captures=memory-text-output,snapshot")
+        );
+        assert!(detailed_output.contains(
+            "case=retrio-oam-bug-1-lcd-sync source=external-rom oracle=memory-text-output"
+        ));
+
+        let mut checklist_output = Vec::new();
+        run_rom_suite_command_with_runner(
+            ["--early-checklist"],
+            RomRunner::new(),
+            &mut checklist_output,
+        )
+        .expect("checklist command should succeed");
+        let checklist_output =
+            String::from_utf8(checklist_output).expect("checklist output should be utf-8");
+        assert!(checklist_output.contains("subsystem=cpu status=repo-gate-present"));
+        assert!(checklist_output.contains("subsystem=ppu status=repo-gate-present"));
+        assert!(checklist_output.contains("subsystem=timer status=internal-gate-only"));
     }
 
     #[test]

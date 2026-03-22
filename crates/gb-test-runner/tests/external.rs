@@ -4,9 +4,9 @@ use std::path::Path;
 
 use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 use gb_test_runner::{
-    RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR, RomRunner, discover_external_rom_root_for_key,
-    retrio_blargg_cpu_instrs_full_suite, retrio_blargg_cpu_smoke_suite,
-    retrio_blargg_halt_bug_suite, retrio_blargg_instr_timing_suite,
+    GBEMU_SHOOTOUT_ROOT_ENV_VAR, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR, RomRunner,
+    discover_external_rom_root_for_key, gbdev_dmg_acid2_suite, retrio_blargg_cpu_instrs_full_suite,
+    retrio_blargg_cpu_smoke_suite, retrio_blargg_halt_bug_suite, retrio_blargg_instr_timing_suite,
     retrio_blargg_mem_timing_individual_suite, retrio_blargg_mem_timing_suite,
     retrio_blargg_oam_bug_suite,
 };
@@ -189,6 +189,32 @@ fn retrio_blargg_oam_bug_suite_runs_against_real_external_assets() {
     let report = RomRunner::new()
         .run_suite(&retrio_blargg_oam_bug_suite())
         .expect("external retrio/blargg oam_bug suite should execute");
+
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires GBEmulatorShootout assets under GB_CYCLE_GBEMU_SHOOTOUT_ROOT"]
+fn gbdev_dmg_acid2_suite_runs_against_real_external_assets() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root should be two levels above gb-test-runner");
+
+    if discover_external_rom_root_for_key(workspace_root, GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+        .expect("external ROM source manifest should be readable")
+        .is_none()
+    {
+        eprintln!(
+            "skipping ignored test because neither {} nor the default external ROM store is configured",
+            GBEMU_SHOOTOUT_ROOT_ENV_VAR
+        );
+        return;
+    }
+
+    let report = RomRunner::new()
+        .run_suite(&gbdev_dmg_acid2_suite())
+        .expect("external GBEmulatorShootout dmg-acid2 suite should execute");
 
     assert!(report.all_passed(), "{report:#?}");
 }
