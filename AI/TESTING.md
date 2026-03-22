@@ -70,8 +70,9 @@ project is still bringing up later hardware blocks such as APU and save states.
 - `PPU`: repo gate present for the currently closed OAM-corruption slice. Current
   evidence: Phase `4` synthetic OAM-corruption ROMs, curated Blargg `oam_bug`
   singles `1..6,8`, and a repo-gated `dmg-acid2` framebuffer oracle.
-  Remaining final-closure gaps: mealybug tearoom, broader rendering/timing
-  differential coverage, and the still-deferred non-curated exploratory ROMs.
+  Remaining final-closure gaps: a green repo-gated `mealybug-tearoom` slice,
+  broader rendering/timing differential coverage, and the still-deferred
+  non-curated exploratory ROMs.
 - `Cartridge`: internal gate only. Current evidence: unit and integration coverage
   for `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, and hardware-style persistence.
   Remaining final-closure gaps: external oracle material beyond synthetic/unit
@@ -130,6 +131,14 @@ This checklist should move only when one of the following becomes true:
 - The current early PPU hardening lane also includes the repo-gated framebuffer
   oracle suite for `dmg-acid2` under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2`.
+- The current early PPU hardening lane also includes one non-gated exploratory
+  framebuffer suite for `mealybug-tearoom-tests` under
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`.
+  This suite uses a curated DMG-only subset sourced from `GBEmulatorShootout`
+  and the same committed-PGM oracle contract as `dmg-acid2`, but it is
+  currently red under `Strict` and therefore stays outside `make local`, the
+  `external-roms` workflow, and the repo-gated DMG block until the underlying
+  PPU mismatches are corrected.
 - The current early `9.3` MVP also includes one imported-oracle end-of-test
   differential path under
   `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`.

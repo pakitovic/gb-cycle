@@ -122,6 +122,24 @@ Current repo-gated external PPU suite:
 - this suite is part of `make test-external-dmg`, `make local`, and the
   `external-roms` workflow
 
+Current exploratory external PPU suite:
+
+- `gbdev/GBEmulatorShootout mealybug-tearoom-tests/ppu/*` curated DMG subset
+- current built-in suite name: `gbdev-mealybug-tearoom-dmg-curated`
+- oracle channel: committed framebuffer fixtures derived from the upstream
+  `*_dmg_blob.png` references
+- current source env var: `GB_CYCLE_GBEMU_SHOOTOUT_ROOT`
+- this suite is intentionally not part of `make test-external-dmg`,
+  `make local`, or the `external-roms` workflow yet because it still diverges
+  under `Strict`
+- to run it manually and retain framebuffer snapshots for debugging, use:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- \
+  --suite gbdev-mealybug-tearoom-dmg-curated \
+  --failure-artifact-root .artifacts/mealybug-curated
+```
+
 Repository-gated external DMG block:
 
 - `make local` fetches and runs the green non-APU, non-CGB external DMG block

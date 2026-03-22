@@ -52,6 +52,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `SCX`, `SCY`, `WX`, and `WY` should be modeled as MMIO-visible PPU registers whose mid-frame writes participate in the same temporal PPU model rather than a deferred renderer recomputation.
 - `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
 - For `OBP0` and `OBP1`, the low two bits must not change the meaning of OBJ color index `0`, because that index remains transparent.
+- On DMG-family hardware, writes to `BGP`, `OBP0`, and `OBP1` during Mode `3` should not be treated as ordinary "new value is visible only from the next pixel onward" MMIO updates. The PPU design should leave room for the documented/raster-oracle-visible palette-conflict artifacts, including transient write values and limited retroactive recoloring of the most recent visible pixels when those writes race the LCD pipeline.
+- That DMG palette-conflict window should also remain compatible with the observed early-HBlank tail used by raster tests such as `mealybug m3_bgp_change`; do not hard-cut those writes to "no effect" merely because the mode bits already advanced to HBlank in the coarse scheduler model.
 
 ## LCD master-control baseline
 
@@ -403,6 +405,7 @@ Priority order:
 - tests for `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
 - tests for immediate `LYC` write reevaluation of `STAT.2` and the internal STAT interrupt line
 - tests for each enabled LCD STAT mode source path for Mode `0`, Mode `1`, and Mode `2`
+- tests for the line-start Mode `2` / LCD STAT chronology used by raster-effect ROMs, including the non-line-`0` pretrigger path and first-line timing differences when a handler writes back into PPU MMIO during the same scanline
 - tests for LCD STAT rising-edge behavior and STAT blocking across consecutive enabled sources such as Mode `0` followed by Mode `1`
 - tests that Mode `3` never acts as a direct LCD STAT interrupt source
 - tests that entering Mode `1` can request both VBlank interrupt and LCD STAT interrupt independently

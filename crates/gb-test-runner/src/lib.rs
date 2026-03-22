@@ -898,12 +898,102 @@ pub fn gbdev_dmg_acid2_suite() -> RomSuite {
     )
 }
 
+fn gbemu_shootout_framebuffer_case(
+    case_id: &'static str,
+    rom_path: &'static str,
+    fixture_path: &'static str,
+    timeout: Timeout,
+) -> RomTestCase {
+    RomTestCase::new(
+        case_id,
+        PathBuf::from(rom_path),
+        timeout,
+        PassCondition::FramebufferFixture(PathBuf::from(fixture_path)),
+    )
+    .with_external_rom_root_key(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+    .with_capture_plan(
+        CapturePlan::new()
+            .with_capture(CaptureKind::Framebuffer)
+            .with_capture(CaptureKind::Snapshot),
+    )
+    .with_failure_artifacts(
+        FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::Framebuffer)
+            .with_artifact(CaptureKind::Snapshot),
+    )
+}
+
+pub fn gbdev_mealybug_tearoom_dmg_curated_suite() -> RomSuite {
+    RomSuite::new("gbdev-mealybug-tearoom-dmg-curated", TestSubsystem::Ppu)
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m2-win-en-toggle",
+            "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m2_win_en_toggle_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-bgp-change",
+            "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_bgp_change_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-bgp-change-sprites",
+            "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change_sprites.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_bgp_change_sprites_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-lcdc-obj-size-change",
+            "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_lcdc_obj_size_change_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-lcdc-win-en-change-multiple",
+            "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_lcdc_win_en_change_multiple_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-obp0-change",
+            "testroms/mealybug-tearoom-tests/ppu/m3_obp0_change.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_obp0_change_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-scx-low-3-bits",
+            "testroms/mealybug-tearoom-tests/ppu/m3_scx_low_3_bits.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_scx_low_3_bits_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-window-timing",
+            "testroms/mealybug-tearoom-tests/ppu/m3_window_timing.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_window_timing_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-window-timing-wx-0",
+            "testroms/mealybug-tearoom-tests/ppu/m3_window_timing_wx_0.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_window_timing_wx_0_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-wx-4-change-sprites",
+            "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_wx_4_change_sprites_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+}
+
 pub fn built_in_rom_suites() -> Vec<RomSuite> {
     vec![
         phase_2_cpu_timing_suite(),
         phase_2_interrupt_timing_suite(),
         phase_4_ppu_oam_corruption_suite(),
         gbdev_dmg_acid2_suite(),
+        gbdev_mealybug_tearoom_dmg_curated_suite(),
         retrio_blargg_cpu_smoke_suite(),
         retrio_blargg_cpu_instrs_full_suite(),
         retrio_blargg_instr_timing_suite(),
@@ -986,7 +1076,10 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
                 "gbdev-dmg-acid2-repo-gated",
             ],
             active_oracles: &["trace-fixture", "memory-text-output", "framebuffer-fixture"],
-            remaining_gaps: &["mealybug-tearoom", "broader-rendering-differential-oracle"],
+            remaining_gaps: &[
+                "green-repo-gated-mealybug-tearoom",
+                "broader-rendering-differential-oracle",
+            ],
         },
         EarlyHardeningChecklistEntry {
             subsystem: TestSubsystem::Cartridge,
@@ -2143,6 +2236,33 @@ mod tests {
             case.pass_condition,
             PassCondition::FramebufferFixture(_)
         ));
+    }
+
+    #[test]
+    fn built_in_rom_suite_lookup_returns_curated_mealybug_suite_with_framebuffer_oracles() {
+        let suite = built_in_rom_suite_by_name("gbdev-mealybug-tearoom-dmg-curated")
+            .expect("known suite should exist");
+
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.cases.len(), 10);
+        assert!(suite.cases.iter().all(|case| {
+            case.external_rom_root_key.as_deref() == Some(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+                && case.capture_plan.contains(CaptureKind::Framebuffer)
+                && case.capture_plan.contains(CaptureKind::Snapshot)
+                && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
+        }));
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "gbdev-mealybug-m3-window-timing")
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "gbdev-mealybug-m3-wx-4-change-sprites")
+        );
     }
 
     #[test]

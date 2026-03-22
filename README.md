@@ -133,6 +133,10 @@ make test-external-ppu-dmg
 - the upstream multi-ROM `oam_bug.gb` and `7-timing_effect.gb` stay outside the
   default managed block even though the curated singles do run
 - `gbdev-dmg-acid2` is now part of the repository-gated external DMG block
+- one exploratory `mealybug-tearoom` DMG subset is also integrated as
+  `gbdev-mealybug-tearoom-dmg-curated`, but it is currently outside the default
+  gate because it still diverges from the upstream framebuffer fixtures under
+  `Strict`
 - if `GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT` is unset, `gb-test-runner` falls back
   to the default repo-managed root automatically
 - keep private commercial ROMs out of that path; use the separate gitignored
@@ -156,6 +160,15 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
 
 ```bash
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2
+```
+
+- to run the current exploratory `mealybug-tearoom` DMG subset and retain its
+  mismatch artifacts, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- \
+  --suite gbdev-mealybug-tearoom-dmg-curated \
+  --failure-artifact-root .artifacts/mealybug-curated
 ```
 
 - to compare one built-in suite against imported SameBoy artifacts,
