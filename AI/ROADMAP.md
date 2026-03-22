@@ -1824,7 +1824,7 @@ from this phase before APU work. The current early deliverables are:
   sourced from `GBEmulatorShootout` and now part of the supported external DMG
   block used by `make local` and the `external-roms` workflow
 - one narrow differential end-of-test path,
-  `cargo run -p gb-test-runner --bin run_differential -- --oracle <sameboy|gambatte> [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`,
+  `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`,
   which compares the built-in suite's required-capture artifact against an
   imported oracle artifact bundle, enforces `Strict`, and archives local
   context plus the compared oracle artifact on divergence. The current path
@@ -1844,7 +1844,7 @@ from this phase before APU work. The current early deliverables are:
   under SameBoy's control instead of trying to share local firmware selection
   with `gb-test-runner`
 
-This does not count as closing Phase `9.2` or `9.3`; SameBoy/Gambatte
+This does not count as closing Phase `9.2` or `9.3`; fuller SameBoy
 differential launch automation, first-divergence windows, save/load determinism,
 and the final DMG matrix still remain Phase `7/8/9` work.
 
@@ -1865,7 +1865,7 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 
 - formal DMG hardening matrix with layers `A/B/C/D/E`, severity classes, and explicit `must-pass` areas
 - automated external-ROM harness with timeout, pass/fail policy, framebuffer and serial capture, and retained failure artifacts
-- differential comparison tooling for SameBoy and Gambatte with first-divergence reporting and short T-cycle windows
+- differential comparison tooling for SameBoy with first-divergence reporting and short T-cycle windows
 - deterministic replay, save/load determinism, and longer-running soak coverage
 - minimum closure-ready debugging tooling: traces, breakpoints, watchpoints, snapshots, and targeted subsystem viewers
 - explicit DMG closure checklist covering internal suites, external suites, differential comparison, determinism, save/load determinism, and primary cartridge families
@@ -1878,9 +1878,9 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 2. Build the external ROM harness and minimum closure suites.
    Scope: automate CPU / interrupt ROMs, `dmg-acid2`, and `mealybug-tearoom-tests`; support framebuffer and serial capture; define timeouts, pass/fail rules, and retained artifacts; and keep explicit reserved follow-up slots for broader closure suites such as Mooneye / Gekkio coverage, SameSuite, GB Accuracy Tests, 144p Test Suite, and MBC3 RTC-focused ROMs.
    Acceptance criteria: the minimum DMG closure ROM suites run without manual screen inspection, every case has a timeout plus explicit pass/fail policy, and the harness can preserve enough output to debug failures offline.
-3. Add differential comparison against SameBoy and Gambatte.
+3. Add differential comparison against SameBoy.
    Scope: end-of-test comparison, end-of-instruction comparison, short T-cycle-window comparison, and first-divergence localization with archived context.
-   Acceptance criteria: SameBoy acts as the default primary DMG oracle, Gambatte is available for triangulation, disagreements between the oracles are marked for arbitration rather than auto-pass, and the tooling can report the first divergence instead of only a final mismatch.
+   Acceptance criteria: SameBoy acts as the DMG oracle for the covered scenarios, and the tooling can report the first divergence instead of only a final mismatch.
 4. Close the minimum debugging and inspection tooling.
    Scope: instruction / micro-op / short-window T-cycle tracing, breakpoints and watchpoints on `PC`, memory, MMIO, and cartridge-bank state, plus fast inspection of CPU, scheduler, bus owner, PPU mode / dot / `LY`, DMA, timer, APU, and cartridge / MBC state.
    Acceptance criteria: a blocking divergence can be localized without a long blind rerun, and the project has practical viewers or equivalent dumps for PPU, cartridge / MBC, APU, and IRQ state.
@@ -1959,7 +1959,7 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 
 41. Formal DMG hardening matrix, severity classes, and closure checklist
 42. Automated external ROM harness and minimum closure suites
-43. Differential comparison against SameBoy and Gambatte
+43. Differential comparison against SameBoy
 44. Deterministic replay, save/load determinism, and soak coverage
 45. Final DMG closure and regression-retention pass
 

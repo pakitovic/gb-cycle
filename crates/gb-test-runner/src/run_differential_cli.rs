@@ -27,7 +27,7 @@ struct DifferentialCliOptions {
 pub fn differential_cli_help_text() -> &'static str {
     concat!(
         "Usage:\n",
-        "  cargo run -p gb-test-runner --bin run_differential -- --oracle <sameboy|gambatte> [--oracle-layout <case-bundle|sameboy-tester>] --suite <suite-name> [--case <case-id>] [--oracle-artifact-root <dir>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>]\n",
+        "  cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] --suite <suite-name> [--case <case-id>] [--oracle-artifact-root <dir>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>]\n",
         "\n",
         "The default oracle layout is case-bundle.\n",
         "If --oracle-artifact-root is omitted, the default repo-local root is\n",
@@ -134,7 +134,7 @@ where
     }
 
     let Some(oracle) = oracle else {
-        return Err("missing required --oracle <sameboy|gambatte>".to_string());
+        return Err("missing required --oracle sameboy".to_string());
     };
     let Some(suite_name) = suite_name else {
         return Err(
@@ -162,10 +162,7 @@ where
 fn parse_oracle(value: &str) -> Result<DifferentialOracle, String> {
     match value {
         "sameboy" => Ok(DifferentialOracle::SameBoy),
-        "gambatte" => Ok(DifferentialOracle::Gambatte),
-        _ => Err(format!(
-            "unknown oracle {value:?}; expected sameboy or gambatte"
-        )),
+        _ => Err(format!("unknown oracle {value:?}; expected sameboy")),
     }
 }
 

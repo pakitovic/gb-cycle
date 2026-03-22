@@ -67,10 +67,10 @@ This default order balances coverage, maintainability, and accessibility; it is 
 
 ## Practical specialization by reference
 
-- SameBoy: best general reference and the practical ceiling for DMG/CGB behavior, LCD timing, audio, and compatibility study; use it as the primary DMG differential oracle when comparable traces or observables are available.
+- SameBoy: best general reference and the practical ceiling for DMG/CGB behavior, LCD timing, audio, and compatibility study; use it as the DMG differential oracle when comparable traces or observables are available.
 - binjgb: strong reference for timing, CPU/bus behavior, and compact architecture.
 - GameRoy: useful reference for idiomatic Rust-oriented structure.
 - accurateboy: especially valuable for PPU, fetcher, and pixel FIFO behavior.
 - Mooneye GB: strong documentary and edge-case reasoning reference.
 - Danger Boy: useful smaller codebase for DMG timing study.
-- Gambatte: historical high-accuracy reference and a strong corroborating oracle for practical accuracy and corner cases; use it as the secondary DMG differential oracle when triangulation or arbitration is needed.
+- Gambatte: historical high-accuracy reference and a useful corroborating implementation perspective for practical accuracy and corner cases, but not a repo-supported automated differential oracle path in the current project.

@@ -15,14 +15,12 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DifferentialOracle {
     SameBoy,
-    Gambatte,
 }
 
 impl DifferentialOracle {
     pub fn name(self) -> &'static str {
         match self {
             Self::SameBoy => "sameboy",
-            Self::Gambatte => "gambatte",
         }
     }
 }

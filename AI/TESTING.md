@@ -132,11 +132,11 @@ This checklist should move only when one of the following becomes true:
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2`.
 - The current early `9.3` MVP also includes one imported-oracle end-of-test
   differential path under
-  `cargo run -p gb-test-runner --bin run_differential -- --oracle <sameboy|gambatte> [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`.
+  `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`.
   This path enforces `Strict`, compares the suite's required-capture artifact
   against an imported oracle artifact bundle, and archives local context on
-  divergence; it intentionally does not yet automate SameBoy/Gambatte launch or
-  provide end-of-instruction / short-window first-divergence tracing, but it
+  divergence; it intentionally does not yet provide end-of-instruction or
+  short-window first-divergence tracing, but it
   now does report the first differing byte or pixel inside the compared final
   artifact. The current `sameboy-tester` layout support is limited to
   framebuffer-oracle cases because SameBoy's internal tester emits image plus
@@ -155,12 +155,10 @@ This checklist should move only when one of the following becomes true:
 
 ## Differential oracle policy
 
-- Use SameBoy as the primary differential oracle for DMG behavior whenever comparable observables are available.
-- Use Gambatte as a secondary oracle when triangulation adds value or when a SameBoy-only result still needs corroboration.
+- Use SameBoy as the differential oracle for DMG behavior whenever comparable observables are available.
 - Differential comparison should support at least three granularities: end of test, end of instruction, and short T-cycle windows for reduced scenarios.
 - Prefer a clear "first point of divergence" workflow over one final hash or framebuffer mismatch.
-- When SameBoy and Gambatte agree and this project differs, treat the discrepancy as a project bug by default until evidence shows otherwise.
-- When the oracles disagree, mark the case as requiring arbitration rather than silently accepting one side as correct.
+- If another oracle is introduced in the future, document its automation path and arbitration policy explicitly before treating it as closure evidence.
 
 ## Execution-mode validation policy
 
@@ -169,7 +167,7 @@ This checklist should move only when one of the following becomes true:
 - `Experimental` is for research and bring-up; its results must stay segregated from official closure metrics, oracle comparisons, and compatibility claims.
 - Mode-sensitive loader tests should cover the documented category matrix for `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`.
 - When a test exercises heuristics, partial implementations, or manual overrides, the captured artifacts should say so explicitly rather than looking like ordinary strict-mode evidence.
-- Differential comparison against SameBoy or Gambatte should always run under `Strict`, not under `Permissive` or `Experimental`.
+- Differential comparison against SameBoy should always run under `Strict`, not under `Permissive` or `Experimental`.
 
 ## Validation tooling requirements
 
@@ -380,7 +378,7 @@ When a change affects observable timing or ordering:
 - Every fixed bug should leave behind at least one permanent regression asset.
 - Use a focused unit or integration test when the bug is local to one subsystem or one cross-subsystem interaction.
 - Use a ROM-based reproduction case when the bug is systemic or easiest to demonstrate through an external suite.
-- Use a stored differential case when the bug was discovered by comparison against SameBoy, Gambatte, or another explicit oracle.
+- Use a stored differential case when the bug was discovered by comparison against SameBoy or another explicit oracle.
 - Keep regression organization by subsystem or hardware area so repeated failures do not disappear into one catch-all bucket.
 - Differential regressions should preserve enough reproduction context to rerun them quickly, including the ROM, execution mode, active overrides, input stream, injected seed or time source when relevant, first divergence point, and an optional snapshot when that reduces debug time.
 

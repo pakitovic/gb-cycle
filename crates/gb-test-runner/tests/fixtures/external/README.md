@@ -57,7 +57,7 @@ To inspect the current early hardening checklist by subsystem, run:
 cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
 ```
 
-To compare one built-in suite against imported SameBoy or Gambatte artifacts,
+To compare one built-in suite against imported SameBoy artifacts,
 run:
 
 ```bash

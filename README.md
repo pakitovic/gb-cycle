@@ -158,7 +158,7 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2
 ```
 
-- to compare one built-in suite against imported SameBoy or Gambatte artifacts,
+- to compare one built-in suite against imported SameBoy artifacts,
   run:
 
 ```bash
