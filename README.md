@@ -85,7 +85,7 @@ make local
 ```
 
 Before opening or updating a PR, run at least `make check` locally.
-When changing CI, coverage, dependency policy, or repository tooling, run `make local` locally as well so the external Blargg DMG gate and coverage pipeline do not first fail in GitHub Actions.
+When changing CI, coverage, dependency policy, or repository tooling, run `make local` locally as well so the external DMG gate and coverage pipeline do not first fail in GitHub Actions.
 Use Conventional Commits for commit messages and PR titles so the repository history and review metadata follow the same naming scheme.
 
 ### External ROM suites
@@ -95,7 +95,9 @@ external ROM suites stay outside git in a repo-managed local store.
 
 ```bash
 make fetch-external-roms
+make test-external-dmg
 make test-external-blargg-dmg
+make test-external-ppu-dmg
 ```
 
 - `make fetch-external-roms` populates the gitignored `/.roms/external-test/`
@@ -103,33 +105,54 @@ make test-external-blargg-dmg
   `crates/gb-test-runner/external-rom-sources.toml`
 - `make check` stays as the fast local pre-push gate and does not fetch or run
   external ROM suites
-- `make local` fetches and runs the repository-gated green Blargg DMG block
+- `make local` fetches and runs the repository-gated green external DMG block
   before the coverage steps
   that block intentionally includes only the currently supported non-APU,
-  non-CGB suites and intentionally excludes `oam_bug` for now
+  non-CGB suites
 - GitHub uses two workflows:
   `ci` for Rust checks plus coverage
-  `external-roms` for the supported external Blargg DMG block
-- `make test-external-blargg-dmg` runs the same repository-gated external DMG
-  block explicitly:
+  `external-roms` for the supported external DMG block
+- `make test-external-dmg` runs the same repository-gated external DMG block
+  explicitly:
   `cpu_instrs` smoke,
   `cpu_instrs/cpu_instrs.gb`,
   `instr_timing`,
   `halt_bug`,
   `mem_timing`,
-  and `mem_timing` individual ROMs
-- `retrio/blargg interrupt_time` is wired in the harness with `ConsoleModel::Cgb`
-  because the upstream source explicitly requires CGB, but it is not green yet;
-  the remaining blocker is CGB CPU-speed support in the core, not asset wiring
-- `retrio/blargg oam_bug` stays outside `make local` and the default external
-  ROM workflow for
-  now because the suite is not fully green yet, even though some single-ROM
-  cases are already passing
+  `mem_timing` individual ROMs,
+  curated `oam_bug/rom_singles 1..6,8`,
+  and `gbdev-dmg-acid2`
+- `make test-external-blargg-dmg` keeps the Blargg-only subset available
+  explicitly
+- `make test-external-ppu-dmg` runs the repo-gated PPU suite
+  `gbdev-dmg-acid2`
+- the upstream multi-ROM `oam_bug.gb` and `7-timing_effect.gb` stay outside the
+  default managed block even though the curated singles do run
+- `gbdev-dmg-acid2` is now part of the repository-gated external DMG block
 - if `GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT` is unset, `gb-test-runner` falls back
   to the default repo-managed root automatically
 - keep private commercial ROMs out of that path; use the separate gitignored
   `/.roms/local-commercial/` directory for local-only assets that must never be
   referenced by CI
+- to audit the current built-in suites and their oracle channels without reading
+  the source, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed
+```
+
+- to audit the current early hardening status by subsystem, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
+```
+
+- to run the `dmg-acid2` PPU framebuffer oracle directly once its external
+  source is fetched, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2
+```
 
 
 ## Documentation

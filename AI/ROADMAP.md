@@ -1805,6 +1805,29 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 This phase is the roadmap home for the final DMG closure work. Parts of it should begin earlier, but the block only closes once the project can justify DMG correctness through layered evidence on the shared T-cycle model rather than through informal game compatibility.
 It assumes the dedicated save-state and serialization infrastructure from Phase 8 already exists and uses it as part of closure evidence.
 
+Status note (`2026-03-22`): the repo now starts a narrow early hardening lane
+from this phase before APU work. The current early deliverables are:
+
+- one explicit partial subsystem checklist in `AI/TESTING.md` that distinguishes
+  repo-gated external evidence from internal-only evidence for the already-landed
+  DMG subsystems
+- one `gb-test-runner` catalog path,
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed`, that
+  exposes the built-in suite set together with oracle channel, capture, and
+  retained-artifact policy
+- one `gb-test-runner` checklist path,
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist`, that
+  exposes the current early hardening status per subsystem together with the
+  evidence already landed and the still-open closure gaps
+- one repo-gated PPU framebuffer-oracle suite,
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2`,
+  sourced from `GBEmulatorShootout` and now part of the supported external DMG
+  block used by `make local` and the `external-roms` workflow
+
+This does not count as closing Phase `9.2` or `9.3`; SameBoy/Gambatte
+differential tooling, save/load determinism, and the final DMG matrix still
+remain Phase `7/8/9` work.
+
 #### Goal
 
 Close the DMG core with a formal validation matrix, strong differential and determinism tooling, and explicit closure criteria that leave no major blind hardware areas behind.
@@ -1968,7 +1991,7 @@ Suggested entry style:
 - [PPU][SKIPBOOT-ORACLE] The Phase `4.1` `SkipBoot` startup-mode latch is still validated only against repo-local continuity tests and the documented post-boot snapshot contract. Before Phase `9` hardening treats the direct-boot PPU handoff as externally validated, this path still needs comparison against a trusted oracle or hardware-derived capture proving that the first LCD-visible dots after `SkipBoot` remain coherent with the published `LCDC`, `STAT`, and `LY` state rather than with an overfit local latch assumption. Phase dependency: this does not block Phase `5`, but later DMG closure should not claim externally validated direct-boot PPU continuity until this check lands.
 - [PPU][WINDOW-GLITCH-ORACLE] The current Phase `4.4` window baseline includes explicit tested paths for `WX = 0` and `WX = 166`, but they remain provisional baseline behavior rather than oracle-backed glitch closure. The project still needs stricter validation and, if necessary, refinement for `WX` / `WY` / `LCDC.5` mid-frame glitch behavior, including the DMG-specific `WX = 0 && (SCX & 7) > 0` path and the special `WX = 166` continuation behavior. Phase dependency: this does not block entering Phase `5`, but Phase `9` hardening should not mark detailed DMG window-glitch behavior as closed until this oracle pass is finished.
 - [PPU][LCDC2-8X16-ARTIFACTS] The Phase `4.5` sprite baseline already treats `LCDC.2` as live state and covers the core `8x16` row-selection rules, but the finer DMG-visible artifacts and leaks caused by mid-frame `LCDC.2` size changes, especially around the lower half of `8x16` sprites, remain only documented follow-up work. Before Phase `9` hardening claims detailed sprite-size behavior as externally validated, this path still needs targeted ROM or oracle coverage and, if needed, refinement that keeps those artifacts explicit instead of leaving them as accidental baseline behavior. Phase dependency: this does not block Phase `5`, but later DMG closure should not claim fully hardened `LCDC.2` / `8x16` edge behavior until this validation lands.
-- [PPU][OAM-CORRUPTION-ORACLE] Phase `4.8` now has deterministic unit/integration coverage, a shipped synthetic ROM/trace family for direct Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]` / `[hld]`, stack plus interrupt-service paths, DMG-family model variants, and the CGB negative path, but it still lacks comparison against an independent trusted oracle or hardware-derived capture before the bug can be treated as externally validated across instruction families and hardware revisions. The current strict-mode official `retrio/blargg oam_bug` bring-up narrowed the remaining live gap to the detailed timing/effect closure path: `1-lcd_sync`, `4-scanline_timing`, and `5-timing_bug` are green with the current restart plus Mode `2` row baseline, while `7-timing_effect` still diverges and should stay the active external-validation target before Phase `9` claims OAM corruption closure. Phase dependency: this does not block moving into later PPU or APU work, but Phase `9` hardening should not mark OAM corruption as fully closed until that independent-validation pass is done.
+- [PPU][OAM-CORRUPTION-ORACLE] Phase `4.8` now has deterministic unit/integration coverage, a shipped synthetic ROM/trace family for direct Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]` / `[hld]`, stack plus interrupt-service paths, DMG-family model variants, and the CGB negative path, but it still lacks comparison against an independent trusted oracle or hardware-derived capture before the bug can be treated as externally validated across instruction families and hardware revisions. As of March 21, 2026, the built-in official `retrio/blargg oam_bug` automation is intentionally curated to the `GBEmulatorShootout`-listed subset, the repository-gated external DMG block now runs that curated subset by default, and the automation still excludes the upstream multi-ROM `oam_bug.gb` plus `7-timing_effect.gb`; Phase `9` hardening should not treat that curated subset as complete OAM-corruption closure without a later independent oracle pass for the remaining timing-sensitive coverage.
 
 #### Done:
 
@@ -1999,7 +2022,7 @@ Suggested entry style:
 
 ### Phase 9 — Final DMG hardening, differential validation, and closure
 
-- [TEST-RUNNER][OFFICIAL-CGB-INTERRUPT-TIME] `retrio/blargg interrupt_time` is now wired with the correct `ConsoleModel::Cgb` metadata, but it still does not pass because the core lacks the CGB CPU-speed behavior that the upstream ROM explicitly exercises. Phase dependency: this does not block current DMG hardening or Phase `7`, but it should stay visible as future CGB bring-up work instead of being misread as a DMG regression.
+- None currently.
 
 #### Done:
 

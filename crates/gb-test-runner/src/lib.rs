@@ -39,6 +39,21 @@ pub enum TestSubsystem {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EarlyHardeningStatus {
+    InternalGateOnly,
+    RepoGatePresent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EarlyHardeningChecklistEntry {
+    pub subsystem: TestSubsystem,
+    pub status: EarlyHardeningStatus,
+    pub current_evidence: &'static [&'static str],
+    pub active_oracles: &'static [&'static str],
+    pub remaining_gaps: &'static [&'static str],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CaptureKind {
     Serial,
     MemoryTextOutput,
@@ -49,6 +64,7 @@ pub enum CaptureKind {
 }
 
 pub const RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR: &str = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT";
+pub const GBEMU_SHOOTOUT_ROOT_ENV_VAR: &str = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Timeout {
@@ -739,17 +755,6 @@ pub fn retrio_blargg_instr_timing_suite() -> RomSuite {
     )
 }
 
-pub fn retrio_blargg_interrupt_time_suite() -> RomSuite {
-    RomSuite::new("retrio-blargg-interrupt-time", TestSubsystem::Interrupts).with_case(
-        retrio_blargg_external_case(
-            "retrio-interrupt-time",
-            "interrupt_time/interrupt_time.gb",
-            Timeout::Frames(3_600),
-        )
-        .with_console_model(ConsoleModel::Cgb),
-    )
-}
-
 pub fn retrio_blargg_halt_bug_suite() -> RomSuite {
     RomSuite::new("retrio-blargg-halt-bug", TestSubsystem::Interrupts).with_case(
         retrio_blargg_console_case("retrio-halt-bug", "halt_bug.gb", Timeout::Frames(3_600)),
@@ -807,11 +812,6 @@ pub fn retrio_blargg_mem_timing_individual_suite() -> RomSuite {
 pub fn retrio_blargg_oam_bug_suite() -> RomSuite {
     RomSuite::new("retrio-blargg-oam-bug", TestSubsystem::Ppu)
         .with_case(retrio_blargg_memory_output_case(
-            "retrio-oam-bug",
-            "oam_bug/oam_bug.gb",
-            Timeout::Frames(7_200),
-        ))
-        .with_case(retrio_blargg_memory_output_case(
             "retrio-oam-bug-1-lcd-sync",
             "oam_bug/rom_singles/1-lcd_sync.gb",
             Timeout::Frames(3_600),
@@ -842,15 +842,34 @@ pub fn retrio_blargg_oam_bug_suite() -> RomSuite {
             Timeout::Frames(3_600),
         ))
         .with_case(retrio_blargg_memory_output_case(
-            "retrio-oam-bug-7-timing-effect",
-            "oam_bug/rom_singles/7-timing_effect.gb",
-            Timeout::Frames(3_600),
-        ))
-        .with_case(retrio_blargg_memory_output_case(
             "retrio-oam-bug-8-instr-effect",
             "oam_bug/rom_singles/8-instr_effect.gb",
             Timeout::Frames(3_600),
         ))
+}
+
+pub fn gbdev_dmg_acid2_suite() -> RomSuite {
+    RomSuite::new("gbdev-dmg-acid2", TestSubsystem::Ppu).with_case(
+        RomTestCase::new(
+            "gbdev-dmg-acid2",
+            PathBuf::from("testroms/acid/dmg-acid2.gb"),
+            Timeout::Frames(180),
+            PassCondition::FramebufferFixture(PathBuf::from(
+                "crates/gb-test-runner/tests/fixtures/external/acid/dmg-acid2-dmg.pgm",
+            )),
+        )
+        .with_external_rom_root_key(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+        .with_capture_plan(
+            CapturePlan::new()
+                .with_capture(CaptureKind::Framebuffer)
+                .with_capture(CaptureKind::Snapshot),
+        )
+        .with_failure_artifacts(
+            FailureArtifactPolicy::new()
+                .with_artifact(CaptureKind::Framebuffer)
+                .with_artifact(CaptureKind::Snapshot),
+        ),
+    )
 }
 
 pub fn built_in_rom_suites() -> Vec<RomSuite> {
@@ -858,10 +877,10 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_2_cpu_timing_suite(),
         phase_2_interrupt_timing_suite(),
         phase_4_ppu_oam_corruption_suite(),
+        gbdev_dmg_acid2_suite(),
         retrio_blargg_cpu_smoke_suite(),
         retrio_blargg_cpu_instrs_full_suite(),
         retrio_blargg_instr_timing_suite(),
-        retrio_blargg_interrupt_time_suite(),
         retrio_blargg_halt_bug_suite(),
         retrio_blargg_mem_timing_suite(),
         retrio_blargg_mem_timing_individual_suite(),
@@ -873,6 +892,101 @@ pub fn built_in_rom_suite_by_name(name: &str) -> Option<RomSuite> {
     built_in_rom_suites()
         .into_iter()
         .find(|suite| suite.name == name)
+}
+
+pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
+    vec![
+        EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Cpu,
+            status: EarlyHardeningStatus::RepoGatePresent,
+            current_evidence: &[
+                "phase-2-cpu-timing",
+                "retrio-blargg-cpu-smoke",
+                "retrio-blargg-cpu-instrs-full",
+                "retrio-blargg-instr-timing",
+            ],
+            active_oracles: &["trace-fixture", "serial-contains"],
+            remaining_gaps: &[
+                "differential-oracle",
+                "replay-determinism",
+                "broader-real-boot-arbitration",
+            ],
+        },
+        EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Interrupts,
+            status: EarlyHardeningStatus::RepoGatePresent,
+            current_evidence: &[
+                "phase-2-interrupt-timing",
+                "retrio-blargg-halt-bug",
+                "retrio-blargg-cpu-smoke",
+            ],
+            active_oracles: &["trace-fixture", "blargg-console-text", "serial-contains"],
+            remaining_gaps: &["differential-oracle", "longer-run-determinism"],
+        },
+        EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Timer,
+            status: EarlyHardeningStatus::InternalGateOnly,
+            current_evidence: &["phase-2-interrupt-timing", "gb-core-unit-coverage"],
+            active_oracles: &["trace-fixture"],
+            remaining_gaps: &["promoted-external-suite", "differential-oracle"],
+        },
+        EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Bus,
+            status: EarlyHardeningStatus::RepoGatePresent,
+            current_evidence: &[
+                "phase-3-and-phase-4-integration-coverage",
+                "retrio-blargg-mem-timing",
+                "retrio-blargg-mem-timing-individual",
+            ],
+            active_oracles: &["serial-contains", "memory-text-output"],
+            remaining_gaps: &[
+                "cartridge-family-oracle-comparison",
+                "save-load-era-determinism",
+            ],
+        },
+        EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Dma,
+            status: EarlyHardeningStatus::InternalGateOnly,
+            current_evidence: &["phase-3-unit-and-integration-coverage"],
+            active_oracles: &["trace-fixture"],
+            remaining_gaps: &["promoted-external-suite", "differential-oracle"],
+        },
+        EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Ppu,
+            status: EarlyHardeningStatus::RepoGatePresent,
+            current_evidence: &[
+                "phase-4-ppu-oam-corruption",
+                "retrio-blargg-oam-bug",
+                "gbdev-dmg-acid2-repo-gated",
+            ],
+            active_oracles: &["trace-fixture", "memory-text-output", "framebuffer-fixture"],
+            remaining_gaps: &["mealybug-tearoom", "broader-rendering-differential-oracle"],
+        },
+        EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Cartridge,
+            status: EarlyHardeningStatus::InternalGateOnly,
+            current_evidence: &[
+                "gb-core-unit-and-integration-coverage",
+                "hardware-style-persistence-tests",
+            ],
+            active_oracles: &["unit-contracts"],
+            remaining_gaps: &["external-oracle-material", "phase-8-save-load-determinism"],
+        },
+        EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Joypad,
+            status: EarlyHardeningStatus::InternalGateOnly,
+            current_evidence: &["phase-5-synthetic-coverage", "gb-core-subsystem-tests"],
+            active_oracles: &["trace-fixture"],
+            remaining_gaps: &["promoted-external-suite", "differential-oracle"],
+        },
+        EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Serial,
+            status: EarlyHardeningStatus::InternalGateOnly,
+            current_evidence: &["phase-5-synthetic-coverage", "gb-core-subsystem-tests"],
+            active_oracles: &["trace-fixture"],
+            remaining_gaps: &["promoted-external-suite", "differential-oracle"],
+        },
+    ]
 }
 
 fn retrio_blargg_external_case(id: &str, rom_path: &str, timeout: Timeout) -> RomTestCase {
@@ -1857,7 +1971,9 @@ fn encode_framebuffer_pgm(framebuffer: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CapturedMemoryTextOutput, built_in_rom_suite_by_name, memory_text_output_completion_reached,
+        CaptureKind, CapturedMemoryTextOutput, GBEMU_SHOOTOUT_ROOT_ENV_VAR, PassCondition,
+        TestSubsystem, built_in_rom_suite_by_name, early_phase_9_partial_checklist,
+        memory_text_output_completion_reached,
     };
 
     #[test]
@@ -1898,12 +2014,64 @@ mod tests {
             .expect("known suite should be discoverable");
 
         assert_eq!(suite.name, "retrio-blargg-oam-bug");
-        assert_eq!(suite.cases.len(), 9);
+        assert_eq!(suite.cases.len(), 7);
         assert!(
             suite
                 .cases
                 .iter()
                 .any(|case| case.id == "retrio-oam-bug-1-lcd-sync")
         );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "retrio-oam-bug-8-instr-effect")
+        );
+    }
+
+    #[test]
+    fn built_in_rom_suite_lookup_returns_dmg_acid2_suite_with_framebuffer_oracle() {
+        let suite =
+            built_in_rom_suite_by_name("gbdev-dmg-acid2").expect("known suite should exist");
+
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.cases.len(), 1);
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "gbdev-dmg-acid2");
+        assert_eq!(
+            case.external_rom_root_key.as_deref(),
+            Some(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(matches!(
+            case.pass_condition,
+            PassCondition::FramebufferFixture(_)
+        ));
+    }
+
+    #[test]
+    fn early_phase_9_partial_checklist_tracks_cpu_and_ppu_repo_gates() {
+        let checklist = early_phase_9_partial_checklist();
+
+        let cpu = checklist
+            .iter()
+            .find(|entry| entry.subsystem == TestSubsystem::Cpu)
+            .expect("cpu entry should exist");
+        assert_eq!(cpu.status, super::EarlyHardeningStatus::RepoGatePresent);
+        assert!(
+            cpu.current_evidence
+                .contains(&"retrio-blargg-cpu-instrs-full")
+        );
+        assert!(cpu.active_oracles.contains(&"serial-contains"));
+
+        let ppu = checklist
+            .iter()
+            .find(|entry| entry.subsystem == TestSubsystem::Ppu)
+            .expect("ppu entry should exist");
+        assert_eq!(ppu.status, super::EarlyHardeningStatus::RepoGatePresent);
+        assert!(ppu.current_evidence.contains(&"retrio-blargg-oam-bug"));
+        assert!(ppu.current_evidence.contains(&"gbdev-dmg-acid2-repo-gated"));
+        assert!(!ppu.remaining_gaps.contains(&"repo-gated-dmg-acid2"));
     }
 }

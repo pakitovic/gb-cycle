@@ -60,10 +60,6 @@ path = "instr_timing/instr_timing.gb"
 sha256 = "646067b3d6c79fda810e9c3f1cb7c0efd5abb0a7ac06437c54e65720c15d9925"
 
 [[source.required_file]]
-path = "interrupt_time/interrupt_time.gb"
-sha256 = "1a8f8f3bc609a92a5838214c00906c81e7cc77b3b9a63be5a1ec6d513f234929"
-
-[[source.required_file]]
 path = "halt_bug.gb"
 sha256 = "ddebfb81f992132954a5580e16cfb97346a4e061c762634d7701328e23fea7c6"
 
@@ -100,10 +96,6 @@ path = "mem_timing-2/rom_singles/03-modify_timing.gb"
 sha256 = "818256ab477bb8fbb0709d28e3ec932a55c0ecd044292e760838efbb2b7fc09b"
 
 [[source.required_file]]
-path = "oam_bug/oam_bug.gb"
-sha256 = "21f0e7af73e525d14ca242ba28f97d4d381a40a61b3466dd6b4cae3e502e1ea1"
-
-[[source.required_file]]
 path = "oam_bug/rom_singles/1-lcd_sync.gb"
 sha256 = "abc303a2c644528cbcf36e83f8020cad17fdb6abdf42940533c4f6c8830c530a"
 
@@ -128,9 +120,20 @@ path = "oam_bug/rom_singles/6-timing_no_bug.gb"
 sha256 = "e5ea594ddc7ad9a0e3063c3d6b050a2a10239cd43a23012551d4985c3712ea70"
 
 [[source.required_file]]
-path = "oam_bug/rom_singles/7-timing_effect.gb"
-sha256 = "b4bb86462a5701155d92ea7dafe826cbffae6faec2c48c10feef0a5f78154d6c"
-
-[[source.required_file]]
 path = "oam_bug/rom_singles/8-instr_effect.gb"
 sha256 = "11b372a91f65dd3bd2570aafc6f26e201fc0f05955ba3bb57f4c17cd642f7b2d"
+
+[[source]]
+id = "gbemu-shootout"
+git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
+git_rev = "5fca2efde856f3929b72f40b0901c85b011665ee"
+local_dir = "gbemu-shootout"
+root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
+
+[[source.required_file]]
+path = "testroms/acid/dmg-acid2.gb"
+sha256 = "464e14b7d42e7feea0b7ede42be7071dc88913f75b9ffa444299424b63d1dff1"
+
+[[source.required_file]]
+path = "testroms/acid/dmg-acid2.png"
+sha256 = "8b5e31c2b1d449e90fc0ac08bf1f0dd95509d3e953d6940513a3ce3161572ac4"

@@ -794,12 +794,17 @@ impl Ppu {
         let obj_pixel = self.pop_obj_fifo_pixel();
         let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
         let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
-            output_pixel
+            self.map_mixed_pixel_to_panel_shade(output_pixel)
+        } else {
+            0
+        };
+        let scanline_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
+            output_pixel.color
         } else {
             0
         };
         let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
-        self.current_scanline_pixels[visible_x] = panel_pixel;
+        self.current_scanline_pixels[visible_x] = scanline_pixel;
         self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
         self.bg_pipeline_state.visible_pixels_output += 1;
     }
@@ -1114,18 +1119,36 @@ impl Ppu {
             .unwrap_or_else(ObjPixel::transparent)
     }
 
-    fn mix_bg_and_obj(&self, bg_pixel: u8, obj_pixel: ObjPixel) -> u8 {
-        let _palette_obp1 = obj_pixel.palette_obp1;
-
+    fn mix_bg_and_obj(&self, bg_pixel: u8, obj_pixel: ObjPixel) -> MixedPixel {
         if !self.obj_enabled() || obj_pixel.is_transparent() {
-            return bg_pixel;
+            return MixedPixel::background(bg_pixel);
         }
 
         if obj_pixel.bg_over_obj && bg_pixel != 0 {
-            bg_pixel
+            MixedPixel::background(bg_pixel)
         } else {
-            obj_pixel.color
+            MixedPixel::object(obj_pixel.color, obj_pixel.palette_obp1)
         }
+    }
+
+    fn map_mixed_pixel_to_panel_shade(&self, pixel: MixedPixel) -> u8 {
+        match pixel.source {
+            MixedPixelSource::Background => self.apply_dmg_palette(self.bgp, pixel.color),
+            MixedPixelSource::Object { palette_obp1 } => {
+                let palette = if palette_obp1 {
+                    self.obp1
+                        .unwrap_or(self.obj_palette_read_policy.default_read_value())
+                } else {
+                    self.obp0
+                        .unwrap_or(self.obj_palette_read_policy.default_read_value())
+                };
+                self.apply_dmg_palette(palette, pixel.color)
+            }
+        }
+    }
+
+    fn apply_dmg_palette(&self, palette: u8, color: u8) -> u8 {
+        (palette >> (u32::from(color & 0x03) * 2)) & 0x03
     }
 
     pub(crate) fn drain_pending_interrupt_requests(&mut self) -> Vec<InterruptSource> {
@@ -1516,6 +1539,34 @@ impl ObjPixel {
     const fn is_transparent(self) -> bool {
         self.color == 0
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MixedPixel {
+    color: u8,
+    source: MixedPixelSource,
+}
+
+impl MixedPixel {
+    const fn background(color: u8) -> Self {
+        Self {
+            color,
+            source: MixedPixelSource::Background,
+        }
+    }
+
+    const fn object(color: u8, palette_obp1: bool) -> Self {
+        Self {
+            color,
+            source: MixedPixelSource::Object { palette_obp1 },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MixedPixelSource {
+    Background,
+    Object { palette_obp1: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2829,6 +2880,69 @@ mod tests {
             &snapshot.current_scanline_pixels[..8],
             &[1, 2, 1, 2, 1, 2, 1, 2]
         );
+    }
+
+    #[test]
+    fn framebuffer_applies_bgp_without_changing_logical_scanline_colors() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let oam_bytes = [0; 160];
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+        write_bg_tilemap_entry(&mut vram_bytes, 0, 0, 0);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x1B,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+
+        let _ = tick_until_hblank(&mut ppu, 0, &oam_bytes, &vram_bytes);
+
+        let snapshot = ppu.snapshot();
+        assert_eq!(
+            &snapshot.current_scanline_pixels[..8],
+            &[0, 1, 2, 3, 0, 1, 2, 3]
+        );
+        assert_eq!(&ppu.framebuffer()[..8], &[3, 2, 1, 0, 3, 2, 1, 0]);
+    }
+
+    #[test]
+    fn framebuffer_applies_obj_palette_selection_without_changing_logical_obj_colors() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut oam_bytes = [0; 160];
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_oam_entry_with_attributes(&mut oam_bytes, 0, 16, 8, 0, 0x10);
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0xFF, 0x00);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x92,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.write_register(0xFF48, 0xE4);
+        ppu.write_register(0xFF49, 0x0C);
+
+        let _ = tick_until_hblank(&mut ppu, 0, &oam_bytes, &vram_bytes);
+
+        let snapshot = ppu.snapshot();
+        assert_eq!(&snapshot.current_scanline_pixels[..8], &[1; 8]);
+        assert_eq!(&ppu.framebuffer()[..8], &[3; 8]);
     }
 
     #[test]
