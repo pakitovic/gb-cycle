@@ -7,8 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use gb_test_runner::{
     BootRomVerificationMode, EXTERNAL_ROM_SOURCE_MANIFEST_PATH, MemoryTextOutputSpec,
     PassCondition, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR, RomCaseFailure, RomCaseOutcome,
-    RomExecutionError, RomRunner, RomTestCase, Timeout, phase_2_cpu_timing_suite,
-    phase_2_interrupt_timing_suite,
+    RomExecutionError, RomRunner, RomTestCase, StartupMemoryWrite, Timeout,
+    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -40,6 +40,23 @@ fn build_single_byte_serial_rom(byte: u8) -> Vec<u8> {
         0x3E, 0x81, // LD A,$81
         0xE0, 0x02, // LDH (SC),A
         0xC3, 0x08, 0x01, // JP $0108
+    ])
+}
+
+fn build_serial_from_address_rom(address: u16) -> Vec<u8> {
+    build_test_rom(&[
+        0xFA,
+        address as u8,
+        (address >> 8) as u8, // LD A,(a16)
+        0xE0,
+        0x01, // LDH (SB),A
+        0x3E,
+        0x81, // LD A,$81
+        0xE0,
+        0x02, // LDH (SC),A
+        0xC3,
+        0x08,
+        0x01, // JP $0108
     ])
 }
 
@@ -191,6 +208,33 @@ fn runner_captures_serial_output_from_a_minimal_rom() {
 
     assert_eq!(report.outcome, RomCaseOutcome::Passed);
     assert_eq!(report.artifacts.serial.as_deref(), Some("O"));
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn runner_applies_startup_memory_writes_before_execution() {
+    let temp_dir = unique_temp_dir("startup-memory-write");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let rom_path = temp_dir.join("startup_memory_write.gb");
+    fs::write(&rom_path, build_serial_from_address_rom(0xC000))
+        .expect("startup memory write test rom should be writable");
+
+    let case = RomTestCase::new(
+        "startup-memory-write",
+        &rom_path,
+        Timeout::TCycles(5_000),
+        PassCondition::SerialContains("Z".to_string()),
+    )
+    .with_startup_memory_write(StartupMemoryWrite::new(0xC000, b'Z'));
+
+    let report = RomRunner::new()
+        .run_case(&case)
+        .expect("startup memory write case should execute");
+
+    assert_eq!(report.outcome, RomCaseOutcome::Passed);
+    assert_eq!(report.artifacts.serial.as_deref(), Some("Z"));
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }

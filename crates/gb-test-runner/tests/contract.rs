@@ -587,6 +587,20 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
             .iter()
             .any(|case| case.id == "gbdev-mealybug-m3-window-timing-wx-0")
     );
+    let obp0_change = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "gbdev-mealybug-m3-obp0-change")
+        .expect("curated mealybug suite should include m3_obp0_change");
+    assert_eq!(obp0_change.startup_mode, StartupMode::SkipBoot);
+    assert_eq!(obp0_change.startup_memory_writes.len(), 16);
+    let bgp_change_sprites = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "gbdev-mealybug-m3-bgp-change-sprites")
+        .expect("curated mealybug suite should include m3_bgp_change_sprites");
+    assert_eq!(bgp_change_sprites.startup_mode, StartupMode::SkipBoot);
+    assert_eq!(bgp_change_sprites.startup_memory_writes.len(), 16);
 }
 
 fn trace_fixture_path(case: &RomTestCase) -> &Path {

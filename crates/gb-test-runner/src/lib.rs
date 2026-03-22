@@ -119,6 +119,18 @@ pub enum ExternalStimulusAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StartupMemoryWrite {
+    pub address: u16,
+    pub value: u8,
+}
+
+impl StartupMemoryWrite {
+    pub const fn new(address: u16, value: u8) -> Self {
+        Self { address, value }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ExternalStimulus {
     pub when: StimulusTime,
     pub action: ExternalStimulusAction,
@@ -310,6 +322,7 @@ pub struct RomTestCase {
     pub console_model: ConsoleModel,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
+    pub startup_memory_writes: Vec<StartupMemoryWrite>,
     pub external_stimuli: ExternalStimulusPlan,
     pub stop_condition: Option<ExecutionStopCondition>,
     pub timeout: Timeout,
@@ -335,6 +348,7 @@ impl RomTestCase {
             console_model: ConsoleModel::Dmg,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
+            startup_memory_writes: Vec::new(),
             external_stimuli: ExternalStimulusPlan::new(),
             stop_condition: None,
             timeout,
@@ -356,6 +370,19 @@ impl RomTestCase {
 
     pub fn with_execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
         self.execution_mode = execution_mode;
+        self
+    }
+
+    pub fn with_startup_memory_write(mut self, write: StartupMemoryWrite) -> Self {
+        self.startup_memory_writes.push(write);
+        self
+    }
+
+    pub fn with_startup_memory_writes(
+        mut self,
+        writes: impl IntoIterator<Item = StartupMemoryWrite>,
+    ) -> Self {
+        self.startup_memory_writes.extend(writes);
         self
     }
 
@@ -898,6 +925,20 @@ pub fn gbdev_dmg_acid2_suite() -> RomSuite {
     )
 }
 
+const DMG_BOOT_TRADEMARK_TILE_VRAM_START: u16 = 0x8190;
+const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
+    0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C, 0x00,
+];
+
+fn dmg_boot_trademark_tile_startup_writes() -> [StartupMemoryWrite; 16] {
+    std::array::from_fn(|index| {
+        StartupMemoryWrite::new(
+            DMG_BOOT_TRADEMARK_TILE_VRAM_START + index as u16,
+            DMG_BOOT_TRADEMARK_TILE_BYTES[index],
+        )
+    })
+}
+
 fn gbemu_shootout_framebuffer_case(
     case_id: &'static str,
     rom_path: &'static str,
@@ -942,7 +983,8 @@ pub fn gbdev_mealybug_tearoom_dmg_curated_suite() -> RomSuite {
             "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change_sprites.gb",
             "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_bgp_change_sprites_dmg_blob.pgm",
             Timeout::Frames(30),
-        ))
+        )
+        .with_startup_memory_writes(dmg_boot_trademark_tile_startup_writes()))
         .with_case(gbemu_shootout_framebuffer_case(
             "gbdev-mealybug-m3-lcdc-obj-size-change",
             "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change.gb",
@@ -960,7 +1002,8 @@ pub fn gbdev_mealybug_tearoom_dmg_curated_suite() -> RomSuite {
             "testroms/mealybug-tearoom-tests/ppu/m3_obp0_change.gb",
             "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_obp0_change_dmg_blob.pgm",
             Timeout::Frames(30),
-        ))
+        )
+        .with_startup_memory_writes(dmg_boot_trademark_tile_startup_writes()))
         .with_case(gbemu_shootout_framebuffer_case(
             "gbdev-mealybug-m3-scx-low-3-bits",
             "testroms/mealybug-tearoom-tests/ppu/m3_scx_low_3_bits.gb",
@@ -1381,6 +1424,13 @@ impl RunnerMachine {
         }
     }
 
+    fn write_bus(&mut self, address: u16, value: u8) {
+        match self {
+            Self::Buffered(machine) => machine.write_bus(address, value),
+            Self::Summary(machine) => machine.write_bus(address, value),
+        }
+    }
+
     fn set_joypad_button_pressed(&mut self, button: JoypadButton, pressed: bool) {
         match self {
             Self::Buffered(machine) => machine.set_joypad_button_pressed(button, pressed),
@@ -1522,6 +1572,7 @@ impl RomRunner {
                 source,
             }
         })?;
+        self.apply_startup_memory_writes(case, &mut machine);
 
         let mut executed_t_cycles = 0_u64;
         let mut completed_frames = 0_u32;
@@ -1713,6 +1764,12 @@ impl RomRunner {
             }
 
             applied_stimuli[index] = true;
+        }
+    }
+
+    fn apply_startup_memory_writes(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
+        for write in &case.startup_memory_writes {
+            machine.write_bus(write.address, write.value);
         }
     }
 
