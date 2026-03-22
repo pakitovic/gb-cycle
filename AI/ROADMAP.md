@@ -1823,10 +1823,27 @@ from this phase before APU work. The current early deliverables are:
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2`,
   sourced from `GBEmulatorShootout` and now part of the supported external DMG
   block used by `make local` and the `external-roms` workflow
+- one narrow differential end-of-test path,
+  `cargo run -p gb-test-runner --bin run_differential -- --oracle <sameboy|gambatte> [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`,
+  which compares the built-in suite's required-capture artifact against an
+  imported oracle artifact bundle, enforces `Strict`, and archives local
+  context plus the compared oracle artifact on divergence. The current
+  `sameboy-tester` layout support is intentionally framebuffer-only and is
+  aimed at PPU/image-oracle cases such as `dmg-acid2`. When the oracle root is
+  omitted, the repo-local default is `/.oracles/<oracle>/<layout>/`
+- one SameBoy Tester materialization path,
+  `cargo run -p gb-test-runner --bin run_sameboy_tester -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --tester-binary <path>]`,
+  which stages ROMs under the oracle root, runs SameBoy's internal `tester`
+  target, and produces `.bmp` / `.tga` plus `.log` artifacts in the exact
+  `sameboy-tester` layout consumed by `run_differential`. The repo-local
+  default for this path is `/.oracles/sameboy/sameboy-tester/` for oracle
+  outputs, and the wrapper intentionally leaves SameBoy's own boot-ROM path
+  under SameBoy's control instead of trying to share local firmware selection
+  with `gb-test-runner`
 
 This does not count as closing Phase `9.2` or `9.3`; SameBoy/Gambatte
-differential tooling, save/load determinism, and the final DMG matrix still
-remain Phase `7/8/9` work.
+differential launch automation, first-divergence windows, save/load determinism,
+and the final DMG matrix still remain Phase `7/8/9` work.
 
 #### Goal
 

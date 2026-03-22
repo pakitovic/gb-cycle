@@ -106,6 +106,18 @@ This checklist should move only when one of the following becomes true:
 - Repo-managed external ROM assets should live under one gitignored workspace store, currently `/.roms/external-test/`, with upstream source, pinned revision, and required-file hashes recorded in a versioned manifest so local runs and CI use the same asset contract.
 - `gb-test-runner` may accept explicit environment-variable roots for external suites, but the default automation path should also resolve the repo-managed store automatically so developers and CI do not need ad hoc local clones or handwritten path setup.
 - Keep redistributable external test ROMs and non-redistributable commercial ROMs in separate stores. The current local-only commercial bucket is `/.roms/local-commercial/`, and it must remain outside CI, docs about official closure, and public automation targets.
+- Keep local boot ROM images under the repo-managed gitignored `/.roms/bootrom/`
+  store, using the canonical filenames from `gb-core` (`dmg0_boot.bin`,
+  `dmg_boot.bin`, `mgb_boot.bin`) so local real-boot runs do not depend on ad
+  hoc per-machine paths.
+- For the current DMG-family store, `gb-test-runner` treats those boot ROM
+  assets as pinned local inputs rather than arbitrary filenames: strict-mode
+  `RealBoot` verifies the observed SHA-256 against the expected
+  `dmg0/dmg/mgb` hashes before execution so local bring-up does not silently
+  proceed on the wrong firmware bytes.
+- Keep imported differential oracle artifacts under the repo-managed gitignored
+  `/.oracles/<oracle>/<layout>/` tree instead of scattering them under `/tmp`,
+  so repeated validation runs have one visible workspace-local location.
 - The minimum DMG closure baseline should include automated CPU / interrupt coverage through `retrio/gb-test-roms` or equivalent Blargg automation, `dmg-acid2` for basic DMG PPU validation, and `mealybug-tearoom-tests` for fine PPU rendering / timing validation.
 - Keep explicit roadmap space for broader closure suites such as Mooneye / Gekkio coverage, SameSuite, GB Accuracy Tests, 144p Test Suite, and MBC3 RTC-focused ROMs.
 - `gb-test-runner` should expose a human-readable catalog of the built-in suites
@@ -118,6 +130,27 @@ This checklist should move only when one of the following becomes true:
 - The current early PPU hardening lane also includes the repo-gated framebuffer
   oracle suite for `dmg-acid2` under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2`.
+- The current early `9.3` MVP also includes one imported-oracle end-of-test
+  differential path under
+  `cargo run -p gb-test-runner --bin run_differential -- --oracle <sameboy|gambatte> [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`.
+  This path enforces `Strict`, compares the suite's required-capture artifact
+  against an imported oracle artifact bundle, and archives local context on
+  divergence; it intentionally does not yet automate SameBoy/Gambatte launch or
+  provide end-of-instruction / short-window first-divergence tracing. The
+  current `sameboy-tester` layout support is limited to framebuffer-oracle
+  cases because SameBoy's internal tester emits image plus log artifacts rather
+  than the serial or memory-text channels used by the Blargg text suites. When
+  `--oracle-artifact-root` is omitted, the repo-local default is
+  `/.oracles/<oracle>/<layout>/`.
+- The repo now also includes a companion SameBoy Tester materialization command
+  under
+  `cargo run -p gb-test-runner --bin run_sameboy_tester -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --tester-binary <path>]`.
+  This command stages ROMs under the oracle root and emits the `.bmp` / `.tga`
+  plus `.log` files in the `sameboy-tester` layout that `run_differential`
+  already understands. When `--oracle-root` is omitted, the repo-local default
+  is `/.oracles/sameboy/sameboy-tester/`. The wrapper intentionally does not
+  override SameBoy's own boot-ROM path; keep this flow scoped to end-of-test
+  imported-oracle materialization rather than boot-path arbitration.
 
 ## Differential oracle policy
 

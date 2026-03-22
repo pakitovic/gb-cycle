@@ -65,3 +65,28 @@ Relevant SameBoy source entry points:
 - https://github.com/LIJI32/SameBoy/blob/master/Core/timing.c
 - https://github.com/LIJI32/SameBoy/blob/master/Core/memory.c
 - https://github.com/LIJI32/SameBoy/blob/master/Core/sm83_cpu.c
+
+## Phase 9.3 tooling note (`2026-03-22`)
+
+- SameBoy's public SDL frontend is invocable from the terminal, but its public
+  CLI usage is limited to frontend flags such as model selection, fullscreen,
+  OpenGL disable, and debugger stop-on-start. It should not be treated as a
+  documented headless oracle runner.
+- SameBoy's internal `tester` target is a better fit for early differential
+  framebuffer work. It accepts model and run-length flags, writes `.bmp` or
+  `.tga` screenshots plus `.log` files next to the ROM path, and is now the
+  basis of this repo's `sameboy-tester` imported-oracle layout for PPU/image
+  cases such as `dmg-acid2`.
+- In this repo, the current default local workflow keeps those imported oracle
+  artifacts under `/.oracles/sameboy/sameboy-tester/`. The current wrapper
+  intentionally leaves SameBoy's own boot-ROM choice alone instead of trying to
+  share this repo's local boot-ROM store with the oracle side.
+- Important caveat: the internal tester always runs through a boot ROM path,
+  so comparisons against this repo's `SkipBoot` cases should be treated as
+  end-of-test convergence evidence rather than boot-path equivalence evidence.
+
+Additional SameBoy source entry points used for this tooling:
+
+- https://github.com/LIJI32/SameBoy/blob/master/README.md
+- https://github.com/LIJI32/SameBoy/blob/master/Tester/main.c
+- https://github.com/LIJI32/SameBoy/blob/master/SDL/main.c

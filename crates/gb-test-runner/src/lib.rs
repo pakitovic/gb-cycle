@@ -1,6 +1,12 @@
+mod boot_rom_verification;
+mod differential;
 pub mod external_roms;
 mod fetch_external_roms;
+mod run_differential_cli;
 mod run_rom_suite_cli;
+mod run_sameboy_tester_cli;
+mod sameboy_tester;
+mod workspace_paths;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -8,11 +14,20 @@ use std::{fs, io};
 
 use external_roms::ExternalRomSourceManifestError;
 use gb_core::{
-    CartridgeDiagnostic, CartridgeLoadError, ConsoleModel, CpuDiagnosticTrap, CpuExecutionState,
-    ExecutionMode, JoypadButton, Machine, MachineConfig, StartupMode, TraceBuffer,
-    TraceSummaryBuffer,
+    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, ConsoleModel,
+    CpuDiagnosticTrap, CpuExecutionState, ExecutionMode, JoypadButton, Machine, MachineConfig,
+    StartupMode, TraceBuffer, TraceSummaryBuffer,
 };
 
+pub use boot_rom_verification::{
+    BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_verification,
+    expected_boot_rom_sha256, verify_boot_rom_file,
+};
+pub use differential::{
+    DifferentialCaseMismatch, DifferentialCaseOutcome, DifferentialCaseReport,
+    DifferentialExecutionError, DifferentialOracle, DifferentialOracleLayout, DifferentialRunner,
+    DifferentialSuiteReport,
+};
 pub use external_roms::{
     EXTERNAL_ROM_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_STORE_DIR, ExternalRomRequiredFile,
     ExternalRomSource, ExternalRomSourceManifest, LOCAL_COMMERCIAL_ROM_STORE_DIR,
@@ -20,7 +35,18 @@ pub use external_roms::{
     load_external_rom_source_manifest, local_commercial_rom_store_root,
 };
 pub use fetch_external_roms::{fetch_external_roms_help_text, run_fetch_external_roms_command};
+pub use run_differential_cli::{differential_cli_help_text, run_differential_command};
 pub use run_rom_suite_cli::{rom_suite_cli_help_text, run_rom_suite_command};
+pub use run_sameboy_tester_cli::{run_sameboy_tester_command, sameboy_tester_cli_help_text};
+pub use sameboy_tester::{
+    SameBoyTesterExecutionError, SameBoyTesterImageFormat, SameBoyTesterRunner,
+    SameBoyTesterSuiteReport,
+};
+pub use workspace_paths::{
+    BOOT_ROM_ROOT_ENV_VAR, BOOT_ROM_STORE_DIR, ORACLE_STORE_DIR, boot_rom_image_path,
+    boot_rom_kind_for_console_model, boot_rom_store_root, discover_boot_rom_store_root,
+    oracle_layout_root, oracle_store_root, sameboy_tester_oracle_root,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TestSubsystem {
@@ -1081,6 +1107,13 @@ const fn retrio_blargg_memory_text_output_spec() -> MemoryTextOutputSpec {
 pub enum RomExecutionError {
     InvalidCase(RomCaseValidationError),
     InvalidSuite(RomSuiteValidationError),
+    BootRomAssets {
+        path: PathBuf,
+        source: BootRomAssetError,
+    },
+    BootRomVerification {
+        issue: BootRomVerificationIssue,
+    },
     ReadFile {
         path: PathBuf,
         operation: &'static str,
@@ -1195,6 +1228,8 @@ pub struct RomRunner {
     workspace_root: PathBuf,
     failure_artifact_root: Option<PathBuf>,
     external_rom_roots: BTreeMap<String, PathBuf>,
+    boot_rom_root: Option<PathBuf>,
+    boot_rom_verification_mode: BootRomVerificationMode,
 }
 
 enum RunnerMachine {
@@ -1203,10 +1238,11 @@ enum RunnerMachine {
 }
 
 impl RunnerMachine {
-    fn new(case: &RomTestCase) -> Self {
+    fn new(case: &RomTestCase, boot_rom_assets: BootRomAssets) -> Self {
         let config = MachineConfig::new(case.console_model)
             .with_startup_mode(case.startup_mode)
-            .with_execution_mode(case.execution_mode);
+            .with_execution_mode(case.execution_mode)
+            .with_boot_rom_assets(boot_rom_assets);
         let needs_trace_buffer = case.capture_plan.contains(CaptureKind::Trace)
             || case.failure_artifacts.contains(CaptureKind::Trace);
 
@@ -1323,6 +1359,8 @@ impl RomRunner {
             workspace_root: default_workspace_root(),
             failure_artifact_root: None,
             external_rom_roots: BTreeMap::new(),
+            boot_rom_root: None,
+            boot_rom_verification_mode: BootRomVerificationMode::Strict,
         }
     }
 
@@ -1333,6 +1371,19 @@ impl RomRunner {
 
     pub fn with_failure_artifact_root(mut self, failure_artifact_root: impl Into<PathBuf>) -> Self {
         self.failure_artifact_root = Some(failure_artifact_root.into());
+        self
+    }
+
+    pub fn with_boot_rom_root(mut self, boot_rom_root: impl Into<PathBuf>) -> Self {
+        self.boot_rom_root = Some(boot_rom_root.into());
+        self
+    }
+
+    pub fn with_boot_rom_verification_mode(
+        mut self,
+        boot_rom_verification_mode: BootRomVerificationMode,
+    ) -> Self {
+        self.boot_rom_verification_mode = boot_rom_verification_mode;
         self
     }
 
@@ -1363,15 +1414,15 @@ impl RomRunner {
     pub fn run_case(&self, case: &RomTestCase) -> Result<RomCaseReport, RomExecutionError> {
         case.validate().map_err(RomExecutionError::InvalidCase)?;
 
-        let rom_path =
-            self.resolve_case_path(&case.rom_path, case.external_rom_root_key.as_deref())?;
+        let rom_path = self.resolve_case_rom_path(case)?;
         let rom_bytes = fs::read(&rom_path).map_err(|source| RomExecutionError::ReadFile {
             path: rom_path.clone(),
             operation: "read ROM",
             source,
         })?;
 
-        let mut machine = RunnerMachine::new(case);
+        let boot_rom_assets = self.load_boot_rom_assets(case)?;
+        let mut machine = RunnerMachine::new(case, boot_rom_assets);
         let diagnostics = machine.load_cartridge(rom_bytes).map_err(|source| {
             RomExecutionError::CartridgeLoad {
                 path: rom_path.clone(),
@@ -1467,6 +1518,39 @@ impl RomRunner {
             artifacts,
             retained_failure_artifacts,
         })
+    }
+
+    pub fn resolve_case_rom_path(&self, case: &RomTestCase) -> Result<PathBuf, RomExecutionError> {
+        self.resolve_case_path(&case.rom_path, case.external_rom_root_key.as_deref())
+    }
+
+    pub fn workspace_root(&self) -> &Path {
+        &self.workspace_root
+    }
+
+    fn load_boot_rom_assets(&self, case: &RomTestCase) -> Result<BootRomAssets, RomExecutionError> {
+        if case.startup_mode != StartupMode::RealBoot {
+            return Ok(BootRomAssets::none());
+        }
+
+        let Some(kind) = boot_rom_kind_for_console_model(case.console_model) else {
+            return Ok(BootRomAssets::none());
+        };
+
+        let root = self
+            .boot_rom_root
+            .clone()
+            .or_else(|| discover_boot_rom_store_root(&self.workspace_root))
+            .unwrap_or_else(|| boot_rom_store_root(&self.workspace_root));
+        let image_path = boot_rom_image_path(&root, kind);
+        enforce_boot_rom_verification(self.boot_rom_verification_mode, &image_path, kind)
+            .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
+        if !root.is_dir() {
+            return Ok(BootRomAssets::none());
+        }
+
+        BootRomAssets::from_directory(&root)
+            .map_err(|source| RomExecutionError::BootRomAssets { path: root, source })
     }
 
     fn resolve_path(&self, path: &Path) -> PathBuf {
@@ -1883,7 +1967,7 @@ fn capture_memory_text_output(
     }
 }
 
-fn render_memory_text_output(captured: &CapturedMemoryTextOutput) -> String {
+pub(crate) fn render_memory_text_output(captured: &CapturedMemoryTextOutput) -> String {
     format!(
         "status=0x{status:02X}\nsignature={sig0:02X} {sig1:02X} {sig2:02X}\ntext={text:?}\n",
         status = captured.status,
@@ -1892,6 +1976,17 @@ fn render_memory_text_output(captured: &CapturedMemoryTextOutput) -> String {
         sig2 = captured.signature[2],
         text = captured.text,
     )
+}
+
+pub(crate) fn artifact_file_name(capture: CaptureKind) -> &'static str {
+    match capture {
+        CaptureKind::Serial => "serial.txt",
+        CaptureKind::MemoryTextOutput => "memory_text_output.txt",
+        CaptureKind::BlarggConsoleText => "blargg_console.txt",
+        CaptureKind::Framebuffer => "framebuffer.pgm",
+        CaptureKind::Trace => "trace.txt",
+        CaptureKind::Snapshot => "snapshot.txt",
+    }
 }
 
 fn capture_blargg_console_text(machine: &mut RunnerMachine) -> String {

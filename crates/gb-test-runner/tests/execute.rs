@@ -5,9 +5,10 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gb_test_runner::{
-    EXTERNAL_ROM_SOURCE_MANIFEST_PATH, MemoryTextOutputSpec, PassCondition,
-    RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR, RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner,
-    RomTestCase, Timeout, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
+    BootRomVerificationMode, EXTERNAL_ROM_SOURCE_MANIFEST_PATH, MemoryTextOutputSpec,
+    PassCondition, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR, RomCaseFailure, RomCaseOutcome,
+    RomExecutionError, RomRunner, RomTestCase, Timeout, phase_2_cpu_timing_suite,
+    phase_2_interrupt_timing_suite,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -104,6 +105,14 @@ fn build_blargg_console_text_rom() -> Vec<u8> {
         0x22, // LD (HL+),A
         0xC3, 0x18, 0x01, // JP $0118
     ])
+}
+
+fn build_real_boot_jump_stub() -> Vec<u8> {
+    let mut boot_rom = vec![0x00; 0x0100];
+    boot_rom[0] = 0xC3;
+    boot_rom[1] = 0x00;
+    boot_rom[2] = 0x01;
+    boot_rom
 }
 
 fn unique_temp_dir(label: &str) -> PathBuf {
@@ -335,6 +344,76 @@ fn runner_resolves_roms_from_the_default_repo_managed_external_store() {
 
     assert_eq!(report.outcome, RomCaseOutcome::Passed);
     assert_eq!(report.artifacts.serial.as_deref(), Some("R"));
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn runner_uses_repo_local_boot_rom_store_for_real_boot_cases() {
+    let temp_dir = unique_temp_dir("real-boot-store");
+    let boot_rom_root = temp_dir.join(".roms/bootrom");
+    fs::create_dir_all(&boot_rom_root).expect("boot rom root should be creatable");
+    fs::write(
+        boot_rom_root.join("dmg_boot.bin"),
+        build_real_boot_jump_stub(),
+    )
+    .expect("boot rom should be writable");
+
+    let rom_path = temp_dir.join("real_boot_serial.gb");
+    fs::write(&rom_path, build_single_byte_serial_rom(b'B'))
+        .expect("real boot rom should be writable");
+
+    let case = RomTestCase::new(
+        "real-boot-pass",
+        &rom_path,
+        Timeout::TCycles(5_000),
+        PassCondition::SerialContains("B".to_string()),
+    )
+    .with_startup_mode(gb_core::StartupMode::RealBoot);
+
+    let report = RomRunner::new()
+        .with_workspace_root(&temp_dir)
+        .with_boot_rom_verification_mode(BootRomVerificationMode::Off)
+        .run_case(&case)
+        .expect("real-boot case should execute");
+
+    assert_eq!(report.outcome, RomCaseOutcome::Passed);
+    assert_eq!(report.artifacts.serial.as_deref(), Some("B"));
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn runner_rejects_unexpected_boot_rom_hashes_in_strict_real_boot_mode() {
+    let temp_dir = unique_temp_dir("real-boot-hash-mismatch");
+    let boot_rom_root = temp_dir.join(".roms/bootrom");
+    fs::create_dir_all(&boot_rom_root).expect("boot rom root should be creatable");
+    fs::write(
+        boot_rom_root.join("dmg_boot.bin"),
+        build_real_boot_jump_stub(),
+    )
+    .expect("boot rom should be writable");
+
+    let rom_path = temp_dir.join("real_boot_hash_mismatch.gb");
+    fs::write(&rom_path, build_single_byte_serial_rom(b'B')).expect("rom should be writable");
+
+    let case = RomTestCase::new(
+        "real-boot-hash-mismatch",
+        &rom_path,
+        Timeout::TCycles(5_000),
+        PassCondition::SerialContains("B".to_string()),
+    )
+    .with_startup_mode(gb_core::StartupMode::RealBoot);
+
+    let error = RomRunner::new()
+        .with_workspace_root(&temp_dir)
+        .run_case(&case)
+        .expect_err("strict real-boot should reject unexpected boot rom hashes");
+
+    assert!(matches!(
+        error,
+        RomExecutionError::BootRomVerification { .. }
+    ));
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }

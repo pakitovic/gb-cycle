@@ -35,6 +35,7 @@ tma = "tma"
 lyc = "lyc"
 stat = "stat"
 opcode = "opcode"
+sav = "sav"
 
 [default.extend-identifiers]
 AntonioND = "AntonioND"

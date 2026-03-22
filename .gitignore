@@ -12,6 +12,7 @@
 # Logs
 *.log
 /.artifacts/
+/.oracles/
 
 # Local ROM stores
 /.roms/

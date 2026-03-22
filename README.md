@@ -103,6 +103,10 @@ make test-external-ppu-dmg
 - `make fetch-external-roms` populates the gitignored `/.roms/external-test/`
   store from the pinned manifest in
   `crates/gb-test-runner/external-rom-sources.toml`
+- repo-managed local-only support assets now also live under gitignored roots
+  inside the workspace:
+  `/.roms/bootrom/` for DMG/MGB boot ROM images and
+  `/.oracles/<oracle>/<layout>/` for imported differential oracle artifacts
 - `make check` stays as the fast local pre-push gate and does not fetch or run
   external ROM suites
 - `make local` fetches and runs the repository-gated green external DMG block
@@ -153,6 +157,52 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
 ```bash
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2
 ```
+
+- to compare one built-in suite against imported SameBoy or Gambatte artifacts,
+  run:
+
+```bash
+cargo run -p gb-test-runner --bin run_differential -- \
+  --oracle sameboy \
+  --oracle-layout sameboy-tester \
+  --suite gbdev-dmg-acid2
+```
+
+  If `--oracle-artifact-root` is omitted, the default repo-local root is
+  `/.oracles/<oracle>/<layout>/`, so for this example the default is
+  `/.oracles/sameboy/sameboy-tester/`.
+
+  The default layout is `case-bundle`, where the oracle root contains one
+  subdirectory per case id using the same artifact filenames that
+  `gb-test-runner` already emits locally, such as `serial.txt`,
+  `memory_text_output.txt`, `blargg_console.txt`, `framebuffer.pgm`, or
+  `trace.txt`.
+
+  The `sameboy-tester` layout is currently framebuffer-only. It expects SameBoy
+  Tester artifacts mirrored by ROM-relative path, for example
+  `testroms/acid/dmg-acid2.bmp` under the oracle root.
+
+- to materialize those SameBoy Tester artifacts under a compatible oracle root,
+  run:
+
+```bash
+cargo run -p gb-test-runner --bin run_sameboy_tester -- \
+  --sameboy-root /path/to/SameBoy \
+  --suite gbdev-dmg-acid2 \
+  --image-format bmp \
+  --build-if-missing
+```
+
+  This stages ROMs under the default repo-local oracle root
+  `/.oracles/sameboy/sameboy-tester/`, runs SameBoy's internal `tester`
+  binary, and leaves `.bmp` / `.tga` plus `.log` artifacts there in the
+  `sameboy-tester` layout that `run_differential` can consume directly.
+  SameBoy Tester always boots through a boot ROM, so this path is best suited
+  to end-of-test framebuffer convergence rather than boot-path arbitration.
+  The current wrapper intentionally does not override SameBoy's boot-ROM path.
+  If you need a specific SameBoy firmware choice for oracle generation, control
+  it from the SameBoy checkout or build itself rather than through
+  `gb-test-runner`.
 
 
 ## Documentation
