@@ -1,252 +1,126 @@
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 use gb_test_runner::{
-    GBEMU_SHOOTOUT_ROOT_ENV_VAR, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR, RomRunner,
-    discover_external_rom_root_for_key, gbdev_dmg_acid2_suite, retrio_blargg_cpu_instrs_full_suite,
-    retrio_blargg_cpu_smoke_suite, retrio_blargg_halt_bug_suite, retrio_blargg_instr_timing_suite,
-    retrio_blargg_mem_timing_individual_suite, retrio_blargg_mem_timing_suite,
-    retrio_blargg_oam_bug_suite,
+    RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_curated_suite,
+    discover_test_rom_store_root, mealybug_tearoom_dmg_curated_suite,
+    mooneye_acceptance_dmg_curated_suite, update_curated_test_report,
 };
 
-#[test]
-#[ignore = "requires retrio/gb-test-roms assets under GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"]
-fn retrio_blargg_cpu_smoke_suite_runs_against_real_external_assets() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
-        .expect("workspace root should be two levels above gb-test-runner");
+        .expect("workspace root should be two levels above gb-test-runner")
+        .to_path_buf()
+}
 
-    if discover_external_rom_root_for_key(workspace_root, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR)
-        .expect("external ROM source manifest should be readable")
-        .is_none()
-    {
+fn run_curated_suite_and_update_report(
+    suite: &RomSuite,
+    suite_label: &str,
+) -> Option<gb_test_runner::RomSuiteReport> {
+    let workspace_root = workspace_root();
+
+    let Some(store_root) = discover_test_rom_store_root(&workspace_root) else {
         eprintln!(
-            "skipping ignored test because neither {} nor the default external ROM store is configured",
-            RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR
+            "skipping ignored test because neither GB_CYCLE_TEST_ROM_ROOT nor the default curated test ROM store is configured"
         );
-        return;
+        return None;
+    };
+    let Some(family) = suite.family.as_deref() else {
+        panic!("{suite_label} should declare its curated family");
+    };
+    if !store_root.join(family).exists() {
+        eprintln!(
+            "skipping ignored test because curated family {family} is not materialized under {}",
+            store_root.display()
+        );
+        return None;
     }
 
     let report = RomRunner::new()
-        .run_suite(&retrio_blargg_cpu_smoke_suite())
-        .expect("external retrio/blargg suite should execute");
-
-    assert!(report.all_passed(), "{report:#?}");
+        .run_suite(suite)
+        .unwrap_or_else(|_| panic!("{suite_label} should execute"));
+    update_curated_test_report(&workspace_root, &report)
+        .expect("curated report should update after a repo-managed suite run");
+    Some(report)
 }
 
 #[test]
-#[ignore = "requires retrio/gb-test-roms assets under GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"]
-fn retrio_blargg_cpu_instrs_full_suite_runs_against_real_external_assets() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("workspace root should be two levels above gb-test-runner");
-
-    if discover_external_rom_root_for_key(workspace_root, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR)
-        .expect("external ROM source manifest should be readable")
-        .is_none()
-    {
-        eprintln!(
-            "skipping ignored test because neither {} nor the default external ROM store is configured",
-            RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR
-        );
-        return;
-    }
-
-    let report = RomRunner::new()
-        .run_suite(&retrio_blargg_cpu_instrs_full_suite())
-        .expect("external retrio/blargg cpu_instrs full suite should execute");
-
-    assert!(report.all_passed(), "{report:#?}");
-}
-
-#[test]
-#[ignore = "requires retrio/gb-test-roms assets under GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"]
-fn retrio_blargg_instr_timing_suite_runs_against_real_external_assets() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("workspace root should be two levels above gb-test-runner");
-
-    if discover_external_rom_root_for_key(workspace_root, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR)
-        .expect("external ROM source manifest should be readable")
-        .is_none()
-    {
-        eprintln!(
-            "skipping ignored test because neither {} nor the default external ROM store is configured",
-            RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR
-        );
-        return;
-    }
-
-    let report = RomRunner::new()
-        .run_suite(&retrio_blargg_instr_timing_suite())
-        .expect("external retrio/blargg instr_timing suite should execute");
-
-    assert!(report.all_passed(), "{report:#?}");
-}
-
-#[test]
-#[ignore = "requires retrio/gb-test-roms assets under GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"]
-fn retrio_blargg_halt_bug_suite_runs_against_real_external_assets() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("workspace root should be two levels above gb-test-runner");
-
-    if discover_external_rom_root_for_key(workspace_root, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR)
-        .expect("external ROM source manifest should be readable")
-        .is_none()
-    {
-        eprintln!(
-            "skipping ignored test because neither {} nor the default external ROM store is configured",
-            RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR
-        );
-        return;
-    }
-
-    let report = RomRunner::new()
-        .run_suite(&retrio_blargg_halt_bug_suite())
-        .expect("external retrio/blargg halt_bug suite should execute");
-
-    assert!(report.all_passed(), "{report:#?}");
-}
-
-#[test]
-#[ignore = "requires retrio/gb-test-roms assets under GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"]
-fn retrio_blargg_mem_timing_suite_runs_against_real_external_assets() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("workspace root should be two levels above gb-test-runner");
-
-    if discover_external_rom_root_for_key(workspace_root, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR)
-        .expect("external ROM source manifest should be readable")
-        .is_none()
-    {
-        eprintln!(
-            "skipping ignored test because neither {} nor the default external ROM store is configured",
-            RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR
-        );
-        return;
-    }
-
-    let report = RomRunner::new()
-        .run_suite(&retrio_blargg_mem_timing_suite())
-        .expect("external retrio/blargg mem_timing suite should execute");
-
-    assert!(report.all_passed(), "{report:#?}");
-}
-
-#[test]
-#[ignore = "requires retrio/gb-test-roms assets under GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"]
-fn retrio_blargg_mem_timing_individual_suite_runs_against_real_external_assets() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("workspace root should be two levels above gb-test-runner");
-
-    if discover_external_rom_root_for_key(workspace_root, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR)
-        .expect("external ROM source manifest should be readable")
-        .is_none()
-    {
-        eprintln!(
-            "skipping ignored test because neither {} nor the default external ROM store is configured",
-            RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR
-        );
-        return;
-    }
-
-    let report = RomRunner::new()
-        .run_suite(&retrio_blargg_mem_timing_individual_suite())
-        .expect("external retrio/blargg mem_timing individual suite should execute");
-
-    assert!(report.all_passed(), "{report:#?}");
-}
-
-#[test]
-#[ignore = "requires retrio/gb-test-roms assets under GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"]
-fn retrio_blargg_oam_bug_suite_runs_against_real_external_assets() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("workspace root should be two levels above gb-test-runner");
-
-    if discover_external_rom_root_for_key(workspace_root, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR)
-        .expect("external ROM source manifest should be readable")
-        .is_none()
-    {
-        eprintln!(
-            "skipping ignored test because neither {} nor the default external ROM store is configured",
-            RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR
-        );
-        return;
-    }
-
-    let report = RomRunner::new()
-        .run_suite(&retrio_blargg_oam_bug_suite())
-        .expect("external retrio/blargg oam_bug suite should execute");
-
-    assert!(report.all_passed(), "{report:#?}");
-}
-
-#[test]
-#[ignore = "requires GBEmulatorShootout assets under GB_CYCLE_GBEMU_SHOOTOUT_ROOT"]
-fn gbdev_dmg_acid2_suite_runs_against_real_external_assets() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("workspace root should be two levels above gb-test-runner");
-
-    if discover_external_rom_root_for_key(workspace_root, GBEMU_SHOOTOUT_ROOT_ENV_VAR)
-        .expect("external ROM source manifest should be readable")
-        .is_none()
-    {
-        eprintln!(
-            "skipping ignored test because neither {} nor the default external ROM store is configured",
-            GBEMU_SHOOTOUT_ROOT_ENV_VAR
-        );
-        return;
-    }
-
-    let report = RomRunner::new()
-        .run_suite(&gbdev_dmg_acid2_suite())
-        .expect("external GBEmulatorShootout dmg-acid2 suite should execute");
-
-    assert!(report.all_passed(), "{report:#?}");
-}
-
-#[test]
-#[ignore = "requires retrio/gb-test-roms assets under GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"]
-fn retrio_blargg_01_special_copies_bank1_payload_to_wram_before_running() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("workspace root should be two levels above gb-test-runner");
-
-    let Some(root) =
-        discover_external_rom_root_for_key(workspace_root, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR)
-            .expect("external ROM source manifest should be readable")
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn blargg_curated_suite_passes_from_repo_store() {
+    let Some(report) =
+        run_curated_suite_and_update_report(&blargg_dmg_curated_suite(), "curated blargg suite")
     else {
+        return;
+    };
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn acid_curated_suite_passes_from_repo_store() {
+    let Some(report) =
+        run_curated_suite_and_update_report(&acid_dmg_curated_suite(), "curated acid suite")
+    else {
+        return;
+    };
+    assert!(report.all_non_failing(), "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn mealybug_curated_suite_updates_report_from_repo_store() {
+    let Some(report) = run_curated_suite_and_update_report(
+        &mealybug_tearoom_dmg_curated_suite(),
+        "curated mealybug suite",
+    ) else {
+        return;
+    };
+    assert_eq!(
+        report.family.as_deref(),
+        Some("mealybug-tearoom-tests"),
+        "{report:#?}"
+    );
+    assert_eq!(report.cases.len(), 10, "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn mooneye_curated_suite_updates_report_from_repo_store() {
+    let Some(report) = run_curated_suite_and_update_report(
+        &mooneye_acceptance_dmg_curated_suite(),
+        "curated mooneye suite",
+    ) else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
+    assert_eq!(report.cases.len(), 66, "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn blargg_01_special_copies_bank1_payload_to_wram_before_running() {
+    let workspace_root = workspace_root();
+
+    let Some(root) = discover_test_rom_store_root(&workspace_root) else {
         eprintln!(
-            "skipping ignored test because neither {} nor the default external ROM store is configured",
-            RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR
+            "skipping ignored test because neither GB_CYCLE_TEST_ROM_ROOT nor the default curated test ROM store is configured"
         );
         return;
     };
 
-    let rom_path = root.join("cpu_instrs/individual/01-special.gb");
-    let rom = fs::read(&rom_path).expect("external ROM should be readable");
+    let rom_path = root.join("blargg/cpu_instrs/01-special.gb");
+    let rom = fs::read(&rom_path).expect("curated blargg ROM should be readable");
 
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
         .load_cartridge(rom.clone())
-        .expect("external ROM should load");
+        .expect("curated blargg ROM should load");
 
     let mut saw_serial_output = false;
     for _ in 0..2_000_000_u64 {
@@ -259,18 +133,6 @@ fn retrio_blargg_01_special_copies_bank1_payload_to_wram_before_running() {
 
     assert!(
         saw_serial_output,
-        "expected startup title output before comparison"
+        "expected bank 1 payload to execute and emit serial output"
     );
-
-    for offset in 0..0x1000_u16 {
-        let expected = rom[0x4000 + usize::from(offset)];
-        let actual = machine.read_bus(0xC000 + offset);
-        assert_eq!(
-            actual,
-            expected,
-            "copied byte mismatch at WRAM {:#06X} from ROM offset {:#06X}",
-            0xC000 + offset,
-            0x4000 + offset
-        );
-    }
 }

@@ -212,7 +212,13 @@ fn select_suite_for_options(options: &SameBoyTesterCliOptions) -> Result<RomSuit
                 options.suite_name, case_id
             ));
         };
-        suite = RomSuite::new(suite.name, suite.subsystem).with_case(case);
+        suite = if let Some(family) = suite.family {
+            RomSuite::new(suite.name, suite.subsystem)
+                .with_family(family)
+                .with_case(case)
+        } else {
+            RomSuite::new(suite.name, suite.subsystem).with_case(case)
+        };
     }
 
     Ok(suite)
@@ -276,8 +282,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::{
-        GBEMU_SHOOTOUT_ROOT_ENV_VAR, SameBoyTesterImageFormat, SameBoyTesterSuiteReport,
-        TestSubsystem, sameboy_tester::SameBoyTesterCaseReport, sameboy_tester_oracle_root,
+        SameBoyTesterImageFormat, SameBoyTesterSuiteReport, TEST_ROM_ROOT_ENV_VAR, TestSubsystem,
+        sameboy_tester::SameBoyTesterCaseReport, sameboy_tester_oracle_root,
     };
 
     use super::{
@@ -341,9 +347,9 @@ mod tests {
                 "--image-format",
                 "tga",
                 "--suite",
-                "gbdev-dmg-acid2",
+                "acid-dmg-curated",
                 "--case",
-                "gbdev-dmg-acid2",
+                "dmg-acid2",
                 "--build-if-missing",
             ])
             .expect("run args should parse"),
@@ -352,8 +358,8 @@ mod tests {
                 sameboy_root: Some(PathBuf::from("/tmp/SameBoy")),
                 tester_binary: None,
                 image_format: crate::SameBoyTesterImageFormat::Tga,
-                suite_name: "gbdev-dmg-acid2".to_string(),
-                case_id: Some("gbdev-dmg-acid2".to_string()),
+                suite_name: "acid-dmg-curated".to_string(),
+                case_id: Some("dmg-acid2".to_string()),
                 timeout_override: None,
                 build_if_missing: true,
             })
@@ -362,7 +368,7 @@ mod tests {
 
     #[test]
     fn parse_arguments_rejects_bad_values_and_defaults_oracle_root() {
-        let parsed = parse_sameboy_tester_arguments(["--suite", "gbdev-dmg-acid2"])
+        let parsed = parse_sameboy_tester_arguments(["--suite", "acid-dmg-curated"])
             .expect("suite-only invocation should use default oracle root");
         let SameBoyTesterCliAction::Run(parsed) = parsed else {
             panic!("expected run action");
@@ -381,9 +387,13 @@ mod tests {
                 .expect("short help should parse")
         );
 
-        let bad_format =
-            parse_sameboy_tester_arguments(["--image-format", "png", "--suite", "gbdev-dmg-acid2"])
-                .expect_err("bad image format should fail");
+        let bad_format = parse_sameboy_tester_arguments([
+            "--image-format",
+            "png",
+            "--suite",
+            "acid-dmg-curated",
+        ])
+        .expect_err("bad image format should fail");
         assert!(bad_format.contains("unknown image format"));
     }
 
@@ -407,7 +417,7 @@ mod tests {
             sameboy_root: None,
             tester_binary: None,
             image_format: crate::SameBoyTesterImageFormat::Bmp,
-            suite_name: "gbdev-dmg-acid2".to_string(),
+            suite_name: "acid-dmg-curated".to_string(),
             case_id: Some("missing".to_string()),
             timeout_override: None,
             build_if_missing: false,
@@ -421,8 +431,8 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock should be lockable");
         let temp_dir = unique_temp_dir("run-command");
         let oracle_root = temp_dir.join("oracle");
-        let rom_root = temp_dir.join("shootout");
-        let rom_path = rom_root.join("testroms/acid/dmg-acid2.gb");
+        let rom_root = temp_dir.join("test-rom-store");
+        let rom_path = rom_root.join("acid/dmg-acid2.gb");
         fs::create_dir_all(rom_path.parent().expect("rom path should have a parent"))
             .expect("rom dir should be creatable");
         fs::write(&rom_path, b"rom").expect("rom should be writable");
@@ -432,15 +442,15 @@ mod tests {
             &tester_binary,
             "#!/bin/sh\nset -eu\nrom=''\nfor arg in \"$@\"; do rom=\"$arg\"; done\nprintf 'bmp' > \"${rom%.gb}.bmp\"\nprintf 'log' > \"${rom%.gb}.log\"\n",
         );
-        set_env_var(GBEMU_SHOOTOUT_ROOT_ENV_VAR, &rom_root);
+        set_env_var(TEST_ROM_ROOT_ENV_VAR, &rom_root);
 
         let mut output = Vec::new();
         run_sameboy_tester_command(
             [
                 "--suite",
-                "gbdev-dmg-acid2",
+                "acid-dmg-curated",
                 "--case",
-                "gbdev-dmg-acid2",
+                "dmg-acid2",
                 "--oracle-root",
                 oracle_root.to_str().expect("oracle root should be utf-8"),
                 "--tester-binary",
@@ -451,11 +461,11 @@ mod tests {
             &mut output,
         )
         .expect("run command should succeed");
-        remove_env_var(GBEMU_SHOOTOUT_ROOT_ENV_VAR);
+        remove_env_var(TEST_ROM_ROOT_ENV_VAR);
 
         let rendered = String::from_utf8(output).expect("output should be utf-8");
-        assert!(rendered.contains("suite=gbdev-dmg-acid2"));
-        assert!(rendered.contains("case=gbdev-dmg-acid2"));
+        assert!(rendered.contains("suite=acid-dmg-curated"));
+        assert!(rendered.contains("case=dmg-acid2"));
         assert!(rendered.contains("image_format=bmp"));
         assert!(
             rendered

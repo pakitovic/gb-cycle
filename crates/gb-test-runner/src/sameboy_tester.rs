@@ -455,7 +455,7 @@ mod tests {
     fn sample_framebuffer_case() -> RomTestCase {
         RomTestCase::new(
             "acid2",
-            "testroms/acid/dmg-acid2.gb",
+            "acid/dmg-acid2.gb",
             Timeout::Frames(180),
             PassCondition::FramebufferFixture(PathBuf::from("unused")),
         )
@@ -484,8 +484,8 @@ mod tests {
             })
         );
         assert_eq!(
-            oracle_relative_rom_path(Path::new("testroms/acid/dmg-acid2.gb")),
-            PathBuf::from("testroms/acid/dmg-acid2.gb")
+            oracle_relative_rom_path(Path::new("acid/dmg-acid2.gb")),
+            PathBuf::from("acid/dmg-acid2.gb")
         );
         assert_eq!(
             oracle_relative_rom_path(Path::new("/tmp/mealybug/../acid/dmg-acid2.gb")),
@@ -608,7 +608,7 @@ mod tests {
         let temp_dir = unique_temp_dir("run-case");
         let oracle_root = temp_dir.join("oracle");
         let rom_root = temp_dir.join("roms");
-        let rom_path = rom_root.join("testroms/acid/dmg-acid2.gb");
+        let rom_path = rom_root.join("acid/dmg-acid2.gb");
         fs::create_dir_all(rom_path.parent().expect("rom path should have a parent"))
             .expect("rom dir should be creatable");
         fs::write(&rom_path, b"rom").expect("rom should be writable");
@@ -653,7 +653,7 @@ mod tests {
         let temp_dir = unique_temp_dir("run-suite");
         let oracle_root = temp_dir.join("oracle");
         let rom_root = temp_dir.join("roms");
-        let rom_a = rom_root.join("testroms/acid/dmg-acid2.gb");
+        let rom_a = rom_root.join("acid/dmg-acid2.gb");
         let rom_b = rom_root.join("suite/b.gb");
         fs::create_dir_all(rom_a.parent().expect("rom path should have a parent"))
             .expect("rom dir should be creatable");
@@ -700,12 +700,12 @@ mod tests {
         assert!(
             report.cases[0]
                 .staged_rom_path
-                .ends_with("testroms/acid/dmg-acid2.gb")
+                .ends_with("acid/dmg-acid2.gb")
         );
         assert!(
             report.cases[0]
                 .image_artifact_path
-                .ends_with("testroms/acid/dmg-acid2.tga")
+                .ends_with("acid/dmg-acid2.tga")
         );
         assert!(
             report.cases[0]
@@ -723,7 +723,7 @@ mod tests {
         let temp_dir = unique_temp_dir("tester-failure");
         let oracle_root = temp_dir.join("oracle");
         let rom_root = temp_dir.join("roms");
-        let rom_path = rom_root.join("testroms/acid/dmg-acid2.gb");
+        let rom_path = rom_root.join("acid/dmg-acid2.gb");
         fs::create_dir_all(rom_path.parent().expect("rom path should have a parent"))
             .expect("rom dir should be creatable");
         fs::write(&rom_path, b"rom").expect("rom should be writable");

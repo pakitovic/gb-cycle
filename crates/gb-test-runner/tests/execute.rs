@@ -1,14 +1,12 @@
 use std::env;
 use std::fs;
-use std::path::Path;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gb_test_runner::{
-    BootRomVerificationMode, EXTERNAL_ROM_SOURCE_MANIFEST_PATH, MemoryTextOutputSpec,
-    PassCondition, RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR, RomCaseFailure, RomCaseOutcome,
-    RomExecutionError, RomRunner, RomTestCase, StartupMemoryWrite, Timeout,
-    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
+    BootRomVerificationMode, CaptureKind, MemoryTextOutputSpec, PassCondition, RomCaseFailure,
+    RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, StartupMemoryWrite,
+    TEST_ROM_ROOT_ENV_VAR, Timeout, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -142,30 +140,6 @@ fn unique_temp_dir(label: &str) -> PathBuf {
             .expect("system clock should be after unix epoch")
             .as_nanos()
     ))
-}
-
-fn write_external_rom_manifest(workspace_root: &Path) {
-    let manifest_path = workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH);
-    let manifest_parent = manifest_path
-        .parent()
-        .expect("manifest path should have a parent");
-    fs::create_dir_all(manifest_parent).expect("manifest parent should be creatable");
-    fs::write(
-        manifest_path,
-        concat!(
-            "version = 1\n\n",
-            "[[source]]\n",
-            "id = \"retrio-gb-test-roms\"\n",
-            "git_url = \"https://example.invalid/retrio/gb-test-roms.git\"\n",
-            "git_rev = \"deadbeef\"\n",
-            "local_dir = \"retrio-gb-test-roms\"\n",
-            "root_env_var = \"GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT\"\n\n",
-            "[[source.required_file]]\n",
-            "path = \"cpu_instrs/individual/01-special.gb\"\n",
-            "sha256 = \"unused-in-local-root-resolution-tests\"\n",
-        ),
-    )
-    .expect("manifest should be writable");
 }
 
 #[test]
@@ -332,26 +306,59 @@ fn runner_captures_blargg_console_text_from_bg_map_output() {
 }
 
 #[test]
+fn runner_marks_informational_cases_as_non_failing_without_promoting_them_to_passed() {
+    let temp_dir = unique_temp_dir("info-case");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let rom_path = temp_dir.join("info_case.gb");
+    fs::write(
+        &rom_path,
+        build_test_rom(&[
+            0xC3, 0x00, 0x01, // JP $0100
+        ]),
+    )
+    .expect("informational test rom should be writable");
+
+    let case = RomTestCase::new(
+        "info-case",
+        &rom_path,
+        Timeout::TCycles(128),
+        PassCondition::Informational(CaptureKind::Snapshot),
+    );
+
+    let report = RomRunner::new()
+        .run_case(&case)
+        .expect("informational case should execute");
+
+    assert_eq!(report.outcome, RomCaseOutcome::Informational);
+    assert!(report.non_failing());
+    assert!(!report.passed());
+    assert!(report.artifacts.snapshot_text.is_some());
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
 fn runner_resolves_roms_from_an_explicit_external_root() {
     let temp_dir = unique_temp_dir("external-root");
-    let rom_root = temp_dir.join("retrio-root");
-    fs::create_dir_all(rom_root.join("cpu_instrs/individual"))
+    let rom_root = temp_dir.join("test-rom-root");
+    fs::create_dir_all(rom_root.join("blargg/cpu_instrs"))
         .expect("external root directory should be creatable");
 
-    let rom_path = rom_root.join("cpu_instrs/individual/01-special.gb");
+    let rom_path = rom_root.join("blargg/cpu_instrs/01-special.gb");
     fs::write(&rom_path, build_single_byte_serial_rom(b'P'))
         .expect("external root rom should be writable");
 
     let case = RomTestCase::new(
         "external-root-pass",
-        "cpu_instrs/individual/01-special.gb",
+        "blargg/cpu_instrs/01-special.gb",
         Timeout::TCycles(5_000),
         PassCondition::SerialContains("P".to_string()),
     )
-    .with_external_rom_root_key(RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR);
+    .with_external_rom_root_key(TEST_ROM_ROOT_ENV_VAR);
 
     let report = RomRunner::new()
-        .with_external_rom_root(RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR, &rom_root)
+        .with_external_rom_root(TEST_ROM_ROOT_ENV_VAR, &rom_root)
         .run_case(&case)
         .expect("external-root rom case should execute");
 
@@ -362,29 +369,28 @@ fn runner_resolves_roms_from_an_explicit_external_root() {
 }
 
 #[test]
-fn runner_resolves_roms_from_the_default_repo_managed_external_store() {
-    let temp_dir = unique_temp_dir("default-external-store");
-    let rom_root = temp_dir.join(".roms/external-test/retrio-gb-test-roms");
-    fs::create_dir_all(rom_root.join("cpu_instrs/individual"))
-        .expect("default external store directory should be creatable");
-    write_external_rom_manifest(&temp_dir);
+fn runner_resolves_roms_from_the_default_repo_managed_test_rom_store() {
+    let temp_dir = unique_temp_dir("default-test-rom-store");
+    let rom_root = temp_dir.join(".roms/test");
+    fs::create_dir_all(rom_root.join("blargg/cpu_instrs"))
+        .expect("default test rom store directory should be creatable");
 
-    let rom_path = rom_root.join("cpu_instrs/individual/01-special.gb");
+    let rom_path = rom_root.join("blargg/cpu_instrs/01-special.gb");
     fs::write(&rom_path, build_single_byte_serial_rom(b'R'))
-        .expect("default external store rom should be writable");
+        .expect("default test rom store rom should be writable");
 
     let case = RomTestCase::new(
-        "default-external-root-pass",
-        "cpu_instrs/individual/01-special.gb",
+        "default-test-rom-root-pass",
+        "blargg/cpu_instrs/01-special.gb",
         Timeout::TCycles(5_000),
         PassCondition::SerialContains("R".to_string()),
     )
-    .with_external_rom_root_key(RETRIO_GB_TEST_ROMS_ROOT_ENV_VAR);
+    .with_external_rom_root_key(TEST_ROM_ROOT_ENV_VAR);
 
     let report = RomRunner::new()
         .with_workspace_root(&temp_dir)
         .run_case(&case)
-        .expect("default external-root rom case should execute");
+        .expect("default test-rom-store case should execute");
 
     assert_eq!(report.outcome, RomCaseOutcome::Passed);
     assert_eq!(report.artifacts.serial.as_deref(), Some("R"));
@@ -466,7 +472,7 @@ fn runner_rejects_unexpected_boot_rom_hashes_in_strict_real_boot_mode() {
 fn runner_errors_when_external_root_is_missing() {
     let case = RomTestCase::new(
         "missing-external-root",
-        "cpu_instrs/individual/01-special.gb",
+        "blargg/cpu_instrs/01-special.gb",
         Timeout::TCycles(64),
         PassCondition::SerialContains("Passed".to_string()),
     )
@@ -481,7 +487,7 @@ fn runner_errors_when_external_root_is_missing() {
             assert_eq!(key, "GB_CYCLE_TEST_MISSING_ROOT");
             assert_eq!(
                 relative_path,
-                PathBuf::from("cpu_instrs/individual/01-special.gb")
+                PathBuf::from("blargg/cpu_instrs/01-special.gb")
             );
         }
         other => panic!("unexpected error: {other:?}"),

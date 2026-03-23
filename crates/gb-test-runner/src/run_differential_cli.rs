@@ -36,7 +36,7 @@ pub fn differential_cli_help_text() -> &'static str {
         "artifact filenames that gb-test-runner already emits locally, such as serial.txt,\n",
         "memory_text_output.txt, blargg_console.txt, framebuffer.pgm, or trace.txt.\n",
         "The sameboy-tester layout is framebuffer-only and expects SameBoy Tester BMP/TGA\n",
-        "artifacts located alongside ROM-relative paths, such as testroms/acid/dmg-acid2.bmp.\n",
+        "artifacts located alongside ROM-relative paths, such as acid/dmg-acid2.bmp.\n",
     )
 }
 
@@ -225,7 +225,13 @@ fn select_suite_for_options(options: &DifferentialCliOptions) -> Result<RomSuite
                 options.suite_name, case_id
             ));
         };
-        suite = RomSuite::new(suite.name, suite.subsystem).with_case(case);
+        suite = if let Some(family) = suite.family {
+            RomSuite::new(suite.name, suite.subsystem)
+                .with_family(family)
+                .with_case(case)
+        } else {
+            RomSuite::new(suite.name, suite.subsystem).with_case(case)
+        };
     }
 
     Ok(suite)
@@ -414,7 +420,7 @@ mod tests {
             "--oracle-layout",
             "sameboy-tester",
             "--suite",
-            "gbdev-dmg-acid2",
+            "acid-dmg-curated",
         ])
         .expect("sameboy-tester root should be inferred");
         let DifferentialCliAction::Run(sameboy_tester_root) = sameboy_tester_root else {
@@ -535,6 +541,7 @@ mod tests {
                 oracle_artifact_path: PathBuf::from("/tmp/oracle.bmp"),
                 local_report: RomCaseReport {
                     case_id: "case".to_string(),
+                    rom_path: PathBuf::from("synthetic/case.gb"),
                     outcome: RomCaseOutcome::Passed,
                     executed_t_cycles: 77,
                     completed_frames: 2,

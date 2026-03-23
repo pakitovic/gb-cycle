@@ -1350,7 +1350,7 @@ mod tests {
     };
     use crate::{
         CaptureKind, CapturedArtifacts, CapturedMemoryTextOutput, PassCondition, RomCaseOutcome,
-        RomCaseReport, RomTestCase, Timeout, gbdev_dmg_acid2_suite, phase_2_cpu_timing_suite,
+        RomCaseReport, RomTestCase, Timeout, acid_dmg_curated_suite, phase_2_cpu_timing_suite,
         render_memory_text_output,
     };
     use std::env;
@@ -1435,6 +1435,7 @@ mod tests {
     fn sample_case_report(case_id: &str, artifacts: CapturedArtifacts) -> RomCaseReport {
         RomCaseReport {
             case_id: case_id.to_string(),
+            rom_path: PathBuf::from(format!("synthetic/{case_id}.gb")),
             outcome: RomCaseOutcome::Passed,
             executed_t_cycles: 123,
             completed_frames: 4,
@@ -1474,8 +1475,12 @@ mod tests {
 
     #[test]
     fn sameboy_tester_layout_resolves_framebuffer_from_rom_path() {
-        let suite = gbdev_dmg_acid2_suite();
-        let case = &suite.cases[0];
+        let suite = acid_dmg_curated_suite();
+        let case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "dmg-acid2")
+            .expect("acid suite should include dmg-acid2");
         let runner = DifferentialRunner::new(DifferentialOracle::SameBoy, "/tmp/oracle")
             .with_oracle_layout(DifferentialOracleLayout::SameBoyTester);
 
@@ -1483,7 +1488,7 @@ mod tests {
             .resolve_oracle_artifact_path(case, CaptureKind::Framebuffer)
             .expect("framebuffer path should resolve");
 
-        assert!(path.ends_with("testroms/acid/dmg-acid2.bmp"));
+        assert!(path.ends_with("acid/dmg-acid2.bmp"));
     }
 
     #[test]
@@ -1511,6 +1516,7 @@ mod tests {
             CaptureKind::Framebuffer,
             &RomCaseReport {
                 case_id: "case".to_string(),
+                rom_path: PathBuf::from("synthetic/case.gb"),
                 outcome: RomCaseOutcome::Passed,
                 executed_t_cycles: 0,
                 completed_frames: 0,

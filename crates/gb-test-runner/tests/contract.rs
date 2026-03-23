@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
 use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
-    FailureArtifactPolicy, GBEMU_SHOOTOUT_ROOT_ENV_VAR, MemoryTextOutputSpec, PassCondition,
-    RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase, StimulusTime,
-    TestSubsystem, Timeout, gbdev_dmg_acid2_suite, gbdev_mealybug_tearoom_dmg_curated_suite,
-    gbdev_mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite,
-    phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite, retrio_blargg_oam_bug_suite,
+    FailureArtifactPolicy, MemoryTextOutputSpec, PassCondition, RomCaseValidationError, RomSuite,
+    RomSuiteValidationError, RomTestCase, StimulusTime, TEST_ROM_ROOT_ENV_VAR, TestSubsystem,
+    Timeout, acid_dmg_curated_suite, blargg_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
+    mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
+    phase_4_ppu_oam_corruption_suite,
 };
 
 #[test]
@@ -542,39 +542,74 @@ fn phase_4_rom_automation_targets_validate_for_ppu_oam_corruption() {
 }
 
 #[test]
-fn official_oam_bug_suite_tracks_the_curated_shootout_list() {
-    let suite = retrio_blargg_oam_bug_suite();
+fn curated_blargg_suite_tracks_the_supported_individual_shootout_list() {
+    let suite = blargg_dmg_curated_suite();
 
-    assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
     assert_eq!(suite.validate(), Ok(()));
-    assert_eq!(suite.cases.len(), 7);
+    assert_eq!(suite.family.as_deref(), Some("blargg"));
+    assert_eq!(suite.cases.len(), 25);
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.id == "retrio-oam-bug-1-lcd-sync")
+            .any(|case| case.id == "blargg-cpu-instrs-01-special")
     );
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.id == "retrio-oam-bug-8-instr-effect")
+            .any(|case| case.id == "blargg-oam-bug-8-instr-effect")
+    );
+    assert!(
+        !suite
+            .cases
+            .iter()
+            .any(|case| case.id == "blargg-instr-timing")
     );
 }
 
 #[test]
-fn dmg_acid2_suite_uses_a_framebuffer_fixture_contract() {
-    let suite = gbdev_dmg_acid2_suite();
+fn acid_dmg_curated_suite_tracks_framebuffer_oracle_and_informational_cases() {
+    let suite = acid_dmg_curated_suite();
 
     assert_eq!(suite.subsystem, TestSubsystem::Ppu);
     assert_eq!(suite.validate(), Ok(()));
-    assert_eq!(suite.cases.len(), 1);
-    let case = &suite.cases[0];
-    assert_eq!(case.id, "gbdev-dmg-acid2");
+    assert_eq!(suite.family.as_deref(), Some("acid"));
+    assert_eq!(suite.cases.len(), 2);
+
+    let which_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "which-dmg")
+        .expect("acid suite should include which.gb");
+    assert_eq!(
+        which_case.external_rom_root_key.as_deref(),
+        Some(TEST_ROM_ROOT_ENV_VAR)
+    );
+    assert_eq!(which_case.rom_path, PathBuf::from("acid/which.gb"));
+    assert!(which_case.capture_plan.contains(CaptureKind::Framebuffer));
+    assert!(which_case.capture_plan.contains(CaptureKind::Snapshot));
+    assert!(
+        which_case
+            .failure_artifacts
+            .contains(CaptureKind::Framebuffer)
+    );
+    assert!(matches!(
+        which_case.pass_condition,
+        PassCondition::Informational(CaptureKind::Framebuffer)
+    ));
+
+    let case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "dmg-acid2")
+        .expect("acid suite should include dmg-acid2");
     assert_eq!(
         case.external_rom_root_key.as_deref(),
-        Some(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+        Some(TEST_ROM_ROOT_ENV_VAR)
     );
+    assert_eq!(case.rom_path, PathBuf::from("acid/dmg-acid2.gb"));
     assert!(case.capture_plan.contains(CaptureKind::Framebuffer));
     assert!(case.capture_plan.contains(CaptureKind::Snapshot));
     assert!(case.failure_artifacts.contains(CaptureKind::Framebuffer));
@@ -586,13 +621,14 @@ fn dmg_acid2_suite_uses_a_framebuffer_fixture_contract() {
 
 #[test]
 fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
-    let suite = gbdev_mealybug_tearoom_dmg_curated_suite();
+    let suite = mealybug_tearoom_dmg_curated_suite();
 
     assert_eq!(suite.subsystem, TestSubsystem::Ppu);
     assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
     assert_eq!(suite.cases.len(), 10);
     assert!(suite.cases.iter().all(|case| {
-        case.external_rom_root_key.as_deref() == Some(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+        case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
             && case.capture_plan.contains(CaptureKind::Framebuffer)
             && case.capture_plan.contains(CaptureKind::Snapshot)
             && case.failure_artifacts.contains(CaptureKind::Framebuffer)
@@ -602,25 +638,25 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
         suite
             .cases
             .iter()
-            .any(|case| case.id == "gbdev-mealybug-m2-win-en-toggle")
+            .any(|case| case.id == "mealybug-m2-win-en-toggle")
     );
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.id == "gbdev-mealybug-m3-window-timing-wx-0")
+            .any(|case| case.id == "mealybug-m3-window-timing-wx-0")
     );
     let obp0_change = suite
         .cases
         .iter()
-        .find(|case| case.id == "gbdev-mealybug-m3-obp0-change")
+        .find(|case| case.id == "mealybug-m3-obp0-change")
         .expect("curated mealybug suite should include m3_obp0_change");
     assert_eq!(obp0_change.startup_mode, StartupMode::SkipBoot);
     assert_eq!(obp0_change.startup_memory_writes.len(), 16);
     let bgp_change_sprites = suite
         .cases
         .iter()
-        .find(|case| case.id == "gbdev-mealybug-m3-bgp-change-sprites")
+        .find(|case| case.id == "mealybug-m3-bgp-change-sprites")
         .expect("curated mealybug suite should include m3_bgp_change_sprites");
     assert_eq!(bgp_change_sprites.startup_mode, StartupMode::SkipBoot);
     assert_eq!(bgp_change_sprites.startup_memory_writes.len(), 16);
@@ -629,17 +665,16 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
 #[test]
 fn curated_mooneye_suite_uses_snapshot_oracles_and_serial_diagnostics_for_the_active_gbemu_acceptance_list()
  {
-    let suite = gbdev_mooneye_acceptance_dmg_curated_suite();
+    let suite = mooneye_acceptance_dmg_curated_suite();
 
     assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
     assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.family.as_deref(), Some("mooneye"));
     assert_eq!(suite.cases.len(), 66);
     assert!(suite.cases.iter().all(|case| {
         case.console_model == ConsoleModel::Dmg
-            && case.external_rom_root_key.as_deref() == Some(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
-            && case
-                .rom_path
-                .starts_with(Path::new("testroms/mooneye/acceptance"))
+            && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+            && case.rom_path.starts_with(Path::new("mooneye/acceptance"))
             && case.capture_plan
                 == CapturePlan::new()
                     .with_capture(CaptureKind::Snapshot)
@@ -661,13 +696,13 @@ fn curated_mooneye_suite_uses_snapshot_oracles_and_serial_diagnostics_for_the_ac
         suite
             .cases
             .iter()
-            .any(|case| case.id == "gbdev-mooneye-boot-regs-dmgabc")
+            .any(|case| case.id == "mooneye-boot-regs-dmgabc")
     );
     assert!(
         suite
             .cases
             .iter()
-            .any(|case| case.id == "gbdev-mooneye-timer-tma-write-reloading")
+            .any(|case| case.id == "mooneye-timer-tma-write-reloading")
     );
 }
 

@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gb_test_runner::{
-    GBEMU_SHOOTOUT_ROOT_ENV_VAR, RomRunner, SameBoyTesterExecutionError, SameBoyTesterImageFormat,
-    SameBoyTesterRunner, gbdev_dmg_acid2_suite, phase_2_cpu_timing_suite,
+    RomRunner, SameBoyTesterExecutionError, SameBoyTesterImageFormat, SameBoyTesterRunner,
+    TEST_ROM_ROOT_ENV_VAR, acid_dmg_curated_suite, phase_2_cpu_timing_suite,
 };
 
 fn unique_temp_dir(label: &str) -> PathBuf {
@@ -59,14 +59,12 @@ fn sameboy_tester_runner_stages_dmg_acid2_and_emits_image_and_log_artifacts() {
     let temp_dir = unique_temp_dir("acid2");
     let oracle_root = temp_dir.join("oracle");
     let external_root = temp_dir.join("external");
-    let rom_path = external_root.join("testroms/acid/dmg-acid2.gb");
-    fs::create_dir_all(
-        rom_path
-            .parent()
-            .expect("test ROM path should have a parent"),
-    )
-    .expect("external ROM dir should be creatable");
-    fs::write(&rom_path, b"fake-rom").expect("external ROM should be writable");
+    let acid_root = external_root.join("acid");
+    fs::create_dir_all(&acid_root).expect("external ROM dir should be creatable");
+    fs::write(acid_root.join("which.gb"), b"fake-which-rom")
+        .expect("informational external ROM should be writable");
+    fs::write(acid_root.join("dmg-acid2.gb"), b"fake-rom")
+        .expect("framebuffer oracle ROM should be writable");
 
     let args_output = temp_dir.join("tester-args.txt");
     let tester_binary = temp_dir.join("fake-sameboy-tester.sh");
@@ -74,28 +72,29 @@ fn sameboy_tester_runner_stages_dmg_acid2_and_emits_image_and_log_artifacts() {
 
     let report = SameBoyTesterRunner::new(&oracle_root)
         .with_rom_runner(
-            RomRunner::new().with_external_rom_root(GBEMU_SHOOTOUT_ROOT_ENV_VAR, &external_root),
+            RomRunner::new().with_external_rom_root(TEST_ROM_ROOT_ENV_VAR, &external_root),
         )
         .with_tester_binary(&tester_binary)
         .with_image_format(SameBoyTesterImageFormat::Tga)
-        .run_suite(&gbdev_dmg_acid2_suite())
+        .run_suite(&acid_dmg_curated_suite())
         .expect("SameBoy tester suite should run");
 
-    assert_eq!(report.cases.len(), 1);
-    let case = &report.cases[0];
+    assert_eq!(report.cases.len(), 2);
+    let case = report
+        .cases
+        .iter()
+        .find(|case| case.case_id == "dmg-acid2")
+        .expect("report should include dmg-acid2");
     assert!(case.staged_rom_path.is_file());
     assert_eq!(
         fs::read(&case.staged_rom_path).expect("staged ROM should be readable"),
         b"fake-rom"
     );
     assert!(case.image_artifact_path.is_file());
-    assert!(
-        case.image_artifact_path
-            .ends_with("testroms/acid/dmg-acid2.tga")
-    );
+    assert!(case.image_artifact_path.ends_with("acid/dmg-acid2.tga"));
     assert_eq!(
         case.log_artifact_path.as_ref(),
-        Some(&oracle_root.join("testroms/acid/dmg-acid2.log"))
+        Some(&oracle_root.join("acid/dmg-acid2.log"))
     );
     assert!(case.startup_mode_note.is_some());
 
@@ -106,10 +105,17 @@ fn sameboy_tester_runner_stages_dmg_acid2_and_emits_image_and_log_artifacts() {
     assert!(
         args.contains(
             oracle_root
-                .join("testroms/acid/dmg-acid2.gb")
+                .join("acid/dmg-acid2.gb")
                 .to_str()
                 .expect("staged ROM path should be utf-8")
         )
+    );
+    assert!(
+        report
+            .cases
+            .iter()
+            .any(|case| case.case_id == "which-dmg"
+                && case.staged_rom_path.ends_with("acid/which.gb"))
     );
 }
 

@@ -2,8 +2,9 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use crate::{
-    CapturedArtifacts, EarlyHardeningStatus, RomRunner, RomSuite, RomSuiteReport, Timeout,
-    built_in_rom_suite_by_name, built_in_rom_suites, early_phase_9_partial_checklist,
+    CapturedArtifacts, EarlyHardeningStatus, RomRunner, RomSuite, RomSuiteReport,
+    TEST_ROM_ROOT_ENV_VAR, Timeout, built_in_rom_suite_by_name, built_in_rom_suites,
+    early_phase_9_partial_checklist, update_curated_test_report,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,8 +159,11 @@ fn run_selected_suite<W: Write>(
         .run_suite(&suite)
         .map_err(|error| format!("failed to execute suite {}: {error:?}", suite.name))?;
     write_suite_report(output, &report)?;
+    if let Some(report_path) = update_curated_test_report(runner.workspace_root(), &report)? {
+        writeln_checked(output, &format!("test_report={}", report_path.display()))?;
+    }
 
-    if report.all_passed() {
+    if report.all_non_failing() {
         Ok(())
     } else {
         Err("one or more ROM cases failed".to_string())
@@ -181,7 +185,13 @@ fn select_suite_for_options(options: &RomSuiteCliOptions) -> Result<RomSuite, St
                 options.suite_name, case_id
             ));
         };
-        suite = RomSuite::new(suite.name, suite.subsystem).with_case(case);
+        suite = if let Some(family) = suite.family {
+            RomSuite::new(suite.name, suite.subsystem)
+                .with_family(family)
+                .with_case(case)
+        } else {
+            RomSuite::new(suite.name, suite.subsystem).with_case(case)
+        };
     }
 
     Ok(suite)
@@ -191,7 +201,12 @@ fn write_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
     for suite in built_in_rom_suites() {
         writeln_checked(
             output,
-            &format!("suite={} subsystem={:?}", suite.name, suite.subsystem),
+            &format!(
+                "suite={} family={} subsystem={:?}",
+                suite.name,
+                suite.family.as_deref().unwrap_or("-"),
+                suite.subsystem,
+            ),
         )?;
         for case in &suite.cases {
             writeln_checked(output, &format!("  case={}", case.id))?;
@@ -208,8 +223,9 @@ fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> 
         writeln_checked(
             output,
             &format!(
-                "suite={} subsystem={} cases={} sources={} oracles={} captures={} artifacts={}",
+                "suite={} family={} subsystem={} cases={} sources={} oracles={} captures={} artifacts={}",
                 suite.name,
+                suite.family.as_deref().unwrap_or("-"),
                 subsystem_name(suite.subsystem),
                 suite.cases.len(),
                 join_csv(&suite_sources),
@@ -222,8 +238,9 @@ fn write_detailed_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> 
             writeln_checked(
                 output,
                 &format!(
-                    "  case={} source={} oracle={} console={} startup={} mode={} timeout={} rom={} external_root_key={} captures={} artifacts={}",
+                    "  case={} family={} source={} oracle={} console={} startup={} mode={} timeout={} rom={} external_root_key={} captures={} artifacts={}",
                     case.id,
+                    suite.family.as_deref().unwrap_or("-"),
                     case_source_name(case),
                     pass_condition_name(&case.pass_condition),
                     console_model_name(case.console_model),
@@ -409,6 +426,14 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
         crate::PassCondition::MemoryTextOutputContains { .. } => "memory-text-output",
         crate::PassCondition::BlarggConsoleTextContains(_) => "blargg-console-text",
         crate::PassCondition::MooneyeResult => "mooneye-result",
+        crate::PassCondition::Informational(capture) => match capture {
+            crate::CaptureKind::Serial => "info-serial",
+            crate::CaptureKind::MemoryTextOutput => "info-memory-text-output",
+            crate::CaptureKind::BlarggConsoleText => "info-blargg-console-text",
+            crate::CaptureKind::Framebuffer => "info-framebuffer",
+            crate::CaptureKind::Trace => "info-trace",
+            crate::CaptureKind::Snapshot => "info-snapshot",
+        },
         crate::PassCondition::FramebufferFixture(_) => "framebuffer-fixture",
         crate::PassCondition::TraceFixture(_) => "trace-fixture",
     }
@@ -436,7 +461,9 @@ where
 }
 
 fn case_source_name(case: &crate::RomTestCase) -> &'static str {
-    if case.external_rom_root_key.is_some() {
+    if case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR) {
+        "test-rom-store"
+    } else if case.external_rom_root_key.is_some() {
         "external-rom"
     } else {
         "repo-fixture"
@@ -598,15 +625,17 @@ mod tests {
         let detailed_output =
             String::from_utf8(detailed_output).expect("detailed output should be utf-8");
         assert!(
-            detailed_output
-                .contains("suite=retrio-blargg-oam-bug subsystem=ppu cases=7 sources=external-rom")
+            detailed_output.contains(
+                "suite=blargg-dmg-curated family=blargg subsystem=cross-subsystem cases=25 sources=test-rom-store"
+            )
         );
         assert!(
-            detailed_output
-                .contains("oracles=memory-text-output captures=memory-text-output,snapshot")
+            detailed_output.contains(
+                "oracles=serial-contains,blargg-console-text,memory-text-output captures=serial,snapshot,blargg-console-text,memory-text-output"
+            )
         );
         assert!(detailed_output.contains(
-            "case=retrio-oam-bug-1-lcd-sync source=external-rom oracle=memory-text-output"
+            "case=blargg-oam-bug-1-lcd-sync family=blargg source=test-rom-store oracle=memory-text-output"
         ));
 
         let mut checklist_output = Vec::new();
@@ -627,9 +656,11 @@ mod tests {
     fn report_writer_covers_all_artifact_channels() {
         let report = RomSuiteReport {
             suite_name: "synthetic".to_string(),
+            family: None,
             subsystem: TestSubsystem::Cpu,
             cases: vec![RomCaseReport {
                 case_id: "case-a".to_string(),
+                rom_path: PathBuf::from("synthetic/case-a.gb"),
                 outcome: RomCaseOutcome::Failed(crate::RomCaseFailure::TimeoutExceeded),
                 executed_t_cycles: 64,
                 completed_frames: 0,

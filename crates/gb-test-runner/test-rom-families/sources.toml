@@ -1,127 +1,8 @@
+# Pinned upstream sources used to materialize curated runnable ROM families.
+# Keep source-level fetch metadata here; the per-family runnable catalogs live
+# in the sibling `*.toml` manifests under this same directory.
+
 version = 1
-
-[[source]]
-id = "retrio-gb-test-roms"
-git_url = "https://github.com/retrio/gb-test-roms.git"
-git_rev = "c240dd7d700e5c0b00a7bbba52b53e4ee67b5f15"
-local_dir = "retrio-gb-test-roms"
-root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/01-special.gb"
-sha256 = "fe61349cbaee10cc384b50f356e541c90d1bc380185716706b5d8c465a03cf89"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/02-interrupts.gb"
-sha256 = "fb90b0d2b9501910c49709abda1d8e70f757dc12020ebf8409a7779bbfd12229"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/03-op sp,hl.gb"
-sha256 = "ca553e606d9b9c86fbd318f1b916c6f0b9df0cf1774825d4361a3fdff2e5a136"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/04-op r,imm.gb"
-sha256 = "7686aa7a39ef3d2520ec1037371b5f94dc283fbbfd0f5051d1f64d987bdd6671"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/05-op rp.gb"
-sha256 = "d504adfa0a4c4793436a154f14492f044d38b3c6db9efc44138f3c9ad138b775"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/06-ld r,r.gb"
-sha256 = "17ada54b0b9c1a33cd5429fce5b765e42392189ca36da96312222ffe309e7ed1"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/07-jr,jp,call,ret,rst.gb"
-sha256 = "ab31d3daaaa3a98bdbd9395b64f48c1bdaa889aba5b19dd5aaff4ec2a7d228a3"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/08-misc instrs.gb"
-sha256 = "974a71fe4c67f70f5cc6e98d4dc8c096057ff8a028b7bfa9f7a4330038cf8b7e"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/09-op r,r.gb"
-sha256 = "b28e1be5cd95f22bd1ecacdd33c6f03e607d68870e31a47b15a0229033d5ba2a"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/10-bit ops.gb"
-sha256 = "7f5b8e488c6988b5aaba8c2a74529b7c180c55a58449d5ee89d606a07c53514a"
-
-[[source.required_file]]
-path = "cpu_instrs/individual/11-op a,(hl).gb"
-sha256 = "0ec0cf9fda3f00becaefa476df6fb526c434abd9d4a4beac237c2c2692dac5d3"
-
-[[source.required_file]]
-path = "cpu_instrs/cpu_instrs.gb"
-sha256 = "8c5e12f41e0ba5bbca796944f92ffe6de28809198682c4332e38d1b3cf56fcf2"
-
-[[source.required_file]]
-path = "instr_timing/instr_timing.gb"
-sha256 = "646067b3d6c79fda810e9c3f1cb7c0efd5abb0a7ac06437c54e65720c15d9925"
-
-[[source.required_file]]
-path = "halt_bug.gb"
-sha256 = "ddebfb81f992132954a5580e16cfb97346a4e061c762634d7701328e23fea7c6"
-
-[[source.required_file]]
-path = "mem_timing/mem_timing.gb"
-sha256 = "791cb418fd054b482a6ada5017e2405b96c2373a0f3914c6b23afeee76fa98ce"
-
-[[source.required_file]]
-path = "mem_timing/individual/01-read_timing.gb"
-sha256 = "52724532c5709e38e947eb429337c124c38bc68f373874435a7460548098b617"
-
-[[source.required_file]]
-path = "mem_timing/individual/02-write_timing.gb"
-sha256 = "eea92d3f4e95aab5910e0f7080916a3c42a2b8deae1ee5d45d1e3751d648f3f6"
-
-[[source.required_file]]
-path = "mem_timing/individual/03-modify_timing.gb"
-sha256 = "2e9067c670ff8b45916bf321677ad04a6896d06a057dbcb82ae9f208a1ae9c34"
-
-[[source.required_file]]
-path = "mem_timing-2/mem_timing.gb"
-sha256 = "ab9daf4c51f417c468ad0a61dab66872cf8b5a50e6eb08d989b581d15f3cf461"
-
-[[source.required_file]]
-path = "mem_timing-2/rom_singles/01-read_timing.gb"
-sha256 = "d9c6e86b7008fdaec2d4345c59192af4cea98b812e9b7b07239d16ad6770b576"
-
-[[source.required_file]]
-path = "mem_timing-2/rom_singles/02-write_timing.gb"
-sha256 = "9188e5d9cf9dfc9e25f7b7c5d67e5c8e36e1b25e5ef4be0089dad1ddb526706a"
-
-[[source.required_file]]
-path = "mem_timing-2/rom_singles/03-modify_timing.gb"
-sha256 = "818256ab477bb8fbb0709d28e3ec932a55c0ecd044292e760838efbb2b7fc09b"
-
-[[source.required_file]]
-path = "oam_bug/rom_singles/1-lcd_sync.gb"
-sha256 = "abc303a2c644528cbcf36e83f8020cad17fdb6abdf42940533c4f6c8830c530a"
-
-[[source.required_file]]
-path = "oam_bug/rom_singles/2-causes.gb"
-sha256 = "3f9c0db75222aae7c47382fe814b3806735b9ef76c791c6c26985b55c82235b9"
-
-[[source.required_file]]
-path = "oam_bug/rom_singles/3-non_causes.gb"
-sha256 = "33e474075def3c025ff7990af82f1effb31e83617fb88aa1ee401976c35b8978"
-
-[[source.required_file]]
-path = "oam_bug/rom_singles/4-scanline_timing.gb"
-sha256 = "5527c97665c3ad5474e5bda53a7e8e629bb1d0cb8ec54e6a1b42946dc9835ec7"
-
-[[source.required_file]]
-path = "oam_bug/rom_singles/5-timing_bug.gb"
-sha256 = "ca3500d92e77883a09e5bc560046ed3471ab362eca550689cd38a944dc558e4f"
-
-[[source.required_file]]
-path = "oam_bug/rom_singles/6-timing_no_bug.gb"
-sha256 = "e5ea594ddc7ad9a0e3063c3d6b050a2a10239cd43a23012551d4985c3712ea70"
-
-[[source.required_file]]
-path = "oam_bug/rom_singles/8-instr_effect.gb"
-sha256 = "11b372a91f65dd3bd2570aafc6f26e201fc0f05955ba3bb57f4c17cd642f7b2d"
 
 [[source]]
 id = "gbemu-shootout"
@@ -129,6 +10,106 @@ git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
 git_rev = "5fca2efde856f3929b72f40b0901c85b011665ee"
 local_dir = "gbemu-shootout"
 root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/01-special.gb"
+sha256 = "f1ecc006d7d495a11c50425e80f75c5ea3f410abf863be9729082484afebe37b"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/02-interrupts.gb"
+sha256 = "84a6883de392db9ed16c05b11e37bb2374bd6b03f336f66d6afcfb5929858d9a"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/03-op_sp,hl.gb"
+sha256 = "413c3f2abe49e01f26ce75c06de8fe72ae3b4312dba75bcd73ab84edbc19d9d7"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/04-op_r,imm.gb"
+sha256 = "f43ae5eef199cc1506325f4fd838d9f9b73b276bf2c750814a756fc8092cea24"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/05-op_rp.gb"
+sha256 = "3c7f75b7139c30acf8fae34d2f4ed721defdea950beff6b005a6c774bf49b646"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/06-ld_r,r.gb"
+sha256 = "f4f71d6e27008454151f1f8494efd09dfb8d8c462c75d8e8172f11a6f4e6da3d"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/07-jr,jp,call,ret,rst.gb"
+sha256 = "67e4d414f54482ac613dbf65c836c9b5abbdfc18644e915da7a166edd9a8f6c5"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/08-misc_instrs.gb"
+sha256 = "5fb081fa9694dd2f8d894e92d52c9c7b2b92b1e7f72ed266e798cc5e4c7cf748"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/09-op_r,r.gb"
+sha256 = "b94e88d47812e531d6b0d56fd127967b6fccb9c41be06cb0fa2fe4088b0e8f72"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/10-bit_ops.gb"
+sha256 = "4069ab4248bf42c06781b7279f6f1993eca3bd028f1afb47a08d73ef5d6f0f7d"
+
+[[source.required_file]]
+path = "testroms/blargg/cpu_instrs/11-op_a,(hl).gb"
+sha256 = "63a333835a118fb41671ef48292dd6204358962e991c886f69bee45b7bbd45cd"
+
+[[source.required_file]]
+path = "testroms/blargg/halt_bug.gb"
+sha256 = "2939d3f0cc34690d050acb5633c793ee5c593e98f1e49ad6d15639a30b69c492"
+
+[[source.required_file]]
+path = "testroms/blargg/mem_timing/01-read_timing.gb"
+sha256 = "1dae5349e184f47b966fe1bf6dffab567b04e401dc02d2ff2cdb64188ad865d0"
+
+[[source.required_file]]
+path = "testroms/blargg/mem_timing/02-write_timing.gb"
+sha256 = "0b0458c74cbf84010fbefb035d623d0b751be976072ec089a941fa6797cf25ca"
+
+[[source.required_file]]
+path = "testroms/blargg/mem_timing/03-modify_timing.gb"
+sha256 = "e57ac75d384da7df26a155e0e03a63b5ad2613f16bf72e9cf83e61a7acbf710f"
+
+[[source.required_file]]
+path = "testroms/blargg/mem_timing-2/01-read_timing.gb"
+sha256 = "022b824304303ab7ae298d8277f683a7927e1f2787e612ce16200581b192b1a4"
+
+[[source.required_file]]
+path = "testroms/blargg/mem_timing-2/02-write_timing.gb"
+sha256 = "31f2aa338b100258bf63ea824f3980dba752e38587405daab007c42f3986bf48"
+
+[[source.required_file]]
+path = "testroms/blargg/mem_timing-2/03-modify_timing.gb"
+sha256 = "cbfcf0722da3321e365d57fc26150f4c0e63fcd1b890c3213a965df26255b789"
+
+[[source.required_file]]
+path = "testroms/blargg/oam_bug/1-lcd_sync.gb"
+sha256 = "4d1cc69ccc24c077e0ea7f43a2fe5838e1bf6c676bfdf2859e678d2cd1e2ae82"
+
+[[source.required_file]]
+path = "testroms/blargg/oam_bug/2-causes.gb"
+sha256 = "a9c701a5eca915b2dbd057089d04f418283e3ade150be4853c74c2561f4ee4a9"
+
+[[source.required_file]]
+path = "testroms/blargg/oam_bug/3-non_causes.gb"
+sha256 = "b6089073cba222785251d6b627e0bfb8d14a1cbb2a90fbf9bd4f03b3bccc5898"
+
+[[source.required_file]]
+path = "testroms/blargg/oam_bug/4-scanline_timing.gb"
+sha256 = "328383cfdd9232b8f6a8b19200a6f7df9f8f32cd424552a826399fe82e4545f6"
+
+[[source.required_file]]
+path = "testroms/blargg/oam_bug/5-timing_bug.gb"
+sha256 = "a0d129d4f451ad3f22acd1308f7134c521956c6d8c814069139817788d0ae718"
+
+[[source.required_file]]
+path = "testroms/blargg/oam_bug/6-timing_no_bug.gb"
+sha256 = "f979970f9e56a88c12acc8fcf017d035b1cb441a18683c71956943c0b3a7e70a"
+
+[[source.required_file]]
+path = "testroms/blargg/oam_bug/8-instr_effect.gb"
+sha256 = "8ff2c98157ad7eccf484e9cd93ed0eb03dbc5ea026c2c6875bdf04dace82c290"
 
 [[source.required_file]]
 path = "testroms/acid/dmg-acid2.gb"
