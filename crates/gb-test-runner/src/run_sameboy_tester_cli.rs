@@ -267,14 +267,66 @@ fn writeln_checked<W: Write>(output: &mut W, line: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+    use std::fs;
+    use std::io;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::sameboy_tester_oracle_root;
+    use crate::{
+        GBEMU_SHOOTOUT_ROOT_ENV_VAR, SameBoyTesterImageFormat, SameBoyTesterSuiteReport,
+        TestSubsystem, sameboy_tester::SameBoyTesterCaseReport, sameboy_tester_oracle_root,
+    };
 
     use super::{
         SameBoyTesterCliAction, SameBoyTesterCliOptions, default_workspace_root,
-        parse_sameboy_tester_arguments, select_suite_for_options,
+        parse_sameboy_tester_arguments, run_sameboy_tester_command, sameboy_tester_cli_help_text,
+        select_suite_for_options, write_suite_report,
     };
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        env::temp_dir().join(format!(
+            "gb-cycle-run-sameboy-tester-cli-{}-{}-{}",
+            label,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
+        // SAFETY: these tests serialize environment mutation through `env_lock()`
+        // and restore the touched variables before dropping the guard.
+        unsafe {
+            env::set_var(key, value);
+        }
+    }
+
+    fn remove_env_var(key: &str) {
+        // SAFETY: these tests serialize environment mutation through `env_lock()`
+        // and restore the touched variables before dropping the guard.
+        unsafe {
+            env::remove_var(key);
+        }
+    }
+
+    fn write_executable(path: &std::path::Path, body: &str) {
+        fs::write(path, body).expect("script should be writable");
+        let mut permissions = fs::metadata(path)
+            .expect("script metadata should be readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("script should be executable");
+    }
 
     #[test]
     fn parse_arguments_supports_image_format_and_build_flag() {
@@ -319,6 +371,15 @@ mod tests {
             parsed.oracle_root,
             sameboy_tester_oracle_root(&default_workspace_root())
         );
+        assert_eq!(
+            sameboy_tester_cli_help_text(),
+            parse_sameboy_tester_arguments(["-h"])
+                .map(|action| match action {
+                    SameBoyTesterCliAction::ShowHelp => sameboy_tester_cli_help_text(),
+                    SameBoyTesterCliAction::Run(_) => panic!("expected help action"),
+                })
+                .expect("short help should parse")
+        );
 
         let bad_format =
             parse_sameboy_tester_arguments(["--image-format", "png", "--suite", "gbdev-dmg-acid2"])
@@ -353,5 +414,117 @@ mod tests {
         })
         .expect_err("unknown case should fail");
         assert!(unknown_case.contains("does not contain case"));
+    }
+
+    #[test]
+    fn run_command_executes_suite_and_renders_report_lines() {
+        let _guard = env_lock().lock().expect("env lock should be lockable");
+        let temp_dir = unique_temp_dir("run-command");
+        let oracle_root = temp_dir.join("oracle");
+        let rom_root = temp_dir.join("shootout");
+        let rom_path = rom_root.join("testroms/acid/dmg-acid2.gb");
+        fs::create_dir_all(rom_path.parent().expect("rom path should have a parent"))
+            .expect("rom dir should be creatable");
+        fs::write(&rom_path, b"rom").expect("rom should be writable");
+
+        let tester_binary = temp_dir.join("sameboy-tester");
+        write_executable(
+            &tester_binary,
+            "#!/bin/sh\nset -eu\nrom=''\nfor arg in \"$@\"; do rom=\"$arg\"; done\nprintf 'bmp' > \"${rom%.gb}.bmp\"\nprintf 'log' > \"${rom%.gb}.log\"\n",
+        );
+        set_env_var(GBEMU_SHOOTOUT_ROOT_ENV_VAR, &rom_root);
+
+        let mut output = Vec::new();
+        run_sameboy_tester_command(
+            [
+                "--suite",
+                "gbdev-dmg-acid2",
+                "--case",
+                "gbdev-dmg-acid2",
+                "--oracle-root",
+                oracle_root.to_str().expect("oracle root should be utf-8"),
+                "--tester-binary",
+                tester_binary
+                    .to_str()
+                    .expect("tester binary path should be utf-8"),
+            ],
+            &mut output,
+        )
+        .expect("run command should succeed");
+        remove_env_var(GBEMU_SHOOTOUT_ROOT_ENV_VAR);
+
+        let rendered = String::from_utf8(output).expect("output should be utf-8");
+        assert!(rendered.contains("suite=gbdev-dmg-acid2"));
+        assert!(rendered.contains("case=gbdev-dmg-acid2"));
+        assert!(rendered.contains("image_format=bmp"));
+        assert!(
+            rendered
+                .contains("startup_mode_note=SameBoy Tester always executes through a boot ROM")
+        );
+    }
+
+    #[test]
+    fn run_command_reports_selection_and_output_errors() {
+        let unknown_suite = run_sameboy_tester_command(["--suite", "missing"], &mut io::sink())
+            .expect_err("unknown suite should fail");
+        assert!(unknown_suite.contains("unknown suite"));
+
+        struct BrokenWriter;
+
+        impl io::Write for BrokenWriter {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::Error::other("broken writer"))
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let error = run_sameboy_tester_command(["--help"], &mut BrokenWriter)
+            .expect_err("broken writer should surface command output errors");
+        assert!(error.contains("failed to write command output"));
+    }
+
+    #[test]
+    fn write_suite_report_renders_case_lines_and_writer_failures() {
+        let report = SameBoyTesterSuiteReport {
+            suite_name: "suite".to_string(),
+            subsystem: TestSubsystem::Ppu,
+            tester_binary: PathBuf::from("/tmp/sameboy_tester"),
+            oracle_root: PathBuf::from("/tmp/oracles"),
+            image_format: SameBoyTesterImageFormat::Bmp,
+            cases: vec![SameBoyTesterCaseReport {
+                case_id: "case".to_string(),
+                staged_rom_path: PathBuf::from("/tmp/oracles/test.gb"),
+                image_artifact_path: PathBuf::from("/tmp/oracles/test.bmp"),
+                log_artifact_path: Some(PathBuf::from("/tmp/oracles/test.log")),
+                startup_mode_note: Some("note".to_string()),
+            }],
+        };
+
+        let mut output = Vec::new();
+        write_suite_report(&mut output, &report).expect("report should render");
+        let output = String::from_utf8(output).expect("report should be utf-8");
+        assert!(output.contains("suite=suite subsystem=Ppu"));
+        assert!(output.contains("case=case"));
+        assert!(output.contains("startup_mode_note=note"));
+
+        struct BrokenWriter;
+
+        impl io::Write for BrokenWriter {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::Error::other("broken writer"))
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let error = write_suite_report(&mut BrokenWriter, &report)
+            .expect_err("writer failure should surface");
+        assert!(error.contains("failed to write command output"));
+        assert!(sameboy_tester_cli_help_text().contains("sameboy-tester"));
     }
 }

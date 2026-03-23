@@ -310,14 +310,21 @@ fn writeln_checked<W: Write>(output: &mut W, line: &str) -> Result<(), String> {
 mod tests {
     use std::env;
     use std::fs;
+    use std::io;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::artifact_file_name;
+    use crate::{
+        CaptureKind, CapturedArtifacts, DifferentialCaseMismatch, DifferentialCaseOutcome,
+        DifferentialCaseReport, DifferentialOracle, DifferentialOracleLayout,
+        DifferentialSuiteReport, RomCaseOutcome, RomCaseReport, TestSubsystem, artifact_file_name,
+        differential::FramebufferDifferencePoint,
+    };
 
     use super::{
-        DifferentialCliAction, DifferentialCliOptions, default_workspace_root, oracle_layout_root,
-        parse_differential_arguments, run_differential_command, select_suite_for_options,
+        DifferentialCliAction, DifferentialCliOptions, default_workspace_root,
+        differential_cli_help_text, oracle_layout_root, parse_differential_arguments,
+        run_differential_command, select_suite_for_options, write_suite_report,
     };
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -399,6 +406,23 @@ mod tests {
         assert_eq!(
             default_root.oracle_artifact_root,
             oracle_layout_root(&default_workspace_root(), "sameboy", "case-bundle")
+        );
+
+        let sameboy_tester_root = parse_differential_arguments([
+            "--oracle",
+            "sameboy",
+            "--oracle-layout",
+            "sameboy-tester",
+            "--suite",
+            "gbdev-dmg-acid2",
+        ])
+        .expect("sameboy-tester root should be inferred");
+        let DifferentialCliAction::Run(sameboy_tester_root) = sameboy_tester_root else {
+            panic!("expected run action");
+        };
+        assert_eq!(
+            sameboy_tester_root.oracle_artifact_root,
+            oracle_layout_root(&default_workspace_root(), "sameboy", "sameboy-tester")
         );
     }
 
@@ -494,5 +518,88 @@ mod tests {
         let output = String::from_utf8(output).expect("command output should be utf-8");
         assert!(output.contains("mismatch=trace-mismatch"));
         assert!(output.contains("mismatch_detail=first_difference_byte="));
+    }
+
+    #[test]
+    fn write_suite_report_renders_mismatch_and_archived_artifacts() {
+        let report = DifferentialSuiteReport {
+            suite_name: "suite".to_string(),
+            subsystem: TestSubsystem::Ppu,
+            oracle: DifferentialOracle::SameBoy,
+            oracle_layout: DifferentialOracleLayout::SameBoyTester,
+            cases: vec![DifferentialCaseReport {
+                case_id: "case".to_string(),
+                oracle: DifferentialOracle::SameBoy,
+                oracle_layout: DifferentialOracleLayout::SameBoyTester,
+                compared_capture: CaptureKind::Framebuffer,
+                oracle_artifact_path: PathBuf::from("/tmp/oracle.bmp"),
+                local_report: RomCaseReport {
+                    case_id: "case".to_string(),
+                    outcome: RomCaseOutcome::Passed,
+                    executed_t_cycles: 77,
+                    completed_frames: 2,
+                    diagnostics: Vec::new(),
+                    artifacts: CapturedArtifacts::default(),
+                    retained_failure_artifacts: Vec::new(),
+                },
+                outcome: DifferentialCaseOutcome::Diverged(
+                    DifferentialCaseMismatch::FramebufferMismatch {
+                        oracle_artifact_path: PathBuf::from("/tmp/oracle.bmp"),
+                        local_width: 160,
+                        local_height: 144,
+                        oracle_width: 160,
+                        oracle_height: 144,
+                        first_difference: Some(FramebufferDifferencePoint {
+                            x: 4,
+                            y: 5,
+                            local_rank: 1,
+                            oracle_rank: 2,
+                        }),
+                    },
+                ),
+                archived_context_artifacts: vec![PathBuf::from("/tmp/archive.txt")],
+            }],
+        };
+
+        let mut output = Vec::new();
+        write_suite_report(&mut output, &report).expect("report should render");
+        let output = String::from_utf8(output).expect("report should be utf-8");
+        assert!(output.contains("oracle_layout=sameboy-tester"));
+        assert!(output.contains("differential_outcome=diverged"));
+        assert!(output.contains("mismatch=framebuffer-mismatch"));
+        assert!(output.contains("archived_context_artifacts="));
+    }
+
+    #[test]
+    fn help_and_report_writers_surface_output_failures() {
+        struct BrokenWriter;
+
+        impl io::Write for BrokenWriter {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::Error::other("broken writer"))
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let error = run_differential_command(["--help"], &mut BrokenWriter)
+            .expect_err("broken writer should surface help output errors");
+        assert!(error.contains("failed to write command output"));
+
+        let error = write_suite_report(
+            &mut BrokenWriter,
+            &DifferentialSuiteReport {
+                suite_name: "suite".to_string(),
+                subsystem: TestSubsystem::Cpu,
+                oracle: DifferentialOracle::SameBoy,
+                oracle_layout: DifferentialOracleLayout::CaseBundle,
+                cases: Vec::new(),
+            },
+        )
+        .expect_err("broken writer should fail report rendering");
+        assert!(error.contains("failed to write command output"));
+        assert!(differential_cli_help_text().contains("sameboy-tester"));
     }
 }

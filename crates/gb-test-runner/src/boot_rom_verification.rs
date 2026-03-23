@@ -221,4 +221,51 @@ mod tests {
         enforce_boot_rom_verification(BootRomVerificationMode::Off, &path, BootRomKind::Dmg0)
             .expect("off mode should skip verification");
     }
+
+    #[test]
+    fn verification_modes_expose_stable_names() {
+        assert_eq!(BootRomVerificationMode::Off.name(), "off");
+        assert_eq!(BootRomVerificationMode::Warn.name(), "warn");
+        assert_eq!(BootRomVerificationMode::Strict.name(), "strict");
+    }
+
+    #[test]
+    fn verification_reports_read_errors_for_non_file_paths() {
+        let temp_dir = unique_temp_dir("read-error");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+        let error = verify_boot_rom_file(&temp_dir, BootRomKind::Dmg0)
+            .expect_err("directories should surface a read-file error");
+        assert!(matches!(error, BootRomVerificationIssue::ReadFile { .. }));
+        assert!(error.to_string().contains("failed to read boot ROM asset"));
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn warn_mode_logs_but_does_not_fail_on_invalid_assets() {
+        let temp_dir = unique_temp_dir("warn-mode");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let path = temp_dir.join("dmg_boot.bin");
+        fs::write(&path, b"wrong").expect("boot rom should be writable");
+
+        enforce_boot_rom_verification(BootRomVerificationMode::Warn, &path, BootRomKind::Dmg)
+            .expect("warn mode should not fail on invalid boot roms");
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn issue_display_mentions_kind_expected_and_actual_hashes() {
+        let mismatch = BootRomVerificationIssue::HashMismatch {
+            kind: BootRomKind::Mgb,
+            path: PathBuf::from("/tmp/mgb_boot.bin"),
+            expected_sha256: "expected",
+            actual_sha256: "actual".to_string(),
+        };
+        let rendered = mismatch.to_string();
+        assert!(rendered.contains("Mgb"));
+        assert!(rendered.contains("expected"));
+        assert!(rendered.contains("actual"));
+    }
 }

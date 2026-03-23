@@ -393,3 +393,450 @@ fn startup_mode_note(startup_mode: StartupMode) -> Option<String> {
         "SameBoy Tester always executes through a boot ROM; end-of-test framebuffer comparison assumes boot-path convergence.".to_string(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        SAMEBOY_ROOT_ENV_VAR, SAMEBOY_TESTER_BIN_ENV_VAR, SameBoyTesterExecutionError,
+        SameBoyTesterImageFormat, SameBoyTesterRunner, default_sameboy_tester_relative_path,
+        oracle_relative_rom_path, remove_if_present, startup_mode_note, timeout_seconds,
+    };
+    use crate::{PassCondition, RomSuite, RomTestCase, TestSubsystem, Timeout};
+    use gb_core::{ConsoleModel, ExecutionMode, StartupMode};
+    use std::env;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        env::temp_dir().join(format!(
+            "gb-cycle-sameboy-unit-{}-{}-{}",
+            label,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
+        // SAFETY: these tests serialize environment mutation through `env_lock()`
+        // and restore the touched variables before dropping the guard.
+        unsafe {
+            env::set_var(key, value);
+        }
+    }
+
+    fn remove_env_var(key: &str) {
+        // SAFETY: these tests serialize environment mutation through `env_lock()`
+        // and restore the touched variables before dropping the guard.
+        unsafe {
+            env::remove_var(key);
+        }
+    }
+
+    fn write_executable(path: &Path, body: &str) {
+        fs::write(path, body).expect("script should be writable");
+        let mut permissions = fs::metadata(path)
+            .expect("script metadata should exist")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("script should be executable");
+    }
+
+    fn sample_framebuffer_case() -> RomTestCase {
+        RomTestCase::new(
+            "acid2",
+            "testroms/acid/dmg-acid2.gb",
+            Timeout::Frames(180),
+            PassCondition::FramebufferFixture(PathBuf::from("unused")),
+        )
+    }
+
+    #[test]
+    fn image_format_helpers_and_timeout_rounding_are_explicit() {
+        assert_eq!(SameBoyTesterImageFormat::Bmp.name(), "bmp");
+        assert_eq!(SameBoyTesterImageFormat::Tga.name(), "tga");
+        assert_eq!(timeout_seconds(Timeout::Frames(1)), 1);
+        assert_eq!(timeout_seconds(Timeout::Frames(180)), 3);
+        assert_eq!(timeout_seconds(Timeout::TCycles(1)), 1);
+        assert_eq!(timeout_seconds(Timeout::TCycles(4_194_304)), 1);
+        assert_eq!(timeout_seconds(Timeout::TCycles(4_194_305)), 2);
+        assert!(startup_mode_note(StartupMode::SkipBoot).is_some());
+        assert!(startup_mode_note(StartupMode::RealBoot).is_none());
+    }
+
+    #[test]
+    fn helper_paths_keep_sameboy_layout_and_absolute_roms_stable() {
+        assert!(
+            default_sameboy_tester_relative_path().ends_with(if cfg!(windows) {
+                "sameboy_tester.exe"
+            } else {
+                "sameboy_tester"
+            })
+        );
+        assert_eq!(
+            oracle_relative_rom_path(Path::new("testroms/acid/dmg-acid2.gb")),
+            PathBuf::from("testroms/acid/dmg-acid2.gb")
+        );
+        assert_eq!(
+            oracle_relative_rom_path(Path::new("/tmp/mealybug/../acid/dmg-acid2.gb")),
+            PathBuf::from("tmp/mealybug/parent/acid/dmg-acid2.gb")
+        );
+    }
+
+    #[test]
+    fn remove_if_present_is_idempotent() {
+        let temp_dir = unique_temp_dir("remove");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let path = temp_dir.join("artifact.bin");
+        remove_if_present(&path).expect("missing file should be ignored");
+        fs::write(&path, b"x").expect("artifact should be writable");
+        remove_if_present(&path).expect("existing artifact should be removable");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn ensure_tester_binary_reports_missing_root_and_missing_explicit_binary() {
+        let _guard = env_lock().lock().expect("env lock should be lockable");
+        let old_sameboy_root = env::var_os(SAMEBOY_ROOT_ENV_VAR);
+        let old_tester_binary = env::var_os(SAMEBOY_TESTER_BIN_ENV_VAR);
+        remove_env_var(SAMEBOY_ROOT_ENV_VAR);
+        remove_env_var(SAMEBOY_TESTER_BIN_ENV_VAR);
+
+        let error = SameBoyTesterRunner::new("/tmp/oracle")
+            .ensure_tester_binary()
+            .expect_err("missing sameboy root should fail");
+        assert!(matches!(
+            error,
+            SameBoyTesterExecutionError::MissingSameBoyRoot
+        ));
+
+        let explicit_missing = SameBoyTesterRunner::new("/tmp/oracle")
+            .with_tester_binary("/tmp/missing-sameboy-tester")
+            .ensure_tester_binary()
+            .expect_err("missing explicit binary should fail");
+        assert!(matches!(
+            explicit_missing,
+            SameBoyTesterExecutionError::MissingTesterBinary { .. }
+        ));
+
+        if let Some(old_sameboy_root) = old_sameboy_root {
+            set_env_var(SAMEBOY_ROOT_ENV_VAR, old_sameboy_root);
+        }
+        if let Some(old_tester_binary) = old_tester_binary {
+            set_env_var(SAMEBOY_TESTER_BIN_ENV_VAR, old_tester_binary);
+        }
+    }
+
+    #[test]
+    fn ensure_tester_binary_can_use_env_and_build_if_missing() {
+        let _guard = env_lock().lock().expect("env lock should be lockable");
+        let temp_dir = unique_temp_dir("ensure-binary");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+        let explicit_binary = temp_dir.join("explicit-tester");
+        write_executable(&explicit_binary, "#!/bin/sh\nexit 0\n");
+        set_env_var(SAMEBOY_TESTER_BIN_ENV_VAR, &explicit_binary);
+        let env_binary = SameBoyTesterRunner::new("/tmp/oracle")
+            .ensure_tester_binary()
+            .expect("env binary should resolve");
+        assert_eq!(env_binary, explicit_binary);
+        remove_env_var(SAMEBOY_TESTER_BIN_ENV_VAR);
+
+        let sameboy_root = temp_dir.join("SameBoy");
+        let tester_path = sameboy_root.join(default_sameboy_tester_relative_path());
+        fs::create_dir_all(
+            tester_path
+                .parent()
+                .expect("tester path should have a parent"),
+        )
+        .expect("sameboy tester dir should be creatable");
+
+        let fake_bin_dir = temp_dir.join("bin");
+        fs::create_dir_all(&fake_bin_dir).expect("bin dir should be creatable");
+        let fake_make = fake_bin_dir.join("make");
+        write_executable(
+            &fake_make,
+            &format!(
+                "#!/bin/sh\nset -eu\nmkdir -p \"{}\"\nprintf '#!/bin/sh\\nexit 0\\n' > \"{}\"\nchmod +x \"{}\"\n",
+                tester_path
+                    .parent()
+                    .expect("tester path should have a parent")
+                    .display(),
+                tester_path.display(),
+                tester_path.display(),
+            ),
+        );
+        let old_path = env::var_os("PATH");
+        set_env_var(
+            "PATH",
+            format!(
+                "{}:{}",
+                fake_bin_dir.display(),
+                old_path.as_ref().map_or_else(
+                    || "".to_string(),
+                    |value| value.to_string_lossy().into_owned()
+                )
+            ),
+        );
+        set_env_var(SAMEBOY_ROOT_ENV_VAR, &sameboy_root);
+        let built = SameBoyTesterRunner::new("/tmp/oracle")
+            .with_build_if_missing(true)
+            .ensure_tester_binary()
+            .expect("build-if-missing should produce the tester");
+        assert_eq!(built, tester_path);
+
+        if let Some(old_path) = old_path {
+            set_env_var("PATH", old_path);
+        } else {
+            remove_env_var("PATH");
+        }
+        remove_env_var(SAMEBOY_ROOT_ENV_VAR);
+    }
+
+    #[test]
+    fn stage_rom_and_run_case_cover_artifact_paths_and_missing_image_errors() {
+        let temp_dir = unique_temp_dir("run-case");
+        let oracle_root = temp_dir.join("oracle");
+        let rom_root = temp_dir.join("roms");
+        let rom_path = rom_root.join("testroms/acid/dmg-acid2.gb");
+        fs::create_dir_all(rom_path.parent().expect("rom path should have a parent"))
+            .expect("rom dir should be creatable");
+        fs::write(&rom_path, b"rom").expect("rom should be writable");
+
+        let runner = SameBoyTesterRunner::new(&oracle_root).with_rom_runner(
+            crate::RomRunner::new().with_external_rom_root("TEST_ROOT", &rom_root),
+        );
+        let case = sample_framebuffer_case().with_external_rom_root_key("TEST_ROOT");
+        let staged = runner
+            .stage_rom(&case, &rom_path)
+            .expect("rom should stage");
+        assert_eq!(
+            fs::read(&staged).expect("staged rom should be readable"),
+            b"rom"
+        );
+
+        let tester_binary = temp_dir.join("fake-tester");
+        write_executable(&tester_binary, "#!/bin/sh\nexit 0\n");
+        let error = runner
+            .clone()
+            .with_tester_binary(&tester_binary)
+            .run_case(&case, &tester_binary)
+            .expect_err("missing image output should fail");
+        assert!(matches!(
+            error,
+            SameBoyTesterExecutionError::MissingImageArtifact { .. }
+        ));
+
+        let non_strict = case.clone().with_execution_mode(ExecutionMode::Permissive);
+        let error = runner
+            .with_tester_binary(&tester_binary)
+            .run_case(&non_strict, &tester_binary)
+            .expect_err("non-strict case should fail");
+        assert!(matches!(
+            error,
+            SameBoyTesterExecutionError::NonStrictCase { .. }
+        ));
+    }
+
+    #[test]
+    fn run_suite_reports_staged_cases_and_startup_notes() {
+        let temp_dir = unique_temp_dir("run-suite");
+        let oracle_root = temp_dir.join("oracle");
+        let rom_root = temp_dir.join("roms");
+        let rom_a = rom_root.join("testroms/acid/dmg-acid2.gb");
+        let rom_b = rom_root.join("suite/b.gb");
+        fs::create_dir_all(rom_a.parent().expect("rom path should have a parent"))
+            .expect("rom dir should be creatable");
+        fs::create_dir_all(rom_b.parent().expect("rom path should have a parent"))
+            .expect("rom dir should be creatable");
+        fs::write(&rom_a, b"a").expect("rom a should be writable");
+        fs::write(&rom_b, b"b").expect("rom b should be writable");
+
+        let tester_binary = temp_dir.join("fake-tester");
+        write_executable(
+            &tester_binary,
+            "#!/bin/sh\nset -eu\nrom=''\next='bmp'\nfor arg in \"$@\"; do\n  if [ \"$arg\" = \"--tga\" ]; then ext='tga'; fi\n  rom=\"$arg\"\ndone\nprintf 'image' > \"${rom%.gb}.${ext}\"\nprintf 'log' > \"${rom%.gb}.log\"\n",
+        );
+
+        let suite = RomSuite::new("sameboy-suite", TestSubsystem::Ppu)
+            .with_case(
+                sample_framebuffer_case()
+                    .with_external_rom_root_key("TEST_ROOT")
+                    .with_startup_mode(StartupMode::SkipBoot),
+            )
+            .with_case(
+                RomTestCase::new(
+                    "acid2-realboot",
+                    "suite/b.gb",
+                    Timeout::Frames(2),
+                    PassCondition::FramebufferFixture(PathBuf::from("unused")),
+                )
+                .with_external_rom_root_key("TEST_ROOT")
+                .with_console_model(ConsoleModel::Mgb)
+                .with_startup_mode(StartupMode::RealBoot),
+            );
+        let report = SameBoyTesterRunner::new(&oracle_root)
+            .with_rom_runner(crate::RomRunner::new().with_external_rom_root("TEST_ROOT", &rom_root))
+            .with_tester_binary(&tester_binary)
+            .with_image_format(SameBoyTesterImageFormat::Tga)
+            .run_suite(&suite)
+            .expect("suite should run");
+
+        assert_eq!(report.suite_name, "sameboy-suite");
+        assert_eq!(report.subsystem, TestSubsystem::Ppu);
+        assert_eq!(report.tester_binary, tester_binary);
+        assert_eq!(report.image_format, SameBoyTesterImageFormat::Tga);
+        assert_eq!(report.cases.len(), 2);
+        assert!(
+            report.cases[0]
+                .staged_rom_path
+                .ends_with("testroms/acid/dmg-acid2.gb")
+        );
+        assert!(
+            report.cases[0]
+                .image_artifact_path
+                .ends_with("testroms/acid/dmg-acid2.tga")
+        );
+        assert!(
+            report.cases[0]
+                .log_artifact_path
+                .as_ref()
+                .expect("log artifact should be present")
+                .is_file()
+        );
+        assert!(report.cases[0].startup_mode_note.is_some());
+        assert_eq!(report.cases[1].startup_mode_note, None);
+    }
+
+    #[test]
+    fn run_case_surfaces_tester_process_failures() {
+        let temp_dir = unique_temp_dir("tester-failure");
+        let oracle_root = temp_dir.join("oracle");
+        let rom_root = temp_dir.join("roms");
+        let rom_path = rom_root.join("testroms/acid/dmg-acid2.gb");
+        fs::create_dir_all(rom_path.parent().expect("rom path should have a parent"))
+            .expect("rom dir should be creatable");
+        fs::write(&rom_path, b"rom").expect("rom should be writable");
+
+        let tester_binary = temp_dir.join("failing-tester");
+        write_executable(
+            &tester_binary,
+            "#!/bin/sh\nprintf 'stdout-marker\\n'\nprintf 'stderr-marker\\n' >&2\nexit 7\n",
+        );
+
+        let runner = SameBoyTesterRunner::new(&oracle_root).with_rom_runner(
+            crate::RomRunner::new().with_external_rom_root("TEST_ROOT", &rom_root),
+        );
+        let case = sample_framebuffer_case().with_external_rom_root_key("TEST_ROOT");
+        let error = runner
+            .with_tester_binary(&tester_binary)
+            .run_case(&case, &tester_binary)
+            .expect_err("failing tester should surface a tester error");
+        match error {
+            SameBoyTesterExecutionError::TesterFailed {
+                status,
+                stdout,
+                stderr,
+                ..
+            } => {
+                assert_eq!(status, Some(7));
+                assert!(stdout.contains("stdout-marker"));
+                assert!(stderr.contains("stderr-marker"));
+            }
+            other => panic!("expected TesterFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn run_suite_rejects_invalid_suite_before_running_cases() {
+        let suite = RomSuite::new("invalid", TestSubsystem::Ppu)
+            .with_case(sample_framebuffer_case())
+            .with_case(sample_framebuffer_case());
+        let error = SameBoyTesterRunner::new("/tmp/oracle")
+            .run_suite(&suite)
+            .expect_err("duplicate case ids should fail suite validation");
+        assert!(matches!(
+            error,
+            SameBoyTesterExecutionError::InvalidSuite(_)
+        ));
+    }
+
+    #[test]
+    fn run_case_rejects_unsupported_capture_before_resolving_roms() {
+        let case = RomTestCase::new(
+            "trace-only",
+            "missing.gb",
+            Timeout::Frames(1),
+            PassCondition::TraceFixture(PathBuf::from("unused")),
+        );
+        let error = SameBoyTesterRunner::new("/tmp/oracle")
+            .with_tester_binary("/tmp/unused")
+            .run_case(&case, Path::new("/tmp/unused"))
+            .expect_err("non-framebuffer cases should be rejected");
+        assert!(matches!(
+            error,
+            SameBoyTesterExecutionError::UnsupportedCapture { .. }
+        ));
+    }
+
+    #[test]
+    fn ensure_tester_binary_reports_make_failures() {
+        let _guard = env_lock().lock().expect("env lock should be lockable");
+        let temp_dir = unique_temp_dir("build-failure");
+        let sameboy_root = temp_dir.join("SameBoy");
+        let tester_path = sameboy_root.join(default_sameboy_tester_relative_path());
+        fs::create_dir_all(
+            tester_path
+                .parent()
+                .expect("tester path should have a parent"),
+        )
+        .expect("sameboy tester dir should be creatable");
+
+        let fake_bin_dir = temp_dir.join("bin");
+        fs::create_dir_all(&fake_bin_dir).expect("bin dir should be creatable");
+        let fake_make = fake_bin_dir.join("make");
+        write_executable(&fake_make, "#!/bin/sh\nexit 2\n");
+
+        let old_path = env::var_os("PATH");
+        set_env_var(
+            "PATH",
+            format!(
+                "{}:{}",
+                fake_bin_dir.display(),
+                old_path.as_ref().map_or_else(
+                    || "".to_string(),
+                    |value| value.to_string_lossy().into_owned()
+                )
+            ),
+        );
+
+        let error = SameBoyTesterRunner::new("/tmp/oracle")
+            .with_sameboy_root(&sameboy_root)
+            .with_build_if_missing(true)
+            .ensure_tester_binary()
+            .expect_err("failed make should surface a build error");
+        assert!(matches!(
+            error,
+            SameBoyTesterExecutionError::BuildTesterFailed {
+                status: Some(2),
+                ..
+            }
+        ));
+
+        if let Some(old_path) = old_path {
+            set_env_var("PATH", old_path);
+        } else {
+            remove_env_var("PATH");
+        }
+    }
+}
