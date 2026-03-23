@@ -1823,10 +1823,35 @@ from this phase before APU work. The current early deliverables are:
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2`,
   sourced from `GBEmulatorShootout` and now part of the supported external DMG
   block used by `make local` and the `external-roms` workflow
+- one exploratory PPU framebuffer-oracle suite,
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`,
+  which uses a curated DMG subset from `GBEmulatorShootout` and the same
+  committed-PGM oracle contract as `dmg-acid2`, but is currently red under
+  `Strict` and therefore remains outside the supported external DMG block
+- one narrow differential end-of-test path,
+  `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`,
+  which compares the built-in suite's required-capture artifact against an
+  imported oracle artifact bundle, enforces `Strict`, and archives local
+  context plus the compared oracle artifact on divergence. The current path
+  also reports the first differing byte or pixel inside the compared final
+  artifact, even though full instruction-level or short-window first-divergence
+  tooling is still deferred. The current `sameboy-tester` layout support is
+  intentionally framebuffer-only and is aimed at PPU/image-oracle cases such as
+  `dmg-acid2`. When the oracle root is omitted, the repo-local default is
+  `/.oracles/<oracle>/<layout>/`
+- one SameBoy Tester materialization path,
+  `cargo run -p gb-test-runner --bin run_sameboy_tester -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --tester-binary <path>]`,
+  which stages ROMs under the oracle root, runs SameBoy's internal `tester`
+  target, and produces `.bmp` / `.tga` plus `.log` artifacts in the exact
+  `sameboy-tester` layout consumed by `run_differential`. The repo-local
+  default for this path is `/.oracles/sameboy/sameboy-tester/` for oracle
+  outputs, and the wrapper intentionally leaves SameBoy's own boot-ROM path
+  under SameBoy's control instead of trying to share local firmware selection
+  with `gb-test-runner`
 
-This does not count as closing Phase `9.2` or `9.3`; SameBoy/Gambatte
-differential tooling, save/load determinism, and the final DMG matrix still
-remain Phase `7/8/9` work.
+This does not count as closing Phase `9.2` or `9.3`; fuller SameBoy
+differential launch automation, first-divergence windows, save/load determinism,
+and the final DMG matrix still remain Phase `7/8/9` work.
 
 #### Goal
 
@@ -1845,7 +1870,7 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 
 - formal DMG hardening matrix with layers `A/B/C/D/E`, severity classes, and explicit `must-pass` areas
 - automated external-ROM harness with timeout, pass/fail policy, framebuffer and serial capture, and retained failure artifacts
-- differential comparison tooling for SameBoy and Gambatte with first-divergence reporting and short T-cycle windows
+- differential comparison tooling for SameBoy with first-divergence reporting and short T-cycle windows
 - deterministic replay, save/load determinism, and longer-running soak coverage
 - minimum closure-ready debugging tooling: traces, breakpoints, watchpoints, snapshots, and targeted subsystem viewers
 - explicit DMG closure checklist covering internal suites, external suites, differential comparison, determinism, save/load determinism, and primary cartridge families
@@ -1858,9 +1883,9 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 2. Build the external ROM harness and minimum closure suites.
    Scope: automate CPU / interrupt ROMs, `dmg-acid2`, and `mealybug-tearoom-tests`; support framebuffer and serial capture; define timeouts, pass/fail rules, and retained artifacts; and keep explicit reserved follow-up slots for broader closure suites such as Mooneye / Gekkio coverage, SameSuite, GB Accuracy Tests, 144p Test Suite, and MBC3 RTC-focused ROMs.
    Acceptance criteria: the minimum DMG closure ROM suites run without manual screen inspection, every case has a timeout plus explicit pass/fail policy, and the harness can preserve enough output to debug failures offline.
-3. Add differential comparison against SameBoy and Gambatte.
+3. Add differential comparison against SameBoy.
    Scope: end-of-test comparison, end-of-instruction comparison, short T-cycle-window comparison, and first-divergence localization with archived context.
-   Acceptance criteria: SameBoy acts as the default primary DMG oracle, Gambatte is available for triangulation, disagreements between the oracles are marked for arbitration rather than auto-pass, and the tooling can report the first divergence instead of only a final mismatch.
+   Acceptance criteria: SameBoy acts as the DMG oracle for the covered scenarios, and the tooling can report the first divergence instead of only a final mismatch.
 4. Close the minimum debugging and inspection tooling.
    Scope: instruction / micro-op / short-window T-cycle tracing, breakpoints and watchpoints on `PC`, memory, MMIO, and cartridge-bank state, plus fast inspection of CPU, scheduler, bus owner, PPU mode / dot / `LY`, DMA, timer, APU, and cartridge / MBC state.
    Acceptance criteria: a blocking divergence can be localized without a long blind rerun, and the project has practical viewers or equivalent dumps for PPU, cartridge / MBC, APU, and IRQ state.
@@ -1939,7 +1964,7 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 
 41. Formal DMG hardening matrix, severity classes, and closure checklist
 42. Automated external ROM harness and minimum closure suites
-43. Differential comparison against SameBoy and Gambatte
+43. Differential comparison against SameBoy
 44. Deterministic replay, save/load determinism, and soak coverage
 45. Final DMG closure and regression-retention pass
 
@@ -1989,6 +2014,7 @@ Suggested entry style:
 ### Phase 4 — Base PPU and visible pipeline
 
 - [PPU][SKIPBOOT-ORACLE] The Phase `4.1` `SkipBoot` startup-mode latch is still validated only against repo-local continuity tests and the documented post-boot snapshot contract. Before Phase `9` hardening treats the direct-boot PPU handoff as externally validated, this path still needs comparison against a trusted oracle or hardware-derived capture proving that the first LCD-visible dots after `SkipBoot` remain coherent with the published `LCDC`, `STAT`, and `LY` state rather than with an overfit local latch assumption. Phase dependency: this does not block Phase `5`, but later DMG closure should not claim externally validated direct-boot PPU continuity until this check lands.
+- [PPU][MEALYBUG-MODE3-LIVE-WRITES] The exploratory `gbdev-mealybug-tearoom-dmg-curated` suite now has one concrete closure point: `m3_bgp_change` passes under `Strict` after refining two explicit DMG-family behaviors in the PPU model, namely the non-line-`0` Mode `2` LCD STAT pretrigger path and DMG palette-write conflict handling for `BGP/OBP*` writes during late Mode `3` / early HBlank. Follow-up work in this lane has also clarified a harness-side precondition shared by multiple sprite-driven cases: ROMs such as `m3_obp0_change` and `m3_bgp_change_sprites` assume the DMG boot trademark tile is already present in VRAM, so the runner now supports typed startup-memory writes and those curated cases seed the boot-derived tile `0x19` under `SkipBoot` instead of misclassifying missing-logo output as a PPU regression. With that boot-derived seed in place, `m3_obp0_change` no longer fails as a blank-output startup artifact and the remaining mismatch shrinks to a small real PPU delta. The next useful reductions in this lane are now landed too: the PPU no longer clamps early OBJ scheduling to visible `X = 0`, and instead keeps a distinct pre-visible raw-`X` match path for left-edge sprites; for those low-`X` startup requests, the OBJ fetch no longer freezes the whole line immediately on match and instead lets the BG side finish priming the FIFO and leave the initial `TileIndex` phase before the sprite path starts stealing dots; and the DMG palette-conflict approximation now keeps `OBP*` writes slightly wider than `BGP` writes in the retroactive window, which trims `m3_obp0_change` further without regressing `m3_bgp_change_sprites` or the existing internal PPU coverage. That keeps the general DMG OBJ-priority tests green, preserves the smaller `m3_obp0_change` delta, and reduces `m3_bgp_change_sprites` further without broadening the change into a whole-pipeline refactor. It still does not close either case yet. The remaining `m3_bgp_change_sprites` error is no longer a broad whole-frame failure; after this reduction it is mostly the residual sprite/live-write timing space rather than the earlier "all low-X sprites collapse to one trigger" bug. The still-red follow-up space therefore narrows down further instead of leaving the whole lane amorphous: low-`X` sprite/live-OBJ timing (`m3_bgp_change_sprites`, the remaining `m3_obp0_change` timing delta), window/live-`LCDC.5` timing (`m2_win_en_toggle`, `m3_window_timing*`, `m3_lcdc_win_en_change_multiple`, `m3_wx_4_change_sprites`), `SCX` low-bit timing (`m3_scx_low_3_bits`), and live sprite-size timing (`m3_lcdc_obj_size_change`) still need dedicated closure. Phase dependency: this does not block entering Phase `7`, but Phase `9` should not mark the mealybug PPU oracle lane as closed until those remaining Mode `3` live-write families are rechecked against the new baseline.
 - [PPU][WINDOW-GLITCH-ORACLE] The current Phase `4.4` window baseline includes explicit tested paths for `WX = 0` and `WX = 166`, but they remain provisional baseline behavior rather than oracle-backed glitch closure. The project still needs stricter validation and, if necessary, refinement for `WX` / `WY` / `LCDC.5` mid-frame glitch behavior, including the DMG-specific `WX = 0 && (SCX & 7) > 0` path and the special `WX = 166` continuation behavior. Phase dependency: this does not block entering Phase `5`, but Phase `9` hardening should not mark detailed DMG window-glitch behavior as closed until this oracle pass is finished.
 - [PPU][LCDC2-8X16-ARTIFACTS] The Phase `4.5` sprite baseline already treats `LCDC.2` as live state and covers the core `8x16` row-selection rules, but the finer DMG-visible artifacts and leaks caused by mid-frame `LCDC.2` size changes, especially around the lower half of `8x16` sprites, remain only documented follow-up work. Before Phase `9` hardening claims detailed sprite-size behavior as externally validated, this path still needs targeted ROM or oracle coverage and, if needed, refinement that keeps those artifacts explicit instead of leaving them as accidental baseline behavior. Phase dependency: this does not block Phase `5`, but later DMG closure should not claim fully hardened `LCDC.2` / `8x16` edge behavior until this validation lands.
 - [PPU][OAM-CORRUPTION-ORACLE] Phase `4.8` now has deterministic unit/integration coverage, a shipped synthetic ROM/trace family for direct Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]` / `[hld]`, stack plus interrupt-service paths, DMG-family model variants, and the CGB negative path, but it still lacks comparison against an independent trusted oracle or hardware-derived capture before the bug can be treated as externally validated across instruction families and hardware revisions. As of March 21, 2026, the built-in official `retrio/blargg oam_bug` automation is intentionally curated to the `GBEmulatorShootout`-listed subset, the repository-gated external DMG block now runs that curated subset by default, and the automation still excludes the upstream multi-ROM `oam_bug.gb` plus `7-timing_effect.gb`; Phase `9` hardening should not treat that curated subset as complete OAM-corruption closure without a later independent oracle pass for the remaining timing-sensitive coverage.

@@ -57,6 +57,50 @@ To inspect the current early hardening checklist by subsystem, run:
 cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
 ```
 
+To compare one built-in suite against imported SameBoy artifacts,
+run:
+
+```bash
+cargo run -p gb-test-runner --bin run_differential -- \
+  --oracle sameboy \
+  --oracle-layout sameboy-tester \
+  --suite gbdev-dmg-acid2
+```
+
+If `--oracle-artifact-root` is omitted, the default repo-local root is
+`/.oracles/<oracle>/<layout>/`, so this example reads from
+`/.oracles/sameboy/sameboy-tester/`.
+
+The default `case-bundle` layout expects one subdirectory per case id, using
+the same filenames that the local runner already emits for retained artifacts:
+`serial.txt`, `memory_text_output.txt`, `blargg_console.txt`,
+`framebuffer.pgm`, `trace.txt`, and optional archived context such as
+`snapshot.txt`.
+
+The `sameboy-tester` layout is currently framebuffer-only and expects SameBoy
+Tester image artifacts mirrored by ROM-relative path, for example
+`testroms/acid/dmg-acid2.bmp` or `.tga` under the oracle root.
+
+To materialize those artifacts with SameBoy's internal `tester` target, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_sameboy_tester -- \
+  --sameboy-root /path/to/SameBoy \
+  --suite gbdev-dmg-acid2 \
+  --image-format bmp \
+  --build-if-missing
+```
+
+This command stages the ROMs under the default repo-local oracle root
+`/.oracles/sameboy/sameboy-tester/`, runs SameBoy Tester, and leaves `.bmp` /
+`.tga` plus `.log` files in the same tree. The current path is intentionally
+limited to framebuffer-oracle suites. Because SameBoy Tester always boots
+through a boot ROM, use it as end-of-test framebuffer evidence, not as proof
+of startup-path equivalence for local `SkipBoot` runs.
+The wrapper intentionally does not override SameBoy's own boot-ROM path. If an
+oracle run needs a specific SameBoy firmware choice, make that choice in the
+SameBoy checkout or build itself rather than through `gb-test-runner`.
+
 Current green official cases on top of the `cpu_instrs` individual block are:
 
 - `retrio/blargg cpu_instrs/cpu_instrs.gb`
@@ -77,6 +121,24 @@ Current repo-gated external PPU suite:
 - current source env var: `GB_CYCLE_GBEMU_SHOOTOUT_ROOT`
 - this suite is part of `make test-external-dmg`, `make local`, and the
   `external-roms` workflow
+
+Current exploratory external PPU suite:
+
+- `gbdev/GBEmulatorShootout mealybug-tearoom-tests/ppu/*` curated DMG subset
+- current built-in suite name: `gbdev-mealybug-tearoom-dmg-curated`
+- oracle channel: committed framebuffer fixtures derived from the upstream
+  `*_dmg_blob.png` references
+- current source env var: `GB_CYCLE_GBEMU_SHOOTOUT_ROOT`
+- this suite is intentionally not part of `make test-external-dmg`,
+  `make local`, or the `external-roms` workflow yet because it still diverges
+  under `Strict`
+- to run it manually and retain framebuffer snapshots for debugging, use:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- \
+  --suite gbdev-mealybug-tearoom-dmg-curated \
+  --failure-artifact-root .artifacts/mealybug-curated
+```
 
 Repository-gated external DMG block:
 

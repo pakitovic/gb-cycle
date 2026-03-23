@@ -525,14 +525,14 @@ fn live_machine_obj_fetch_stretches_mode3_and_keeps_vram_blocked_until_hblank() 
 
     let drawing = machine.ppu().snapshot();
     assert_eq!(drawing.mode, PpuAccessMode::Drawing);
-    assert_eq!(drawing.mode0_start_dot, 263);
+    assert_eq!(drawing.mode0_start_dot, 260);
     assert_eq!(machine.read_bus(0x8000), 0xFF);
 
-    step_until_line_dot(&mut machine, 263);
+    step_until_line_dot(&mut machine, 260);
 
     let hblank = machine.ppu().snapshot();
     assert_eq!(hblank.mode, PpuAccessMode::HBlank);
-    assert_eq!(hblank.mode0_start_dot, 263);
+    assert_eq!(hblank.mode0_start_dot, 260);
     assert_eq!(&hblank.current_scanline_pixels[..8], &[2; 8]);
     assert_eq!(machine.read_bus(0x8000), 0x00);
 }
@@ -547,18 +547,27 @@ fn disabling_lcdc1_during_live_object_fetch_keeps_the_timing_cost_but_drops_pixe
     seed_bg_tile_row(&mut machine, 0, 0, 0x00, 0xFF);
     machine.write_bus(0xFF40, 0x82);
 
-    step_until_line_dot(&mut machine, 80);
+    loop {
+        let fetching = machine.ppu().snapshot();
+        if fetching.obj_fetcher_stage == PpuObjFetcherStage::Startup {
+            assert_eq!(fetching.mode, PpuAccessMode::Drawing);
+            assert!(fetching.line_dot < 96);
+            break;
+        }
+        machine.step_t_cycle();
+        assert!(machine.ppu().snapshot().line_dot < 96);
+    }
 
     let fetching = machine.ppu().snapshot();
     assert_eq!(fetching.mode, PpuAccessMode::Drawing);
     assert_eq!(fetching.obj_fetcher_stage, PpuObjFetcherStage::Startup);
 
     machine.write_bus(0xFF40, 0x80);
-    step_until_line_dot(&mut machine, 263);
+    step_until_line_dot(&mut machine, 260);
 
     let hblank = machine.ppu().snapshot();
     assert_eq!(hblank.mode, PpuAccessMode::HBlank);
-    assert_eq!(hblank.mode0_start_dot, 263);
+    assert_eq!(hblank.mode0_start_dot, 260);
     assert_eq!(&hblank.current_scanline_pixels[..8], &[0; 8]);
 }
 

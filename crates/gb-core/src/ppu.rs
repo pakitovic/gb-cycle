@@ -24,8 +24,10 @@ const VISIBLE_SCANLINES: u8 = 144;
 const TOTAL_SCANLINES: u8 = 154;
 const MODE2_DOTS: u16 = 80;
 const MODE3_BASELINE_DOTS: u16 = 172;
-const MODE3_BG_STARTUP_DOTS: u16 = 12;
+const MODE3_BG_FETCH_PRIMING_DOTS: u16 = 12;
+const MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT: u16 = MODE3_BG_FETCH_PRIMING_DOTS - 8;
 const MODE0_START_DOT: u16 = MODE2_DOTS + MODE3_BASELINE_DOTS;
+const DMG_PALETTE_RETROACTIVE_PIXELS: usize = 4;
 const OAM_ENTRY_BYTES: usize = 4;
 const OAM_SPRITE_COUNT: u8 = 40;
 const MODE2_T_CYCLES_PER_OAM_ENTRY: u16 = 2;
@@ -226,6 +228,7 @@ pub struct Ppu {
     bg_pipeline_state: BgPipelineState,
     obj_pipeline_state: ObjPipelineState,
     current_scanline_pixels: [u8; SCREEN_WIDTH],
+    current_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
     framebuffer: Vec<u8>,
 }
 
@@ -302,6 +305,7 @@ impl Ppu {
             bg_pipeline_state: BgPipelineState::default(),
             obj_pipeline_state: ObjPipelineState::default(),
             current_scanline_pixels: [0; SCREEN_WIDTH],
+            current_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
             framebuffer: vec![0; FRAMEBUFFER_PIXELS],
         }
     }
@@ -354,9 +358,9 @@ impl Ppu {
                 self.lyc = value;
                 self.refresh_stat_irq_line(false);
             }
-            0xFF47 => self.bgp = value,
-            0xFF48 => self.obp0 = Some(value),
-            0xFF49 => self.obp1 = Some(value),
+            0xFF47 => self.write_dmg_palette_register(PpuPaletteRegister::Bgp, value),
+            0xFF48 => self.write_dmg_palette_register(PpuPaletteRegister::Obp0, value),
+            0xFF49 => self.write_dmg_palette_register(PpuPaletteRegister::Obp1, value),
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
             _ => {}
@@ -387,6 +391,8 @@ impl Ppu {
         self.obj_pipeline_state.reset();
         self.pending_interrupts = 0;
         self.current_scanline_pixels.fill(0);
+        self.current_scanline_mixed_pixels
+            .fill(MixedPixel::background(0));
         self.framebuffer.fill(0);
         self.startup_mode_latch = if self.lcd_state.is_enabled() {
             let startup_mode = PpuAccessMode::from_stat_bits(startup_state.stat);
@@ -435,6 +441,8 @@ impl Ppu {
             self.bg_pipeline_state.reset();
             self.obj_pipeline_state.reset();
             self.current_scanline_pixels.fill(0);
+            self.current_scanline_mixed_pixels
+                .fill(MixedPixel::background(0));
             if wraps_to_frame_start && self.blank_frame_active {
                 self.blank_frame_active = false;
                 self.refresh_visible_output();
@@ -693,7 +701,7 @@ impl Ppu {
             self.bg_pipeline_state.start_line(self.scx);
         }
 
-        if self.line_dot.saturating_sub(MODE2_DOTS) >= MODE3_BG_STARTUP_DOTS {
+        if self.line_dot.saturating_sub(MODE2_DOTS) >= MODE3_BG_FETCH_PRIMING_DOTS {
             self.maybe_start_window_for_current_position();
         }
 
@@ -704,6 +712,7 @@ impl Ppu {
 
         self.advance_bg_fetcher(vram_bytes);
         self.pop_bg_pixel_for_current_dot();
+        self.advance_pre_visible_obj_match_x();
     }
 
     fn advance_bg_fetcher(&mut self, vram_bytes: &[u8]) {
@@ -772,7 +781,7 @@ impl Ppu {
     fn pop_bg_pixel_for_current_dot(&mut self) {
         let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
 
-        if mode3_dot < MODE3_BG_STARTUP_DOTS
+        if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS
             || self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
         {
             return;
@@ -804,6 +813,7 @@ impl Ppu {
             0
         };
         let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
+        self.current_scanline_mixed_pixels[visible_x] = output_pixel;
         self.current_scanline_pixels[visible_x] = scanline_pixel;
         self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
         self.bg_pipeline_state.visible_pixels_output += 1;
@@ -868,7 +878,7 @@ impl Ppu {
             return;
         }
 
-        let current_visible_x = self.bg_pipeline_state.visible_pixels_output;
+        let current_match_x = self.current_obj_match_x();
         for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
             if self.obj_pipeline_state.has_fetched(sprite_slot) {
                 continue;
@@ -881,15 +891,46 @@ impl Ppu {
                 continue;
             };
 
-            if trigger_x <= current_visible_x {
+            if trigger_x == current_match_x {
                 self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
                 break;
             }
         }
     }
 
+    fn current_obj_match_x(&self) -> u8 {
+        if self.bg_pipeline_state.pre_visible_obj_match_x < 8 {
+            self.bg_pipeline_state.pre_visible_obj_match_x
+        } else {
+            self.bg_pipeline_state
+                .visible_pixels_output
+                .saturating_add(8)
+        }
+    }
+
+    fn advance_pre_visible_obj_match_x(&mut self) {
+        if self.bg_pipeline_state.pre_visible_obj_match_x >= 8
+            || self.bg_pipeline_state.visible_pixels_output != 0
+        {
+            return;
+        }
+
+        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
+        if mode3_dot < MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT {
+            return;
+        }
+
+        self.bg_pipeline_state.pre_visible_obj_match_x += 1;
+    }
+
     fn advance_object_fetch(&mut self, vram_bytes: &[u8]) -> bool {
         if self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle {
+            return false;
+        }
+
+        if self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Startup
+            && !self.obj_fetch_startup_ready()
+        {
             return false;
         }
 
@@ -939,6 +980,23 @@ impl Ppu {
         }
 
         true
+    }
+
+    fn obj_fetch_startup_ready(&self) -> bool {
+        let fifo_ready = !self.bg_pipeline_state.fifo.is_empty();
+        let Some(sprite) = self.obj_pipeline_state.fetch.sprite else {
+            return fifo_ready;
+        };
+
+        if sprite.x >= 8 {
+            return fifo_ready;
+        }
+
+        fifo_ready
+            && !matches!(
+                self.bg_pipeline_state.fetcher.stage,
+                PpuBgFetcherStage::TileIndex
+            )
     }
 
     fn window_trigger_x_for_current_line(&self) -> Option<u8> {
@@ -1174,6 +1232,10 @@ impl Ppu {
 
         let coincidence_source = self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
             && self.lyc_coincidence();
+        let mode2_pretrigger_source = self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT
+            != 0
+            && self.ly + 1 < VISIBLE_SCANLINES
+            && self.line_dot + 4 >= DOTS_PER_SCANLINE;
         let mode_source = match self.current_access_mode() {
             PpuAccessMode::HBlank => {
                 self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0
@@ -1187,7 +1249,7 @@ impl Ppu {
             PpuAccessMode::Drawing => false,
         };
 
-        coincidence_source || mode_source
+        coincidence_source || mode_source || mode2_pretrigger_source
     }
 
     fn compute_stat_irq_line(&self, quirk_active: bool) -> bool {
@@ -1234,6 +1296,8 @@ impl Ppu {
         self.bg_pipeline_state.reset();
         self.obj_pipeline_state.reset();
         self.current_scanline_pixels.fill(0);
+        self.current_scanline_mixed_pixels
+            .fill(MixedPixel::background(0));
         self.pending_interrupts = 0;
     }
 
@@ -1261,6 +1325,150 @@ impl Ppu {
         self.clear_visible_buffers();
         self.refresh_visible_output();
     }
+
+    fn write_dmg_palette_register(&mut self, register: PpuPaletteRegister, value: u8) {
+        let previous_visible = match register {
+            PpuPaletteRegister::Bgp => self.bgp,
+            PpuPaletteRegister::Obp0 => self
+                .obp0
+                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+            PpuPaletteRegister::Obp1 => self
+                .obp1
+                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+        };
+
+        match register {
+            PpuPaletteRegister::Bgp => self.bgp = value,
+            PpuPaletteRegister::Obp0 => self.obp0 = Some(value),
+            PpuPaletteRegister::Obp1 => self.obp1 = Some(value),
+        }
+
+        if let Some(retroactive_pixels) = self.dmg_palette_conflict_retroactive_pixels(register) {
+            self.retroactively_recolor_recent_pixels(
+                register,
+                previous_visible | value,
+                value,
+                retroactive_pixels,
+            );
+        }
+    }
+
+    fn retroactively_recolor_recent_pixels(
+        &mut self,
+        register: PpuPaletteRegister,
+        transient_palette: u8,
+        final_palette: u8,
+        retroactive_pixels: usize,
+    ) {
+        if self.visible_output != PpuVisibleOutputState::Driving {
+            return;
+        }
+
+        let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
+        let start = visible_x.saturating_sub(retroactive_pixels);
+        for x in start..visible_x {
+            let mixed_pixel = self.current_scanline_mixed_pixels[x];
+            if !register_affects_pixel(register, mixed_pixel) {
+                continue;
+            }
+
+            let use_transient_palette = match register {
+                PpuPaletteRegister::Bgp => x == start,
+                PpuPaletteRegister::Obp0 | PpuPaletteRegister::Obp1 => x == start,
+            };
+            let palette = if use_transient_palette {
+                transient_palette
+            } else {
+                final_palette
+            };
+            let panel_pixel = self.map_mixed_pixel_to_panel_shade_with_palette_override(
+                mixed_pixel,
+                register,
+                palette,
+            );
+            self.framebuffer[self.ly as usize * SCREEN_WIDTH + x] = panel_pixel;
+        }
+    }
+
+    fn map_mixed_pixel_to_panel_shade_with_palette_override(
+        &self,
+        pixel: MixedPixel,
+        register: PpuPaletteRegister,
+        palette_override: u8,
+    ) -> u8 {
+        match pixel.source {
+            MixedPixelSource::Background => {
+                let palette = if register == PpuPaletteRegister::Bgp {
+                    palette_override
+                } else {
+                    self.bgp
+                };
+                self.apply_dmg_palette(palette, pixel.color)
+            }
+            MixedPixelSource::Object { palette_obp1 } => {
+                let palette = match (register, palette_obp1) {
+                    (PpuPaletteRegister::Obp0, false) | (PpuPaletteRegister::Obp1, true) => {
+                        palette_override
+                    }
+                    (_, false) => self
+                        .obp0
+                        .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+                    (_, true) => self
+                        .obp1
+                        .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+                };
+                self.apply_dmg_palette(palette, pixel.color)
+            }
+        }
+    }
+
+    fn dmg_palette_conflict_retroactive_pixels(
+        &self,
+        register: PpuPaletteRegister,
+    ) -> Option<usize> {
+        if !self.console_model.is_dmg_family() || self.ly >= VISIBLE_SCANLINES {
+            return None;
+        }
+
+        let retroactive_pixels = match register {
+            PpuPaletteRegister::Bgp => DMG_PALETTE_RETROACTIVE_PIXELS,
+            PpuPaletteRegister::Obp0 | PpuPaletteRegister::Obp1 => {
+                DMG_PALETTE_RETROACTIVE_PIXELS + 1
+            }
+        };
+
+        match self.current_access_mode() {
+            PpuAccessMode::Drawing => Some(retroactive_pixels),
+            PpuAccessMode::HBlank if self.current_mode_dot(PpuAccessMode::HBlank) < 4 => {
+                Some(retroactive_pixels.saturating_sub(1))
+            }
+            PpuAccessMode::HBlank | PpuAccessMode::OamScan | PpuAccessMode::VBlank => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PpuPaletteRegister {
+    Bgp,
+    Obp0,
+    Obp1,
+}
+
+const fn register_affects_pixel(register: PpuPaletteRegister, pixel: MixedPixel) -> bool {
+    matches!(
+        (register, pixel.source),
+        (PpuPaletteRegister::Bgp, MixedPixelSource::Background)
+            | (
+                PpuPaletteRegister::Obp0,
+                MixedPixelSource::Object {
+                    palette_obp1: false,
+                },
+            )
+            | (
+                PpuPaletteRegister::Obp1,
+                MixedPixelSource::Object { palette_obp1: true },
+            )
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1356,6 +1564,7 @@ struct BgPipelineState {
     mode3_started: bool,
     initial_scx_discard: u8,
     scx_discard_remaining: u8,
+    pre_visible_obj_match_x: u8,
     visible_pixels_output: u8,
     window_extra_stall_dots: u16,
     window_wy_latch: bool,
@@ -1372,6 +1581,7 @@ impl BgPipelineState {
         self.mode3_started = false;
         self.initial_scx_discard = 0;
         self.scx_discard_remaining = 0;
+        self.pre_visible_obj_match_x = 0;
         self.visible_pixels_output = 0;
         self.window_extra_stall_dots = 0;
         self.window_wy_latch = false;
@@ -1385,6 +1595,7 @@ impl BgPipelineState {
         self.mode3_started = true;
         self.initial_scx_discard = scx & 0x07;
         self.scx_discard_remaining = self.initial_scx_discard;
+        self.pre_visible_obj_match_x = 0;
         self.fetcher.start_background();
     }
 
@@ -1740,7 +1951,7 @@ fn sprite_trigger_x(sprite: PpuSelectedSprite) -> Option<u8> {
         return None;
     }
 
-    Some(sprite_screen_x(sprite).max(0) as u8)
+    Some(sprite.x)
 }
 
 fn obj_pixel_has_priority(candidate: ObjPixel, current: ObjPixel) -> bool {
@@ -2946,6 +3157,84 @@ mod tests {
     }
 
     #[test]
+    fn dmg_bgp_write_during_mode3_recolors_recent_bg_pixels_with_transient_then_final_palette() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x83,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x01,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = 200;
+        ppu.bg_pipeline_state.visible_pixels_output = 8;
+        ppu.current_scanline_mixed_pixels[4..8].fill(MixedPixel::background(0));
+        ppu.framebuffer[4..8].fill(1);
+
+        ppu.write_register(0xFF47, 0x00);
+
+        assert_eq!(&ppu.framebuffer()[4..8], &[1, 0, 0, 0]);
+    }
+
+    #[test]
+    fn dmg_bgp_write_in_early_hblank_recolors_only_last_three_visible_bg_pixels() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x80,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x01,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.visible_pixels_output = SCREEN_WIDTH as u8;
+        ppu.current_scanline_mixed_pixels[156..160].fill(MixedPixel::background(0));
+        ppu.framebuffer[156..160].fill(1);
+
+        ppu.write_register(0xFF47, 0x00);
+
+        assert_eq!(&ppu.framebuffer()[156..160], &[1, 1, 0, 0]);
+    }
+
+    #[test]
+    fn dmg_obp0_write_during_mode3_recolors_five_recent_obj_pixels() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x82,
+            stat: 0x83,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = 200;
+        ppu.bg_pipeline_state.visible_pixels_output = 8;
+        ppu.current_scanline_mixed_pixels[3..8].fill(MixedPixel::object(1, false));
+        ppu.framebuffer[3..8].fill(3);
+
+        ppu.write_register(0xFF48, 0x04);
+
+        assert_eq!(&ppu.framebuffer()[3..8], &[3, 1, 1, 1, 1]);
+    }
+
+    #[test]
     fn obj_8x16_uses_even_aligned_tile_pairs_for_lower_half_rows() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         let mut oam_bytes = [0; 160];
@@ -3056,16 +3345,71 @@ mod tests {
             tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
         }
 
-        let fetching = ppu.snapshot();
-        assert_eq!(fetching.obj_fetcher_stage, PpuObjFetcherStage::Startup);
+        let mut t_cycle = 80;
+        loop {
+            let fetching = ppu.snapshot();
+            if fetching.obj_fetcher_stage == PpuObjFetcherStage::Startup {
+                break;
+            }
+
+            tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
+            t_cycle += 1;
+            assert!(
+                t_cycle < 96,
+                "left-edge OBJ fetch should begin during early Mode 3"
+            );
+        }
 
         ppu.write_register(0xFF40, 0x80);
 
-        let _ = tick_until_hblank(&mut ppu, 80, &oam_bytes, &vram_bytes);
+        let _ = tick_until_hblank(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
 
         let snapshot = ppu.snapshot();
-        assert_eq!(snapshot.mode0_start_dot, 263);
+        assert_eq!(snapshot.mode0_start_dot, MODE0_START_DOT + 8);
         assert_eq!(&snapshot.current_scanline_pixels[..8], &[0; 8]);
+    }
+
+    #[test]
+    fn smaller_raw_obj_x_values_start_fetch_earlier_during_mode3_startup() {
+        fn fetch_start_line_dot(sprite_x: u8) -> u16 {
+            let mut ppu = Ppu::new(ConsoleModel::Dmg);
+            let mut oam_bytes = [0; 160];
+            let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+            write_oam_entry(&mut oam_bytes, 0, 16, sprite_x, 0);
+            write_bg_tile_row(&mut vram_bytes, 0, 0, 0xFF, 0x00);
+
+            ppu.apply_startup_state(PpuStartupState {
+                lcdc: 0x82,
+                stat: 0x82,
+                scy: 0x00,
+                scx: 0x00,
+                ly: 0x00,
+                lyc: 0x00,
+                bgp: 0x00,
+                wy: 0x00,
+                wx: 0x00,
+                obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+            });
+
+            for t_cycle in 0..96 {
+                tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
+                let snapshot = ppu.snapshot();
+                if snapshot.obj_fetcher_stage == PpuObjFetcherStage::Startup {
+                    return snapshot.line_dot;
+                }
+            }
+
+            panic!("sprite fetch did not begin during early Mode 3");
+        }
+
+        let left_edge = fetch_start_line_dot(1);
+        let first_visible = fetch_start_line_dot(8);
+
+        assert!(left_edge < first_visible);
+        assert!(left_edge >= MODE2_DOTS);
+        assert!(first_visible >= MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1);
+        assert!(first_visible <= MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS);
     }
 
     #[test]

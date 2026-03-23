@@ -1,6 +1,12 @@
+mod boot_rom_verification;
+mod differential;
 pub mod external_roms;
 mod fetch_external_roms;
+mod run_differential_cli;
 mod run_rom_suite_cli;
+mod run_sameboy_tester_cli;
+mod sameboy_tester;
+mod workspace_paths;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -8,11 +14,20 @@ use std::{fs, io};
 
 use external_roms::ExternalRomSourceManifestError;
 use gb_core::{
-    CartridgeDiagnostic, CartridgeLoadError, ConsoleModel, CpuDiagnosticTrap, CpuExecutionState,
-    ExecutionMode, JoypadButton, Machine, MachineConfig, StartupMode, TraceBuffer,
-    TraceSummaryBuffer,
+    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, ConsoleModel,
+    CpuDiagnosticTrap, CpuExecutionState, ExecutionMode, JoypadButton, Machine, MachineConfig,
+    StartupMode, TraceBuffer, TraceSummaryBuffer,
 };
 
+pub use boot_rom_verification::{
+    BootRomVerificationIssue, BootRomVerificationMode, enforce_boot_rom_verification,
+    expected_boot_rom_sha256, verify_boot_rom_file,
+};
+pub use differential::{
+    DifferentialCaseMismatch, DifferentialCaseOutcome, DifferentialCaseReport,
+    DifferentialExecutionError, DifferentialOracle, DifferentialOracleLayout, DifferentialRunner,
+    DifferentialSuiteReport,
+};
 pub use external_roms::{
     EXTERNAL_ROM_SOURCE_MANIFEST_PATH, EXTERNAL_ROM_STORE_DIR, ExternalRomRequiredFile,
     ExternalRomSource, ExternalRomSourceManifest, LOCAL_COMMERCIAL_ROM_STORE_DIR,
@@ -20,7 +35,18 @@ pub use external_roms::{
     load_external_rom_source_manifest, local_commercial_rom_store_root,
 };
 pub use fetch_external_roms::{fetch_external_roms_help_text, run_fetch_external_roms_command};
+pub use run_differential_cli::{differential_cli_help_text, run_differential_command};
 pub use run_rom_suite_cli::{rom_suite_cli_help_text, run_rom_suite_command};
+pub use run_sameboy_tester_cli::{run_sameboy_tester_command, sameboy_tester_cli_help_text};
+pub use sameboy_tester::{
+    SameBoyTesterExecutionError, SameBoyTesterImageFormat, SameBoyTesterRunner,
+    SameBoyTesterSuiteReport,
+};
+pub use workspace_paths::{
+    BOOT_ROM_ROOT_ENV_VAR, BOOT_ROM_STORE_DIR, ORACLE_STORE_DIR, boot_rom_image_path,
+    boot_rom_kind_for_console_model, boot_rom_store_root, discover_boot_rom_store_root,
+    oracle_layout_root, oracle_store_root, sameboy_tester_oracle_root,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TestSubsystem {
@@ -90,6 +116,18 @@ pub enum StimulusTime {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExternalStimulusAction {
     JoypadSetButton { button: JoypadButton, pressed: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StartupMemoryWrite {
+    pub address: u16,
+    pub value: u8,
+}
+
+impl StartupMemoryWrite {
+    pub const fn new(address: u16, value: u8) -> Self {
+        Self { address, value }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -284,6 +322,7 @@ pub struct RomTestCase {
     pub console_model: ConsoleModel,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
+    pub startup_memory_writes: Vec<StartupMemoryWrite>,
     pub external_stimuli: ExternalStimulusPlan,
     pub stop_condition: Option<ExecutionStopCondition>,
     pub timeout: Timeout,
@@ -309,6 +348,7 @@ impl RomTestCase {
             console_model: ConsoleModel::Dmg,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
+            startup_memory_writes: Vec::new(),
             external_stimuli: ExternalStimulusPlan::new(),
             stop_condition: None,
             timeout,
@@ -330,6 +370,19 @@ impl RomTestCase {
 
     pub fn with_execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
         self.execution_mode = execution_mode;
+        self
+    }
+
+    pub fn with_startup_memory_write(mut self, write: StartupMemoryWrite) -> Self {
+        self.startup_memory_writes.push(write);
+        self
+    }
+
+    pub fn with_startup_memory_writes(
+        mut self,
+        writes: impl IntoIterator<Item = StartupMemoryWrite>,
+    ) -> Self {
+        self.startup_memory_writes.extend(writes);
         self
     }
 
@@ -872,12 +925,118 @@ pub fn gbdev_dmg_acid2_suite() -> RomSuite {
     )
 }
 
+const DMG_BOOT_TRADEMARK_TILE_VRAM_START: u16 = 0x8190;
+const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
+    0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C, 0x00,
+];
+
+fn dmg_boot_trademark_tile_startup_writes() -> [StartupMemoryWrite; 16] {
+    std::array::from_fn(|index| {
+        StartupMemoryWrite::new(
+            DMG_BOOT_TRADEMARK_TILE_VRAM_START + index as u16,
+            DMG_BOOT_TRADEMARK_TILE_BYTES[index],
+        )
+    })
+}
+
+fn gbemu_shootout_framebuffer_case(
+    case_id: &'static str,
+    rom_path: &'static str,
+    fixture_path: &'static str,
+    timeout: Timeout,
+) -> RomTestCase {
+    RomTestCase::new(
+        case_id,
+        PathBuf::from(rom_path),
+        timeout,
+        PassCondition::FramebufferFixture(PathBuf::from(fixture_path)),
+    )
+    .with_external_rom_root_key(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+    .with_capture_plan(
+        CapturePlan::new()
+            .with_capture(CaptureKind::Framebuffer)
+            .with_capture(CaptureKind::Snapshot),
+    )
+    .with_failure_artifacts(
+        FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::Framebuffer)
+            .with_artifact(CaptureKind::Snapshot),
+    )
+}
+
+pub fn gbdev_mealybug_tearoom_dmg_curated_suite() -> RomSuite {
+    RomSuite::new("gbdev-mealybug-tearoom-dmg-curated", TestSubsystem::Ppu)
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m2-win-en-toggle",
+            "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m2_win_en_toggle_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-bgp-change",
+            "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_bgp_change_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-bgp-change-sprites",
+            "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change_sprites.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_bgp_change_sprites_dmg_blob.pgm",
+            Timeout::Frames(30),
+        )
+        .with_startup_memory_writes(dmg_boot_trademark_tile_startup_writes()))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-lcdc-obj-size-change",
+            "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_lcdc_obj_size_change_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-lcdc-win-en-change-multiple",
+            "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_lcdc_win_en_change_multiple_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-obp0-change",
+            "testroms/mealybug-tearoom-tests/ppu/m3_obp0_change.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_obp0_change_dmg_blob.pgm",
+            Timeout::Frames(30),
+        )
+        .with_startup_memory_writes(dmg_boot_trademark_tile_startup_writes()))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-scx-low-3-bits",
+            "testroms/mealybug-tearoom-tests/ppu/m3_scx_low_3_bits.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_scx_low_3_bits_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-window-timing",
+            "testroms/mealybug-tearoom-tests/ppu/m3_window_timing.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_window_timing_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-window-timing-wx-0",
+            "testroms/mealybug-tearoom-tests/ppu/m3_window_timing_wx_0.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_window_timing_wx_0_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+        .with_case(gbemu_shootout_framebuffer_case(
+            "gbdev-mealybug-m3-wx-4-change-sprites",
+            "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites.gb",
+            "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_wx_4_change_sprites_dmg_blob.pgm",
+            Timeout::Frames(30),
+        ))
+}
+
 pub fn built_in_rom_suites() -> Vec<RomSuite> {
     vec![
         phase_2_cpu_timing_suite(),
         phase_2_interrupt_timing_suite(),
         phase_4_ppu_oam_corruption_suite(),
         gbdev_dmg_acid2_suite(),
+        gbdev_mealybug_tearoom_dmg_curated_suite(),
         retrio_blargg_cpu_smoke_suite(),
         retrio_blargg_cpu_instrs_full_suite(),
         retrio_blargg_instr_timing_suite(),
@@ -960,7 +1119,10 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
                 "gbdev-dmg-acid2-repo-gated",
             ],
             active_oracles: &["trace-fixture", "memory-text-output", "framebuffer-fixture"],
-            remaining_gaps: &["mealybug-tearoom", "broader-rendering-differential-oracle"],
+            remaining_gaps: &[
+                "green-repo-gated-mealybug-tearoom",
+                "broader-rendering-differential-oracle",
+            ],
         },
         EarlyHardeningChecklistEntry {
             subsystem: TestSubsystem::Cartridge,
@@ -1081,6 +1243,13 @@ const fn retrio_blargg_memory_text_output_spec() -> MemoryTextOutputSpec {
 pub enum RomExecutionError {
     InvalidCase(RomCaseValidationError),
     InvalidSuite(RomSuiteValidationError),
+    BootRomAssets {
+        path: PathBuf,
+        source: BootRomAssetError,
+    },
+    BootRomVerification {
+        issue: BootRomVerificationIssue,
+    },
     ReadFile {
         path: PathBuf,
         operation: &'static str,
@@ -1195,6 +1364,8 @@ pub struct RomRunner {
     workspace_root: PathBuf,
     failure_artifact_root: Option<PathBuf>,
     external_rom_roots: BTreeMap<String, PathBuf>,
+    boot_rom_root: Option<PathBuf>,
+    boot_rom_verification_mode: BootRomVerificationMode,
 }
 
 enum RunnerMachine {
@@ -1203,10 +1374,11 @@ enum RunnerMachine {
 }
 
 impl RunnerMachine {
-    fn new(case: &RomTestCase) -> Self {
+    fn new(case: &RomTestCase, boot_rom_assets: BootRomAssets) -> Self {
         let config = MachineConfig::new(case.console_model)
             .with_startup_mode(case.startup_mode)
-            .with_execution_mode(case.execution_mode);
+            .with_execution_mode(case.execution_mode)
+            .with_boot_rom_assets(boot_rom_assets);
         let needs_trace_buffer = case.capture_plan.contains(CaptureKind::Trace)
             || case.failure_artifacts.contains(CaptureKind::Trace);
 
@@ -1249,6 +1421,13 @@ impl RunnerMachine {
         match self {
             Self::Buffered(machine) => machine.read_bus(address),
             Self::Summary(machine) => machine.read_bus(address),
+        }
+    }
+
+    fn write_bus(&mut self, address: u16, value: u8) {
+        match self {
+            Self::Buffered(machine) => machine.write_bus(address, value),
+            Self::Summary(machine) => machine.write_bus(address, value),
         }
     }
 
@@ -1323,6 +1502,8 @@ impl RomRunner {
             workspace_root: default_workspace_root(),
             failure_artifact_root: None,
             external_rom_roots: BTreeMap::new(),
+            boot_rom_root: None,
+            boot_rom_verification_mode: BootRomVerificationMode::Strict,
         }
     }
 
@@ -1333,6 +1514,19 @@ impl RomRunner {
 
     pub fn with_failure_artifact_root(mut self, failure_artifact_root: impl Into<PathBuf>) -> Self {
         self.failure_artifact_root = Some(failure_artifact_root.into());
+        self
+    }
+
+    pub fn with_boot_rom_root(mut self, boot_rom_root: impl Into<PathBuf>) -> Self {
+        self.boot_rom_root = Some(boot_rom_root.into());
+        self
+    }
+
+    pub fn with_boot_rom_verification_mode(
+        mut self,
+        boot_rom_verification_mode: BootRomVerificationMode,
+    ) -> Self {
+        self.boot_rom_verification_mode = boot_rom_verification_mode;
         self
     }
 
@@ -1363,21 +1557,22 @@ impl RomRunner {
     pub fn run_case(&self, case: &RomTestCase) -> Result<RomCaseReport, RomExecutionError> {
         case.validate().map_err(RomExecutionError::InvalidCase)?;
 
-        let rom_path =
-            self.resolve_case_path(&case.rom_path, case.external_rom_root_key.as_deref())?;
+        let rom_path = self.resolve_case_rom_path(case)?;
         let rom_bytes = fs::read(&rom_path).map_err(|source| RomExecutionError::ReadFile {
             path: rom_path.clone(),
             operation: "read ROM",
             source,
         })?;
 
-        let mut machine = RunnerMachine::new(case);
+        let boot_rom_assets = self.load_boot_rom_assets(case)?;
+        let mut machine = RunnerMachine::new(case, boot_rom_assets);
         let diagnostics = machine.load_cartridge(rom_bytes).map_err(|source| {
             RomExecutionError::CartridgeLoad {
                 path: rom_path.clone(),
                 source,
             }
         })?;
+        self.apply_startup_memory_writes(case, &mut machine);
 
         let mut executed_t_cycles = 0_u64;
         let mut completed_frames = 0_u32;
@@ -1469,6 +1664,39 @@ impl RomRunner {
         })
     }
 
+    pub fn resolve_case_rom_path(&self, case: &RomTestCase) -> Result<PathBuf, RomExecutionError> {
+        self.resolve_case_path(&case.rom_path, case.external_rom_root_key.as_deref())
+    }
+
+    pub fn workspace_root(&self) -> &Path {
+        &self.workspace_root
+    }
+
+    fn load_boot_rom_assets(&self, case: &RomTestCase) -> Result<BootRomAssets, RomExecutionError> {
+        if case.startup_mode != StartupMode::RealBoot {
+            return Ok(BootRomAssets::none());
+        }
+
+        let Some(kind) = boot_rom_kind_for_console_model(case.console_model) else {
+            return Ok(BootRomAssets::none());
+        };
+
+        let root = self
+            .boot_rom_root
+            .clone()
+            .or_else(|| discover_boot_rom_store_root(&self.workspace_root))
+            .unwrap_or_else(|| boot_rom_store_root(&self.workspace_root));
+        let image_path = boot_rom_image_path(&root, kind);
+        enforce_boot_rom_verification(self.boot_rom_verification_mode, &image_path, kind)
+            .map_err(|issue| RomExecutionError::BootRomVerification { issue })?;
+        if !root.is_dir() {
+            return Ok(BootRomAssets::none());
+        }
+
+        BootRomAssets::from_directory(&root)
+            .map_err(|source| RomExecutionError::BootRomAssets { path: root, source })
+    }
+
     fn resolve_path(&self, path: &Path) -> PathBuf {
         if path.is_absolute() {
             path.to_path_buf()
@@ -1536,6 +1764,12 @@ impl RomRunner {
             }
 
             applied_stimuli[index] = true;
+        }
+    }
+
+    fn apply_startup_memory_writes(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
+        for write in &case.startup_memory_writes {
+            machine.write_bus(write.address, write.value);
         }
     }
 
@@ -1883,7 +2117,7 @@ fn capture_memory_text_output(
     }
 }
 
-fn render_memory_text_output(captured: &CapturedMemoryTextOutput) -> String {
+pub(crate) fn render_memory_text_output(captured: &CapturedMemoryTextOutput) -> String {
     format!(
         "status=0x{status:02X}\nsignature={sig0:02X} {sig1:02X} {sig2:02X}\ntext={text:?}\n",
         status = captured.status,
@@ -1892,6 +2126,17 @@ fn render_memory_text_output(captured: &CapturedMemoryTextOutput) -> String {
         sig2 = captured.signature[2],
         text = captured.text,
     )
+}
+
+pub(crate) fn artifact_file_name(capture: CaptureKind) -> &'static str {
+    match capture {
+        CaptureKind::Serial => "serial.txt",
+        CaptureKind::MemoryTextOutput => "memory_text_output.txt",
+        CaptureKind::BlarggConsoleText => "blargg_console.txt",
+        CaptureKind::Framebuffer => "framebuffer.pgm",
+        CaptureKind::Trace => "trace.txt",
+        CaptureKind::Snapshot => "snapshot.txt",
+    }
 }
 
 fn capture_blargg_console_text(machine: &mut RunnerMachine) -> String {
@@ -2048,6 +2293,33 @@ mod tests {
             case.pass_condition,
             PassCondition::FramebufferFixture(_)
         ));
+    }
+
+    #[test]
+    fn built_in_rom_suite_lookup_returns_curated_mealybug_suite_with_framebuffer_oracles() {
+        let suite = built_in_rom_suite_by_name("gbdev-mealybug-tearoom-dmg-curated")
+            .expect("known suite should exist");
+
+        assert_eq!(suite.subsystem, TestSubsystem::Ppu);
+        assert_eq!(suite.cases.len(), 10);
+        assert!(suite.cases.iter().all(|case| {
+            case.external_rom_root_key.as_deref() == Some(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+                && case.capture_plan.contains(CaptureKind::Framebuffer)
+                && case.capture_plan.contains(CaptureKind::Snapshot)
+                && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
+        }));
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "gbdev-mealybug-m3-window-timing")
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "gbdev-mealybug-m3-wx-4-change-sprites")
+        );
     }
 
     #[test]

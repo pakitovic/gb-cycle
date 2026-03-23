@@ -70,8 +70,9 @@ project is still bringing up later hardware blocks such as APU and save states.
 - `PPU`: repo gate present for the currently closed OAM-corruption slice. Current
   evidence: Phase `4` synthetic OAM-corruption ROMs, curated Blargg `oam_bug`
   singles `1..6,8`, and a repo-gated `dmg-acid2` framebuffer oracle.
-  Remaining final-closure gaps: mealybug tearoom, broader rendering/timing
-  differential coverage, and the still-deferred non-curated exploratory ROMs.
+  Remaining final-closure gaps: a green repo-gated `mealybug-tearoom` slice,
+  broader rendering/timing differential coverage, and the still-deferred
+  non-curated exploratory ROMs.
 - `Cartridge`: internal gate only. Current evidence: unit and integration coverage
   for `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, and hardware-style persistence.
   Remaining final-closure gaps: external oracle material beyond synthetic/unit
@@ -102,10 +103,23 @@ This checklist should move only when one of the following becomes true:
 - When a ROM needs deterministic host-side interaction, the typed case metadata should also carry the external stimulus schedule explicitly instead of burying that behavior in ad hoc test-only closures.
 - During early Phase `0`, `gb-test-runner` could begin as a contract-only crate, but it should already own typed ROM-case and suite metadata including console model, startup mode, execution mode, emulation-progress timeout, explicit pass/fail rule, external stimulus schedule when needed, requested captures, and retained failure-artifact policy.
 - In the current baseline, `gb-test-runner` is already an executable harness as well: it can load typed suites, run ROMs on the shared T-cycle machine, capture serial / framebuffer / snapshot artifacts, and preserve failure outputs without relying on a frontend.
+- Typed ROM-case metadata may also carry deterministic startup memory writes when a curated oracle depends on one explicit post-boot memory artifact that the current `SkipBoot` baseline does not synthesize yet. Keep that path narrow, document the provenance of the bytes, and prefer boot-derived state such as the DMG trademark tile over ad hoc framebuffer patching. This currently covers curated mealybug cases that intentionally reuse tile `0x19` from the DMG boot ROM instead of uploading their own tile data.
 - When a typed suite is landed before its redistributable assets, reserve the exact ROM and trace filenames in the repo with per-phase README stubs so later automation and oracle work reuse one stable target contract instead of inventing new names ad hoc.
 - Repo-managed external ROM assets should live under one gitignored workspace store, currently `/.roms/external-test/`, with upstream source, pinned revision, and required-file hashes recorded in a versioned manifest so local runs and CI use the same asset contract.
 - `gb-test-runner` may accept explicit environment-variable roots for external suites, but the default automation path should also resolve the repo-managed store automatically so developers and CI do not need ad hoc local clones or handwritten path setup.
 - Keep redistributable external test ROMs and non-redistributable commercial ROMs in separate stores. The current local-only commercial bucket is `/.roms/local-commercial/`, and it must remain outside CI, docs about official closure, and public automation targets.
+- Keep local boot ROM images under the repo-managed gitignored `/.roms/bootrom/`
+  store, using the canonical filenames from `gb-core` (`dmg0_boot.bin`,
+  `dmg_boot.bin`, `mgb_boot.bin`) so local real-boot runs do not depend on ad
+  hoc per-machine paths.
+- For the current DMG-family store, `gb-test-runner` treats those boot ROM
+  assets as pinned local inputs rather than arbitrary filenames: strict-mode
+  `RealBoot` verifies the observed SHA-256 against the expected
+  `dmg0/dmg/mgb` hashes before execution so local bring-up does not silently
+  proceed on the wrong firmware bytes.
+- Keep imported differential oracle artifacts under the repo-managed gitignored
+  `/.oracles/<oracle>/<layout>/` tree instead of scattering them under `/tmp`,
+  so repeated validation runs have one visible workspace-local location.
 - The minimum DMG closure baseline should include automated CPU / interrupt coverage through `retrio/gb-test-roms` or equivalent Blargg automation, `dmg-acid2` for basic DMG PPU validation, and `mealybug-tearoom-tests` for fine PPU rendering / timing validation.
 - Keep explicit roadmap space for broader closure suites such as Mooneye / Gekkio coverage, SameSuite, GB Accuracy Tests, 144p Test Suite, and MBC3 RTC-focused ROMs.
 - `gb-test-runner` should expose a human-readable catalog of the built-in suites
@@ -118,15 +132,43 @@ This checklist should move only when one of the following becomes true:
 - The current early PPU hardening lane also includes the repo-gated framebuffer
   oracle suite for `dmg-acid2` under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2`.
+- The current early PPU hardening lane also includes one non-gated exploratory
+  framebuffer suite for `mealybug-tearoom-tests` under
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`.
+  This suite uses a curated DMG-only subset sourced from `GBEmulatorShootout`
+  and the same committed-PGM oracle contract as `dmg-acid2`, but it is
+  currently red under `Strict` and therefore stays outside `make local`, the
+  `external-roms` workflow, and the repo-gated DMG block until the underlying
+  PPU mismatches are corrected.
+- The current early `9.3` MVP also includes one imported-oracle end-of-test
+  differential path under
+  `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`.
+  This path enforces `Strict`, compares the suite's required-capture artifact
+  against an imported oracle artifact bundle, and archives local context on
+  divergence; it intentionally does not yet provide end-of-instruction or
+  short-window first-divergence tracing, but it
+  now does report the first differing byte or pixel inside the compared final
+  artifact. The current `sameboy-tester` layout support is limited to
+  framebuffer-oracle cases because SameBoy's internal tester emits image plus
+  log artifacts rather than the serial or memory-text channels used by the
+  Blargg text suites. When `--oracle-artifact-root` is omitted, the repo-local
+  default is `/.oracles/<oracle>/<layout>/`.
+- The repo now also includes a companion SameBoy Tester materialization command
+  under
+  `cargo run -p gb-test-runner --bin run_sameboy_tester -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --tester-binary <path>]`.
+  This command stages ROMs under the oracle root and emits the `.bmp` / `.tga`
+  plus `.log` files in the `sameboy-tester` layout that `run_differential`
+  already understands. When `--oracle-root` is omitted, the repo-local default
+  is `/.oracles/sameboy/sameboy-tester/`. The wrapper intentionally does not
+  override SameBoy's own boot-ROM path; keep this flow scoped to end-of-test
+  imported-oracle materialization rather than boot-path arbitration.
 
 ## Differential oracle policy
 
-- Use SameBoy as the primary differential oracle for DMG behavior whenever comparable observables are available.
-- Use Gambatte as a secondary oracle when triangulation adds value or when a SameBoy-only result still needs corroboration.
+- Use SameBoy as the differential oracle for DMG behavior whenever comparable observables are available.
 - Differential comparison should support at least three granularities: end of test, end of instruction, and short T-cycle windows for reduced scenarios.
 - Prefer a clear "first point of divergence" workflow over one final hash or framebuffer mismatch.
-- When SameBoy and Gambatte agree and this project differs, treat the discrepancy as a project bug by default until evidence shows otherwise.
-- When the oracles disagree, mark the case as requiring arbitration rather than silently accepting one side as correct.
+- If another oracle is introduced in the future, document its automation path and arbitration policy explicitly before treating it as closure evidence.
 
 ## Execution-mode validation policy
 
@@ -135,7 +177,7 @@ This checklist should move only when one of the following becomes true:
 - `Experimental` is for research and bring-up; its results must stay segregated from official closure metrics, oracle comparisons, and compatibility claims.
 - Mode-sensitive loader tests should cover the documented category matrix for `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`.
 - When a test exercises heuristics, partial implementations, or manual overrides, the captured artifacts should say so explicitly rather than looking like ordinary strict-mode evidence.
-- Differential comparison against SameBoy or Gambatte should always run under `Strict`, not under `Permissive` or `Experimental`.
+- Differential comparison against SameBoy should always run under `Strict`, not under `Permissive` or `Experimental`.
 
 ## Validation tooling requirements
 
@@ -346,7 +388,7 @@ When a change affects observable timing or ordering:
 - Every fixed bug should leave behind at least one permanent regression asset.
 - Use a focused unit or integration test when the bug is local to one subsystem or one cross-subsystem interaction.
 - Use a ROM-based reproduction case when the bug is systemic or easiest to demonstrate through an external suite.
-- Use a stored differential case when the bug was discovered by comparison against SameBoy, Gambatte, or another explicit oracle.
+- Use a stored differential case when the bug was discovered by comparison against SameBoy or another explicit oracle.
 - Keep regression organization by subsystem or hardware area so repeated failures do not disappear into one catch-all bucket.
 - Differential regressions should preserve enough reproduction context to rerun them quickly, including the ROM, execution mode, active overrides, input stream, injected seed or time source when relevant, first divergence point, and an optional snapshot when that reduces debug time.
 

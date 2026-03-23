@@ -6,7 +6,7 @@ where
     S: AsRef<str>,
     W: std::io::Write,
 {
-    gb_test_runner::run_rom_suite_command(arguments, output)
+    gb_test_runner::run_sameboy_tester_command(arguments, output)
 }
 
 fn main() {
