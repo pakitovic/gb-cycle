@@ -43,7 +43,8 @@ pub enum BusAccessKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BusBlockReason {
-    DmaCpuRestrictedToHram,
+    DmaExternalBusConflict,
+    DmaVideoBusConflict,
     PpuVramBlockedDuringMode3,
     PpuOamBlockedDuringMode2,
     PpuOamBlockedDuringMode3,
@@ -82,7 +83,8 @@ impl BusAccessDisposition {
 pub enum DmaCpuAccessPolicy {
     #[default]
     Unrestricted,
-    HramOnly,
+    ExternalBusBlocked,
+    VideoBusBlocked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -105,9 +107,16 @@ impl DmaBusState {
         }
     }
 
-    pub const fn cpu_hram_only(active_region: Option<DmaMemoryRegionImpact>) -> Self {
+    pub const fn external_bus_blocked(active_region: Option<DmaMemoryRegionImpact>) -> Self {
         Self {
-            cpu_access_policy: DmaCpuAccessPolicy::HramOnly,
+            cpu_access_policy: DmaCpuAccessPolicy::ExternalBusBlocked,
+            active_region,
+        }
+    }
+
+    pub const fn video_bus_blocked(active_region: Option<DmaMemoryRegionImpact>) -> Self {
+        Self {
+            cpu_access_policy: DmaCpuAccessPolicy::VideoBusBlocked,
             active_region,
         }
     }
@@ -819,15 +828,26 @@ impl Bus {
             return None;
         }
 
-        if state.dma.cpu_access_policy() != DmaCpuAccessPolicy::HramOnly {
-            return None;
-        }
+        match state.dma.cpu_access_policy() {
+            DmaCpuAccessPolicy::Unrestricted => None,
+            DmaCpuAccessPolicy::ExternalBusBlocked => {
+                if target.region() == BusRegion::Hram
+                    || target.region() == BusRegion::Vram
+                    || target.address() == 0xFF46
+                {
+                    return None;
+                }
 
-        if target.region() == BusRegion::Hram {
-            return None;
+                Some(self.block_access(kind, BusBlockReason::DmaExternalBusConflict))
+            }
+            DmaCpuAccessPolicy::VideoBusBlocked => {
+                if matches!(target.region(), BusRegion::Vram | BusRegion::Oam) {
+                    Some(self.block_access(kind, BusBlockReason::DmaVideoBusConflict))
+                } else {
+                    None
+                }
+            }
         }
-
-        Some(self.block_access(kind, BusBlockReason::DmaCpuRestrictedToHram))
     }
 
     fn evaluate_ppu_policy(
@@ -1483,10 +1503,12 @@ mod tests {
     }
 
     #[test]
-    fn dma_hram_only_policy_has_precedence_over_ppu_region_rules() {
+    fn video_bus_dma_policy_has_precedence_over_ppu_region_rules() {
         let bus = Bus::new(ConsoleModel::Dmg);
         let state = BusArbitrationState::default()
-            .with_dma(DmaBusState::cpu_hram_only(Some(DmaMemoryRegionImpact::Oam)))
+            .with_dma(DmaBusState::video_bus_blocked(Some(
+                DmaMemoryRegionImpact::Oam,
+            )))
             .with_ppu(PpuBusState::lcd_enabled(PpuAccessMode::Drawing));
 
         let resolution = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x8000, &state);
@@ -1494,8 +1516,26 @@ mod tests {
         assert_eq!(resolution.target().region(), BusRegion::Vram);
         assert_eq!(
             resolution.disposition().blocked_reason(),
-            Some(BusBlockReason::DmaCpuRestrictedToHram)
+            Some(BusBlockReason::DmaVideoBusConflict)
         );
+    }
+
+    #[test]
+    fn external_bus_dma_policy_keeps_ff46_readable_and_writable_during_active_dma() {
+        let bus = Bus::new(ConsoleModel::Dmg);
+        let state = BusArbitrationState::default().with_dma(DmaBusState::external_bus_blocked(
+            Some(DmaMemoryRegionImpact::Oam),
+        ));
+
+        let read_resolution =
+            bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xFF46, &state);
+        assert_eq!(read_resolution.target().region(), BusRegion::Mmio);
+        assert!(read_resolution.disposition().is_allowed());
+
+        let write_resolution =
+            bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0xFF46, &state);
+        assert_eq!(write_resolution.target().region(), BusRegion::Mmio);
+        assert!(write_resolution.disposition().is_allowed());
     }
 
     #[test]

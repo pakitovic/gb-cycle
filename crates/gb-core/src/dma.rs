@@ -4,9 +4,13 @@ use crate::scheduler::CycleContext;
 
 const OAM_DMA_DESTINATION_START: u16 = 0xFE00;
 const OAM_DMA_TRANSFER_BYTES: u16 = 160;
-const OAM_DMA_FIRST_BYTE_DELAY_T_CYCLES: u8 = 2;
+// Mooneye's OAM-DMA start/timing ROMs require one full post-write M-cycle where
+// CPU OAM fetches still work before the DMA-owned OAM blocking window begins.
+const OAM_DMA_FIRST_BYTE_DELAY_T_CYCLES: u8 = 8;
+const OAM_DMA_CPU_BUS_RESTRICTION_DELAY_T_CYCLES: u8 = 5;
 const OAM_DMA_T_CYCLES_PER_BYTE: u8 = 4;
-const OAM_DMA_TOTAL_T_CYCLES: u16 = 640;
+const OAM_DMA_TOTAL_T_CYCLES: u16 = 648;
+const DMG_OAM_DMA_ECHO_ALIAS_OFFSET: u16 = 0x2000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DmaStatus {
@@ -121,7 +125,7 @@ impl DmaTransfer {
             timing: DmaTransferTiming {
                 total_t_cycles: OAM_DMA_TOTAL_T_CYCLES,
                 first_byte_delay_t_cycles: OAM_DMA_FIRST_BYTE_DELAY_T_CYCLES,
-                cpu_bus_restriction_delay_t_cycles: OAM_DMA_FIRST_BYTE_DELAY_T_CYCLES,
+                cpu_bus_restriction_delay_t_cycles: OAM_DMA_CPU_BUS_RESTRICTION_DELAY_T_CYCLES,
                 t_cycles_per_byte: OAM_DMA_T_CYCLES_PER_BYTE,
             },
             cpu_impact_policy: DmaCpuImpactPolicy::NoCpuStallButBusRestriction,
@@ -167,7 +171,12 @@ impl DmaTransfer {
     }
 
     pub const fn source_address_for_byte(self, byte_index: u16) -> u16 {
-        self.source_start + byte_index
+        match self.kind {
+            DmaTransferKind::Oam => {
+                normalize_dmg_oam_source_address(self.source_start + byte_index)
+            }
+            DmaTransferKind::Gdma | DmaTransferKind::Hdma => self.source_start + byte_index,
+        }
     }
 
     pub const fn destination_address_for_byte(self, byte_index: u16) -> u16 {
@@ -176,6 +185,13 @@ impl DmaTransfer {
 
     pub const fn timing(self) -> DmaTransferTiming {
         self.timing
+    }
+
+    const fn source_bus(self) -> DmaSourceBus {
+        match self.source_start >> 8 {
+            0x80..=0x9F => DmaSourceBus::VideoRam,
+            _ => DmaSourceBus::External,
+        }
     }
 
     pub const fn cpu_impact_policy(self) -> DmaCpuImpactPolicy {
@@ -288,6 +304,12 @@ impl DmaTransferProgress {
             elapsed_t_cycles: self.elapsed_t_cycles.saturating_add(1),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum DmaSourceBus {
+    External,
+    VideoRam,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -440,6 +462,7 @@ pub struct DmaController {
     status: DmaStatus,
     source_page_latch: u8,
     transfer_state: DmaTransferState,
+    pending_restart: Option<DmaTransferProgress>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -448,6 +471,7 @@ pub struct DmaSnapshot {
     pub status: DmaStatus,
     pub source_page_latch: u8,
     pub transfer_state: DmaTransferState,
+    pub pending_restart: Option<DmaTransferProgress>,
 }
 
 impl DmaController {
@@ -457,6 +481,7 @@ impl DmaController {
             status: DmaStatus::Ready,
             source_page_latch: 0,
             transfer_state: DmaTransferState::Idle,
+            pending_restart: None,
         }
     }
 
@@ -510,7 +535,14 @@ impl DmaController {
                 DmaBusState::unrestricted()
             }
             DmaTransferState::Starting(progress) | DmaTransferState::Active(progress) => {
-                DmaBusState::cpu_hram_only(Some(progress.transfer().memory_region_impact()))
+                match progress.transfer().source_bus() {
+                    DmaSourceBus::External => DmaBusState::external_bus_blocked(Some(
+                        progress.transfer().memory_region_impact(),
+                    )),
+                    DmaSourceBus::VideoRam => DmaBusState::video_bus_blocked(Some(
+                        progress.transfer().memory_region_impact(),
+                    )),
+                }
             }
         }
     }
@@ -521,13 +553,20 @@ impl DmaController {
 
     pub fn write_ff46(&mut self, value: u8) {
         self.source_page_latch = value;
-        self.transfer_state =
-            DmaTransferState::Starting(DmaTransferProgress::new(DmaTransfer::oam(value)));
+        let restarted_transfer = DmaTransferProgress::new(DmaTransfer::oam(value));
+
+        if self.transfer_state.is_in_flight() {
+            self.pending_restart = Some(restarted_transfer);
+        } else {
+            self.transfer_state = DmaTransferState::Starting(restarted_transfer);
+            self.pending_restart = None;
+        }
     }
 
     pub fn apply_startup_state(&mut self, startup_state: DmaStartupState) {
         self.source_page_latch = startup_state.source_page_latch;
         self.transfer_state = DmaTransferState::Idle;
+        self.pending_restart = None;
     }
 
     pub fn snapshot(&self) -> DmaSnapshot {
@@ -536,6 +575,7 @@ impl DmaController {
             status: self.status,
             source_page_latch: self.source_page_latch,
             transfer_state: self.transfer_state,
+            pending_restart: self.pending_restart,
         }
     }
 
@@ -588,6 +628,18 @@ impl DmaController {
     }
 
     pub(crate) fn tick_t_cycle(&mut self, _context: &mut CycleContext) -> Option<DmaTransferWork> {
+        if let Some(pending_restart) = self.pending_restart {
+            let advanced_restart = pending_restart.advance_one_t_cycle();
+
+            if !advanced_restart.is_cpu_bus_restriction_active() {
+                self.pending_restart = Some(advanced_restart);
+            } else {
+                self.pending_restart = None;
+                self.transfer_state = DmaTransferState::Active(advanced_restart);
+                return None;
+            }
+        }
+
         let previous_state = self.transfer_state;
 
         self.transfer_state = match self.transfer_state {
@@ -596,17 +648,20 @@ impl DmaController {
             DmaTransferState::Starting(progress) => {
                 let advanced_progress = progress.advance_one_t_cycle();
 
-                if advanced_progress.completed_bytes() == 0 {
+                if advanced_progress.is_cpu_bus_restriction_active() {
+                    DmaTransferState::Active(advanced_progress)
+                } else {
                     DmaTransferState::Starting(advanced_progress)
+                }
+            }
+            DmaTransferState::Active(progress) => {
+                let advanced_progress = progress.advance_one_t_cycle();
+
+                if advanced_progress.is_complete() {
+                    DmaTransferState::Completed(advanced_progress)
                 } else {
                     DmaTransferState::Active(advanced_progress)
                 }
-            }
-            DmaTransferState::Active(progress) if progress.is_complete() => {
-                DmaTransferState::Completed(progress)
-            }
-            DmaTransferState::Active(progress) => {
-                DmaTransferState::Active(progress.advance_one_t_cycle())
             }
         };
 
@@ -633,6 +688,14 @@ impl DmaController {
     }
 }
 
+const fn normalize_dmg_oam_source_address(address: u16) -> u16 {
+    if address >= 0xE000 {
+        address - DMG_OAM_DMA_ECHO_ALIAS_OFFSET
+    } else {
+        address
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -654,7 +717,7 @@ mod tests {
         );
         assert_eq!(
             transfer.timing().cpu_bus_restriction_delay_t_cycles(),
-            OAM_DMA_FIRST_BYTE_DELAY_T_CYCLES
+            OAM_DMA_CPU_BUS_RESTRICTION_DELAY_T_CYCLES
         );
         assert_eq!(
             transfer.timing().t_cycles_per_byte(),
@@ -665,6 +728,19 @@ mod tests {
             DmaCpuImpactPolicy::NoCpuStallButBusRestriction
         );
         assert_eq!(transfer.memory_region_impact(), DmaMemoryRegionImpact::Oam);
+    }
+
+    #[test]
+    fn dmg_oam_dma_source_addresses_above_dfff_follow_the_echo_alias_path() {
+        let transfer = DmaTransfer::oam(0xFE);
+
+        assert_eq!(transfer.source_address_for_byte(0), 0xDE00);
+        assert_eq!(transfer.source_address_for_byte(0x9F), 0xDE9F);
+
+        let transfer = DmaTransfer::oam(0xFF);
+
+        assert_eq!(transfer.source_address_for_byte(0), 0xDF00);
+        assert_eq!(transfer.source_address_for_byte(0x9F), 0xDF9F);
     }
 
     #[test]
@@ -684,6 +760,7 @@ mod tests {
             Some(DmaTransferProgress::new(DmaTransfer::oam(0x12)))
         );
         assert_eq!(dma.bus_state(), DmaBusState::unrestricted());
+        assert_eq!(dma.pending_restart, None);
     }
 
     #[test]
@@ -692,33 +769,55 @@ mod tests {
         let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
         dma.write_ff46(0x12);
-        let transfer_work = dma.tick_t_cycle(&mut context);
+        for expected_elapsed_t_cycles in 1..=4 {
+            let transfer_work = dma.tick_t_cycle(&mut context);
 
-        let starting_progress = match dma.transfer_state() {
-            DmaTransferState::Starting(progress) => progress,
-            state => panic!("expected starting progress after first tick, got {state:?}"),
+            let starting_progress = match dma.transfer_state() {
+                DmaTransferState::Starting(progress) => progress,
+                state => panic!(
+                    "expected starting progress during the post-write machine cycle, got {state:?}"
+                ),
+            };
+            assert_eq!(
+                starting_progress.elapsed_t_cycles(),
+                expected_elapsed_t_cycles
+            );
+            assert_eq!(starting_progress.completed_bytes(), 0);
+            assert!(!starting_progress.is_cpu_bus_restriction_active());
+            assert_eq!(dma.bus_state(), DmaBusState::unrestricted());
+            assert_eq!(transfer_work, None);
+        }
+
+        let activation_work = dma.tick_t_cycle(&mut context);
+        let active_progress = match dma.transfer_state() {
+            DmaTransferState::Active(progress) => progress,
+            state => panic!("expected active progress after fifth tick, got {state:?}"),
         };
-        assert_eq!(starting_progress.elapsed_t_cycles(), 1);
-        assert_eq!(starting_progress.completed_bytes(), 0);
-        assert!(!starting_progress.is_cpu_bus_restriction_active());
-        assert_eq!(dma.bus_state(), DmaBusState::unrestricted());
+        assert_eq!(active_progress.elapsed_t_cycles(), 5);
+        assert_eq!(active_progress.completed_bytes(), 0);
+        assert_eq!(active_progress.first_byte_delay_remaining_t_cycles(), 3);
+        assert!(active_progress.is_cpu_bus_restriction_active());
+        assert_eq!(activation_work, None);
 
-        assert_eq!(transfer_work, None);
+        for expected_elapsed_t_cycles in 6..=7 {
+            assert_eq!(dma.tick_t_cycle(&mut context), None);
+            let active_progress = match dma.transfer_state() {
+                DmaTransferState::Active(progress) => progress,
+                state => panic!("expected active progress before the first byte, got {state:?}"),
+            };
+            assert_eq!(
+                active_progress.elapsed_t_cycles(),
+                expected_elapsed_t_cycles
+            );
+            assert_eq!(active_progress.completed_bytes(), 0);
+        }
 
         let first_byte_work = dma
             .tick_t_cycle(&mut context)
-            .expect("expected first DMA byte after the startup seam");
-        let active_progress = match dma.transfer_state() {
-            DmaTransferState::Active(progress) => progress,
-            state => panic!("expected active progress after second tick, got {state:?}"),
-        };
-        assert_eq!(active_progress.elapsed_t_cycles(), 2);
-        assert_eq!(active_progress.completed_bytes(), 1);
-        assert_eq!(active_progress.first_byte_delay_remaining_t_cycles(), 0);
-        assert!(active_progress.is_cpu_bus_restriction_active());
+            .expect("expected first DMA byte on the first active byte cycle");
         assert_eq!(first_byte_work.byte_index(), 0);
 
-        for _ in 0..638 {
+        for _ in 0..639 {
             dma.tick_t_cycle(&mut context);
         }
 
@@ -726,7 +825,7 @@ mod tests {
             DmaTransferState::Active(progress) => progress,
             state => panic!("expected final active progress before completion, got {state:?}"),
         };
-        assert_eq!(final_active_progress.elapsed_t_cycles(), 640);
+        assert_eq!(final_active_progress.elapsed_t_cycles(), 647);
         assert_eq!(final_active_progress.completed_bytes(), 160);
         assert_eq!(final_active_progress.remaining_bytes(), 0);
 
@@ -736,22 +835,78 @@ mod tests {
             DmaTransferState::Completed(progress) => progress,
             state => panic!("expected completed transfer after final tick, got {state:?}"),
         };
-        assert_eq!(completed_progress.elapsed_t_cycles(), 640);
+        assert_eq!(completed_progress.elapsed_t_cycles(), 648);
         assert_eq!(dma.bus_state(), DmaBusState::unrestricted());
     }
 
     #[test]
-    fn dma_tick_emits_the_first_oam_byte_after_two_t_cycles_and_then_every_four_t_cycles() {
+    fn restarting_active_oam_dma_keeps_the_current_transfer_alive_until_the_new_startup_seam_finishes()
+     {
+        let mut dma = DmaController::new(ConsoleModel::Dmg);
+        let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+        dma.write_ff46(0x12);
+        for _ in 0..4 {
+            assert_eq!(dma.tick_t_cycle(&mut context), None);
+        }
+        assert_eq!(dma.tick_t_cycle(&mut context), None);
+        assert!(matches!(
+            dma.transfer_state(),
+            DmaTransferState::Active(progress) if progress.elapsed_t_cycles() == 5
+        ));
+
+        dma.write_ff46(0x34);
+        assert_eq!(
+            dma.pending_restart,
+            Some(DmaTransferProgress::new(DmaTransfer::oam(0x34)))
+        );
+        assert_eq!(
+            dma.bus_state(),
+            DmaBusState::external_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
+        );
+
+        for expected_elapsed_t_cycles in 1..=4 {
+            let transfer_work = dma.tick_t_cycle(&mut context);
+            assert_eq!(
+                dma.pending_restart,
+                Some(DmaTransferProgress {
+                    transfer: DmaTransfer::oam(0x34),
+                    elapsed_t_cycles: expected_elapsed_t_cycles,
+                })
+            );
+            assert_eq!(dma.current_transfer(), Some(DmaTransfer::oam(0x12)));
+
+            match transfer_work {
+                None => assert_ne!(expected_elapsed_t_cycles, 3),
+                Some(work) => {
+                    assert_eq!(expected_elapsed_t_cycles, 3);
+                    assert_eq!(work.transfer(), DmaTransfer::oam(0x12));
+                    assert_eq!(work.byte_index(), 0);
+                }
+            }
+        }
+
+        let restart_work = dma.tick_t_cycle(&mut context);
+        assert_eq!(restart_work, None);
+        assert_eq!(dma.current_transfer(), Some(DmaTransfer::oam(0x34)));
+        assert_eq!(dma.pending_restart, None);
+    }
+
+    #[test]
+    fn dma_tick_emits_the_first_oam_byte_after_the_first_active_dma_byte_cycle_and_then_every_four_t_cycles()
+     {
         let mut dma = DmaController::new(ConsoleModel::Dmg);
         let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
 
         dma.write_ff46(0x12);
 
-        assert_eq!(dma.tick_t_cycle(&mut context), None);
+        for _ in 0..7 {
+            assert_eq!(dma.tick_t_cycle(&mut context), None);
+        }
 
         let first_work = dma
             .tick_t_cycle(&mut context)
-            .expect("expected first DMA byte after two T-cycles");
+            .expect("expected first DMA byte after the visible start seam");
         assert_eq!(first_work.transfer(), DmaTransfer::oam(0x12));
         assert_eq!(first_work.byte_index(), 0);
         assert_eq!(first_work.source_address(), 0x1200);
@@ -774,25 +929,40 @@ mod tests {
         let transfer = DmaTransfer::oam(0x12);
         let warm_up_progress = DmaTransferProgress {
             transfer,
-            elapsed_t_cycles: 1,
+            elapsed_t_cycles: 4,
+        };
+        let active_no_byte_progress = DmaTransferProgress {
+            transfer,
+            elapsed_t_cycles: 5,
         };
         let first_byte_progress = DmaTransferProgress {
             transfer,
-            elapsed_t_cycles: 2,
+            elapsed_t_cycles: 8,
         };
         let completed_progress = DmaTransferProgress {
             transfer,
-            elapsed_t_cycles: 640,
+            elapsed_t_cycles: 648,
         };
 
-        assert_eq!(warm_up_progress.first_byte_delay_remaining_t_cycles(), 1);
+        assert_eq!(warm_up_progress.first_byte_delay_remaining_t_cycles(), 4);
         assert_eq!(
             warm_up_progress.cpu_bus_restriction_delay_remaining_t_cycles(),
             1
         );
         assert_eq!(warm_up_progress.completed_bytes(), 0);
-        assert_eq!(warm_up_progress.byte_phase_t_cycles(), 1);
+        assert_eq!(warm_up_progress.byte_phase_t_cycles(), 4);
         assert!(!warm_up_progress.is_cpu_bus_restriction_active());
+
+        assert_eq!(
+            active_no_byte_progress.first_byte_delay_remaining_t_cycles(),
+            3
+        );
+        assert_eq!(
+            active_no_byte_progress.cpu_bus_restriction_delay_remaining_t_cycles(),
+            0
+        );
+        assert_eq!(active_no_byte_progress.completed_bytes(), 0);
+        assert!(active_no_byte_progress.is_cpu_bus_restriction_active());
 
         assert_eq!(first_byte_progress.first_byte_delay_remaining_t_cycles(), 0);
         assert_eq!(
@@ -806,7 +976,7 @@ mod tests {
 
         assert_eq!(completed_progress.completed_bytes(), 160);
         assert_eq!(completed_progress.remaining_bytes(), 0);
-        assert_eq!(completed_progress.byte_phase_t_cycles(), 2);
+        assert_eq!(completed_progress.byte_phase_t_cycles(), 0);
     }
 
     #[test]

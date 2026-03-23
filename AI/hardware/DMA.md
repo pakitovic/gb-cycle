@@ -72,7 +72,7 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
   - `NoCpuStallButBusRestriction`
   - `CpuFullyStalledUntilDone`
   - `CpuStalledPerBlock`
-- Current DMG OAM DMA maps to `NoCpuStallButBusRestriction`: the CPU keeps executing on the shared T-cycle timeline, but on DMG it only retains normal HRAM access while the transfer is active.
+- Current DMG OAM DMA maps to `NoCpuStallButBusRestriction`: the CPU keeps executing on the shared T-cycle timeline while DMA publishes the current bus-family conflict that arbitration should apply.
 - Future CGB GDMA should be modelable as `CpuFullyStalledUntilDone`.
 - Future CGB HDMA should be modelable as `CpuStalledPerBlock`.
 - The CPU must not hard-code these policies locally; it should observe the result of central arbitration plus DMA-published state.
@@ -92,7 +92,8 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 ## DMG OAM DMA baseline
 
 - Writing `FF46` starts OAM DMA by latching the written high byte as the source page.
-- The source range is `XX00-XX9F`, where `XX` is the latched value from `FF46`.
+- The nominal source range is `XX00-XX9F`, where `XX` is the latched value from `FF46`.
+- On DMG-family hardware, effective OAM-DMA source addresses in `E000-FFFF` follow the WRAM echo path back into `C000-DFFF`, so `FE00-FFFF` source pages behave like `DE00-DFFF` rather than reading live OAM, MMIO, or HRAM.
 - The destination range is always `FE00-FE9F`.
 - A first correct implementation should explicitly track at least `active`, `kind`, `source_high`, `source_addr_current`, `dest_addr_current`, `bytes_remaining`, and `elapsed_dots` or an equivalent byte-phase timing state.
 - `FF46` must arm and configure the DMA subsystem; it must not perform the `160`-byte copy immediately as a side effect of the register write.
@@ -101,6 +102,7 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 
 - Treat `FF46` as a write-triggered DMA control register with immediate side effects, not as a passive byte that another subsystem polls later.
 - The authoritative action of a write to `FF46` is "start OAM DMA with this source page" on that access, not "update a memory-mapped variable that may later cause DMA."
+- A write to `FF46` while a DMG OAM DMA burst is already in flight should not cancel the current burst immediately; the current transfer keeps running until the restarted burst reaches its own CPU-visible start seam, at which point the new source page takes over.
 - Any MMIO-visible `FF46` readback should come from DMA-owned latched state rather than from a generic bus byte.
 - Internal debug state for DMA may exist separately, but it must not replace explicit in-flight transfer state or the MMIO-owned register view.
 
@@ -113,12 +115,14 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
 - OAM DMA should be modeled as a `160`-byte transfer whose observable effects unfold over time rather than as a single commit.
 - For the current DMG-family target, OAM DMA lasts `160` M-cycles = `640` dots at normal speed.
 - Treat those `640` dots as the current hard requirement for DMG-family work; future CGB speed differences should extend the model later rather than weaken the DMG baseline.
-- On the shared T-cycle timeline, DMG OAM DMA should expose the documented internal start-up seam before the first byte commit rather than pretending the transfer begins directly on the first regular `4`-dot cadence boundary.
-- For the current DMG-family target, model OAM DMA with a `2`-T-cycle delay before the first byte commit, then `1` committed byte every `4` dots thereafter while still keeping the full burst at `640` dots.
-- The resulting DMG OAM timeline should therefore make the first byte observable on elapsed T-cycle `2`, the last byte on elapsed T-cycle `638`, and leave the remaining `2` T-cycles visible before the transfer reaches `Completed`.
+- On the shared T-cycle timeline, DMG OAM DMA should expose the CPU-visible post-`FF46` start seam from Mooneye's `oam_dma_start` and `oam_dma_timing` ROMs rather than pretending the transfer begins directly on the write T-cycle.
+- Hardware fact: Pan Docs still documents the burst body itself as `160` M-cycles = `640` dots.
+- Current model decision: keep CPU OAM accesses unrestricted for the full next M-cycle after the `FF46` write completes, then publish the DMA-owned OAM block on elapsed T-cycle `5`.
+- Current model decision: keep the first committed DMA byte separate from that visible bus-start edge, with the first byte landing on elapsed T-cycle `8`.
+- Current model decision: keep the DMA-visible OAM block through elapsed T-cycle `647` and transition to `Completed` on elapsed T-cycle `648`, which matches the current Mooneye-visible start/end windows without collapsing the post-write seam away.
 - Interactions between DMA source access, CPU-visible blocking, and OAM visibility should remain explicit and testable.
-- CPU execution should continue during OAM DMA, but on DMG the CPU should only retain normal HRAM access once the transfer has exited its start-up seam and published its live bus-impact state.
-- Keep the start-up seam and the CPU-visible bus-impact onset as separate timing edges in the common DMA model, even when the current DMG OAM transfer happens to align both at elapsed T-cycle `2`.
+- Current model decision and inference: once the start seam ends, DMG OAM DMA publishes the source-bus conflict instead of a blanket "HRAM-only" block. For source pages `80-9F`, the DMA occupies the video RAM bus and OAM, so CPU accesses to VRAM and OAM are blocked while echo/WRAM, cartridge, MMIO, and HRAM stay available. For all other source pages, the DMA occupies the external bus and OAM, so CPU accesses outside HRAM, VRAM, and `FF46` observe DMA-blocked semantics. This model is inferred from Gekkio's split between external-bus and video-RAM-bus OAM-DMA sources plus the current Mooneye timing ROM behavior.
+- Keep the start seam, the CPU-visible bus-impact onset, and the first-byte commit as separate timing edges in the common DMA model, even when the current DMG OAM transfer keeps them close together.
 - DMA destination writes into OAM must still flow through the same central access-arbitration model used elsewhere; do not create a magical OAM backdoor.
 - On the scheduler timeline, DMA progress should be advanced before current-cycle bus arbitration and CPU access decisions so the bus sees the live DMA state for that same T-cycle.
 - DMA owns transfer progress and source/destination stepping; the bus owns the resulting blocked-access policy observed by CPU and other requesters.
@@ -143,7 +147,7 @@ Do not flatten DMA into a generic `memcpy_async(src, dst, len)` helper. OAM DMA,
   - fixed size of `160` bytes
   - fixed destination range `FE00-FE9F`
   - linear source and destination stepping
-  - fixed DMG duration of `640` T-cycles at normal speed
+  - documented DMG burst body of `640` dots plus the currently modeled post-write CPU-visible seam
   - CPU impact policy `NoCpuStallButBusRestriction`
   - memory-region impact `Oam`
 - OAM DMA remains the first closed functional milestone, but the subsystem contract must already leave room for later block-based and HBlank-conditioned transfers.
@@ -189,14 +193,14 @@ Priority order:
 - Mooneye DMA tests
 - `FF46` trigger and source-page selection tests
 - focused OAM-blocking tests
-- DMG total-duration tests for `640` dots / `160` M-cycles
-- HRAM-only CPU access tests during active DMG OAM DMA
+- DMG timing-window tests that keep the documented `160`-M-cycle burst body visible while also locking the current post-`FF46` CPU-visible start/end seam
+- source-bus-aware CPU-access tests during active DMG OAM DMA
 - transfer-progress and completion-order tests
 - tests that DMA-visible blocking for a T-cycle matches the DMA state produced by that same cycle's scheduler step
 - lifecycle-visibility tests covering `Idle`, active start, completion, and future-compatible cancellation hooks
 - tests that bus-constraint publication is observable separately from actual byte-copy work on a T-cycle
 - tests for common DMA-controller state such as `kind`, `remaining_bytes`, and current CPU-impact policy
-- warm-up-seam tests covering the `2`-T-cycle delay before the first DMG OAM byte commit and the remaining tail before `Completed`
+- warm-up-seam tests covering the one-full-M-cycle post-write window before CPU OAM blocking begins and the final blocked cycle before `Completed`
 - unit tests for a simulated `0x10`-byte block or windowed transfer shape that is not yet wired to CGB MMIO
 
 ## Implementation notes for this repo
@@ -217,9 +221,9 @@ Priority order:
 
 - add a dedicated DMA subsystem with explicit inactive/active transfer state and `FF46` start handling
 - integrate `dma.tick()` into the shared T-cycle scheduler
-- enforce DMG CPU HRAM-only access semantics while OAM DMA is active
+- enforce DMG source-bus-aware CPU access semantics while OAM DMA is active
 - route DMA reads and OAM writes through the same central arbitration model used by the rest of the system
-- add focused tests for total duration, correct `160`-byte copy, CPU blocking, HRAM accessibility, and LCD-enabled interaction
+- add focused tests for total duration, correct `160`-byte copy, CPU blocking, source-bus-specific accessibility, and LCD-enabled interaction
 
 ## Known pitfalls
 

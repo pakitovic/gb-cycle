@@ -7,7 +7,7 @@ use serde::Deserialize;
 pub const EXTERNAL_ROM_STORE_DIR: &str = ".roms/external-test";
 pub const LOCAL_COMMERCIAL_ROM_STORE_DIR: &str = ".roms/local-commercial";
 pub const EXTERNAL_ROM_SOURCE_MANIFEST_PATH: &str =
-    "crates/gb-test-runner/external-rom-sources.toml";
+    "crates/gb-test-runner/test-rom-families/sources.toml";
 const SUPPORTED_EXTERNAL_ROM_SOURCE_MANIFEST_VERSION: u32 = 1;
 
 #[derive(Debug)]
@@ -416,7 +416,7 @@ root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
 
     #[test]
     fn manifest_error_display_mentions_path_and_reason() {
-        let path = PathBuf::from("/tmp/external-rom-sources.toml");
+        let path = PathBuf::from("/tmp/test-rom-sources.toml");
         let read = ExternalRomSourceManifestError::Read {
             path: path.clone(),
             source: std::io::Error::new(std::io::ErrorKind::NotFound, "missing"),

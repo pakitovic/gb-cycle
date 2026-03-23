@@ -28,6 +28,7 @@ pub struct Timer {
     tac: u8,
     previous_timer_signal: bool,
     overflow_state: TimerOverflowState,
+    reloaded_this_t_cycle: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +52,7 @@ impl Timer {
             tac: 0,
             previous_timer_signal: false,
             overflow_state: TimerOverflowState::Idle,
+            reloaded_this_t_cycle: false,
         }
     }
 
@@ -77,6 +79,10 @@ impl Timer {
     }
 
     pub fn write_tima(&mut self, value: u8) {
+        if self.reloaded_this_t_cycle {
+            return;
+        }
+
         self.tima = value;
         if matches!(self.overflow_state, TimerOverflowState::Pending { .. }) {
             self.overflow_state = TimerOverflowState::Idle;
@@ -89,6 +95,9 @@ impl Timer {
 
     pub fn write_tma(&mut self, value: u8) {
         self.tma = value;
+        if self.reloaded_this_t_cycle {
+            self.tima = value;
+        }
     }
 
     pub fn read_tac(&self) -> u8 {
@@ -108,6 +117,7 @@ impl Timer {
         self.tac = startup_state.tac & TIMER_CONTROL_MASK;
         self.previous_timer_signal = self.current_timer_signal();
         self.overflow_state = TimerOverflowState::Idle;
+        self.reloaded_this_t_cycle = false;
     }
 
     pub fn snapshot(&self) -> TimerSnapshot {
@@ -132,6 +142,7 @@ impl Timer {
     }
 
     pub(crate) fn tick_t_cycle(&mut self, context: &mut CycleContext) {
+        self.reloaded_this_t_cycle = false;
         self.advance_overflow_pipeline(context);
 
         self.system_counter = self.system_counter.wrapping_add(1);
@@ -151,6 +162,7 @@ impl Timer {
             TimerOverflowState::Pending { .. } => {
                 self.tima = self.tma;
                 self.overflow_state = TimerOverflowState::Idle;
+                self.reloaded_this_t_cycle = true;
                 context.queue_interrupt_request(InterruptSource::Timer);
             }
         }
@@ -385,5 +397,40 @@ mod tests {
 
         assert_eq!(timer.read_tima(), 0x34);
         assert_eq!(context.interrupt_requests(), &[InterruptSource::Timer]);
+    }
+
+    #[test]
+    fn tima_write_on_the_reload_cycle_is_ignored() {
+        let mut timer = Timer::new(ConsoleModel::Dmg);
+        timer.write_tima(0xFF);
+        timer.write_tma(0x55);
+        timer.write_tac(0x05);
+
+        for t_cycle in 0..20 {
+            tick_timer(&mut timer, t_cycle);
+        }
+
+        assert_eq!(timer.read_tima(), 0x55);
+
+        timer.write_tima(0x77);
+
+        assert_eq!(timer.read_tima(), 0x55);
+    }
+
+    #[test]
+    fn tma_write_on_the_reload_cycle_updates_the_reloaded_tima_value() {
+        let mut timer = Timer::new(ConsoleModel::Dmg);
+        timer.write_tima(0xFF);
+        timer.write_tma(0x12);
+        timer.write_tac(0x05);
+
+        for t_cycle in 0..20 {
+            tick_timer(&mut timer, t_cycle);
+        }
+
+        timer.write_tma(0x34);
+
+        assert_eq!(timer.read_tma(), 0x34);
+        assert_eq!(timer.read_tima(), 0x34);
     }
 }

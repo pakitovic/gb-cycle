@@ -365,7 +365,7 @@ impl<S: TraceSink> Machine<S> {
                         .with_boot_rom(boot.bus_state())
                         .with_ppu(ppu.bus_state())
                         .with_dma(dma.bus_state());
-                    cpu.tick_t_cycle(|operation| match operation {
+                    let acknowledged_interrupt = cpu.tick_t_cycle(|operation| match operation {
                         CpuBusOperation::Read { address } => Some(bus.read_with_context(
                             address,
                             BusRequester::Cpu,
@@ -403,6 +403,9 @@ impl<S: TraceSink> Machine<S> {
                             None
                         }
                     });
+                    if let Some(source) = acknowledged_interrupt {
+                        interrupts.clear(source);
+                    }
                     if let Some(event) = cpu.last_address_event() {
                         bus.route_cpu_address_event(event, &arbitration_state, ppu);
                     }

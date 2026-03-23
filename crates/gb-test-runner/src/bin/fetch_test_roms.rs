@@ -34,5 +34,6 @@ mod tests {
             .expect("help should succeed");
         let output = String::from_utf8(output).expect("help output should be utf-8");
         assert!(output.contains("Usage:"));
+        assert!(output.contains("fetch_test_roms"));
     }
 }

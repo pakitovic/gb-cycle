@@ -44,6 +44,7 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - `IME` is a CPU-internal acceptance gate, distinct from the `IE` register mask.
 - `DI` clears `IME` immediately.
 - `EI` must not enable `IME` immediately; it should arm a delayed enable that becomes visible only after the following instruction completes.
+- Chained `EI` instructions must not keep restarting that already-armed delay indefinitely. When `EI` is followed by another `EI`, the first delayed enable still matures after the second instruction so a pending interrupt can be accepted before any third opcode starts.
 - `RETI` should restore `PC` through the ordinary return sequence and re-enable `IME` immediately at completion rather than through the delayed-`EI` path.
 - `HALT` should be represented as an explicit CPU state distinct from ordinary instruction execution.
 - `STOP` should be represented distinctly from `HALT`; even before full DMG/CGB STOP behavior is implemented, the architecture must leave it as a separate CPU control state.
@@ -137,6 +138,7 @@ Priority order:
 - interrupt-priority tests with multiple simultaneous pending requests
 - tests for correct push of `PC`, clearing of `IF`, and `IME -> 0` on interrupt service
 - tests for `EI ; NOP`, `EI ; DI`, `DI ; EI ; NOP`, and pending-IRQ visibility around delayed `EI`
+- tests for chained `EI` sequences such as `EI ; EI` with a pending interrupt already latched
 - tests for `HALT` wake-up with `IME = 1`, `IME = 0`, and `IME = 0` plus already-pending interrupt
 - tests that interrupt acceptance starts a real `20` T-cycle (`5` M-cycle) service sequence instead of an immediate vector jump
 - tests for `STOP` wake-up driven through the relevant hardware source path rather than by directly poking CPU state

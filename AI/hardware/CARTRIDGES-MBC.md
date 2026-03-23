@@ -466,6 +466,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `0x2000-0x2FFF` should store the low `8` bits of the ROM-bank register.
 - `0x3000-0x3FFF` should store the high `1` bit of the ROM-bank register.
 - Keep those raw ROM-bank fields separate in code instead of collapsing them immediately into one opaque current-bank value.
+- Hardware still appears to power up MBC5 with bank `1` visible in `0x4000-0x7FFF`, even though later writes may legitimately select bank `0` there.
 - Unlike MBC1, MBC2, and MBC3, MBC5 must not apply a `0 -> 1` translation to the high ROM window. Writing bank `0` should really expose bank `0` in `0x4000-0x7FFF`.
 - Effective MBC5 ROM-bank selection should combine `rom_bank_low8` plus `rom_bank_high1` into one `9`-bit value and then mask by the real number of loaded ROM banks without inventing a synthetic `0 -> 1` rule.
 - Do not reuse MBC1 or MBC3 helper paths if they carry the `0 -> 1` rule, because that would make valid MBC5 high-window bank `0` unreachable.
@@ -654,6 +655,10 @@ Priority order:
   `0xFF -> 0x100` boundary through the explicit high bit, and masks the final
   effective bank by the real loaded ROM size without any MBC1/MBC3-style
   `0 -> 1` translation.
+- In the current baseline, `MBC5` power-up now exposes bank `1` in the
+  switchable ROM window while still allowing software to select bank `0`
+  explicitly afterward. This matches the current Mooneye-backed DMG behavior
+  better than the previous "boot into bank 0" assumption.
 - In the current baseline, standard non-rumble `MBC5` SRAM now supports linear
   `8 KiB`, `32 KiB`, and `128 KiB` backing stores under the explicit
   RAM-enable gate, while rumble-capable variants keep `bit 3` of the

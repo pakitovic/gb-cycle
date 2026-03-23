@@ -1,9 +1,25 @@
 use gb_core::{ConsoleModel, Machine, MachineConfig, SerialPeer, SerialTransferState, StartupMode};
 
+const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+
 fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
     for _ in 0..steps {
         machine.step_t_cycle();
     }
+}
+
+fn build_test_rom(program: &[u8], patches: &[(usize, u8)]) -> Vec<u8> {
+    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+    for (offset, byte) in program.iter().copied().enumerate() {
+        rom[0x0100 + offset] = byte;
+    }
+    rom[0x0147] = 0x00;
+    rom[0x0148] = 0x00;
+    rom[0x0149] = 0x00;
+    for &(address, value) in patches {
+        rom[address] = value;
+    }
+    rom
 }
 
 #[test]
@@ -12,6 +28,7 @@ fn dmg_master_serial_shifts_every_512_t_cycles_and_completes_on_the_eighth_pulse
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
 
+    step_machine_t_cycles(&mut machine, 52);
     machine.write_bus(0xFF0F, 0x00);
     machine.write_bus(0xFF01, 0x81);
     machine.write_bus(0xFF02, 0x81);
@@ -130,4 +147,66 @@ fn machine_exposes_completed_serial_output_bytes_for_host_side_capture() {
 
     assert_eq!(machine.take_serial_output_bytes(), vec![0x41]);
     assert!(machine.take_serial_output_bytes().is_empty());
+}
+
+#[test]
+fn boot_aligned_serial_irq_matches_the_mooneye_interrupt_window() {
+    let program = vec![
+        0x3E, 0x08, // ld a, $08
+        0xE0, 0xFF, // ldh ($FF), a
+        0xAF, // xor a
+        0xE0, 0x0F, // ldh ($0F), a
+        0xAF, // xor a
+        0x47, // ld b, a
+        0x4F, // ld c, a
+        0x57, // ld d, a
+        0x5F, // ld e, a
+        0x67, // ld h, a
+        0x6F, // ld l, a
+        0x3E, 0x81, // ld a, $81
+        0xE0, 0x02, // ldh ($02), a
+        0xFB, // ei
+    ];
+
+    let mut body = program;
+    for _ in 0..2000 {
+        body.extend_from_slice(&[0x3C, 0x04, 0x0C, 0x14, 0x1C, 0x24, 0x2C]);
+    }
+
+    let mut patches = Vec::with_capacity(body.len());
+    for (offset, byte) in body.iter().copied().enumerate() {
+        patches.push((0x0150 + offset, byte));
+    }
+
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0x00, 0xC3, 0x50, 0x01], &patches))
+        .expect("NoMBC test ROM should load");
+
+    for _ in 0..20_000 {
+        machine.step_t_cycle();
+        if matches!(
+            machine.cpu().execution_state(),
+            gb_core::CpuExecutionState::ServiceInterrupt {
+                source: gb_core::InterruptSource::Serial,
+                step: 0,
+                t_cycle: 0,
+            }
+        ) {
+            let registers = machine.cpu().registers();
+            assert_eq!(registers.a, 0x12);
+            assert_eq!(registers.b, 0x91);
+            assert_eq!(registers.c, 0x90);
+            assert_eq!(registers.d, 0x90);
+            assert_eq!(registers.e, 0x90);
+            assert_eq!(registers.h, 0x90);
+            assert_eq!(registers.l, 0x90);
+            return;
+        }
+    }
+
+    panic!("serial interrupt was not accepted within the debug window");
 }

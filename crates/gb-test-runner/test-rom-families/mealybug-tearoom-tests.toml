@@ -1,0 +1,76 @@
+version = 1
+family = "mealybug-tearoom-tests"
+suite_name = "mealybug-tearoom-dmg-curated"
+subsystem = "Ppu"
+
+[[case]]
+id = "mealybug-m2-win-en-toggle"
+rom = "ppu/m2_win_en_toggle.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m2_win_en_toggle_dmg_blob.pgm"
+
+[[case]]
+id = "mealybug-m3-bgp-change"
+rom = "ppu/m3_bgp_change.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_bgp_change_dmg_blob.pgm"
+
+[[case]]
+id = "mealybug-m3-bgp-change-sprites"
+rom = "ppu/m3_bgp_change_sprites.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_bgp_change_sprites_dmg_blob.pgm"
+startup_memory_profile = "dmg-boot-trademark-tile"
+
+[[case]]
+id = "mealybug-m3-lcdc-obj-size-change"
+rom = "ppu/m3_lcdc_obj_size_change.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_lcdc_obj_size_change_dmg_blob.pgm"
+
+[[case]]
+id = "mealybug-m3-lcdc-win-en-change-multiple"
+rom = "ppu/m3_lcdc_win_en_change_multiple.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_lcdc_win_en_change_multiple_dmg_blob.pgm"
+
+[[case]]
+id = "mealybug-m3-obp0-change"
+rom = "ppu/m3_obp0_change.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_obp0_change_dmg_blob.pgm"
+startup_memory_profile = "dmg-boot-trademark-tile"
+
+[[case]]
+id = "mealybug-m3-scx-low-3-bits"
+rom = "ppu/m3_scx_low_3_bits.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_scx_low_3_bits_dmg_blob.pgm"
+
+[[case]]
+id = "mealybug-m3-window-timing"
+rom = "ppu/m3_window_timing.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_window_timing_dmg_blob.pgm"
+
+[[case]]
+id = "mealybug-m3-window-timing-wx-0"
+rom = "ppu/m3_window_timing_wx_0.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_window_timing_wx_0_dmg_blob.pgm"
+
+[[case]]
+id = "mealybug-m3-wx-4-change-sprites"
+rom = "ppu/m3_wx_4_change_sprites.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/mealybug/m3_wx_4_change_sprites_dmg_blob.pgm"

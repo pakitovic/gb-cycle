@@ -1020,7 +1020,7 @@ fn loading_supported_mbc5_families_constructs_the_mapper_device() {
 }
 
 #[test]
-fn mbc5_bank_zero_and_the_0xff_to_0x100_boundary_are_visible_through_the_bus() {
+fn mbc5_power_up_bank_one_and_the_0xff_to_0x100_boundary_are_visible_through_the_bus() {
     let rom = build_banked_mbc5_rom(0x1B, 0x08, 0x04);
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC5 should load");
@@ -1030,7 +1030,7 @@ fn mbc5_bank_zero_and_the_0xff_to_0x100_boundary_are_visible_through_the_bus() {
 
     assert_eq!(
         bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
-        0x00
+        0x01
     );
     assert_eq!(
         bus.read_with_cartridge(0x4001, BusRequester::Cpu, &state, Some(&cartridge)),

@@ -20,14 +20,5 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Cache external ROM store
-        uses: actions/cache@v5
-        with:
-          path: .roms/external-test
-          key: ${{ runner.os }}-external-roms-${{ hashFiles('crates/gb-test-runner/external-rom-sources.toml') }}
-
-      - name: Fetch external ROMs
-        run: make fetch-external-roms
-
       - name: Run supported external DMG suites
-        run: make test-external-dmg
+        run: make test

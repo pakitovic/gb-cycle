@@ -1,18 +1,20 @@
 use std::collections::BTreeSet;
+use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process::{self, Command};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ExternalRomRequiredFile, ExternalRomSource, ExternalRomSourceManifest, external_rom_store_root,
-    load_external_rom_source_manifest,
+    ExternalRomRequiredFile, ExternalRomSource, curated_test_rom_families, external_rom_store_root,
+    load_external_rom_source_manifest, materialize_curated_test_rom_families,
+    materialize_curated_test_rom_store,
 };
-
-const FETCH_METADATA_FILE_NAME: &str = ".gb-cycle-fetch.toml";
+const CURATED_TEST_ROM_SOURCE_ID: &str = "gbemu-shootout";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FetchExternalRomsAction {
@@ -23,14 +25,15 @@ enum FetchExternalRomsAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FetchExternalRomsOptions {
     force: bool,
-    requested_source_ids: Vec<String>,
+    requested_families: Vec<String>,
 }
 
 pub fn fetch_external_roms_help_text() -> &'static str {
     concat!(
-        "Usage: cargo run -p gb-test-runner --bin fetch_external_roms -- [--force] [source-id ...]\n",
+        "Usage: cargo run -p gb-test-runner --bin fetch_test_roms -- [--force] [all | family ...]\n",
         "\n",
-        "Downloads repo-managed external ROM sources into .roms/external-test/.\n",
+        "Fetches the pinned upstream ROM source into a temporary checkout, materializes the curated runnable families under .roms/test/, and removes the raw checkout afterwards.\n",
+        "When no family is provided, or when `all` is provided, all curated families are materialized.\n",
     )
 }
 
@@ -49,18 +52,46 @@ where
         FetchExternalRomsAction::Fetch(options) => {
             let manifest = load_external_rom_source_manifest(workspace_root)
                 .map_err(|error| error.to_string())?;
-            let selected_sources = select_sources(&manifest, &options.requested_source_ids)?;
-            let store_root = external_rom_store_root(workspace_root);
-            fs::create_dir_all(&store_root).map_err(|error| {
-                format!(
-                    "failed to create external ROM store {}: {error}",
-                    store_root.display()
-                )
-            })?;
-
-            for source in &selected_sources {
-                fetch_source(&store_root, source, options.force, output)?;
-            }
+            let _ = options.force;
+            let selected_families = select_curated_families(&options.requested_families)?;
+            let Some(source) = manifest.source_by_id(CURATED_TEST_ROM_SOURCE_ID) else {
+                return Err(format!(
+                    "missing curated test ROM source {CURATED_TEST_ROM_SOURCE_ID:?} in external ROM source manifest"
+                ));
+            };
+            let filtered_source = filter_source_for_curated_families(source, &selected_families)?;
+            with_fetched_source_temp(
+                workspace_root,
+                &filtered_source,
+                output,
+                |fetched_root, output| {
+                    if selected_families.len() == curated_test_rom_families().len() {
+                        materialize_curated_test_rom_store(workspace_root, fetched_root)?;
+                        writeln_checked(
+                            output,
+                            &format!(
+                                "materialized curated test ROM store into {}",
+                                workspace_root.join(crate::TEST_ROM_STORE_DIR).display()
+                            ),
+                        )?;
+                    } else {
+                        materialize_curated_test_rom_families(
+                            workspace_root,
+                            fetched_root,
+                            &selected_families,
+                        )?;
+                        writeln_checked(
+                            output,
+                            &format!(
+                                "materialized curated test ROM families {} into {}",
+                                selected_families.join(", "),
+                                workspace_root.join(crate::TEST_ROM_STORE_DIR).display()
+                            ),
+                        )?;
+                    }
+                    Ok(())
+                },
+            )?;
 
             Ok(())
         }
@@ -75,123 +106,169 @@ where
     S: AsRef<str>,
 {
     let mut force = false;
-    let mut requested_source_ids = Vec::new();
+    let mut requested_families = Vec::new();
 
     for argument in arguments {
         match argument.as_ref() {
             "--force" => force = true,
             "--help" | "-h" => return Ok(FetchExternalRomsAction::ShowHelp),
-            other => requested_source_ids.push(other.to_string()),
+            other => requested_families.push(other.to_string()),
         }
+    }
+
+    if requested_families.len() > 1 && requested_families.iter().any(|family| family == "all") {
+        return Err("`all` cannot be combined with explicit curated family names".to_string());
+    }
+    if requested_families == ["all"] {
+        requested_families.clear();
     }
 
     Ok(FetchExternalRomsAction::Fetch(FetchExternalRomsOptions {
         force,
-        requested_source_ids,
+        requested_families,
     }))
 }
 
-fn select_sources(
-    manifest: &ExternalRomSourceManifest,
-    requested_source_ids: &[String],
-) -> Result<Vec<ExternalRomSource>, String> {
-    if requested_source_ids.is_empty() {
-        return Ok(manifest.sources().to_vec());
+fn select_curated_families(requested_families: &[String]) -> Result<Vec<String>, String> {
+    let available_families = curated_test_rom_families();
+    if requested_families.is_empty() {
+        return Ok(available_families);
     }
 
-    let mut selected = Vec::with_capacity(requested_source_ids.len());
-    for source_id in requested_source_ids {
-        let Some(source) = manifest.source_by_id(source_id) else {
+    let available_family_set = available_families
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let mut selected = Vec::with_capacity(requested_families.len());
+    for family in requested_families {
+        if !available_family_set.contains(family.as_str()) {
             return Err(format!(
-                "unknown external ROM source id {source_id:?}; run without arguments to fetch all configured sources"
+                "unknown curated test ROM family {family:?}; available families: {}",
+                available_families.join(", ")
             ));
-        };
-        selected.push(source.clone());
+        }
+        selected.push(family.clone());
     }
 
     Ok(selected)
 }
 
-fn fetch_source<W: Write>(
-    store_root: &Path,
+fn filter_source_for_curated_families(
     source: &ExternalRomSource,
-    force: bool,
-    output: &mut W,
-) -> Result<(), String> {
-    let final_root = store_root.join(&source.local_dir);
+    selected_families: &[String],
+) -> Result<ExternalRomSource, String> {
+    let selected_family_set = selected_families
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let required_files = source
+        .required_files
+        .iter()
+        .filter(|required_file| {
+            required_file_family(&required_file.path)
+                .is_some_and(|family| selected_family_set.contains(family))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
 
-    if !force
-        && source_is_current(&final_root, source)?
-        && verify_required_files(&final_root, source).is_ok()
-    {
-        return writeln_checked(
+    if required_files.is_empty() {
+        return Err(format!(
+            "no pinned upstream files matched curated family selection {}",
+            selected_families.join(", ")
+        ));
+    }
+
+    Ok(ExternalRomSource {
+        required_files,
+        ..source.clone()
+    })
+}
+fn with_fetched_source_temp<W: Write, F, T>(
+    workspace_root: &Path,
+    source: &ExternalRomSource,
+    output: &mut W,
+    action: F,
+) -> Result<T, String>
+where
+    F: FnOnce(&Path, &mut W) -> Result<T, String>,
+{
+    let temp_root = unique_temp_fetch_root(source);
+    let result = (|| {
+        remove_directory_if_present(&temp_root, "stale temporary fetch directory")?;
+        checkout_source_into_temp(&temp_root, source)?;
+        verify_required_files(&temp_root, source)?;
+        writeln_checked(
             output,
             &format!(
-                "external ROM source {} already available at {}",
+                "fetched test ROM source {} into temporary workspace {}",
                 source.id,
-                final_root.display()
-            ),
-        );
-    }
-
-    let temp_root = store_root.join(format!(".tmp-{}-{}", source.local_dir, process::id()));
-    if temp_root.exists() {
-        fs::remove_dir_all(&temp_root).map_err(|error| {
-            format!(
-                "failed to remove stale temporary directory {}: {error}",
                 temp_root.display()
-            )
-        })?;
+            ),
+        )?;
+        let value = action(&temp_root, output)?;
+        remove_legacy_source_cache(workspace_root, source)?;
+        Ok(value)
+    })();
+
+    let cleanup = remove_directory_if_present(&temp_root, "temporary fetch directory");
+    match (result, cleanup) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Ok(_), Err(error)) => Err(error),
+        (Err(error), Ok(())) => Err(error),
+        (Err(error), Err(cleanup_error)) => Err(format!("{error}; additionally {cleanup_error}")),
     }
-
-    checkout_source_into_temp(&temp_root, source)?;
-    verify_required_files(&temp_root, source)?;
-    write_fetch_metadata(&temp_root, source)?;
-
-    if final_root.exists() {
-        fs::remove_dir_all(&final_root).map_err(|error| {
-            format!(
-                "failed to replace previous external ROM source {} at {}: {error}",
-                source.id,
-                final_root.display()
-            )
-        })?;
-    }
-
-    fs::rename(&temp_root, &final_root).map_err(|error| {
-        format!(
-            "failed to move fetched source {} into {}: {error}",
-            source.id,
-            final_root.display()
-        )
-    })?;
-
-    writeln_checked(
-        output,
-        &format!(
-            "fetched external ROM source {} into {}",
-            source.id,
-            final_root.display()
-        ),
-    )
 }
 
-fn source_is_current(root: &Path, source: &ExternalRomSource) -> Result<bool, String> {
-    let metadata_path = root.join(FETCH_METADATA_FILE_NAME);
-    let metadata = match fs::read_to_string(&metadata_path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => {
-            return Err(format!(
-                "failed to read fetch metadata {}: {error}",
-                metadata_path.display()
-            ));
+fn unique_temp_fetch_root(source: &ExternalRomSource) -> std::path::PathBuf {
+    let source_name = source.local_dir.replace('/', "-");
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    env::temp_dir().join(format!(
+        "gb-cycle-test-rom-fetch-{source_name}-{}-{nanos}",
+        process::id()
+    ))
+}
+
+fn remove_legacy_source_cache(
+    workspace_root: &Path,
+    source: &ExternalRomSource,
+) -> Result<(), String> {
+    let legacy_root = external_rom_store_root(workspace_root).join(&source.local_dir);
+    remove_directory_if_present(&legacy_root, "legacy raw test ROM cache directory")?;
+
+    let legacy_store_root = external_rom_store_root(workspace_root);
+    if legacy_store_root.exists() {
+        let is_empty = fs::read_dir(&legacy_store_root)
+            .map_err(|error| {
+                format!(
+                    "failed to read legacy raw test ROM cache root {}: {error}",
+                    legacy_store_root.display()
+                )
+            })?
+            .next()
+            .is_none();
+        if is_empty {
+            fs::remove_dir(&legacy_store_root).map_err(|error| {
+                format!(
+                    "failed to remove empty legacy raw test ROM cache root {}: {error}",
+                    legacy_store_root.display()
+                )
+            })?;
         }
-    };
+    }
 
-    Ok(metadata == render_fetch_metadata(source))
+    Ok(())
 }
 
+fn remove_directory_if_present(path: &Path, label: &str) -> Result<(), String> {
+    if path.exists() {
+        fs::remove_dir_all(path)
+            .map_err(|error| format!("failed to remove {label} {}: {error}", path.display()))?;
+    }
+    Ok(())
+}
 fn checkout_source_into_temp(temp_root: &Path, source: &ExternalRomSource) -> Result<(), String> {
     run_git(
         None,
@@ -207,8 +284,8 @@ fn checkout_source_into_temp(temp_root: &Path, source: &ExternalRomSource) -> Re
         source,
     )?;
 
-    let top_level_paths = source_top_level_paths(source);
-    if !top_level_paths.is_empty() {
+    let sparse_checkout_paths = source_sparse_checkout_paths(source);
+    if !sparse_checkout_paths.is_empty() {
         run_git(
             Some(temp_root),
             ["sparse-checkout", "init", "--cone"],
@@ -218,7 +295,7 @@ fn checkout_source_into_temp(temp_root: &Path, source: &ExternalRomSource) -> Re
         let mut command = Command::new("git");
         command.current_dir(temp_root);
         command.arg("sparse-checkout").arg("set");
-        for path in &top_level_paths {
+        for path in &sparse_checkout_paths {
             command.arg(path);
         }
         run_git_command(command, source, "sparse-checkout set")?;
@@ -249,14 +326,39 @@ fn checkout_source_into_temp(temp_root: &Path, source: &ExternalRomSource) -> Re
     Ok(())
 }
 
-fn source_top_level_paths(source: &ExternalRomSource) -> Vec<String> {
+fn source_sparse_checkout_paths(source: &ExternalRomSource) -> Vec<String> {
     let mut unique = BTreeSet::new();
     for required_file in &source.required_files {
-        if let Some(component) = required_file.path.components().next() {
-            unique.insert(component.as_os_str().to_string_lossy().into_owned());
-        }
+        unique.insert(required_file_sparse_checkout_path(&required_file.path));
     }
     unique.into_iter().collect()
+}
+
+fn required_file_sparse_checkout_path(path: &Path) -> String {
+    let mut components = path.components();
+    let Some(top_level) = components.next() else {
+        return String::new();
+    };
+    let top_level = top_level.as_os_str().to_string_lossy().into_owned();
+    if top_level != "testroms" {
+        return top_level;
+    }
+
+    let Some(family) = components.next() else {
+        return "testroms".to_string();
+    };
+    format!(
+        "testroms/{}",
+        family.as_os_str().to_string_lossy().into_owned()
+    )
+}
+
+fn required_file_family(path: &Path) -> Option<&str> {
+    let mut components = path.components();
+    if components.next()?.as_os_str() != "testroms" {
+        return None;
+    }
+    components.next()?.as_os_str().to_str()
 }
 
 fn verify_required_files(root: &Path, source: &ExternalRomSource) -> Result<(), String> {
@@ -293,25 +395,6 @@ fn verify_required_file(
 
     Ok(())
 }
-
-fn write_fetch_metadata(root: &Path, source: &ExternalRomSource) -> Result<(), String> {
-    let path = root.join(FETCH_METADATA_FILE_NAME);
-    fs::write(&path, render_fetch_metadata(source))
-        .map_err(|error| format!("failed to write fetch metadata {}: {error}", path.display()))
-}
-
-fn render_fetch_metadata(source: &ExternalRomSource) -> String {
-    format!(
-        concat!(
-            "version = 1\n",
-            "source_id = \"{}\"\n",
-            "git_url = \"{}\"\n",
-            "git_rev = \"{}\"\n",
-        ),
-        source.id, source.git_url, source.git_rev
-    )
-}
-
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut hex = String::with_capacity(digest.len() * 2);
@@ -370,20 +453,24 @@ fn writeln_checked<W: Write>(output: &mut W, line: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::{EXTERNAL_ROM_SOURCE_MANIFEST_PATH, external_rom_store_root};
+    use crate::{
+        EXTERNAL_ROM_SOURCE_MANIFEST_PATH, curated_test_rom_families,
+        curated_test_rom_family_suites, external_rom_store_root, test_rom_store_root,
+    };
 
     use super::{
-        FETCH_METADATA_FILE_NAME, FetchExternalRomsAction, FetchExternalRomsOptions,
-        fetch_external_roms_help_text, fetch_source, parse_fetch_external_roms_arguments,
-        render_fetch_metadata, run_fetch_external_roms_command, select_sources, sha256_hex,
-        source_is_current, source_top_level_paths, verify_required_files, write_fetch_metadata,
+        FetchExternalRomsAction, FetchExternalRomsOptions, fetch_external_roms_help_text,
+        filter_source_for_curated_families, parse_fetch_external_roms_arguments,
+        required_file_family, required_file_sparse_checkout_path, run_fetch_external_roms_command,
+        select_curated_families, sha256_hex, source_sparse_checkout_paths, verify_required_files,
     };
-    use crate::{ExternalRomRequiredFile, ExternalRomSource, load_external_rom_source_manifest};
+    use crate::{ExternalRomRequiredFile, ExternalRomSource};
 
     fn unique_temp_dir(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -396,12 +483,45 @@ mod tests {
         ))
     }
 
+    fn commit_upstream_repo(root: &Path) -> String {
+        git(&["init"], root);
+        git(&["config", "user.email", "gb-cycle@example.invalid"], root);
+        git(&["config", "user.name", "gb-cycle tests"], root);
+        git(&["add", "."], root);
+        git(&["commit", "-m", "fixture"], root);
+
+        let output = Command::new("git")
+            .current_dir(root)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .expect("git rev-parse should spawn");
+        assert!(output.status.success(), "git rev-parse should succeed");
+        String::from_utf8(output.stdout)
+            .expect("git hash should be utf-8")
+            .trim()
+            .to_string()
+    }
+
     fn write_manifest(workspace_root: &Path, source: &ExternalRomSource) {
         let manifest_path = workspace_root.join(EXTERNAL_ROM_SOURCE_MANIFEST_PATH);
         let manifest_parent = manifest_path
             .parent()
             .expect("manifest path should have a parent");
         fs::create_dir_all(manifest_parent).expect("manifest parent should be creatable");
+
+        let mut required_files = String::new();
+        for required_file in &source.required_files {
+            let _ = write!(
+                &mut required_files,
+                concat!(
+                    "\n[[source.required_file]]\n",
+                    "path = {:?}\n",
+                    "sha256 = {:?}\n",
+                ),
+                required_file.path.display().to_string(),
+                required_file.sha256,
+            );
+        }
 
         fs::write(
             manifest_path,
@@ -413,18 +533,15 @@ mod tests {
                     "git_url = {:?}\n",
                     "git_rev = {:?}\n",
                     "local_dir = {:?}\n",
-                    "root_env_var = {:?}\n\n",
-                    "[[source.required_file]]\n",
-                    "path = {:?}\n",
-                    "sha256 = {:?}\n",
+                    "root_env_var = {:?}\n",
+                    "{}",
                 ),
                 source.id,
                 source.git_url,
                 source.git_rev,
                 source.local_dir,
                 source.root_env_var,
-                source.required_files[0].path.display().to_string(),
-                source.required_files[0].sha256,
+                required_files,
             ),
         )
         .expect("manifest should be writable");
@@ -444,196 +561,234 @@ mod tests {
         );
     }
 
-    fn create_upstream_repo(root: &Path, required_file_path: &Path, contents: &[u8]) -> String {
-        fs::create_dir_all(
-            root.join(
-                required_file_path
-                    .parent()
-                    .expect("required file path should have a parent"),
-            ),
-        )
-        .expect("upstream subdir should be creatable");
-        fs::write(root.join(required_file_path), contents)
-            .expect("required file should be writable");
-
-        git(&["init"], root);
-        git(&["config", "user.email", "gb-cycle@example.invalid"], root);
-        git(&["config", "user.name", "gb-cycle tests"], root);
-        git(&["add", "."], root);
-        git(&["commit", "-m", "fixture"], root);
-
-        let output = Command::new("git")
-            .current_dir(root)
-            .args(["rev-parse", "HEAD"])
-            .output()
-            .expect("git rev-parse should spawn");
-        assert!(output.status.success(), "git rev-parse should succeed");
-        String::from_utf8(output.stdout)
-            .expect("git hash should be utf-8")
-            .trim()
-            .to_string()
-    }
-
     fn build_source(git_url: String, git_rev: String, sha256: String) -> ExternalRomSource {
         ExternalRomSource {
-            id: "retrio-gb-test-roms".to_string(),
+            id: "gbemu-shootout".to_string(),
             git_url,
             git_rev,
-            local_dir: "retrio-gb-test-roms".to_string(),
-            root_env_var: "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT".to_string(),
+            local_dir: "gbemu-shootout".to_string(),
+            root_env_var: "GB_CYCLE_GBEMU_SHOOTOUT_ROOT".to_string(),
             required_files: vec![ExternalRomRequiredFile {
-                path: PathBuf::from("cpu_instrs/individual/01-special.gb"),
+                path: PathBuf::from("testroms/blargg/cpu_instrs/01-special.gb"),
                 sha256,
             }],
         }
     }
 
+    fn build_curated_source(git_url: String, git_rev: String, root: &Path) -> ExternalRomSource {
+        let required_files = [
+            "testroms/acid/dmg-acid2.gb",
+            "testroms/blargg/cpu_instrs/01-special.gb",
+            "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb",
+            "testroms/mooneye/acceptance/add_sp_e_timing.gb",
+        ]
+        .into_iter()
+        .map(|path| ExternalRomRequiredFile {
+            path: PathBuf::from(path),
+            sha256: sha256_hex(
+                &fs::read(root.join(path))
+                    .expect("required curated source file should be readable"),
+            ),
+        })
+        .collect();
+
+        ExternalRomSource {
+            id: "gbemu-shootout".to_string(),
+            git_url,
+            git_rev,
+            local_dir: "gbemu-shootout".to_string(),
+            root_env_var: "GB_CYCLE_GBEMU_SHOOTOUT_ROOT".to_string(),
+            required_files,
+        }
+    }
+
+    fn write_curated_shootout_repo(root: &Path) {
+        for suite in curated_test_rom_family_suites() {
+            for case in suite.cases {
+                let source_path = root.join("testroms").join(&case.rom_path);
+                fs::create_dir_all(
+                    source_path
+                        .parent()
+                        .expect("ROM path should always have a parent"),
+                )
+                .expect("source ROM parent should be creatable");
+                fs::write(&source_path, case.id.as_bytes())
+                    .expect("source ROM fixture should be writable");
+            }
+        }
+    }
+
     #[test]
-    fn parse_fetch_command_arguments_supports_help_force_and_source_ids() {
+    fn parse_fetch_command_arguments_supports_help_force_and_family_selection() {
         assert_eq!(
             parse_fetch_external_roms_arguments(["--help"]).expect("help should parse"),
             FetchExternalRomsAction::ShowHelp
         );
         assert_eq!(
-            parse_fetch_external_roms_arguments(["--force", "retrio-gb-test-roms"])
+            parse_fetch_external_roms_arguments(["--force", "blargg", "acid"])
                 .expect("fetch args should parse"),
             FetchExternalRomsAction::Fetch(FetchExternalRomsOptions {
                 force: true,
-                requested_source_ids: vec!["retrio-gb-test-roms".to_string()],
+                requested_families: vec!["blargg".to_string(), "acid".to_string()],
+            })
+        );
+        assert_eq!(
+            parse_fetch_external_roms_arguments(["all"]).expect("all should parse"),
+            FetchExternalRomsAction::Fetch(FetchExternalRomsOptions {
+                force: false,
+                requested_families: Vec::new(),
             })
         );
     }
 
     #[test]
-    fn select_sources_rejects_unknown_ids() {
-        let source = build_source(
-            "https://example.invalid/retrio.git".to_string(),
-            "deadbeef".to_string(),
-            "00".repeat(32),
-        );
-        let workspace_root = unique_temp_dir("select-sources");
-        write_manifest(&workspace_root, &source);
-        let manifest =
-            load_external_rom_source_manifest(&workspace_root).expect("manifest should load");
-
-        let error = select_sources(&manifest, &["unknown".to_string()])
-            .expect_err("unknown source id should be rejected");
-
-        assert!(error.contains("unknown external ROM source id"));
-        fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
+    fn parse_fetch_command_arguments_rejects_mixed_all_and_explicit_families() {
+        let error = parse_fetch_external_roms_arguments(["all", "blargg"])
+            .expect_err("mixing all and explicit families should fail");
+        assert!(error.contains("cannot be combined"));
     }
 
     #[test]
-    fn source_top_level_paths_keep_sparse_checkout_inputs_unique() {
+    fn select_curated_families_defaults_to_the_full_supported_set() {
+        assert_eq!(
+            select_curated_families(&[]).expect("default selection should succeed"),
+            curated_test_rom_families()
+        );
+    }
+
+    #[test]
+    fn select_curated_families_rejects_unknown_names() {
+        let error = select_curated_families(&["unknown".to_string()])
+            .expect_err("unknown family should be rejected");
+        assert!(error.contains("unknown curated test ROM family"));
+        assert!(error.contains("blargg"));
+    }
+
+    #[test]
+    fn source_sparse_checkout_paths_keep_family_roots_unique() {
         let source = ExternalRomSource {
             id: "source".to_string(),
-            git_url: "https://example.invalid/retrio.git".to_string(),
+            git_url: "https://example.invalid/shootout.git".to_string(),
             git_rev: "deadbeef".to_string(),
-            local_dir: "retrio".to_string(),
-            root_env_var: "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT".to_string(),
+            local_dir: "gbemu-shootout".to_string(),
+            root_env_var: "GB_CYCLE_GBEMU_SHOOTOUT_ROOT".to_string(),
             required_files: vec![
                 ExternalRomRequiredFile {
-                    path: PathBuf::from("cpu_instrs/individual/01-special.gb"),
+                    path: PathBuf::from("testroms/blargg/cpu_instrs/01-special.gb"),
                     sha256: "a".repeat(64),
                 },
                 ExternalRomRequiredFile {
-                    path: PathBuf::from("cpu_instrs/individual/02-interrupts.gb"),
+                    path: PathBuf::from("testroms/blargg/cpu_instrs/02-interrupts.gb"),
                     sha256: "b".repeat(64),
-                },
-                ExternalRomRequiredFile {
-                    path: PathBuf::from("mem_timing/mem_timing.gb"),
-                    sha256: "c".repeat(64),
                 },
             ],
         };
 
         assert_eq!(
-            source_top_level_paths(&source),
-            vec!["cpu_instrs".to_string(), "mem_timing".to_string()]
+            source_sparse_checkout_paths(&source),
+            vec!["testroms/blargg".to_string()]
         );
     }
 
     #[test]
-    fn fetch_source_clones_pinned_files_and_writes_metadata() {
-        let workspace_root = unique_temp_dir("clone");
+    fn required_file_helpers_resolve_curated_family_and_sparse_checkout_path() {
+        let path = PathBuf::from("testroms/mooneye/acceptance/div_timing.gb");
+        assert_eq!(required_file_family(&path), Some("mooneye"));
+        assert_eq!(
+            required_file_sparse_checkout_path(&path),
+            "testroms/mooneye"
+        );
+    }
+
+    #[test]
+    fn filter_source_for_curated_families_keeps_only_the_requested_required_files() {
+        let source = ExternalRomSource {
+            id: "gbemu-shootout".to_string(),
+            git_url: "https://example.invalid/shootout.git".to_string(),
+            git_rev: "deadbeef".to_string(),
+            local_dir: "gbemu-shootout".to_string(),
+            root_env_var: "GB_CYCLE_GBEMU_SHOOTOUT_ROOT".to_string(),
+            required_files: vec![
+                ExternalRomRequiredFile {
+                    path: PathBuf::from("testroms/blargg/cpu_instrs/01-special.gb"),
+                    sha256: "a".repeat(64),
+                },
+                ExternalRomRequiredFile {
+                    path: PathBuf::from("testroms/mooneye/acceptance/div_timing.gb"),
+                    sha256: "b".repeat(64),
+                },
+            ],
+        };
+
+        let filtered = filter_source_for_curated_families(&source, &["mooneye".to_string()])
+            .expect("selected family should filter required files");
+        assert_eq!(filtered.required_files.len(), 1);
+        assert_eq!(
+            filtered.required_files[0].path,
+            PathBuf::from("testroms/mooneye/acceptance/div_timing.gb")
+        );
+    }
+
+    #[test]
+    fn fetch_command_materializes_curated_store_and_removes_the_legacy_raw_cache() {
+        let workspace_root = unique_temp_dir("materialize");
         let upstream_root = workspace_root.join("upstream");
         fs::create_dir_all(&upstream_root).expect("upstream root should be creatable");
-
-        let payload = b"official-rom".to_vec();
-        let required_file_path = PathBuf::from("cpu_instrs/individual/01-special.gb");
-        let git_rev = create_upstream_repo(&upstream_root, &required_file_path, &payload);
-        let source = build_source(
-            upstream_root.display().to_string(),
-            git_rev,
-            sha256_hex(&payload),
-        );
+        write_curated_shootout_repo(&upstream_root);
+        let git_rev = commit_upstream_repo(&upstream_root);
+        let source =
+            build_curated_source(upstream_root.display().to_string(), git_rev, &upstream_root);
         write_manifest(&workspace_root, &source);
 
-        let store_root = external_rom_store_root(&workspace_root);
-        fs::create_dir_all(&store_root).expect("store root should be creatable");
+        let legacy_raw_root = external_rom_store_root(&workspace_root).join(&source.local_dir);
+        fs::create_dir_all(&legacy_raw_root).expect("legacy raw root should be creatable");
+        fs::write(legacy_raw_root.join("stale.txt"), b"old-cache")
+            .expect("legacy raw marker should be writable");
+
         let mut output = Vec::new();
+        run_fetch_external_roms_command(["all"], &workspace_root, &mut output)
+            .expect("fetch command should succeed");
 
-        fetch_source(&store_root, &source, false, &mut output)
-            .expect("fetch source should succeed");
-
-        let final_root = store_root.join(&source.local_dir);
-        assert_eq!(
-            fs::read(final_root.join(&required_file_path))
-                .expect("fetched file should be readable"),
-            payload
+        assert!(
+            test_rom_store_root(&workspace_root)
+                .join("blargg/cpu_instrs/01-special.gb")
+                .exists()
         );
-        assert_eq!(
-            fs::read_to_string(final_root.join(FETCH_METADATA_FILE_NAME))
-                .expect("fetch metadata should be readable"),
-            render_fetch_metadata(&source)
-        );
-        assert!(!final_root.join(".git").exists());
+        assert!(!legacy_raw_root.exists());
         assert!(
             String::from_utf8(output)
                 .expect("command output should be utf-8")
-                .contains("fetched external ROM source retrio-gb-test-roms")
+                .contains("temporary workspace")
         );
 
         fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
     }
 
     #[test]
-    fn fetch_command_reuses_a_current_source_without_running_git() {
-        let workspace_root = unique_temp_dir("current");
-        let store_root = external_rom_store_root(&workspace_root);
-        let payload = b"already-present".to_vec();
-        let source = build_source(
-            "https://example.invalid/retrio.git".to_string(),
-            "deadbeef".to_string(),
-            sha256_hex(&payload),
-        );
+    fn fetch_command_can_materialize_only_one_selected_family() {
+        let workspace_root = unique_temp_dir("materialize-selected-family");
+        let upstream_root = workspace_root.join("upstream");
+        fs::create_dir_all(&upstream_root).expect("upstream root should be creatable");
+        write_curated_shootout_repo(&upstream_root);
+        let git_rev = commit_upstream_repo(&upstream_root);
+        let source =
+            build_curated_source(upstream_root.display().to_string(), git_rev, &upstream_root);
         write_manifest(&workspace_root, &source);
 
-        let final_root = store_root.join(&source.local_dir);
-        fs::create_dir_all(
-            final_root.join(
-                source.required_files[0]
-                    .path
-                    .parent()
-                    .expect("required file path should have a parent"),
-            ),
-        )
-        .expect("final root should be creatable");
-        fs::write(final_root.join(&source.required_files[0].path), &payload)
-            .expect("required file should be writable");
-        write_fetch_metadata(&final_root, &source).expect("fetch metadata should be writable");
-
         let mut output = Vec::new();
-        run_fetch_external_roms_command(["retrio-gb-test-roms"], &workspace_root, &mut output)
-            .expect("fetch command should succeed");
+        run_fetch_external_roms_command(["blargg"], &workspace_root, &mut output)
+            .expect("selected-family fetch command should succeed");
 
-        assert!(source_is_current(&final_root, &source).expect("current source check should work"));
-        verify_required_files(&final_root, &source)
-            .expect("required file verification should succeed");
+        assert!(
+            test_rom_store_root(&workspace_root)
+                .join("blargg/cpu_instrs/01-special.gb")
+                .exists()
+        );
+        assert!(!test_rom_store_root(&workspace_root).join("acid").exists());
         assert!(
             String::from_utf8(output)
                 .expect("command output should be utf-8")
-                .contains("already available")
+                .contains("materialized curated test ROM families blargg")
         );
 
         fs::remove_dir_all(workspace_root).expect("workspace root should be removable");
@@ -657,7 +812,7 @@ mod tests {
     fn verify_required_files_reports_hash_mismatches() {
         let root = unique_temp_dir("hash-mismatch");
         let source = build_source(
-            "https://example.invalid/retrio.git".to_string(),
+            "https://example.invalid/shootout.git".to_string(),
             "deadbeef".to_string(),
             "0".repeat(64),
         );

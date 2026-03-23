@@ -420,7 +420,7 @@ impl CpuCore {
         self.last_address_event = None;
     }
 
-    pub(crate) fn tick_t_cycle<F>(&mut self, mut bus_operation: F)
+    pub(crate) fn tick_t_cycle<F>(&mut self, mut bus_operation: F) -> Option<InterruptSource>
     where
         F: FnMut(CpuBusOperation) -> Option<u8>,
     {
@@ -433,7 +433,7 @@ impl CpuCore {
                     self.execution_state = CpuExecutionState::FetchOpcode {
                         t_cycle: t_cycle + 1,
                     };
-                    return;
+                    return None;
                 }
 
                 self.complete_fetch_opcode(&mut bus_operation);
@@ -449,7 +449,7 @@ impl CpuCore {
                         step,
                         t_cycle: t_cycle + 1,
                     };
-                    return;
+                    return None;
                 }
 
                 self.complete_execute_machine_cycle(opcode, step, &mut bus_operation);
@@ -465,15 +465,21 @@ impl CpuCore {
                         step,
                         t_cycle: t_cycle + 1,
                     };
-                    return;
+                    return None;
                 }
 
-                self.complete_interrupt_service_machine_cycle(source, step, &mut bus_operation);
+                return self.complete_interrupt_service_machine_cycle(
+                    source,
+                    step,
+                    &mut bus_operation,
+                );
             }
             CpuExecutionState::DiagnosticTrap { .. }
             | CpuExecutionState::Halted
             | CpuExecutionState::Stopped => {}
         }
+
+        None
     }
 
     pub(crate) fn evaluate_wake_and_interrupts(
@@ -1751,28 +1757,38 @@ impl CpuCore {
         source: InterruptSource,
         step: u8,
         bus_operation: &mut F,
-    ) where
+    ) -> Option<InterruptSource>
+    where
         F: FnMut(CpuBusOperation) -> Option<u8>,
     {
         match step {
-            0 | 1 => self.advance_interrupt_service(source, step + 1),
+            0 | 1 => {
+                self.advance_interrupt_service(source, step + 1);
+                None
+            }
             2 => {
                 let [low, _high] = self.registers.pc.to_le_bytes();
                 self.operand8_latch = low;
                 self.decrement_sp_and_record_idu_event();
                 self.advance_interrupt_service(source, 3);
+                None
             }
             3 => {
                 let [_low, high] = self.registers.pc.to_le_bytes();
                 self.write_byte_at_sp(high, bus_operation);
                 self.advance_interrupt_service(source, 4);
+                None
             }
             4 => {
                 self.write_byte_with_decremented_sp(self.operand8_latch, bus_operation);
                 self.registers.pc = interrupt_vector(source);
                 self.finish_interrupt_service();
+                Some(source)
             }
-            _ => self.advance_interrupt_service(source, step),
+            _ => {
+                self.advance_interrupt_service(source, step);
+                None
+            }
         }
     }
 
@@ -1788,11 +1804,14 @@ impl CpuCore {
             return;
         };
 
-        interrupts.clear(source);
         self.begin_interrupt_service(source);
     }
 
     fn schedule_delayed_ime_enable(&mut self) {
+        if self.delayed_ime_enable {
+            return;
+        }
+
         self.delayed_ime_enable = true;
         self.delayed_ime_enable_steps = 2;
     }
@@ -2579,7 +2598,7 @@ mod tests {
     fn tick_cpu(cpu: &mut CpuCore, bus: &mut Bus, cartridge: &mut CartridgeSlot) {
         let arbitration_state = BusArbitrationState::default();
 
-        cpu.tick_t_cycle(|operation| match operation {
+        let _ = cpu.tick_t_cycle(|operation| match operation {
             CpuBusOperation::Read { address } => Some(bus.read_with_context(
                 address,
                 BusRequester::Cpu,
@@ -2601,9 +2620,60 @@ mod tests {
         });
     }
 
+    fn tick_cpu_with_interrupts(
+        cpu: &mut CpuCore,
+        bus: &mut Bus,
+        cartridge: &mut CartridgeSlot,
+        interrupts: &mut InterruptController,
+    ) {
+        let arbitration_state = BusArbitrationState::default();
+        let acknowledged_interrupt = cpu.tick_t_cycle(|operation| match operation {
+            CpuBusOperation::Read { address } => Some(bus.read_with_context(
+                address,
+                BusRequester::Cpu,
+                &arbitration_state,
+                Some(&*cartridge),
+                BusIoReadView {
+                    interrupts: Some(&*interrupts),
+                    ..BusIoReadView::default()
+                },
+            )),
+            CpuBusOperation::Write { address, value } => {
+                bus.write_with_context(
+                    address,
+                    value,
+                    BusRequester::Cpu,
+                    &arbitration_state,
+                    Some(cartridge),
+                    BusIoWriteView {
+                        interrupts: Some(interrupts),
+                        ..BusIoWriteView::default()
+                    },
+                );
+                None
+            }
+        });
+
+        if let Some(source) = acknowledged_interrupt {
+            interrupts.clear(source);
+        }
+    }
+
     fn tick_cpu_n(cpu: &mut CpuCore, bus: &mut Bus, cartridge: &mut CartridgeSlot, steps: usize) {
         for _ in 0..steps {
             tick_cpu(cpu, bus, cartridge);
+        }
+    }
+
+    fn tick_cpu_n_with_interrupts(
+        cpu: &mut CpuCore,
+        bus: &mut Bus,
+        cartridge: &mut CartridgeSlot,
+        interrupts: &mut InterruptController,
+        steps: usize,
+    ) {
+        for _ in 0..steps {
+            tick_cpu_with_interrupts(cpu, bus, cartridge, interrupts);
         }
     }
 
@@ -3876,7 +3946,7 @@ mod tests {
         cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
 
         assert!(!cpu.ime());
-        assert_eq!(interrupts.read_if(), 0xE0);
+        assert_eq!(interrupts.read_if(), 0xE1);
         assert_eq!(
             cpu.execution_state(),
             CpuExecutionState::ServiceInterrupt {
@@ -3886,7 +3956,7 @@ mod tests {
             }
         );
 
-        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+        tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 4);
 
         assert_eq!(
             cpu.execution_state(),
@@ -3898,7 +3968,7 @@ mod tests {
         );
         assert_eq!(cpu.registers().sp, 0xFFFE);
 
-        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+        tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 4);
 
         assert_eq!(
             cpu.execution_state(),
@@ -3910,7 +3980,7 @@ mod tests {
         );
         assert_eq!(cpu.registers().sp, 0xFFFE);
 
-        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+        tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 4);
 
         assert_eq!(cpu.registers().sp, 0xFFFD);
         assert_eq!(bus.read(0xFFFD), 0x00);
@@ -3932,7 +4002,7 @@ mod tests {
             })
         );
 
-        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+        tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 4);
 
         assert_eq!(cpu.registers().sp, 0xFFFD);
         assert_eq!(bus.read(0xFFFD), 0x01);
@@ -3955,11 +4025,52 @@ mod tests {
             })
         );
 
-        tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+        tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 4);
 
         assert_eq!(cpu.registers().sp, 0xFFFC);
         assert_eq!(bus.read(0xFFFC), 0x50);
         assert_eq!(cpu.registers().pc, 0x0040);
+        assert_eq!(interrupts.read_if(), 0xE0);
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
+    fn interrupt_service_keeps_the_accepted_source_latched_until_vector_commit() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut bus = Bus::new(ConsoleModel::Dmg);
+        let mut cartridge = build_test_cartridge(&[]);
+        let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
+        let mut joypad = Joypad::new(ConsoleModel::Dmg);
+
+        cpu.apply_startup_state(CpuStartupState {
+            pc: 0x0150,
+            sp: 0xFFFE,
+            ..CpuStartupState::power_on_reset()
+        });
+        cpu.ime = true;
+        interrupts.write_ie(0x05);
+        interrupts.write_if(0x04);
+
+        cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
+
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::ServiceInterrupt {
+                source: InterruptSource::Timer,
+                step: 0,
+                t_cycle: 0,
+            }
+        );
+
+        tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 12);
+        interrupts.request(InterruptSource::VBlank);
+        tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 8);
+
+        assert_eq!(cpu.registers().pc, 0x0050);
+        assert_eq!(interrupts.read_if(), 0xE1);
         assert_eq!(
             cpu.execution_state(),
             CpuExecutionState::FetchOpcode { t_cycle: 0 }
@@ -3983,7 +4094,7 @@ mod tests {
 
         cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
 
-        assert_eq!(interrupts.read_if(), 0xE0);
+        assert_eq!(interrupts.read_if(), 0xE1);
         assert_eq!(
             cpu.execution_state(),
             CpuExecutionState::ServiceInterrupt {
@@ -4013,7 +4124,7 @@ mod tests {
         cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
 
         assert!(!cpu.ime());
-        assert_eq!(interrupts.read_if(), 0xE0);
+        assert_eq!(interrupts.read_if(), 0xE1);
         assert_eq!(cpu.registers().pc, 0x0150);
         assert_eq!(
             cpu.execution_state(),

@@ -128,6 +128,7 @@ Priority order:
 - `tick()`, `read()`, and `write()` should all be aware of the timer's internal temporal state; register writes are not simple blind setters in the precise model.
 - The timer should request its interrupt through the global interrupt controller path, not by mutating unrelated CPU or bus flags ad hoc.
 - Treat visible startup values such as `DIV=0xAB` as consequences of a synthesized internal timer state during `SkipBoot`, not as disconnected register literals.
+- For the current DMG / MGB `SkipBoot` baseline, the synthesized timer state should seed the internal system counter to `0xABC8`, not merely `0xAB00`, so the first post-boot `DIV` edges match Mooneye's DMG-family `boot_div` timing.
 
 ## Recommended implementation order
 

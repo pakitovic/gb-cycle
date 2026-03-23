@@ -1,6 +1,8 @@
 .DEFAULT_GOAL := check
 
-.PHONY: help setup hooks tools check local fetch-external-roms test-external-dmg test-external-blargg-dmg test-external-ppu-dmg
+FAMILIES ?= all
+
+.PHONY: help setup hooks tools check coverage test fetch-test-roms test-blargg test-acid test-mealybug test-mooneye run-test-blargg run-test-acid run-test-mealybug run-test-mooneye
 
 help:
 	@echo "Available targets:"
@@ -8,11 +10,14 @@ help:
 	@echo "  make hooks                Configure repository git hooks"
 	@echo "  make tools                Install local cargo tools used by this repository"
 	@echo "  make check                Run the local pre-push gate (fmt, clippy, test, typos, deny)"
-	@echo "  make local                Run check plus the supported external DMG suites and coverage"
-	@echo "  make fetch-external-roms  Populate .roms/external-test from the pinned manifest"
-	@echo "  make test-external-dmg    Run the supported external DMG block"
-	@echo "  make test-external-blargg-dmg  Run the supported external Blargg DMG block"
-	@echo "  make test-external-ppu-dmg     Run the supported external DMG PPU block"
+	@echo "  make coverage             Run the repository coverage gate and emit lcov output"
+	@echo "  make test                 Fetch ROMs if needed and run the supported external DMG block"
+	@echo "  make fetch-test-roms      Materialize .roms/test from the pinned GBEmulatorShootout source using a temporary checkout"
+	@echo "                           Set FAMILIES=all or FAMILIES=\"blargg acid\" to limit the fetch"
+	@echo "  make test-blargg          Run the curated supported Blargg DMG family"
+	@echo "  make test-acid            Run the curated supported Acid DMG family"
+	@echo "  make test-mealybug        Run the exploratory Mealybug DMG family and update the report"
+	@echo "  make test-mooneye         Run the exploratory Mooneye DMG family and update the report"
 
 setup: hooks tools
 
@@ -29,31 +34,46 @@ tools:
 check:
 	cargo fmt-check
 	cargo lint
-	cargo tests
 	typos
+	cargo tests
 	cargo deny-check
 
-local: check
-	$(MAKE) fetch-external-roms
-	$(MAKE) test-external-dmg
+coverage:
 	cargo cov-check
 	cargo cov-lcov
 
-fetch-external-roms:
-	cargo run -q -p gb-test-runner --bin fetch_external_roms --
+test:
+	$(MAKE) fetch-test-roms FAMILIES="blargg acid"
+	$(MAKE) run-test-blargg
+	$(MAKE) run-test-acid
 
-test-external-dmg:
-	$(MAKE) test-external-blargg-dmg
-	$(MAKE) test-external-ppu-dmg
+fetch-test-roms:
+	cargo run -q -p gb-test-runner --bin fetch_test_roms -- $(FAMILIES)
 
-test-external-blargg-dmg:
-	cargo test --release -p gb-test-runner --test external retrio_blargg_cpu_smoke_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
-	cargo test --release -p gb-test-runner --test external retrio_blargg_cpu_instrs_full_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
-	cargo test --release -p gb-test-runner --test external retrio_blargg_instr_timing_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
-	cargo test --release -p gb-test-runner --test external retrio_blargg_halt_bug_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
-	cargo test --release -p gb-test-runner --test external retrio_blargg_mem_timing_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
-	cargo test --release -p gb-test-runner --test external retrio_blargg_mem_timing_individual_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
-	cargo test --release -p gb-test-runner --test external retrio_blargg_oam_bug_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
+test-blargg:
+	$(MAKE) fetch-test-roms FAMILIES=blargg
+	$(MAKE) run-test-blargg
 
-test-external-ppu-dmg:
-	cargo test --release -p gb-test-runner --test external gbdev_dmg_acid2_suite_runs_against_real_external_assets -- --ignored --exact --nocapture
+test-acid:
+	$(MAKE) fetch-test-roms FAMILIES=acid
+	$(MAKE) run-test-acid
+
+test-mealybug:
+	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
+	$(MAKE) run-test-mealybug
+
+test-mooneye:
+	$(MAKE) fetch-test-roms FAMILIES=mooneye
+	$(MAKE) run-test-mooneye
+
+run-test-blargg:
+	cargo test --release -p gb-test-runner --test external blargg_curated_suite_passes_from_repo_store -- --ignored --exact --nocapture
+
+run-test-acid:
+	cargo test --release -p gb-test-runner --test external acid_curated_suite_passes_from_repo_store -- --ignored --exact --nocapture
+
+run-test-mealybug:
+	cargo test --release -p gb-test-runner --test external mealybug_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+
+run-test-mooneye:
+	cargo test --release -p gb-test-runner --test external mooneye_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture

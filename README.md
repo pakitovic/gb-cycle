@@ -68,6 +68,7 @@ make setup
 ### Coverage
 
 ```bash
+make coverage
 cargo cov
 cargo cov-check
 cargo cov-html
@@ -81,11 +82,12 @@ coverage across `gb-core`, `gb-test-runner`, and `gb-persistence`.
 
 ```bash
 make check
-make local
+make test
+make coverage
 ```
 
 Before opening or updating a PR, run at least `make check` locally.
-When changing CI, coverage, dependency policy, or repository tooling, run `make local` locally as well so the external DMG gate and coverage pipeline do not first fail in GitHub Actions.
+When changing CI, coverage, dependency policy, repo tooling, or the external ROM workflow, run `make test` and `make coverage` locally as well so the external DMG gate and coverage pipeline do not first fail in GitHub Actions.
 Use Conventional Commits for commit messages and PR titles so the repository history and review metadata follow the same naming scheme.
 
 ### External ROM suites
@@ -94,51 +96,82 @@ The repository keeps synthetic ROM fixtures under version control, but official
 external ROM suites stay outside git in a repo-managed local store.
 
 ```bash
-make fetch-external-roms
-make test-external-dmg
-make test-external-blargg-dmg
-make test-external-ppu-dmg
+make fetch-test-roms
+make fetch-test-roms FAMILIES=blargg
+make fetch-test-roms FAMILIES="blargg acid"
+make test
+make test-blargg
+make test-acid
+make test-mealybug
+make test-mooneye
 ```
 
-- `make fetch-external-roms` populates the gitignored `/.roms/external-test/`
-  store from the pinned manifest in
-  `crates/gb-test-runner/external-rom-sources.toml`
+- `make fetch-test-roms` fetches the pinned upstream source from
+  `GBEmulatorShootout` into a temporary checkout, materializes the curated
+  runnable store under `/.roms/test/`, and removes the raw checkout afterwards;
+  by default it fetches `all`, but it can also materialize one or more
+  explicit families through `FAMILIES=...`
+- the pinned upstream source for redistributable ROM suites is now always
+  `GBEmulatorShootout`, recorded in
+  `crates/gb-test-runner/test-rom-families/sources.toml`
+- `/.roms/test/` is organized by family, for example:
+  `/.roms/test/acid/`,
+  `/.roms/test/blargg/`,
+  `/.roms/test/mealybug-tearoom-tests/`,
+  `/.roms/test/mooneye/`
+- each curated family directory contains only the ROMs currently listed in the
+  matching manifest under `crates/gb-test-runner/test-rom-families/*.toml`
+- the runner updates `/.roms/test/test-report.md` with a simple
+  `family | rom | status` table when a curated family suite executes, using
+  `✅`, `❌` and `ℹ️` in the status column and keeping each family's curated ROM
+  order from the manifest
 - repo-managed local-only support assets now also live under gitignored roots
   inside the workspace:
   `/.roms/bootrom/` for DMG/MGB boot ROM images and
   `/.oracles/<oracle>/<layout>/` for imported differential oracle artifacts
 - `make check` stays as the fast local pre-push gate and does not fetch or run
   external ROM suites
-- `make local` fetches and runs the repository-gated green external DMG block
-  before the coverage steps
-  that block intentionally includes only the currently supported non-APU,
-  non-CGB suites
+- `make test` fetches the curated ROM store if needed and runs the
+  repository-gated green external DMG block; that block intentionally includes
+  only the currently supported non-APU, non-CGB suites
+- `make coverage` runs the repository coverage gate and emits `lcov.info`
 - GitHub uses two workflows:
   `ci` for Rust checks plus coverage
   `external-roms` for the supported external DMG block
-- `make test-external-dmg` runs the same repository-gated external DMG block
-  explicitly:
-  `cpu_instrs` smoke,
-  `cpu_instrs/cpu_instrs.gb`,
-  `instr_timing`,
-  `halt_bug`,
-  `mem_timing`,
-  `mem_timing` individual ROMs,
-  curated `oam_bug/rom_singles 1..6,8`,
-  and `gbdev-dmg-acid2`
-- `make test-external-blargg-dmg` keeps the Blargg-only subset available
-  explicitly
-- `make test-external-ppu-dmg` runs the repo-gated PPU suite
-  `gbdev-dmg-acid2`
-- the upstream multi-ROM `oam_bug.gb` and `7-timing_effect.gb` stay outside the
-  default managed block even though the curated singles do run
-- `gbdev-dmg-acid2` is now part of the repository-gated external DMG block
+- `make test` runs the same repository-gated external DMG block explicitly:
+  the curated supported Blargg DMG family
+  `blargg-dmg-curated`
+  and the curated Acid DMG family
+  `acid-dmg-curated`
+- the curated Acid DMG family mixes one blocking framebuffer oracle
+  `dmg-acid2.gb` with one informational framebuffer capture case `which.gb`,
+  matching the upstream `GBEmulatorShootout` classification
+- `make test-blargg` runs the curated supported Blargg DMG family
+- `make test-acid` runs the curated supported Acid DMG family
+- each `make test-*` target is autosufficient and materializes its own curated
+  family before execution
+- `make test-mealybug` runs the current exploratory `mealybug-tearoom` DMG
+  subset and updates `/.roms/test/test-report.md`
+- `make test-mooneye` runs the current exploratory `mooneye` DMG acceptance
+  subset and updates `/.roms/test/test-report.md`
+- the current curated Blargg family intentionally uses only individual ROMs
+  from `GBEmulatorShootout`; it does not use multi-ROM bundles such as
+  `cpu_instrs.gb`
+- the upstream `oam_bug/7-timing_effect.gb`, APU suites, CGB-only ROMs, and
+  other still-red cases stay outside the default managed block until they are
+  intentionally promoted
 - one exploratory `mealybug-tearoom` DMG subset is also integrated as
-  `gbdev-mealybug-tearoom-dmg-curated`, but it is currently outside the default
+  `mealybug-tearoom-dmg-curated`, but it is currently outside the default
   gate because it still diverges from the upstream framebuffer fixtures under
   `Strict`
-- if `GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT` is unset, `gb-test-runner` falls back
-  to the default repo-managed root automatically
+- one exploratory `mooneye` DMG acceptance subset is also integrated as
+  `mooneye-acceptance-dmg-curated`; it follows the active
+  `GBEmulatorShootout` `testroms/mooneye.py` acceptance list, uses the upstream
+  `mooneye` breakpoint/register result protocol instead of framebuffer oracles,
+  and stays outside the default gate while the remaining failures are being
+  triaged
+- if `GB_CYCLE_TEST_ROM_ROOT` is unset, `gb-test-runner` falls back to the
+  default curated store automatically
 - keep private commercial ROMs out of that path; use the separate gitignored
   `/.roms/local-commercial/` directory for local-only assets that must never be
   referenced by CI
@@ -155,11 +188,17 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed
 cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
 ```
 
-- to run the `dmg-acid2` PPU framebuffer oracle directly once its external
-  source is fetched, run:
+- to run the curated Acid DMG family directly once the test store is
+  materialized, run:
 
 ```bash
-cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2
+cargo run -p gb-test-runner --bin run_rom_suite -- --suite acid-dmg-curated
+```
+
+- to run the curated supported Blargg DMG family, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- --suite blargg-dmg-curated
 ```
 
 - to run the current exploratory `mealybug-tearoom` DMG subset and retain its
@@ -167,8 +206,17 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2
 
 ```bash
 cargo run -p gb-test-runner --bin run_rom_suite -- \
-  --suite gbdev-mealybug-tearoom-dmg-curated \
+  --suite mealybug-tearoom-dmg-curated \
   --failure-artifact-root .artifacts/mealybug-curated
+```
+
+- to run the current exploratory `mooneye` DMG acceptance subset and retain the
+  failing snapshots, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- \
+  --suite mooneye-acceptance-dmg-curated \
+  --failure-artifact-root .artifacts/mooneye-acceptance
 ```
 
 - to compare one built-in suite against imported SameBoy artifacts,
@@ -178,7 +226,7 @@ cargo run -p gb-test-runner --bin run_rom_suite -- \
 cargo run -p gb-test-runner --bin run_differential -- \
   --oracle sameboy \
   --oracle-layout sameboy-tester \
-  --suite gbdev-dmg-acid2
+  --suite acid-dmg-curated
 ```
 
   If `--oracle-artifact-root` is omitted, the default repo-local root is
@@ -193,7 +241,7 @@ cargo run -p gb-test-runner --bin run_differential -- \
 
   The `sameboy-tester` layout is currently framebuffer-only. It expects SameBoy
   Tester artifacts mirrored by ROM-relative path, for example
-  `testroms/acid/dmg-acid2.bmp` under the oracle root.
+  `acid/dmg-acid2.bmp` under the oracle root.
 
 - to materialize those SameBoy Tester artifacts under a compatible oracle root,
   run:
@@ -201,7 +249,7 @@ cargo run -p gb-test-runner --bin run_differential -- \
 ```bash
 cargo run -p gb-test-runner --bin run_sameboy_tester -- \
   --sameboy-root /path/to/SameBoy \
-  --suite gbdev-dmg-acid2 \
+  --suite acid-dmg-curated \
   --image-format bmp \
   --build-if-missing
 ```

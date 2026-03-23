@@ -320,6 +320,59 @@ fn machine_executes_alu_register_hl_and_immediate_families() {
 }
 
 #[test]
+fn machine_executes_register_to_register_loads_from_a_into_dehl() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0xAF, 0x57, 0x5F, 0x67, 0x6F, 0x00], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 24);
+
+    assert_eq!(machine.cpu().registers().a, 0x00);
+    assert_eq!(machine.cpu().registers().d, 0x00);
+    assert_eq!(machine.cpu().registers().e, 0x00);
+    assert_eq!(machine.cpu().registers().h, 0x00);
+    assert_eq!(machine.cpu().registers().l, 0x00);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
+fn machine_increments_a_b_c_d_e_h_l_consistently_inside_a_short_loop_body() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(
+            &[
+                0xAF, 0x47, 0x4F, 0x57, 0x5F, 0x67, 0x6F, 0x3C, 0x04, 0x0C, 0x14, 0x1C, 0x24, 0x2C,
+            ],
+            0x12,
+        ))
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 56);
+
+    assert_eq!(machine.cpu().registers().a, 0x01);
+    assert_eq!(machine.cpu().registers().b, 0x01);
+    assert_eq!(machine.cpu().registers().c, 0x01);
+    assert_eq!(machine.cpu().registers().d, 0x01);
+    assert_eq!(machine.cpu().registers().e, 0x01);
+    assert_eq!(machine.cpu().registers().h, 0x01);
+    assert_eq!(machine.cpu().registers().l, 0x01);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
 fn machine_executes_decimal_adjust_accumulator_flag_ops_accumulator_rotates_and_jp_hl() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -473,7 +526,7 @@ fn machine_accepts_the_highest_priority_pending_irq_after_ei_nop() {
 
     assert!(!machine.cpu().ime());
     assert!(!machine.cpu().delayed_ime_enable());
-    assert_eq!(machine.read_bus(0xFF0F), 0xE4);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE5);
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -493,6 +546,51 @@ fn machine_accepts_the_highest_priority_pending_irq_after_ei_nop() {
         machine.cpu().execution_state(),
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
+}
+
+#[test]
+fn machine_accepts_a_pending_irq_after_ei_followed_by_ei() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0xFB, 0xFB, 0x00], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFFFF, 0x08);
+    machine.write_bus(0xFF0F, 0x08);
+
+    step_machine_t_cycles(&mut machine, 4);
+
+    assert!(!machine.cpu().ime());
+    assert!(machine.cpu().delayed_ime_enable());
+    assert_eq!(machine.read_bus(0xFF0F), 0xE8);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+
+    step_machine_t_cycles(&mut machine, 4);
+
+    assert!(!machine.cpu().ime());
+    assert!(!machine.cpu().delayed_ime_enable());
+    assert_eq!(machine.read_bus(0xFF0F), 0xE8);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::Serial,
+            step: 0,
+            t_cycle: 0,
+        }
+    );
+
+    step_machine_t_cycles(&mut machine, 20);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0058);
+    assert_eq!(machine.cpu().registers().sp, 0xFFFC);
+    assert_eq!(machine.read_bus(0xFFFD), 0x01);
+    assert_eq!(machine.read_bus(0xFFFC), 0x02);
 }
 
 #[test]
@@ -549,7 +647,7 @@ fn ei_halt_with_a_pending_irq_services_once_and_returns_to_halt() {
     step_machine_t_cycles(&mut machine, 8);
 
     assert!(!machine.cpu().ime());
-    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE1);
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -609,11 +707,12 @@ fn reti_reenables_interrupts_and_allows_a_remaining_pending_source_to_service() 
             t_cycle: 0,
         }
     );
-    assert_eq!(machine.read_bus(0xFF0F), 0xE2);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE3);
 
     step_machine_t_cycles(&mut machine, 20);
 
     assert_eq!(machine.cpu().registers().pc, 0x0040);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE2);
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
@@ -623,7 +722,7 @@ fn reti_reenables_interrupts_and_allows_a_remaining_pending_source_to_service() 
 
     assert_eq!(machine.cpu().registers().pc, 0x0102);
     assert!(!machine.cpu().ime());
-    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE2);
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -655,7 +754,7 @@ fn halt_with_ime_enabled_wakes_on_a_later_irq_and_services_it() {
     machine.write_bus(0xFF0F, 0x01);
     step_machine_t_cycles(&mut machine, 1);
 
-    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE1);
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -778,7 +877,7 @@ fn stop_wakes_from_the_joypad_path_independently_of_selection_and_services_irq_l
 
     step_machine_t_cycles(&mut machine, 4);
 
-    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE1);
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -829,7 +928,7 @@ fn stop_wake_and_joypad_irq_remain_separate_ordered_events_on_the_same_input_cha
     assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x10);
 
     step_machine_t_cycles(&mut machine, 4);
-    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x00);
+    assert_eq!(machine.read_bus(0xFF0F) & 0x10, 0x10);
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -874,6 +973,108 @@ fn stop_does_not_wake_again_while_the_same_button_remains_held() {
 
     assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
     assert_eq!(machine.cpu().registers().pc, 0x0104);
+}
+
+#[test]
+fn interrupt_service_keeps_the_accepted_vector_when_the_high_pc_byte_push_disables_ie() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom_with_patches(
+            &[0x31, 0x00, 0x00, 0xC3, 0x00, 0x02],
+            0x12,
+            &[(0x0200, 0xFB), (0x0201, 0x00), (0x0202, 0x00)],
+        ))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFFFF, 0x04);
+    machine.write_bus(0xFF0F, 0x04);
+
+    step_machine_t_cycles(&mut machine, 36);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::Timer,
+            step: 0,
+            t_cycle: 0,
+        }
+    );
+    assert_eq!(machine.read_bus(0xFF0F), 0xE4);
+    assert_eq!(machine.read_bus(0xFFFF), 0x04);
+
+    step_machine_t_cycles(&mut machine, 16);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::Timer,
+            step: 4,
+            t_cycle: 0,
+        }
+    );
+    assert_eq!(machine.read_bus(0xFFFF), 0x02);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE4);
+
+    step_machine_t_cycles(&mut machine, 4);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0050);
+    assert_eq!(machine.cpu().registers().sp, 0xFFFE);
+    assert_eq!(machine.read_bus(0xFFFF), 0x02);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
+}
+
+#[test]
+fn interrupt_service_does_not_retarget_when_the_high_pc_byte_push_changes_ie_priority() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom_with_patches(
+            &[0x31, 0x00, 0x00, 0xC3, 0x00, 0x02],
+            0x12,
+            &[(0x0200, 0xFB), (0x0201, 0x00), (0x0202, 0x00)],
+        ))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFFFF, 0x03);
+    machine.write_bus(0xFF0F, 0x03);
+
+    step_machine_t_cycles(&mut machine, 36);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::VBlank,
+            step: 0,
+            t_cycle: 0,
+        }
+    );
+    assert_eq!(machine.read_bus(0xFF0F), 0xE3);
+    assert_eq!(machine.read_bus(0xFFFF), 0x03);
+
+    step_machine_t_cycles(&mut machine, 16);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::VBlank,
+            step: 4,
+            t_cycle: 0,
+        }
+    );
+    assert_eq!(machine.read_bus(0xFFFF), 0x02);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE3);
+
+    step_machine_t_cycles(&mut machine, 4);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0040);
+    assert_eq!(machine.cpu().registers().sp, 0xFFFE);
+    assert_eq!(machine.read_bus(0xFFFF), 0x02);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE2);
 }
 
 #[test]

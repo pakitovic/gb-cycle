@@ -469,7 +469,7 @@ fn phase_6_mbc5_rom_banking_rumble_and_ram_fixture_matches_expected_state_and_tr
 
     step_until_wram_sentinel(&mut machine, MBC5_SENTINEL_ADDRESS);
 
-    assert_eq!(machine.read_bus(0xC140), 0x00);
+    assert_eq!(machine.read_bus(0xC140), 0x01);
     assert_eq!(machine.read_bus(0xC141), 0x00);
     assert_eq!(machine.read_bus(0xC142), 0xFF);
     assert_eq!(machine.read_bus(0xC143), 0x00);

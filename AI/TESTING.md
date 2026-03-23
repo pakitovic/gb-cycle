@@ -51,8 +51,8 @@ closure; it is the minimum "do not keep flying blind" matrix used while the
 project is still bringing up later hardware blocks such as APU and save states.
 
 - `CPU`: repo gate present. Current evidence: Phase `2` synthetic timing ROMs plus
-  external Blargg `cpu_instrs` smoke / full and `instr_timing`. Remaining final-closure
-  gaps: differential oracle workflow, replay / determinism, and broader boot-path
+  curated external Blargg DMG individual ROM coverage. Remaining final-closure gaps:
+  differential oracle workflow, replay / determinism, and broader boot-path
   arbitration.
 - `Interrupts`: repo gate present. Current evidence: Phase `2` interrupt timing ROMs,
   Blargg `halt_bug`, and the interrupt-heavy `cpu_instrs` cases. Remaining final-closure
@@ -69,7 +69,8 @@ project is still bringing up later hardware blocks such as APU and save states.
   differential tooling.
 - `PPU`: repo gate present for the currently closed OAM-corruption slice. Current
   evidence: Phase `4` synthetic OAM-corruption ROMs, curated Blargg `oam_bug`
-  singles `1..6,8`, and a repo-gated `dmg-acid2` framebuffer oracle.
+  singles `1..6,8`, a repo-gated `dmg-acid2` framebuffer oracle, and the
+  curated `acid/which.gb` informational DMG execution lane.
   Remaining final-closure gaps: a green repo-gated `mealybug-tearoom` slice,
   broader rendering/timing differential coverage, and the still-deferred
   non-curated exploratory ROMs.
@@ -100,13 +101,35 @@ This checklist should move only when one of the following becomes true:
 - Before promoting a third-party ROM into the built-in automated catalog, verify whether it is listed in `GBEmulatorShootout` and record any explicit exception instead of assuming the ROM belongs in the default curated set.
 - A ROM omitted from `GBEmulatorShootout` may still be useful for exploratory debugging, but it must stay out of the repo-managed built-in suites until the reason for including it anyway is documented explicitly.
 - Each ROM case should define a timeout, an explicit pass/fail rule, and retained failure artifacts such as serial output, framebuffer output, trace excerpts, and optional snapshots.
+- For the current curated Mooneye DMG acceptance slice, retain at least snapshot plus serial artifacts on failure. Many cases still use the register-signature oracle for pass/fail, but keeping serial alongside the snapshot shortens diagnosis when a ROM emits a more specific failure reason before falling into the common Mooneye stop loop.
 - When a ROM needs deterministic host-side interaction, the typed case metadata should also carry the external stimulus schedule explicitly instead of burying that behavior in ad hoc test-only closures.
 - During early Phase `0`, `gb-test-runner` could begin as a contract-only crate, but it should already own typed ROM-case and suite metadata including console model, startup mode, execution mode, emulation-progress timeout, explicit pass/fail rule, external stimulus schedule when needed, requested captures, and retained failure-artifact policy.
 - In the current baseline, `gb-test-runner` is already an executable harness as well: it can load typed suites, run ROMs on the shared T-cycle machine, capture serial / framebuffer / snapshot artifacts, and preserve failure outputs without relying on a frontend.
 - Typed ROM-case metadata may also carry deterministic startup memory writes when a curated oracle depends on one explicit post-boot memory artifact that the current `SkipBoot` baseline does not synthesize yet. Keep that path narrow, document the provenance of the bytes, and prefer boot-derived state such as the DMG trademark tile over ad hoc framebuffer patching. This currently covers curated mealybug cases that intentionally reuse tile `0x19` from the DMG boot ROM instead of uploading their own tile data.
 - When a typed suite is landed before its redistributable assets, reserve the exact ROM and trace filenames in the repo with per-phase README stubs so later automation and oracle work reuse one stable target contract instead of inventing new names ad hoc.
-- Repo-managed external ROM assets should live under one gitignored workspace store, currently `/.roms/external-test/`, with upstream source, pinned revision, and required-file hashes recorded in a versioned manifest so local runs and CI use the same asset contract.
-- `gb-test-runner` may accept explicit environment-variable roots for external suites, but the default automation path should also resolve the repo-managed store automatically so developers and CI do not need ad hoc local clones or handwritten path setup.
+- Repo-managed external ROM assets should keep only one persistent workspace-local
+  gitignored layer: the curated runnable store under `/.roms/test/`. Any raw
+  upstream checkout used to materialize that store should be temporary and cleaned
+  up after the fetch command completes.
+- The curated fetch command should support both full-store materialization and
+  explicit family subsets so repo-gated and exploratory `make test-*` targets
+  can remain autosufficient without forcing unrelated families to be fetched
+  first.
+- The upstream source, pinned revision, and required-file hashes belong in the
+  versioned manifest `crates/gb-test-runner/test-rom-families/sources.toml`.
+- The runnable curated families belong under `/.roms/test/<family>/`, using one
+  checked-in manifest per family under `crates/gb-test-runner/test-rom-families/*.toml`
+  so supported ROMs can be added or commented explicitly without editing runner code.
+- `gb-test-runner` may accept explicit environment-variable roots for curated suites,
+  but the default automation path should also resolve the repo-managed curated store
+  automatically so developers and CI do not need ad hoc local clones or handwritten
+  path setup.
+- Curated family runs should update `/.roms/test/test-report.md` with a simple
+  per-ROM status table so repo-managed `PASS` / `FAIL` / `INFO` state stays
+  visible without re-reading logs; the markdown view should render those states
+  as `✅`, `❌`, and `ℹ️` rather than repeating the raw persisted strings, and
+  rows should follow the curated family manifest order instead of being
+  alphabetized by ROM filename.
 - Keep redistributable external test ROMs and non-redistributable commercial ROMs in separate stores. The current local-only commercial bucket is `/.roms/local-commercial/`, and it must remain outside CI, docs about official closure, and public automation targets.
 - Keep local boot ROM images under the repo-managed gitignored `/.roms/bootrom/`
   store, using the canonical filenames from `gb-core` (`dmg0_boot.bin`,
@@ -120,7 +143,10 @@ This checklist should move only when one of the following becomes true:
 - Keep imported differential oracle artifacts under the repo-managed gitignored
   `/.oracles/<oracle>/<layout>/` tree instead of scattering them under `/tmp`,
   so repeated validation runs have one visible workspace-local location.
-- The minimum DMG closure baseline should include automated CPU / interrupt coverage through `retrio/gb-test-roms` or equivalent Blargg automation, `dmg-acid2` for basic DMG PPU validation, and `mealybug-tearoom-tests` for fine PPU rendering / timing validation.
+- The minimum DMG closure baseline should include automated CPU / interrupt coverage
+  through curated Blargg DMG automation sourced from `GBEmulatorShootout`,
+  curated Acid DMG coverage for basic PPU validation, and `mealybug-tearoom-tests`
+  for fine PPU rendering / timing validation.
 - Keep explicit roadmap space for broader closure suites such as Mooneye / Gekkio coverage, SameSuite, GB Accuracy Tests, 144p Test Suite, and MBC3 RTC-focused ROMs.
 - `gb-test-runner` should expose a human-readable catalog of the built-in suites
   and their active oracle channels. The current CLI entry point is
@@ -129,17 +155,35 @@ This checklist should move only when one of the following becomes true:
   the repo can answer "what is externally gated already and what is still
   internal only?" without re-reading the docs. The current CLI entry point is
   `cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist`.
-- The current early PPU hardening lane also includes the repo-gated framebuffer
-  oracle suite for `dmg-acid2` under
-  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2`.
+- The current early PPU hardening lane also includes the curated Acid DMG family
+  under
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite acid-dmg-curated`.
+- That family currently mixes one repo-gated framebuffer-oracle case
+  `dmg-acid2.gb` with one non-blocking informational framebuffer case
+  `which.gb`, mirroring the `GBEmulatorShootout` classification rather than
+  forcing a synthetic pass/fail oracle where upstream does not define one.
 - The current early PPU hardening lane also includes one non-gated exploratory
   framebuffer suite for `mealybug-tearoom-tests` under
-  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`.
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`.
   This suite uses a curated DMG-only subset sourced from `GBEmulatorShootout`
   and the same committed-PGM oracle contract as `dmg-acid2`, but it is
-  currently red under `Strict` and therefore stays outside `make local`, the
+  currently red under `Strict` and therefore stays outside `make test`, the
   `external-roms` workflow, and the repo-gated DMG block until the underlying
   PPU mismatches are corrected.
+- The current exploratory DMG acceptance lane also includes one non-gated
+  `mooneye` suite under
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`.
+  This suite follows the active `GBEmulatorShootout`
+  `testroms/mooneye.py` acceptance catalog rather than inventing a local file
+  list, runs those ROMs on the default DMG model, and uses the upstream
+  `mooneye` pass/fail breakpoint protocol via the documented register
+  signature at `LD B,B` instead of framebuffer fixtures. Because the runner
+  samples once per T-cycle, treat the immediate post-breakpoint `nop; jr -3`
+  halt loop as the same terminal condition when those registers still match
+  the documented pass/fail signature. It is intentionally
+  exploratory for now and therefore stays outside `make test`, the
+  `external-roms` workflow, and the repo-gated DMG block until its failures
+  are triaged and the relevant subsystem lanes turn green.
 - The current early `9.3` MVP also includes one imported-oracle end-of-test
   differential path under
   `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`.
@@ -193,14 +237,15 @@ This checklist should move only when one of the following becomes true:
 - Prefer unit tests for local logic and integration tests when the behavior only becomes meaningful across subsystem boundaries.
 - Treat "code first, tests later" as an exception that must be justified explicitly, not as the default workflow.
 - Before opening or updating a pull request, run at least `make check` locally so formatting, clippy, tests, typos, and `cargo deny` do not first surface in CI.
-- When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make local` locally as well before the PR is updated.
+- When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make test` and `make coverage` locally as well before the PR is updated.
 - The GitHub `ci` workflow is intentionally limited to formatting, linting, tests, typos, dependency policy, and the coverage gate. Keep external ROM execution out of that workflow.
 - The repository-gated external official ROM block currently includes the green
-  non-APU, non-CGB DMG suites: the Blargg DMG block (`cpu_instrs` smoke plus
-  full multi-ROM, `instr_timing`, `halt_bug`, `mem_timing`, `mem_timing`
-  individual ROMs, and the curated `oam_bug` singles `1..6` plus `8`) plus the
-  `dmg-acid2` framebuffer oracle. Keep APU-specific suites out of the default
-  external-ROM workflow until they are green and intentionally promoted.
+  non-APU, non-CGB DMG suites sourced from `GBEmulatorShootout`: the curated
+  supported Blargg DMG family made of individual ROMs only (`cpu_instrs 01..11`,
+  `halt_bug`, `mem_timing 01..03`, `mem_timing-2 01..03`, and `oam_bug 1..6,8`)
+  plus the curated Acid DMG framebuffer oracle family. Keep APU-specific suites,
+  multi-ROM bundles, CGB-only suites, and still-red exploratory ROMs out of the
+  default external-ROM workflow until they are green and intentionally promoted.
 - For the current infrastructure-heavy stage, keep the aggregate coverage gate across `gb-core`, `gb-test-runner`, and `gb-persistence` at or above `90%` for lines, regions, and functions, but do not satisfy that threshold with hollow tests that only exercise trivial getters or app placeholders.
 - When immediate automated coverage is temporarily impractical, record the missing test coverage, the reason it is deferred, and the remaining risk in the change report; add a roadmap TODO as well if the gap is concrete and non-trivial.
 - ROM-based validation and oracle comparison complement automated tests; they do not replace the expectation that new code should usually leave behind unit or integration coverage.
@@ -320,7 +365,7 @@ Include contract-level tests for in-memory and disk save backends, format versio
 - Full-emulator save-state tests validate whole-machine snapshot ownership, hidden temporal-state restore, and save/load continuation determinism under the recorded execution mode and overrides.
 
 Keep hardware-style cartridge persistence tests separate from full-emulator save-state tests; the former must not require CPU, PPU, APU, WRAM, or other console-state serialization.
-For DMA behavior, include `FF46` source-page selection, full `160`-byte copy correctness, DMG total duration of `640` dots, the `2`-T-cycle OAM-DMA start-up seam before the first byte commit, the separate onset of published CPU bus restriction after that seam, transfer-progress timing, CPU blocking outside HRAM, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
+For DMA behavior, include `FF46` source-page selection, DMG echo-alias source behavior above `DFFF`, full `160`-byte copy correctness, the documented `640`-dot / `160`-M-cycle burst body, the current Mooneye-backed one-full-M-cycle post-`FF46` start seam before CPU OAM blocking begins, the distinct first-byte commit on elapsed T-cycle `8`, the corresponding `Completed` transition on elapsed T-cycle `648`, restart timing when `FF46` is written during an active burst, transfer-progress timing, source-bus-aware CPU blocking during DMA, `FF46` readback/restart accessibility during DMA, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
 For APU behavior, include tests that `NR52` power-off clears ordinary audio registers, preserves wave RAM accessibility, and does not reset the `DIV-APU` source relationship whenever suitable tests exist.
 Include tests that `DIV-APU` advances from the falling edge of `DIV` bit `4`, including `DIV`-write-induced extra ticks when the edge is produced.
 Include tests that the frame sequencer clocks length, envelope, and CH1 sweep without becoming the waveform timer for the channels themselves.
@@ -352,7 +397,7 @@ Include dedicated CH4 quirk tests for ordinary `15`-bit mode, ordinary `7`-bit m
 
 ## Recommended external validation sources
 
-- retrio/gb-test-roms
+- GBEmulatorShootout `testroms`
 - blargg test ROMs
 - Mooneye tests
 - dmg-acid2 / cgb-acid2
