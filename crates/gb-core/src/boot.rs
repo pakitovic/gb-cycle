@@ -362,6 +362,8 @@ impl BootController {
             .map(|header| header.header_checksum);
         let cpu = build_skip_boot_cpu_state(self.console_model, header_checksum);
         let io = dmg_family_skip_boot_io_snapshot();
+        let dmg_family_skip_boot_system_counter =
+            (u16::from(io.div) << 8) | u16::from(DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW);
 
         Some(BootDirectBootState {
             cpu,
@@ -379,9 +381,10 @@ impl BootController {
                 wx: io.wx,
                 obj_palette_read_policy: crate::ppu::DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             },
-            serial: SerialStartupState::from_registers(io.sb, io.sc),
+            serial: SerialStartupState::from_registers(io.sb, io.sc)
+                .with_clock_counter(DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER),
             timer: TimerStartupState {
-                system_counter: u16::from(io.div) << 8,
+                system_counter: dmg_family_skip_boot_system_counter,
                 tima: io.tima,
                 tma: io.tma,
                 tac: io.tac & 0x07,
@@ -607,6 +610,9 @@ fn validate_boot_rom_len(
     Ok(())
 }
 
+const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
+const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -707,6 +713,7 @@ mod tests {
             direct_boot.serial.clock_mode,
             crate::serial::SerialClockMode::External
         );
+        assert_eq!(direct_boot.serial.clock_counter, 0xABCC);
         assert_eq!(direct_boot.ppu.lcdc, 0x91);
         assert_eq!(direct_boot.ppu.stat, 0x85);
         assert_eq!(direct_boot.io.dma, 0xFF);

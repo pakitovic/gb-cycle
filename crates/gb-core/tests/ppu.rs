@@ -126,6 +126,16 @@ fn step_until_next_frame_start(machine: &mut Machine) {
     }
 }
 
+fn sample_after_lcd_enable<F>(machine: &mut Machine, target_m_cycle: u16, sample: F) -> u8
+where
+    F: Fn(&mut Machine) -> u8,
+{
+    for _ in 0..u32::from(target_m_cycle) * 4 {
+        machine.step_t_cycle();
+    }
+    sample(machine)
+}
+
 #[test]
 fn skip_boot_ppu_state_continues_from_the_published_snapshot_on_the_shared_timeline() {
     let mut machine = Machine::new(
@@ -456,7 +466,7 @@ fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
 
     let restart = machine.ppu().snapshot();
     assert_eq!(restart.lcd_state, PpuLcdState::Enabled);
-    assert_eq!(restart.mode, PpuAccessMode::OamScan);
+    assert_eq!(restart.mode, PpuAccessMode::HBlank);
     assert_eq!(restart.ly, 0);
     assert_eq!(restart.line_dot, 4);
     assert_eq!(restart.visible_output, PpuVisibleOutputState::ForcedBlank);
@@ -492,6 +502,98 @@ fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
 }
 
 #[test]
+#[ignore = "pending Mooneye lcdon timing closure"]
+fn lcd_reenable_initial_readback_matches_the_mooneye_lcdon_timing_probe_points() {
+    const PROBE_M_CYCLES: [u16; 24] = [
+        0, 17, 60, 110, 130, 174, 224, 244, 1, 18, 61, 111, 131, 175, 225, 245, 2, 19, 62, 112,
+        132, 176, 226, 246,
+    ];
+    const EXPECTED_LY: [u8; 24] = [
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02,
+        0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x02,
+    ];
+    const EXPECTED_STAT_LYC0: [u8; 24] = [
+        0x84, 0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x84, 0x87, 0x84, 0x80, 0x82, 0x80, 0x80,
+        0x82, 0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x83,
+    ];
+    const EXPECTED_STAT_LYC1: [u8; 24] = [
+        0x80, 0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x80, 0x83, 0x80, 0x80, 0x86, 0x84, 0x80,
+        0x82, 0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x83,
+    ];
+    const EXPECTED_OAM: [u8; 24] = [
+        0x00, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF,
+        0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF,
+    ];
+    const EXPECTED_VRAM: [u8; 24] = [
+        0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00,
+        0xFF, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+    ];
+
+    let build_machine = || {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine.write_bus(0xFF40, 0x00);
+        machine.write_bus(0x8000, 0x00);
+        machine.write_bus(0xFE00, 0x00);
+        machine
+    };
+
+    let actual_ly = PROBE_M_CYCLES.map(|target_m_cycle| {
+        let mut machine = build_machine();
+        machine.write_bus(0xFF40, 0x81);
+        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
+            machine.read_bus(0xFF44)
+        })
+    });
+
+    let actual_stat_lyc0 = PROBE_M_CYCLES.map(|target_m_cycle| {
+        let mut machine = build_machine();
+        machine.write_bus(0xFF45, 0x00);
+        machine.write_bus(0xFF40, 0x81);
+        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
+            machine.read_bus(0xFF41)
+        })
+    });
+
+    let actual_stat_lyc1 = PROBE_M_CYCLES.map(|target_m_cycle| {
+        let mut machine = build_machine();
+        machine.write_bus(0xFF45, 0x01);
+        machine.write_bus(0xFF40, 0x81);
+        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
+            machine.read_bus(0xFF41)
+        })
+    });
+
+    let actual_oam = PROBE_M_CYCLES.map(|target_m_cycle| {
+        let mut machine = build_machine();
+        machine.write_bus(0xFF40, 0x81);
+        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
+            machine.read_bus(0xFE00)
+        })
+    });
+
+    let actual_vram = PROBE_M_CYCLES.map(|target_m_cycle| {
+        let mut machine = build_machine();
+        machine.write_bus(0xFF40, 0x81);
+        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
+            machine.read_bus(0x8000)
+        })
+    });
+
+    if actual_ly != EXPECTED_LY
+        || actual_stat_lyc0 != EXPECTED_STAT_LYC0
+        || actual_stat_lyc1 != EXPECTED_STAT_LYC1
+        || actual_oam != EXPECTED_OAM
+        || actual_vram != EXPECTED_VRAM
+    {
+        panic!(
+            "actual_ly={actual_ly:?}\nactual_stat_lyc0={actual_stat_lyc0:?}\nactual_stat_lyc1={actual_stat_lyc1:?}\nactual_oam={actual_oam:?}\nactual_vram={actual_vram:?}"
+        );
+    }
+}
+
+#[test]
 fn lcd_off_releases_ppu_mode_restrictions_without_overriding_dma_hram_only_blocking() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -501,8 +603,9 @@ fn lcd_off_releases_ppu_mode_restrictions_without_overriding_dma_hram_only_block
     machine.write_bus(0x8000, 0x12);
     machine.write_bus(0xFE00, 0x34);
     machine.write_bus(0xFF46, 0x80);
-    machine.step_t_cycle();
-    machine.step_t_cycle();
+    for _ in 0..5 {
+        machine.step_t_cycle();
+    }
 
     let disabled = machine.ppu().snapshot();
     assert_eq!(disabled.lcd_state, PpuLcdState::Disabled);

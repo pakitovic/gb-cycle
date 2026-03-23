@@ -175,7 +175,8 @@ Address alone is not enough: the bus must also consider the current temporal har
 - CPU, DMA, and any future transfer engine must all use this one central arbitration path; no caller-specific fast path may bypass decode or access policy.
 - On the shared scheduler timeline, the arbitration decision for a T-cycle should see the already-updated current-cycle DMA and PPU state before the CPU micro-operation issues its access for that same T-cycle.
 - The bus should consult DMA-owned published constraints such as CPU impact, region impact, and current-cycle transfer activity instead of peeking at `FF46` or future `HDMA1-5` register state directly.
-- DMA policy questions such as "HRAM-only", "fully stalled until done", or "stalled only during a block" belong to the DMA subsystem; the bus should only apply the resulting requester-visible constraints.
+- DMA policy questions such as "external bus blocked", "video bus blocked", "fully stalled until done", or "stalled only during a block" belong to the DMA subsystem; the bus should only apply the resulting requester-visible constraints.
+- For the current DMG OAM-DMA baseline, keep one explicit exception to the ordinary CPU-side DMA block: `FF46` itself must stay readable and writable so active-DMA readback and restart behavior remain visible through the MMIO path.
 
 ## Model-aware MMIO baseline
 
@@ -186,7 +187,10 @@ Address alone is not enough: the bus must also consider the current temporal har
 ### HRAM `0xFF80-0xFFFE`
 
 - HRAM should be modeled as a dedicated internal RAM region distinct from WRAM and MMIO.
-- On DMG, CPU HRAM access should remain available during OAM DMA even while most other CPU bus accesses are blocked.
+- On DMG, CPU HRAM access should remain available during OAM DMA regardless of which source bus the transfer currently occupies.
+- During an external-bus OAM-DMA conflict, the current baseline keeps CPU VRAM plus `FF46` accessible while other CPU accesses observe DMA-blocked semantics.
+- During a video-bus OAM-DMA conflict, the current baseline keeps CPU access to non-VRAM, non-OAM regions available while VRAM and OAM observe DMA-blocked semantics.
+- During either DMG OAM-DMA conflict shape, the dedicated `FF46` MMIO path should remain accessible for DMA readback and restart writes.
 - HRAM initialization policy is separate from its access semantics.
 
 ### `IE` at `0xFFFF`
@@ -204,7 +208,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - OAM decisions must consider address, LCD enable state, PPU mode, and OAM DMA state together rather than as unrelated checks.
 - OAM access blocking during PPU Mode 2 must be represented as observable bus behavior, not as a render-only detail.
 - During PPU Mode 3, both OAM and VRAM access restrictions must be represented as observable bus behavior.
-- During DMG OAM DMA, CPU accesses should retain normal HRAM behavior while non-HRAM CPU accesses observe DMA-blocked semantics instead of normal memory-region behavior.
+- During DMG OAM DMA, CPU accesses should retain normal HRAM behavior while DMA-published source-bus conflicts determine whether the blocked set is "everything except HRAM, VRAM, and `FF46`" or "VRAM and OAM only".
 - DMA-visible blocking and DMA data movement should remain separable on the T-cycle timeline; a transfer may affect CPU-visible access policy on a cycle even if no byte commit occurs on that same cycle.
 - With LCD disabled, access rules should return to the hardware state expected for LCD-off behavior.
 - LCD-off accessibility should remove ordinary PPU mode locks, but it must not erase independent blocking rules coming from DMA or any later bus actor.
@@ -252,7 +256,7 @@ Priority order:
 - Mooneye memory and MMIO behavior tests
 - subsystem-specific access restriction tests
 - tests for blocked reads returning the expected observable value and blocked writes being ignored where applicable
-- tests for requester-specific behavior during OAM DMA, including CPU HRAM access and DMA-driven OAM writes
+- tests for requester-specific behavior during OAM DMA, including CPU HRAM access, source-bus-specific blocking, and DMA-driven OAM writes
 - tests for LCD-off VRAM and OAM accessibility and for immediate access-policy change on `LCDC.7` transitions
 - tests that LCD-off accessibility and DMA-specific blocking compose correctly instead of one silently erasing the other
 - tests for boot-ROM overlay before `FF50` and cartridge visibility after `FF50`

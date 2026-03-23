@@ -29,8 +29,8 @@ tools:
 check:
 	cargo fmt-check
 	cargo lint
-	cargo tests
 	typos
+	cargo tests
 	cargo deny-check
 
 local: check

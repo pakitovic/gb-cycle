@@ -137,6 +137,12 @@ make test-external-ppu-dmg
   `gbdev-mealybug-tearoom-dmg-curated`, but it is currently outside the default
   gate because it still diverges from the upstream framebuffer fixtures under
   `Strict`
+- one exploratory `mooneye` DMG acceptance subset is also integrated as
+  `gbdev-mooneye-acceptance-dmg-curated`; it follows the active
+  `GBEmulatorShootout` `testroms/mooneye.py` acceptance list, uses the upstream
+  `mooneye` breakpoint/register result protocol instead of framebuffer oracles,
+  and stays outside the default gate while the remaining failures are being
+  triaged
 - if `GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT` is unset, `gb-test-runner` falls back
   to the default repo-managed root automatically
 - keep private commercial ROMs out of that path; use the separate gitignored
@@ -169,6 +175,15 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-dmg-acid2
 cargo run -p gb-test-runner --bin run_rom_suite -- \
   --suite gbdev-mealybug-tearoom-dmg-curated \
   --failure-artifact-root .artifacts/mealybug-curated
+```
+
+- to run the current exploratory `mooneye` DMG acceptance subset and retain the
+  failing snapshots, run:
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- \
+  --suite gbdev-mooneye-acceptance-dmg-curated \
+  --failure-artifact-root .artifacts/mooneye-acceptance
 ```
 
 - to compare one built-in suite against imported SameBoy artifacts,

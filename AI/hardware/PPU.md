@@ -94,6 +94,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
 - The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
 - Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
+- While the LCD is disabled, the `STAT` coincidence bit should retain the last active-LCD comparison result instead of being silently recomputed from the reset LCD-off `LY = 0` state.
+- Writing `LYC` while the LCD is disabled should update the stored compare target only; it must not recompute that retained LCD-off coincidence result or request LCD STAT by itself.
 - Coincidence should remain possible during VBlank as well as during visible scanlines.
 - The PPU should not model `LYC` as "schedule a future interrupt when LY reaches this line"; it is a live comparison input to `STAT`.
 
@@ -137,6 +139,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 - Re-enabling the LCD should enter one explicit, reproducible raster-start state rather than resuming from an ambiguous saved dot or half-finished scanline.
 - The implementation should keep one source of truth for the initial scanline, dot, mode, and related scheduler state used after `LCDC.7: 0 -> 1`.
+- In the current DMG-family baseline, `STAT` should expose one short initial Mode `0` readback window immediately after LCD re-enable before ordinary raster mode reporting resumes; full first-line restart timing still needs its own oracle closure.
 - The first-full-frame blank period should be counted from that re-enabled raster start, not from the earlier disable event.
 - The implementation should also keep one explicit, tested policy for how `LY` behaves while the LCD is disabled and how it re-enters the active raster model after re-enable.
 
@@ -443,7 +446,9 @@ Priority order:
 - In the current Phase `4.6` baseline, keep one explicit internal LCD STAT line inside the PPU, recompute it from the live mode/coincidence state on every timing transition and relevant MMIO write, and request the LCD STAT interrupt only on `0 -> 1` edges of that line.
 - Route both VBlank and LCD STAT requests out of the PPU through the shared interrupt-controller path on the scheduler timeline, and clear/reseed the internal STAT-line baseline across LCD off/on transitions so re-enable does not inherit stale-high edge state.
 - In the current Phase `4.7` baseline, treat `LCDC.7` as a real LCD power transition: `1 -> 0` moves the PPU immediately into one explicit LCD-disabled state with `LY = 0`, `line_dot = 0`, cleared in-flight pipeline state, released ordinary LCD-mode bus restrictions, and panel-visible forced blank output.
-- In the current Phase `4.7` baseline, `0 -> 1` restarts the internal raster immediately from one explicit entry state at line `0`, dot `0`, Mode `2`, while keeping the panel-visible output forced blank for the first full frame before returning to normal visible output on the next frame start.
+- In the current Phase `4.7` baseline, `0 -> 1` restarts the internal raster immediately from one explicit DMG-family provisional entry state at line `0`, dot `4`, while the panel-visible output stays forced blank for the first full frame.
+- The same restart path currently publishes one short early-dot `STAT.mode = 0` startup window after LCD re-enable before the ordinary raster-derived mode schedule resumes; model that window as one explicit raster state consumed consistently by `STAT`, mode-dot reporting, and Mode `2` gating rather than as scattered special-case guards. The finer restarted-line timing remains open.
+- That restart state is still only partially closed: the retained LCD-off coincidence behavior and immediate re-enable `STAT` readback now satisfy `mooneye ppu/stat_lyc_onoff`, but the finer `LY/STAT` and OAM/VRAM boundary timing around `mooneye ppu/lcdon_timing-GS` and `ppu/lcdon_write_timing-GS` remains open and should not be treated as oracle-finished.
 - In the current Phase `4.8` baseline, expose the live Mode `2` OAM row directly from the PPU raster as `line_dot / 4` over the fixed `80`-dot OAM-scan window, and keep that row unavailable outside visible-line Mode `2`.
 - In the current Phase `4.8` baseline, keep one explicit `OamCorruptionController` inside the PPU, gate it to DMG-family models only, map pure IDU `inc/dec` events to the write-corruption path, and keep the dedicated `read + inc/dec` path restricted to rows `4..=18` before the ordinary read-corruption step is applied.
 - Preserve OAM discovery order during Mode 2 instead of rebuilding an idealized sprite list later.

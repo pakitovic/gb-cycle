@@ -391,6 +391,7 @@ fn subsystem_name(subsystem: crate::TestSubsystem) -> &'static str {
         crate::TestSubsystem::Joypad => "joypad",
         crate::TestSubsystem::Serial => "serial",
         crate::TestSubsystem::Scheduler => "scheduler",
+        crate::TestSubsystem::CrossSubsystem => "cross-subsystem",
     }
 }
 
@@ -407,6 +408,7 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
         crate::PassCondition::SerialContains(_) => "serial-contains",
         crate::PassCondition::MemoryTextOutputContains { .. } => "memory-text-output",
         crate::PassCondition::BlarggConsoleTextContains(_) => "blargg-console-text",
+        crate::PassCondition::MooneyeResult => "mooneye-result",
         crate::PassCondition::FramebufferFixture(_) => "framebuffer-fixture",
         crate::PassCondition::TraceFixture(_) => "trace-fixture",
     }

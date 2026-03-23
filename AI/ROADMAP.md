@@ -160,7 +160,7 @@ coherent without refactoring.
    Acceptance criteria: the phase order is explicit and stable, there are no hidden cross-calls that bypass it, the scheduler owns ordering rather than reimplementing subsystem rules, and one `CycleContext`-style object or equivalent carries current-cycle events, derived signals, ownership facts, and queued side effects or IRQ requests.
 2. **Central arbitration** (`Phase 1`)
    Goal: unify decode, ownership, and access policy behind one requester-aware bus path.
-   Acceptance criteria: CPU and DMA-ready requesters use the same arbitration route, decode/ownership and access-policy layers stay distinct, and Phase `1` closes the requester-aware bus contract that Phase `3` later reuses for DMG OAM DMA HRAM-only behavior.
+   Acceptance criteria: CPU and DMA-ready requesters use the same arbitration route, decode/ownership and access-policy layers stay distinct, and Phase `1` closes the requester-aware bus contract that Phase `3` later reuses for DMG OAM DMA source-bus-aware CPU blocking behavior.
 3. **IRQ aggregation layer** (`Phase 2`)
    Goal: separate source request, `IF` visibility, and CPU acceptance.
    Acceptance criteria: PPU, timer, serial, and joypad only request; the CPU accepts by `IME/IE/IF` and fixed priority; timer keeps its delayed `4`-T-cycle (`1` M-cycle) request timing.
@@ -810,7 +810,7 @@ that CPU-side non-HRAM conflict handling is not published during the internal
 warm-up markers. The repo therefore now keeps the DMA transfer `in flight`
 through the start-up seam while leaving the published CPU bus state
 `Unrestricted` until that seam ends, and only then switches to the DMG
-`HRAM-only` restriction. This keeps bus-impact onset explicit in the DMA timing
+source-bus-specific restriction. This keeps bus-impact onset explicit in the DMA timing
 contract instead of inferring it from "transfer armed" alone.
 
 #### Recommended sequencing inside Phase 3
@@ -845,15 +845,16 @@ bus decode.
    across `Idle`, `Starting`, `Active`, and `Completed`, `1` byte every `4`
    dots progression metadata, `640`-dot total duration, deterministic stepping,
    and trace visibility for start and completion points.
-3. `Phase 3.3` - Central arbitration closure and DMG CPU HRAM-only behavior.
+3. `Phase 3.3` - Central arbitration closure and DMG source-bus-aware CPU behavior.
    Acceptance criteria: the bus consumes one common DMA constraint view instead
    of peeking at `FF46` or transfer internals, CPU-versus-DMA precedence stays
    centralized in arbitration rather than in CPU-local special cases, live DMG
-   OAM DMA leaves the CPU with ordinary HRAM access only while active, and the
+   OAM DMA publishes source-bus-aware CPU blocking while active, and the
    PPU can consume one common OAM-impact signal rather than transfer-specific
    register knowledge.
-   Validation gate: focused arbitration tests cover CPU HRAM-only access during
-   active DMA, non-HRAM CPU blocked-read and ignored-write behavior, unrestricted
+   Validation gate: focused arbitration tests cover CPU access during active
+   DMA for both external-bus and video-bus source shapes, blocked-read and
+   ignored-write behavior on the conflicted bus family, unrestricted
    DMA requester access through the same arbitration path, DMA precedence over
    ordinary PPU region-policy checks, and same-cycle coherence between published
    DMA state and the bus decision the CPU observes.
@@ -1465,7 +1466,7 @@ This phase closes cartridge-local persistence only; whole-machine save states re
 1. Establish the MBC5 control model and power-up state.
    Scope: `ram_enabled`, raw low `8` ROM-bank bits, raw high `1` ROM-bank bit, raw `ram_bank_raw`, deterministic startup for both `RealBoot` and `SkipBoot`, and explicit variant metadata for RAM / battery / rumble capability.
    Acceptance criteria: `0x0000-0x1FFF` enables RAM on low-nibble `0xA` and disables otherwise, the switchable ROM window really allows bank `0`, the low and high ROM-bank register pieces stay explicit, `0x4000-0x5FFF` updates raw RAM-bank state immediately, and control writes become visible immediately on the shared T-cycle timeline.
-   Status: done in the current branch baseline. `MBC5` now loads as its own cartridge device, keeps explicit raw low / high ROM-bank state plus raw RAM-bank state, starts the switchable ROM window on bank `0`, and applies RAM-enable plus bank-control writes immediately on the shared bus timeline.
+   Status: done in the current branch baseline. `MBC5` now loads as its own cartridge device, keeps explicit raw low / high ROM-bank state plus raw RAM-bank state, starts the switchable ROM window on bank `1` while still allowing explicit selection of bank `0`, and applies RAM-enable plus bank-control writes immediately on the shared bus timeline.
 2. Implement `9`-bit MBC5 ROM banking and size masking.
    Scope: fixed low ROM bank `0`, switchable high ROM bank `0x000..=0x1FF`, combined `rom_bank_low8 + rom_bank_high1` resolution, real-size masking, and explicit preservation of bank `0` semantics in the high region.
    Acceptance criteria: MBC5 supports up to `8 MiB` ROM, bank `0` is reachable in `0x4000-0x7FFF`, bank `0x1FF` is reachable on full-size images, banks above `0xFF` are reachable through the high ROM-bank bit, and final bank selection remains masked by real ROM size without introducing an MBC1/MBC3-style `0 -> 1` rule.
@@ -1828,6 +1829,12 @@ from this phase before APU work. The current early deliverables are:
   which uses a curated DMG subset from `GBEmulatorShootout` and the same
   committed-PGM oracle contract as `dmg-acid2`, but is currently red under
   `Strict` and therefore remains outside the supported external DMG block
+- one exploratory DMG acceptance suite,
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`,
+  which follows the active `GBEmulatorShootout` `testroms/mooneye.py`
+  acceptance list, uses the upstream `mooneye` breakpoint/register result
+  protocol instead of framebuffer fixtures, and currently stays outside the
+  supported external DMG block while its failures are triaged one by one
 - one narrow differential end-of-test path,
   `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`,
   which compares the built-in suite's required-capture artifact against an
@@ -1996,7 +2003,7 @@ Suggested entry style:
 
 - [CPU][BOOT] Full DMG boot ROM execution beyond the Phase `2.4` synthetic handoff baseline still needs the remaining subtract plus non-CB accumulator-rotate families used by the production DMG firmware. The MMIO-facing `LDH` / `(C)` transfer bridge is now landed, so the outstanding boot-facing gap is narrower and no longer blocks synthetic MMIO-oriented ROM work for later phases. Phase dependency: the shared `[hli]` / `[hld]` subset that also fed Phase `4` OAM-corruption prep is already landed, so the remaining boot-facing group does not block `Phase 4`.
 - [CPU][OPCODES] General CPU opcode coverage beyond the narrow Phase `2.4` synthetic boot target is still intentionally partial. Before commercial-ROM execution can be treated as a supported goal, the remaining MMIO-visible transfers, wider ALU families (`SUB` / `SBC`, `AND`, `XOR`, `OR`, and the remaining `CP` variants), and the broader CB-prefixed rotate / shift / bit-manipulation matrix still need closure through the same T-cycle execution model. Phase dependency: this does not reopen Phase `2` as a prerequisite for entering Phase `4`, and the micro-event-relevant subset for `4.8` is now closed through `[hli]` / `[hld]`, fetch-time `PC` increments, stack/control-flow, interrupt service, and observable address-bearing `inc/dec` publication.
-- [TIMER] Phase `2.7` still needs exact same-cycle `TIMA` / `TMA` write semantics on the reload T-cycle itself; the current baseline closes overflow delay, pre-reload writes, and CPU-visible IRQ ordering, but not yet the finest reload-cycle write arbitration cases. Phase dependency: no current downstream phase is blocked on this timer corner case, but later Phase `9` timer/oracle closure should not claim exact reload-cycle behavior until this arbitration is finished.
+- [TIMER][MOONEYE-RAPID-TOGGLE] The curated DMG `mooneye` acceptance lane now closes the reload-cycle `TIMA` / `TMA` write cases, but `timer/rapid_toggle` is still red. Current debugging shows the timer path is still one increment or one interrupt window late relative to the Mooneye loop, so Phase `2` should not yet claim full TAC-toggle edge closure from the curated external lane. Phase dependency: this does not block current PPU or cartridge work, but later Phase `9` timer hardening should not treat TAC edge behavior as closed until `rapid_toggle` is fixed or otherwise explained against a trusted oracle.
 
 #### Done:
 
@@ -2006,6 +2013,7 @@ Suggested entry style:
 - [CPU][OAM-PREP] The shared address-bearing event subset required by Phase `4.8` is already landed through `[hli]` / `[hld]`, fetch-time `PC` increments, stack/control-flow, interrupt service, and observable address-bearing `inc/dec` publication.
 - [CPU][PHASE2-SYNTHETIC-ROMS] The first full synthetic Phase `2` asset family now ships: reproducible `NoMBC` ROMs and golden traces for fetch/immediate order, control-flow plus stack plus CB timing, `EI` delay plus priority, `HALT` / `STOP` / `HALT` bug chronology, and timer `IF` visibility plus interrupt service. `crates/gb-core/tests/phase2.rs` is now the source of truth for those builders, traces, and expected end states.
 - [TEST-RUNNER][EXTERNAL-STIMULI] `gb-test-runner` metadata now supports deterministic external stimuli, and the shipped `phase2_halt_stop_and_halt_bug` contract uses one explicit joypad `A` press at `t_cycle = 380` so the `STOP` wake is part of the typed suite definition instead of a hidden local-harness assumption.
+- [TIMER][RELOAD-WRITE-ARBITRATION] The reload-cycle timer write contract is now explicit and tested: `TIMA` writes on the reload T-cycle are ignored, `TMA` writes on that same cycle feed the reloaded `TIMA`, and the curated `mooneye` cases `timer/tima_write_reloading` and `timer/tma_write_reloading` now pass under `Strict`.
 
 ### Phase 3 — Base DMA
 
@@ -2018,6 +2026,8 @@ Suggested entry style:
 - [PPU][WINDOW-GLITCH-ORACLE] The current Phase `4.4` window baseline includes explicit tested paths for `WX = 0` and `WX = 166`, but they remain provisional baseline behavior rather than oracle-backed glitch closure. The project still needs stricter validation and, if necessary, refinement for `WX` / `WY` / `LCDC.5` mid-frame glitch behavior, including the DMG-specific `WX = 0 && (SCX & 7) > 0` path and the special `WX = 166` continuation behavior. Phase dependency: this does not block entering Phase `5`, but Phase `9` hardening should not mark detailed DMG window-glitch behavior as closed until this oracle pass is finished.
 - [PPU][LCDC2-8X16-ARTIFACTS] The Phase `4.5` sprite baseline already treats `LCDC.2` as live state and covers the core `8x16` row-selection rules, but the finer DMG-visible artifacts and leaks caused by mid-frame `LCDC.2` size changes, especially around the lower half of `8x16` sprites, remain only documented follow-up work. Before Phase `9` hardening claims detailed sprite-size behavior as externally validated, this path still needs targeted ROM or oracle coverage and, if needed, refinement that keeps those artifacts explicit instead of leaving them as accidental baseline behavior. Phase dependency: this does not block Phase `5`, but later DMG closure should not claim fully hardened `LCDC.2` / `8x16` edge behavior until this validation lands.
 - [PPU][OAM-CORRUPTION-ORACLE] Phase `4.8` now has deterministic unit/integration coverage, a shipped synthetic ROM/trace family for direct Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]` / `[hld]`, stack plus interrupt-service paths, DMG-family model variants, and the CGB negative path, but it still lacks comparison against an independent trusted oracle or hardware-derived capture before the bug can be treated as externally validated across instruction families and hardware revisions. As of March 21, 2026, the built-in official `retrio/blargg oam_bug` automation is intentionally curated to the `GBEmulatorShootout`-listed subset, the repository-gated external DMG block now runs that curated subset by default, and the automation still excludes the upstream multi-ROM `oam_bug.gb` plus `7-timing_effect.gb`; Phase `9` hardening should not treat that curated subset as complete OAM-corruption closure without a later independent oracle pass for the remaining timing-sensitive coverage.
+- [PPU][MOONEYE-LCD-RESTART] The curated DMG `mooneye` acceptance lane now closes `ppu/stat_lyc_onoff`: LCD-off `STAT` coincidence readback is latched from the last active-LCD comparison, `LYC` writes while LCD-off update storage without recomputing that retained result, and LCD re-enable now exposes one provisional DMG-family restart state with a short early-dot `STAT.mode = 0` startup window instead of reporting Mode `2` immediately after the enable write. That closes the specific `stat_lyc_onoff` acceptance contract, but it does not yet close the broader restarted-line timing. `ppu/lcdon_timing-GS` and `ppu/lcdon_write_timing-GS` remain red, and the current diagnostic reduction still leaves a fine `LY/STAT` boundary mismatch around the early restarted lines, so Phase `4` should not treat LCD restart timing as fully oracle-validated yet.
+- [PPU][MOONEYE-STAT-TIMING] The same curated DMG `mooneye` lane still has open PPU timing and LCD STAT cases beyond the now-closed LCD-off coincidence path: `ppu/hblank_ly_scx_timing-GS`, `ppu/intr_2_0_timing`, `ppu/intr_2_mode0_timing_sprites`, and `ppu/vblank_stat_intr-GS` remain red. Phase dependency: this does not block unrelated subsystems, but Phase `9` should not mark DMG STAT-mode timing as closed until those acceptance cases are either fixed or reconciled against a trusted oracle.
 
 #### Done:
 
@@ -2025,6 +2035,7 @@ Suggested entry style:
 - [PPU][OAM-CORRUPTION-CONTRACT] The external-validation skeleton for OAM corruption is now explicit in `gb-test-runner`, including reserved Phase `4` ROM/trace targets for direct Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr` / `dec rr`, `[hli]` / `[hld]`, stack plus interrupt-service paths, DMG-family model coverage, and one CGB negative case.
 - [PPU][OAM-CORRUPTION-DIRECT-ROM] One first locally generated `NoMBC` ROM plus golden trace now ships for the direct Mode `2` OAM-write path, proving the reserved Phase `4` names can be backed by real executable assets and locking the baseline write-corruption timing to one reproducible machine trace.
 - [PPU][OAM-CORRUPTION-SYNTHETIC-ROMS] The full first synthetic Phase `4` asset family now ships: dedicated `NoMBC` ROMs and golden traces for direct Mode `2` OAM access, `FEA0-FEFF` reads, DMG-family and CGB `inc rr` model coverage, one `[hli]` / `[hld]` combined-event ROM, and one stack-plus-interrupt-service ROM. The checked-in builders in `crates/gb-core/tests/phase4.rs` are now the reproducible source of truth for those assets.
+- [PPU][MOONEYE-STAT-LYC-ONOFF] The curated DMG `mooneye` acceptance case `ppu/stat_lyc_onoff` now passes under `Strict` after making LCD-off coincidence retention and LCD re-enable `STAT` readback timing explicit in the PPU model instead of recomputing coincidence from reset `LY = 0` or reporting Mode `2` immediately on re-enable.
 
 ### Phase 5 — Input and simple peripherals
 

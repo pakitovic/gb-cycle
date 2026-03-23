@@ -55,6 +55,8 @@ Keep these concerns distinct:
 
 - In DMG master mode, starting a transfer with `SC.7 = 1` and `SC.0 = 1` should cause the serial subsystem to generate `8` internal serial clock pulses.
 - For the current DMG target, the internal serial clock rate should be `8192` Hz.
+- DMG-family master-mode clocking should follow one serial-owned free-running divider phase that is aligned to reset time rather than restarted from zero whenever software writes `SC`.
+- That DMG-family serial divider phase should stay independent from timer-owned `DIV` reset behavior; writing `DIV` must not implicitly rephase the serial master clock.
 - In slave mode with `SC.0 = 0`, arming the port with `SC.7 = 1` should not advance transfer progress on its own.
 - In slave mode, transfer progress should occur only when external clock pulses are delivered through the peer or link-endpoint boundary.
 - External serial clocks should remain allowed to arrive at non-uniform intervals; do not hard-code a fixed cadence for slave-mode progress.
@@ -99,6 +101,7 @@ Keep these concerns distinct:
 - In slave mode, externally supplied clock pulses must be injectable at precise points on that same shared timeline.
 - `SB`, `SC`, and the serial interrupt request should become visible at the exact transfer-completion point rather than through a deferred end-of-instruction cleanup.
 - Serial start and serial completion are distinct events: writing `SC.7` arms or starts transfer state on the access T-cycle, while completion visibility belongs only to the later eighth-shift T-cycle.
+- For the current DMG / MGB direct-boot baseline in this repo, the serial hidden clock counter is seeded to `0xABCC` at `PC = 0x0100` so Mooneye's `boot_sclk_align` timing window matches the first post-boot internal serial edges.
 
 ## Dependencies
 
@@ -146,6 +149,7 @@ Keep these concerns distinct:
   - optional connected peer or endpoint
 - Request the serial interrupt through the shared interrupt-controller path instead of reaching into CPU interrupt state directly.
 - Direct-boot startup values for `SB` and `SC` should come from the centralized post-boot snapshot rather than from serial-local guessed reset defaults.
+- Direct-boot should also seed serial's hidden free-running clock phase explicitly instead of deriving it from the timer's `DIV` phase or from the moment a transfer is armed.
 - Keep disconnected, loopback, scripted, and future transport-backed peers behind one narrow serial-peer boundary so the core stays transport-agnostic.
 - In the current baseline, the peer boundary is already explicit enough to
   distinguish disconnected input from loopback and to queue external slave-mode

@@ -15,8 +15,8 @@ use std::{fs, io};
 use external_roms::ExternalRomSourceManifestError;
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, ConsoleModel,
-    CpuDiagnosticTrap, CpuExecutionState, ExecutionMode, JoypadButton, Machine, MachineConfig,
-    StartupMode, TraceBuffer, TraceSummaryBuffer,
+    CpuDiagnosticTrap, CpuExecutionState, CpuSnapshot, ExecutionMode, JoypadButton, Machine,
+    MachineConfig, StartupMode, TraceBuffer, TraceSummaryBuffer,
 };
 
 pub use boot_rom_verification::{
@@ -62,6 +62,7 @@ pub enum TestSubsystem {
     Joypad,
     Serial,
     Scheduler,
+    CrossSubsystem,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -223,6 +224,7 @@ pub enum PassCondition {
         expected_substring: String,
     },
     BlarggConsoleTextContains(String),
+    MooneyeResult,
     FramebufferFixture(PathBuf),
     TraceFixture(PathBuf),
 }
@@ -233,6 +235,7 @@ impl PassCondition {
             Self::SerialExact(_) | Self::SerialContains(_) => CaptureKind::Serial,
             Self::MemoryTextOutputContains { .. } => CaptureKind::MemoryTextOutput,
             Self::BlarggConsoleTextContains(_) => CaptureKind::BlarggConsoleText,
+            Self::MooneyeResult => CaptureKind::Snapshot,
             Self::FramebufferFixture(_) => CaptureKind::Framebuffer,
             Self::TraceFixture(_) => CaptureKind::Trace,
         }
@@ -580,6 +583,8 @@ pub fn phase_2_cpu_timing_suite() -> RomSuite {
 }
 
 pub fn phase_2_interrupt_timing_suite() -> RomSuite {
+    const PHASE_2_HALT_STOP_WAKE_T_CYCLE: u64 = 372;
+
     RomSuite::new("phase-2-interrupt-timing", TestSubsystem::Interrupts)
         .with_case(
             RomTestCase::new(
@@ -617,7 +622,7 @@ pub fn phase_2_interrupt_timing_suite() -> RomSuite {
                 )),
             )
             .with_external_stimulus(ExternalStimulus::at_t_cycle(
-                380,
+                PHASE_2_HALT_STOP_WAKE_T_CYCLE,
                 ExternalStimulusAction::JoypadSetButton {
                     button: JoypadButton::A,
                     pressed: true,
@@ -1030,6 +1035,125 @@ pub fn gbdev_mealybug_tearoom_dmg_curated_suite() -> RomSuite {
         ))
 }
 
+const MOONEYE_ACCEPTANCE_DMG_CURATED_CASES: [(&str, u32); 66] = [
+    ("mooneye/acceptance/add_sp_e_timing.gb", 180),
+    ("mooneye/acceptance/bits/mem_oam.gb", 180),
+    ("mooneye/acceptance/bits/reg_f.gb", 180),
+    ("mooneye/acceptance/bits/unused_hwio-GS.gb", 180),
+    ("mooneye/acceptance/boot_div-dmgABCmgb.gb", 180),
+    ("mooneye/acceptance/boot_hwio-dmgABCmgb.gb", 180),
+    ("mooneye/acceptance/boot_regs-dmgABC.gb", 180),
+    ("mooneye/acceptance/call_cc_timing.gb", 180),
+    ("mooneye/acceptance/call_cc_timing2.gb", 180),
+    ("mooneye/acceptance/call_timing.gb", 180),
+    ("mooneye/acceptance/call_timing2.gb", 180),
+    ("mooneye/acceptance/div_timing.gb", 180),
+    ("mooneye/acceptance/di_timing-GS.gb", 180),
+    ("mooneye/acceptance/ei_sequence.gb", 180),
+    ("mooneye/acceptance/ei_timing.gb", 180),
+    ("mooneye/acceptance/halt_ime0_ei.gb", 180),
+    ("mooneye/acceptance/halt_ime0_nointr_timing.gb", 180),
+    ("mooneye/acceptance/halt_ime1_timing.gb", 180),
+    ("mooneye/acceptance/halt_ime1_timing2-GS.gb", 180),
+    ("mooneye/acceptance/if_ie_registers.gb", 180),
+    ("mooneye/acceptance/instr/daa.gb", 180),
+    ("mooneye/acceptance/interrupts/ie_push.gb", 180),
+    ("mooneye/acceptance/intr_timing.gb", 180),
+    ("mooneye/acceptance/jp_cc_timing.gb", 180),
+    ("mooneye/acceptance/jp_timing.gb", 180),
+    ("mooneye/acceptance/ld_hl_sp_e_timing.gb", 180),
+    ("mooneye/acceptance/oam_dma/basic.gb", 180),
+    ("mooneye/acceptance/oam_dma/reg_read.gb", 180),
+    ("mooneye/acceptance/oam_dma/sources-GS.gb", 180),
+    ("mooneye/acceptance/oam_dma_restart.gb", 180),
+    ("mooneye/acceptance/oam_dma_start.gb", 180),
+    ("mooneye/acceptance/oam_dma_timing.gb", 180),
+    ("mooneye/acceptance/pop_timing.gb", 180),
+    ("mooneye/acceptance/ppu/hblank_ly_scx_timing-GS.gb", 180),
+    ("mooneye/acceptance/ppu/intr_1_2_timing-GS.gb", 180),
+    ("mooneye/acceptance/ppu/intr_2_0_timing.gb", 180),
+    ("mooneye/acceptance/ppu/intr_2_mode0_timing.gb", 180),
+    ("mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb", 660),
+    ("mooneye/acceptance/ppu/intr_2_mode3_timing.gb", 180),
+    ("mooneye/acceptance/ppu/intr_2_oam_ok_timing.gb", 180),
+    ("mooneye/acceptance/ppu/lcdon_timing-GS.gb", 180),
+    ("mooneye/acceptance/ppu/lcdon_write_timing-GS.gb", 240),
+    ("mooneye/acceptance/ppu/stat_irq_blocking.gb", 180),
+    ("mooneye/acceptance/ppu/stat_lyc_onoff.gb", 180),
+    ("mooneye/acceptance/ppu/vblank_stat_intr-GS.gb", 180),
+    ("mooneye/acceptance/push_timing.gb", 180),
+    ("mooneye/acceptance/rapid_di_ei.gb", 180),
+    ("mooneye/acceptance/reti_intr_timing.gb", 180),
+    ("mooneye/acceptance/reti_timing.gb", 180),
+    ("mooneye/acceptance/ret_cc_timing.gb", 180),
+    ("mooneye/acceptance/ret_timing.gb", 180),
+    ("mooneye/acceptance/rst_timing.gb", 180),
+    (
+        "mooneye/acceptance/serial/boot_sclk_align-dmgABCmgb.gb",
+        180,
+    ),
+    ("mooneye/acceptance/timer/div_write.gb", 180),
+    ("mooneye/acceptance/timer/rapid_toggle.gb", 180),
+    ("mooneye/acceptance/timer/tim00.gb", 180),
+    ("mooneye/acceptance/timer/tim00_div_trigger.gb", 180),
+    ("mooneye/acceptance/timer/tim01.gb", 180),
+    ("mooneye/acceptance/timer/tim01_div_trigger.gb", 180),
+    ("mooneye/acceptance/timer/tim10.gb", 180),
+    ("mooneye/acceptance/timer/tim10_div_trigger.gb", 180),
+    ("mooneye/acceptance/timer/tim11.gb", 180),
+    ("mooneye/acceptance/timer/tim11_div_trigger.gb", 180),
+    ("mooneye/acceptance/timer/tima_reload.gb", 180),
+    ("mooneye/acceptance/timer/tima_write_reloading.gb", 180),
+    ("mooneye/acceptance/timer/tma_write_reloading.gb", 180),
+];
+
+fn mooneye_case_id(rom_path: &str) -> String {
+    let relative = rom_path
+        .strip_prefix("mooneye/acceptance/")
+        .unwrap_or(rom_path)
+        .trim_end_matches(".gb");
+    format!(
+        "gbdev-mooneye-{}",
+        relative.replace(['/', '_', '.'], "-").to_ascii_lowercase()
+    )
+}
+
+fn gbemu_shootout_mooneye_case(rom_path: &'static str, timeout: Timeout) -> RomTestCase {
+    RomTestCase::new(
+        mooneye_case_id(rom_path),
+        PathBuf::from(format!("testroms/{rom_path}")),
+        timeout,
+        PassCondition::MooneyeResult,
+    )
+    .with_external_rom_root_key(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+    .with_capture_plan(
+        CapturePlan::new()
+            .with_capture(CaptureKind::Snapshot)
+            .with_capture(CaptureKind::Serial),
+    )
+    .with_failure_artifacts(
+        FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::Snapshot)
+            .with_artifact(CaptureKind::Serial),
+    )
+}
+
+pub fn gbdev_mooneye_acceptance_dmg_curated_suite() -> RomSuite {
+    let mut suite = RomSuite::new(
+        "gbdev-mooneye-acceptance-dmg-curated",
+        TestSubsystem::CrossSubsystem,
+    );
+
+    for (rom_path, timeout_frames) in MOONEYE_ACCEPTANCE_DMG_CURATED_CASES {
+        suite.push_case(gbemu_shootout_mooneye_case(
+            rom_path,
+            Timeout::Frames(timeout_frames),
+        ));
+    }
+
+    suite
+}
+
 pub fn built_in_rom_suites() -> Vec<RomSuite> {
     vec![
         phase_2_cpu_timing_suite(),
@@ -1037,6 +1161,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_4_ppu_oam_corruption_suite(),
         gbdev_dmg_acid2_suite(),
         gbdev_mealybug_tearoom_dmg_curated_suite(),
+        gbdev_mooneye_acceptance_dmg_curated_suite(),
         retrio_blargg_cpu_smoke_suite(),
         retrio_blargg_cpu_instrs_full_suite(),
         retrio_blargg_instr_timing_suite(),
@@ -1298,6 +1423,8 @@ pub enum RomCaseFailure {
         expected_substring: String,
         actual: String,
     },
+    MooneyeFailureSignature,
+    MooneyeResultNotReached,
     TraceFixtureMismatch {
         fixture_path: PathBuf,
     },
@@ -1372,6 +1499,32 @@ enum RunnerMachine {
     Buffered(Machine<TraceBuffer>),
     Summary(Machine<TraceSummaryBuffer>),
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MooneyeTestResult {
+    Passed,
+    Failed,
+}
+
+struct CaseEvaluationInputs<'a> {
+    artifacts: &'a CapturedArtifacts,
+    serial_contains_matched: bool,
+    diagnostic_trap: Option<CpuDiagnosticTrap>,
+    mooneye_result: Option<MooneyeTestResult>,
+    executed_t_cycles: u64,
+    completed_frames: u32,
+}
+
+impl CaseEvaluationInputs<'_> {
+    fn budget_exhausted(&self, timeout: Timeout) -> bool {
+        budget_exhausted(timeout, self.executed_t_cycles, self.completed_frames)
+    }
+}
+
+const MOONEYE_MAGIC_BREAKPOINT_OPCODE: u8 = 0x40;
+const MOONEYE_PASS_SIGNATURE: [u8; 6] = [3, 5, 8, 13, 21, 34];
+const MOONEYE_FAIL_SIGNATURE: [u8; 6] = [0x42; 6];
+const MOONEYE_HALT_LOOP_BYTES: [u8; 4] = [0x40, 0x00, 0x18, 0xFD];
 
 impl RunnerMachine {
     fn new(case: &RomTestCase, boot_rom_assets: BootRomAssets) -> Self {
@@ -1463,6 +1616,13 @@ impl RunnerMachine {
         match self {
             Self::Buffered(machine) => machine.cpu().snapshot().execution_state,
             Self::Summary(machine) => machine.cpu().snapshot().execution_state,
+        }
+    }
+
+    fn cpu_snapshot(&self) -> CpuSnapshot {
+        match self {
+            Self::Buffered(machine) => machine.cpu().snapshot(),
+            Self::Summary(machine) => machine.cpu().snapshot(),
         }
     }
 
@@ -1582,6 +1742,7 @@ impl RomRunner {
         let mut serial_contains_matched = false;
         let mut diagnostic_trap = None;
         let mut last_memory_text_output_completion_candidate = None;
+        let mut mooneye_result = None;
 
         while !budget_exhausted(case.timeout, executed_t_cycles, completed_frames) {
             if stop_condition_satisfied(case.stop_condition, &mut machine) {
@@ -1613,6 +1774,14 @@ impl RomRunner {
                 break;
             }
 
+            if mooneye_result.is_none() {
+                mooneye_result =
+                    mooneye_result_completion_candidate(&case.pass_condition, &mut machine);
+                if mooneye_result.is_some() {
+                    break;
+                }
+            }
+
             if executed_t_cycles.is_multiple_of(1_024) {
                 let memory_completion_candidate =
                     memory_text_output_completion_candidate(&case.pass_condition, &mut machine);
@@ -1639,14 +1808,15 @@ impl RomRunner {
         }
 
         let artifacts = self.capture_artifacts(case, &mut machine, &serial_bytes);
-        let outcome = self.evaluate_case(
-            case,
-            &artifacts,
+        let evaluation = CaseEvaluationInputs {
+            artifacts: &artifacts,
             serial_contains_matched,
             diagnostic_trap,
+            mooneye_result,
             executed_t_cycles,
             completed_frames,
-        )?;
+        };
+        let outcome = self.evaluate_case(case, &evaluation)?;
         let retained_failure_artifacts = if matches!(outcome, RomCaseOutcome::Failed(_)) {
             self.persist_failure_artifacts(case, &artifacts)?
         } else {
@@ -1813,13 +1983,9 @@ impl RomRunner {
     fn evaluate_case(
         &self,
         case: &RomTestCase,
-        artifacts: &CapturedArtifacts,
-        serial_contains_matched: bool,
-        diagnostic_trap: Option<CpuDiagnosticTrap>,
-        executed_t_cycles: u64,
-        completed_frames: u32,
+        evaluation: &CaseEvaluationInputs<'_>,
     ) -> Result<RomCaseOutcome, RomExecutionError> {
-        if let Some(trap) = diagnostic_trap {
+        if let Some(trap) = evaluation.diagnostic_trap {
             return Ok(RomCaseOutcome::Failed(RomCaseFailure::CpuDiagnosticTrap {
                 trap,
             }));
@@ -1827,26 +1993,26 @@ impl RomRunner {
 
         Ok(match &case.pass_condition {
             PassCondition::SerialContains(expected_substring) => {
-                if serial_contains_matched {
+                if evaluation.serial_contains_matched {
                     RomCaseOutcome::Passed
-                } else if budget_exhausted(case.timeout, executed_t_cycles, completed_frames) {
+                } else if evaluation.budget_exhausted(case.timeout) {
                     RomCaseOutcome::Failed(RomCaseFailure::SerialMissingSubstring {
                         expected_substring: expected_substring.clone(),
-                        actual: artifacts.serial.clone().unwrap_or_default(),
+                        actual: evaluation.artifacts.serial.clone().unwrap_or_default(),
                     })
                 } else {
                     RomCaseOutcome::Failed(RomCaseFailure::TimeoutExceeded)
                 }
             }
             PassCondition::SerialExact(expected) => {
-                if !budget_exhausted(case.timeout, executed_t_cycles, completed_frames) {
+                if !evaluation.budget_exhausted(case.timeout) {
                     RomCaseOutcome::Failed(RomCaseFailure::TimeoutExceeded)
-                } else if artifacts.serial.as_deref() == Some(expected.as_str()) {
+                } else if evaluation.artifacts.serial.as_deref() == Some(expected.as_str()) {
                     RomCaseOutcome::Passed
                 } else {
                     RomCaseOutcome::Failed(RomCaseFailure::SerialExactMismatch {
                         expected: expected.clone(),
-                        actual: artifacts.serial.clone().unwrap_or_default(),
+                        actual: evaluation.artifacts.serial.clone().unwrap_or_default(),
                     })
                 }
             }
@@ -1854,7 +2020,11 @@ impl RomRunner {
                 spec,
                 expected_substring,
             } => {
-                let captured = artifacts.memory_text_output.clone().unwrap_or_default();
+                let captured = evaluation
+                    .artifacts
+                    .memory_text_output
+                    .clone()
+                    .unwrap_or_default();
                 if captured.signature == spec.expected_signature
                     && captured.status == spec.pass_status
                     && captured.text.contains(expected_substring)
@@ -1872,7 +2042,11 @@ impl RomRunner {
                 }
             }
             PassCondition::BlarggConsoleTextContains(expected_substring) => {
-                let actual = artifacts.blargg_console_text.clone().unwrap_or_default();
+                let actual = evaluation
+                    .artifacts
+                    .blargg_console_text
+                    .clone()
+                    .unwrap_or_default();
                 if actual.contains(expected_substring) {
                     RomCaseOutcome::Passed
                 } else {
@@ -1882,6 +2056,13 @@ impl RomRunner {
                     })
                 }
             }
+            PassCondition::MooneyeResult => match evaluation.mooneye_result {
+                Some(MooneyeTestResult::Passed) => RomCaseOutcome::Passed,
+                Some(MooneyeTestResult::Failed) => {
+                    RomCaseOutcome::Failed(RomCaseFailure::MooneyeFailureSignature)
+                }
+                None => RomCaseOutcome::Failed(RomCaseFailure::MooneyeResultNotReached),
+            },
             PassCondition::TraceFixture(fixture_path) => {
                 let resolved_fixture = self.resolve_path(fixture_path);
                 let expected = fs::read_to_string(&resolved_fixture).map_err(|source| {
@@ -1892,7 +2073,7 @@ impl RomRunner {
                     }
                 })?;
 
-                if artifacts.trace.as_deref() == Some(expected.as_str()) {
+                if evaluation.artifacts.trace.as_deref() == Some(expected.as_str()) {
                     RomCaseOutcome::Passed
                 } else {
                     RomCaseOutcome::Failed(RomCaseFailure::TraceFixtureMismatch {
@@ -1909,7 +2090,7 @@ impl RomRunner {
                         source,
                     })?;
 
-                if artifacts.framebuffer_pgm.as_deref() == Some(expected.as_slice()) {
+                if evaluation.artifacts.framebuffer_pgm.as_deref() == Some(expected.as_slice()) {
                     RomCaseOutcome::Passed
                 } else {
                     RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
@@ -2076,6 +2257,61 @@ fn memory_text_output_completion_reached(
     }
 }
 
+fn mooneye_result_completion_candidate(
+    pass_condition: &PassCondition,
+    machine: &mut RunnerMachine,
+) -> Option<MooneyeTestResult> {
+    match pass_condition {
+        PassCondition::MooneyeResult => detect_mooneye_result(machine),
+        _ => None,
+    }
+}
+
+fn detect_mooneye_result(machine: &mut RunnerMachine) -> Option<MooneyeTestResult> {
+    let snapshot = machine.cpu_snapshot();
+    let result = mooneye_result_for_signature(&snapshot)?;
+
+    if snapshot.current_opcode == Some(MOONEYE_MAGIC_BREAKPOINT_OPCODE)
+        || mooneye_halt_loop_reached(machine, snapshot.registers.pc)
+    {
+        Some(result)
+    } else {
+        None
+    }
+}
+
+fn mooneye_result_for_signature(snapshot: &CpuSnapshot) -> Option<MooneyeTestResult> {
+    let signature = [
+        snapshot.registers.b,
+        snapshot.registers.c,
+        snapshot.registers.d,
+        snapshot.registers.e,
+        snapshot.registers.h,
+        snapshot.registers.l,
+    ];
+
+    if signature == MOONEYE_PASS_SIGNATURE {
+        Some(MooneyeTestResult::Passed)
+    } else if signature == MOONEYE_FAIL_SIGNATURE {
+        Some(MooneyeTestResult::Failed)
+    } else {
+        None
+    }
+}
+
+fn mooneye_halt_loop_reached(machine: &mut RunnerMachine, pc: u16) -> bool {
+    (1..=4).any(|offset| mooneye_halt_loop_matches_at(machine, pc.wrapping_sub(offset)))
+}
+
+fn mooneye_halt_loop_matches_at(machine: &mut RunnerMachine, breakpoint_pc: u16) -> bool {
+    MOONEYE_HALT_LOOP_BYTES
+        .iter()
+        .enumerate()
+        .all(|(offset, expected)| {
+            machine.read_bus(breakpoint_pc.wrapping_add(offset as u16)) == *expected
+        })
+}
+
 fn blargg_console_text_complete(
     pass_condition: &PassCondition,
     machine: &mut RunnerMachine,
@@ -2216,10 +2452,63 @@ fn encode_framebuffer_pgm(framebuffer: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CaptureKind, CapturedMemoryTextOutput, GBEMU_SHOOTOUT_ROOT_ENV_VAR, PassCondition,
-        TestSubsystem, built_in_rom_suite_by_name, early_phase_9_partial_checklist,
-        memory_text_output_completion_reached,
+        BootRomAssets, CaptureKind, CapturedMemoryTextOutput, GBEMU_SHOOTOUT_ROOT_ENV_VAR,
+        MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE, MooneyeTestResult, PassCondition,
+        RomTestCase, RunnerMachine, TestSubsystem, Timeout, built_in_rom_suite_by_name,
+        detect_mooneye_result, early_phase_9_partial_checklist,
+        memory_text_output_completion_reached, mooneye_result_for_signature,
     };
+    use gb_core::{
+        ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
+    };
+
+    const TEST_ROM_MINIMUM_LEN: usize = 32 * 1024;
+
+    fn build_test_rom(program: &[u8]) -> Vec<u8> {
+        let mut rom = vec![0xFF; TEST_ROM_MINIMUM_LEN];
+        for (offset, byte) in program.iter().copied().enumerate() {
+            rom[0x0100 + offset] = byte;
+        }
+        rom[0x0147] = 0x00;
+        rom[0x0148] = 0x00;
+        rom[0x0149] = 0x00;
+        rom
+    }
+
+    fn build_mooneye_result_rom(signature: [u8; 6]) -> Vec<u8> {
+        build_test_rom(&[
+            0x06,
+            signature[0], // LD B,d8
+            0x0E,
+            signature[1], // LD C,d8
+            0x16,
+            signature[2], // LD D,d8
+            0x1E,
+            signature[3], // LD E,d8
+            0x26,
+            signature[4], // LD H,d8
+            0x2E,
+            signature[5], // LD L,d8
+            0x40,         // LD B,B
+            0x00,         // NOP
+            0x18,
+            0xFD, // JR -3
+        ])
+    }
+
+    fn mooneye_result_machine(signature: [u8; 6]) -> RunnerMachine {
+        let case = RomTestCase::new(
+            "mooneye-result-fixture",
+            "/dev/null",
+            Timeout::TCycles(512),
+            PassCondition::MooneyeResult,
+        );
+        let mut machine = RunnerMachine::new(&case, BootRomAssets::none());
+        machine
+            .load_cartridge(build_mooneye_result_rom(signature))
+            .expect("fixture rom should load");
+        machine
+    }
 
     #[test]
     fn memory_text_output_completion_requires_two_identical_final_observations() {
@@ -2319,6 +2608,119 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "gbdev-mealybug-m3-wx-4-change-sprites")
+        );
+    }
+
+    #[test]
+    fn mooneye_result_for_signature_requires_matching_registers() {
+        let mut snapshot = CpuSnapshot {
+            console_model: ConsoleModel::Dmg,
+            status: CpuStatus::Ready,
+            startup_state: CpuStartupState {
+                a: 0,
+                f: 0,
+                b: 0,
+                c: 0,
+                d: 0,
+                e: 0,
+                h: 0,
+                l: 0,
+                sp: 0,
+                pc: 0,
+            },
+            registers: CpuRegisters {
+                a: 0,
+                f: 0,
+                b: 3,
+                c: 5,
+                d: 8,
+                e: 13,
+                h: 21,
+                l: 34,
+                sp: 0,
+                pc: 0x0150,
+            },
+            execution_state: CpuExecutionState::Execute {
+                opcode: 0x40,
+                step: 0,
+                t_cycle: 0,
+            },
+            current_opcode: Some(0x40),
+            ime: false,
+            delayed_ime_enable: false,
+        };
+
+        assert_eq!(
+            mooneye_result_for_signature(&snapshot),
+            Some(MooneyeTestResult::Passed)
+        );
+
+        snapshot.registers.b = 0x42;
+        snapshot.registers.c = 0x42;
+        snapshot.registers.d = 0x42;
+        snapshot.registers.e = 0x42;
+        snapshot.registers.h = 0x42;
+        snapshot.registers.l = 0x42;
+        assert_eq!(
+            mooneye_result_for_signature(&snapshot),
+            Some(MooneyeTestResult::Failed)
+        );
+
+        snapshot.registers.b = 0x00;
+        assert_eq!(mooneye_result_for_signature(&snapshot), None);
+    }
+
+    #[test]
+    fn detect_mooneye_result_recognizes_the_post_breakpoint_halt_loop() {
+        let mut passing_machine = mooneye_result_machine(MOONEYE_PASS_SIGNATURE);
+        for _ in 0..200 {
+            passing_machine.step_t_cycle();
+        }
+        assert_eq!(
+            detect_mooneye_result(&mut passing_machine),
+            Some(MooneyeTestResult::Passed)
+        );
+
+        let mut failing_machine = mooneye_result_machine(MOONEYE_FAIL_SIGNATURE);
+        for _ in 0..200 {
+            failing_machine.step_t_cycle();
+        }
+        assert_eq!(
+            detect_mooneye_result(&mut failing_machine),
+            Some(MooneyeTestResult::Failed)
+        );
+    }
+
+    #[test]
+    fn built_in_rom_suite_lookup_returns_curated_mooneye_suite_with_snapshot_oracle() {
+        let suite = built_in_rom_suite_by_name("gbdev-mooneye-acceptance-dmg-curated")
+            .expect("known suite should exist");
+
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 66);
+        assert!(suite.cases.iter().all(|case| {
+            case.external_rom_root_key.as_deref() == Some(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+                && case.capture_plan
+                    == super::CapturePlan::new()
+                        .with_capture(CaptureKind::Snapshot)
+                        .with_capture(CaptureKind::Serial)
+                && case.failure_artifacts
+                    == super::FailureArtifactPolicy::new()
+                        .with_artifact(CaptureKind::Snapshot)
+                        .with_artifact(CaptureKind::Serial)
+                && matches!(case.pass_condition, PassCondition::MooneyeResult)
+        }));
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "gbdev-mooneye-ppu-intr-2-mode0-timing-sprites")
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "gbdev-mooneye-serial-boot-sclk-align-dmgabcmgb")
         );
     }
 

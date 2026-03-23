@@ -370,5 +370,5 @@ seq=368 subsystem=joypad level=trace message="t_cycle=16 phase=interrupt_aggrega
 seq=369 subsystem=interrupts level=trace message="t_cycle=16 phase=interrupt_aggregation console_model=Dmg status=Ready if=0xF0 ie=0x10"
 seq=370 subsystem=scheduler level=trace message="t_cycle=16 phase=cpu_wake_interrupt_evaluation"
 seq=371 subsystem=joypad level=trace message="t_cycle=16 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready p1=0xDE selection_bits=0x10 pressed_mask=0x10 visible_low_nibble=0xE interrupt_request_pending=false stop_wake_pending=false"
-seq=372 subsystem=interrupts level=trace message="t_cycle=16 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready if=0xE0 ie=0x10"
+seq=372 subsystem=interrupts level=trace message="t_cycle=16 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready if=0xF0 ie=0x10"
 seq=373 subsystem=cpu level=trace message="t_cycle=16 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready pc=0x0104 execution_state=ServiceInterrupt { source: Joypad, step: 0, t_cycle: 0 } current_opcode=None ime=false delayed_ime_enable=false last_bus_activity=opcode_fetch@0x0103=0x00 last_address_event=read+inc@0x0103->0x0104"

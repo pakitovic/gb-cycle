@@ -100,6 +100,7 @@ This checklist should move only when one of the following becomes true:
 - Before promoting a third-party ROM into the built-in automated catalog, verify whether it is listed in `GBEmulatorShootout` and record any explicit exception instead of assuming the ROM belongs in the default curated set.
 - A ROM omitted from `GBEmulatorShootout` may still be useful for exploratory debugging, but it must stay out of the repo-managed built-in suites until the reason for including it anyway is documented explicitly.
 - Each ROM case should define a timeout, an explicit pass/fail rule, and retained failure artifacts such as serial output, framebuffer output, trace excerpts, and optional snapshots.
+- For the current curated Mooneye DMG acceptance slice, retain at least snapshot plus serial artifacts on failure. Many cases still use the register-signature oracle for pass/fail, but keeping serial alongside the snapshot shortens diagnosis when a ROM emits a more specific failure reason before falling into the common Mooneye stop loop.
 - When a ROM needs deterministic host-side interaction, the typed case metadata should also carry the external stimulus schedule explicitly instead of burying that behavior in ad hoc test-only closures.
 - During early Phase `0`, `gb-test-runner` could begin as a contract-only crate, but it should already own typed ROM-case and suite metadata including console model, startup mode, execution mode, emulation-progress timeout, explicit pass/fail rule, external stimulus schedule when needed, requested captures, and retained failure-artifact policy.
 - In the current baseline, `gb-test-runner` is already an executable harness as well: it can load typed suites, run ROMs on the shared T-cycle machine, capture serial / framebuffer / snapshot artifacts, and preserve failure outputs without relying on a frontend.
@@ -140,6 +141,20 @@ This checklist should move only when one of the following becomes true:
   currently red under `Strict` and therefore stays outside `make local`, the
   `external-roms` workflow, and the repo-gated DMG block until the underlying
   PPU mismatches are corrected.
+- The current exploratory DMG acceptance lane also includes one non-gated
+  `mooneye` suite under
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite gbdev-mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`.
+  This suite follows the active `GBEmulatorShootout`
+  `testroms/mooneye.py` acceptance catalog rather than inventing a local file
+  list, runs those ROMs on the default DMG model, and uses the upstream
+  `mooneye` pass/fail breakpoint protocol via the documented register
+  signature at `LD B,B` instead of framebuffer fixtures. Because the runner
+  samples once per T-cycle, treat the immediate post-breakpoint `nop; jr -3`
+  halt loop as the same terminal condition when those registers still match
+  the documented pass/fail signature. It is intentionally
+  exploratory for now and therefore stays outside `make local`, the
+  `external-roms` workflow, and the repo-gated DMG block until its failures
+  are triaged and the relevant subsystem lanes turn green.
 - The current early `9.3` MVP also includes one imported-oracle end-of-test
   differential path under
   `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`.
@@ -320,7 +335,7 @@ Include contract-level tests for in-memory and disk save backends, format versio
 - Full-emulator save-state tests validate whole-machine snapshot ownership, hidden temporal-state restore, and save/load continuation determinism under the recorded execution mode and overrides.
 
 Keep hardware-style cartridge persistence tests separate from full-emulator save-state tests; the former must not require CPU, PPU, APU, WRAM, or other console-state serialization.
-For DMA behavior, include `FF46` source-page selection, full `160`-byte copy correctness, DMG total duration of `640` dots, the `2`-T-cycle OAM-DMA start-up seam before the first byte commit, the separate onset of published CPU bus restriction after that seam, transfer-progress timing, CPU blocking outside HRAM, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
+For DMA behavior, include `FF46` source-page selection, DMG echo-alias source behavior above `DFFF`, full `160`-byte copy correctness, the documented `640`-dot / `160`-M-cycle burst body, the current Mooneye-backed one-full-M-cycle post-`FF46` start seam before CPU OAM blocking begins, the distinct first-byte commit on elapsed T-cycle `8`, the corresponding `Completed` transition on elapsed T-cycle `648`, restart timing when `FF46` is written during an active burst, transfer-progress timing, source-bus-aware CPU blocking during DMA, `FF46` readback/restart accessibility during DMA, HRAM accessibility during DMA, and OAM/LCD interaction whenever suitable tests exist.
 For APU behavior, include tests that `NR52` power-off clears ordinary audio registers, preserves wave RAM accessibility, and does not reset the `DIV-APU` source relationship whenever suitable tests exist.
 Include tests that `DIV-APU` advances from the falling edge of `DIV` bit `4`, including `DIV`-write-induced extra ticks when the edge is produced.
 Include tests that the frame sequencer clocks length, envelope, and CH1 sweep without becoming the waveform timer for the channels themselves.

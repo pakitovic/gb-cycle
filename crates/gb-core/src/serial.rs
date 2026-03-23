@@ -4,7 +4,7 @@ use crate::scheduler::{CycleContext, InterruptSource};
 const SC_TRANSFER_REQUEST_BIT: u8 = 0x80;
 const SC_FORCED_HIGH_BITS: u8 = 0x7E;
 const SC_CLOCK_MODE_BIT: u8 = 0x01;
-const DMG_INTERNAL_SERIAL_CLOCK_PERIOD_T_CYCLES: u16 = 512;
+const DMG_INTERNAL_SERIAL_CLOCK_EDGE_BIT: u8 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SerialStatus {
@@ -39,6 +39,7 @@ pub struct SerialStartupState {
     pub sb: u8,
     pub clock_mode: SerialClockMode,
     pub transfer_state: SerialTransferState,
+    pub clock_counter: u16,
 }
 
 impl SerialStartupState {
@@ -55,7 +56,13 @@ impl SerialStartupState {
             } else {
                 SerialTransferState::Idle
             },
+            clock_counter: 0,
         }
+    }
+
+    pub const fn with_clock_counter(mut self, clock_counter: u16) -> Self {
+        self.clock_counter = clock_counter;
+        self
     }
 }
 
@@ -67,7 +74,7 @@ pub struct Serial {
     clock_mode: SerialClockMode,
     transfer_state: SerialTransferState,
     peer: SerialPeer,
-    ticks_until_next_shift: Option<u16>,
+    clock_counter: u16,
     external_clock_pulses_pending: u8,
     current_outgoing_byte: u8,
     completed_output_bytes: Vec<u8>,
@@ -92,7 +99,7 @@ impl Serial {
             clock_mode: SerialClockMode::External,
             transfer_state: SerialTransferState::Idle,
             peer: SerialPeer::Disconnected,
-            ticks_until_next_shift: None,
+            clock_counter: 0,
             external_clock_pulses_pending: 0,
             current_outgoing_byte: 0,
             completed_output_bytes: Vec::new(),
@@ -151,7 +158,6 @@ impl Serial {
             SerialTransferState::Idle
         };
         self.current_outgoing_byte = 0;
-        self.reset_transfer_timing();
     }
 
     pub fn apply_startup_state(&mut self, startup_state: SerialStartupState) {
@@ -159,10 +165,10 @@ impl Serial {
         self.clock_mode = startup_state.clock_mode;
         self.transfer_state = startup_state.transfer_state;
         self.peer = SerialPeer::Disconnected;
+        self.clock_counter = startup_state.clock_counter;
         self.external_clock_pulses_pending = 0;
         self.current_outgoing_byte = 0;
         self.completed_output_bytes.clear();
-        self.reset_transfer_timing();
     }
 
     pub fn set_peer(&mut self, peer: SerialPeer) {
@@ -189,12 +195,17 @@ impl Serial {
     }
 
     pub(crate) fn tick_t_cycle(&mut self, context: &mut CycleContext) {
+        let previous_clock_counter = self.clock_counter;
+        self.clock_counter = self.clock_counter.wrapping_add(1);
+        let internal_clock_edge =
+            serial_internal_clock_edge(previous_clock_counter, self.clock_counter);
+
         let SerialTransferState::TransferRequested { .. } = self.transfer_state else {
             return;
         };
 
         match self.clock_mode {
-            SerialClockMode::Internal => self.advance_internal_clock(context),
+            SerialClockMode::Internal => self.advance_internal_clock(context, internal_clock_edge),
             SerialClockMode::External => self.consume_external_clock_if_present(context),
         }
     }
@@ -213,33 +224,12 @@ impl Serial {
         )
     }
 
-    fn reset_transfer_timing(&mut self) {
-        self.ticks_until_next_shift = match (self.clock_mode, self.transfer_state) {
-            (SerialClockMode::Internal, SerialTransferState::TransferRequested { .. }) => {
-                Some(DMG_INTERNAL_SERIAL_CLOCK_PERIOD_T_CYCLES)
-            }
-            _ => None,
-        };
-    }
-
-    fn advance_internal_clock(&mut self, context: &mut CycleContext) {
-        let Some(ticks_until_next_shift) = self.ticks_until_next_shift else {
-            self.ticks_until_next_shift = Some(DMG_INTERNAL_SERIAL_CLOCK_PERIOD_T_CYCLES);
-            return;
-        };
-
-        if ticks_until_next_shift > 1 {
-            self.ticks_until_next_shift = Some(ticks_until_next_shift - 1);
+    fn advance_internal_clock(&mut self, context: &mut CycleContext, internal_clock_edge: bool) {
+        if !internal_clock_edge {
             return;
         }
 
         self.shift_one_bit(context);
-        if matches!(
-            self.transfer_state,
-            SerialTransferState::TransferRequested { .. }
-        ) {
-            self.ticks_until_next_shift = Some(DMG_INTERNAL_SERIAL_CLOCK_PERIOD_T_CYCLES);
-        }
     }
 
     fn consume_external_clock_if_present(&mut self, context: &mut CycleContext) {
@@ -264,7 +254,6 @@ impl Serial {
         let bits_shifted = bits_shifted + 1;
         if bits_shifted == 8 {
             self.transfer_state = SerialTransferState::Idle;
-            self.ticks_until_next_shift = None;
             self.completed_output_bytes.push(self.current_outgoing_byte);
             self.current_outgoing_byte = 0;
             context.queue_interrupt_request(InterruptSource::Serial);
@@ -279,6 +268,14 @@ const fn incoming_bit_from_peer(peer: SerialPeer, outgoing_bit: bool) -> bool {
         SerialPeer::Disconnected => true,
         SerialPeer::Loopback => outgoing_bit,
     }
+}
+
+const fn serial_internal_clock_edge(
+    previous_clock_counter: u16,
+    current_clock_counter: u16,
+) -> bool {
+    previous_clock_counter & (1 << DMG_INTERNAL_SERIAL_CLOCK_EDGE_BIT) != 0
+        && current_clock_counter & (1 << DMG_INTERNAL_SERIAL_CLOCK_EDGE_BIT) == 0
 }
 
 #[cfg(test)]
@@ -320,6 +317,7 @@ mod tests {
             startup_state.transfer_state,
             SerialTransferState::TransferRequested { bits_shifted: 0 }
         );
+        assert_eq!(startup_state.clock_counter, 0);
 
         let mut serial = Serial::new(ConsoleModel::Dmg);
         serial.apply_startup_state(startup_state);
@@ -419,5 +417,32 @@ mod tests {
         assert_eq!(serial.transfer_state(), SerialTransferState::Idle);
         assert_eq!(context.interrupt_requests(), &[InterruptSource::Serial]);
         assert_eq!(serial.take_completed_output_bytes(), vec![0x96]);
+    }
+
+    #[test]
+    fn internal_clock_phase_stays_aligned_to_the_free_running_counter_when_transfer_starts() {
+        let mut serial = Serial::new(ConsoleModel::Dmg);
+        let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+        serial.apply_startup_state(
+            SerialStartupState::from_registers(0x80, 0x7E).with_clock_counter(0x01FC),
+        );
+        serial.write_sc(0x81);
+
+        for _ in 0..3 {
+            serial.tick_t_cycle(&mut context);
+            assert_eq!(
+                serial.transfer_state(),
+                SerialTransferState::TransferRequested { bits_shifted: 0 }
+            );
+        }
+
+        serial.tick_t_cycle(&mut context);
+
+        assert_eq!(serial.read_sb(), 0x01);
+        assert_eq!(
+            serial.transfer_state(),
+            SerialTransferState::TransferRequested { bits_shifted: 1 }
+        );
     }
 }

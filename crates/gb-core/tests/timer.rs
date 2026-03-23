@@ -19,6 +19,84 @@ fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
     }
 }
 
+fn build_boot_div_probe_rom() -> Vec<u8> {
+    let mut program = Vec::new();
+
+    let read_and_push_div = |program: &mut Vec<u8>| {
+        program.extend_from_slice(&[0xF0, 0x04, 0xF5]);
+    };
+
+    program.extend(std::iter::repeat_n(0x00, 6));
+    read_and_push_div(&mut program);
+    program.extend(std::iter::repeat_n(0x00, 57));
+    read_and_push_div(&mut program);
+    program.extend(std::iter::repeat_n(0x00, 56));
+    read_and_push_div(&mut program);
+    program.extend(std::iter::repeat_n(0x00, 57));
+    read_and_push_div(&mut program);
+    program.extend(std::iter::repeat_n(0x00, 57));
+    read_and_push_div(&mut program);
+    program.extend(std::iter::repeat_n(0x00, 58));
+    read_and_push_div(&mut program);
+
+    // Spin once the stack samples have been captured.
+    program.extend_from_slice(&[0x18, 0xFE]);
+    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+    rom[0x0100] = 0x00;
+    rom[0x0101..0x0104].copy_from_slice(&[0xC3, 0x50, 0x01]);
+    for (offset, byte) in program.iter().copied().enumerate() {
+        rom[0x0150 + offset] = byte;
+    }
+    rom[0x0147] = 0x00;
+    rom[0x0148] = 0x00;
+    rom[0x0149] = 0x00;
+    rom
+}
+
+fn build_header_jump_rom(program: &[u8]) -> Vec<u8> {
+    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+    rom[0x0100] = 0x00;
+    rom[0x0101..0x0104].copy_from_slice(&[0xC3, 0x50, 0x01]);
+    for (offset, byte) in program.iter().copied().enumerate() {
+        rom[0x0150 + offset] = byte;
+    }
+    rom[0x0147] = 0x00;
+    rom[0x0148] = 0x00;
+    rom[0x0149] = 0x00;
+    rom
+}
+
+fn build_timer_rapid_toggle_probe_rom() -> Vec<u8> {
+    let mut program = vec![
+        0x3E, 0x04, // ld a, $04
+        0xE0, 0xFF, // ldh ($FF), a
+        0xAF, // xor a
+        0xE0, 0x0F, // ldh ($0F), a
+        0xE0, 0x04, // ldh ($04), a
+        0x3E, 0xF0, // ld a, $F0
+        0xE0, 0x05, // ldh ($05), a
+        0x3E, 0x04, // ld a, %00000100
+        0xE0, 0x07, // ldh ($07), a
+        0x01, 0xFF, 0xFF, // ld bc, $FFFF
+        0xFB, // ei
+    ];
+
+    let loop_start = 0x0150 + program.len();
+    program.extend_from_slice(&[
+        0x3E, 0x04, // ld a, %00000100
+        0xE0, 0x07, // ldh ($07), a
+        0x3E, 0x00, // ld a, $00
+        0xE0, 0x07, // ldh ($07), a
+        0x0B, // dec bc
+        0x79, // ld a, c
+        0xB0, // or b
+        0x20, 0xF3, // jr nz, loop_start
+    ]);
+    debug_assert_eq!(loop_start, 0x0165);
+
+    build_header_jump_rom(&program)
+}
+
 #[test]
 fn skip_boot_div_continues_from_the_documented_hidden_counter_state() {
     let mut machine = Machine::new(
@@ -37,6 +115,30 @@ fn skip_boot_div_continues_from_the_documented_hidden_counter_state() {
 }
 
 #[test]
+fn skip_boot_div_phase_matches_mooneye_boot_div_probe_on_dmg() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_boot_div_probe_rom())
+        .expect("NoMBC test ROM should load");
+
+    step_machine_t_cycles(&mut machine, 1_500);
+
+    let observed = [
+        machine.read_bus(0xFFFD),
+        machine.read_bus(0xFFFB),
+        machine.read_bus(0xFFF9),
+        machine.read_bus(0xFFF7),
+        machine.read_bus(0xFFF5),
+        machine.read_bus(0xFFF3),
+    ];
+
+    assert_eq!(observed, [0xAC, 0xAD, 0xAD, 0xAE, 0xAF, 0xB1]);
+}
+
+#[test]
 fn timer_request_becomes_visible_only_after_the_reload_delay() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -47,6 +149,7 @@ fn timer_request_becomes_visible_only_after_the_reload_delay() {
         .expect("NoMBC test ROM should load");
 
     machine.write_bus(0xFF0F, 0x00);
+    machine.write_bus(0xFF04, 0x00);
     machine.write_bus(0xFF05, 0xFF);
     machine.write_bus(0xFF06, 0x42);
     machine.write_bus(0xFF07, 0x05);
@@ -103,7 +206,7 @@ fn halted_cpu_services_timer_irq_only_after_the_reload_delay() {
 
     step_machine_t_cycles(&mut machine, 1);
 
-    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE4);
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -112,4 +215,33 @@ fn halted_cpu_services_timer_irq_only_after_the_reload_delay() {
             t_cycle: 0,
         }
     );
+}
+
+#[test]
+fn rapid_timer_toggle_matches_the_mooneye_interrupt_window() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_timer_rapid_toggle_probe_rom())
+        .expect("NoMBC test ROM should load");
+
+    for _ in 0..20_000 {
+        machine.step_t_cycle();
+        if matches!(
+            machine.cpu().execution_state(),
+            CpuExecutionState::ServiceInterrupt {
+                source: gb_core::InterruptSource::Timer,
+                step: 0,
+                t_cycle: 0,
+            }
+        ) {
+            assert_eq!(machine.cpu().registers().b, 0xFF);
+            assert_eq!(machine.cpu().registers().c, 0xD8);
+            return;
+        }
+    }
+
+    panic!("timer interrupt was not accepted within the rapid-toggle probe window");
 }

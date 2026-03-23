@@ -6,8 +6,8 @@ use gb_test_runner::{
     FailureArtifactPolicy, GBEMU_SHOOTOUT_ROOT_ENV_VAR, MemoryTextOutputSpec, PassCondition,
     RomCaseValidationError, RomSuite, RomSuiteValidationError, RomTestCase, StimulusTime,
     TestSubsystem, Timeout, gbdev_dmg_acid2_suite, gbdev_mealybug_tearoom_dmg_curated_suite,
-    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
-    retrio_blargg_oam_bug_suite,
+    gbdev_mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite,
+    phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite, retrio_blargg_oam_bug_suite,
 };
 
 #[test]
@@ -108,6 +108,29 @@ fn rom_test_case_requires_blargg_console_capture_for_console_text_conditions() {
         case.validate(),
         Err(RomCaseValidationError::MissingRequiredCapture(
             CaptureKind::BlarggConsoleText
+        ))
+    );
+}
+
+#[test]
+fn rom_test_case_requires_snapshot_capture_for_mooneye_result_conditions() {
+    let case = RomTestCase::new(
+        "mooneye-case",
+        PathBuf::from("mooneye.gb"),
+        Timeout::Frames(180),
+        PassCondition::MooneyeResult,
+    )
+    .with_capture_plan(CapturePlan::new().with_capture(CaptureKind::Serial))
+    .with_failure_artifacts(
+        FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::Snapshot)
+            .with_artifact(CaptureKind::Serial),
+    );
+
+    assert_eq!(
+        case.validate(),
+        Err(RomCaseValidationError::MissingRequiredCapture(
+            CaptureKind::Snapshot
         ))
     );
 }
@@ -432,7 +455,7 @@ fn phase_2_rom_automation_targets_validate_for_cpu_and_interrupt_timing() {
     assert_eq!(
         halt_stop_case.external_stimuli.stimuli()[0],
         ExternalStimulus::at_t_cycle(
-            380,
+            372,
             ExternalStimulusAction::JoypadSetButton {
                 button: JoypadButton::A,
                 pressed: true,
@@ -601,6 +624,51 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
         .expect("curated mealybug suite should include m3_bgp_change_sprites");
     assert_eq!(bgp_change_sprites.startup_mode, StartupMode::SkipBoot);
     assert_eq!(bgp_change_sprites.startup_memory_writes.len(), 16);
+}
+
+#[test]
+fn curated_mooneye_suite_uses_snapshot_oracles_and_serial_diagnostics_for_the_active_gbemu_acceptance_list()
+ {
+    let suite = gbdev_mooneye_acceptance_dmg_curated_suite();
+
+    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+    assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.cases.len(), 66);
+    assert!(suite.cases.iter().all(|case| {
+        case.console_model == ConsoleModel::Dmg
+            && case.external_rom_root_key.as_deref() == Some(GBEMU_SHOOTOUT_ROOT_ENV_VAR)
+            && case
+                .rom_path
+                .starts_with(Path::new("testroms/mooneye/acceptance"))
+            && case.capture_plan
+                == CapturePlan::new()
+                    .with_capture(CaptureKind::Snapshot)
+                    .with_capture(CaptureKind::Serial)
+            && case.failure_artifacts
+                == FailureArtifactPolicy::new()
+                    .with_artifact(CaptureKind::Snapshot)
+                    .with_artifact(CaptureKind::Serial)
+            && matches!(case.pass_condition, PassCondition::MooneyeResult)
+    }));
+    assert!(!suite.cases.iter().any(|case| {
+        let path = case.rom_path.to_string_lossy();
+        path.contains("sgb")
+            || path.contains("cgb")
+            || path.contains("apu")
+            || path.contains("sound")
+    }));
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.id == "gbdev-mooneye-boot-regs-dmgabc")
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.id == "gbdev-mooneye-timer-tma-write-reloading")
+    );
 }
 
 fn trace_fixture_path(case: &RomTestCase) -> &Path {

@@ -804,7 +804,10 @@ impl CartridgeSlot {
                         classification,
                         variant,
                         ram_enabled: false,
-                        rom_bank_low8: 0,
+                        // MBC5 keeps bank 0 valid in the switchable window, but
+                        // the power-up mapping still exposes bank 1 until software
+                        // writes a different value.
+                        rom_bank_low8: 1,
                         rom_bank_high1: 0,
                         ram_bank_raw: 0,
                         rumble_on: false,
@@ -3357,7 +3360,7 @@ mod tests {
     }
 
     #[test]
-    fn mbc5_power_up_state_is_explicit_and_keeps_bank_zero_visible_in_the_high_window() {
+    fn mbc5_power_up_state_starts_the_high_window_on_bank_one_while_keeping_bank_zero_reachable() {
         let rom = build_banked_mbc5_rom(0x1E, 0x08, 0x03);
         let report =
             CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC5 should load");
@@ -3368,10 +3371,15 @@ mod tests {
 
         assert_eq!(cartridge.variant, Mbc5Variant::RumbleRamBattery);
         assert!(!cartridge.ram_enabled);
-        assert_eq!(cartridge.rom_bank_low8, 0);
+        assert_eq!(cartridge.rom_bank_low8, 1);
         assert_eq!(cartridge.rom_bank_high1, 0);
         assert_eq!(cartridge.ram_bank_raw, 0);
         assert!(!cartridge.rumble_on());
+        assert_eq!(cartridge.read_rom(0x4000), 0x01);
+        assert_eq!(cartridge.read_rom(0x4001), 0x00);
+
+        let mut cartridge = cartridge.clone();
+        cartridge.write_rom(0x2000, 0x00);
         assert_eq!(cartridge.read_rom(0x4000), 0x00);
         assert_eq!(cartridge.read_rom(0x4001), 0x00);
     }
