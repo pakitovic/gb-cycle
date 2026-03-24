@@ -41,6 +41,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - `IE` should remain owned by the interrupt controller even though it is exposed at `0xFFFF`.
 - Prefer helpers such as `request_interrupt(kind)` and `clear_interrupt(kind)` alongside the routed MMIO read/write path.
 - Program writes to `IF` should coexist with hardware requests without bypassing the interrupt controller's source-of-truth state.
+- `IE` writes are immediate even when they come from CPU stack traffic rather than an explicit `LD (a16),A`-style instruction. In particular, if interrupt-service `PC` push writes hit `0xFFFF`, the CPU must observe the updated pending set before vector commit, allowing the dispatch to cancel or retarget after the upper-byte push but not after the lower-byte push.
 
 ## LCD interrupt-producer baseline
 

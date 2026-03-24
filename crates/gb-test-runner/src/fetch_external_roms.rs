@@ -5,6 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process::{self, Command};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
@@ -15,6 +16,7 @@ use crate::{
     materialize_curated_test_rom_store,
 };
 const CURATED_TEST_ROM_SOURCE_ID: &str = "gbemu-shootout";
+static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FetchExternalRomsAction {
@@ -221,12 +223,17 @@ where
 
 fn unique_temp_fetch_root(source: &ExternalRomSource) -> std::path::PathBuf {
     let source_name = source.local_dir.replace('/', "-");
+    unique_temp_path(&format!("test-rom-fetch-{source_name}"))
+}
+
+fn unique_temp_path(label: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock should be after unix epoch")
         .as_nanos();
+    let sequence = TEMP_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
     env::temp_dir().join(format!(
-        "gb-cycle-test-rom-fetch-{source_name}-{}-{nanos}",
+        "gb-cycle-{label}-{}-{nanos}-{sequence}",
         process::id()
     ))
 }
@@ -457,7 +464,6 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::{
         EXTERNAL_ROM_SOURCE_MANIFEST_PATH, curated_test_rom_families,
@@ -473,14 +479,7 @@ mod tests {
     use crate::{ExternalRomRequiredFile, ExternalRomSource};
 
     fn unique_temp_dir(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "gb-cycle-fetch-external-roms-{label}-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system clock should be after unix epoch")
-                .as_nanos()
-        ))
+        super::unique_temp_path(&format!("fetch-external-roms-{label}"))
     }
 
     fn commit_upstream_repo(root: &Path) -> String {

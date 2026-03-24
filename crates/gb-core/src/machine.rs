@@ -429,6 +429,7 @@ impl<S: TraceSink> Machine<S> {
                             );
                             None
                         }
+                        CpuBusOperation::PendingInterruptMask => Some(interrupts.pending_mask()),
                     });
                     if let Some(source) = acknowledged_interrupt {
                         interrupts.clear(source);
