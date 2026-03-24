@@ -626,7 +626,7 @@ mod tests {
             String::from_utf8(detailed_output).expect("detailed output should be utf-8");
         assert!(
             detailed_output.contains(
-                "suite=blargg-dmg-curated family=blargg subsystem=cross-subsystem cases=25 sources=test-rom-store"
+                "suite=blargg-dmg-curated family=blargg subsystem=cross-subsystem cases=26 sources=test-rom-store"
             )
         );
         assert!(

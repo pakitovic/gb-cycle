@@ -1793,10 +1793,8 @@ impl CpuCore {
     }
 
     fn can_accept_interrupt(&self) -> bool {
-        matches!(
-            self.execution_state,
-            CpuExecutionState::FetchOpcode { t_cycle: 0 }
-        )
+        matches!(self.execution_state, CpuExecutionState::FetchOpcode { .. })
+            && self.current_opcode.is_none()
     }
 
     fn accept_pending_interrupt(&mut self, interrupts: &mut InterruptController) {
@@ -4034,6 +4032,34 @@ mod tests {
         assert_eq!(
             cpu.execution_state(),
             CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        );
+    }
+
+    #[test]
+    fn pending_interrupt_can_preempt_the_in_flight_fetch_before_the_opcode_latches() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
+        let mut joypad = Joypad::new(ConsoleModel::Dmg);
+
+        cpu.apply_startup_state(CpuStartupState {
+            pc: 0x0150,
+            ..CpuStartupState::power_on_reset()
+        });
+        cpu.ime = true;
+        cpu.execution_state = CpuExecutionState::FetchOpcode { t_cycle: 3 };
+        interrupts.write_ie(0x04);
+        interrupts.write_if(0x04);
+
+        cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
+
+        assert!(!cpu.ime());
+        assert_eq!(
+            cpu.execution_state(),
+            CpuExecutionState::ServiceInterrupt {
+                source: InterruptSource::Timer,
+                step: 0,
+                t_cycle: 0,
+            }
         );
     }
 

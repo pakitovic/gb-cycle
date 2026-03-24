@@ -218,6 +218,54 @@ fn halted_cpu_services_timer_irq_only_after_the_reload_delay() {
 }
 
 #[test]
+fn same_cycle_if_read_observes_a_timer_request_before_interrupt_aggregation() {
+    let mut program = vec![
+        0xAF, // xor a
+        0xE0, 0x06, // ldh ($06), a ; TMA = 0
+        0x3E, 0x05, // ld a, $05
+        0xE0, 0x07, // ldh ($07), a ; TAC = 262144 Hz
+        0xAF, // xor a
+        0xE0, 0x0F, // ldh ($0F), a ; IF = 0
+        0x3E, 0xEC, // ld a, $EC
+        0xE0, 0x05, // ldh ($05), a ; TIMA = -20
+    ];
+    program.extend(std::iter::repeat_n(0x00, 70));
+    program.extend_from_slice(&[
+        0xF0, 0x0F, // ldh a, ($0F)
+        0xE6, 0x04, // and $04
+        0xC2, 0x6B, 0x01, // jp nz, fail
+        0xF0, 0x0F, // ldh a, ($0F)
+        0xE6, 0x04, // and $04
+        0xCA, 0x6B, 0x01, // jp z, fail
+        0x3E, 0x01, // ld a, $01
+        0xEA, 0x00, 0xC0, // ld ($C000), a
+        0x18, 0xFE, // jr -2
+        0x3E, 0x02, // fail: ld a, $02
+        0xEA, 0x00, 0xC0, // ld ($C000), a
+        0x18, 0xFE, // jr -2
+    ]);
+
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_header_jump_rom(&program))
+        .expect("NoMBC test ROM should load");
+
+    for _ in 0..20_000 {
+        machine.step_t_cycle();
+        let result = machine.read_bus(0xC000);
+        if result != 0 {
+            assert_eq!(result, 0x01);
+            return;
+        }
+    }
+
+    panic!("IF visibility probe did not finish");
+}
+
+#[test]
 fn rapid_timer_toggle_matches_the_mooneye_interrupt_window() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -237,8 +285,16 @@ fn rapid_timer_toggle_matches_the_mooneye_interrupt_window() {
                 t_cycle: 0,
             }
         ) {
-            assert_eq!(machine.cpu().registers().b, 0xFF);
-            assert_eq!(machine.cpu().registers().c, 0xD8);
+            let registers = machine.cpu().registers();
+            assert_eq!(registers.b, 0xFF);
+            assert_eq!(
+                registers.c,
+                0xD9,
+                "service_bc={:#04X}{:#04X} service_state={:?}",
+                registers.b,
+                registers.c,
+                machine.cpu().execution_state()
+            );
             return;
         }
     }

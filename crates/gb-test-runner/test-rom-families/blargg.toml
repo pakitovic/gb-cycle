@@ -88,6 +88,13 @@ timeout_frames = 3600
 oracle = "blargg-console-contains"
 expected = "Passed"
 
+[[case]]
+id = "blargg-instr-timing"
+rom = "instr_timing.gb"
+timeout_frames = 3600
+oracle = "serial-contains"
+expected = "Passed"
+
 # mem_timing
 [[case]]
 id = "blargg-mem-timing-01-read"

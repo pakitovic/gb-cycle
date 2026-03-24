@@ -71,9 +71,11 @@ The source of truth should be an internal `16`-bit system counter advanced by th
 - A write to `DIV` can cause an immediate TIMA increment when it changes the effective timer signal through the relevant falling edge.
 - The same `DIV` reset event should remain observable enough for the APU to see whether the `DIV-APU` source edge occurred on that T-cycle.
 - A write to `TAC` must reevaluate both the selected counter bit and the enable contribution; TAC writes can therefore trigger the timer glitch behavior and immediate TIMA increment in the relevant cases.
+- If a `DIV` or `TAC` write-triggered glitch is itself the event that overflows `TIMA`, the reload / IRQ window still has to stay aligned to the shared T-cycle timeline instead of silently slipping by one extra cycle just because the timer's autonomous tick for that same cycle already ran earlier in the scheduler.
 - TIMA overflow must enter an explicit pending/reload sequence before `TMA` is copied and the timer interrupt is requested.
 - The shared scheduler should first advance the internal divider/system-counter for the T-cycle, then let the timer derive falling edges and overflow-pipeline transitions from that updated state.
 - The timer's delayed `IF` request belongs to the timer-owned overflow pipeline, not to a generic interrupt rule in the scheduler or interrupt controller.
+- Once the timer does request `IF`, CPU MMIO reads of `FF0F` in that same shared T-cycle should be able to observe the newly raised timer bit even if the repo's explicit interrupt-aggregation checkpoint and interrupt-accept decision still happen later in the cycle.
 - Writes to `TIMA` and `TMA` near overflow/reload must be modeled against that internal overflow state machine rather than as unconditional register stores.
 - Exact same-cycle `TIMA` / `TMA` write arbitration on the reload T-cycle itself should remain explicit work; do not silently claim that the current baseline already closes every reload-window corner case just because pre-reload writes and delayed `IF` timing are covered.
 - When `SkipBoot` synthesizes a post-boot machine state, the timer's hidden `system_counter` and any overflow-related state must be initialized coherently with the visible `DIV`, `TIMA`, `TMA`, and `TAC` snapshot rather than being reset independently.

@@ -26,7 +26,10 @@ Each curated family directory contains:
 
 The runner updates `/.roms/test/test-report.md` with a simple
 `family | rom | status` table after curated family runs, using `✅`, `❌`, and
-`ℹ️` in the status column.
+`ℹ️` in the status column. The report keeps a fixed family inventory order:
+`acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`, `hacktix`, `cpp`,
+`mealybug-tearoom-tests`. Families that have not produced persisted case
+statuses do not appear in the table.
 
 ## Current curated families
 

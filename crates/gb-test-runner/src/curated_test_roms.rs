@@ -22,6 +22,17 @@ const GBEMU_SHOOTOUT_TESTROMS_DIR: &str = "testroms";
 const REPORT_STATUS_PASS_EMOJI: &str = "✅";
 const REPORT_STATUS_FAIL_EMOJI: &str = "❌";
 const REPORT_STATUS_INFO_EMOJI: &str = "ℹ️";
+const CURATED_TEST_ROM_REPORT_FAMILY_ORDER: [&str; 9] = [
+    "acid",
+    "blargg",
+    "daid",
+    "ax6",
+    "mooneye",
+    "samesuite",
+    "hacktix",
+    "cpp",
+    "mealybug-tearoom-tests",
+];
 const DMG_BOOT_TRADEMARK_TILE_VRAM_START: u16 = 0x8190;
 const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
     0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C, 0x00,
@@ -316,7 +327,7 @@ pub fn update_curated_test_report(
         suites.push(persisted);
     }
 
-    suites.sort_by(|left, right| left.suite_name.cmp(&right.suite_name));
+    suites.sort_by(compare_report_suites);
 
     let report_path = store_root.join(TEST_ROM_REPORT_FILE_NAME);
     fs::write(&report_path, render_markdown_report(&suites)).map_err(|error| {
@@ -575,13 +586,14 @@ fn dmg_boot_trademark_tile_startup_writes() -> [StartupMemoryWrite; 16] {
 
 fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
     let mut ordered_suites = suites.to_vec();
-    ordered_suites.sort_by(|left, right| left.suite_name.cmp(&right.suite_name));
+    ordered_suites.sort_by(compare_report_suites);
 
     let mut report = String::new();
     let _ = writeln!(&mut report, "# Test Report");
     let _ = writeln!(&mut report);
     let _ = writeln!(&mut report, "| family | rom | status |");
     let _ = writeln!(&mut report, "| --- | --- | --- |");
+
     for suite in &ordered_suites {
         for case in &suite.cases {
             let _ = writeln!(
@@ -594,6 +606,25 @@ fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
         }
     }
     report
+}
+
+fn report_family_rank(family: &str) -> Option<usize> {
+    CURATED_TEST_ROM_REPORT_FAMILY_ORDER
+        .iter()
+        .position(|known_family| *known_family == family)
+}
+
+fn compare_report_suites(
+    left: &PersistedSuiteStatus,
+    right: &PersistedSuiteStatus,
+) -> std::cmp::Ordering {
+    let left_rank = report_family_rank(&left.family);
+    let right_rank = report_family_rank(&right.family);
+
+    (left_rank.is_none(), left_rank.unwrap_or(usize::MAX))
+        .cmp(&(right_rank.is_none(), right_rank.unwrap_or(usize::MAX)))
+        .then_with(|| left.family.cmp(&right.family))
+        .then_with(|| left.suite_name.cmp(&right.suite_name))
 }
 
 fn report_status_display(status: &str) -> &'static str {
@@ -713,9 +744,9 @@ mod tests {
         assert_eq!(suite.name, "blargg-dmg-curated");
         assert_eq!(suite.family.as_deref(), Some("blargg"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-        assert_eq!(suite.cases.len(), 25);
+        assert_eq!(suite.cases.len(), 26);
         assert!(
-            !suite
+            suite
                 .cases
                 .iter()
                 .any(|case| case.id == "blargg-instr-timing")
@@ -1149,7 +1180,7 @@ mod tests {
     }
 
     #[test]
-    fn render_markdown_report_preserves_suite_and_manifest_case_order() {
+    fn render_markdown_report_orders_present_families_without_placeholders() {
         let rendered = render_markdown_report(&[
             PersistedSuiteStatus {
                 version: 1,
@@ -1204,6 +1235,35 @@ mod tests {
         assert!(acid_which < acid_dmg);
         assert!(acid_dmg < mooneye_div);
         assert!(mooneye_div < mooneye_add);
+        assert!(!rendered.contains("| blargg | - | - |"));
+        assert!(!rendered.contains("| daid | - | - |"));
+        assert!(!rendered.contains("| ax6 | - | - |"));
+        assert!(!rendered.contains("| samesuite | - | - |"));
+        assert!(!rendered.contains("| hacktix | - | - |"));
+        assert!(!rendered.contains("| cpp | - | - |"));
+        assert!(!rendered.contains("| mealybug-tearoom-tests | - | - |"));
+    }
+
+    #[test]
+    fn render_markdown_report_keeps_unknown_families_when_they_are_present() {
+        let rendered = render_markdown_report(&[PersistedSuiteStatus {
+            version: 1,
+            suite_name: "future-dmg-curated".to_string(),
+            family: "future".to_string(),
+            cases: vec![PersistedCaseStatus {
+                rom: "probe.gb".to_string(),
+                status: "INFO".to_string(),
+            }],
+        }]);
+
+        let future_case = rendered
+            .find(&format!(
+                "| future | probe.gb | {REPORT_STATUS_INFO_EMOJI} |"
+            ))
+            .expect("unknown family row should exist");
+        assert!(future_case > 0);
+        assert!(!rendered.contains("| acid | - | - |"));
+        assert!(!rendered.contains("| mealybug-tearoom-tests | - | - |"));
     }
 
     #[test]

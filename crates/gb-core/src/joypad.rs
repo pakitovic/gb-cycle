@@ -121,6 +121,10 @@ impl Joypad {
         was_pending
     }
 
+    pub(crate) fn interrupt_request_pending(&self) -> bool {
+        self.interrupt_request_pending
+    }
+
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
         format!(
             "t_cycle={} phase={} console_model={:?} status={:?} p1={:#04X} selection_bits={:#04X} pressed_mask={:#04X} visible_low_nibble={:#03X} interrupt_request_pending={} stop_wake_pending={}",

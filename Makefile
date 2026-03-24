@@ -43,7 +43,6 @@ coverage:
 	cargo cov-lcov
 
 test:
-	$(MAKE) fetch-test-roms FAMILIES="blargg acid"
 	$(MAKE) run-test-blargg
 	$(MAKE) run-test-acid
 

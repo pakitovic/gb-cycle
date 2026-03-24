@@ -214,6 +214,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - If `LCDC.1` is turned off during active object fetching, the design should support an explicit fetch-cancel path with real timing cost rather than a pure visibility flag change.
 - `LCDC.2` sprite size should be treated as live state, not as a once-per-frame configuration snapshot.
 - In `8x16` mode, line selection and tile-row calculation should treat the sprite as two stacked tiles with even/odd tile pairing derived from the masked tile index.
+- If a live `LCDC.2` size change shrinks a previously selected sprite so that the current scanline row falls outside the new height, keep that out-of-range case explicit instead of letting row arithmetic underflow; the baseline may currently resolve that fetch as no OBJ data while preserving the rest of the timing path until oracle-backed artifact closure lands.
 - Keep a dedicated task for the visible DMG artifacts and leaks caused by changing `LCDC.2` mid-frame, especially during the lower half of an `8x16` sprite.
 
 ## Sprite edge-case baseline

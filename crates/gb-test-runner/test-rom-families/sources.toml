@@ -60,6 +60,10 @@ path = "testroms/blargg/halt_bug.gb"
 sha256 = "2939d3f0cc34690d050acb5633c793ee5c593e98f1e49ad6d15639a30b69c492"
 
 [[source.required_file]]
+path = "testroms/blargg/instr_timing.gb"
+sha256 = "2aa8d6b38ff55f44edfb438db7938fc446c0645cf47cab7b570a97d353c4bece"
+
+[[source.required_file]]
 path = "testroms/blargg/mem_timing/01-read_timing.gb"
 sha256 = "1dae5349e184f47b966fe1bf6dffab567b04e401dc02d2ff2cdb64188ad865d0"
 

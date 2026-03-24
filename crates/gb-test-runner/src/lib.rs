@@ -2100,7 +2100,7 @@ mod tests {
 
         assert_eq!(suite.name, "blargg-dmg-curated");
         assert_eq!(suite.family.as_deref(), Some("blargg"));
-        assert_eq!(suite.cases.len(), 25);
+        assert_eq!(suite.cases.len(), 26);
         assert!(
             suite
                 .cases
@@ -2112,6 +2112,12 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "blargg-oam-bug-8-instr-effect")
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "blargg-instr-timing")
         );
     }
 
