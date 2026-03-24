@@ -19,6 +19,7 @@ const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 const FRAMEBUFFER_PIXELS: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
 const DOTS_PER_SCANLINE: u16 = 456;
+const LY_READ_ADVANCE_START_DOT: u16 = 449;
 const LCD_REENABLE_INITIAL_LINE_DOT: u16 = 4;
 const LCD_REENABLE_STARTUP_HBLANK_END_DOT: u16 = 20;
 const VISIBLE_SCANLINES: u8 = 144;
@@ -411,7 +412,7 @@ impl Ppu {
             0xFF41 => self.read_stat(),
             0xFF42 => self.scy,
             0xFF43 => self.scx,
-            0xFF44 => self.ly,
+            0xFF44 => self.read_ly(),
             0xFF45 => self.lyc,
             0xFF47 => self.bgp,
             0xFF48 => self
@@ -672,6 +673,18 @@ impl Ppu {
     fn write_stat(&mut self, value: u8) {
         self.stat_interrupt_enable = value & STAT_WRITABLE_ENABLE_MASK;
         self.refresh_stat_irq_line(self.stat_write_quirk_active());
+    }
+
+    fn read_ly(&self) -> u8 {
+        if self.is_lcd_enabled()
+            && !self.blank_frame_active
+            && self.line_dot >= LY_READ_ADVANCE_START_DOT
+            && self.ly + 1 < TOTAL_SCANLINES
+        {
+            self.ly + 1
+        } else {
+            self.ly
+        }
     }
 
     fn current_access_mode(&self) -> PpuAccessMode {

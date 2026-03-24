@@ -92,6 +92,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## LY / LYC coincidence baseline
 
 - `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
+- On DMG-family timing, the bus-facing `FF44` readback should advance to the next scanline during the last machine cycle of HBlank before the full raster wrap completes; do not force bus-visible `LY` reads to be identical to the internal raster/comparison line at every dot.
 - The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
 - Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
 - While the LCD is disabled, the `STAT` coincidence bit should retain the last active-LCD comparison result instead of being silently recomputed from the reset LCD-off `LY = 0` state.
