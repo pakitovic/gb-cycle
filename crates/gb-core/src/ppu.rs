@@ -1357,6 +1357,12 @@ impl Ppu {
             return coincidence_source;
         }
 
+        let mode0_start_dot = self.current_mode0_start_dot();
+        let mode0_pretrigger_source = self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT
+            != 0
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot < mode0_start_dot
+            && self.line_dot + 4 >= mode0_start_dot;
         let mode2_pretrigger_source = self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT
             != 0
             && self.ly + 1 < VISIBLE_SCANLINES
@@ -1381,6 +1387,7 @@ impl Ppu {
 
         coincidence_source
             || mode_source
+            || mode0_pretrigger_source
             || mode2_pretrigger_source
             || dmg_mode2_vblank_entry_source
     }
