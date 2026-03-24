@@ -452,6 +452,19 @@ mod tests {
         fs::set_permissions(path, permissions).expect("script should be executable");
     }
 
+    fn success_binary_path(temp_dir: &Path) -> PathBuf {
+        for candidate in ["/usr/bin/true", "/bin/true"] {
+            let path = Path::new(candidate);
+            if path.is_file() {
+                return path.to_path_buf();
+            }
+        }
+
+        let tester_binary = temp_dir.join("fake-success");
+        write_executable(&tester_binary, "#!/bin/sh\nexit 0\n");
+        tester_binary
+    }
+
     fn sample_framebuffer_case() -> RomTestCase {
         RomTestCase::new(
             "acid2",
@@ -625,17 +638,19 @@ mod tests {
             b"rom"
         );
 
-        let tester_binary = temp_dir.join("fake-tester");
-        write_executable(&tester_binary, "#!/bin/sh\nexit 0\n");
+        let tester_binary = success_binary_path(&temp_dir);
         let error = runner
             .clone()
             .with_tester_binary(&tester_binary)
             .run_case(&case, &tester_binary)
             .expect_err("missing image output should fail");
-        assert!(matches!(
-            error,
-            SameBoyTesterExecutionError::MissingImageArtifact { .. }
-        ));
+        assert!(
+            matches!(
+                error,
+                SameBoyTesterExecutionError::MissingImageArtifact { .. }
+            ),
+            "unexpected run_case error: {error:?}"
+        );
 
         let non_strict = case.clone().with_execution_mode(ExecutionMode::Permissive);
         let error = runner
