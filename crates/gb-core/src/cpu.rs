@@ -14,6 +14,7 @@ const FLAG_C: u8 = 0x10;
 pub(crate) enum CpuBusOperation {
     Read { address: u16 },
     Write { address: u16, value: u8 },
+    PendingInterruptMask,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1775,8 +1776,21 @@ impl CpuCore {
             }
             3 => {
                 let [_low, high] = self.registers.pc.to_le_bytes();
+                let upper_pc_push_targets_ie = self.registers.sp == 0xFFFF;
                 self.write_byte_at_sp(high, bus_operation);
-                self.advance_interrupt_service(source, 4);
+                // IE can be the target of the upper-byte push at 0xFFFF, so the
+                // dispatch source must stay live until after this write commits.
+                if upper_pc_push_targets_ie {
+                    if let Some(next_source) = self.current_highest_pending_interrupt(bus_operation)
+                    {
+                        self.advance_interrupt_service(next_source, 4);
+                    } else {
+                        self.registers.pc = 0x0000;
+                        self.finish_interrupt_service();
+                    }
+                } else {
+                    self.advance_interrupt_service(source, 4);
+                }
                 None
             }
             4 => {
@@ -1803,6 +1817,17 @@ impl CpuCore {
         };
 
         self.begin_interrupt_service(source);
+    }
+
+    fn current_highest_pending_interrupt<F>(
+        &mut self,
+        bus_operation: &mut F,
+    ) -> Option<InterruptSource>
+    where
+        F: FnMut(CpuBusOperation) -> Option<u8>,
+    {
+        let pending_mask = bus_operation(CpuBusOperation::PendingInterruptMask).unwrap_or(0);
+        highest_pending_interrupt_from_mask(pending_mask)
     }
 
     fn schedule_delayed_ime_enable(&mut self) {
@@ -2465,6 +2490,22 @@ const fn interrupt_vector(source: InterruptSource) -> u16 {
     }
 }
 
+const fn highest_pending_interrupt_from_mask(mask: u8) -> Option<InterruptSource> {
+    if mask & 0x01 != 0 {
+        Some(InterruptSource::VBlank)
+    } else if mask & 0x02 != 0 {
+        Some(InterruptSource::LcdStat)
+    } else if mask & 0x04 != 0 {
+        Some(InterruptSource::Timer)
+    } else if mask & 0x08 != 0 {
+        Some(InterruptSource::Serial)
+    } else if mask & 0x10 != 0 {
+        Some(InterruptSource::Joypad)
+    } else {
+        None
+    }
+}
+
 fn decode_register16(bits: u8) -> Register16 {
     match bits {
         0 => Register16::BC,
@@ -2615,6 +2656,7 @@ mod tests {
                 );
                 None
             }
+            CpuBusOperation::PendingInterruptMask => Some(0),
         });
     }
 
@@ -2650,6 +2692,7 @@ mod tests {
                 );
                 None
             }
+            CpuBusOperation::PendingInterruptMask => Some(interrupts.pending_mask()),
         });
 
         if let Some(source) = acknowledged_interrupt {

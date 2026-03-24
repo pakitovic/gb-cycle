@@ -976,7 +976,7 @@ fn stop_does_not_wake_again_while_the_same_button_remains_held() {
 }
 
 #[test]
-fn interrupt_service_keeps_the_accepted_vector_when_the_high_pc_byte_push_disables_ie() {
+fn interrupt_service_cancels_when_the_high_pc_byte_push_disables_the_last_pending_interrupt() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
@@ -1009,25 +1009,16 @@ fn interrupt_service_keeps_the_accepted_vector_when_the_high_pc_byte_push_disabl
 
     assert_eq!(
         machine.cpu().execution_state(),
-        CpuExecutionState::ServiceInterrupt {
-            source: gb_core::InterruptSource::Timer,
-            step: 4,
-            t_cycle: 0,
-        }
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
+    assert_eq!(machine.cpu().registers().pc, 0x0000);
+    assert_eq!(machine.cpu().registers().sp, 0xFFFF);
     assert_eq!(machine.read_bus(0xFFFF), 0x02);
     assert_eq!(machine.read_bus(0xFF0F), 0xE4);
-
-    step_machine_t_cycles(&mut machine, 4);
-
-    assert_eq!(machine.cpu().registers().pc, 0x0050);
-    assert_eq!(machine.cpu().registers().sp, 0xFFFE);
-    assert_eq!(machine.read_bus(0xFFFF), 0x02);
-    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
 }
 
 #[test]
-fn interrupt_service_does_not_retarget_when_the_high_pc_byte_push_changes_ie_priority() {
+fn interrupt_service_retargets_when_the_high_pc_byte_push_changes_ie_priority() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
@@ -1061,7 +1052,7 @@ fn interrupt_service_does_not_retarget_when_the_high_pc_byte_push_changes_ie_pri
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::ServiceInterrupt {
-            source: gb_core::InterruptSource::VBlank,
+            source: gb_core::InterruptSource::LcdStat,
             step: 4,
             t_cycle: 0,
         }
@@ -1071,10 +1062,61 @@ fn interrupt_service_does_not_retarget_when_the_high_pc_byte_push_changes_ie_pri
 
     step_machine_t_cycles(&mut machine, 4);
 
-    assert_eq!(machine.cpu().registers().pc, 0x0040);
+    assert_eq!(machine.cpu().registers().pc, 0x0048);
     assert_eq!(machine.cpu().registers().sp, 0xFFFE);
     assert_eq!(machine.read_bus(0xFFFF), 0x02);
-    assert_eq!(machine.read_bus(0xFF0F), 0xE2);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE1);
+}
+
+#[test]
+fn interrupt_service_does_not_cancel_when_the_low_pc_byte_push_disables_ie_too_late() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom_with_patches(
+            &[0x31, 0x01, 0x00, 0xC3, 0x35, 0x02],
+            0x12,
+            &[(0x0235, 0xFB), (0x0236, 0x00), (0x0237, 0x00)],
+        ))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFFFF, 0x08);
+    machine.write_bus(0xFF0F, 0x08);
+
+    step_machine_t_cycles(&mut machine, 36);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::Serial,
+            step: 0,
+            t_cycle: 0,
+        }
+    );
+    assert_eq!(machine.read_bus(0xFF0F), 0xE8);
+    assert_eq!(machine.read_bus(0xFFFF), 0x08);
+
+    step_machine_t_cycles(&mut machine, 16);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::ServiceInterrupt {
+            source: gb_core::InterruptSource::Serial,
+            step: 4,
+            t_cycle: 0,
+        }
+    );
+    assert_eq!(machine.read_bus(0xFFFF), 0x08);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE8);
+
+    step_machine_t_cycles(&mut machine, 4);
+
+    assert_eq!(machine.cpu().registers().pc, 0x0058);
+    assert_eq!(machine.cpu().registers().sp, 0xFFFF);
+    assert_eq!(machine.read_bus(0xFFFF), 0x37);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
 }
 
 #[test]
