@@ -107,6 +107,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
   - `stat_mode1_enable && mode == 1`
   - `stat_mode2_enable && mode == 2`
   - `stat_lyc_enable && ly == lyc`
+- In the current DMG-family baseline, the Mode `2` STAT enable should also request LCD STAT at the exact VBlank-entry transition on line `144`, but it should not be treated as a continuously active source for the rest of VBlank.
 - LCD STAT interrupt requests should be emitted only on a rising edge of that internal line, not merely because one contributing condition is true.
 - STAT blocking should be preserved: if one enabled source keeps the internal line high while another source becomes true, no new LCD STAT interrupt should be requested until the line first drops low and rises again.
 - Mode `3` must not be treated as a direct STAT interrupt source.

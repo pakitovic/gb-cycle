@@ -1361,6 +1361,11 @@ impl Ppu {
             != 0
             && self.ly + 1 < VISIBLE_SCANLINES
             && self.line_dot + 4 >= DOTS_PER_SCANLINE;
+        let dmg_mode2_vblank_entry_source = self.console_model.is_dmg_family()
+            && self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && self.current_access_mode() == PpuAccessMode::VBlank
+            && self.ly == VISIBLE_SCANLINES
+            && self.line_dot == 0;
         let mode_source = match self.current_access_mode() {
             PpuAccessMode::HBlank => {
                 self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0
@@ -1374,7 +1379,10 @@ impl Ppu {
             PpuAccessMode::Drawing => false,
         };
 
-        coincidence_source || mode_source || mode2_pretrigger_source
+        coincidence_source
+            || mode_source
+            || mode2_pretrigger_source
+            || dmg_mode2_vblank_entry_source
     }
 
     fn compute_stat_irq_line(&self, quirk_active: bool) -> bool {
@@ -2364,6 +2372,68 @@ mod tests {
 
         assert!(ppu.snapshot().lyc_coincidence);
         assert!(ppu.snapshot().stat_irq_line);
+        assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+    }
+
+    #[test]
+    fn dmg_mode2_enable_requests_lcd_stat_at_vblank_entry_only() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let oam_bytes = [0; 160];
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x80,
+            stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 143,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.line_dot = DOTS_PER_SCANLINE - 1;
+        ppu.refresh_stat_irq_line(false);
+        assert!(!ppu.snapshot().stat_irq_line);
+        assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+
+        tick_ppu(&mut ppu, 0, &oam_bytes);
+
+        assert_eq!(ppu.snapshot().ly, 144);
+        assert_eq!(ppu.snapshot().mode, PpuAccessMode::VBlank);
+        assert!(ppu.snapshot().stat_irq_line);
+        assert_eq!(
+            drain_ppu_interrupts(&mut ppu),
+            vec![InterruptSource::VBlank, InterruptSource::LcdStat]
+        );
+
+        tick_ppu(&mut ppu, 1, &oam_bytes);
+
+        assert_eq!(ppu.snapshot().ly, 144);
+        assert_eq!(ppu.snapshot().line_dot, 1);
+        assert!(!ppu.snapshot().stat_irq_line);
+        assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+    }
+
+    #[test]
+    fn mode2_enable_alone_does_not_hold_stat_high_past_vblank_entry() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x80,
+            stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 144,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.line_dot = 8;
+        ppu.refresh_stat_irq_line(false);
+        assert!(!ppu.snapshot().stat_irq_line);
         assert!(drain_ppu_interrupts(&mut ppu).is_empty());
     }
 

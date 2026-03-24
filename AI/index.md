@@ -2,6 +2,10 @@
 
 Read the matching file directly; this index is a routing guide plus a summary of document authority boundaries, but detailed behavioral rules still live in the owning file.
 
+## Mandatory external-ROM regression workflow
+
+When working on already-known external ROM failures or rerunning curated ROM suites to evaluate a timing-sensitive change, always capture a baseline copy of `/.roms/test/test-report.md` before the work, capture the final report again after the run, and compare the two before deciding whether the change is worth keeping. Treat that before/after report-delta check as mandatory, not optional; see `TESTING.md` for the authoritative workflow details.
+
 ## Global docs
 
 - `ARCHITECTURE.md`: project goals, crate layout, subsystem boundaries, and portability rules.
