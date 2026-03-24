@@ -1192,17 +1192,22 @@ impl Ppu {
         sprite: PpuSelectedSprite,
         plane: u16,
     ) -> u8 {
-        let (tile_index, tile_row) = self.obj_tile_index_and_row(sprite);
+        let Some((tile_index, tile_row)) = self.obj_tile_index_and_row(sprite) else {
+            return 0;
+        };
         let byte_address =
             tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES + plane;
 
         vram_bytes.get(byte_address as usize).copied().unwrap_or(0)
     }
 
-    fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> (u8, u8) {
+    fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> Option<(u8, u8)> {
         let sprite_top = sprite.y.wrapping_sub(16);
-        let mut row = self.ly.wrapping_sub(sprite_top);
         let height = self.current_obj_height();
+        let mut row = self.ly.wrapping_sub(sprite_top);
+        if row >= height {
+            return None;
+        }
         if sprite.attributes & 0x40 != 0 {
             row = height - 1 - row;
         }
@@ -1210,12 +1215,12 @@ impl Ppu {
         if height == 16 {
             let base_tile = sprite.tile_index & !0x01;
             if row < 8 {
-                (base_tile, row)
+                Some((base_tile, row))
             } else {
-                (base_tile + 1, row - 8)
+                Some((base_tile + 1, row - 8))
             }
         } else {
-            (sprite.tile_index, row)
+            Some((sprite.tile_index, row))
         }
     }
 
@@ -1319,6 +1324,17 @@ impl Ppu {
         }
         self.pending_interrupts = 0;
         requests
+    }
+
+    pub(crate) fn pending_interrupt_request_mask(&self) -> u8 {
+        let mut mask = 0;
+        if self.pending_interrupts & PPU_PENDING_VBLANK_INTERRUPT_BIT != 0 {
+            mask |= 0x01;
+        }
+        if self.pending_interrupts & PPU_PENDING_LCD_STAT_INTERRUPT_BIT != 0 {
+            mask |= 0x02;
+        }
+        mask
     }
 
     fn live_lyc_coincidence(&self) -> bool {
@@ -3589,6 +3605,23 @@ mod tests {
 
         let snapshot = ppu.snapshot();
         assert_eq!(&snapshot.current_scanline_pixels[..8], &[3; 8]);
+    }
+
+    #[test]
+    fn live_obj_size_shrink_drops_out_of_range_y_flipped_rows_without_panicking() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.lcdc = 0x82;
+        ppu.ly = 0;
+
+        let sprite = PpuSelectedSprite {
+            oam_index: 0,
+            y: 2,
+            x: 8,
+            tile_index: 0x10,
+            attributes: 0x40,
+        };
+
+        assert_eq!(ppu.obj_tile_index_and_row(sprite), None);
     }
 
     #[test]

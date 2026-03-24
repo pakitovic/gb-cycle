@@ -548,7 +548,7 @@ fn curated_blargg_suite_tracks_the_supported_individual_shootout_list() {
     assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("blargg"));
-    assert_eq!(suite.cases.len(), 25);
+    assert_eq!(suite.cases.len(), 26);
     assert!(
         suite
             .cases
@@ -562,7 +562,7 @@ fn curated_blargg_suite_tracks_the_supported_individual_shootout_list() {
             .any(|case| case.id == "blargg-oam-bug-8-instr-effect")
     );
     assert!(
-        !suite
+        suite
             .cases
             .iter()
             .any(|case| case.id == "blargg-instr-timing")

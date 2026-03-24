@@ -400,6 +400,7 @@ pub(crate) struct BusIoReadView<'a> {
     pub dma: Option<&'a DmaController>,
     pub boot: Option<&'a BootController>,
     pub interrupts: Option<&'a InterruptController>,
+    pub interrupt_flag_pending_mask: u8,
     pub joypad: Option<&'a Joypad>,
     pub ppu: Option<&'a Ppu>,
 }
@@ -1045,9 +1046,11 @@ impl Bus {
             IoRegisterKind::Tima => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_tima),
             IoRegisterKind::Tma => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_tma),
             IoRegisterKind::Tac => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_tac),
-            IoRegisterKind::InterruptFlag => io
-                .interrupts
-                .map_or(BLOCKED_READ_VALUE, InterruptController::read_if),
+            IoRegisterKind::InterruptFlag => {
+                io.interrupts.map_or(BLOCKED_READ_VALUE, |interrupts| {
+                    interrupts.read_if_with_pending_requests(io.interrupt_flag_pending_mask)
+                })
+            }
             IoRegisterKind::Lcd => io
                 .ppu
                 .map_or(BLOCKED_READ_VALUE, |ppu| ppu.read_register(address)),

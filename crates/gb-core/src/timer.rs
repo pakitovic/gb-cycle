@@ -71,7 +71,7 @@ impl Timer {
     pub fn write_div(&mut self, _value: u8) {
         let previous_signal = self.current_timer_signal();
         self.system_counter = 0;
-        self.apply_timer_signal_change(previous_signal);
+        self.apply_timer_signal_change(previous_signal, TimerSignalChangeOrigin::MmioWrite);
     }
 
     pub fn read_tima(&self) -> u8 {
@@ -107,7 +107,7 @@ impl Timer {
     pub fn write_tac(&mut self, value: u8) {
         let previous_signal = self.current_timer_signal();
         self.tac = value & TIMER_CONTROL_MASK;
-        self.apply_timer_signal_change(previous_signal);
+        self.apply_timer_signal_change(previous_signal, TimerSignalChangeOrigin::MmioWrite);
     }
 
     pub fn apply_startup_state(&mut self, startup_state: TimerStartupState) {
@@ -147,7 +147,11 @@ impl Timer {
 
         self.system_counter = self.system_counter.wrapping_add(1);
         let current_signal = self.current_timer_signal();
-        self.process_timer_signal_edge(self.previous_timer_signal, current_signal);
+        self.process_timer_signal_edge(
+            self.previous_timer_signal,
+            current_signal,
+            TimerSignalChangeOrigin::AutonomousTick,
+        );
         self.previous_timer_signal = current_signal;
     }
 
@@ -168,19 +172,28 @@ impl Timer {
         }
     }
 
-    fn apply_timer_signal_change(&mut self, previous_signal: bool) {
+    fn apply_timer_signal_change(
+        &mut self,
+        previous_signal: bool,
+        origin: TimerSignalChangeOrigin,
+    ) {
         let current_signal = self.current_timer_signal();
-        self.process_timer_signal_edge(previous_signal, current_signal);
+        self.process_timer_signal_edge(previous_signal, current_signal, origin);
         self.previous_timer_signal = current_signal;
     }
 
-    fn process_timer_signal_edge(&mut self, previous_signal: bool, current_signal: bool) {
+    fn process_timer_signal_edge(
+        &mut self,
+        previous_signal: bool,
+        current_signal: bool,
+        origin: TimerSignalChangeOrigin,
+    ) {
         if previous_signal && !current_signal {
-            self.increment_tima_on_falling_edge();
+            self.increment_tima_on_falling_edge(origin);
         }
     }
 
-    fn increment_tima_on_falling_edge(&mut self) {
+    fn increment_tima_on_falling_edge(&mut self, origin: TimerSignalChangeOrigin) {
         if matches!(self.overflow_state, TimerOverflowState::Pending { .. }) {
             return;
         }
@@ -190,7 +203,13 @@ impl Timer {
 
         if overflowed {
             self.overflow_state = TimerOverflowState::Pending {
-                ticks_until_reload: TIMER_RELOAD_DELAY_T_CYCLES,
+                ticks_until_reload: match origin {
+                    TimerSignalChangeOrigin::AutonomousTick => TIMER_RELOAD_DELAY_T_CYCLES,
+                    // MMIO writes happen after the timer's autonomous phase for the current
+                    // shared T-cycle, so a glitch-driven overflow must not lose an extra full
+                    // cycle before entering the documented reload / IRQ window.
+                    TimerSignalChangeOrigin::MmioWrite => TIMER_RELOAD_DELAY_T_CYCLES - 1,
+                },
             };
         }
     }
@@ -209,6 +228,12 @@ impl Timer {
 enum TimerOverflowState {
     Idle,
     Pending { ticks_until_reload: u8 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TimerSignalChangeOrigin {
+    AutonomousTick,
+    MmioWrite,
 }
 
 const fn selected_timer_bit(tac: u8) -> u8 {
@@ -350,6 +375,30 @@ mod tests {
         }
 
         let reload_cycle = tick_timer(&mut timer, 19);
+        assert_eq!(timer.read_tima(), 0x77);
+        assert_eq!(reload_cycle.interrupt_requests(), &[InterruptSource::Timer]);
+    }
+
+    #[test]
+    fn tac_glitch_overflow_reloads_without_slipping_an_extra_t_cycle() {
+        let mut timer = Timer::new(ConsoleModel::Dmg);
+        timer.apply_startup_state(TimerStartupState {
+            system_counter: 0x0200,
+            tima: 0xFF,
+            tma: 0x77,
+            tac: 0x04,
+        });
+
+        timer.write_tac(0x00);
+        assert_eq!(timer.read_tima(), 0x00);
+
+        for t_cycle in 0..2 {
+            let context = tick_timer(&mut timer, t_cycle);
+            assert!(context.interrupt_requests().is_empty());
+            assert_eq!(timer.read_tima(), 0x00);
+        }
+
+        let reload_cycle = tick_timer(&mut timer, 2);
         assert_eq!(timer.read_tima(), 0x77);
         assert_eq!(reload_cycle.interrupt_requests(), &[InterruptSource::Timer]);
     }

@@ -37,7 +37,8 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - When an interrupt is accepted, the CPU should clear `IME`, clear the selected bit in `IF`, push `PC`, and jump to the matching vector as part of one explicit service sequence.
 - The CPU should make that accept-or-not decision only after current-cycle MMIO side effects and interrupt aggregation are already visible; interrupt producers do not bypass that CPU-owned decision point.
 - Once accepted, interrupt servicing must consume the documented DMG `20` T-cycles (`5` M-cycles) through the same ordered CPU execution model used for normal stack and control-flow work.
-- In the current Phase `2.5` baseline for this repo, interrupt acceptance happens from the explicit instruction-boundary fetch state after scheduler phase `8` has already aggregated requests into `IF`, and the service sequence reuses the same bytewise stack model as `CALL`/`RET`.
+- In the current Phase `2.5` baseline for this repo, interrupt acceptance happens from the explicit instruction-boundary fetch state after scheduler phase `8` has already aggregated requests into `IF`. That acceptance window should remain open for the in-flight opcode-fetch M-cycle as long as the next opcode has not been latched yet; once the opcode is latched, the CPU should finish that dispatch path instead of retroactively preempting it.
+- Keep `IF` readback and interrupt acceptance as two distinct contracts: MMIO reads of `FF0F` during the CPU phase may need to observe requests generated earlier in the same shared T-cycle, even though the CPU's own accept-or-not checkpoint still happens later after the explicit aggregation stage.
 
 ## IME, HALT, and STOP baseline
 
@@ -207,7 +208,7 @@ explicit narrower boot target is documented.
 | Landed by Phase `2.3` | CB-prefixed control path | explicit second fetch for `0xCB`, plus register and `(HL)` timing distinction for representative prefixed operations such as `RL` and `BIT` |
 | Pending before Phase `2.4` | boot-facing MMIO loads/stores | `LDH (a8),A`, `LDH A,(a8)`, `LD (C),A`, `LD A,(C)`, and other MMIO-visible load/store forms used by the boot ROM |
 | Landed during Phase `4` interleave | implicit-address transfer forms | `[hli]` / `[hld]` style transfers and the shared address-event publication that Phase `4.8` also consumes |
-| Pending before full DMG boot ROM | subtract/accumulator rotates | the remaining boot-visible subtract and non-CB accumulator-rotate families where the production DMG boot ROM depends on them |
+| Remaining before production DMG boot closure | end-to-end real-boot validation | verified DMG boot ROM assets should still be run under `RealBoot` through the real `FF50` handoff and last pre-handoff fetch window instead of relying only on the synthetic Phase `2.4` boot image |
 
 Keep this matrix explicit in roadmap and change reports. Real boot should not
 quietly start "just to see what happens" while the remaining pending rows stay

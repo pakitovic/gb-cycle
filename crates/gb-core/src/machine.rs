@@ -17,6 +17,28 @@ use crate::scheduler::{CycleContext, GlobalScheduler, SchedulerPhase, TCycle};
 use crate::serial::{Serial, SerialPeer};
 use crate::timer::Timer;
 
+fn interrupt_source_bit(source: crate::scheduler::InterruptSource) -> u8 {
+    match source {
+        crate::scheduler::InterruptSource::VBlank => 0x01,
+        crate::scheduler::InterruptSource::LcdStat => 0x02,
+        crate::scheduler::InterruptSource::Timer => 0x04,
+        crate::scheduler::InterruptSource::Serial => 0x08,
+        crate::scheduler::InterruptSource::Joypad => 0x10,
+    }
+}
+
+fn current_cycle_interrupt_read_mask(context: &CycleContext, ppu: &Ppu, joypad: &Joypad) -> u8 {
+    let mut mask = 0;
+    for &source in context.interrupt_requests() {
+        mask |= interrupt_source_bit(source);
+    }
+    mask |= ppu.pending_interrupt_request_mask();
+    if joypad.interrupt_request_pending() {
+        mask |= 0x10;
+    }
+    mask
+}
+
 #[derive(Debug, Clone)]
 pub struct Machine<S = TraceBuffer> {
     config: MachineConfig,
@@ -219,6 +241,7 @@ impl<S: TraceSink> Machine<S> {
                 dma: Some(&self.dma),
                 boot: Some(&self.boot),
                 interrupts: Some(&self.interrupts),
+                interrupt_flag_pending_mask: 0,
                 joypad: Some(&self.joypad),
                 ppu: Some(&self.ppu),
             },
@@ -325,6 +348,7 @@ impl<S: TraceSink> Machine<S> {
                                 dma: Some(&*dma),
                                 boot: Some(&*boot),
                                 interrupts: Some(&*interrupts),
+                                interrupt_flag_pending_mask: 0,
                                 joypad: Some(&*joypad),
                                 ppu: Some(&*ppu),
                             },
@@ -365,6 +389,8 @@ impl<S: TraceSink> Machine<S> {
                         .with_boot_rom(boot.bus_state())
                         .with_ppu(ppu.bus_state())
                         .with_dma(dma.bus_state());
+                    let interrupt_flag_pending_mask =
+                        current_cycle_interrupt_read_mask(context, ppu, joypad);
                     let acknowledged_interrupt = cpu.tick_t_cycle(|operation| match operation {
                         CpuBusOperation::Read { address } => Some(bus.read_with_context(
                             address,
@@ -378,6 +404,7 @@ impl<S: TraceSink> Machine<S> {
                                 dma: Some(dma),
                                 boot: Some(boot),
                                 interrupts: Some(interrupts),
+                                interrupt_flag_pending_mask,
                                 joypad: Some(joypad),
                                 ppu: Some(ppu),
                             },

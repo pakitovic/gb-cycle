@@ -53,6 +53,11 @@ impl InterruptController {
         INTERRUPT_FLAG_FORCED_HIGH_BITS | self.interrupt_flags
     }
 
+    pub(crate) fn read_if_with_pending_requests(&self, pending_mask: u8) -> u8 {
+        INTERRUPT_FLAG_FORCED_HIGH_BITS
+            | (self.interrupt_flags | (pending_mask & INTERRUPT_REQUEST_MASK))
+    }
+
     pub fn write_if(&mut self, value: u8) {
         self.interrupt_flags = value & INTERRUPT_REQUEST_MASK;
     }

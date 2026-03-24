@@ -127,9 +127,13 @@ This checklist should move only when one of the following becomes true:
 - Curated family runs should update `/.roms/test/test-report.md` with a simple
   per-ROM status table so repo-managed `PASS` / `FAIL` / `INFO` state stays
   visible without re-reading logs; the markdown view should render those states
-  as `✅`, `❌`, and `ℹ️` rather than repeating the raw persisted strings, and
-  rows should follow the curated family manifest order instead of being
-  alphabetized by ROM filename.
+  as `✅`, `❌`, and `ℹ️` rather than repeating the raw persisted strings.
+  When multiple curated families are present in the report, they should render
+  in the fixed order `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`,
+  `hacktix`, `cpp`, `mealybug-tearoom-tests`; families with no persisted cases
+  should not appear at all. Within each populated family, rows should follow
+  the curated family manifest order instead of being alphabetized by ROM
+  filename.
 - Keep redistributable external test ROMs and non-redistributable commercial ROMs in separate stores. The current local-only commercial bucket is `/.roms/local-commercial/`, and it must remain outside CI, docs about official closure, and public automation targets.
 - Keep local boot ROM images under the repo-managed gitignored `/.roms/bootrom/`
   store, using the canonical filenames from `gb-core` (`dmg0_boot.bin`,
@@ -242,10 +246,11 @@ This checklist should move only when one of the following becomes true:
 - The repository-gated external official ROM block currently includes the green
   non-APU, non-CGB DMG suites sourced from `GBEmulatorShootout`: the curated
   supported Blargg DMG family made of individual ROMs only (`cpu_instrs 01..11`,
-  `halt_bug`, `mem_timing 01..03`, `mem_timing-2 01..03`, and `oam_bug 1..6,8`)
-  plus the curated Acid DMG framebuffer oracle family. Keep APU-specific suites,
-  multi-ROM bundles, CGB-only suites, and still-red exploratory ROMs out of the
-  default external-ROM workflow until they are green and intentionally promoted.
+  `halt_bug`, `instr_timing`, `mem_timing 01..03`, `mem_timing-2 01..03`, and
+  `oam_bug 1..6,8`) plus the curated Acid DMG framebuffer oracle family. Keep
+  APU-specific suites, multi-ROM bundles, CGB-only suites, and still-red
+  exploratory ROMs out of the default external-ROM workflow until they are
+  green and intentionally promoted.
 - For the current infrastructure-heavy stage, keep the aggregate coverage gate across `gb-core`, `gb-test-runner`, and `gb-persistence` at or above `90%` for lines, regions, and functions, but do not satisfy that threshold with hollow tests that only exercise trivial getters or app placeholders.
 - When immediate automated coverage is temporarily impractical, record the missing test coverage, the reason it is deferred, and the remaining risk in the change report; add a roadmap TODO as well if the gap is concrete and non-trivial.
 - ROM-based validation and oracle comparison complement automated tests; they do not replace the expectation that new code should usually leave behind unit or integration coverage.
