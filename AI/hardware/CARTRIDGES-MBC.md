@@ -124,6 +124,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - In `Strict`, only `Supported` cartridges should load by default; relevant header inconsistencies are fatal; heuristics are disabled; and manual mapper/model overrides should be disabled by default or require an explicit debug path with visible trace output.
 - `Permissive` is the tolerant normal-use mode for cartridges that still map unambiguously to already supported hardware.
 - In `Permissive`, all `Supported` cartridges should load with identical runtime semantics to `Strict`; only unambiguous header inconsistencies may degrade from error to warning; automatic heuristic mapper detection stays off; and manual overrides may be allowed, but never silently.
+- Current repo decision: for already supported `NoMbc` cartridges, legacy or inconsistent RAM-size declarations that still map unambiguously to the fixed `8 KiB` `ROM+RAM` baseline should degrade to warnings under `Permissive` / `Warn` instead of remaining fatal, while `Strict` still rejects them.
 - `Experimental` is the research and bring-up mode.
 - In `Experimental`, `Supported` cartridges still keep the same runtime semantics as the other modes, but explicit heuristic paths, partial planned-variant implementations, and clearly marked stub or placeholder paths for special hardware may be enabled behind explicit policy gates.
 - `Experimental` results must be marked as non-oracle in diagnostics, tooling, and project claims.

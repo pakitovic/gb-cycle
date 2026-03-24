@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CaptureKind, CapturePlan, FailureArtifactPolicy, MemoryTextOutputSpec, PassCondition, RomSuite,
-    RomSuiteReport, RomTestCase, StartupMemoryWrite, TestSubsystem, Timeout,
+    CaptureKind, CapturePlan, ExecutionMode, FailureArtifactPolicy, MemoryTextOutputSpec,
+    PassCondition, RomSuite, RomSuiteReport, RomTestCase, StartupMemoryWrite, TestSubsystem,
+    Timeout,
 };
 
 pub const TEST_ROM_STORE_DIR: &str = ".roms/test";
@@ -56,6 +57,8 @@ struct CuratedTestRomCase {
     oracle: String,
     expected: Option<String>,
     fixture: Option<PathBuf>,
+    fixtures: Option<Vec<PathBuf>>,
+    execution_mode: Option<String>,
     startup_memory_profile: Option<String>,
 }
 
@@ -102,6 +105,10 @@ pub fn blargg_dmg_curated_suite() -> RomSuite {
     manifest_suite("blargg")
 }
 
+pub fn daid_dmg_curated_suite() -> RomSuite {
+    manifest_suite("daid")
+}
+
 pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
     manifest_suite("mealybug-tearoom-tests")
 }
@@ -114,6 +121,7 @@ pub fn curated_test_rom_family_suites() -> Vec<RomSuite> {
     [
         acid_dmg_curated_suite(),
         blargg_dmg_curated_suite(),
+        daid_dmg_curated_suite(),
         mealybug_tearoom_dmg_curated_suite(),
         mooneye_acceptance_dmg_curated_suite(),
     ]
@@ -403,7 +411,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 4] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 5] {
     [
         (
             "crates/gb-test-runner/test-rom-families/acid.toml",
@@ -412,6 +420,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 4] {
         (
             "crates/gb-test-runner/test-rom-families/blargg.toml",
             include_str!("../test-rom-families/blargg.toml"),
+        ),
+        (
+            "crates/gb-test-runner/test-rom-families/daid.toml",
+            include_str!("../test-rom-families/daid.toml"),
         ),
         (
             "crates/gb-test-runner/test-rom-families/mealybug-tearoom-tests.toml",
@@ -456,6 +468,8 @@ fn manifest_case_to_rom_test_case(family: &str, case: CuratedTestRomCase) -> Rom
         oracle,
         expected,
         fixture,
+        fixtures,
+        execution_mode,
         startup_memory_profile,
     } = case;
 
@@ -481,6 +495,9 @@ fn manifest_case_to_rom_test_case(family: &str, case: CuratedTestRomCase) -> Rom
         "framebuffer-fixture" => PassCondition::FramebufferFixture(
             fixture.unwrap_or_else(|| panic!("missing fixture path for case {id}")),
         ),
+        "framebuffer-fixture-set" => PassCondition::FramebufferFixtureSet(
+            fixtures.unwrap_or_else(|| panic!("missing fixture paths for case {id}")),
+        ),
         other => panic!("unsupported oracle {other:?} for case {id}"),
     };
 
@@ -496,6 +513,15 @@ fn manifest_case_to_rom_test_case(family: &str, case: CuratedTestRomCase) -> Rom
     .with_capture_plan(capture_plan)
     .with_failure_artifacts(failure_artifacts);
 
+    if let Some(execution_mode) = execution_mode.as_deref() {
+        let case_id = rom_case.id.clone();
+        rom_case = rom_case.with_execution_mode(parse_manifest_execution_mode(
+            family,
+            &case_id,
+            execution_mode,
+        ));
+    }
+
     if let Some(profile) = startup_memory_profile.as_deref() {
         rom_case = match profile {
             "dmg-boot-trademark-tile" => {
@@ -509,6 +535,21 @@ fn manifest_case_to_rom_test_case(family: &str, case: CuratedTestRomCase) -> Rom
     }
 
     rom_case
+}
+
+fn parse_manifest_execution_mode(
+    family: &str,
+    case_id: &str,
+    execution_mode: &str,
+) -> ExecutionMode {
+    match execution_mode {
+        "strict" => ExecutionMode::Strict,
+        "permissive" => ExecutionMode::Permissive,
+        "experimental" => ExecutionMode::Experimental,
+        other => panic!(
+            "unsupported execution mode {other:?} for curated case {case_id} in family {family}"
+        ),
+    }
 }
 
 fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePlan {
@@ -528,9 +569,11 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         PassCondition::Informational(capture) => CapturePlan::new()
             .with_capture(*capture)
             .with_capture(CaptureKind::Snapshot),
-        PassCondition::FramebufferFixture(_) => CapturePlan::new()
-            .with_capture(CaptureKind::Framebuffer)
-            .with_capture(CaptureKind::Snapshot),
+        PassCondition::FramebufferFixture(_) | PassCondition::FramebufferFixtureSet(_) => {
+            CapturePlan::new()
+                .with_capture(CaptureKind::Framebuffer)
+                .with_capture(CaptureKind::Snapshot)
+        }
         PassCondition::TraceFixture(_) => CapturePlan::debugging_minimum_for(pass_condition),
     }
 }
@@ -554,9 +597,11 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
         PassCondition::Informational(capture) => FailureArtifactPolicy::new()
             .with_artifact(*capture)
             .with_artifact(CaptureKind::Snapshot),
-        PassCondition::FramebufferFixture(_) => FailureArtifactPolicy::new()
-            .with_artifact(CaptureKind::Framebuffer)
-            .with_artifact(CaptureKind::Snapshot),
+        PassCondition::FramebufferFixture(_) | PassCondition::FramebufferFixtureSet(_) => {
+            FailureArtifactPolicy::new()
+                .with_artifact(CaptureKind::Framebuffer)
+                .with_artifact(CaptureKind::Snapshot)
+        }
         PassCondition::TraceFixture(_) => {
             FailureArtifactPolicy::debugging_minimum_for(pass_condition)
         }
@@ -763,8 +808,9 @@ mod tests {
     fn curated_family_suite_builders_preserve_each_supported_oracle_shape() {
         let suites = curated_test_rom_family_suites();
 
-        assert_eq!(suites.len(), 4);
+        assert_eq!(suites.len(), 5);
         assert!(suites.iter().any(|suite| suite.name == "acid-dmg-curated"));
+        assert!(suites.iter().any(|suite| suite.name == "daid-dmg-curated"));
         assert!(
             suites
                 .iter()
@@ -862,6 +908,7 @@ mod tests {
             vec![
                 "acid".to_string(),
                 "blargg".to_string(),
+                "daid".to_string(),
                 "mealybug-tearoom-tests".to_string(),
                 "mooneye".to_string(),
             ]
@@ -1348,6 +1395,8 @@ mod tests {
                 oracle: "unknown".to_string(),
                 expected: None,
                 fixture: None,
+                fixtures: None,
+                execution_mode: None,
                 startup_memory_profile: None,
             },
         );
@@ -1365,6 +1414,8 @@ mod tests {
                 oracle: "framebuffer-fixture".to_string(),
                 expected: None,
                 fixture: Some(PathBuf::from("fixture.pgm")),
+                fixtures: None,
+                execution_mode: None,
                 startup_memory_profile: Some("unknown-profile".to_string()),
             },
         );

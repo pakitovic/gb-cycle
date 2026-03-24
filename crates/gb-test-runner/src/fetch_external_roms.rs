@@ -578,6 +578,7 @@ mod tests {
         let required_files = [
             "testroms/acid/dmg-acid2.gb",
             "testroms/blargg/cpu_instrs/01-special.gb",
+            "testroms/daid/ppu_scanline_bgp.gb",
             "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb",
             "testroms/mooneye/acceptance/add_sp_e_timing.gb",
         ]

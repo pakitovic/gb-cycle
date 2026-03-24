@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use gb_core::ExecutionMode;
 use gb_test_runner::{
     BootRomVerificationMode, CaptureKind, MemoryTextOutputSpec, PassCondition, RomCaseFailure,
     RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, StartupMemoryWrite,
@@ -179,6 +180,47 @@ fn runner_captures_serial_output_from_a_minimal_rom() {
     let report = RomRunner::new()
         .run_case(&case)
         .expect("serial case should execute");
+
+    assert_eq!(report.outcome, RomCaseOutcome::Passed);
+    assert_eq!(report.artifacts.serial.as_deref(), Some("O"));
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn runner_uses_execution_mode_compatibility_presets_for_loader_validation() {
+    let temp_dir = unique_temp_dir("permissive-loader-validation");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let rom_path = temp_dir.join("legacy_nomcb_ram_header.gb");
+    fs::write(
+        &rom_path,
+        build_test_rom_with_header(
+            &[
+                0x3E, b'O', // LD A,'O'
+                0xE0, 0x01, // LDH (SB),A
+                0x3E, 0x81, // LD A,$81
+                0xE0, 0x02, // LDH (SC),A
+                0xC3, 0x08, 0x01, // JP $0108
+            ],
+            0x08,
+            0x00,
+            0x01,
+        ),
+    )
+    .expect("permissive loader test rom should be writable");
+
+    let case = RomTestCase::new(
+        "permissive-loader-validation",
+        &rom_path,
+        Timeout::TCycles(5_000),
+        PassCondition::SerialContains("O".to_string()),
+    )
+    .with_execution_mode(ExecutionMode::Permissive);
+
+    let report = RomRunner::new()
+        .run_case(&case)
+        .expect("permissive execution mode should admit the ROM");
 
     assert_eq!(report.outcome, RomCaseOutcome::Passed);
     assert_eq!(report.artifacts.serial.as_deref(), Some("O"));

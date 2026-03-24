@@ -103,6 +103,7 @@ make fetch-test-roms FAMILIES="blargg acid"
 make test-roms
 make run-blargg
 make run-acid
+make run-daid
 make run-mealybug
 make run-mooneye
 ```
@@ -118,6 +119,7 @@ make run-mooneye
 - `/.roms/test/` is organized by family, for example:
   `/.roms/test/acid/`,
   `/.roms/test/blargg/`,
+  `/.roms/test/daid/`,
   `/.roms/test/mealybug-tearoom-tests/`,
   `/.roms/test/mooneye/`
 - each curated family directory contains only the ROMs currently listed in the
@@ -150,6 +152,8 @@ make run-mooneye
   matching the upstream `GBEmulatorShootout` classification
 - `make run-blargg` runs the curated supported Blargg DMG family
 - `make run-acid` runs the curated supported Acid DMG family
+- `make run-daid` runs the current exploratory `daid` DMG subset and updates
+  `/.roms/test/test-report.md`
 - each `make run-*` target is autosufficient and materializes its own curated
   family before execution
 - `make run-mealybug` runs the current exploratory `mealybug-tearoom` DMG
@@ -172,6 +176,10 @@ make run-mooneye
   `mooneye` breakpoint/register result protocol instead of framebuffer oracles,
   and stays outside the default gate while the remaining failures are being
   triaged
+- one exploratory `daid` DMG subset is also integrated as `daid-dmg-curated`;
+  it mixes framebuffer fixtures, one multi-fixture framebuffer oracle for
+  `ppu_scanline_bgp.gb`, and one informational framebuffer capture case
+  `rom_and_ram.gb`
 - if `GB_CYCLE_TEST_ROM_ROOT` is unset, `gb-test-runner` falls back to the
   default curated store automatically
 - keep private commercial ROMs out of that path; use the separate gitignored
