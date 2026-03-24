@@ -81,13 +81,14 @@ coverage across `gb-core`, `gb-test-runner`, and `gb-persistence`.
 ### Full local pipeline
 
 ```bash
-make check
-make test
+make ci
+make test-roms
 make coverage
 ```
 
-Before opening or updating a PR, run at least `make check` locally.
-When changing CI, coverage, dependency policy, repo tooling, or the external ROM workflow, run `make test` and `make coverage` locally as well so the external DMG gate and coverage pipeline do not first fail in GitHub Actions.
+Before opening or updating a PR, run at least `make ci` locally.
+When changing CI, coverage, dependency policy, repo tooling, or the external ROM workflow, run `make test-roms` and `make coverage` locally as well so the external DMG gate and coverage pipeline do not first fail in GitHub Actions.
+`make` defaults to `make ci`, and the configured pre-push hook also runs `make ci`.
 Use Conventional Commits for commit messages and PR titles so the repository history and review metadata follow the same naming scheme.
 
 ### External ROM suites
@@ -99,11 +100,11 @@ external ROM suites stay outside git in a repo-managed local store.
 make fetch-test-roms
 make fetch-test-roms FAMILIES=blargg
 make fetch-test-roms FAMILIES="blargg acid"
-make test
-make test-blargg
-make test-acid
-make test-mealybug
-make test-mooneye
+make test-roms
+make run-blargg
+make run-acid
+make run-mealybug
+make run-mooneye
 ```
 
 - `make fetch-test-roms` fetches the pinned upstream source from
@@ -129,16 +130,17 @@ make test-mooneye
   inside the workspace:
   `/.roms/bootrom/` for DMG/MGB boot ROM images and
   `/.oracles/<oracle>/<layout>/` for imported differential oracle artifacts
-- `make check` stays as the fast local pre-push gate and does not fetch or run
-  external ROM suites
-- `make test` fetches the curated ROM store if needed and runs the
+- `make ci` stays as the fast local pre-push gate and does not fetch or run
+  external ROM suites; it includes the Rust checks plus the coverage threshold
+  gate through `cargo cov-check`
+- `make test-roms` fetches the curated ROM store if needed and runs the
   repository-gated green external DMG block; that block intentionally includes
   only the currently supported non-APU, non-CGB suites
-- `make coverage` runs the repository coverage gate and emits `lcov.info`
+- `make coverage` emits `lcov.info` through `cargo cov-lcov`
 - GitHub uses two workflows:
   `ci` for Rust checks plus coverage
-  `external-roms` for the supported external DMG block
-- `make test` runs the same repository-gated external DMG block explicitly:
+  `test-roms` for the supported external DMG block
+- `make test-roms` runs the same repository-gated external DMG block explicitly:
   the curated supported Blargg DMG family
   `blargg-dmg-curated`
   and the curated Acid DMG family
@@ -146,13 +148,13 @@ make test-mooneye
 - the curated Acid DMG family mixes one blocking framebuffer oracle
   `dmg-acid2.gb` with one informational framebuffer capture case `which.gb`,
   matching the upstream `GBEmulatorShootout` classification
-- `make test-blargg` runs the curated supported Blargg DMG family
-- `make test-acid` runs the curated supported Acid DMG family
-- each `make test-*` target is autosufficient and materializes its own curated
+- `make run-blargg` runs the curated supported Blargg DMG family
+- `make run-acid` runs the curated supported Acid DMG family
+- each `make run-*` target is autosufficient and materializes its own curated
   family before execution
-- `make test-mealybug` runs the current exploratory `mealybug-tearoom` DMG
+- `make run-mealybug` runs the current exploratory `mealybug-tearoom` DMG
   subset and updates `/.roms/test/test-report.md`
-- `make test-mooneye` runs the current exploratory `mooneye` DMG acceptance
+- `make run-mooneye` runs the current exploratory `mooneye` DMG acceptance
   subset and updates `/.roms/test/test-report.md`
 - the current curated Blargg family intentionally uses only individual ROMs
   from `GBEmulatorShootout`; it does not use multi-ROM bundles such as

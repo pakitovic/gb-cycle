@@ -1,8 +1,8 @@
-name: external-roms
+name: test-roms
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -21,4 +21,4 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run supported external DMG suites
-        run: make test
+        run: make test-roms
