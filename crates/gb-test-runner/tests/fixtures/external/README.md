@@ -44,6 +44,10 @@ statuses do not appear in the table.
   supported scope: individual ROMs only
   current green set: `cpu_instrs 01..11`, `halt_bug`,
   `mem_timing 01..03`, `mem_timing-2 01..03`, and `oam_bug 1..6,8`
+- `daid-dmg-curated`
+  source family: `daid`
+  current status: exploratory, not repo-gated
+  oracle mix: framebuffer fixture, framebuffer fixture set, and informational framebuffer capture
 - `mealybug-tearoom-dmg-curated`
   source family: `mealybug-tearoom-tests`
   current status: exploratory, not repo-gated
@@ -72,6 +76,7 @@ make test
 Run the exploratory curated Mealybug or Mooneye families:
 
 ```bash
+make run-daid
 make test-mealybug
 make test-mooneye
 ```

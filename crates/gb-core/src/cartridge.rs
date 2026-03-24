@@ -2110,29 +2110,39 @@ fn validate_no_mbc(
     };
 
     if header.ram_size.raw_code != expected_ram_code {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
+        record_degradable_issue(
+            diagnostics,
+            compatibility.validation_policy,
+            format!(
                 "{} expects RAM size code {expected_ram_code:#04X}, but the header declared {:#04X}",
                 classification.detected_name(),
                 header.ram_size.raw_code
             ),
+        )
+        .map_err(|message| CartridgeLoadError::Rejected {
+            classification: *classification,
+            execution_mode: compatibility.execution_mode,
+            reason: message,
             diagnostics: diagnostics.clone(),
-        });
+        })?;
     }
 
     if header.ram_size.decoded_bytes != Some(expected_ram_code_decompressed(expected_ram_code)) {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
+        record_degradable_issue(
+            diagnostics,
+            compatibility.validation_policy,
+            format!(
                 "{} resolved to an unsupported RAM configuration from code {:#04X}",
                 classification.detected_name(),
                 header.ram_size.raw_code
             ),
+        )
+        .map_err(|message| CartridgeLoadError::Rejected {
+            classification: *classification,
+            execution_mode: compatibility.execution_mode,
+            reason: message,
             diagnostics: diagnostics.clone(),
-        });
+        })?;
     }
 
     if header.rom_size.raw_code != 0x00 {
@@ -2897,6 +2907,27 @@ mod tests {
                 .diagnostics()
                 .iter()
                 .any(|diagnostic| diagnostic.message.contains("expects a 32 KiB image"))
+        );
+    }
+
+    #[test]
+    fn warn_validation_can_admit_unambiguous_no_mbc_ram_header_mismatches_with_diagnostics() {
+        let rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x08, 0x00, 0x01);
+        let report = CartridgeSlot::load(rom, &warn_policy())
+            .expect("warn policy should admit the legacy RAM-size mismatch");
+
+        assert_eq!(report.cartridge().state(), CartridgeSlotState::NoMbc);
+        assert!(
+            report
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("expects RAM size code 0x02"))
+        );
+        assert!(
+            report
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("unsupported RAM configuration"))
         );
     }
 

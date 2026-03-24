@@ -5,9 +5,9 @@ use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
     FailureArtifactPolicy, MemoryTextOutputSpec, PassCondition, RomCaseValidationError, RomSuite,
     RomSuiteValidationError, RomTestCase, StimulusTime, TEST_ROM_ROOT_ENV_VAR, TestSubsystem,
-    Timeout, acid_dmg_curated_suite, blargg_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
-    mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
-    phase_4_ppu_oam_corruption_suite,
+    Timeout, acid_dmg_curated_suite, blargg_dmg_curated_suite, daid_dmg_curated_suite,
+    mealybug_tearoom_dmg_curated_suite, mooneye_acceptance_dmg_curated_suite,
+    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
 };
 
 #[test]
@@ -620,6 +620,52 @@ fn acid_dmg_curated_suite_tracks_framebuffer_oracle_and_informational_cases() {
 }
 
 #[test]
+fn daid_dmg_curated_suite_tracks_mixed_framebuffer_oracles() {
+    let suite = daid_dmg_curated_suite();
+
+    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+    assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.family.as_deref(), Some("daid"));
+    assert_eq!(suite.cases.len(), 3);
+
+    let ppu_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "daid-ppu-scanline-bgp")
+        .expect("daid suite should include ppu_scanline_bgp");
+    assert_eq!(ppu_case.rom_path, PathBuf::from("daid/ppu_scanline_bgp.gb"));
+    assert!(ppu_case.capture_plan.contains(CaptureKind::Framebuffer));
+    assert!(ppu_case.capture_plan.contains(CaptureKind::Snapshot));
+    assert!(matches!(
+        ppu_case.pass_condition,
+        PassCondition::FramebufferFixtureSet(_)
+    ));
+
+    let stop_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "daid-stop-instr")
+        .expect("daid suite should include stop_instr");
+    assert_eq!(stop_case.rom_path, PathBuf::from("daid/stop_instr.gb"));
+    assert!(matches!(
+        stop_case.pass_condition,
+        PassCondition::FramebufferFixture(_)
+    ));
+
+    let info_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "daid-rom-and-ram")
+        .expect("daid suite should include rom_and_ram");
+    assert_eq!(info_case.rom_path, PathBuf::from("daid/rom_and_ram.gb"));
+    assert_eq!(info_case.execution_mode, ExecutionMode::Permissive);
+    assert!(matches!(
+        info_case.pass_condition,
+        PassCondition::Informational(CaptureKind::Framebuffer)
+    ));
+}
+
+#[test]
 fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
     let suite = mealybug_tearoom_dmg_curated_suite();
 
@@ -632,7 +678,10 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
             && case.capture_plan.contains(CaptureKind::Framebuffer)
             && case.capture_plan.contains(CaptureKind::Snapshot)
             && case.failure_artifacts.contains(CaptureKind::Framebuffer)
-            && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
+            && matches!(
+                case.pass_condition,
+                PassCondition::FramebufferFixture(_) | PassCondition::FramebufferFixtureSet(_)
+            )
     }));
     assert!(
         suite

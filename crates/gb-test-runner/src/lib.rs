@@ -15,9 +15,9 @@ use std::{fs, io};
 
 use external_roms::ExternalRomSourceManifestError;
 use gb_core::{
-    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, ConsoleModel,
-    CpuDiagnosticTrap, CpuExecutionState, CpuSnapshot, ExecutionMode, JoypadButton, Machine,
-    MachineConfig, StartupMode, TraceBuffer, TraceSummaryBuffer,
+    BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CompatibilityPolicy,
+    ConsoleModel, CpuDiagnosticTrap, CpuExecutionState, CpuSnapshot, ExecutionMode, JoypadButton,
+    Machine, MachineConfig, StartupMode, TraceBuffer, TraceSummaryBuffer,
 };
 
 pub use boot_rom_verification::{
@@ -27,7 +27,7 @@ pub use boot_rom_verification::{
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
     blargg_dmg_curated_suite, curated_test_rom_families, curated_test_rom_family_suites,
-    discover_test_rom_store_root, materialize_curated_test_rom_families,
+    daid_dmg_curated_suite, discover_test_rom_store_root, materialize_curated_test_rom_families,
     materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
 };
 pub use differential::{
@@ -233,6 +233,7 @@ pub enum PassCondition {
     MooneyeResult,
     Informational(CaptureKind),
     FramebufferFixture(PathBuf),
+    FramebufferFixtureSet(Vec<PathBuf>),
     TraceFixture(PathBuf),
 }
 
@@ -244,7 +245,9 @@ impl PassCondition {
             Self::BlarggConsoleTextContains(_) => CaptureKind::BlarggConsoleText,
             Self::MooneyeResult => CaptureKind::Snapshot,
             Self::Informational(capture) => *capture,
-            Self::FramebufferFixture(_) => CaptureKind::Framebuffer,
+            Self::FramebufferFixture(_) | Self::FramebufferFixtureSet(_) => {
+                CaptureKind::Framebuffer
+            }
             Self::TraceFixture(_) => CaptureKind::Trace,
         }
     }
@@ -938,6 +941,9 @@ pub enum RomCaseFailure {
     FramebufferFixtureMismatch {
         fixture_path: PathBuf,
     },
+    FramebufferFixtureSetMismatch {
+        fixture_paths: Vec<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1057,6 +1063,14 @@ impl CaseEvaluationInputs<'_> {
     }
 }
 
+fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> CompatibilityPolicy {
+    match execution_mode {
+        ExecutionMode::Strict => CompatibilityPolicy::strict(),
+        ExecutionMode::Permissive => CompatibilityPolicy::permissive(),
+        ExecutionMode::Experimental => CompatibilityPolicy::experimental(),
+    }
+}
+
 const MOONEYE_MAGIC_BREAKPOINT_OPCODE: u8 = 0x40;
 const MOONEYE_PASS_SIGNATURE: [u8; 6] = [3, 5, 8, 13, 21, 34];
 const MOONEYE_FAIL_SIGNATURE: [u8; 6] = [0x42; 6];
@@ -1066,7 +1080,7 @@ impl RunnerMachine {
     fn new(case: &RomTestCase, boot_rom_assets: BootRomAssets) -> Self {
         let config = MachineConfig::new(case.console_model)
             .with_startup_mode(case.startup_mode)
-            .with_execution_mode(case.execution_mode)
+            .with_compatibility(compatibility_for_execution_mode(case.execution_mode))
             .with_boot_rom_assets(boot_rom_assets);
         let needs_trace_buffer = case.capture_plan.contains(CaptureKind::Trace)
             || case.failure_artifacts.contains(CaptureKind::Trace);
@@ -1647,6 +1661,31 @@ impl RomRunner {
                         fixture_path: resolved_fixture,
                     })
                 }
+            }
+            PassCondition::FramebufferFixtureSet(fixture_paths) => {
+                let resolved_fixtures = fixture_paths
+                    .iter()
+                    .map(|fixture_path| self.resolve_path(fixture_path))
+                    .collect::<Vec<_>>();
+
+                for resolved_fixture in &resolved_fixtures {
+                    let expected = fs::read(resolved_fixture).map_err(|source| {
+                        RomExecutionError::ReadFile {
+                            path: resolved_fixture.clone(),
+                            operation: "read framebuffer fixture",
+                            source,
+                        }
+                    })?;
+
+                    if evaluation.artifacts.framebuffer_pgm.as_deref() == Some(expected.as_slice())
+                    {
+                        return Ok(RomCaseOutcome::Passed);
+                    }
+                }
+
+                RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureSetMismatch {
+                    fixture_paths: resolved_fixtures,
+                })
             }
         })
     }

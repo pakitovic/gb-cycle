@@ -124,6 +124,34 @@ path = "testroms/acid/dmg-acid2.png"
 sha256 = "8b5e31c2b1d449e90fc0ac08bf1f0dd95509d3e953d6940513a3ce3161572ac4"
 
 [[source.required_file]]
+path = "testroms/daid/ppu_scanline_bgp.gb"
+sha256 = "3a32e875d4cdc1defd28a601a64a9a3f1f7965a6679a8f16af45781520b57379"
+
+[[source.required_file]]
+path = "testroms/daid/ppu_scanline_bgp_0.dmg.png"
+sha256 = "146595658062ef1e2fc19b46b665a997d0e6d44cab9bdade31232f5c997918e8"
+
+[[source.required_file]]
+path = "testroms/daid/ppu_scanline_bgp_1.dmg.png"
+sha256 = "a07067f06285f94180a246b04208223a01040014b750996de1bbed3eaf56b572"
+
+[[source.required_file]]
+path = "testroms/daid/ppu_scanline_bgp_2.dmg.png"
+sha256 = "2400f19f5a82d1c28726cdbb9793f86f01cadb1bbc5ef624e37e69de272241cc"
+
+[[source.required_file]]
+path = "testroms/daid/stop_instr.gb"
+sha256 = "7807e380ce4531f4f9425427b47d7216a92ef2283ab706ea4a33eb84f589ac42"
+
+[[source.required_file]]
+path = "testroms/daid/stop_instr.dmg.png"
+sha256 = "4a17cdbaa7d108eab02da64e95bb08b350f32b290819319af9d6c611b66bb1b0"
+
+[[source.required_file]]
+path = "testroms/daid/rom_and_ram.gb"
+sha256 = "915ee4e41db0a10e34d22af1acd9ff193bd688448eba597d53460dacfdec7ae4"
+
+[[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb"
 sha256 = "5ab52823dc9e25184e884d73a19bfe0b048a9d2526ca779a0925ca891a9ba7f5"
 

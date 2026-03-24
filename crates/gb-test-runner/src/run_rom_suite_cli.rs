@@ -435,6 +435,7 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
             crate::CaptureKind::Snapshot => "info-snapshot",
         },
         crate::PassCondition::FramebufferFixture(_) => "framebuffer-fixture",
+        crate::PassCondition::FramebufferFixtureSet(_) => "framebuffer-fixture-set",
         crate::PassCondition::TraceFixture(_) => "trace-fixture",
     }
 }

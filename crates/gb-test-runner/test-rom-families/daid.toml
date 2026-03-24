@@ -1,0 +1,29 @@
+version = 1
+family = "daid"
+suite_name = "daid-dmg-curated"
+subsystem = "CrossSubsystem"
+
+[[case]]
+id = "daid-ppu-scanline-bgp"
+rom = "ppu_scanline_bgp.gb"
+timeout_frames = 180
+oracle = "framebuffer-fixture-set"
+fixtures = [
+  "crates/gb-test-runner/tests/fixtures/external/daid/ppu_scanline_bgp_0.dmg.pgm",
+  "crates/gb-test-runner/tests/fixtures/external/daid/ppu_scanline_bgp_1.dmg.pgm",
+  "crates/gb-test-runner/tests/fixtures/external/daid/ppu_scanline_bgp_2.dmg.pgm",
+]
+
+[[case]]
+id = "daid-stop-instr"
+rom = "stop_instr.gb"
+timeout_frames = 180
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/daid/stop_instr.dmg.pgm"
+
+[[case]]
+id = "daid-rom-and-ram"
+rom = "rom_and_ram.gb"
+timeout_frames = 180
+oracle = "info-framebuffer"
+execution_mode = "permissive"

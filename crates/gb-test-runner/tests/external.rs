@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 use gb_test_runner::{
-    RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_curated_suite,
+    RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_curated_suite, daid_dmg_curated_suite,
     discover_test_rom_store_root, mealybug_tearoom_dmg_curated_suite,
     mooneye_acceptance_dmg_curated_suite, update_curated_test_report,
 };
@@ -98,6 +98,18 @@ fn mooneye_curated_suite_updates_report_from_repo_store() {
     };
     assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
     assert_eq!(report.cases.len(), 66, "{report:#?}");
+}
+
+#[test]
+#[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
+fn daid_curated_suite_updates_report_from_repo_store() {
+    let Some(report) =
+        run_curated_suite_and_update_report(&daid_dmg_curated_suite(), "curated daid suite")
+    else {
+        return;
+    };
+    assert_eq!(report.family.as_deref(), Some("daid"), "{report:#?}");
+    assert_eq!(report.cases.len(), 3, "{report:#?}");
 }
 
 #[test]
