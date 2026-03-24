@@ -92,6 +92,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## LY / LYC coincidence baseline
 
 - `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
+- On DMG-family timing, the bus-facing `FF44` readback should advance to the next scanline during the last machine cycle of HBlank before the full raster wrap completes; do not force bus-visible `LY` reads to be identical to the internal raster/comparison line at every dot.
 - The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
 - Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
 - While the LCD is disabled, the `STAT` coincidence bit should retain the last active-LCD comparison result instead of being silently recomputed from the reset LCD-off `LY = 0` state.
@@ -117,6 +118,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `STAT` mode changes should come directly from the real PPU dot scheduler rather than from a post-hoc per-scanline summary.
 - Entry into Mode `2`, Mode `3`, Mode `0`, and Mode `1` should become visible to `STAT` at the real dot where the PPU scheduler changes mode.
 - Because Mode `3` is variable-length, the exact Mode `3 -> 0` transition point must propagate to the `STAT` line and LCD interrupt timing without being quantized to a fixed scanline template.
+- Keep room for the internal LCD STAT interrupt line to lead the readable `STAT.mode` bits by a few T-cycles on DMG-family hardware. Current oracle-backed closure in this repo requires the Mode `0` STAT source to be able to rise up to `4` dots before HBlank becomes visible through `STAT` readback and before VRAM bus release.
 - Entering VBlank at `LY = 144` should be able to request both the dedicated VBlank interrupt and the LCD STAT interrupt for Mode `1` independently when the corresponding `STAT` enable is set.
 - The same live mode state that feeds `STAT` must also feed VRAM/OAM accessibility decisions so software polling `STAT` sees the same timing the bus uses for blocking.
 - On the shared scheduler, the PPU dot tick should happen before current-cycle bus arbitration and interrupt aggregation so `STAT`, LCD IRQ requests, `LY`, and VRAM/OAM restrictions remain coherent for that T-cycle.

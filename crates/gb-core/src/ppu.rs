@@ -19,6 +19,7 @@ const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 const FRAMEBUFFER_PIXELS: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
 const DOTS_PER_SCANLINE: u16 = 456;
+const LY_READ_ADVANCE_START_DOT: u16 = 449;
 const LCD_REENABLE_INITIAL_LINE_DOT: u16 = 4;
 const LCD_REENABLE_STARTUP_HBLANK_END_DOT: u16 = 20;
 const VISIBLE_SCANLINES: u8 = 144;
@@ -411,7 +412,7 @@ impl Ppu {
             0xFF41 => self.read_stat(),
             0xFF42 => self.scy,
             0xFF43 => self.scx,
-            0xFF44 => self.ly,
+            0xFF44 => self.read_ly(),
             0xFF45 => self.lyc,
             0xFF47 => self.bgp,
             0xFF48 => self
@@ -672,6 +673,18 @@ impl Ppu {
     fn write_stat(&mut self, value: u8) {
         self.stat_interrupt_enable = value & STAT_WRITABLE_ENABLE_MASK;
         self.refresh_stat_irq_line(self.stat_write_quirk_active());
+    }
+
+    fn read_ly(&self) -> u8 {
+        if self.is_lcd_enabled()
+            && !self.blank_frame_active
+            && self.line_dot >= LY_READ_ADVANCE_START_DOT
+            && self.ly + 1 < TOTAL_SCANLINES
+        {
+            self.ly + 1
+        } else {
+            self.ly
+        }
     }
 
     fn current_access_mode(&self) -> PpuAccessMode {
@@ -1357,6 +1370,12 @@ impl Ppu {
             return coincidence_source;
         }
 
+        let mode0_start_dot = self.current_mode0_start_dot();
+        let mode0_pretrigger_source = self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT
+            != 0
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot < mode0_start_dot
+            && self.line_dot + 4 >= mode0_start_dot;
         let mode2_pretrigger_source = self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT
             != 0
             && self.ly + 1 < VISIBLE_SCANLINES
@@ -1381,6 +1400,7 @@ impl Ppu {
 
         coincidence_source
             || mode_source
+            || mode0_pretrigger_source
             || mode2_pretrigger_source
             || dmg_mode2_vblank_entry_source
     }
