@@ -168,6 +168,30 @@ path = "testroms/hacktix/strikethrough.png"
 sha256 = "52187909e73d03ea11659149935c57bfce8395c3091d3f7809bbadc3c5feb745"
 
 [[source.required_file]]
+path = "testroms/cpp/rtc-invalid-banks-test.gb"
+sha256 = "353c72be3227f6dcd85939b54efcf31b745c20beb821a1d370eb8a7797f47bd1"
+
+[[source.required_file]]
+path = "testroms/cpp/rtc-invalid-banks-test.png"
+sha256 = "e7a4df7816a7eb7c1c7328e4f58a88f0a6611104d2ac2590c03826021a558e60"
+
+[[source.required_file]]
+path = "testroms/cpp/latch-rtc-test.gb"
+sha256 = "2df0db7b8cc5719a208bd59a2a0e3096cc278fe8614c0ee986b587e7803bffa5"
+
+[[source.required_file]]
+path = "testroms/cpp/latch-rtc-test.png"
+sha256 = "268f295d7f530e4f3c725e0d6d8fac53dbafd696659faffe40b8694658e96193"
+
+[[source.required_file]]
+path = "testroms/cpp/ramg-mbc3-test.gb"
+sha256 = "40117ff683b2bae07a0623ae86a7c8275f9aa23d75c008816030e8ccbf4b6405"
+
+[[source.required_file]]
+path = "testroms/cpp/ramg-mbc3-test.png"
+sha256 = "0108c6759326505814b3f9555231e25ff6c636c54025c27837845028c1d5c290"
+
+[[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb"
 sha256 = "5ab52823dc9e25184e884d73a19bfe0b048a9d2526ca779a0925ca891a9ba7f5"
 

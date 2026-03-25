@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  dmg-gate:
+  acid:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,5 +20,53 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Run supported external DMG suites
-        run: make test-roms
+      - name: Run Acid ROM suite
+        run: make run-acid
+
+  blargg:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Blargg ROM suite
+        run: make run-blargg
+
+  hacktix:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Hacktix ROM suite
+        run: make run-hacktix
+
+  cpp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run CPP ROM suite
+        run: make run-cpp

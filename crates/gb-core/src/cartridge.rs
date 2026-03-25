@@ -348,6 +348,7 @@ struct Mbc3Cartridge {
     ram_or_rtc_select: Mbc3RamRtcSelect,
     rtc_live: Mbc3RtcState,
     rtc_latched: Mbc3RtcState,
+    rtc_latched_valid: bool,
     rtc_latch_armed: bool,
 }
 
@@ -774,7 +775,8 @@ impl CartridgeSlot {
                         ram_or_rtc_select: Mbc3RamRtcSelect::RamBank(0),
                         rtc_live: Mbc3RtcState::default(),
                         rtc_latched: Mbc3RtcState::default(),
-                        rtc_latch_armed: false,
+                        rtc_latched_valid: false,
+                        rtc_latch_armed: true,
                     })),
                 };
 
@@ -1501,9 +1503,9 @@ impl From<Mbc3RtcPersistentState> for Mbc3RtcState {
 impl Mbc3RtcState {
     fn read(self, register: Mbc3RtcRegister) -> u8 {
         match register {
-            Mbc3RtcRegister::Seconds => self.seconds % 60,
-            Mbc3RtcRegister::Minutes => self.minutes % 60,
-            Mbc3RtcRegister::Hours => self.hours % 24,
+            Mbc3RtcRegister::Seconds => self.seconds,
+            Mbc3RtcRegister::Minutes => self.minutes,
+            Mbc3RtcRegister::Hours => self.hours,
             Mbc3RtcRegister::DayLow => (self.day_counter & 0x00FF) as u8,
             Mbc3RtcRegister::DayHigh => {
                 ((self.day_counter >> 8) as u8 & 0x01)
@@ -1515,9 +1517,9 @@ impl Mbc3RtcState {
 
     fn write(&mut self, register: Mbc3RtcRegister, value: u8) {
         match register {
-            Mbc3RtcRegister::Seconds => self.seconds = value % 60,
-            Mbc3RtcRegister::Minutes => self.minutes = value % 60,
-            Mbc3RtcRegister::Hours => self.hours = value % 24,
+            Mbc3RtcRegister::Seconds => self.seconds = value & 0x3F,
+            Mbc3RtcRegister::Minutes => self.minutes = value & 0x3F,
+            Mbc3RtcRegister::Hours => self.hours = value & 0x1F,
             Mbc3RtcRegister::DayLow => {
                 self.day_counter = (self.day_counter & 0x0100) | value as u16;
             }
@@ -1554,6 +1556,11 @@ fn advance_mbc3_rtc_fields(
     if halt || elapsed_seconds == 0 {
         return;
     }
+
+    *seconds %= 60;
+    *minutes %= 60;
+    *hours %= 24;
+    *day_counter &= 0x01FF;
 
     let current_total_seconds = *day_counter as u64 * 86_400
         + *hours as u64 * 3_600
@@ -1699,11 +1706,12 @@ impl Mbc3Cartridge {
             return;
         }
 
-        if value == 0x01 && self.rtc_latch_armed {
+        if self.rtc_latch_armed {
             self.rtc_latched = self.rtc_live;
+            self.rtc_latched_valid = true;
         }
 
-        self.rtc_latch_armed = false;
+        self.rtc_latch_armed = true;
     }
 
     fn advance_rtc_seconds(&mut self, seconds: u64) {
@@ -1823,8 +1831,9 @@ impl Mbc3Cartridge {
 
 impl Mbc3RamRtcSelect {
     fn from_value(value: u8) -> Self {
-        match value {
-            0x00..=0x03 => Self::RamBank(value),
+        let low_nibble = value & 0x0F;
+        match low_nibble {
+            0x00..=0x03 => Self::RamBank(low_nibble),
             0x08 => Self::RtcRegister(Mbc3RtcRegister::Seconds),
             0x09 => Self::RtcRegister(Mbc3RtcRegister::Minutes),
             0x0A => Self::RtcRegister(Mbc3RtcRegister::Hours),
@@ -2498,7 +2507,7 @@ fn validate_mbc3(
     }
 
     if has_ram {
-        if !matches!(header.ram_size.raw_code, 0x02 | 0x03) {
+        if !matches!(header.ram_size.raw_code, 0x01..=0x03) {
             return Err(CartridgeLoadError::Rejected {
                 classification: *classification,
                 execution_mode: compatibility.execution_mode,
@@ -3445,6 +3454,8 @@ mod tests {
         assert!(!cartridge.ram_rtc_enabled);
         assert_eq!(cartridge.rom_bank, 0);
         assert_eq!(cartridge.ram_or_rtc_select, Mbc3RamRtcSelect::RamBank(0));
+        assert!(!cartridge.rtc_latched_valid);
+        assert!(cartridge.rtc_latch_armed);
         assert_eq!(cartridge.read_rom(0x4000), 0x01);
     }
 
@@ -3489,6 +3500,40 @@ mod tests {
     }
 
     #[test]
+    fn mbc3_selector_ignores_upper_data_bits_and_decodes_from_the_low_nibble() {
+        let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+        let report =
+            CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+        let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+            panic!("expected MBC3 cartridge");
+        };
+
+        cartridge.write_rom(0x4000, 0x12);
+        assert_eq!(cartridge.ram_or_rtc_select, Mbc3RamRtcSelect::RamBank(0x02));
+
+        cartridge.write_rom(0x4000, 0x1C);
+        assert_eq!(
+            cartridge.ram_or_rtc_select,
+            Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::DayHigh)
+        );
+
+        cartridge.write_rom(0x4000, 0x17);
+        assert_eq!(
+            cartridge.ram_or_rtc_select,
+            Mbc3RamRtcSelect::ReservedSelector(0x07)
+        );
+    }
+
+    #[test]
+    fn strict_validation_admits_mbc3_headers_with_2kib_ram_metadata() {
+        let rom = build_banked_mbc3_rom(0x13, 0x00, 0x01);
+        let report =
+            CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+
+        assert_eq!(report.cartridge().state(), CartridgeSlotState::Mbc3);
+    }
+
+    #[test]
     fn mbc3_rtc_latch_reads_from_snapshot_while_writes_hit_live_state() {
         let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
         let report =
@@ -3501,20 +3546,86 @@ mod tests {
         cartridge.write_rom(0x0000, 0x0A);
         cartridge.write_rom(0x4000, 0x08);
 
-        cartridge.write_rom(0x6000, 0x01);
         assert_eq!(cartridge.read_ram(0xA000), 0x00);
+
+        cartridge.write_rom(0x6000, 0x01);
+        assert_eq!(cartridge.read_ram(0xA000), 0x04);
+
+        cartridge.advance_rtc_seconds(1);
+        assert_eq!(cartridge.read_ram(0xA000), 0x04);
 
         cartridge.write_rom(0x6000, 0x00);
         cartridge.write_rom(0x6000, 0x01);
-        assert_eq!(cartridge.read_ram(0xA000), 0x04);
+        assert_eq!(cartridge.read_ram(0xA000), 0x05);
 
         cartridge.write_ram(0xA000, 0x2A);
         assert_eq!(cartridge.rtc_live.seconds, 0x2A);
-        assert_eq!(cartridge.read_ram(0xA000), 0x04);
+        assert_eq!(cartridge.read_ram(0xA000), 0x05);
 
+        cartridge.write_rom(0x6000, 0x55);
+        assert_eq!(cartridge.read_ram(0xA000), 0x2A);
+    }
+
+    #[test]
+    fn mbc3_rtc_register_writes_echo_raw_bytes_until_time_advances() {
+        let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+        let report =
+            CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+        let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+            panic!("expected MBC3 cartridge");
+        };
+
+        cartridge.write_rom(0x0000, 0x0A);
+
+        cartridge.write_rom(0x4000, 0x08);
+        cartridge.write_ram(0xA000, 0x74);
+
+        cartridge.write_rom(0x4000, 0x09);
+        cartridge.write_ram(0xA000, 0xF2);
+
+        cartridge.write_rom(0x4000, 0x0A);
+        cartridge.write_ram(0xA000, 0x62);
+        assert_eq!(cartridge.read_ram(0xA000), 0x00);
+
+        cartridge.write_rom(0x6000, 0x01);
+
+        cartridge.write_rom(0x4000, 0x08);
+        assert_eq!(cartridge.read_ram(0xA000), 0x34);
+
+        cartridge.advance_rtc_seconds(1);
+
+        cartridge.write_rom(0x4000, 0x08);
+        assert_eq!(cartridge.read_ram(0xA000), 0x34);
+
+        cartridge.write_rom(0x4000, 0x09);
+        assert_eq!(cartridge.read_ram(0xA000), 0x32);
+
+        cartridge.write_rom(0x4000, 0x0A);
+        assert_eq!(cartridge.read_ram(0xA000), 0x02);
+    }
+
+    #[test]
+    fn mbc3_latch_stays_armed_after_a_successful_latch_until_a_zero_write_resets_it() {
+        let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+        let report =
+            CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+        let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+            panic!("expected MBC3 cartridge");
+        };
+
+        cartridge.write_rom(0x0000, 0x0A);
+        cartridge.write_rom(0x4000, 0x08);
+
+        cartridge.write_ram(0xA000, 0x11);
         cartridge.write_rom(0x6000, 0x00);
         cartridge.write_rom(0x6000, 0x01);
-        assert_eq!(cartridge.read_ram(0xA000), 0x2A);
+        assert_eq!(cartridge.read_ram(0xA000), 0x11);
+
+        cartridge.write_ram(0xA000, 0x37);
+        assert_eq!(cartridge.read_ram(0xA000), 0x11);
+
+        cartridge.write_rom(0x6000, 0x44);
+        assert_eq!(cartridge.read_ram(0xA000), 0x37);
     }
 
     #[test]

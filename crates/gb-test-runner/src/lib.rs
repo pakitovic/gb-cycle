@@ -31,10 +31,10 @@ pub use boot_rom_verification::{
 };
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
-    blargg_dmg_curated_suite, curated_test_rom_families, curated_test_rom_family_suites,
-    daid_dmg_curated_suite, discover_test_rom_store_root, hacktix_dmg_curated_suite,
-    materialize_curated_test_rom_families, materialize_curated_test_rom_store, test_rom_store_root,
-    update_curated_test_report,
+    blargg_dmg_curated_suite, cpp_dmg_curated_suite, curated_test_rom_families,
+    curated_test_rom_family_suites, daid_dmg_curated_suite, discover_test_rom_store_root,
+    hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
+    materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
 };
 pub use differential::{
     DifferentialCaseMismatch, DifferentialCaseOutcome, DifferentialCaseReport,
@@ -2291,6 +2291,23 @@ mod tests {
                 .iter()
                 .any(|case| case.id == "mealybug-m3-lcdc-bg-en-change")
         );
+    }
+
+    #[test]
+    fn built_in_rom_suite_lookup_returns_curated_cpp_suite_with_framebuffer_oracles() {
+        let suite =
+            built_in_rom_suite_by_name("cpp-dmg-curated").expect("known suite should exist");
+
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.family.as_deref(), Some("cpp"));
+        assert_eq!(suite.cases.len(), 3);
+        assert!(suite.cases.iter().all(|case| {
+            case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+                && case.capture_plan.contains(CaptureKind::Framebuffer)
+                && case.capture_plan.contains(CaptureKind::Snapshot)
+                && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
+        }));
+        assert!(suite.cases.iter().any(|case| case.id == "cpp-latch-rtc"));
     }
 
     #[test]
