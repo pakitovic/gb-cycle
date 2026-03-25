@@ -1,0 +1,19 @@
+version = 1
+family = "hacktix"
+suite_name = "hacktix-dmg-curated"
+subsystem = "CrossSubsystem"
+
+[[case]]
+id = "hacktix-bully"
+rom = "bully.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/hacktix/bully.dmg.pgm"
+startup_memory_profile = "dmg-boot-logo-vram"
+
+[[case]]
+id = "hacktix-strikethrough"
+rom = "strikethrough.gb"
+timeout_frames = 30
+oracle = "framebuffer-fixture"
+fixture = "crates/gb-test-runner/tests/fixtures/external/hacktix/strikethrough.dmg.pgm"

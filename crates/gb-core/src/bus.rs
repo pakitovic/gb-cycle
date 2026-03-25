@@ -97,6 +97,7 @@ pub enum DmaMemoryRegionImpact {
 pub struct DmaBusState {
     cpu_access_policy: DmaCpuAccessPolicy,
     active_region: Option<DmaMemoryRegionImpact>,
+    cpu_conflict_source_address: Option<u16>,
 }
 
 impl DmaBusState {
@@ -104,6 +105,7 @@ impl DmaBusState {
         Self {
             cpu_access_policy: DmaCpuAccessPolicy::Unrestricted,
             active_region: None,
+            cpu_conflict_source_address: None,
         }
     }
 
@@ -111,6 +113,7 @@ impl DmaBusState {
         Self {
             cpu_access_policy: DmaCpuAccessPolicy::ExternalBusBlocked,
             active_region,
+            cpu_conflict_source_address: None,
         }
     }
 
@@ -118,7 +121,13 @@ impl DmaBusState {
         Self {
             cpu_access_policy: DmaCpuAccessPolicy::VideoBusBlocked,
             active_region,
+            cpu_conflict_source_address: None,
         }
+    }
+
+    pub const fn with_cpu_conflict_source_address(mut self, address: Option<u16>) -> Self {
+        self.cpu_conflict_source_address = address;
+        self
     }
 
     pub const fn cpu_access_policy(self) -> DmaCpuAccessPolicy {
@@ -127,6 +136,10 @@ impl DmaBusState {
 
     pub const fn active_region(self) -> Option<DmaMemoryRegionImpact> {
         self.active_region
+    }
+
+    pub const fn cpu_conflict_source_address(self) -> Option<u16> {
+        self.cpu_conflict_source_address
     }
 }
 
@@ -658,6 +671,14 @@ impl Bus {
         cartridge: Option<&CartridgeSlot>,
         io: BusIoReadView<'_>,
     ) -> u8 {
+        if let Some(conflict_source_address) =
+            self.cpu_dma_conflict_source_address(requester, address, state)
+        {
+            let target =
+                self.resolve_nominal_target(BusAccessKind::Read, conflict_source_address, state);
+            return self.perform_allowed_read(target, cartridge, io);
+        }
+
         let resolution = self.resolve_access(requester, BusAccessKind::Read, address, state);
 
         match resolution.disposition() {
@@ -724,6 +745,15 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoWriteView<'_>,
     ) {
+        if let Some(conflict_source_address) =
+            self.cpu_dma_conflict_source_address(requester, address, state)
+        {
+            let target =
+                self.resolve_nominal_target(BusAccessKind::Write, conflict_source_address, state);
+            self.perform_allowed_write(target, value, cartridge, io);
+            return;
+        }
+
         let resolution = self.resolve_access(requester, BusAccessKind::Write, address, state);
 
         match resolution.disposition() {
@@ -781,6 +811,35 @@ impl Bus {
             state.dma.cpu_access_policy(),
             state.dma.active_region(),
         )
+    }
+
+    fn cpu_dma_conflict_source_address(
+        &self,
+        requester: BusRequester,
+        address: u16,
+        state: &BusArbitrationState,
+    ) -> Option<u16> {
+        if requester != BusRequester::Cpu
+            || state.dma.cpu_access_policy() != DmaCpuAccessPolicy::ExternalBusBlocked
+            || address >= 0xFE00
+        {
+            return None;
+        }
+
+        let target = self.decode_address(address);
+        if !matches!(
+            target.region(),
+            BusRegion::CartridgeRomBank0
+                | BusRegion::CartridgeRomBankN
+                | BusRegion::CartridgeExternal
+                | BusRegion::WramBank0
+                | BusRegion::WramBankN
+                | BusRegion::EchoRam
+        ) {
+            return None;
+        }
+
+        state.dma.cpu_conflict_source_address()
     }
 
     fn resolve_nominal_target(
@@ -1274,7 +1333,7 @@ mod tests {
 
     fn tick_ppu(ppu: &mut Ppu, t_cycle: u64) {
         let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
-        ppu.tick_t_cycle(&mut context, &[0; 160], &[0; TEST_VRAM_BYTES]);
+        ppu.tick_t_cycle(&mut context, &[0; 160], &[0; TEST_VRAM_BYTES], false, None);
     }
 
     fn prepare_mode2_ppu_at_row(console_model: ConsoleModel, row: u8) -> Ppu {

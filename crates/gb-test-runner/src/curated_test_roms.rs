@@ -38,6 +38,28 @@ const DMG_BOOT_TRADEMARK_TILE_VRAM_START: u16 = 0x8190;
 const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
     0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C, 0x00,
 ];
+const DMG_BOOT_LOGO_TILE_VRAM_START: u16 = 0x8010;
+const DMG_BOOT_LOGO_MAP_VRAM_START: u16 = 0x9904;
+const DMG_BOOT_LOGO_TILE_BYTES: [u8; 200] = [
+    0xF0, 0xF0, 0xFC, 0xFC, 0xFC, 0xFC, 0xF3, 0xF3, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C,
+    0xF0, 0xF0, 0xF0, 0xF0, 0x00, 0x00, 0xF3, 0xF3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xCF, 0xCF,
+    0x00, 0x00, 0x0F, 0x0F, 0x3F, 0x3F, 0x0F, 0x0F, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0, 0x0F, 0x0F,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF3, 0xF3,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0xFF, 0xFF,
+    0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC3, 0xC3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFC, 0xFC,
+    0xF3, 0xF3, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x3C, 0x3C, 0xFC, 0xFC, 0xFC, 0xFC, 0x3C, 0x3C,
+    0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3,
+    0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0x3C, 0x3C, 0x3F, 0x3F, 0x3C, 0x3C, 0x0F, 0x0F,
+    0x3C, 0x3C, 0xFC, 0xFC, 0x00, 0x00, 0xFC, 0xFC, 0xFC, 0xFC, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+    0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF0, 0xF0, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF,
+    0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xC3, 0xC3, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0xFC, 0xFC,
+    0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C,
+];
+const DMG_BOOT_LOGO_MAP_BYTES: [u8; 44] = [
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x19, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct CuratedTestRomManifestFile {
@@ -109,6 +131,10 @@ pub fn daid_dmg_curated_suite() -> RomSuite {
     manifest_suite("daid")
 }
 
+pub fn hacktix_dmg_curated_suite() -> RomSuite {
+    manifest_suite("hacktix")
+}
+
 pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
     manifest_suite("mealybug-tearoom-tests")
 }
@@ -122,6 +148,7 @@ pub fn curated_test_rom_family_suites() -> Vec<RomSuite> {
         acid_dmg_curated_suite(),
         blargg_dmg_curated_suite(),
         daid_dmg_curated_suite(),
+        hacktix_dmg_curated_suite(),
         mealybug_tearoom_dmg_curated_suite(),
         mooneye_acceptance_dmg_curated_suite(),
     ]
@@ -411,7 +438,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 5] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 6] {
     [
         (
             "crates/gb-test-runner/test-rom-families/acid.toml",
@@ -424,6 +451,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 5] {
         (
             "crates/gb-test-runner/test-rom-families/daid.toml",
             include_str!("../test-rom-families/daid.toml"),
+        ),
+        (
+            "crates/gb-test-runner/test-rom-families/hacktix.toml",
+            include_str!("../test-rom-families/hacktix.toml"),
         ),
         (
             "crates/gb-test-runner/test-rom-families/mealybug-tearoom-tests.toml",
@@ -527,6 +558,9 @@ fn manifest_case_to_rom_test_case(family: &str, case: CuratedTestRomCase) -> Rom
             "dmg-boot-trademark-tile" => {
                 rom_case.with_startup_memory_writes(dmg_boot_trademark_tile_startup_writes())
             }
+            "dmg-boot-logo-vram" => {
+                rom_case.with_startup_memory_writes(dmg_boot_logo_vram_startup_writes())
+            }
             other => panic!(
                 "unsupported startup memory profile {other:?} for curated case {}",
                 rom_case.id
@@ -627,6 +661,28 @@ fn dmg_boot_trademark_tile_startup_writes() -> [StartupMemoryWrite; 16] {
             DMG_BOOT_TRADEMARK_TILE_BYTES[index],
         )
     })
+}
+
+fn dmg_boot_logo_vram_startup_writes() -> Vec<StartupMemoryWrite> {
+    let mut writes =
+        Vec::with_capacity(DMG_BOOT_LOGO_TILE_BYTES.len() + DMG_BOOT_LOGO_MAP_BYTES.len());
+
+    // Seed the post-boot DMG logo tile bytes plus the logo tilemap rows that
+    // BullyGB checks under SkipBoot.
+    for (index, byte) in DMG_BOOT_LOGO_TILE_BYTES.iter().copied().enumerate() {
+        writes.push(StartupMemoryWrite::new(
+            DMG_BOOT_LOGO_TILE_VRAM_START + (index as u16 * 2),
+            byte,
+        ));
+    }
+    for (index, byte) in DMG_BOOT_LOGO_MAP_BYTES.iter().copied().enumerate() {
+        writes.push(StartupMemoryWrite::new(
+            DMG_BOOT_LOGO_MAP_VRAM_START + index as u16,
+            byte,
+        ));
+    }
+
+    writes
 }
 
 fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
@@ -808,9 +864,14 @@ mod tests {
     fn curated_family_suite_builders_preserve_each_supported_oracle_shape() {
         let suites = curated_test_rom_family_suites();
 
-        assert_eq!(suites.len(), 5);
+        assert_eq!(suites.len(), 6);
         assert!(suites.iter().any(|suite| suite.name == "acid-dmg-curated"));
         assert!(suites.iter().any(|suite| suite.name == "daid-dmg-curated"));
+        assert!(
+            suites
+                .iter()
+                .any(|suite| suite.name == "hacktix-dmg-curated")
+        );
         assert!(
             suites
                 .iter()
@@ -884,6 +945,38 @@ mod tests {
             dmg_boot_trademark_tile_startup_writes().to_vec()
         );
 
+        let hacktix_case = suites
+            .iter()
+            .find(|suite| suite.family.as_deref() == Some("hacktix"))
+            .and_then(|suite| suite.cases.iter().find(|case| case.id == "hacktix-bully"))
+            .expect("hacktix startup-memory case should exist");
+        assert_eq!(hacktix_case.startup_memory_writes.len(), 244);
+
+        let strikethrough_case = suites
+            .iter()
+            .find(|suite| suite.family.as_deref() == Some("hacktix"))
+            .and_then(|suite| {
+                suite
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "hacktix-strikethrough")
+            })
+            .expect("hacktix framebuffer case should exist");
+        assert!(matches!(
+            strikethrough_case.pass_condition,
+            PassCondition::FramebufferFixture(_)
+        ));
+        assert!(
+            strikethrough_case
+                .capture_plan
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert!(
+            strikethrough_case
+                .capture_plan
+                .contains(CaptureKind::Snapshot)
+        );
+
         let mooneye_case = suites
             .iter()
             .find(|suite| suite.family.as_deref() == Some("mooneye"))
@@ -909,6 +1002,7 @@ mod tests {
                 "acid".to_string(),
                 "blargg".to_string(),
                 "daid".to_string(),
+                "hacktix".to_string(),
                 "mealybug-tearoom-tests".to_string(),
                 "mooneye".to_string(),
             ]

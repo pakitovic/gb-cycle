@@ -152,6 +152,22 @@ path = "testroms/daid/rom_and_ram.gb"
 sha256 = "915ee4e41db0a10e34d22af1acd9ff193bd688448eba597d53460dacfdec7ae4"
 
 [[source.required_file]]
+path = "testroms/hacktix/bully.gb"
+sha256 = "c89c0ff3497dbae02a81c91a2e893f58131166580db5e8fe1a5cc7d8c06ab8d5"
+
+[[source.required_file]]
+path = "testroms/hacktix/bully.png"
+sha256 = "340be52fc2d231868153a14d3f252fd387483e68c2868f1ad17fea362b2918ff"
+
+[[source.required_file]]
+path = "testroms/hacktix/strikethrough.gb"
+sha256 = "353d50d745e2539d93f0baf7d670ec93b520f97e41443cb39ba6f32be1f5fa31"
+
+[[source.required_file]]
+path = "testroms/hacktix/strikethrough.png"
+sha256 = "52187909e73d03ea11659149935c57bfce8395c3091d3f7809bbadc3c5feb745"
+
+[[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb"
 sha256 = "5ab52823dc9e25184e884d73a19bfe0b048a9d2526ca779a0925ca891a9ba7f5"
 

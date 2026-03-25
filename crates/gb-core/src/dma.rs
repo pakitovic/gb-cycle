@@ -535,13 +535,21 @@ impl DmaController {
                 DmaBusState::unrestricted()
             }
             DmaTransferState::Starting(progress) | DmaTransferState::Active(progress) => {
+                let cpu_conflict_source_address = (progress.completed_bytes() > 0).then(|| {
+                    progress
+                        .transfer()
+                        .source_address_for_byte(progress.completed_bytes() - 1)
+                });
+
                 match progress.transfer().source_bus() {
                     DmaSourceBus::External => DmaBusState::external_bus_blocked(Some(
                         progress.transfer().memory_region_impact(),
-                    )),
+                    ))
+                    .with_cpu_conflict_source_address(cpu_conflict_source_address),
                     DmaSourceBus::VideoRam => DmaBusState::video_bus_blocked(Some(
                         progress.transfer().memory_region_impact(),
-                    )),
+                    ))
+                    .with_cpu_conflict_source_address(cpu_conflict_source_address),
                 }
             }
         }

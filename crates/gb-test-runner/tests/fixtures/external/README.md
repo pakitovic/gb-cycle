@@ -48,6 +48,10 @@ statuses do not appear in the table.
   source family: `daid`
   current status: exploratory, not repo-gated
   oracle mix: framebuffer fixture, framebuffer fixture set, and informational framebuffer capture
+- `hacktix-dmg-curated`
+  source family: `hacktix`
+  current status: exploratory, not repo-gated
+  oracle mix: framebuffer fixture
 - `mealybug-tearoom-dmg-curated`
   source family: `mealybug-tearoom-tests`
   current status: exploratory, not repo-gated
@@ -70,19 +74,20 @@ make fetch-test-roms FAMILIES="blargg acid"
 Run the repo-gated external DMG block:
 
 ```bash
-make test
+make test-roms
 ```
 
-Run the exploratory curated Mealybug or Mooneye families:
+Run the exploratory curated families:
 
 ```bash
 make run-daid
-make test-mealybug
-make test-mooneye
+make run-hacktix
+make run-mealybug
+make run-mooneye
 ```
 
 Those exploratory targets update `/.roms/test/test-report.md` even when the
-suite still contains failing ROM cases, and each `make test-*` target
+suite still contains failing ROM cases, and each `make run-*` target
 materializes its own family before executing.
 
 Run one curated family directly and update the report:

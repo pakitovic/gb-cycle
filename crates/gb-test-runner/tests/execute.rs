@@ -59,6 +59,26 @@ fn build_serial_from_address_rom(address: u16) -> Vec<u8> {
     ])
 }
 
+fn build_lcd_off_then_serial_from_address_rom(address: u16) -> Vec<u8> {
+    build_test_rom(&[
+        0xAF, // XOR A
+        0xE0,
+        0x40, // LDH (LCDC),A
+        0xFA,
+        address as u8,
+        (address >> 8) as u8, // LD A,(a16)
+        0xE0,
+        0x01, // LDH (SB),A
+        0x3E,
+        0x81, // LD A,$81
+        0xE0,
+        0x02, // LDH (SC),A
+        0xC3,
+        0x0B,
+        0x01, // JP $010B
+    ])
+}
+
 fn build_unsupported_opcode_rom(opcode: u8) -> Vec<u8> {
     build_test_rom(&[
         opcode, // unsupported opcode at entry
@@ -248,6 +268,63 @@ fn runner_applies_startup_memory_writes_before_execution() {
     let report = RomRunner::new()
         .run_case(&case)
         .expect("startup memory write case should execute");
+
+    assert_eq!(report.outcome, RomCaseOutcome::Passed);
+    assert_eq!(report.artifacts.serial.as_deref(), Some("Z"));
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn runner_applies_startup_memory_writes_to_vram_before_execution() {
+    let temp_dir = unique_temp_dir("startup-memory-write-vram");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let rom_path = temp_dir.join("startup_memory_write_vram.gb");
+    fs::write(&rom_path, build_serial_from_address_rom(0x8010))
+        .expect("startup memory write vram test rom should be writable");
+
+    let case = RomTestCase::new(
+        "startup-memory-write-vram",
+        &rom_path,
+        Timeout::TCycles(5_000),
+        PassCondition::SerialContains("Z".to_string()),
+    )
+    .with_startup_memory_write(StartupMemoryWrite::new(0x8010, b'Z'));
+
+    let report = RomRunner::new()
+        .run_case(&case)
+        .expect("startup memory write vram case should execute");
+
+    assert_eq!(report.outcome, RomCaseOutcome::Passed);
+    assert_eq!(report.artifacts.serial.as_deref(), Some("Z"));
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn runner_can_read_startup_seeded_vram_after_disabling_lcd() {
+    let temp_dir = unique_temp_dir("startup-memory-write-vram-lcd-off");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let rom_path = temp_dir.join("startup_memory_write_vram_lcd_off.gb");
+    fs::write(
+        &rom_path,
+        build_lcd_off_then_serial_from_address_rom(0x8010),
+    )
+    .expect("startup memory write vram lcd-off test rom should be writable");
+
+    let case = RomTestCase::new(
+        "startup-memory-write-vram-lcd-off",
+        &rom_path,
+        Timeout::TCycles(5_000),
+        PassCondition::SerialContains("Z".to_string()),
+    )
+    .with_startup_memory_write(StartupMemoryWrite::new(0x8010, b'Z'));
+
+    let report = RomRunner::new()
+        .run_case(&case)
+        .expect("startup memory write vram lcd-off case should execute");
 
     assert_eq!(report.outcome, RomCaseOutcome::Passed);
     assert_eq!(report.artifacts.serial.as_deref(), Some("Z"));

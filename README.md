@@ -101,9 +101,11 @@ make fetch-test-roms
 make fetch-test-roms FAMILIES=blargg
 make fetch-test-roms FAMILIES="blargg acid"
 make test-roms
+make test-roms-all
 make run-blargg
 make run-acid
 make run-daid
+make run-hacktix
 make run-mealybug
 make run-mooneye
 ```
@@ -120,6 +122,7 @@ make run-mooneye
   `/.roms/test/acid/`,
   `/.roms/test/blargg/`,
   `/.roms/test/daid/`,
+  `/.roms/test/hacktix/`,
   `/.roms/test/mealybug-tearoom-tests/`,
   `/.roms/test/mooneye/`
 - each curated family directory contains only the ROMs currently listed in the
@@ -156,6 +159,8 @@ make run-mooneye
   `/.roms/test/test-report.md`
 - each `make run-*` target is autosufficient and materializes its own curated
   family before execution
+- `make run-hacktix` runs the current exploratory `hacktix` DMG subset and
+  updates `/.roms/test/test-report.md`
 - `make run-mealybug` runs the current exploratory `mealybug-tearoom` DMG
   subset and updates `/.roms/test/test-report.md`
 - `make run-mooneye` runs the current exploratory `mooneye` DMG acceptance
@@ -180,6 +185,9 @@ make run-mooneye
   it mixes framebuffer fixtures, one multi-fixture framebuffer oracle for
   `ppu_scanline_bgp.gb`, and one informational framebuffer capture case
   `rom_and_ram.gb`
+- one exploratory `hacktix` DMG subset is also integrated as
+  `hacktix-dmg-curated`; it currently tracks `bully.gb` and
+  `strikethrough.gb` from `GBEmulatorShootout` and uses framebuffer fixtures
 - if `GB_CYCLE_TEST_ROM_ROOT` is unset, `gb-test-runner` falls back to the
   default curated store automatically
 - keep private commercial ROMs out of that path; use the separate gitignored
