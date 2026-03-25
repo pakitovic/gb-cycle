@@ -575,23 +575,17 @@ mod tests {
     }
 
     fn build_curated_source(git_url: String, git_rev: String, root: &Path) -> ExternalRomSource {
-        let required_files = [
-            "testroms/acid/dmg-acid2.gb",
-            "testroms/blargg/cpu_instrs/01-special.gb",
-            "testroms/daid/ppu_scanline_bgp.gb",
-            "testroms/hacktix/bully.gb",
-            "testroms/mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb",
-            "testroms/mooneye/acceptance/add_sp_e_timing.gb",
-        ]
-        .into_iter()
-        .map(|path| ExternalRomRequiredFile {
-            path: PathBuf::from(path),
-            sha256: sha256_hex(
-                &fs::read(root.join(path))
-                    .expect("required curated source file should be readable"),
-            ),
-        })
-        .collect();
+        let required_files = curated_test_rom_family_suites()
+            .into_iter()
+            .flat_map(|suite| suite.cases.into_iter().map(|case| case.rom_path))
+            .map(|path| ExternalRomRequiredFile {
+                path: PathBuf::from("testroms").join(&path),
+                sha256: sha256_hex(
+                    &fs::read(root.join("testroms").join(&path))
+                        .expect("required curated source file should be readable"),
+                ),
+            })
+            .collect();
 
         ExternalRomSource {
             id: "gbemu-shootout".to_string(),
