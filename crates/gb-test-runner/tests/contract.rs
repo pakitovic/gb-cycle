@@ -673,7 +673,7 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
     assert_eq!(suite.subsystem, TestSubsystem::Ppu);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
-    assert_eq!(suite.cases.len(), 10);
+    assert_eq!(suite.cases.len(), 24);
     assert!(suite.cases.iter().all(|case| {
         case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
             && case.capture_plan.contains(CaptureKind::Framebuffer)
@@ -695,6 +695,18 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
             .cases
             .iter()
             .any(|case| case.id == "mealybug-m3-window-timing-wx-0")
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.id == "mealybug-m3-lcdc-bg-en-change")
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.id == "mealybug-m3-wx-6-change")
     );
     let obp0_change = suite
         .cases
@@ -750,27 +762,124 @@ fn curated_hacktix_suite_tracks_the_active_dmg_framebuffer_cases() {
 }
 
 #[test]
-fn curated_mooneye_suite_uses_snapshot_oracles_and_serial_diagnostics_for_the_active_gbemu_acceptance_list()
- {
+fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specific_oracles() {
     let suite = mooneye_acceptance_dmg_curated_suite();
 
     assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("mooneye"));
-    assert_eq!(suite.cases.len(), 66);
+    assert_eq!(suite.cases.len(), 95);
+    let expected_rom_paths = [
+        "mooneye/acceptance/add_sp_e_timing.gb",
+        "mooneye/acceptance/bits/mem_oam.gb",
+        "mooneye/acceptance/bits/reg_f.gb",
+        "mooneye/acceptance/bits/unused_hwio-GS.gb",
+        "mooneye/acceptance/boot_div-dmgABCmgb.gb",
+        "mooneye/acceptance/boot_hwio-dmgABCmgb.gb",
+        "mooneye/acceptance/boot_regs-dmgABC.gb",
+        "mooneye/acceptance/call_cc_timing.gb",
+        "mooneye/acceptance/call_cc_timing2.gb",
+        "mooneye/acceptance/call_timing.gb",
+        "mooneye/acceptance/call_timing2.gb",
+        "mooneye/acceptance/div_timing.gb",
+        "mooneye/acceptance/di_timing-GS.gb",
+        "mooneye/acceptance/ei_sequence.gb",
+        "mooneye/acceptance/ei_timing.gb",
+        "mooneye/acceptance/halt_ime0_ei.gb",
+        "mooneye/acceptance/halt_ime0_nointr_timing.gb",
+        "mooneye/acceptance/halt_ime1_timing.gb",
+        "mooneye/acceptance/halt_ime1_timing2-GS.gb",
+        "mooneye/acceptance/if_ie_registers.gb",
+        "mooneye/acceptance/instr/daa.gb",
+        "mooneye/acceptance/interrupts/ie_push.gb",
+        "mooneye/acceptance/intr_timing.gb",
+        "mooneye/acceptance/jp_cc_timing.gb",
+        "mooneye/acceptance/jp_timing.gb",
+        "mooneye/acceptance/ld_hl_sp_e_timing.gb",
+        "mooneye/acceptance/oam_dma/basic.gb",
+        "mooneye/acceptance/oam_dma/reg_read.gb",
+        "mooneye/acceptance/oam_dma/sources-GS.gb",
+        "mooneye/acceptance/oam_dma_restart.gb",
+        "mooneye/acceptance/oam_dma_start.gb",
+        "mooneye/acceptance/oam_dma_timing.gb",
+        "mooneye/acceptance/pop_timing.gb",
+        "mooneye/acceptance/ppu/hblank_ly_scx_timing-GS.gb",
+        "mooneye/acceptance/ppu/intr_1_2_timing-GS.gb",
+        "mooneye/acceptance/ppu/intr_2_0_timing.gb",
+        "mooneye/acceptance/ppu/intr_2_mode0_timing.gb",
+        "mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb",
+        "mooneye/acceptance/ppu/intr_2_mode3_timing.gb",
+        "mooneye/acceptance/ppu/intr_2_oam_ok_timing.gb",
+        "mooneye/acceptance/ppu/lcdon_timing-GS.gb",
+        "mooneye/acceptance/ppu/lcdon_write_timing-GS.gb",
+        "mooneye/acceptance/ppu/stat_irq_blocking.gb",
+        "mooneye/acceptance/ppu/stat_lyc_onoff.gb",
+        "mooneye/acceptance/ppu/vblank_stat_intr-GS.gb",
+        "mooneye/acceptance/push_timing.gb",
+        "mooneye/acceptance/rapid_di_ei.gb",
+        "mooneye/acceptance/reti_intr_timing.gb",
+        "mooneye/acceptance/reti_timing.gb",
+        "mooneye/acceptance/ret_cc_timing.gb",
+        "mooneye/acceptance/ret_timing.gb",
+        "mooneye/acceptance/rst_timing.gb",
+        "mooneye/acceptance/serial/boot_sclk_align-dmgABCmgb.gb",
+        "mooneye/acceptance/timer/div_write.gb",
+        "mooneye/acceptance/timer/rapid_toggle.gb",
+        "mooneye/acceptance/timer/tim00.gb",
+        "mooneye/acceptance/timer/tim00_div_trigger.gb",
+        "mooneye/acceptance/timer/tim01.gb",
+        "mooneye/acceptance/timer/tim01_div_trigger.gb",
+        "mooneye/acceptance/timer/tim10.gb",
+        "mooneye/acceptance/timer/tim10_div_trigger.gb",
+        "mooneye/acceptance/timer/tim11.gb",
+        "mooneye/acceptance/timer/tim11_div_trigger.gb",
+        "mooneye/acceptance/timer/tima_reload.gb",
+        "mooneye/acceptance/timer/tima_write_reloading.gb",
+        "mooneye/acceptance/timer/tma_write_reloading.gb",
+        "mooneye/emulator-only/mbc1/bits_bank1.gb",
+        "mooneye/emulator-only/mbc1/bits_bank2.gb",
+        "mooneye/emulator-only/mbc1/bits_mode.gb",
+        "mooneye/emulator-only/mbc1/bits_ramg.gb",
+        "mooneye/emulator-only/mbc1/multicart_rom_8Mb.gb",
+        "mooneye/emulator-only/mbc1/ram_256kb.gb",
+        "mooneye/emulator-only/mbc1/ram_64kb.gb",
+        "mooneye/emulator-only/mbc1/rom_16Mb.gb",
+        "mooneye/emulator-only/mbc1/rom_1Mb.gb",
+        "mooneye/emulator-only/mbc1/rom_2Mb.gb",
+        "mooneye/emulator-only/mbc1/rom_4Mb.gb",
+        "mooneye/emulator-only/mbc1/rom_512kb.gb",
+        "mooneye/emulator-only/mbc1/rom_8Mb.gb",
+        "mooneye/emulator-only/mbc2/bits_ramg.gb",
+        "mooneye/emulator-only/mbc2/bits_romb.gb",
+        "mooneye/emulator-only/mbc2/bits_unused.gb",
+        "mooneye/emulator-only/mbc2/ram.gb",
+        "mooneye/emulator-only/mbc2/rom_1Mb.gb",
+        "mooneye/emulator-only/mbc2/rom_2Mb.gb",
+        "mooneye/emulator-only/mbc2/rom_512kb.gb",
+        "mooneye/emulator-only/mbc5/rom_16Mb.gb",
+        "mooneye/emulator-only/mbc5/rom_1Mb.gb",
+        "mooneye/emulator-only/mbc5/rom_2Mb.gb",
+        "mooneye/emulator-only/mbc5/rom_32Mb.gb",
+        "mooneye/emulator-only/mbc5/rom_4Mb.gb",
+        "mooneye/emulator-only/mbc5/rom_512kb.gb",
+        "mooneye/emulator-only/mbc5/rom_64Mb.gb",
+        "mooneye/emulator-only/mbc5/rom_8Mb.gb",
+        "mooneye/manual-only/sprite_priority.gb",
+    ];
+    let expected_rom_paths = expected_rom_paths
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let actual_rom_paths = suite
+        .cases
+        .iter()
+        .map(|case| case.rom_path.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(actual_rom_paths, expected_rom_paths);
     assert!(suite.cases.iter().all(|case| {
         case.console_model == ConsoleModel::Dmg
             && case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-            && case.rom_path.starts_with(Path::new("mooneye/acceptance"))
-            && case.capture_plan
-                == CapturePlan::new()
-                    .with_capture(CaptureKind::Snapshot)
-                    .with_capture(CaptureKind::Serial)
-            && case.failure_artifacts
-                == FailureArtifactPolicy::new()
-                    .with_artifact(CaptureKind::Snapshot)
-                    .with_artifact(CaptureKind::Serial)
-            && matches!(case.pass_condition, PassCondition::MooneyeResult)
+            && case.rom_path.starts_with(Path::new("mooneye"))
     }));
     assert!(!suite.cases.iter().any(|case| {
         let path = case.rom_path.to_string_lossy();
@@ -791,6 +900,62 @@ fn curated_mooneye_suite_uses_snapshot_oracles_and_serial_diagnostics_for_the_ac
             .iter()
             .any(|case| case.id == "mooneye-timer-tma-write-reloading")
     );
+    let mbc1_bits_ramg = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "mooneye-emulator-only-mbc1-bits-ramg")
+        .expect("mooneye suite should include emulator-only mbc1 bits_ramg");
+    assert_eq!(mbc1_bits_ramg.timeout, Timeout::Frames(780));
+    let mbc2_bits_ramg = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "mooneye-emulator-only-mbc2-bits-ramg")
+        .expect("mooneye suite should include emulator-only mbc2 bits_ramg");
+    assert_eq!(mbc2_bits_ramg.timeout, Timeout::Frames(900));
+    let mbc1_multicart = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "mooneye-emulator-only-mbc1-multicart-rom-8mb")
+        .expect("mooneye suite should include emulator-only mbc1 multicart_rom_8Mb");
+    assert_eq!(mbc1_multicart.execution_mode, ExecutionMode::Experimental);
+    let sprite_priority = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "mooneye-manual-only-sprite-priority")
+        .expect("mooneye suite should include manual-only sprite_priority");
+    assert_eq!(
+        sprite_priority.capture_plan,
+        CapturePlan::new()
+            .with_capture(CaptureKind::Framebuffer)
+            .with_capture(CaptureKind::Snapshot)
+    );
+    assert_eq!(
+        sprite_priority.failure_artifacts,
+        FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::Framebuffer)
+            .with_artifact(CaptureKind::Snapshot)
+    );
+    assert!(matches!(
+        sprite_priority.pass_condition,
+        PassCondition::FramebufferFixture(_)
+    ));
+    assert_eq!(sprite_priority.execution_mode, ExecutionMode::Strict);
+
+    assert!(suite.cases.iter().all(|case| {
+        if case.id == "mooneye-manual-only-sprite-priority" {
+            matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
+        } else {
+            case.capture_plan
+                == CapturePlan::new()
+                    .with_capture(CaptureKind::Snapshot)
+                    .with_capture(CaptureKind::Serial)
+                && case.failure_artifacts
+                    == FailureArtifactPolicy::new()
+                        .with_artifact(CaptureKind::Snapshot)
+                        .with_artifact(CaptureKind::Serial)
+                && matches!(case.pass_condition, PassCondition::MooneyeResult)
+        }
+    }));
 }
 
 fn trace_fixture_path(case: &RomTestCase) -> &Path {

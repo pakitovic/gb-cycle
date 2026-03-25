@@ -189,20 +189,28 @@ This checklist should move only when one of the following becomes true:
   therefore stays outside `make test`, the `external-roms` workflow, and the
   repo-gated DMG block until its expected green set is explicit and
   intentionally promoted.
-- The current exploratory DMG acceptance lane also includes one non-gated
-  `mooneye` suite under
+- The current exploratory DMG `mooneye` lane also includes one non-gated
+  suite under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`.
   This suite follows the active `GBEmulatorShootout`
-  `testroms/mooneye.py` acceptance catalog rather than inventing a local file
-  list, runs those ROMs on the default DMG model, and uses the upstream
-  `mooneye` pass/fail breakpoint protocol via the documented register
-  signature at `LD B,B` instead of framebuffer fixtures. Because the runner
-  samples once per T-cycle, treat the immediate post-breakpoint `nop; jr -3`
-  halt loop as the same terminal condition when those registers still match
-  the documented pass/fail signature. It is intentionally
-  exploratory for now and therefore stays outside `make test`, the
-  `external-roms` workflow, and the repo-gated DMG block until its failures
-  are triaged and the relevant subsystem lanes turn green.
+  `testroms/mooneye.py` DMG list rather than inventing a local file list: it
+  keeps the upstream `acceptance/*` entries plus the DMG
+  `emulator-only/mbc1/*`, `emulator-only/mbc2/*`, `emulator-only/mbc5/*`, and
+  `manual-only/sprite_priority.gb` cases that appear before the CGB-only
+  `misc/*` block. It runs those ROMs on the default DMG model. Most cases use
+  the upstream `mooneye` pass/fail breakpoint protocol via the documented
+  register signature at `LD B,B`; the single `manual-only/sprite_priority.gb`
+  exception instead uses the committed framebuffer fixture
+  `crates/gb-test-runner/data/fixtures/mooneye/sprite_priority.dmg.png`,
+  matching the upstream manual-test classification and the reference PNG
+  shipped by `GBEmulatorShootout`. Because the runner samples once per
+  T-cycle, treat the immediate post-breakpoint `nop; jr -3` halt loop as the
+  same terminal condition when those registers still match the documented
+  pass/fail signature. It is intentionally exploratory for now and therefore
+  stays outside `make test`, the `external-roms` workflow, and the repo-gated
+  DMG block until its remaining `acceptance/ppu/*` failures are triaged and
+  the experimental `emulator-only/mbc1/multicart_rom_8Mb.gb` heuristic path is
+  either retired or promoted under a documented strict-mode contract.
 - The current early `9.3` MVP also includes one imported-oracle end-of-test
   differential path under
   `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`.
@@ -240,6 +248,7 @@ This checklist should move only when one of the following becomes true:
 - `Experimental` is for research and bring-up; its results must stay segregated from official closure metrics, oracle comparisons, and compatibility claims.
 - Mode-sensitive loader tests should cover the documented category matrix for `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`.
 - When a test exercises heuristics, partial implementations, or manual overrides, the captured artifacts should say so explicitly rather than looking like ordinary strict-mode evidence.
+- Curated ROM manifests may opt individual cases into `experimental` only when the case itself depends on a documented heuristic or partial implementation; that opt-in must live in the manifest, not as a silent suite-wide default or an implicit runner override.
 - Differential comparison against SameBoy should always run under `Strict`, not under `Permissive` or `Experimental`.
 
 ## Validation tooling requirements

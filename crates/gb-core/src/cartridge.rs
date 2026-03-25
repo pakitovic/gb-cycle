@@ -1,4 +1,6 @@
-use crate::model::{CompatibilityPolicy, ExecutionMode, HeuristicPolicy, ValidationPolicy};
+use crate::model::{
+    CompatibilityPolicy, DiagnosticPolicy, ExecutionMode, HeuristicPolicy, ValidationPolicy,
+};
 use crate::scheduler::CycleContext;
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -264,7 +266,7 @@ enum Mbc1Wiring {
 #[allow(dead_code)]
 enum Mbc1Variant {
     Standard,
-    Mbc1MReserved,
+    Mbc1M,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -686,7 +688,7 @@ impl CartridgeSlot {
                     rom_bytes.len(),
                     compatibility,
                     &classification,
-                    &diagnostics,
+                    &mut diagnostics,
                 )?;
 
                 let has_battery = matches!(classification.raw_type(), 0x03);
@@ -1211,6 +1213,11 @@ impl Mbc1Cartridge {
             return 0;
         }
 
+        if self.variant == Mbc1Variant::Mbc1M {
+            let raw_bank = ((self.secondary_bank as usize) << 4) | (translated_low5 & 0x0F);
+            return raw_bank % bank_count;
+        }
+
         match self.wiring {
             Mbc1Wiring::Standard => translated_low5 % bank_count,
             Mbc1Wiring::LargeRom => {
@@ -1223,6 +1230,14 @@ impl Mbc1Cartridge {
     fn effective_low_rom_bank(&self, bank_count: usize) -> usize {
         if bank_count == 0 {
             return 0;
+        }
+
+        if self.variant == Mbc1Variant::Mbc1M {
+            return if self.banking_mode == 0 {
+                0
+            } else {
+                ((self.secondary_bank as usize) << 4) % bank_count
+            };
         }
 
         match self.wiring {
@@ -1239,6 +1254,11 @@ impl Mbc1Cartridge {
 
     fn effective_ram_offset(&self, address: u16) -> usize {
         let base_offset = (address - 0xA000) as usize;
+        let ram_bank_count = self.header.ram_size.bank_count.unwrap_or(0).max(1);
+
+        if self.variant == Mbc1Variant::Mbc1M {
+            return base_offset;
+        }
 
         match self.wiring {
             Mbc1Wiring::Standard => {
@@ -1247,7 +1267,7 @@ impl Mbc1Cartridge {
                 } else {
                     (self.secondary_bank & 0x03) as usize
                 };
-                bank * 0x2000 + base_offset
+                (bank % ram_bank_count) * 0x2000 + base_offset
             }
             Mbc1Wiring::LargeRom => base_offset,
         }
@@ -1344,6 +1364,10 @@ impl Mbc2Cartridge {
     }
 
     fn write_rom(&mut self, address: u16, value: u8) {
+        if address > 0x3FFF {
+            return;
+        }
+
         if address & 0x0100 == 0 {
             self.ram_enabled = value & 0x0F == 0x0A;
         } else {
@@ -2028,6 +2052,15 @@ fn classify_experimental_heuristic(
         .copied()
         .unwrap_or(0x00);
 
+    if is_mbc1m_multicart_signature(header, rom_bytes) {
+        return Some(supported_with_reason(
+            header.cartridge_type,
+            "MBC1M",
+            SupportedCartridgeFamily::Mbc1,
+            "MBC1 multicart classification came from an explicit experimental heuristic path",
+        ));
+    }
+
     if header.cartridge_type == 0xBE {
         return Some(unsupported(
             header.cartridge_type,
@@ -2062,6 +2095,24 @@ fn classify_experimental_heuristic(
     }
 
     None
+}
+
+fn is_mbc1m_multicart_signature(header: &CartridgeHeader, rom_bytes: &[u8]) -> bool {
+    if header.cartridge_type != 0x01 {
+        return false;
+    }
+    if header.rom_size.decoded_bytes != Some(1024 * 1024) || rom_bytes.len() != 1024 * 1024 {
+        return false;
+    }
+    if header.ram_size.raw_code != 0x00 {
+        return false;
+    }
+
+    [0x10usize, 0x20, 0x30].into_iter().all(|bank| {
+        let start = bank * 0x4000 + NINTENDO_LOGO_START;
+        let end = start + NINTENDO_LOGO_LEN;
+        rom_bytes.get(start..end) == Some(header.nintendo_logo.as_slice())
+    })
 }
 
 fn is_ems_multicart_signature(title_bytes: &[u8], raw_type: u8, destination_code: u8) -> bool {
@@ -2217,7 +2268,7 @@ fn validate_mbc1(
     actual_rom_size: usize,
     compatibility: &CompatibilityPolicy,
     classification: &CartridgeClassification,
-    diagnostics: &[CartridgeDiagnostic],
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
 ) -> Result<Mbc1Layout, CartridgeLoadError> {
     let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
         return Err(CartridgeLoadError::Rejected {
@@ -2243,6 +2294,35 @@ fn validate_mbc1(
                 actual_rom_size
             ),
             diagnostics: diagnostics.to_vec(),
+        });
+    }
+
+    if classification.detected_name() == "MBC1M" {
+        if header.ram_size.raw_code != 0x00 {
+            return Err(CartridgeLoadError::Rejected {
+                classification: *classification,
+                execution_mode: compatibility.execution_mode,
+                reason: format!(
+                    "{} currently only supports the no-RAM 1 MiB multicart baseline",
+                    classification.detected_name()
+                ),
+                diagnostics: diagnostics.to_vec(),
+            });
+        }
+
+        if compatibility.diagnostic_policy != DiagnosticPolicy::Quiet {
+            diagnostics.push(CartridgeDiagnostic {
+                severity: CartridgeDiagnosticSeverity::Warning,
+                message: format!(
+                    "{} banking was enabled through an explicit experimental multicart heuristic and remains non-oracle",
+                    classification.detected_name()
+                ),
+            });
+        }
+
+        return Ok(Mbc1Layout {
+            wiring: Mbc1Wiring::LargeRom,
+            variant: Mbc1Variant::Mbc1M,
         });
     }
 
@@ -2602,11 +2682,25 @@ const fn supported(
     detected_name: &'static str,
     family: SupportedCartridgeFamily,
 ) -> CartridgeClassification {
+    supported_with_reason(
+        raw_type,
+        detected_name,
+        family,
+        "supported cartridge family",
+    )
+}
+
+const fn supported_with_reason(
+    raw_type: u8,
+    detected_name: &'static str,
+    family: SupportedCartridgeFamily,
+    reason: &'static str,
+) -> CartridgeClassification {
     CartridgeClassification {
         raw_type,
         detected_name,
         selection: CartridgeSelection::Supported(family),
-        reason: "supported cartridge family",
+        reason,
     }
 }
 
@@ -2674,14 +2768,18 @@ mod tests {
         rom
     }
 
-    fn build_banked_mbc1_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+    fn build_banked_mbc1_rom_with_type(
+        cartridge_type: u8,
+        rom_size_code: u8,
+        ram_size_code: u8,
+    ) -> Vec<u8> {
         let rom_size = RomSizeInfo::decode(rom_size_code)
             .decoded_bytes
             .expect("test ROM size should decode");
         let bank_count = RomSizeInfo::decode(rom_size_code)
             .bank_count
             .expect("test ROM bank count should decode");
-        let mut rom = build_test_rom(rom_size, 0x03, rom_size_code, ram_size_code);
+        let mut rom = build_test_rom(rom_size, cartridge_type, rom_size_code, ram_size_code);
 
         for bank in 0..bank_count {
             let start = bank * 0x4000;
@@ -2690,6 +2788,19 @@ mod tests {
         }
 
         rom
+    }
+
+    fn build_banked_mbc1_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+        build_banked_mbc1_rom_with_type(0x03, rom_size_code, ram_size_code)
+    }
+
+    fn mark_mbc1_multicart_subheaders(rom: &mut [u8]) {
+        let logo = rom[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN].to_vec();
+
+        for bank in [0x10usize, 0x20, 0x30] {
+            let start = bank * 0x4000 + NINTENDO_LOGO_START;
+            rom[start..start + NINTENDO_LOGO_LEN].copy_from_slice(&logo);
+        }
     }
 
     fn build_banked_mbc2_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
@@ -2836,6 +2947,29 @@ mod tests {
         assert_eq!(
             experimental_classification.selection(),
             CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::ExperimentalHeuristic)
+        );
+
+        let mut mbc1m_rom = build_banked_mbc1_rom_with_type(0x01, 0x05, 0x00);
+        mark_mbc1_multicart_subheaders(&mut mbc1m_rom);
+        let mbc1m_header = CartridgeHeader::parse(&mbc1m_rom).expect("header should parse");
+
+        let strict_mbc1m =
+            classify_loaded_cartridge(&mbc1m_header, &mbc1m_rom, &CompatibilityPolicy::strict());
+        assert_eq!(strict_mbc1m.detected_name(), "MBC1");
+        assert_eq!(
+            strict_mbc1m.selection(),
+            CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc1)
+        );
+
+        let experimental_mbc1m = classify_loaded_cartridge(
+            &mbc1m_header,
+            &mbc1m_rom,
+            &CompatibilityPolicy::experimental(),
+        );
+        assert_eq!(experimental_mbc1m.detected_name(), "MBC1M");
+        assert_eq!(
+            experimental_mbc1m.selection(),
+            CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc1)
         );
     }
 
@@ -3028,6 +3162,35 @@ mod tests {
     }
 
     #[test]
+    fn mbc1_standard_8kib_ram_ignores_mode_one_ram_bank_selection() {
+        let rom = build_banked_mbc1_rom(0x01, 0x02);
+        let report =
+            CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
+        let Some(CartridgeDevice::Mbc1(mut cartridge)) = report.cartridge().device.clone() else {
+            panic!("expected MBC1 cartridge");
+        };
+
+        cartridge.write_rom(0x0000, 0x0A);
+        cartridge.write_ram(0xA000, 0x11);
+        cartridge.write_ram(0xB000, 0x22);
+
+        cartridge.write_rom(0x6000, 0x01);
+        for bank in 0..=3 {
+            cartridge.write_rom(0x4000, bank);
+            assert_eq!(cartridge.read_ram(0xA000), 0x11);
+            assert_eq!(cartridge.read_ram(0xB000), 0x22);
+        }
+
+        cartridge.write_rom(0x4000, 0x03);
+        cartridge.write_ram(0xA000, 0x33);
+        cartridge.write_ram(0xB000, 0x44);
+
+        cartridge.write_rom(0x4000, 0x01);
+        assert_eq!(cartridge.read_ram(0xA000), 0x33);
+        assert_eq!(cartridge.read_ram(0xB000), 0x44);
+    }
+
+    #[test]
     fn mbc1_large_rom_high_window_reaches_documented_odd_bank_entries_only() {
         let rom = build_banked_mbc1_rom(0x06, 0x00);
         let report =
@@ -3089,6 +3252,46 @@ mod tests {
         cartridge.write_rom(0x4000, 0x00);
         cartridge.write_rom(0x6000, 0x00);
         assert_eq!(cartridge.read_ram(0xA000), 0x22);
+    }
+
+    #[test]
+    fn experimental_mbc1m_multicart_banking_uses_the_documented_game_select_layout() {
+        let mut rom = build_banked_mbc1_rom_with_type(0x01, 0x05, 0x00);
+        mark_mbc1_multicart_subheaders(&mut rom);
+        let report = CartridgeSlot::load(rom, &CompatibilityPolicy::experimental())
+            .expect("experimental MBC1M should load");
+        let Some(CartridgeDevice::Mbc1(mut cartridge)) = report.cartridge().device.clone() else {
+            panic!("expected MBC1 cartridge");
+        };
+
+        assert_eq!(cartridge.variant, Mbc1Variant::Mbc1M);
+        assert!(report.diagnostics().iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("explicit experimental multicart heuristic")
+        }));
+
+        cartridge.write_rom(0x2000, 0x00);
+        cartridge.write_rom(0x4000, 0x00);
+        assert_eq!(cartridge.read_rom(0x4000), 0x01);
+
+        cartridge.write_rom(0x2000, 0x10);
+        assert_eq!(cartridge.read_rom(0x4000), 0x00);
+
+        cartridge.write_rom(0x2000, 0x00);
+        cartridge.write_rom(0x4000, 0x01);
+        assert_eq!(cartridge.read_rom(0x4000), 0x11);
+
+        cartridge.write_rom(0x2000, 0x10);
+        assert_eq!(cartridge.read_rom(0x4000), 0x10);
+
+        cartridge.write_rom(0x6000, 0x01);
+        cartridge.write_rom(0x4000, 0x02);
+        assert_eq!(cartridge.read_rom(0x0000), 0x20);
+        assert_eq!(cartridge.read_rom(0x4000), 0x20);
+
+        cartridge.write_rom(0x2000, 0x01);
+        assert_eq!(cartridge.read_rom(0x4000), 0x21);
     }
 
     #[test]
@@ -3172,6 +3375,31 @@ mod tests {
         assert_eq!(cartridge.read_ram(0xA000), 0xFB);
         assert_eq!(cartridge.read_ram(0xA200), 0xFB);
         assert_eq!(cartridge.read_ram(0xBFFF), 0xF0);
+    }
+
+    #[test]
+    fn mbc2_ignores_rom_space_writes_outside_the_control_window() {
+        let rom = build_banked_mbc2_rom(0x06, 0x03, 0x00);
+        let report =
+            CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC2 should load");
+        let Some(CartridgeDevice::Mbc2(mut cartridge)) = report.cartridge().device.clone() else {
+            panic!("expected MBC2 cartridge");
+        };
+
+        cartridge.write_rom(0x0000, 0x0A);
+        cartridge.write_ram(0xA000, 0x0B);
+        assert!(cartridge.ram_enabled);
+        assert_eq!(cartridge.read_ram(0xA000), 0xFB);
+
+        cartridge.write_rom(0x0100, 0x03);
+        assert_eq!(cartridge.read_rom(0x4000), 0x03);
+
+        cartridge.write_rom(0x4000, 0x00);
+        cartridge.write_rom(0x4100, 0x01);
+
+        assert!(cartridge.ram_enabled);
+        assert_eq!(cartridge.read_ram(0xA000), 0xFB);
+        assert_eq!(cartridge.read_rom(0x4000), 0x03);
     }
 
     #[test]

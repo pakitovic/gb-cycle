@@ -192,12 +192,68 @@ path = "testroms/mealybug-tearoom-tests/ppu/m3_bgp_change_sprites_dmg_blob.png"
 sha256 = "7ad05d59b3d03a27ee4efa6a3ad614f00d2a2652f7dd188a6ecde2cfcbd0b4e0"
 
 [[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change.gb"
+sha256 = "4bb4ea8076950c1ecaeb8c704ca0568e05bc09d35e114f0cbe77b3b173e3d13b"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change_dmg_blob.png"
+sha256 = "576d75d0b2af8c8e5d86411433a908386ad09cceed62aa59e17e3eac8a687f0a"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change.gb"
+sha256 = "dcb8d7e2c750453d76f47bae25092c9eb79ace1f8c0c3e8e1959ebb8d177d716"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change_dmg_blob.png"
+sha256 = "50f379acec62f7f9cb77a8c9501804405066b51cba8a1fb3b0c716c35d0eab61"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change.gb"
+sha256 = "943be0ef4a104bc71139f21de2321ad4510e32dc756739be0d97fc56ff59e18c"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_dmg_blob.png"
+sha256 = "fe1ef8c9d8f88fa5c1e0a259a356fb457931ded8a89743a25947f866bb88e405"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_variant.gb"
+sha256 = "5beb278323b75201150aadc5abc00d6f12817759f2a4e7206cdd2cd2504a77f3"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_variant_dmg_blob.png"
+sha256 = "2ebd7776d32f331057e97676cd9e660541c436a1dfdfc12e01eadd9c43e0259f"
+
+[[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change.gb"
 sha256 = "1060fbf592ccf28b19c5e8af310f4441c74ca2310faf7f6b024a62a1888d6d2e"
 
 [[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_dmg_blob.png"
 sha256 = "3baa299b931912bd5b7869d83eba02de8d1c996e6fa76793c66fa787748384f9"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx.gb"
+sha256 = "f0ae9a6c51d1ae490a3b492e732ba4080ad92def08a806b4e3953277aaa7291a"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx_dmg_blob.png"
+sha256 = "a32dcd889e89623fc6225f1044043bddec22be533626517ad0d2cb2f3447f11a"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change.gb"
+sha256 = "aef34202485974960b01b80bd5c57686d09e436fb90efb9b7e19686b910998b4"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change_dmg_blob.png"
+sha256 = "89a93cff7409b0b884a4549c4eceb2b246a68e10e0f70a3429842001b9577dd9"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change.gb"
+sha256 = "5d442f4cfcd8f9415697ce748b2f2daf587db3f205831ed2849ad3f80f925f21"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change_dmg_blob.png"
+sha256 = "4a153db0fbec785a92f0f96a8773e6b55e19ece839e2e45ce0bba081cf0d8a81"
 
 [[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple.gb"
@@ -208,6 +264,22 @@ path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_dmg_b
 sha256 = "319c45421dd1264933a48e43bc4181994683a81d4d8a5013af9890e2e8d08428"
 
 [[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_wx.gb"
+sha256 = "0fed492b76695157a794b05cda1217be6cbe81ef4769102c4c5508d89a6fbb23"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_wx_dmg_blob.png"
+sha256 = "93f32c3f5b0ee75d602b3df78fc1c4f172548f2ed36b22d566aa6f5ac870b1c3"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change.gb"
+sha256 = "a4d4a28cb665b55faa256163110ea3f6729d33112aa0a05dfd876eae8f446c05"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change_dmg_blob.png"
+sha256 = "ce22248c5d9e7b519cd8493564a7cbdf874385f8711072029e05e927659821cd"
+
+[[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m3_obp0_change.gb"
 sha256 = "2160b69123091f9b997debef8b314b4277f4a9027eb25a1b8418ea06f87ba6af"
 
@@ -216,12 +288,28 @@ path = "testroms/mealybug-tearoom-tests/ppu/m3_obp0_change_dmg_blob.png"
 sha256 = "5f548ccd0a0e1e979911f00184575f64742e66a601a5f2f9fd814757c62b738a"
 
 [[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_high_5_bits.gb"
+sha256 = "423db91af0f87547ae46690044ef760481f7005033ffc61bd69875b7df96139b"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_high_5_bits_dmg_blob.png"
+sha256 = "21750dfddb16dbbc084032f5361a82782685441eaca93bf67249049bb14b3a1b"
+
+[[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_low_3_bits.gb"
 sha256 = "433e59a9eb9a27c962cd613c24c2f8d728ac9e498233667959eb07995f0fef5f"
 
 [[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m3_scx_low_3_bits_dmg_blob.png"
 sha256 = "a05cd516b63ee547f6a8fa373bdecf46308baa5806be7f55f3eba207c3c03d21"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scy_change.gb"
+sha256 = "0fedb0c33fd400d5f88a35704177e437b7d88f18c81bd5b30c3165b633734c8a"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_scy_change_dmg_blob.png"
+sha256 = "ee06038412da1d8a28dc0913d98c6b7185b13fcebdaabeca7d7f1ff67224aacb"
 
 [[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m3_window_timing.gb"
@@ -240,12 +328,36 @@ path = "testroms/mealybug-tearoom-tests/ppu/m3_window_timing_wx_0_dmg_blob.png"
 sha256 = "12d9d8d6124ec45524b8d0e5b5745c5f5481feea9080d557c9a182132538c869"
 
 [[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change.gb"
+sha256 = "eadfe4369b85994b4401e7e5119272626c6339ecec282848013decf0cb5ea81c"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change_dmg_blob.png"
+sha256 = "dc777d9d941414cdf572c4bf765e055b55602a2968969fdd9cc28e706bb67ad5"
+
+[[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites.gb"
 sha256 = "da10819cb8af5fb8fb31f6f50729e9afe221161a7b5743351a54ca05e9c94fec"
 
 [[source.required_file]]
 path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites_dmg_blob.png"
 sha256 = "3f1e14d890041162df8b8f30c74f6a9423fc3f8d01aec3d5bb7527a9082f910c"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_5_change.gb"
+sha256 = "53a0c14c896cdef68b92ea90e952fe053dcf1d2155251e2e4ed8b48ef22a6d62"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_5_change_dmg_blob.png"
+sha256 = "52e0cc029618912c1f6bb6eb11ea18283c5877d4a4f3adc0b11f926fd34fe4f6"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_6_change.gb"
+sha256 = "efa65cf7a570add7cfcb6d25d7c314359f2a0e6eadcde2e44d53f81d6ba44b0d"
+
+[[source.required_file]]
+path = "testroms/mealybug-tearoom-tests/ppu/m3_wx_6_change_dmg_blob.png"
+sha256 = "fb81b02805dd00dbc3bcdc8f568680d1785d38472a6156336b050103adecf19a"
 
 [[source.required_file]]
 path = "testroms/mooneye/acceptance/add_sp_e_timing.gb"
@@ -510,3 +622,119 @@ sha256 = "6926443024e672651e02a7596680a346d51993b533ba78a3824190199caf8ee8"
 [[source.required_file]]
 path = "testroms/mooneye/acceptance/timer/tma_write_reloading.gb"
 sha256 = "54d350d594b9545f4a27d3c326879c8938e75cda9d5b1716bebe7554a4c6a4c9"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/bits_bank1.gb"
+sha256 = "1c56f52170f7c1e3719e1a2a631def4ff5b259b37a16cb97d135e92e6e2637c0"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/bits_bank2.gb"
+sha256 = "a3afb560678baba5ff1ce3fdd2c61a8cd238cfb5f5e498a31eee4160af3645c3"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/bits_mode.gb"
+sha256 = "5d36d817c1a956f9aa8fdc6257881de89d8b6abbb617c707c6a4ffbd8c417f32"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/bits_ramg.gb"
+sha256 = "ea777dadc7045811e0e88232b121216c54d1402be20b80ceba6b2cb5cd865622"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/multicart_rom_8Mb.gb"
+sha256 = "6050a29df05d39d9f303f4223cf8128e3eb59246ac96a9c671374b51f6241174"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/ram_256kb.gb"
+sha256 = "02e523264de9d218ebc632290d7c84f7ff660e246e6c754353c9da834bd4693c"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/ram_64kb.gb"
+sha256 = "3afc730e90b68be3728a5a4fc0e7642075cd35d7367cfed11ce8a4916df46e84"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_16Mb.gb"
+sha256 = "9a664e6a48ae1d49232cdd87de91b2f26f8410b1a6661a03cac0b5987cd87844"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_1Mb.gb"
+sha256 = "d0472027ba2788718aabd5e1a6080bc620c082796dc9c0264d620baca585e155"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_2Mb.gb"
+sha256 = "9037359df31ec5df7186f599c1f874f4543ef9453f75138af0b52b8bf3dade20"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_4Mb.gb"
+sha256 = "d90f05a7347ee68d8bc28b6e61935a30a59856778fefd58c53c6f89181d0b667"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_512kb.gb"
+sha256 = "f88b564f3683f77338688dd3e5ebe1cc1ce639c1dd369372c6fc2d154cab52af"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc1/rom_8Mb.gb"
+sha256 = "5a9f966587c8611cc7e6f32008323b9fbe833ce21415aea4320368ce623c1237"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc2/bits_ramg.gb"
+sha256 = "8c93ecff69765b00b1a8a8b179ced4a7cc358cc3000764a33c603e0236259f68"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc2/bits_romb.gb"
+sha256 = "36f57b37bfec131866a22192d34a061bef3e0aeef211b566425ffcb1a89efd1e"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc2/bits_unused.gb"
+sha256 = "807ca2feb6df47b67207c531addbe9a6461e61c976bd3fb93645690db3df3c17"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc2/ram.gb"
+sha256 = "dfeda458eb071604361ba910e5fc853075b8d995f2036fd0c388956736366347"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc2/rom_1Mb.gb"
+sha256 = "4c410bea1c51ac9ee4b6703ccfe1841de5380e7e91ee16778683d1632bc647e5"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc2/rom_2Mb.gb"
+sha256 = "18bbff553536b154e3d2e39b3d50b56c7d37d3ea052b36d77fb8fc6f8cb21030"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc2/rom_512kb.gb"
+sha256 = "9cf901a73c14b4712d55c9f5e5ddd427635e402037a8f475b4927407a38ca70a"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_16Mb.gb"
+sha256 = "e8a8985d5fe0678736801bda1212b1f8315c2576a222986c126c925adda1639e"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_1Mb.gb"
+sha256 = "5953ad08d4f373d86594a03d7e464832b490d4101e262e25830de2945f3e532b"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_2Mb.gb"
+sha256 = "7fa4b09f39a81df011e5a811573a5b15ec18ef090e845ad924e8fbaed4d92e00"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_32Mb.gb"
+sha256 = "ecae4cef9c140c66be661ee5acda31d6041a1f909ad4875ea8a1c8ce66507ca3"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_4Mb.gb"
+sha256 = "7ac643d2619847c5bc302f32ad516cd6a8af501d11197b2d40b40d00c8c3c8c2"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_512kb.gb"
+sha256 = "024304ba4f060a63aec4f24bd622be08fe69f25a2e669a06710afe86eeede774"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_64Mb.gb"
+sha256 = "0f7cf67e33e68777e95d5dd4ea4b3f8a74ad761e9d0825e87a48ccf1afeb1f0f"
+
+[[source.required_file]]
+path = "testroms/mooneye/emulator-only/mbc5/rom_8Mb.gb"
+sha256 = "cba4b8b3a18f3a40c4b094119a88bb12ecb7c3bfc60d95f6c8db3d1eaa1f14cc"
+
+[[source.required_file]]
+path = "testroms/mooneye/manual-only/sprite_priority.gb"
+sha256 = "789024c8e81e252a289edf6c80bd0bc9cccfa54bc23f7dfe388dfe88f990f94e"
