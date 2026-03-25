@@ -328,9 +328,22 @@ impl<S: TraceSink> Machine<S> {
                     });
                 }
                 SchedulerPhase::AutonomousPeripheralTicks => {
-                    ppu.tick_t_cycle(context, bus.oam_bytes(), bus.vram_bytes());
-                    serial.tick_t_cycle(context);
                     let dma_transfer_work = dma.tick_t_cycle(context);
+                    let dma_oam_conflict_address = dma_transfer_work.and_then(|transfer_work| {
+                        let destination_address = transfer_work.destination_address();
+                        (0xFE00..=0xFE9F)
+                            .contains(&destination_address)
+                            .then_some(destination_address)
+                    });
+                    let dma_oam_active = dma.bus_state().active_region().is_some();
+                    ppu.tick_t_cycle(
+                        context,
+                        bus.oam_bytes(),
+                        bus.vram_bytes(),
+                        dma_oam_active,
+                        dma_oam_conflict_address,
+                    );
+                    serial.tick_t_cycle(context);
                     if let Some(transfer_work) = dma_transfer_work {
                         let arbitration_state = BusArbitrationState::default()
                             .with_boot_rom(boot.bus_state())

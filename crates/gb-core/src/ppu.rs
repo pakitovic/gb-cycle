@@ -494,6 +494,8 @@ impl Ppu {
         _context: &mut CycleContext,
         oam_bytes: &[u8],
         vram_bytes: &[u8],
+        dma_oam_active: bool,
+        dma_oam_conflict_address: Option<u16>,
     ) {
         if !self.is_lcd_enabled() {
             return;
@@ -504,8 +506,8 @@ impl Ppu {
         self.line_dot += 1;
         self.advance_lcd_restart_phase();
         self.prepare_visible_scanline_state();
-        self.advance_mode2_scan(oam_bytes);
-        self.advance_mode3_pipeline(vram_bytes);
+        self.advance_mode2_scan(oam_bytes, dma_oam_active);
+        self.advance_mode3_pipeline(oam_bytes, vram_bytes, dma_oam_conflict_address);
 
         if self.line_dot == DOTS_PER_SCANLINE {
             let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
@@ -523,7 +525,7 @@ impl Ppu {
             if self.ly >= VISIBLE_SCANLINES {
                 self.window_state.reset();
             }
-            self.mode2_scan_state.reset();
+            self.mode2_scan_state.reset_scanline();
             self.bg_pipeline_state.reset();
             self.obj_pipeline_state.reset();
             self.current_scanline_pixels.fill(0);
@@ -749,7 +751,7 @@ impl Ppu {
             .apply(self.console_model, row, event, oam_bytes)
     }
 
-    fn advance_mode2_scan(&mut self, oam_bytes: &[u8]) {
+    fn advance_mode2_scan(&mut self, oam_bytes: &[u8], dma_oam_active: bool) {
         let raster_state = self.current_raster_state();
 
         if self.ly >= VISIBLE_SCANLINES
@@ -768,9 +770,28 @@ impl Ppu {
             return;
         }
 
-        let sprite = match read_oam_sprite(oam_bytes, oam_index) {
-            Some(sprite) => sprite,
-            None => return,
+        let nominal_sprite = read_oam_sprite(oam_bytes, oam_index);
+        let sprite = if dma_oam_active && self.console_model.is_dmg_family() {
+            let Some((y, x)) = self.mode2_scan_state.latched_oam_word() else {
+                return;
+            };
+            let (tile_index, attributes) = nominal_sprite
+                .map(|sprite| (sprite.tile_index, sprite.attributes))
+                .unwrap_or((0xFF, 0xFF));
+            PpuSelectedSprite {
+                oam_index,
+                y,
+                x,
+                tile_index,
+                attributes,
+            }
+        } else {
+            let sprite = match nominal_sprite {
+                Some(sprite) => sprite,
+                None => return,
+            };
+            self.mode2_scan_state.latch_oam_word(sprite.y, sprite.x);
+            sprite
         };
 
         if sprite_matches_line(sprite, self.ly, self.current_obj_height()) {
@@ -802,7 +823,12 @@ impl Ppu {
             .prepare_window_line(wy_latch, force_x0_this_line);
     }
 
-    fn advance_mode3_pipeline(&mut self, vram_bytes: &[u8]) {
+    fn advance_mode3_pipeline(
+        &mut self,
+        oam_bytes: &[u8],
+        vram_bytes: &[u8],
+        dma_oam_conflict_address: Option<u16>,
+    ) {
         if self.ly >= VISIBLE_SCANLINES
             || self.line_dot < MODE2_DOTS
             || self.line_dot >= self.current_mode0_start_dot()
@@ -819,7 +845,7 @@ impl Ppu {
         }
 
         self.maybe_start_object_fetch();
-        if self.advance_object_fetch(vram_bytes) {
+        if self.advance_object_fetch(oam_bytes, vram_bytes, dma_oam_conflict_address) {
             return;
         }
 
@@ -1036,7 +1062,12 @@ impl Ppu {
         self.bg_pipeline_state.pre_visible_obj_match_x += 1;
     }
 
-    fn advance_object_fetch(&mut self, vram_bytes: &[u8]) -> bool {
+    fn advance_object_fetch(
+        &mut self,
+        oam_bytes: &[u8],
+        vram_bytes: &[u8],
+        dma_oam_conflict_address: Option<u16>,
+    ) -> bool {
         if self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle {
             return false;
         }
@@ -1059,29 +1090,39 @@ impl Ppu {
 
         self.obj_pipeline_state.fetch.stage_dot = 0;
         let fetch = self.obj_pipeline_state.fetch;
-        let sprite = fetch
-            .sprite
-            .expect("active OBJ fetch must carry a sprite payload");
 
         match fetch.stage {
             PpuObjFetcherStage::Idle => {}
             PpuObjFetcherStage::Startup => {
+                let resolved_sprite = fetch.sprite.map(|sprite| {
+                    self.resolve_obj_fetch_sprite(oam_bytes, sprite, dma_oam_conflict_address)
+                });
+                self.obj_pipeline_state.fetch.resolved_sprite = resolved_sprite;
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataLow;
             }
             PpuObjFetcherStage::TileDataLow => {
+                let resolved_sprite = fetch
+                    .resolved_sprite
+                    .expect("active OBJ fetch must resolve tile metadata before reading tile data");
                 self.obj_pipeline_state.fetch.tile_low =
-                    self.read_obj_tile_data_byte(vram_bytes, sprite, 0);
+                    self.read_obj_tile_data_byte(vram_bytes, resolved_sprite, 0);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
             }
             PpuObjFetcherStage::TileDataHigh => {
+                let resolved_sprite = fetch
+                    .resolved_sprite
+                    .expect("active OBJ fetch must resolve tile metadata before reading tile data");
                 self.obj_pipeline_state.fetch.tile_high =
-                    self.read_obj_tile_data_byte(vram_bytes, sprite, 1);
+                    self.read_obj_tile_data_byte(vram_bytes, resolved_sprite, 1);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
             }
             PpuObjFetcherStage::Push => {
+                let resolved_sprite = fetch
+                    .resolved_sprite
+                    .expect("active OBJ fetch must keep resolved metadata until FIFO push");
                 if !fetch.cancelled && self.obj_enabled() {
                     self.push_obj_pixels(
-                        sprite,
+                        resolved_sprite,
                         fetch.tile_low,
                         fetch.tile_high,
                         self.bg_pipeline_state.visible_pixels_output,
@@ -1110,6 +1151,23 @@ impl Ppu {
                 self.bg_pipeline_state.fetcher.stage,
                 PpuBgFetcherStage::TileIndex
             )
+    }
+
+    fn resolve_obj_fetch_sprite(
+        &mut self,
+        oam_bytes: &[u8],
+        sprite: PpuSelectedSprite,
+        dma_oam_conflict_address: Option<u16>,
+    ) -> PpuSelectedSprite {
+        let (tile_index, attributes) =
+            read_obj_fetch_sprite_metadata(oam_bytes, sprite, dma_oam_conflict_address);
+        self.mode2_scan_state.latch_oam_word(tile_index, attributes);
+
+        PpuSelectedSprite {
+            tile_index,
+            attributes,
+            ..sprite
+        }
     }
 
     fn window_trigger_x_for_current_line(&self) -> Option<u8> {
@@ -1871,6 +1929,7 @@ impl ObjPipelineState {
         self.fetch.stage_dot = 0;
         self.fetch.sprite_slot = sprite_slot;
         self.fetch.sprite = Some(sprite);
+        self.fetch.resolved_sprite = None;
         self.fetch.cancelled = false;
         self.fetch.tile_low = 0;
         self.fetch.tile_high = 0;
@@ -1891,6 +1950,7 @@ struct ObjFetchState {
     stage_dot: u8,
     sprite_slot: u8,
     sprite: Option<PpuSelectedSprite>,
+    resolved_sprite: Option<PpuSelectedSprite>,
     cancelled: bool,
     tile_low: u8,
     tile_high: u8,
@@ -1954,13 +2014,19 @@ struct Mode2ScanState {
     scanned_entries: u8,
     selected_sprite_count: u8,
     selected_sprites: [Option<PpuSelectedSprite>; MAX_SELECTED_SPRITES_PER_LINE],
+    latched_oam_word: Option<(u8, u8)>,
 }
 
 impl Mode2ScanState {
-    fn reset(&mut self) {
+    fn reset_scanline(&mut self) {
         self.scanned_entries = 0;
         self.selected_sprite_count = 0;
         self.selected_sprites.fill(None);
+    }
+
+    fn reset(&mut self) {
+        self.reset_scanline();
+        self.latched_oam_word = None;
     }
 
     fn scanned_entries(&self) -> u8 {
@@ -1969,6 +2035,14 @@ impl Mode2ScanState {
 
     fn increment_scanned_entries(&mut self) {
         self.scanned_entries += 1;
+    }
+
+    fn latch_oam_word(&mut self, first: u8, second: u8) {
+        self.latched_oam_word = Some((first, second));
+    }
+
+    fn latched_oam_word(&self) -> Option<(u8, u8)> {
+        self.latched_oam_word
     }
 
     fn selected_sprite_count(&self) -> u8 {
@@ -2011,6 +2085,7 @@ impl Default for Mode2ScanState {
             scanned_entries: 0,
             selected_sprite_count: 0,
             selected_sprites: [None; MAX_SELECTED_SPRITES_PER_LINE],
+            latched_oam_word: None,
         }
     }
 }
@@ -2083,6 +2158,29 @@ fn read_oam_sprite(oam_bytes: &[u8], oam_index: u8) -> Option<PpuSelectedSprite>
         tile_index: entry[2],
         attributes: entry[3],
     })
+}
+
+fn read_obj_fetch_sprite_metadata(
+    oam_bytes: &[u8],
+    sprite: PpuSelectedSprite,
+    dma_oam_conflict_address: Option<u16>,
+) -> (u8, u8) {
+    let nominal_word_address = 0xFE00_u16 + sprite.oam_index as u16 * OAM_ENTRY_BYTES as u16 + 2;
+    let word_address = dma_oam_conflict_address
+        .filter(|address| (0xFE00..=0xFE9F).contains(address))
+        .map(|address| address & !0x0001)
+        .unwrap_or(nominal_word_address);
+    let word_offset = word_address.saturating_sub(0xFE00) as usize;
+    let tile_index = oam_bytes
+        .get(word_offset)
+        .copied()
+        .unwrap_or(sprite.tile_index);
+    let attributes = oam_bytes
+        .get(word_offset + 1)
+        .copied()
+        .unwrap_or(sprite.attributes);
+
+    (tile_index, attributes)
 }
 
 fn sprite_matches_line(sprite: PpuSelectedSprite, ly: u8, height: u8) -> bool {
@@ -2165,8 +2263,25 @@ mod tests {
         oam_bytes: &[u8],
         vram_bytes: &[u8],
     ) -> CycleContext {
+        tick_ppu_with_vram_and_dma(ppu, t_cycle, oam_bytes, vram_bytes, false, None)
+    }
+
+    fn tick_ppu_with_vram_and_dma(
+        ppu: &mut Ppu,
+        t_cycle: u64,
+        oam_bytes: &[u8],
+        vram_bytes: &[u8],
+        dma_oam_active: bool,
+        dma_oam_conflict_address: Option<u16>,
+    ) -> CycleContext {
         let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
-        ppu.tick_t_cycle(&mut context, oam_bytes, vram_bytes);
+        ppu.tick_t_cycle(
+            &mut context,
+            oam_bytes,
+            vram_bytes,
+            dma_oam_active,
+            dma_oam_conflict_address,
+        );
         context
     }
 
@@ -3002,6 +3117,73 @@ mod tests {
     }
 
     #[test]
+    fn dmg_mode2_oam_dma_reuses_the_last_latched_oam_word_for_selection() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut oam_bytes = [0; 160];
+
+        write_oam_entry(&mut oam_bytes, 0, 16, 24, 0x20);
+        write_oam_entry(&mut oam_bytes, 1, 0, 0, 0x21);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x80,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+
+        tick_ppu(&mut ppu, 0, &oam_bytes);
+        tick_ppu(&mut ppu, 1, &oam_bytes);
+        tick_ppu_with_vram_and_dma(&mut ppu, 2, &oam_bytes, &[0; TEST_VRAM_BYTES], true, None);
+        tick_ppu_with_vram_and_dma(&mut ppu, 3, &oam_bytes, &[0; TEST_VRAM_BYTES], true, None);
+
+        let snapshot = ppu.snapshot();
+        assert_eq!(snapshot.mode2_scanned_entries, 2);
+        assert_eq!(snapshot.selected_sprites.len(), 2);
+        assert_eq!(snapshot.selected_sprites[1].oam_index, 1);
+        assert_eq!(snapshot.selected_sprites[1].y, 16);
+        assert_eq!(snapshot.selected_sprites[1].x, 24);
+    }
+
+    #[test]
+    fn mode2_scanline_reset_preserves_the_latched_oam_word_for_dma_blocked_reads() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut oam_bytes = [0; 160];
+
+        write_oam_entry(&mut oam_bytes, 0, 0, 0, 0x20);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x80,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.mode2_scan_state.latch_oam_word(16, 79);
+        ppu.mode2_scan_state.reset_scanline();
+
+        tick_ppu_with_vram_and_dma(&mut ppu, 0, &oam_bytes, &[0; TEST_VRAM_BYTES], true, None);
+        tick_ppu_with_vram_and_dma(&mut ppu, 1, &oam_bytes, &[0; TEST_VRAM_BYTES], true, None);
+
+        let snapshot = ppu.snapshot();
+        assert_eq!(snapshot.mode2_scanned_entries, 1);
+        assert_eq!(snapshot.selected_sprites.len(), 1);
+        assert_eq!(snapshot.selected_sprites[0].oam_index, 0);
+        assert_eq!(snapshot.selected_sprites[0].y, 16);
+        assert_eq!(snapshot.selected_sprites[0].x, 79);
+    }
+
+    #[test]
     fn mode2_uses_the_live_lcdc2_size_when_each_oam_entry_is_scanned() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         let mut oam_bytes = [0; 160];
@@ -3372,6 +3554,58 @@ mod tests {
             &snapshot.current_scanline_pixels[10..20],
             &[2, 2, 2, 2, 2, 2, 2, 2, 1, 1]
         );
+    }
+
+    #[test]
+    fn object_fetch_reads_tile_and_attributes_from_live_oam_metadata() {
+        let sprite = PpuSelectedSprite {
+            oam_index: 3,
+            y: 16,
+            x: 24,
+            tile_index: 0x11,
+            attributes: 0x22,
+        };
+        let mut oam_bytes = [0; 160];
+        write_oam_entry_with_attributes(
+            &mut oam_bytes,
+            sprite.oam_index,
+            sprite.y,
+            sprite.x,
+            0x44,
+            0xA0,
+        );
+
+        let (tile_index, attributes) = read_obj_fetch_sprite_metadata(&oam_bytes, sprite, None);
+
+        assert_eq!(tile_index, 0x44);
+        assert_eq!(attributes, 0xA0);
+    }
+
+    #[test]
+    fn object_fetch_uses_the_dma_conflict_word_address_for_late_oam_metadata_reads() {
+        let sprite = PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 24,
+            tile_index: 0x11,
+            attributes: 0x22,
+        };
+        let mut oam_bytes = [0; 160];
+        write_oam_entry_with_attributes(
+            &mut oam_bytes,
+            sprite.oam_index,
+            sprite.y,
+            sprite.x,
+            0x44,
+            0xA0,
+        );
+        write_oam_entry_with_attributes(&mut oam_bytes, 5, 32, 40, 0x99, 0x10);
+
+        let (tile_index, attributes) =
+            read_obj_fetch_sprite_metadata(&oam_bytes, sprite, Some(0xFE17));
+
+        assert_eq!(tile_index, 0x99);
+        assert_eq!(attributes, 0x10);
     }
 
     #[test]

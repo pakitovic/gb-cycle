@@ -27,8 +27,9 @@ pub use boot_rom_verification::{
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
     blargg_dmg_curated_suite, curated_test_rom_families, curated_test_rom_family_suites,
-    daid_dmg_curated_suite, discover_test_rom_store_root, materialize_curated_test_rom_families,
-    materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
+    daid_dmg_curated_suite, discover_test_rom_store_root, hacktix_dmg_curated_suite,
+    materialize_curated_test_rom_families, materialize_curated_test_rom_store, test_rom_store_root,
+    update_curated_test_report,
 };
 pub use differential::{
     DifferentialCaseMismatch, DifferentialCaseOutcome, DifferentialCaseReport,
@@ -2044,7 +2045,7 @@ mod tests {
         BootRomAssets, CaptureKind, CapturedMemoryTextOutput, MOONEYE_FAIL_SIGNATURE,
         MOONEYE_PASS_SIGNATURE, MooneyeTestResult, PassCondition, RomTestCase, RunnerMachine,
         TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, built_in_rom_suite_by_name,
-        detect_mooneye_result, early_phase_9_partial_checklist,
+        detect_mooneye_result, early_phase_9_partial_checklist, hacktix_dmg_curated_suite,
         memory_text_output_completion_reached, mooneye_result_for_signature,
     };
     use gb_core::{
@@ -2229,6 +2230,33 @@ mod tests {
                 .iter()
                 .any(|case| case.id == "mealybug-m3-wx-4-change-sprites")
         );
+    }
+
+    #[test]
+    fn hacktix_bully_startup_profile_seeds_the_expected_boot_logo_vram_bytes() {
+        let suite = hacktix_dmg_curated_suite();
+        let case = suite
+            .cases
+            .into_iter()
+            .find(|case| case.id == "hacktix-bully")
+            .expect("hacktix bully case should exist");
+        let mut machine = RunnerMachine::new(&case, BootRomAssets::none());
+        machine
+            .load_cartridge(build_test_rom(&[0x00]))
+            .expect("fixture rom should load");
+
+        for write in &case.startup_memory_writes {
+            machine.write_bus(write.address, write.value);
+        }
+
+        assert_eq!(machine.read_bus(0x8000), 0x00);
+        assert_eq!(machine.read_bus(0x800F), 0x00);
+        assert_eq!(machine.read_bus(0x8010), 0xF0);
+        assert_eq!(machine.read_bus(0x8011), 0x00);
+        assert_eq!(machine.read_bus(0x819E), 0x3C);
+        assert_eq!(machine.read_bus(0x819F), 0x00);
+        assert_eq!(machine.read_bus(0x9903), 0x00);
+        assert_eq!(machine.read_bus(0x9904), 0x01);
     }
 
     #[test]

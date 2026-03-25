@@ -110,7 +110,7 @@ This checklist should move only when one of the following becomes true:
 - When a ROM needs deterministic host-side interaction, the typed case metadata should also carry the external stimulus schedule explicitly instead of burying that behavior in ad hoc test-only closures.
 - During early Phase `0`, `gb-test-runner` could begin as a contract-only crate, but it should already own typed ROM-case and suite metadata including console model, startup mode, execution mode, emulation-progress timeout, explicit pass/fail rule, external stimulus schedule when needed, requested captures, and retained failure-artifact policy.
 - In the current baseline, `gb-test-runner` is already an executable harness as well: it can load typed suites, run ROMs on the shared T-cycle machine, capture serial / framebuffer / snapshot artifacts, and preserve failure outputs without relying on a frontend.
-- Typed ROM-case metadata may also carry deterministic startup memory writes when a curated oracle depends on one explicit post-boot memory artifact that the current `SkipBoot` baseline does not synthesize yet. Keep that path narrow, document the provenance of the bytes, and prefer boot-derived state such as the DMG trademark tile over ad hoc framebuffer patching. This currently covers curated mealybug cases that intentionally reuse tile `0x19` from the DMG boot ROM instead of uploading their own tile data.
+- Typed ROM-case metadata may also carry deterministic startup memory writes when a curated oracle depends on one explicit post-boot memory artifact that the current `SkipBoot` baseline does not synthesize yet. Keep that path narrow, document the provenance of the bytes, and prefer boot-derived state such as the DMG trademark tile or logo VRAM/map bytes over ad hoc framebuffer patching. This currently covers curated mealybug cases that intentionally reuse tile `0x19` from the DMG boot ROM instead of uploading their own tile data, plus the curated `hacktix/bully.gb` DMG case that checks the boot-derived logo VRAM seed under `SkipBoot`.
 - When a typed suite is landed before its redistributable assets, reserve the exact ROM and trace filenames in the repo with per-phase README stubs so later automation and oracle work reuse one stable target contract instead of inventing new names ad hoc.
 - Repo-managed external ROM assets should keep only one persistent workspace-local
   gitignored layer: the curated runnable store under `/.roms/test/`. Any raw
@@ -179,6 +179,16 @@ This checklist should move only when one of the following becomes true:
   currently red under `Strict` and therefore stays outside `make test`, the
   `external-roms` workflow, and the repo-gated DMG block until the underlying
   PPU mismatches are corrected.
+- The current exploratory DMG framebuffer lane also includes one non-gated
+  `hacktix` suite under
+  `cargo run -p gb-test-runner --bin run_rom_suite -- --suite hacktix-dmg-curated [--failure-artifact-root <dir>]`.
+  This suite currently tracks the `GBEmulatorShootout` `hacktix` subset
+  `bully.gb` plus `strikethrough.gb`, runs those ROMs on the default DMG
+  model, and uses the same committed-PGM framebuffer-oracle contract as the
+  other screenshot-based curated families. It remains exploratory and
+  therefore stays outside `make test`, the `external-roms` workflow, and the
+  repo-gated DMG block until its expected green set is explicit and
+  intentionally promoted.
 - The current exploratory DMG acceptance lane also includes one non-gated
   `mooneye` suite under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`.

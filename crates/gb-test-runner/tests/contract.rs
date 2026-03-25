@@ -6,8 +6,9 @@ use gb_test_runner::{
     FailureArtifactPolicy, MemoryTextOutputSpec, PassCondition, RomCaseValidationError, RomSuite,
     RomSuiteValidationError, RomTestCase, StimulusTime, TEST_ROM_ROOT_ENV_VAR, TestSubsystem,
     Timeout, acid_dmg_curated_suite, blargg_dmg_curated_suite, daid_dmg_curated_suite,
-    mealybug_tearoom_dmg_curated_suite, mooneye_acceptance_dmg_curated_suite,
-    phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite, phase_4_ppu_oam_corruption_suite,
+    hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
+    mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
+    phase_4_ppu_oam_corruption_suite,
 };
 
 #[test]
@@ -709,6 +710,43 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
         .expect("curated mealybug suite should include m3_bgp_change_sprites");
     assert_eq!(bgp_change_sprites.startup_mode, StartupMode::SkipBoot);
     assert_eq!(bgp_change_sprites.startup_memory_writes.len(), 16);
+}
+
+#[test]
+fn curated_hacktix_suite_tracks_the_active_dmg_framebuffer_cases() {
+    let suite = hacktix_dmg_curated_suite();
+
+    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+    assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.family.as_deref(), Some("hacktix"));
+    assert_eq!(suite.cases.len(), 2);
+    assert!(suite.cases.iter().all(|case| {
+        case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
+            && case.capture_plan.contains(CaptureKind::Framebuffer)
+            && case.capture_plan.contains(CaptureKind::Snapshot)
+            && case.failure_artifacts.contains(CaptureKind::Framebuffer)
+            && matches!(case.pass_condition, PassCondition::FramebufferFixture(_))
+    }));
+
+    let bully = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "hacktix-bully")
+        .expect("hacktix suite should include bully.gb");
+    assert_eq!(bully.rom_path, PathBuf::from("hacktix/bully.gb"));
+    assert_eq!(bully.console_model, ConsoleModel::Dmg);
+    assert_eq!(bully.startup_mode, StartupMode::SkipBoot);
+    assert_eq!(bully.startup_memory_writes.len(), 244);
+
+    let strikethrough = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "hacktix-strikethrough")
+        .expect("hacktix suite should include strikethrough.gb");
+    assert_eq!(
+        strikethrough.rom_path,
+        PathBuf::from("hacktix/strikethrough.gb")
+    );
 }
 
 #[test]

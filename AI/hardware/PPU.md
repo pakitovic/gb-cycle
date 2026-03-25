@@ -39,6 +39,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - The PPU should not infer live DMA behavior from `FF46` or future `HDMA1-5` register contents.
 - The DMA subsystem should publish a common current-cycle memory-region impact such as `Oam`, `Vram`, or no special region, and the PPU should consume that signal when concurrent transfer activity affects PPU-visible behavior.
 - OAM DMA active state and duration belong to DMA; the PPU keeps ownership of the visible consequences such as OAM read failure, Mode `2/3` interaction, and DMG-family OAM corruption behavior.
+- For DMG OAM DMA, keep the coarse "DMA is currently blocking OAM" signal separate from the finer same-cycle destination-word hint used by late Mode `3` sprite-metadata conflicts; the PPU needs both views.
 - Future HBlank-conditioned transfers should use the PPU's live mode or HBlank-visible state as an input to DMA advance conditions without moving HDMA scheduling logic into the PPU or the bus.
 
 ## LCD MMIO contract baseline
@@ -182,6 +183,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Sprite selection should ignore `X`; horizontally off-screen sprites still count toward the per-line selection limit if they match vertically.
 - The selection order should be OAM order from `FE00` upward, stopping once `10` matching sprites have been collected.
 - The current line's selected-sprite list should preserve OAM discovery order for later priority and timing work.
+- On DMG-family hardware during active OAM DMA, blocked Mode `2` OAM reads should reuse the last latched OAM word instead of inventing fresh `Y/X` values or force-clearing selection.
+- That stale Mode `2` word should remain shared with later OAM reads such as Mode `3` sprite metadata fetches, so the next scanline's DMA-blocked Mode `2` path can inherit the most recent latched word even when it came from tile/attribute reads rather than from an earlier `Y/X` scan.
 
 ## DMG OBJ priority baseline
 
@@ -210,6 +213,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Sprite fetch work should be able to stall pixel output and lengthen Mode 3 on the shared dot timeline.
 - The special DMG timing penalty involving `SCX & 7 > 0` together with a sprite at `X = 0` should have an explicit path in the design even if the exact timing remains documented as partially unsettled.
 - Avoid reducing sprite timing to "add N dots per sprite" without internal fetcher state.
+- Late Mode `3` sprite metadata reads should come from live OAM rather than from a frozen Mode `2` metadata snapshot.
+- During DMG OAM DMA, that late metadata path should be able to read the DMA destination word being written on the current cycle instead of the nominal sprite metadata address, because tests such as `hacktix/strikethrough` depend on that conflict window.
 
 ## Mid-frame toggle and size-change baseline
 
