@@ -3,6 +3,7 @@ mod curated_test_roms;
 mod differential;
 pub mod external_roms;
 mod fetch_external_roms;
+mod framebuffer_oracle;
 mod run_differential_cli;
 mod run_rom_suite_cli;
 mod run_sameboy_tester_cli;
@@ -14,6 +15,10 @@ use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 use external_roms::ExternalRomSourceManifestError;
+use framebuffer_oracle::{
+    convert_pgm_to_png, decode_fixture_framebuffer_path, decode_local_pgm_framebuffer,
+    encode_framebuffer_pgm,
+};
 use gb_core::{
     BootRomAssetError, BootRomAssets, CartridgeDiagnostic, CartridgeLoadError, CompatibilityPolicy,
     ConsoleModel, CpuDiagnosticTrap, CpuExecutionState, CpuSnapshot, ExecutionMode, JoypadButton,
@@ -1648,14 +1653,40 @@ impl RomRunner {
             }
             PassCondition::FramebufferFixture(fixture_path) => {
                 let resolved_fixture = self.resolve_path(fixture_path);
+                let actual = decode_local_pgm_framebuffer(
+                    case.id.as_str(),
+                    evaluation
+                        .artifacts
+                        .framebuffer_pgm
+                        .as_deref()
+                        .ok_or_else(|| RomExecutionError::ReadFile {
+                            path: PathBuf::from(format!("<local framebuffer for {}>", case.id)),
+                            operation: "decode local framebuffer artifact",
+                            source: io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "missing local framebuffer capture",
+                            ),
+                        })?,
+                )
+                .map_err(|error| {
+                    let path = error.path.clone();
+                    RomExecutionError::ReadFile {
+                        path,
+                        operation: "decode local framebuffer artifact",
+                        source: error.into_invalid_data_error(),
+                    }
+                })?;
                 let expected =
-                    fs::read(&resolved_fixture).map_err(|source| RomExecutionError::ReadFile {
-                        path: resolved_fixture.clone(),
-                        operation: "read framebuffer fixture",
-                        source,
+                    decode_fixture_framebuffer_path(&resolved_fixture).map_err(|error| {
+                        let path = error.path.clone();
+                        RomExecutionError::ReadFile {
+                            path,
+                            operation: "decode framebuffer fixture",
+                            source: error.into_invalid_data_error(),
+                        }
                     })?;
 
-                if evaluation.artifacts.framebuffer_pgm.as_deref() == Some(expected.as_slice()) {
+                if actual == expected {
                     RomCaseOutcome::Passed
                 } else {
                     RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
@@ -1668,18 +1699,42 @@ impl RomRunner {
                     .iter()
                     .map(|fixture_path| self.resolve_path(fixture_path))
                     .collect::<Vec<_>>();
+                let actual = decode_local_pgm_framebuffer(
+                    case.id.as_str(),
+                    evaluation
+                        .artifacts
+                        .framebuffer_pgm
+                        .as_deref()
+                        .ok_or_else(|| RomExecutionError::ReadFile {
+                            path: PathBuf::from(format!("<local framebuffer for {}>", case.id)),
+                            operation: "decode local framebuffer artifact",
+                            source: io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "missing local framebuffer capture",
+                            ),
+                        })?,
+                )
+                .map_err(|error| {
+                    let path = error.path.clone();
+                    RomExecutionError::ReadFile {
+                        path,
+                        operation: "decode local framebuffer artifact",
+                        source: error.into_invalid_data_error(),
+                    }
+                })?;
 
                 for resolved_fixture in &resolved_fixtures {
-                    let expected = fs::read(resolved_fixture).map_err(|source| {
-                        RomExecutionError::ReadFile {
-                            path: resolved_fixture.clone(),
-                            operation: "read framebuffer fixture",
-                            source,
-                        }
-                    })?;
+                    let expected =
+                        decode_fixture_framebuffer_path(resolved_fixture).map_err(|error| {
+                            let path = error.path.clone();
+                            RomExecutionError::ReadFile {
+                                path,
+                                operation: "decode framebuffer fixture",
+                                source: error.into_invalid_data_error(),
+                            }
+                        })?;
 
-                    if evaluation.artifacts.framebuffer_pgm.as_deref() == Some(expected.as_slice())
-                    {
+                    if actual == expected {
                         return Ok(RomCaseOutcome::Passed);
                     }
                 }
@@ -1753,15 +1808,33 @@ impl RomRunner {
                     let Some(framebuffer_pgm) = &artifacts.framebuffer_pgm else {
                         continue;
                     };
-                    let path = case_dir.join("framebuffer.pgm");
-                    fs::write(&path, framebuffer_pgm).map_err(|source| {
+                    let png_path = case_dir.join("framebuffer.png");
+                    let framebuffer_png = convert_pgm_to_png(framebuffer_pgm).map_err(|error| {
+                        let path = error.path.clone();
                         RomExecutionError::ReadFile {
-                            path: path.clone(),
+                            path,
+                            operation: "decode local framebuffer artifact",
+                            source: error.into_invalid_data_error(),
+                        }
+                    })?;
+                    fs::write(&png_path, framebuffer_png).map_err(|source| {
+                        RomExecutionError::ReadFile {
+                            path: png_path.clone(),
                             operation: "write framebuffer artifact",
                             source,
                         }
                     })?;
-                    written_paths.push(path);
+                    written_paths.push(png_path);
+
+                    let pgm_path = case_dir.join("framebuffer.pgm");
+                    fs::write(&pgm_path, framebuffer_pgm).map_err(|source| {
+                        RomExecutionError::ReadFile {
+                            path: pgm_path.clone(),
+                            operation: "write legacy framebuffer artifact",
+                            source,
+                        }
+                    })?;
+                    written_paths.push(pgm_path);
                 }
                 CaptureKind::Trace => {
                     let Some(trace) = &artifacts.trace else {
@@ -1959,7 +2032,7 @@ pub(crate) fn artifact_file_name(capture: CaptureKind) -> &'static str {
         CaptureKind::Serial => "serial.txt",
         CaptureKind::MemoryTextOutput => "memory_text_output.txt",
         CaptureKind::BlarggConsoleText => "blargg_console.txt",
-        CaptureKind::Framebuffer => "framebuffer.pgm",
+        CaptureKind::Framebuffer => "framebuffer.png",
         CaptureKind::Trace => "trace.txt",
         CaptureKind::Snapshot => "snapshot.txt",
     }
@@ -2018,25 +2091,6 @@ fn discard_trace_events_if_needed(trace_buffer: &mut TraceBuffer, executed_t_cyc
     if executed_t_cycles != 0 && executed_t_cycles.is_multiple_of(TRACE_CLEAR_PERIOD_T_CYCLES) {
         trace_buffer.clear();
     }
-}
-
-fn encode_framebuffer_pgm(framebuffer: &[u8]) -> Vec<u8> {
-    const WIDTH: usize = 160;
-    const HEIGHT: usize = 144;
-
-    let mut encoded = format!("P5\n{} {}\n255\n", WIDTH, HEIGHT).into_bytes();
-    encoded.reserve(framebuffer.len());
-
-    for &pixel in framebuffer {
-        encoded.push(match pixel {
-            0 => 255,
-            1 => 170,
-            2 => 85,
-            _ => 0,
-        });
-    }
-
-    encoded
 }
 
 #[cfg(test)]

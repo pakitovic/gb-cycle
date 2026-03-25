@@ -1,4 +1,4 @@
-# External ROM Fixtures
+# Curated ROM Fixtures
 
 This directory documents the repo-managed contract for redistributable external
 ROM suites used by `gb-test-runner`.
@@ -9,7 +9,7 @@ ROM suites used by `gb-test-runner`.
 - Curated root env var override: `GB_CYCLE_TEST_ROM_ROOT`
 
 `make fetch-test-roms` downloads the pinned upstream source declared in
-`crates/gb-test-runner/test-rom-families/sources.toml` into a temporary checkout and
+`crates/gb-test-runner/data/sources.toml` into a temporary checkout and
 then materializes the curated runnable families under `/.roms/test/`. By
 default it fetches `all`, but it also accepts one or more explicit families
 through `FAMILIES=...`.
@@ -18,7 +18,10 @@ running the repo-gated external DMG block.
 
 The upstream source for redistributable suites is `GBEmulatorShootout`. The
 runnable store keeps only the ROMs currently listed in the family manifests
-under `crates/gb-test-runner/test-rom-families/*.toml`.
+under `crates/gb-test-runner/data/*.toml`.
+The repo-managed framebuffer fixtures checked into this tree are stored as
+human-visible `PNG` images; the runner still accepts legacy `PGM` fixtures
+during the transition, but `PNG` is now the default checked-in oracle format.
 
 Each curated family directory contains:
 

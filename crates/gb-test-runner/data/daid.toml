@@ -9,9 +9,9 @@ rom = "ppu_scanline_bgp.gb"
 timeout_frames = 180
 oracle = "framebuffer-fixture-set"
 fixtures = [
-  "crates/gb-test-runner/tests/fixtures/external/daid/ppu_scanline_bgp_0.dmg.pgm",
-  "crates/gb-test-runner/tests/fixtures/external/daid/ppu_scanline_bgp_1.dmg.pgm",
-  "crates/gb-test-runner/tests/fixtures/external/daid/ppu_scanline_bgp_2.dmg.pgm",
+  "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp_0.dmg.png",
+  "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp_1.dmg.png",
+  "crates/gb-test-runner/data/fixtures/daid/ppu_scanline_bgp_2.dmg.png",
 ]
 
 [[case]]
@@ -19,7 +19,7 @@ id = "daid-stop-instr"
 rom = "stop_instr.gb"
 timeout_frames = 180
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/tests/fixtures/external/daid/stop_instr.dmg.pgm"
+fixture = "crates/gb-test-runner/data/fixtures/daid/stop_instr.dmg.png"
 
 [[case]]
 id = "daid-rom-and-ram"
