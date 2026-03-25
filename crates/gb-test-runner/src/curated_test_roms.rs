@@ -135,6 +135,10 @@ pub fn hacktix_dmg_curated_suite() -> RomSuite {
     manifest_suite("hacktix")
 }
 
+pub fn cpp_dmg_curated_suite() -> RomSuite {
+    manifest_suite("cpp")
+}
+
 pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
     manifest_suite("mealybug-tearoom-tests")
 }
@@ -147,6 +151,7 @@ pub fn curated_test_rom_family_suites() -> Vec<RomSuite> {
     [
         acid_dmg_curated_suite(),
         blargg_dmg_curated_suite(),
+        cpp_dmg_curated_suite(),
         daid_dmg_curated_suite(),
         hacktix_dmg_curated_suite(),
         mealybug_tearoom_dmg_curated_suite(),
@@ -438,7 +443,7 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
         .collect()
 }
 
-fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 6] {
+fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 7] {
     [
         (
             "crates/gb-test-runner/data/acid.toml",
@@ -451,6 +456,10 @@ fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 6] {
         (
             "crates/gb-test-runner/data/daid.toml",
             include_str!("../data/daid.toml"),
+        ),
+        (
+            "crates/gb-test-runner/data/cpp.toml",
+            include_str!("../data/cpp.toml"),
         ),
         (
             "crates/gb-test-runner/data/hacktix.toml",
@@ -864,8 +873,9 @@ mod tests {
     fn curated_family_suite_builders_preserve_each_supported_oracle_shape() {
         let suites = curated_test_rom_family_suites();
 
-        assert_eq!(suites.len(), 6);
+        assert_eq!(suites.len(), 7);
         assert!(suites.iter().any(|suite| suite.name == "acid-dmg-curated"));
+        assert!(suites.iter().any(|suite| suite.name == "cpp-dmg-curated"));
         assert!(suites.iter().any(|suite| suite.name == "daid-dmg-curated"));
         assert!(
             suites
@@ -914,6 +924,18 @@ mod tests {
         ));
         assert!(acid_case.capture_plan.contains(CaptureKind::Framebuffer));
         assert!(acid_case.capture_plan.contains(CaptureKind::Snapshot));
+
+        let cpp_suite = suites
+            .iter()
+            .find(|suite| suite.family.as_deref() == Some("cpp"))
+            .expect("cpp suite should exist");
+        assert_eq!(cpp_suite.cases.len(), 3);
+        assert!(
+            cpp_suite
+                .cases
+                .iter()
+                .all(|case| matches!(case.pass_condition, PassCondition::FramebufferFixture(_)))
+        );
 
         let halt_bug_case = suites
             .iter()
@@ -1001,6 +1023,7 @@ mod tests {
             vec![
                 "acid".to_string(),
                 "blargg".to_string(),
+                "cpp".to_string(),
                 "daid".to_string(),
                 "hacktix".to_string(),
                 "mealybug-tearoom-tests".to_string(),

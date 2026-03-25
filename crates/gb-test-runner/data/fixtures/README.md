@@ -55,6 +55,10 @@ statuses do not appear in the table.
   source family: `hacktix`
   current status: exploratory, not repo-gated
   oracle mix: framebuffer fixture
+- `cpp-dmg-curated`
+  source family: `cpp`
+  current status: exploratory, not repo-gated
+  oracle mix: framebuffer fixture
 - `mealybug-tearoom-dmg-curated`
   source family: `mealybug-tearoom-tests`
   current status: exploratory, not repo-gated
@@ -87,6 +91,7 @@ make run-daid
 make run-hacktix
 make run-mealybug
 make run-mooneye
+make run-cpp
 ```
 
 Those exploratory targets update `/.roms/test/test-report.md` even when the

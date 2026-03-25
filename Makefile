@@ -2,7 +2,7 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage test-roms test-roms-all fetch-test-roms run-acid run-blargg run-daid run-mooneye run-hacktix run-mealybug
+.PHONY: help setup hooks tools ci coverage test-roms fetch-test-roms run-acid run-blargg run-daid run-mooneye run-hacktix run-cpp run-mealybug
 
 help:
 	@echo "Available targets:"
@@ -11,8 +11,7 @@ help:
 	@echo "  make tools                Install local cargo tools used by this repository"
 	@echo "  make ci                   Run the local pre-push gate (fmt, clippy, test, typos, deny, coverage check)"
 	@echo "  make coverage             Run the repository coverage gate and emit lcov output"
-	@echo "  make test-roms            Fetch ROMs if needed and run the supported external DMG block"
-	@echo "  make test-roms-all        Fetch ROMs if needed and run all external DMG blocks"
+	@echo "  make test-roms            Fetch ROMs if needed and run all external DMG blocks"
 	@echo "  make fetch-test-roms      Materialize .roms/test from the pinned GBEmulatorShootout source using a temporary checkout"
 	@echo "                           Set FAMILIES=all or FAMILIES=\"blargg acid\" to limit the fetch"
 	@echo "  make run-acid             Fetch and run the curated supported Acid DMG family"
@@ -20,6 +19,7 @@ help:
 	@echo "  make run-daid             Fetch and run the exploratory Daid DMG family and update the report"
 	@echo "  make run-mooneye          Fetch and run the exploratory Mooneye DMG family and update the report"
 	@echo "  make run-hacktix          Fetch and run the exploratory Hacktix DMG family and update the report"
+	@echo "  make run-cpp              Fetch and run the exploratory cpp MBC3 family and update the report"
 	@echo "  make run-mealybug         Fetch and run the exploratory Mealybug DMG family and update the report"
 
 setup: hooks tools
@@ -48,14 +48,10 @@ coverage:
 test-roms:
 	$(MAKE) run-acid
 	$(MAKE) run-blargg
-	$(MAKE) run-hacktix
-
-test-roms-all:
-	$(MAKE) run-acid
-	$(MAKE) run-blargg
 	$(MAKE) run-daid
 	$(MAKE) run-mooneye
 	$(MAKE) run-hacktix
+	$(MAKE) run-cpp
 	$(MAKE) run-mealybug
 
 fetch-test-roms:
@@ -80,6 +76,10 @@ run-mooneye:
 run-hacktix:
 	$(MAKE) fetch-test-roms FAMILIES=hacktix
 	cargo test --release -p gb-test-runner --test external hacktix_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+
+run-cpp:
+	$(MAKE) fetch-test-roms FAMILIES=cpp
+	cargo test --release -p gb-test-runner --test external cpp_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
 
 run-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
