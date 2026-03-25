@@ -8,7 +8,7 @@ id = "hacktix-bully"
 rom = "bully.gb"
 timeout_frames = 30
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/tests/fixtures/external/hacktix/bully.dmg.pgm"
+fixture = "crates/gb-test-runner/data/fixtures/hacktix/bully.dmg.png"
 startup_memory_profile = "dmg-boot-logo-vram"
 
 [[case]]
@@ -16,4 +16,4 @@ id = "hacktix-strikethrough"
 rom = "strikethrough.gb"
 timeout_frames = 30
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/tests/fixtures/external/hacktix/strikethrough.dmg.pgm"
+fixture = "crates/gb-test-runner/data/fixtures/hacktix/strikethrough.dmg.png"

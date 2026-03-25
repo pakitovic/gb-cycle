@@ -121,9 +121,9 @@ This checklist should move only when one of the following becomes true:
   can remain autosufficient without forcing unrelated families to be fetched
   first.
 - The upstream source, pinned revision, and required-file hashes belong in the
-  versioned manifest `crates/gb-test-runner/test-rom-families/sources.toml`.
+  versioned manifest `crates/gb-test-runner/data/sources.toml`.
 - The runnable curated families belong under `/.roms/test/<family>/`, using one
-  checked-in manifest per family under `crates/gb-test-runner/test-rom-families/*.toml`
+  checked-in manifest per family under `crates/gb-test-runner/data/*.toml`
   so supported ROMs can be added or commented explicitly without editing runner code.
 - `gb-test-runner` may accept explicit environment-variable roots for curated suites,
   but the default automation path should also resolve the repo-managed curated store
@@ -175,7 +175,7 @@ This checklist should move only when one of the following becomes true:
   framebuffer suite for `mealybug-tearoom-tests` under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`.
   This suite uses a curated DMG-only subset sourced from `GBEmulatorShootout`
-  and the same committed-PGM oracle contract as `dmg-acid2`, but it is
+  and the same committed-PNG oracle contract as `dmg-acid2`, but it is
   currently red under `Strict` and therefore stays outside `make test`, the
   `external-roms` workflow, and the repo-gated DMG block until the underlying
   PPU mismatches are corrected.
@@ -184,7 +184,7 @@ This checklist should move only when one of the following becomes true:
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite hacktix-dmg-curated [--failure-artifact-root <dir>]`.
   This suite currently tracks the `GBEmulatorShootout` `hacktix` subset
   `bully.gb` plus `strikethrough.gb`, runs those ROMs on the default DMG
-  model, and uses the same committed-PGM framebuffer-oracle contract as the
+  model, and uses the same committed-PNG framebuffer-oracle contract as the
   other screenshot-based curated families. It remains exploratory and
   therefore stays outside `make test`, the `external-roms` workflow, and the
   repo-gated DMG block until its expected green set is explicit and

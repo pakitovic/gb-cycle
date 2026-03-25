@@ -14,4 +14,4 @@ id = "dmg-acid2"
 rom = "dmg-acid2.gb"
 timeout_frames = 180
 oracle = "framebuffer-fixture"
-fixture = "crates/gb-test-runner/tests/fixtures/external/acid/dmg-acid2-dmg.pgm"
+fixture = "crates/gb-test-runner/data/fixtures/acid/dmg-acid2-dmg.png"

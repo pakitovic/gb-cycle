@@ -34,7 +34,8 @@ pub fn differential_cli_help_text() -> &'static str {
         ".oracles/<oracle>/<layout>/.\n",
         "Case-bundle roots must contain one subdirectory per case id using the same\n",
         "artifact filenames that gb-test-runner already emits locally, such as serial.txt,\n",
-        "memory_text_output.txt, blargg_console.txt, framebuffer.pgm, or trace.txt.\n",
+        "memory_text_output.txt, blargg_console.txt, framebuffer.png, or trace.txt.\n",
+        "Legacy framebuffer.pgm artifacts are also accepted during the transition.\n",
         "The sameboy-tester layout is framebuffer-only and expects SameBoy Tester BMP/TGA\n",
         "artifacts located alongside ROM-relative paths, such as acid/dmg-acid2.bmp.\n",
     )

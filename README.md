@@ -117,7 +117,7 @@ make run-mooneye
   explicit families through `FAMILIES=...`
 - the pinned upstream source for redistributable ROM suites is now always
   `GBEmulatorShootout`, recorded in
-  `crates/gb-test-runner/test-rom-families/sources.toml`
+  `crates/gb-test-runner/data/sources.toml`
 - `/.roms/test/` is organized by family, for example:
   `/.roms/test/acid/`,
   `/.roms/test/blargg/`,
@@ -126,7 +126,7 @@ make run-mooneye
   `/.roms/test/mealybug-tearoom-tests/`,
   `/.roms/test/mooneye/`
 - each curated family directory contains only the ROMs currently listed in the
-  matching manifest under `crates/gb-test-runner/test-rom-families/*.toml`
+  matching manifest under `crates/gb-test-runner/data/*.toml`
 - the runner updates `/.roms/test/test-report.md` with a simple
   `family | rom | status` table when a curated family suite executes, using
   `✅`, `❌` and `ℹ️` in the status column and keeping each family's curated ROM
@@ -254,7 +254,7 @@ cargo run -p gb-test-runner --bin run_differential -- \
   The default layout is `case-bundle`, where the oracle root contains one
   subdirectory per case id using the same artifact filenames that
   `gb-test-runner` already emits locally, such as `serial.txt`,
-  `memory_text_output.txt`, `blargg_console.txt`, `framebuffer.pgm`, or
+  `memory_text_output.txt`, `blargg_console.txt`, `framebuffer.png`, or
   `trace.txt`.
 
   The `sameboy-tester` layout is currently framebuffer-only. It expects SameBoy

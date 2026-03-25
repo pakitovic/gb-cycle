@@ -9,6 +9,10 @@ use serde::Deserialize;
 use crate::{
     CaptureKind, CapturedArtifacts, CapturedMemoryTextOutput, RomCaseReport, RomExecutionError,
     RomRunner, RomSuite, RomSuiteValidationError, TestSubsystem, artifact_file_name,
+    framebuffer_oracle::{
+        NormalizedFramebuffer, convert_pgm_to_png, decode_fixture_framebuffer_path,
+        decode_local_pgm_framebuffer,
+    },
     render_memory_text_output,
 };
 
@@ -323,10 +327,22 @@ impl DifferentialRunner {
         capture: CaptureKind,
     ) -> Result<PathBuf, DifferentialExecutionError> {
         match self.oracle_layout {
-            DifferentialOracleLayout::CaseBundle => Ok(self
-                .oracle_artifact_root
-                .join(&case.id)
-                .join(artifact_file_name(capture))),
+            DifferentialOracleLayout::CaseBundle => {
+                let candidate = self
+                    .oracle_artifact_root
+                    .join(&case.id)
+                    .join(artifact_file_name(capture));
+                if capture != CaptureKind::Framebuffer || candidate.is_file() {
+                    return Ok(candidate);
+                }
+
+                let legacy_pgm = replace_extension(&candidate, "pgm");
+                if legacy_pgm.is_file() {
+                    return Ok(legacy_pgm);
+                }
+
+                Ok(candidate)
+            }
             DifferentialOracleLayout::SameBoyTester => {
                 if capture != CaptureKind::Framebuffer {
                     return Err(
@@ -455,23 +471,25 @@ impl DifferentialRunner {
 
                 match self.oracle_layout {
                     DifferentialOracleLayout::CaseBundle => {
-                        let oracle = fs::read(oracle_artifact_path).map_err(|source| {
-                            DifferentialExecutionError::ReadOracleArtifact {
-                                path: oracle_artifact_path.to_path_buf(),
-                                operation: "read framebuffer oracle artifact",
-                                source,
-                            }
-                        })?;
+                        let local_normalized =
+                            decode_local_pgm_framebuffer(local_report.case_id.as_str(), local)
+                                .map_err(|error| {
+                                    DifferentialExecutionError::ParseOracleArtifact {
+                                        path: error.path,
+                                        message: error.message,
+                                    }
+                                })?;
+                        let oracle_normalized =
+                            decode_fixture_framebuffer_path(oracle_artifact_path).map_err(
+                                |error| DifferentialExecutionError::ParseOracleArtifact {
+                                    path: error.path,
+                                    message: error.message,
+                                },
+                            )?;
 
-                        if local == oracle.as_slice() {
+                        if local_normalized == oracle_normalized {
                             DifferentialCaseOutcome::Matched
                         } else {
-                            let local_normalized =
-                                decode_local_pgm_framebuffer(local_report.case_id.as_str(), local)?;
-                            let oracle_normalized = decode_local_pgm_framebuffer(
-                                &format!("oracle framebuffer for {}", local_report.case_id),
-                                oracle.as_slice(),
-                            )?;
                             DifferentialCaseOutcome::Diverged(
                                 DifferentialCaseMismatch::FramebufferMismatch {
                                     oracle_artifact_path: oracle_artifact_path.to_path_buf(),
@@ -489,7 +507,13 @@ impl DifferentialRunner {
                     }
                     DifferentialOracleLayout::SameBoyTester => {
                         let local_normalized =
-                            decode_local_pgm_framebuffer(local_report.case_id.as_str(), local)?;
+                            decode_local_pgm_framebuffer(local_report.case_id.as_str(), local)
+                                .map_err(|error| {
+                                    DifferentialExecutionError::ParseOracleArtifact {
+                                        path: error.path,
+                                        message: error.message,
+                                    }
+                                })?;
                         let oracle_normalized =
                             decode_sameboy_tester_framebuffer(oracle_artifact_path)?;
 
@@ -790,10 +814,22 @@ fn write_captured_artifact(
             let Some(framebuffer_pgm) = &artifacts.framebuffer_pgm else {
                 return Ok(None);
             };
-            fs::write(&path, framebuffer_pgm).map_err(|source| {
+            let png = convert_pgm_to_png(framebuffer_pgm).map_err(|error| {
+                DifferentialExecutionError::ParseOracleArtifact {
+                    path: error.path,
+                    message: error.message,
+                }
+            })?;
+            fs::write(&path, png).map_err(|source| DifferentialExecutionError::WriteArtifact {
+                path: path.clone(),
+                operation: "write framebuffer artifact",
+                source,
+            })?;
+            let legacy_pgm_path = root.join("framebuffer.pgm");
+            fs::write(&legacy_pgm_path, framebuffer_pgm).map_err(|source| {
                 DifferentialExecutionError::WriteArtifact {
-                    path: path.clone(),
-                    operation: "write framebuffer artifact",
+                    path: legacy_pgm_path.clone(),
+                    operation: "write legacy framebuffer artifact",
                     source,
                 }
             })?;
@@ -878,21 +914,6 @@ fn parse_memory_text_output_artifact(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct NormalizedFramebuffer {
-    width: usize,
-    height: usize,
-    palette_ranks: Vec<u8>,
-}
-
-fn decode_local_pgm_framebuffer(
-    case_id: &str,
-    bytes: &[u8],
-) -> Result<NormalizedFramebuffer, DifferentialExecutionError> {
-    let (width, height, pixels) = parse_pgm(case_id, bytes)?;
-    Ok(normalize_indexed_pixels(width, height, pixels))
-}
-
 fn decode_sameboy_tester_framebuffer(
     path: &Path,
 ) -> Result<NormalizedFramebuffer, DifferentialExecutionError> {
@@ -917,100 +938,6 @@ fn decode_sameboy_tester_framebuffer(
             message: "unsupported SameBoy tester framebuffer extension".to_string(),
         }),
     }
-}
-
-fn parse_pgm<'a>(
-    case_id: &str,
-    bytes: &'a [u8],
-) -> Result<(usize, usize, &'a [u8]), DifferentialExecutionError> {
-    let mut index = 0_usize;
-    let magic = next_pgm_token(bytes, &mut index, "magic", case_id)?;
-    if magic != b"P5" {
-        return Err(DifferentialExecutionError::ParseOracleArtifact {
-            path: PathBuf::from(format!("<local framebuffer for {case_id}>")),
-            message: format!("unsupported PGM magic {:?}", String::from_utf8_lossy(magic)),
-        });
-    }
-
-    let width = parse_usize_token(
-        next_pgm_token(bytes, &mut index, "width", case_id)?,
-        case_id,
-        "width",
-    )?;
-    let height = parse_usize_token(
-        next_pgm_token(bytes, &mut index, "height", case_id)?,
-        case_id,
-        "height",
-    )?;
-    let max_value = parse_usize_token(
-        next_pgm_token(bytes, &mut index, "max", case_id)?,
-        case_id,
-        "max",
-    )?;
-    if max_value != 255 {
-        return Err(DifferentialExecutionError::ParseOracleArtifact {
-            path: PathBuf::from(format!("<local framebuffer for {case_id}>")),
-            message: format!("unsupported PGM max value {max_value}"),
-        });
-    }
-
-    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
-        index += 1;
-    }
-
-    let expected_len = width.checked_mul(height).ok_or_else(|| {
-        DifferentialExecutionError::ParseOracleArtifact {
-            path: PathBuf::from(format!("<local framebuffer for {case_id}>")),
-            message: "PGM dimensions overflow".to_string(),
-        }
-    })?;
-    if bytes.len() < index + expected_len {
-        return Err(DifferentialExecutionError::ParseOracleArtifact {
-            path: PathBuf::from(format!("<local framebuffer for {case_id}>")),
-            message: "PGM pixel payload is shorter than declared dimensions".to_string(),
-        });
-    }
-
-    Ok((width, height, &bytes[index..index + expected_len]))
-}
-
-fn next_pgm_token<'a>(
-    bytes: &'a [u8],
-    index: &mut usize,
-    label: &str,
-    case_id: &str,
-) -> Result<&'a [u8], DifferentialExecutionError> {
-    while *index < bytes.len() && bytes[*index].is_ascii_whitespace() {
-        *index += 1;
-    }
-    let start = *index;
-    while *index < bytes.len() && !bytes[*index].is_ascii_whitespace() {
-        *index += 1;
-    }
-    if start == *index {
-        return Err(DifferentialExecutionError::ParseOracleArtifact {
-            path: PathBuf::from(format!("<local framebuffer for {case_id}>")),
-            message: format!("missing PGM {label} token"),
-        });
-    }
-    Ok(&bytes[start..*index])
-}
-
-fn parse_usize_token(
-    token: &[u8],
-    case_id: &str,
-    label: &str,
-) -> Result<usize, DifferentialExecutionError> {
-    std::str::from_utf8(token)
-        .map_err(|error| DifferentialExecutionError::ParseOracleArtifact {
-            path: PathBuf::from(format!("<local framebuffer for {case_id}>")),
-            message: format!("invalid UTF-8 in PGM {label}: {error}"),
-        })?
-        .parse::<usize>()
-        .map_err(|error| DifferentialExecutionError::ParseOracleArtifact {
-            path: PathBuf::from(format!("<local framebuffer for {case_id}>")),
-            message: format!("failed to parse PGM {label}: {error}"),
-        })
 }
 
 fn parse_sameboy_tester_bmp(
@@ -1126,33 +1053,6 @@ fn parse_sameboy_tester_tga(
     }
 
     Ok((width, height, pixels))
-}
-
-fn normalize_indexed_pixels(width: usize, height: usize, pixels: &[u8]) -> NormalizedFramebuffer {
-    let mut shades = pixels.to_vec();
-    shades.sort_unstable();
-    shades.dedup();
-    shades.sort_by(|left, right| right.cmp(left));
-
-    let rank_by_shade = shades
-        .iter()
-        .enumerate()
-        .map(|(rank, shade)| (*shade, rank as u8))
-        .collect::<BTreeMap<_, _>>();
-    let palette_ranks = pixels
-        .iter()
-        .map(|shade| {
-            *rank_by_shade
-                .get(shade)
-                .expect("rank table should contain every source shade")
-        })
-        .collect();
-
-    NormalizedFramebuffer {
-        width,
-        height,
-        palette_ranks,
-    }
 }
 
 fn normalize_rgb_pixels(width: usize, height: usize, pixels: &[[u8; 3]]) -> NormalizedFramebuffer {
@@ -1345,13 +1245,14 @@ mod tests {
         DifferentialOracleLayout, DifferentialRunner, FramebufferDifferencePoint,
         NormalizedFramebuffer, decode_local_pgm_framebuffer, decode_sameboy_tester_framebuffer,
         describe_framebuffer_difference, first_framebuffer_difference,
-        parse_memory_text_output_artifact, parse_pgm, parse_sameboy_tester_bmp,
-        parse_sameboy_tester_tga, render_differential_summary, write_captured_artifact,
+        parse_memory_text_output_artifact, parse_sameboy_tester_bmp, parse_sameboy_tester_tga,
+        render_differential_summary, write_captured_artifact,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, CapturedMemoryTextOutput, PassCondition, RomCaseOutcome,
-        RomCaseReport, RomTestCase, Timeout, acid_dmg_curated_suite, phase_2_cpu_timing_suite,
-        render_memory_text_output,
+        RomCaseReport, RomTestCase, Timeout, acid_dmg_curated_suite,
+        framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm},
+        phase_2_cpu_timing_suite, render_memory_text_output,
     };
     use std::env;
     use std::fs;
@@ -1453,13 +1354,15 @@ mod tests {
         }
     }
 
+    fn load_fixture_as_local_pgm(relative_path: &str) -> Vec<u8> {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative_path);
+        let normalized = decode_fixture_framebuffer_path(&path).expect("fixture should decode");
+        encode_framebuffer_pgm(&normalized.palette_ranks)
+    }
+
     #[test]
     fn sameboy_tester_bmp_decoder_matches_local_pgm_palette_ranks() {
-        let pgm = fs::read(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/fixtures/external/acid/dmg-acid2-dmg.pgm"),
-        )
-        .expect("fixture should be readable");
+        let pgm = load_fixture_as_local_pgm("data/fixtures/acid/dmg-acid2-dmg.png");
         let expected = decode_local_pgm_framebuffer("acid2", &pgm).expect("PGM should decode");
 
         let temp_dir = unique_temp_dir("bmp-decode");
@@ -1560,11 +1463,9 @@ mod tests {
 
     #[test]
     fn parse_pgm_rejects_bad_magic() {
-        let error = parse_pgm("case", b"P2\n1 1\n255\n\x00").expect_err("bad magic should fail");
-        assert!(matches!(
-            error,
-            super::DifferentialExecutionError::ParseOracleArtifact { .. }
-        ));
+        let error = decode_local_pgm_framebuffer("case", b"P2\n1 1\n255\n\x00")
+            .expect_err("bad magic should fail");
+        assert!(error.message.contains("unsupported PGM magic"));
     }
 
     #[test]
@@ -1751,15 +1652,15 @@ mod tests {
     fn compare_required_capture_covers_framebuffer_case_bundle_and_sameboy_tester_tga() {
         let temp_dir = unique_temp_dir("framebuffer");
         fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
-        let pgm = fs::read(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/fixtures/external/acid/dmg-acid2-dmg.pgm"),
-        )
-        .expect("fixture should be readable");
+        let pgm = load_fixture_as_local_pgm("data/fixtures/acid/dmg-acid2-dmg.png");
 
         let case_bundle_runner = DifferentialRunner::new(DifferentialOracle::SameBoy, &temp_dir);
-        let case_bundle_path = temp_dir.join("acid2.pgm");
-        fs::write(&case_bundle_path, &pgm).expect("PGM oracle should be writable");
+        let case_bundle_path = temp_dir.join("acid2.png");
+        fs::copy(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/fixtures/acid/dmg-acid2-dmg.png"),
+            &case_bundle_path,
+        )
+        .expect("PNG oracle should be writable");
 
         let matched = case_bundle_runner
             .compare_required_capture(
@@ -1952,19 +1853,18 @@ mod tests {
         ));
 
         let bad_pgm = b"P5\nx 1\n255\n\x00";
-        let pgm_error = parse_pgm("case", bad_pgm).expect_err("invalid width should fail");
-        assert!(matches!(
-            pgm_error,
-            super::DifferentialExecutionError::ParseOracleArtifact { .. }
-        ));
+        let pgm_error =
+            decode_local_pgm_framebuffer("case", bad_pgm).expect_err("invalid width should fail");
+        assert!(pgm_error.message.contains("width"));
 
         let short_pgm = b"P5\n2 2\n255\n\x00";
         let short_error =
             decode_local_pgm_framebuffer("case", short_pgm).expect_err("short payload should fail");
-        assert!(matches!(
-            short_error,
-            super::DifferentialExecutionError::ParseOracleArtifact { .. }
-        ));
+        assert!(
+            short_error
+                .message
+                .contains("shorter than declared dimensions")
+        );
 
         let tga_path = temp_dir.join("bad.tga");
         let tga_error =

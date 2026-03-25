@@ -441,28 +441,28 @@ fn curated_test_rom_manifests() -> Vec<CuratedTestRomManifest> {
 fn curated_test_rom_manifest_texts() -> [(&'static str, &'static str); 6] {
     [
         (
-            "crates/gb-test-runner/test-rom-families/acid.toml",
-            include_str!("../test-rom-families/acid.toml"),
+            "crates/gb-test-runner/data/acid.toml",
+            include_str!("../data/acid.toml"),
         ),
         (
-            "crates/gb-test-runner/test-rom-families/blargg.toml",
-            include_str!("../test-rom-families/blargg.toml"),
+            "crates/gb-test-runner/data/blargg.toml",
+            include_str!("../data/blargg.toml"),
         ),
         (
-            "crates/gb-test-runner/test-rom-families/daid.toml",
-            include_str!("../test-rom-families/daid.toml"),
+            "crates/gb-test-runner/data/daid.toml",
+            include_str!("../data/daid.toml"),
         ),
         (
-            "crates/gb-test-runner/test-rom-families/hacktix.toml",
-            include_str!("../test-rom-families/hacktix.toml"),
+            "crates/gb-test-runner/data/hacktix.toml",
+            include_str!("../data/hacktix.toml"),
         ),
         (
-            "crates/gb-test-runner/test-rom-families/mealybug-tearoom-tests.toml",
-            include_str!("../test-rom-families/mealybug-tearoom-tests.toml"),
+            "crates/gb-test-runner/data/mealybug-tearoom-tests.toml",
+            include_str!("../data/mealybug-tearoom-tests.toml"),
         ),
         (
-            "crates/gb-test-runner/test-rom-families/mooneye.toml",
-            include_str!("../test-rom-families/mooneye.toml"),
+            "crates/gb-test-runner/data/mooneye.toml",
+            include_str!("../data/mooneye.toml"),
         ),
     ]
 }
@@ -1507,7 +1507,7 @@ mod tests {
                 timeout_frames: 1,
                 oracle: "framebuffer-fixture".to_string(),
                 expected: None,
-                fixture: Some(PathBuf::from("fixture.pgm")),
+                fixture: Some(PathBuf::from("fixture.png")),
                 fixtures: None,
                 execution_mode: None,
                 startup_memory_profile: Some("unknown-profile".to_string()),

@@ -6,8 +6,7 @@ use serde::Deserialize;
 
 pub const EXTERNAL_ROM_STORE_DIR: &str = ".roms/external-test";
 pub const LOCAL_COMMERCIAL_ROM_STORE_DIR: &str = ".roms/local-commercial";
-pub const EXTERNAL_ROM_SOURCE_MANIFEST_PATH: &str =
-    "crates/gb-test-runner/test-rom-families/sources.toml";
+pub const EXTERNAL_ROM_SOURCE_MANIFEST_PATH: &str = "crates/gb-test-runner/data/sources.toml";
 const SUPPORTED_EXTERNAL_ROM_SOURCE_MANIFEST_VERSION: u32 = 1;
 
 #[derive(Debug)]
