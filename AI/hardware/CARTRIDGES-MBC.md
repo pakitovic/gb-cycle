@@ -305,7 +305,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The repo should distinguish at least three MBC1 configuration shapes:
   - standard wiring for up to `512 KiB` ROM with up to `32 KiB` banked external RAM
   - large-ROM / alternate wiring for `1 MiB` or `2 MiB` ROM, where the secondary register extends ROM selection and only one fixed `8 KiB` external RAM window remains practical
-  - a reserved future `Mbc1Variant::Mbc1M` or equivalent, because multi-cart MBC1M uses a different bank-selection formula from standard MBC1
+  - an explicit `Mbc1Variant::Mbc1M` path for the multicart wiring, because multi-cart MBC1M uses a different bank-selection formula from standard MBC1
 - Header codes `0x01`, `0x02`, and `0x03` should be recognized explicitly as the MBC1 family.
 - `0x01` means MBC1 with no external RAM, `0x02` means MBC1 + RAM, and `0x03` means MBC1 + RAM + battery.
 - Battery presence changes persistence expectations only; it must not change live banking behavior.
@@ -331,6 +331,8 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - In mode `0`, or on cartridges too small to use the secondary register, `0x0000-0x3FFF` reads should resolve to ROM bank `0`.
 - On large-ROM cartridges in mode `1`, `0x0000-0x3FFF` must be able to resolve the secondary-register-controlled low-region banks documented by Pan Docs.
 - Keep standard MBC1 and future MBC1M formulas distinct rather than mixing them behind ad hoc conditionals.
+- In `Experimental`, an explicit MBC1 multicart heuristic may promote a `1 MiB` no-RAM `0x01` image into `Mbc1Variant::Mbc1M` when repeated subheaders such as Nintendo-logo copies appear in banks `0x10`, `0x20`, and `0x30`; `Strict` and `Permissive` must still keep that heuristic disabled by default.
+- For `Mbc1Variant::Mbc1M`, the secondary register targets ROM bank bits `4-5` instead of `5-6`, while the primary register contributes only bits `0-3` after the documented raw-`5`-bit `0 -> 1` translation. That means mode `1` low-bank selection resolves to `0x00`, `0x10`, `0x20`, or `0x30`, and the high window can still expose bank `0` when the raw primary register is `0x10`.
 - The bus must not implement any MBC1 bank math; all of it belongs inside the cartridge device.
 - `0xA000-0xBFFF` should delegate to cartridge-owned external RAM only when the MBC1 configuration actually provides RAM.
 - In mode `0`, visible RAM stays on bank `0`.
@@ -604,6 +606,11 @@ Priority order:
   runtime-grade: one trusted oracle comparison for the documented bank-selection
   edge cases, then later persistence once the phase reaches cartridge-owned save
   payloads.
+- The current baseline now includes one explicit experimental MBC1M path for
+  `1 MiB` no-RAM multicarts identified through that heuristic; it is suitable
+  for research coverage such as `mooneye` multicart ROMs, but it remains
+  non-oracle until a trusted external reference closes the heuristic and banking
+  behavior.
 - Keep disabled external-RAM open-bus behavior explicit and configurable enough that tests can pin the chosen policy.
 - For MBC2, keep address-bit-`8` control decode, raw `rom_bank_low4`, internal nibble RAM organization, effective ROM-bank helpers, and explicit disabled-RAM / high-nibble readback policies as separate layers instead of hiding them in generic byte-RAM helpers.
 - For MBC2, treat `0x0149` as validation metadata only; runtime RAM capacity comes from the mapper family itself rather than from the ordinary external-RAM table.

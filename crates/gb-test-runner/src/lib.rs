@@ -2104,6 +2104,7 @@ mod tests {
     };
     use gb_core::{
         ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
+        ExecutionMode,
     };
     use std::path::PathBuf;
 
@@ -2265,7 +2266,7 @@ mod tests {
 
         assert_eq!(suite.subsystem, TestSubsystem::Ppu);
         assert_eq!(suite.family.as_deref(), Some("mealybug-tearoom-tests"));
-        assert_eq!(suite.cases.len(), 10);
+        assert_eq!(suite.cases.len(), 24);
         assert!(suite.cases.iter().all(|case| {
             case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
                 && case.capture_plan.contains(CaptureKind::Framebuffer)
@@ -2283,6 +2284,12 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "mealybug-m3-wx-4-change-sprites")
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "mealybug-m3-lcdc-bg-en-change")
         );
     }
 
@@ -2394,25 +2401,19 @@ mod tests {
     }
 
     #[test]
-    fn built_in_rom_suite_lookup_returns_curated_mooneye_suite_with_snapshot_oracle() {
+    fn built_in_rom_suite_lookup_returns_curated_mooneye_suite_with_case_specific_oracles() {
         let suite = built_in_rom_suite_by_name("mooneye-acceptance-dmg-curated")
             .expect("known suite should exist");
 
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
         assert_eq!(suite.family.as_deref(), Some("mooneye"));
-        assert_eq!(suite.cases.len(), 66);
-        assert!(suite.cases.iter().all(|case| {
-            case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR)
-                && case.capture_plan
-                    == super::CapturePlan::new()
-                        .with_capture(CaptureKind::Snapshot)
-                        .with_capture(CaptureKind::Serial)
-                && case.failure_artifacts
-                    == super::FailureArtifactPolicy::new()
-                        .with_artifact(CaptureKind::Snapshot)
-                        .with_artifact(CaptureKind::Serial)
-                && matches!(case.pass_condition, PassCondition::MooneyeResult)
-        }));
+        assert_eq!(suite.cases.len(), 95);
+        assert!(
+            suite
+                .cases
+                .iter()
+                .all(|case| case.external_rom_root_key.as_deref() == Some(TEST_ROM_ROOT_ENV_VAR))
+        );
         assert!(
             suite
                 .cases
@@ -2425,6 +2426,54 @@ mod tests {
                 .iter()
                 .any(|case| case.id == "mooneye-serial-boot-sclk-align-dmgabcmgb")
         );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "mooneye-emulator-only-mbc1-bits-bank1")
+        );
+        let mbc1_multicart = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "mooneye-emulator-only-mbc1-multicart-rom-8mb")
+            .expect("known suite should include the experimental multicart case");
+        assert_eq!(mbc1_multicart.execution_mode, ExecutionMode::Experimental);
+        let sprite_priority = suite
+            .cases
+            .iter()
+            .find(|case| case.id == "mooneye-manual-only-sprite-priority")
+            .expect("known suite should include the framebuffer sprite priority case");
+        assert_eq!(
+            sprite_priority.capture_plan,
+            super::CapturePlan::new()
+                .with_capture(CaptureKind::Framebuffer)
+                .with_capture(CaptureKind::Snapshot)
+        );
+        assert_eq!(
+            sprite_priority.failure_artifacts,
+            super::FailureArtifactPolicy::new()
+                .with_artifact(CaptureKind::Framebuffer)
+                .with_artifact(CaptureKind::Snapshot)
+        );
+        assert!(matches!(
+            sprite_priority.pass_condition,
+            PassCondition::FramebufferFixture(_)
+        ));
+        assert!(suite.cases.iter().all(|case| {
+            if case.id == "mooneye-manual-only-sprite-priority" {
+                true
+            } else {
+                case.capture_plan
+                    == super::CapturePlan::new()
+                        .with_capture(CaptureKind::Snapshot)
+                        .with_capture(CaptureKind::Serial)
+                    && case.failure_artifacts
+                        == super::FailureArtifactPolicy::new()
+                            .with_artifact(CaptureKind::Snapshot)
+                            .with_artifact(CaptureKind::Serial)
+                    && matches!(case.pass_condition, PassCondition::MooneyeResult)
+            }
+        }));
     }
 
     #[test]
