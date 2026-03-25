@@ -149,6 +149,13 @@ This checklist should move only when one of the following becomes true:
   `RealBoot` verifies the observed SHA-256 against the expected
   `dmg0/dmg/mgb` hashes before execution so local bring-up does not silently
   proceed on the wrong firmware bytes.
+- Keep one repo-local ignored real-boot regression for those verified DMG-family
+  assets so `dmg0`, `dmg`, and `mgb` can be exercised one by one against the
+  real core, real bus, and real `FF50` handoff path without baking machine-local
+  paths into `gb-core`. The current coverage lives in
+  `crates/gb-test-runner/tests/external.rs` and uses a minimal valid `NoMBC`
+  cartridge header whose first post-handoff opcode deliberately traps, making
+  the next-fetch cartridge entry point observable after the boot ROM unmaps.
 - Keep imported differential oracle artifacts under the repo-managed gitignored
   `/.oracles/<oracle>/<layout>/` tree instead of scattering them under `/tmp`,
   so repeated validation runs have one visible workspace-local location.
