@@ -2001,10 +2001,9 @@ Suggested entry style:
 
 ### Phase 2 — CPU and real temporal control
 
-- [CPU][BOOT] Full DMG boot ROM execution beyond the Phase `2.4` synthetic handoff baseline is still not closed against the production firmware path. Phase `9` official-ROM bring-up has already landed the broader ALU, accumulator-rotate, MMIO-transfer, `SP/HL`, and practical CB coverage that the earlier boot-facing TODO used to call out, so the remaining gap is no longer a missing-opcode list. What remains is end-to-end validation that a verified DMG boot ROM asset can run under `RealBoot` through the real `FF50` handoff and last pre-handoff fetch window without depending on the synthetic Phase `2.4` boot image. Phase dependency: the shared `[hli]` / `[hld]` subset that also fed Phase `4` OAM-corruption prep is already landed, so this remaining real-boot closure work does not block `Phase 4`.
-
 #### Done:
 
+- [CPU][BOOT] The remaining production-firmware validation gap beyond the synthetic Phase `2.4` handoff baseline is now closed for the DMG family. Repo-local ignored coverage in `crates/gb-test-runner/tests/external.rs` verifies the pinned `dmg0`, `dmg`, and `mgb` boot ROM assets by SHA-256, runs each one under `RealBoot` on the shared core and bus, and proves cartridge entry only through the executed `FF50` handoff plus next-fetch transition at `0x0100`.
 - [CPU][DIAGNOSTICS] Unsupported decoded opcodes now enter one explicit unsupported-opcode diagnostic trap immediately after the real fetch retires, keeping the failure visible in CPU snapshots and scheduler traces instead of falling into a silent non-retiring execute loop.
 - [CPU][HALT] Phase `2.6` now includes explicit `EI ; HALT` pending-IRQ verification and one targeted refinement: when `HALT` is the delayed-`EI` follower with an already pending interrupt, the interrupt is serviced once and returns to the `HALT` opcode instead of falling into the ordinary HALT-bug wake path or skipping ahead past `HALT`.
 - [CPU][MMIO-BRIDGE] The minimum MMIO-facing opcode bridge is now landed through `LDH (a8),A`, `LDH A,(a8)`, `LD (C),A`, and `LD A,(C)`, with direct CPU integration tests and synthetic-ROM builder helpers so later joypad, serial, and boot-adjacent validation can target `FF00-FF7F` without raw-byte boilerplate.
