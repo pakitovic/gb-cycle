@@ -476,8 +476,10 @@ Priority order:
 - Do not hard-code DMG palette mapping as the final renderer boundary; keep a stage where hardware pixel meaning can later expand for CGB palettes and tile attributes.
 - Treat CGB palette and tile-attribute support as future extensions of the same pixel pipeline, not as a replacement renderer.
 - SCX startup discard, window start behavior, and sprite fetch pauses must be able to delay pixel output and therefore stretch Mode 3 naturally.
+- In the current DMG baseline, the visible `Mode 3 -> 0` boundary should come from one line-local dot target owned by the live pixel-transfer state, updated on the exact dots where window restart or active OBJ fetch actually steal pixel-transfer time, instead of being reconstructed later from scanline-wide penalty counters.
 - Window activation must be treated as a pipeline event that can change the tile source and extend Mode 3, not as a purely visual switch.
 - Sprite handling during Mode 3 must be able to interrupt or stall the normal background fetch flow while object data is incorporated.
+- Keep the stricter "BG FIFO push only when empty" rule coupled to the real fetcher / BG-OBJ interruption model. Do not land that push-side tightening in isolation if the current shared fetcher state cannot yet preserve already-validated DMG cases such as `dmg-acid2`; otherwise the project risks regressing known-good framebuffer output while chasing a more correct internal contract.
 - Treat Mode 2 as a preparatory pipeline phase for Mode 3, not as an isolated bookkeeping pass.
 - The list of visible sprites produced in Mode 2 should feed directly into Mode 3 object timing and mixing logic.
 - A shape such as `SelectedSpritesForLine`, `ObjectFetcherState`, `OamFifo`, `ObjectPixel`, `SpritePriorityResolver`, and `BgObjMixer` is a good fit for keeping sprite work explicit and testable.

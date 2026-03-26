@@ -820,12 +820,11 @@ impl Ppu {
             return MODE0_START_DOT;
         }
 
-        (MODE0_START_DOT as i16
-            + self
-                .bg_pipeline_state
-                .latched_scx_discard(self.visible_registers.scx) as i16
-            + self.bg_pipeline_state.mode0_extension_dots()
-            + self.obj_pipeline_state.stall_dots as i16) as u16
+        if self.bg_pipeline_state.mode3_started {
+            self.bg_pipeline_state.mode0_start_dot
+        } else {
+            MODE0_START_DOT + u16::from(self.visible_registers.scx & 0x07)
+        }
     }
 
     pub(crate) fn current_mode2_oam_row(&self) -> Option<u8> {
@@ -1016,7 +1015,7 @@ impl Ppu {
 
         let Some(pixel) = self.bg_pipeline_state.fifo.pop_front() else {
             if self.bg_pipeline_state.scx_discard_remaining == 0 {
-                self.bg_pipeline_state.window_extra_stall_dots += 1;
+                self.bg_pipeline_state.extend_mode3_by_one_dot();
             }
             return;
         };
@@ -1086,7 +1085,7 @@ impl Ppu {
             && self.bg_pipeline_state.initial_scx_discard > 0
             && self.bg_pipeline_state.scx_discard_remaining == 1
         {
-            self.bg_pipeline_state.wx0_scx_shortening_applied = true;
+            self.bg_pipeline_state.apply_wx0_scx_shortening();
         }
 
         self.bg_pipeline_state.fifo.clear();
@@ -1166,7 +1165,7 @@ impl Ppu {
             return false;
         }
 
-        self.obj_pipeline_state.stall_dots += 1;
+        self.bg_pipeline_state.extend_mode3_by_one_dot();
         self.obj_pipeline_state.fetch.stage_dot += 1;
         if !self.obj_enabled() {
             self.obj_pipeline_state.fetch.cancelled = true;
@@ -1876,11 +1875,11 @@ struct BgPipelineState {
     fetcher: BgFetcherState,
     fifo: VecDeque<u8>,
     mode3_started: bool,
+    mode0_start_dot: u16,
     initial_scx_discard: u8,
     scx_discard_remaining: u8,
     pre_visible_obj_match_x: u8,
     visible_pixels_output: u8,
-    window_extra_stall_dots: u16,
     window_wy_latch: bool,
     window_force_x0_this_line: bool,
     window_started_this_line: bool,
@@ -1893,11 +1892,11 @@ impl BgPipelineState {
         self.fetcher.reset();
         self.fifo.clear();
         self.mode3_started = false;
+        self.mode0_start_dot = MODE0_START_DOT;
         self.initial_scx_discard = 0;
         self.scx_discard_remaining = 0;
         self.pre_visible_obj_match_x = 0;
         self.visible_pixels_output = 0;
-        self.window_extra_stall_dots = 0;
         self.window_wy_latch = false;
         self.window_force_x0_this_line = false;
         self.window_started_this_line = false;
@@ -1908,17 +1907,10 @@ impl BgPipelineState {
     fn start_line(&mut self, scx: u8) {
         self.mode3_started = true;
         self.initial_scx_discard = scx & 0x07;
+        self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
         self.scx_discard_remaining = self.initial_scx_discard;
         self.pre_visible_obj_match_x = 0;
         self.fetcher.start_background();
-    }
-
-    fn latched_scx_discard(&self, live_scx: u8) -> u8 {
-        if self.mode3_started {
-            self.initial_scx_discard
-        } else {
-            live_scx & 0x07
-        }
     }
 
     fn prepare_window_line(&mut self, wy_latch: bool, force_x0_this_line: bool) {
@@ -1929,13 +1921,17 @@ impl BgPipelineState {
         self.wx166_armed_this_line = false;
     }
 
-    fn mode0_extension_dots(&self) -> i16 {
-        self.window_extra_stall_dots as i16
-            - if self.wx0_scx_shortening_applied {
-                1
-            } else {
-                0
-            }
+    fn extend_mode3_by_one_dot(&mut self) {
+        self.mode0_start_dot += 1;
+    }
+
+    fn apply_wx0_scx_shortening(&mut self) {
+        if self.wx0_scx_shortening_applied || self.mode0_start_dot == 0 {
+            return;
+        }
+
+        self.wx0_scx_shortening_applied = true;
+        self.mode0_start_dot -= 1;
     }
 }
 
@@ -2001,7 +1997,6 @@ struct ObjPipelineState {
     fifo: VecDeque<ObjPixel>,
     fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
     fetch: ObjFetchState,
-    stall_dots: u16,
 }
 
 impl ObjPipelineState {
@@ -2009,7 +2004,6 @@ impl ObjPipelineState {
         self.fifo.clear();
         self.fetched_sprite_slots.fill(false);
         self.fetch = ObjFetchState::default();
-        self.stall_dots = 0;
     }
 
     fn start_fetch(&mut self, sprite_slot: u8, sprite: PpuSelectedSprite) {
