@@ -501,7 +501,7 @@ impl Ppu {
         debug_assert_eq!(oam.master(), BusMaster::Ppu);
         debug_assert_eq!(vram.master(), BusMaster::Ppu);
         debug_assert_eq!(
-            oam.is_acquired_by_this(),
+            oam.is_acquired_by_master(),
             self.is_lcd_enabled()
                 && matches!(
                     self.current_access_mode(),
@@ -510,10 +510,10 @@ impl Ppu {
         );
         debug_assert_eq!(
             oam.is_acquired(),
-            oam.is_acquired_by_this() || dma_oam_active
+            oam.is_acquired_by_master() || dma_oam_active
         );
         debug_assert_eq!(
-            vram.is_acquired_by_this(),
+            vram.is_acquired_by_master(),
             self.is_lcd_enabled() && self.current_access_mode() == PpuAccessMode::Drawing
         );
 

@@ -1,14 +1,20 @@
 use super::BusMaster;
 use super::video::{OamDomain, VramDomain};
 
+pub(crate) type OamBusView<'a> = VideoBusView<'a, OamDomain>;
+pub(crate) type VramBusView<'a> = VideoBusView<'a, VramDomain>;
+
 #[derive(Debug)]
-pub(crate) struct OamBusView<'a> {
+pub(crate) struct VideoBusView<'a, D> {
     master: BusMaster,
-    domain: &'a mut OamDomain,
+    domain: &'a mut D,
 }
 
-impl<'a> OamBusView<'a> {
-    pub(crate) fn new(master: BusMaster, domain: &'a mut OamDomain) -> Self {
+impl<'a, D> VideoBusView<'a, D>
+where
+    D: VideoDomain,
+{
+    pub(crate) fn new(master: BusMaster, domain: &'a mut D) -> Self {
         Self { master, domain }
     }
 
@@ -16,66 +22,73 @@ impl<'a> OamBusView<'a> {
         self.master
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn acquire(&mut self) {
-        self.domain.acquire(self.master);
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn release(&mut self) {
-        self.domain.release(self.master);
-    }
-
-    #[allow(dead_code)]
-    #[allow(dead_code)]
-    pub(crate) fn is_acquired(&self) -> bool {
-        self.domain.is_acquired()
-    }
-
-    pub(crate) fn is_acquired_by_this(&self) -> bool {
+    pub(crate) fn is_acquired_by_master(&self) -> bool {
         self.domain.is_acquired_by(self.master)
     }
 
     pub(crate) fn bytes(&self) -> &[u8] {
         self.domain.bytes()
     }
+
+    pub(crate) fn is_acquired(&self) -> bool {
+        self.domain.is_acquired()
+    }
 }
 
-#[derive(Debug)]
-pub(crate) struct VramBusView<'a> {
-    master: BusMaster,
-    domain: &'a mut VramDomain,
+pub(crate) trait VideoDomain {
+    fn is_acquired(&self) -> bool;
+    fn is_acquired_by(&self, master: BusMaster) -> bool;
+    fn bytes(&self) -> &[u8];
 }
 
-impl<'a> VramBusView<'a> {
-    pub(crate) fn new(master: BusMaster, domain: &'a mut VramDomain) -> Self {
-        Self { master, domain }
-    }
-
-    pub(crate) const fn master(&self) -> BusMaster {
-        self.master
-    }
-
-    #[allow(dead_code)]
+impl<'a> VideoBusView<'a, OamDomain> {
+    #[cfg(test)]
     pub(crate) fn acquire(&mut self) {
         self.domain.acquire(self.master);
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn release(&mut self) {
         self.domain.release(self.master);
     }
+}
 
-    #[allow(dead_code)]
-    pub(crate) fn is_acquired(&self) -> bool {
-        self.domain.is_acquired()
+impl<'a> VideoBusView<'a, VramDomain> {
+    #[cfg(test)]
+    pub(crate) fn acquire(&mut self) {
+        self.domain.acquire(self.master);
     }
 
-    pub(crate) fn is_acquired_by_this(&self) -> bool {
-        self.domain.is_acquired_by(self.master)
+    #[cfg(test)]
+    pub(crate) fn release(&mut self) {
+        self.domain.release(self.master);
+    }
+}
+
+impl VideoDomain for OamDomain {
+    fn is_acquired(&self) -> bool {
+        OamDomain::is_acquired(self)
     }
 
-    pub(crate) fn bytes(&self) -> &[u8] {
-        self.domain.bytes()
+    fn is_acquired_by(&self, master: BusMaster) -> bool {
+        OamDomain::is_acquired_by(self, master)
+    }
+
+    fn bytes(&self) -> &[u8] {
+        OamDomain::bytes(self)
+    }
+}
+
+impl VideoDomain for VramDomain {
+    fn is_acquired(&self) -> bool {
+        VramDomain::is_acquired(self)
+    }
+
+    fn is_acquired_by(&self, master: BusMaster) -> bool {
+        VramDomain::is_acquired_by(self, master)
+    }
+
+    fn bytes(&self) -> &[u8] {
+        VramDomain::bytes(self)
     }
 }
