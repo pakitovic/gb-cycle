@@ -22,6 +22,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - reaction to DMA-declared OAM/VRAM contention without owning DMA scheduling
 - consumption of bus-originated OAM/VRAM domain views rather than unrelated raw backing arrays
 - consumption of bus-synchronized OAM/VRAM ownership state; the PPU must not invent video-bus acquisition or release transitions locally
+- explicit separation between MMIO-owned register storage and the register values currently visible to the active pixel pipeline
 - tile fetcher state
 - background and object FIFO state
 - pixel FIFO state and output timing
@@ -54,6 +55,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `LYC` is readable and writable storage, but its comparison effect belongs to the live PPU state and should be evaluated continuously against `LY`.
 - `SCX`, `SCY`, `WX`, and `WY` should be modeled as MMIO-visible PPU registers whose mid-frame writes participate in the same temporal PPU model rather than a deferred renderer recomputation.
 - `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
+- The implementation should keep one explicit current-dot-visible register block for active-LCD fetch and pixel mixing. In the current DMG baseline, that visible block may lag the MMIO-owned storage by one shared T-cycle so writes committed after the PPU tick become visible on the next PPU dot instead of retroactively changing the fetch already in progress.
+- That visible-register block should be the source of truth for Mode `3` BG/window/object fetch decisions, BG/OBJ palette lookup, and other active-pipeline reads of `LCDC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, and `OBP*`.
 - For `OBP0` and `OBP1`, the low two bits must not change the meaning of OBJ color index `0`, because that index remains transparent.
 - On DMG-family hardware, writes to `BGP`, `OBP0`, and `OBP1` during Mode `3` should not be treated as ordinary "new value is visible only from the next pixel onward" MMIO updates. The PPU design should leave room for the documented/raster-oracle-visible palette-conflict artifacts, including transient write values and limited retroactive recoloring of the most recent visible pixels when those writes race the LCD pipeline.
 - That DMG palette-conflict window should also remain compatible with the observed early-HBlank tail used by raster tests such as `mealybug m3_bgp_change`; do not hard-cut those writes to "no effect" merely because the mode bits already advanced to HBlank in the coarse scheduler model.
@@ -215,6 +218,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Sprite fetch work should be able to stall pixel output and lengthen Mode 3 on the shared dot timeline.
 - The special DMG timing penalty involving `SCX & 7 > 0` together with a sprite at `X = 0` should have an explicit path in the design even if the exact timing remains documented as partially unsettled.
 - Avoid reducing sprite timing to "add N dots per sprite" without internal fetcher state.
+- BG/window/object fetch helpers should consume `VramBusView` / `OamBusView`-style domain clients rather than unrelated `&[u8]` slices so future bus-ownership, storage, and CGB-bank changes do not force another PPU boundary rewrite.
 - Late Mode `3` sprite metadata reads should come from live OAM rather than from a frozen Mode `2` metadata snapshot.
 - During DMG OAM DMA, that late metadata path should be able to read the DMA destination word being written on the current cycle instead of the nominal sprite metadata address, because tests such as `hacktix/strikethrough` depend on that conflict window.
 

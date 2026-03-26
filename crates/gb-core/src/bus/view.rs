@@ -26,8 +26,8 @@ where
         self.domain.is_acquired_by(self.master)
     }
 
-    pub(crate) fn bytes(&self) -> &[u8] {
-        self.domain.bytes()
+    pub(crate) fn read(&self, offset: usize) -> Option<u8> {
+        self.domain.read(offset)
     }
 
     pub(crate) fn is_acquired(&self) -> bool {
@@ -38,7 +38,7 @@ where
 pub(crate) trait VideoDomain {
     fn is_acquired(&self) -> bool;
     fn is_acquired_by(&self, master: BusMaster) -> bool;
-    fn bytes(&self) -> &[u8];
+    fn read(&self, offset: usize) -> Option<u8>;
 }
 
 impl<'a> VideoBusView<'a, OamDomain> {
@@ -74,8 +74,8 @@ impl VideoDomain for OamDomain {
         OamDomain::is_acquired_by(self, master)
     }
 
-    fn bytes(&self) -> &[u8] {
-        OamDomain::bytes(self)
+    fn read(&self, offset: usize) -> Option<u8> {
+        self.bytes().get(offset).copied()
     }
 }
 
@@ -88,7 +88,7 @@ impl VideoDomain for VramDomain {
         VramDomain::is_acquired_by(self, master)
     }
 
-    fn bytes(&self) -> &[u8] {
-        VramDomain::bytes(self)
+    fn read(&self, offset: usize) -> Option<u8> {
+        self.bytes().get(offset).copied()
     }
 }

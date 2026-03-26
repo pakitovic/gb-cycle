@@ -474,7 +474,8 @@ fn video_views_expose_master_owned_acquire_release_and_bytes() {
         assert_eq!(oam_view.master(), BusMaster::Ppu);
         assert!(!oam_view.is_acquired());
         assert!(!oam_view.is_acquired_by_master());
-        assert_eq!(oam_view.bytes().len(), OAM_LEN);
+        assert!(oam_view.read(OAM_LEN - 1).is_some());
+        assert!(oam_view.read(OAM_LEN).is_none());
 
         oam_view.acquire();
         assert!(oam_view.is_acquired());
@@ -490,7 +491,8 @@ fn video_views_expose_master_owned_acquire_release_and_bytes() {
         assert_eq!(vram_view.master(), BusMaster::Dma);
         assert!(!vram_view.is_acquired());
         assert!(!vram_view.is_acquired_by_master());
-        assert_eq!(vram_view.bytes().len(), VRAM_LEN);
+        assert!(vram_view.read(VRAM_LEN - 1).is_some());
+        assert!(vram_view.read(VRAM_LEN).is_none());
 
         vram_view.acquire();
         assert!(vram_view.is_acquired());

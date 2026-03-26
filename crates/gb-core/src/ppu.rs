@@ -298,6 +298,7 @@ pub struct Ppu {
     wy: u8,
     wx: u8,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
+    visible_registers: PpuVisibleRegisters,
     startup_mode_latch: Option<PpuAccessMode>,
     stat_state: StatState,
     pending_interrupts: u8,
@@ -352,7 +353,57 @@ pub struct PpuSnapshot {
     pub obp1: Option<u8>,
     pub wy: u8,
     pub wx: u8,
+    pub visible_lcdc: u8,
+    pub visible_scy: u8,
+    pub visible_scx: u8,
+    pub visible_bgp: u8,
+    pub visible_obp0: Option<u8>,
+    pub visible_obp1: Option<u8>,
+    pub visible_wy: u8,
+    pub visible_wx: u8,
     pub obj_palette_read_policy: DmgObjPaletteReadPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+struct PpuVisibleRegisters {
+    lcdc: u8,
+    scy: u8,
+    scx: u8,
+    bgp: u8,
+    obp0: Option<u8>,
+    obp1: Option<u8>,
+    wy: u8,
+    wx: u8,
+}
+
+impl PpuVisibleRegisters {
+    const fn bg_enabled(self) -> bool {
+        self.lcdc & LCDC_BG_ENABLE_BIT != 0
+    }
+
+    const fn obj_enabled(self) -> bool {
+        self.lcdc & LCDC_OBJ_ENABLE_BIT != 0
+    }
+
+    const fn window_enabled(self) -> bool {
+        self.lcdc & LCDC_WINDOW_ENABLE_BIT != 0
+    }
+
+    const fn obj_height(self) -> u8 {
+        if self.lcdc & LCDC_OBJ_SIZE_BIT != 0 {
+            16
+        } else {
+            8
+        }
+    }
+
+    fn obj_palette(self, palette_obp1: bool, policy: DmgObjPaletteReadPolicy) -> u8 {
+        if palette_obp1 {
+            self.obp1.unwrap_or(policy.default_read_value())
+        } else {
+            self.obp0.unwrap_or(policy.default_read_value())
+        }
+    }
 }
 
 impl Ppu {
@@ -376,6 +427,7 @@ impl Ppu {
             wy: 0,
             wx: 0,
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+            visible_registers: PpuVisibleRegisters::default(),
             startup_mode_latch: None,
             stat_state: StatState::default(),
             pending_interrupts: 0,
@@ -448,6 +500,10 @@ impl Ppu {
             0xFF4B => self.wx = value,
             _ => {}
         }
+
+        if !self.is_lcd_enabled() {
+            self.sync_visible_registers();
+        }
     }
 
     pub fn apply_startup_state(&mut self, startup_state: PpuStartupState) {
@@ -478,6 +534,7 @@ impl Ppu {
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
         self.framebuffer.fill(0);
+        self.sync_visible_registers();
         self.startup_mode_latch = if self.lcd_state.is_enabled() {
             let startup_mode = PpuAccessMode::from_stat_bits(startup_state.stat);
             let derived_mode =
@@ -521,13 +578,14 @@ impl Ppu {
             return;
         }
 
+        self.sync_visible_registers();
         let previous_mode = self.current_access_mode();
         self.startup_mode_latch = None;
         self.line_dot += 1;
         self.advance_lcd_restart_phase();
         self.prepare_visible_scanline_state();
-        self.advance_mode2_scan(oam.bytes(), dma_oam_active);
-        self.advance_mode3_pipeline(oam.bytes(), vram.bytes(), dma_oam_conflict_address);
+        self.advance_mode2_scan(&oam, dma_oam_active);
+        self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict_address);
 
         if self.line_dot == DOTS_PER_SCANLINE {
             let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
@@ -612,6 +670,14 @@ impl Ppu {
             obp1: self.obp1,
             wy: self.wy,
             wx: self.wx,
+            visible_lcdc: self.visible_registers.lcdc,
+            visible_scy: self.visible_registers.scy,
+            visible_scx: self.visible_registers.scx,
+            visible_bgp: self.visible_registers.bgp,
+            visible_obp0: self.visible_registers.obp0,
+            visible_obp1: self.visible_registers.obp1,
+            visible_wy: self.visible_registers.wy,
+            visible_wx: self.visible_registers.wx,
             obj_palette_read_policy: self.obj_palette_read_policy,
         }
     }
@@ -654,6 +720,19 @@ impl Ppu {
 
     fn is_lcd_enabled(&self) -> bool {
         self.lcd_state.is_enabled()
+    }
+
+    fn sync_visible_registers(&mut self) {
+        self.visible_registers = PpuVisibleRegisters {
+            lcdc: self.lcdc,
+            scy: self.scy,
+            scx: self.scx,
+            bgp: self.bgp,
+            obp0: self.obp0,
+            obp1: self.obp1,
+            wy: self.wy,
+            wx: self.wx,
+        };
     }
 
     fn read_lcdc(&self) -> u8 {
@@ -742,7 +821,9 @@ impl Ppu {
         }
 
         (MODE0_START_DOT as i16
-            + self.bg_pipeline_state.latched_scx_discard(self.scx) as i16
+            + self
+                .bg_pipeline_state
+                .latched_scx_discard(self.visible_registers.scx) as i16
             + self.bg_pipeline_state.mode0_extension_dots()
             + self.obj_pipeline_state.stall_dots as i16) as u16
     }
@@ -771,7 +852,7 @@ impl Ppu {
             .apply(self.console_model, row, event, oam_bytes)
     }
 
-    fn advance_mode2_scan(&mut self, oam_bytes: &[u8], dma_oam_active: bool) {
+    fn advance_mode2_scan(&mut self, oam: &OamBusView<'_>, dma_oam_active: bool) {
         let raster_state = self.current_raster_state();
 
         if self.ly >= VISIBLE_SCANLINES
@@ -790,7 +871,7 @@ impl Ppu {
             return;
         }
 
-        let nominal_sprite = read_oam_sprite(oam_bytes, oam_index);
+        let nominal_sprite = read_oam_sprite(oam, oam_index);
         let sprite = if dma_oam_active && self.console_model.is_dmg_family() {
             let Some((y, x)) = self.mode2_scan_state.latched_oam_word() else {
                 return;
@@ -820,11 +901,7 @@ impl Ppu {
     }
 
     fn current_obj_height(&self) -> u8 {
-        if self.lcdc & LCDC_OBJ_SIZE_BIT != 0 {
-            16
-        } else {
-            8
-        }
+        self.visible_registers.obj_height()
     }
 
     fn prepare_visible_scanline_state(&mut self) {
@@ -832,11 +909,12 @@ impl Ppu {
             return;
         }
 
-        if self.wy < VISIBLE_SCANLINES && self.ly == self.wy {
+        if self.visible_registers.wy < VISIBLE_SCANLINES && self.ly == self.visible_registers.wy {
             self.window_state.wy_triggered = true;
         }
 
-        let wy_latch = self.window_state.wy_triggered && self.wy < VISIBLE_SCANLINES;
+        let wy_latch =
+            self.window_state.wy_triggered && self.visible_registers.wy < VISIBLE_SCANLINES;
         let force_x0_this_line = wy_latch && self.window_state.pending_wx166_next_line;
         self.window_state.pending_wx166_next_line = false;
         self.bg_pipeline_state
@@ -845,8 +923,8 @@ impl Ppu {
 
     fn advance_mode3_pipeline(
         &mut self,
-        oam_bytes: &[u8],
-        vram_bytes: &[u8],
+        oam: &OamBusView<'_>,
+        vram: &VramBusView<'_>,
         dma_oam_conflict_address: Option<u16>,
     ) {
         if self.ly >= VISIBLE_SCANLINES
@@ -857,7 +935,8 @@ impl Ppu {
         }
 
         if !self.bg_pipeline_state.mode3_started {
-            self.bg_pipeline_state.start_line(self.scx);
+            self.bg_pipeline_state
+                .start_line(self.visible_registers.scx);
         }
 
         if self.line_dot.saturating_sub(MODE2_DOTS) >= MODE3_BG_FETCH_PRIMING_DOTS {
@@ -865,16 +944,16 @@ impl Ppu {
         }
 
         self.maybe_start_object_fetch();
-        if self.advance_object_fetch(oam_bytes, vram_bytes, dma_oam_conflict_address) {
+        if self.advance_object_fetch(oam, vram, dma_oam_conflict_address) {
             return;
         }
 
-        self.advance_bg_fetcher(vram_bytes);
+        self.advance_bg_fetcher(vram);
         self.pop_bg_pixel_for_current_dot();
         self.advance_pre_visible_obj_match_x();
     }
 
-    fn advance_bg_fetcher(&mut self, vram_bytes: &[u8]) {
+    fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) {
         if matches!(
             self.bg_pipeline_state.fetcher.stage,
             PpuBgFetcherStage::Idle
@@ -895,29 +974,18 @@ impl Ppu {
         match fetcher.stage {
             PpuBgFetcherStage::Idle => self.bg_pipeline_state.fetcher.start_background(),
             PpuBgFetcherStage::TileIndex => {
-                self.bg_pipeline_state.fetcher.tile_index = self.read_fetch_tile_index(
-                    vram_bytes,
-                    fetcher.source,
-                    fetcher.next_fetch_pixel,
-                );
+                self.bg_pipeline_state.fetcher.tile_index =
+                    self.read_fetch_tile_index(vram, fetcher.source, fetcher.next_fetch_pixel);
                 self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
             }
             PpuBgFetcherStage::TileDataLow => {
-                self.bg_pipeline_state.fetcher.tile_low = self.read_fetch_tile_data_byte(
-                    vram_bytes,
-                    fetcher.source,
-                    fetcher.tile_index,
-                    0,
-                );
+                self.bg_pipeline_state.fetcher.tile_low =
+                    self.read_fetch_tile_data_byte(vram, fetcher.source, fetcher.tile_index, 0);
                 self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
             }
             PpuBgFetcherStage::TileDataHigh => {
-                self.bg_pipeline_state.fetcher.tile_high = self.read_fetch_tile_data_byte(
-                    vram_bytes,
-                    fetcher.source,
-                    fetcher.tile_index,
-                    1,
-                );
+                self.bg_pipeline_state.fetcher.tile_high =
+                    self.read_fetch_tile_data_byte(vram, fetcher.source, fetcher.tile_index, 1);
                 self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
             }
             PpuBgFetcherStage::Push => {
@@ -979,11 +1047,11 @@ impl Ppu {
     }
 
     fn bg_enabled(&self) -> bool {
-        self.lcdc & LCDC_BG_ENABLE_BIT != 0
+        self.visible_registers.bg_enabled()
     }
 
     fn obj_enabled(&self) -> bool {
-        self.lcdc & LCDC_OBJ_ENABLE_BIT != 0
+        self.visible_registers.obj_enabled()
     }
 
     fn maybe_start_window_for_current_position(&mut self) {
@@ -994,7 +1062,7 @@ impl Ppu {
             return;
         }
 
-        if self.wx == 166 && !self.bg_pipeline_state.window_force_x0_this_line {
+        if self.visible_registers.wx == 166 && !self.bg_pipeline_state.window_force_x0_this_line {
             if self.bg_pipeline_state.visible_pixels_output as usize == SCREEN_WIDTH - 1
                 && self.bg_pipeline_state.scx_discard_remaining == 0
                 && !self.bg_pipeline_state.wx166_armed_this_line
@@ -1013,7 +1081,7 @@ impl Ppu {
             return;
         }
 
-        if self.wx == 0
+        if self.visible_registers.wx == 0
             && !self.bg_pipeline_state.window_force_x0_this_line
             && self.bg_pipeline_state.initial_scx_discard > 0
             && self.bg_pipeline_state.scx_discard_remaining == 1
@@ -1029,7 +1097,7 @@ impl Ppu {
     }
 
     fn window_runtime_enabled(&self) -> bool {
-        self.lcdc & LCDC_WINDOW_ENABLE_BIT != 0 && self.bg_enabled()
+        self.visible_registers.window_enabled() && self.bg_enabled()
     }
 
     fn maybe_start_object_fetch(&mut self) {
@@ -1084,8 +1152,8 @@ impl Ppu {
 
     fn advance_object_fetch(
         &mut self,
-        oam_bytes: &[u8],
-        vram_bytes: &[u8],
+        oam: &OamBusView<'_>,
+        vram: &VramBusView<'_>,
         dma_oam_conflict_address: Option<u16>,
     ) -> bool {
         if self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle {
@@ -1115,7 +1183,7 @@ impl Ppu {
             PpuObjFetcherStage::Idle => {}
             PpuObjFetcherStage::Startup => {
                 let resolved_sprite = fetch.sprite.map(|sprite| {
-                    self.resolve_obj_fetch_sprite(oam_bytes, sprite, dma_oam_conflict_address)
+                    self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict_address)
                 });
                 self.obj_pipeline_state.fetch.resolved_sprite = resolved_sprite;
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataLow;
@@ -1125,7 +1193,7 @@ impl Ppu {
                     .resolved_sprite
                     .expect("active OBJ fetch must resolve tile metadata before reading tile data");
                 self.obj_pipeline_state.fetch.tile_low =
-                    self.read_obj_tile_data_byte(vram_bytes, resolved_sprite, 0);
+                    self.read_obj_tile_data_byte(vram, resolved_sprite, 0);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
             }
             PpuObjFetcherStage::TileDataHigh => {
@@ -1133,7 +1201,7 @@ impl Ppu {
                     .resolved_sprite
                     .expect("active OBJ fetch must resolve tile metadata before reading tile data");
                 self.obj_pipeline_state.fetch.tile_high =
-                    self.read_obj_tile_data_byte(vram_bytes, resolved_sprite, 1);
+                    self.read_obj_tile_data_byte(vram, resolved_sprite, 1);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
             }
             PpuObjFetcherStage::Push => {
@@ -1175,12 +1243,12 @@ impl Ppu {
 
     fn resolve_obj_fetch_sprite(
         &mut self,
-        oam_bytes: &[u8],
+        oam: &OamBusView<'_>,
         sprite: PpuSelectedSprite,
         dma_oam_conflict_address: Option<u16>,
     ) -> PpuSelectedSprite {
         let (tile_index, attributes) =
-            read_obj_fetch_sprite_metadata(oam_bytes, sprite, dma_oam_conflict_address);
+            read_obj_fetch_sprite_metadata(oam, sprite, dma_oam_conflict_address);
         self.mode2_scan_state.latch_oam_word(tile_index, attributes);
 
         PpuSelectedSprite {
@@ -1195,8 +1263,8 @@ impl Ppu {
             return Some(0);
         }
 
-        match self.wx {
-            0..=166 => Some(self.wx.saturating_sub(7)),
+        match self.visible_registers.wx {
+            0..=166 => Some(self.visible_registers.wx.saturating_sub(7)),
             _ => None,
         }
     }
@@ -1208,7 +1276,7 @@ impl Ppu {
 
         if trigger_x == 0 {
             return self.bg_pipeline_state.scx_discard_remaining == 0
-                || (self.wx == 0
+                || (self.visible_registers.wx == 0
                     && !self.bg_pipeline_state.window_force_x0_this_line
                     && self.bg_pipeline_state.initial_scx_discard > 0
                     && self.bg_pipeline_state.scx_discard_remaining == 1);
@@ -1219,15 +1287,18 @@ impl Ppu {
 
     fn read_fetch_tile_index(
         &self,
-        vram_bytes: &[u8],
+        vram: &VramBusView<'_>,
         source: PpuBgFetcherSource,
         next_fetch_pixel: u16,
     ) -> u8 {
         let (tile_map_base, tile_x, tile_y) = match source {
             PpuBgFetcherSource::Background => {
-                let bg_x = self.scx.wrapping_add(next_fetch_pixel as u8);
-                let bg_y = self.scy.wrapping_add(self.ly);
-                let tile_map_base = if self.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
+                let bg_x = self
+                    .visible_registers
+                    .scx
+                    .wrapping_add(next_fetch_pixel as u8);
+                let bg_y = self.visible_registers.scy.wrapping_add(self.ly);
+                let tile_map_base = if self.visible_registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
                     0x1C00
                 } else {
                     0x1800
@@ -1239,7 +1310,7 @@ impl Ppu {
                 )
             }
             PpuBgFetcherSource::Window => {
-                let tile_map_base = if self.lcdc & LCDC_WINDOW_TILE_MAP_BIT != 0 {
+                let tile_map_base = if self.visible_registers.lcdc & LCDC_WINDOW_TILE_MAP_BIT != 0 {
                     0x1C00
                 } else {
                     0x1800
@@ -1253,33 +1324,33 @@ impl Ppu {
         };
         let tile_map_address = tile_map_base + tile_y * BG_TILE_MAP_WIDTH as usize + tile_x;
 
-        vram_bytes.get(tile_map_address).copied().unwrap_or(0)
+        vram.read(tile_map_address).unwrap_or(0)
     }
 
     fn read_fetch_tile_data_byte(
         &self,
-        vram_bytes: &[u8],
+        vram: &VramBusView<'_>,
         source: PpuBgFetcherSource,
         tile_index: u8,
         plane: u16,
     ) -> u8 {
         let tile_row = match source {
             PpuBgFetcherSource::Background => {
-                (self.scy.wrapping_add(self.ly) % BG_TILE_WIDTH) as u16
+                (self.visible_registers.scy.wrapping_add(self.ly) % BG_TILE_WIDTH) as u16
             }
             PpuBgFetcherSource::Window => {
                 (self.window_state.window_line_counter % BG_TILE_WIDTH) as u16
             }
         };
-        let tile_data_base = bg_tile_data_base(self.lcdc, tile_index);
+        let tile_data_base = bg_tile_data_base(self.visible_registers.lcdc, tile_index);
         let byte_address = tile_data_base + tile_row * TILE_ROW_BYTES + plane;
 
-        vram_bytes.get(byte_address as usize).copied().unwrap_or(0)
+        vram.read(byte_address as usize).unwrap_or(0)
     }
 
     fn read_obj_tile_data_byte(
         &self,
-        vram_bytes: &[u8],
+        vram: &VramBusView<'_>,
         sprite: PpuSelectedSprite,
         plane: u16,
     ) -> u8 {
@@ -1289,7 +1360,7 @@ impl Ppu {
         let byte_address =
             tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES + plane;
 
-        vram_bytes.get(byte_address as usize).copied().unwrap_or(0)
+        vram.read(byte_address as usize).unwrap_or(0)
     }
 
     fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> Option<(u8, u8)> {
@@ -1387,15 +1458,13 @@ impl Ppu {
 
     fn map_mixed_pixel_to_panel_shade(&self, pixel: MixedPixel) -> u8 {
         match pixel.source {
-            MixedPixelSource::Background => self.apply_dmg_palette(self.bgp, pixel.color),
+            MixedPixelSource::Background => {
+                self.apply_dmg_palette(self.visible_registers.bgp, pixel.color)
+            }
             MixedPixelSource::Object { palette_obp1 } => {
-                let palette = if palette_obp1 {
-                    self.obp1
-                        .unwrap_or(self.obj_palette_read_policy.default_read_value())
-                } else {
-                    self.obp0
-                        .unwrap_or(self.obj_palette_read_policy.default_read_value())
-                };
+                let palette = self
+                    .visible_registers
+                    .obj_palette(palette_obp1, self.obj_palette_read_policy);
                 self.apply_dmg_palette(palette, pixel.color)
             }
         }
@@ -1549,6 +1618,7 @@ impl Ppu {
         self.line_dot = 0;
         self.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
         self.reset_runtime_pipeline_state();
+        self.sync_visible_registers();
         self.clear_visible_buffers();
         self.refresh_visible_output();
     }
@@ -1561,19 +1631,20 @@ impl Ppu {
         self.lcd_restart_phase = PpuLcdRestartPhase::startup_mode0_window();
         self.stat_state.lcd_disabled_lyc_coincidence = false;
         self.reset_runtime_pipeline_state();
+        self.sync_visible_registers();
         self.clear_visible_buffers();
         self.refresh_visible_output();
     }
 
     fn write_dmg_palette_register(&mut self, register: PpuPaletteRegister, value: u8) {
         let previous_visible = match register {
-            PpuPaletteRegister::Bgp => self.bgp,
+            PpuPaletteRegister::Bgp => self.visible_registers.bgp,
             PpuPaletteRegister::Obp0 => self
-                .obp0
-                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+                .visible_registers
+                .obj_palette(false, self.obj_palette_read_policy),
             PpuPaletteRegister::Obp1 => self
-                .obp1
-                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+                .visible_registers
+                .obj_palette(true, self.obj_palette_read_policy),
         };
 
         match register {
@@ -1640,7 +1711,7 @@ impl Ppu {
                 let palette = if register == PpuPaletteRegister::Bgp {
                     palette_override
                 } else {
-                    self.bgp
+                    self.visible_registers.bgp
                 };
                 self.apply_dmg_palette(palette, pixel.color)
             }
@@ -1649,12 +1720,9 @@ impl Ppu {
                     (PpuPaletteRegister::Obp0, false) | (PpuPaletteRegister::Obp1, true) => {
                         palette_override
                     }
-                    (_, false) => self
-                        .obp0
-                        .unwrap_or(self.obj_palette_read_policy.default_read_value()),
-                    (_, true) => self
-                        .obp1
-                        .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+                    _ => self
+                        .visible_registers
+                        .obj_palette(palette_obp1, self.obj_palette_read_policy),
                 };
                 self.apply_dmg_palette(palette, pixel.color)
             }
@@ -2167,21 +2235,19 @@ fn push_bg_tile_pixels(fifo: &mut VecDeque<u8>, tile_low: u8, tile_high: u8) {
     }
 }
 
-fn read_oam_sprite(oam_bytes: &[u8], oam_index: u8) -> Option<PpuSelectedSprite> {
+fn read_oam_sprite(oam: &OamBusView<'_>, oam_index: u8) -> Option<PpuSelectedSprite> {
     let entry_start = oam_index as usize * OAM_ENTRY_BYTES;
-    let entry = oam_bytes.get(entry_start..entry_start + OAM_ENTRY_BYTES)?;
-
     Some(PpuSelectedSprite {
         oam_index,
-        y: entry[0],
-        x: entry[1],
-        tile_index: entry[2],
-        attributes: entry[3],
+        y: oam.read(entry_start)?,
+        x: oam.read(entry_start + 1)?,
+        tile_index: oam.read(entry_start + 2)?,
+        attributes: oam.read(entry_start + 3)?,
     })
 }
 
 fn read_obj_fetch_sprite_metadata(
-    oam_bytes: &[u8],
+    oam: &OamBusView<'_>,
     sprite: PpuSelectedSprite,
     dma_oam_conflict_address: Option<u16>,
 ) -> (u8, u8) {
@@ -2191,14 +2257,8 @@ fn read_obj_fetch_sprite_metadata(
         .map(|address| address & !0x0001)
         .unwrap_or(nominal_word_address);
     let word_offset = word_address.saturating_sub(0xFE00) as usize;
-    let tile_index = oam_bytes
-        .get(word_offset)
-        .copied()
-        .unwrap_or(sprite.tile_index);
-    let attributes = oam_bytes
-        .get(word_offset + 1)
-        .copied()
-        .unwrap_or(sprite.attributes);
+    let tile_index = oam.read(word_offset).unwrap_or(sprite.tile_index);
+    let attributes = oam.read(word_offset + 1).unwrap_or(sprite.attributes);
 
     (tile_index, attributes)
 }
@@ -2782,6 +2842,69 @@ mod tests {
         assert_eq!(ppu.snapshot().line_dot, 1);
         assert_eq!(ppu.snapshot().mode, PpuAccessMode::OamScan);
         assert_eq!(ppu.snapshot().mode_dot, 1);
+    }
+
+    #[test]
+    fn visible_mode3_registers_lag_enabled_writes_until_the_next_t_cycle() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let oam_bytes = [0; 160];
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x80,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xFC,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+
+        for t_cycle in 0..80 {
+            tick_ppu(&mut ppu, t_cycle, &oam_bytes);
+        }
+
+        let before = ppu.snapshot();
+        assert_eq!(before.mode, PpuAccessMode::Drawing);
+        assert_eq!(before.visible_lcdc, 0x80);
+        assert_eq!(before.visible_scy, 0x00);
+        assert_eq!(before.visible_scx, 0x00);
+        assert_eq!(before.visible_bgp, 0xFC);
+        assert_eq!(before.visible_wy, 0x00);
+        assert_eq!(before.visible_wx, 0x00);
+
+        ppu.write_register(0xFF40, 0x91);
+        ppu.write_register(0xFF42, 0x12);
+        ppu.write_register(0xFF43, 0x34);
+        ppu.write_register(0xFF47, 0x1B);
+        ppu.write_register(0xFF4A, 0x56);
+        ppu.write_register(0xFF4B, 0x78);
+
+        let pending = ppu.snapshot();
+        assert_eq!(pending.lcdc, 0x91);
+        assert_eq!(pending.scy, 0x12);
+        assert_eq!(pending.scx, 0x34);
+        assert_eq!(pending.bgp, 0x1B);
+        assert_eq!(pending.wy, 0x56);
+        assert_eq!(pending.wx, 0x78);
+        assert_eq!(pending.visible_lcdc, 0x80);
+        assert_eq!(pending.visible_scy, 0x00);
+        assert_eq!(pending.visible_scx, 0x00);
+        assert_eq!(pending.visible_bgp, 0xFC);
+        assert_eq!(pending.visible_wy, 0x00);
+        assert_eq!(pending.visible_wx, 0x00);
+
+        tick_ppu(&mut ppu, 80, &oam_bytes);
+
+        let after = ppu.snapshot();
+        assert_eq!(after.visible_lcdc, 0x91);
+        assert_eq!(after.visible_scy, 0x12);
+        assert_eq!(after.visible_scx, 0x34);
+        assert_eq!(after.visible_bgp, 0x1B);
+        assert_eq!(after.visible_wy, 0x56);
+        assert_eq!(after.visible_wx, 0x78);
     }
 
     #[test]
@@ -3619,7 +3742,10 @@ mod tests {
             0xA0,
         );
 
-        let (tile_index, attributes) = read_obj_fetch_sprite_metadata(&oam_bytes, sprite, None);
+        let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+        let oam = OamBusView::new(BusMaster::Ppu, &mut oam);
+
+        let (tile_index, attributes) = read_obj_fetch_sprite_metadata(&oam, sprite, None);
 
         assert_eq!(tile_index, 0x44);
         assert_eq!(attributes, 0xA0);
@@ -3645,8 +3771,10 @@ mod tests {
         );
         write_oam_entry_with_attributes(&mut oam_bytes, 5, 32, 40, 0x99, 0x10);
 
-        let (tile_index, attributes) =
-            read_obj_fetch_sprite_metadata(&oam_bytes, sprite, Some(0xFE17));
+        let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+        let oam = OamBusView::new(BusMaster::Ppu, &mut oam);
+
+        let (tile_index, attributes) = read_obj_fetch_sprite_metadata(&oam, sprite, Some(0xFE17));
 
         assert_eq!(tile_index, 0x99);
         assert_eq!(attributes, 0x10);
@@ -3779,6 +3907,34 @@ mod tests {
             &[0, 1, 2, 3, 0, 1, 2, 3]
         );
         assert_eq!(&ppu.framebuffer()[..8], &[3, 2, 1, 0, 3, 2, 1, 0]);
+    }
+
+    #[test]
+    fn pixel_output_uses_visible_bgp_state_rather_than_the_new_live_mmio_value() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x83,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.visible_registers.bgp = 0x1B;
+        ppu.bgp = 0xE4;
+        ppu.bg_pipeline_state.scx_discard_remaining = 0;
+        ppu.bg_pipeline_state.fifo.push_back(1);
+
+        ppu.pop_bg_pixel_for_current_dot();
+
+        assert_eq!(ppu.snapshot().current_scanline_pixels[0], 1);
+        assert_eq!(ppu.framebuffer()[0], 2);
     }
 
     #[test]
