@@ -975,6 +975,10 @@ impl Ppu {
             return false;
         }
 
+        if self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push {
+            return self.advance_bg_push_stage();
+        }
+
         self.bg_pipeline_state.fetcher.stage_dot += 1;
 
         if self.bg_pipeline_state.fetcher.stage_dot < 2 {
@@ -1016,6 +1020,14 @@ impl Ppu {
         }
 
         false
+    }
+
+    fn advance_bg_push_stage(&mut self) -> bool {
+        if !self.bg_pipeline_state.push.advance_entry_delay() {
+            return false;
+        }
+
+        self.advance_bg_push()
     }
 
     fn advance_bg_push(&mut self) -> bool {
@@ -2048,6 +2060,7 @@ impl BgFetcherState {
 struct BgPushState {
     pending: bool,
     disposition: BgPushDisposition,
+    entry_delay_remaining: u8,
     source: PpuBgFetcherSource,
     tile_low: u8,
     tile_high: u8,
@@ -2062,10 +2075,20 @@ impl BgPushState {
     fn queue_from_fetcher(&mut self, fetcher: BgFetcherState) {
         self.pending = true;
         self.disposition = BgPushDisposition::Ready;
+        self.entry_delay_remaining = 1;
         self.source = fetcher.source;
         self.tile_low = fetcher.tile_low;
         self.tile_high = fetcher.tile_high;
         self.next_fetch_pixel = fetcher.next_fetch_pixel.wrapping_add(BG_TILE_WIDTH as u16);
+    }
+
+    fn advance_entry_delay(&mut self) -> bool {
+        if self.entry_delay_remaining == 0 {
+            return true;
+        }
+
+        self.entry_delay_remaining -= 1;
+        false
     }
 
     fn is_ready_for_fifo_push(self) -> bool {
@@ -3695,6 +3718,43 @@ mod tests {
         assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
         assert_eq!(ppu.bg_pipeline_state.fifo.len(), 1);
         assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+    }
+
+    #[test]
+    fn bg_push_stage_waits_one_dot_on_entry_then_retries_every_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 0;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
+        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+        ppu.bg_pipeline_state.fifo = (0..=8).collect();
+
+        assert!(!ppu.advance_bg_push_stage());
+        assert_eq!(ppu.bg_pipeline_state.push.entry_delay_remaining, 0);
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 9);
+
+        assert!(!ppu.advance_bg_push_stage());
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 9);
+
+        let _ = ppu.bg_pipeline_state.fifo.pop_front();
+        assert!(!ppu.advance_bg_push_stage());
+        assert!(!ppu.bg_pipeline_state.push.pending);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 8);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 16);
     }
 
     #[test]
