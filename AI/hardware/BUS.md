@@ -297,7 +297,7 @@ Priority order:
 - Treat the bus as both an address decoder and an access arbiter.
 - Keep one source of truth for address decode plus access policy; do not let per-subsystem shortcuts become shadow decoders.
 - A pure address-router plus requester-facing domain views is the preferred long-term structural shape for this repo's bus, as long as the router itself stays timing-agnostic.
-- In the current repo, prefer `bus.rs` as a narrow facade plus focused child modules such as `map.rs`, `router.rs`, `policy.rs`, `access.rs`, `iohram.rs`, `wram.rs`, `video.rs`, and `view.rs` instead of one monolithic file that mixes decode, MMIO, storage, and video ownership.
+- In the current repo, prefer `bus.rs` as a narrow facade plus focused child modules such as `map.rs`, `router.rs`, `policy.rs`, `access.rs`, `corruption.rs`, `iohram.rs`, `wram.rs`, `video.rs`, and `view.rs` instead of one monolithic file that mixes decode, MMIO, storage, video ownership, and DMG-specific corruption trigger routing.
 - A bus context or equivalent state bundle is a good fit for carrying model, PPU mode, LCD enable, DMA activity, boot ROM mapping, and later CGB-specific selectors.
 - A caller-aware access split or equivalent internal distinction between CPU-initiated and DMA-initiated accesses is recommended when the observable rules differ.
 - Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers or in explicit domain-local access helpers reached from that one bus path.
@@ -309,7 +309,7 @@ Priority order:
 - Prefer a centralized MMIO descriptor table or equivalent routed register map over scattered `match` blocks that each know only part of a register's semantics.
 - Let subsystem-owned handlers compose readback from live state, latched state, and forced bits; do not teach the bus to fake those register internals.
 - Do not special-case CPU opcode fetch, operand fetch, or stack accesses outside the common bus contract; they should use the same routed access path as any other CPU-visible memory transaction.
-- A routed helper such as `notify_oam_corruption_event(kind, addr)` is a good fit once CPU micro-ops and the PPU's current Mode `2` row are available; let the bus classify address-space triggers but not own the corruption formulas themselves.
+- A dedicated child module such as `bus/corruption.rs`, with a routed helper like `notify_oam_corruption_event(kind, addr)`, is a good fit once CPU micro-ops and the PPU's current Mode `2` row are available; let the bus classify address-space triggers but not own the corruption formulas themselves.
 - Treat `FF46` as the trigger that configures the DMA subsystem; do not implement OAM DMA by performing a direct `160`-byte copy inside the bus write path.
 - Treat `FF50` as the trigger that changes boot-ROM mapping state; do not model real boot completion as a synthetic `PC = 0x0100` event outside the bus and CPU execution flow.
 - Design region ownership so future CGB additions can extend VRAM banking, WRAM banking, extra I/O registers, and HDMA without replacing the bus contract.
