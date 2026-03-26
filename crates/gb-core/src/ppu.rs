@@ -500,6 +500,22 @@ impl Ppu {
     ) {
         debug_assert_eq!(oam.master(), BusMaster::Ppu);
         debug_assert_eq!(vram.master(), BusMaster::Ppu);
+        debug_assert_eq!(
+            oam.is_acquired_by_this(),
+            self.is_lcd_enabled()
+                && matches!(
+                    self.current_access_mode(),
+                    PpuAccessMode::OamScan | PpuAccessMode::Drawing
+                )
+        );
+        debug_assert_eq!(
+            oam.is_acquired(),
+            oam.is_acquired_by_this() || dma_oam_active
+        );
+        debug_assert_eq!(
+            vram.is_acquired_by_this(),
+            self.is_lcd_enabled() && self.current_access_mode() == PpuAccessMode::Drawing
+        );
 
         if !self.is_lcd_enabled() {
             return;
@@ -2280,10 +2296,12 @@ mod tests {
         dma_oam_conflict_address: Option<u16>,
     ) -> CycleContext {
         let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
+        let mut oam = crate::bus::OamDomain::from_bytes(oam_bytes);
+        let mut vram = crate::bus::VramDomain::from_bytes(vram_bytes);
         ppu.tick_t_cycle(
             &mut context,
-            OamBusView::new(BusMaster::Ppu, oam_bytes),
-            VramBusView::new(BusMaster::Ppu, vram_bytes),
+            OamBusView::new(BusMaster::Ppu, &mut oam),
+            VramBusView::new(BusMaster::Ppu, &mut vram),
             dma_oam_active,
             dma_oam_conflict_address,
         );

@@ -1,20 +1,20 @@
+mod iohram;
 mod router;
+mod video;
 mod view;
+mod wram;
 
-use crate::apu::Apu;
-use crate::boot::{BootController, StartupMemoryPolicy};
+use crate::boot::StartupMemoryPolicy;
 use crate::cartridge::CartridgeSlot;
 use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection};
-use crate::dma::DmaController;
-use crate::interrupts::InterruptController;
-use crate::joypad::Joypad;
 use crate::model::ConsoleModel;
 use crate::ppu::{OamCorruptionEventKind, Ppu, PpuAccessMode, PpuBusState};
 use crate::scheduler::CycleContext;
-use crate::serial::Serial;
-use crate::timer::Timer;
+pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use router::AddressRouter;
+pub(crate) use video::{OamDomain, VramDomain};
 pub(crate) use view::{OamBusView, VramBusView};
+pub(crate) use wram::WramDomain;
 
 const VRAM_LEN: usize = 0x2000;
 const WRAM_LEN: usize = 0x2000;
@@ -441,40 +441,15 @@ impl IoRegisterInfo {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct BusIoReadView<'a> {
-    pub apu: Option<&'a Apu>,
-    pub timer: Option<&'a Timer>,
-    pub serial: Option<&'a Serial>,
-    pub dma: Option<&'a DmaController>,
-    pub boot: Option<&'a BootController>,
-    pub interrupts: Option<&'a InterruptController>,
-    pub interrupt_flag_pending_mask: u8,
-    pub joypad: Option<&'a Joypad>,
-    pub ppu: Option<&'a Ppu>,
-}
-
-#[derive(Default)]
-pub(crate) struct BusIoWriteView<'a> {
-    pub apu: Option<&'a mut Apu>,
-    pub timer: Option<&'a mut Timer>,
-    pub serial: Option<&'a mut Serial>,
-    pub dma: Option<&'a mut DmaController>,
-    pub boot: Option<&'a mut BootController>,
-    pub interrupts: Option<&'a mut InterruptController>,
-    pub joypad: Option<&'a mut Joypad>,
-    pub ppu: Option<&'a mut Ppu>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bus {
     console_model: ConsoleModel,
     status: BusStatus,
     router: AddressRouter,
-    vram: [u8; VRAM_LEN],
-    wram: [u8; WRAM_LEN],
-    oam: [u8; OAM_LEN],
-    hram: [u8; HRAM_LEN],
+    vram: VramDomain,
+    wram: WramDomain,
+    oam: OamDomain,
+    iohram: IoHramDomain,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -489,10 +464,10 @@ impl Bus {
             console_model,
             status: BusStatus::Ready,
             router: AddressRouter::new(),
-            vram: [0; VRAM_LEN],
-            wram: [0; WRAM_LEN],
-            oam: [0; OAM_LEN],
-            hram: [0; HRAM_LEN],
+            vram: VramDomain::new(),
+            wram: WramDomain::new(),
+            oam: OamDomain::new(),
+            iohram: IoHramDomain::new(),
         }
     }
 
@@ -675,15 +650,27 @@ impl Bus {
             return;
         };
 
-        let _ = ppu.apply_oam_corruption_event(kind, &mut self.oam);
+        let _ = ppu.apply_oam_corruption_event(kind, self.oam.bytes_mut());
     }
 
-    pub(crate) fn oam_view(&self, master: BusMaster) -> OamBusView<'_> {
-        OamBusView::new(master, &self.oam)
+    pub(crate) fn video_views(&mut self, master: BusMaster) -> (OamBusView<'_>, VramBusView<'_>) {
+        (
+            OamBusView::new(master, &mut self.oam),
+            VramBusView::new(master, &mut self.vram),
+        )
     }
 
-    pub(crate) fn vram_view(&self, master: BusMaster) -> VramBusView<'_> {
-        VramBusView::new(master, &self.vram)
+    pub(crate) fn sync_video_domain_ownership(&mut self, ppu: PpuBusState, dma: DmaBusState) {
+        let ppu_vram = ppu.is_lcd_enabled() && ppu.mode() == PpuAccessMode::Drawing;
+        let ppu_oam = ppu.is_lcd_enabled()
+            && matches!(ppu.mode(), PpuAccessMode::OamScan | PpuAccessMode::Drawing);
+        let dma_oam = dma.active_region() == Some(DmaMemoryRegionImpact::Oam);
+        let dma_vram = dma.active_region() == Some(DmaMemoryRegionImpact::Vram);
+
+        self.vram.set_acquired(BusMaster::Ppu, ppu_vram);
+        self.oam.set_acquired(BusMaster::Ppu, ppu_oam);
+        self.oam.set_acquired(BusMaster::Dma, dma_oam);
+        self.vram.set_acquired(BusMaster::Dma, dma_vram);
     }
 
     pub fn scheduler_trace_message(
@@ -749,11 +736,11 @@ impl Bus {
         target: BusAddressInfo,
         state: &BusArbitrationState,
     ) -> BusAccessDisposition {
-        if let Some(disposition) = self.evaluate_dma_policy(requester, kind, target, state) {
+        if let Some(disposition) = self.evaluate_global_dma_policy(requester, kind, target, state) {
             return disposition;
         }
 
-        if let Some(disposition) = self.evaluate_ppu_policy(requester, kind, target, state) {
+        if let Some(disposition) = self.evaluate_domain_policy(requester, kind, target, state) {
             return disposition;
         }
 
@@ -764,7 +751,7 @@ impl Bus {
         BusAccessDisposition::Allowed
     }
 
-    fn evaluate_dma_policy(
+    fn evaluate_global_dma_policy(
         &self,
         requester: BusRequester,
         kind: BusAccessKind,
@@ -797,27 +784,16 @@ impl Bus {
         }
     }
 
-    fn evaluate_ppu_policy(
+    fn evaluate_domain_policy(
         &self,
         requester: BusRequester,
         kind: BusAccessKind,
         target: BusAddressInfo,
         state: &BusArbitrationState,
     ) -> Option<BusAccessDisposition> {
-        if requester != BusRequester::Cpu || !state.ppu.is_lcd_enabled() {
-            return None;
-        }
-
-        match (target.region(), state.ppu.mode()) {
-            (BusRegion::Vram, PpuAccessMode::Drawing) => {
-                Some(self.block_access(kind, BusBlockReason::PpuVramBlockedDuringMode3))
-            }
-            (BusRegion::Oam, PpuAccessMode::OamScan) => {
-                Some(self.block_access(kind, BusBlockReason::PpuOamBlockedDuringMode2))
-            }
-            (BusRegion::Oam, PpuAccessMode::Drawing) => {
-                Some(self.block_access(kind, BusBlockReason::PpuOamBlockedDuringMode3))
-            }
+        match target.region() {
+            BusRegion::Vram => VramDomain::evaluate_access(requester, kind, state.ppu, state.dma),
+            BusRegion::Oam => OamDomain::evaluate_access(requester, kind, state.ppu, state.dma),
             _ => None,
         }
     }
@@ -868,16 +844,16 @@ impl Bus {
             | BusRegion::CartridgeExternal => {
                 self.read_cartridge_target(target.address(), target.region(), cartridge)
             }
-            BusRegion::Vram => self.vram[target.region_offset() as usize],
+            BusRegion::Vram => self.vram.read(target.region_offset() as usize),
             BusRegion::WramBank0 | BusRegion::WramBankN | BusRegion::EchoRam => {
-                self.wram[self.wram_index(target.address())]
+                self.wram.read(target.address())
             }
-            BusRegion::Oam => self.oam[target.region_offset() as usize],
+            BusRegion::Oam => self.oam.read(target.region_offset() as usize),
             BusRegion::Unusable => self.read_unusable_placeholder(),
-            BusRegion::Mmio | BusRegion::InterruptEnable => {
-                self.read_io_target(target.address(), io)
+            BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
+                self.iohram
+                    .read(&self.router, self.console_model, target, io)
             }
-            BusRegion::Hram => self.hram[target.region_offset() as usize],
         }
     }
 
@@ -895,33 +871,22 @@ impl Bus {
             | BusRegion::CartridgeExternal => {
                 self.write_cartridge_target(target.address(), target.region(), value, cartridge)
             }
-            BusRegion::Vram => {
-                self.vram[target.region_offset() as usize] = value;
-            }
+            BusRegion::Vram => self.vram.write(target.region_offset() as usize, value),
             BusRegion::WramBank0 | BusRegion::WramBankN | BusRegion::EchoRam => {
-                let index = self.wram_index(target.address());
-                self.wram[index] = value;
+                self.wram.write(target.address(), value);
             }
-            BusRegion::Oam => {
-                self.oam[target.region_offset() as usize] = value;
-            }
+            BusRegion::Oam => self.oam.write(target.region_offset() as usize, value),
             BusRegion::Unusable => {}
-            BusRegion::Mmio | BusRegion::InterruptEnable => {
-                self.write_io_target(target.address(), value, io)
-            }
-            BusRegion::Hram => {
-                self.hram[target.region_offset() as usize] = value;
+            BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
+                self.iohram
+                    .write(&self.router, self.console_model, target, value, io)
             }
         }
     }
 
     pub fn apply_startup_memory_policy(&mut self, policy: StartupMemoryPolicy) {
-        match policy {
-            StartupMemoryPolicy::DeterministicZeroed => {
-                self.wram.fill(0);
-                self.hram.fill(0);
-            }
-        }
+        self.wram.apply_startup_memory_policy(policy);
+        self.iohram.apply_startup_memory_policy(policy);
     }
 
     fn read_boot_rom_placeholder(&self, address: u16, io: BusIoReadView<'_>) -> u8 {
@@ -973,126 +938,11 @@ impl Bus {
         }
     }
 
+    #[cfg(test)]
     fn read_io_target(&self, address: u16, io: BusIoReadView<'_>) -> u8 {
-        let Some(info) = self.describe_io_register(address) else {
-            return BLOCKED_READ_VALUE;
-        };
-
-        if info.availability() == IoRegisterAvailability::CgbOnly
-            && self.console_model.is_dmg_family()
-        {
-            return BLOCKED_READ_VALUE;
-        }
-
-        match info.kind() {
-            IoRegisterKind::Joyp => io.joypad.map_or(BLOCKED_READ_VALUE, Joypad::read_p1),
-            IoRegisterKind::SerialData => io.serial.map_or(BLOCKED_READ_VALUE, Serial::read_sb),
-            IoRegisterKind::SerialControl => io.serial.map_or(BLOCKED_READ_VALUE, Serial::read_sc),
-            IoRegisterKind::Div => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_div),
-            IoRegisterKind::Tima => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_tima),
-            IoRegisterKind::Tma => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_tma),
-            IoRegisterKind::Tac => io.timer.map_or(BLOCKED_READ_VALUE, Timer::read_tac),
-            IoRegisterKind::InterruptFlag => {
-                io.interrupts.map_or(BLOCKED_READ_VALUE, |interrupts| {
-                    interrupts.read_if_with_pending_requests(io.interrupt_flag_pending_mask)
-                })
-            }
-            IoRegisterKind::Lcd => io
-                .ppu
-                .map_or(BLOCKED_READ_VALUE, |ppu| ppu.read_register(address)),
-            IoRegisterKind::OamDma => io.dma.map_or(BLOCKED_READ_VALUE, DmaController::read_ff46),
-            IoRegisterKind::BootRomDisable => io
-                .boot
-                .map_or(BLOCKED_READ_VALUE, BootController::read_ff50),
-            IoRegisterKind::InterruptEnable => io
-                .interrupts
-                .map_or(BLOCKED_READ_VALUE, InterruptController::read_ie),
-            IoRegisterKind::Sound => io
-                .apu
-                .map_or(BLOCKED_READ_VALUE, |apu| apu.read_register(address)),
-            IoRegisterKind::CgbSystem | IoRegisterKind::Reserved => BLOCKED_READ_VALUE,
-        }
-    }
-
-    fn write_io_target(&mut self, address: u16, value: u8, io: BusIoWriteView<'_>) {
-        let Some(info) = self.describe_io_register(address) else {
-            return;
-        };
-
-        if info.availability() == IoRegisterAvailability::CgbOnly
-            && self.console_model.is_dmg_family()
-        {
-            return;
-        }
-
-        match info.kind() {
-            IoRegisterKind::Joyp => {
-                if let Some(joypad) = io.joypad {
-                    joypad.write_p1(value);
-                }
-            }
-            IoRegisterKind::SerialData => {
-                if let Some(serial) = io.serial {
-                    serial.write_sb(value);
-                }
-            }
-            IoRegisterKind::SerialControl => {
-                if let Some(serial) = io.serial {
-                    serial.write_sc(value);
-                }
-            }
-            IoRegisterKind::Div => {
-                if let Some(timer) = io.timer {
-                    timer.write_div(value);
-                }
-            }
-            IoRegisterKind::Tima => {
-                if let Some(timer) = io.timer {
-                    timer.write_tima(value);
-                }
-            }
-            IoRegisterKind::Tma => {
-                if let Some(timer) = io.timer {
-                    timer.write_tma(value);
-                }
-            }
-            IoRegisterKind::Tac => {
-                if let Some(timer) = io.timer {
-                    timer.write_tac(value);
-                }
-            }
-            IoRegisterKind::InterruptFlag => {
-                if let Some(interrupts) = io.interrupts {
-                    interrupts.write_if(value);
-                }
-            }
-            IoRegisterKind::Lcd => {
-                if let Some(ppu) = io.ppu {
-                    ppu.write_register(address, value);
-                }
-            }
-            IoRegisterKind::OamDma => {
-                if let Some(dma) = io.dma {
-                    dma.write_ff46(value);
-                }
-            }
-            IoRegisterKind::BootRomDisable => {
-                if let Some(boot) = io.boot {
-                    boot.write_ff50(value);
-                }
-            }
-            IoRegisterKind::InterruptEnable => {
-                if let Some(interrupts) = io.interrupts {
-                    interrupts.write_ie(value);
-                }
-            }
-            IoRegisterKind::Sound => {
-                if let Some(apu) = io.apu {
-                    apu.write_register(address, value);
-                }
-            }
-            IoRegisterKind::CgbSystem | IoRegisterKind::Reserved => {}
-        }
+        let target = self.decode_address(address);
+        self.iohram
+            .read(&self.router, self.console_model, target, io)
     }
 
     fn block_access(&self, kind: BusAccessKind, reason: BusBlockReason) -> BusAccessDisposition {
@@ -1102,14 +952,6 @@ impl Bus {
                 reason,
             },
             BusAccessKind::Write => BusAccessDisposition::IgnoredWrite { reason },
-        }
-    }
-
-    fn wram_index(&self, address: u16) -> usize {
-        match address {
-            0xC000..=0xDFFF => (address - 0xC000) as usize,
-            0xE000..=0xFDFF => (address - 0xE000) as usize,
-            _ => panic!("address {address:#06X} does not map to WRAM storage"),
         }
     }
 
@@ -1216,14 +1058,14 @@ mod tests {
     use crate::ppu::{DmgObjPaletteReadPolicy, PpuStartupState};
     use crate::scheduler::{CycleContext, TCycle};
 
-    const TEST_VRAM_BYTES: usize = 0x2000;
-
     fn tick_ppu(ppu: &mut Ppu, t_cycle: u64) {
         let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
+        let mut oam = OamDomain::new();
+        let mut vram = VramDomain::new();
         ppu.tick_t_cycle(
             &mut context,
-            OamBusView::new(BusMaster::Ppu, &[0; 160]),
-            VramBusView::new(BusMaster::Ppu, &[0; TEST_VRAM_BYTES]),
+            OamBusView::new(BusMaster::Ppu, &mut oam),
+            VramBusView::new(BusMaster::Ppu, &mut vram),
             false,
             None,
         );
@@ -1497,7 +1339,7 @@ mod tests {
     fn route_cpu_address_event_turns_mode2_oam_reads_into_corruption_events() {
         let mut bus = Bus::new(ConsoleModel::Dmg);
         let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 1);
-        seed_oam_corruption_rows(&mut bus.oam);
+        seed_oam_corruption_rows(bus.oam.bytes_mut());
 
         let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
         bus.route_cpu_address_event(
@@ -1512,17 +1354,17 @@ mod tests {
         );
 
         let expected_first = 0x1357_u16 | (0x0F0F & 0xAAAA);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 0), expected_first);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 1), 0x2468);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 2), 0xAAAA);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 3), 0xBBBB);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 0), expected_first);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 1), 0x2468);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 2), 0xAAAA);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 3), 0xBBBB);
     }
 
     #[test]
     fn route_cpu_address_event_uses_the_unusable_mode2_read_path_for_corruption() {
         let mut bus = Bus::new(ConsoleModel::Dmg);
         let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 1);
-        seed_oam_corruption_rows(&mut bus.oam);
+        seed_oam_corruption_rows(bus.oam.bytes_mut());
 
         let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
         bus.route_cpu_address_event(
@@ -1537,15 +1379,15 @@ mod tests {
         );
 
         let expected_first = 0x1357_u16 | (0x0F0F & 0xAAAA);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 0), expected_first);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 1), 0x2468);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 0), expected_first);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 1), 0x2468);
     }
 
     #[test]
     fn route_cpu_address_event_uses_the_unusable_mode2_write_path_for_corruption() {
         let mut bus = Bus::new(ConsoleModel::Dmg);
         let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 1);
-        seed_oam_corruption_rows(&mut bus.oam);
+        seed_oam_corruption_rows(bus.oam.bytes_mut());
 
         let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
         bus.route_cpu_address_event(
@@ -1560,17 +1402,17 @@ mod tests {
         );
 
         let expected_first = ((0x0F0F_u16 ^ 0xAAAA) & (0x1357 ^ 0xAAAA)) ^ 0xAAAA;
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 0), expected_first);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 1), 0x2468);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 2), 0xAAAA);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 1, 3), 0xBBBB);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 0), expected_first);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 1), 0x2468);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 2), 0xAAAA);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 3), 0xBBBB);
     }
 
     #[test]
     fn route_cpu_address_event_uses_pure_idu_activity_in_fe_range() {
         let mut bus = Bus::new(ConsoleModel::Dmg);
         let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 2);
-        seed_oam_corruption_rows(&mut bus.oam);
+        seed_oam_corruption_rows(bus.oam.bytes_mut());
 
         let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
         bus.route_cpu_address_event(
@@ -1585,17 +1427,17 @@ mod tests {
         );
 
         let expected_first = ((0x5555_u16 ^ 0x2222) & (0x0F0F ^ 0x2222)) ^ 0x2222;
-        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 0), expected_first);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 1), 0x1111);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 2), 0x2222);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 3), 0x3333);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 2, 0), expected_first);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 2, 1), 0x1111);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 2, 2), 0x2222);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 2, 3), 0x3333);
     }
 
     #[test]
     fn route_cpu_address_event_uses_write_with_incdec_when_the_idu_edge_reaches_oam() {
         let mut bus = Bus::new(ConsoleModel::Dmg);
         let mut ppu = prepare_mode2_ppu_at_row(ConsoleModel::Dmg, 2);
-        seed_oam_corruption_rows(&mut bus.oam);
+        seed_oam_corruption_rows(bus.oam.bytes_mut());
 
         let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
         bus.route_cpu_address_event(
@@ -1610,18 +1452,18 @@ mod tests {
         );
 
         let expected_first = ((0x5555_u16 ^ 0x2222) & (0x0F0F ^ 0x2222)) ^ 0x2222;
-        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 0), expected_first);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 1), 0x1111);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 2), 0x2222);
-        assert_eq!(read_oam_word_bytes(&bus.oam, 2, 3), 0x3333);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 2, 0), expected_first);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 2, 1), 0x1111);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 2, 2), 0x2222);
+        assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 2, 3), 0x3333);
     }
 
     #[test]
     fn route_cpu_address_event_does_not_turn_mode3_oam_blocking_into_corruption() {
         let mut bus = Bus::new(ConsoleModel::Dmg);
         let mut ppu = prepare_mode3_ppu(ConsoleModel::Dmg);
-        seed_oam_corruption_rows(&mut bus.oam);
-        let before = bus.oam;
+        seed_oam_corruption_rows(bus.oam.bytes_mut());
+        let before = bus.oam.clone();
 
         let state = BusArbitrationState::default().with_ppu(ppu.bus_state());
         bus.route_cpu_address_event(

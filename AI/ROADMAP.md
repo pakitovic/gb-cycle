@@ -429,6 +429,9 @@ purely mechanical wiring that does not widen hardware scope.
    - focused tests cover requester-specific arbitration through one common path
    - tests cover VRAM, OAM, unusable-space, and HRAM policy decisions through injected hardware state
    - trace or snapshot tests lock the ordering between scheduler bus-arbitration phase and evaluated access policy
+   Current implementation note:
+   - the current repo baseline already has a pure router plus explicit `IoHram`, `Wram`, `Oam`, and `Vram` domain helpers, plus bus-originated PPU-facing video views and scheduler-visible video ownership synchronization
+   - remaining follow-up in this subphase is structural, not conceptual: continue shrinking `bus.rs` by moving more region-local policy into domain helpers where it improves clarity, while keeping one central arbitration entry point and without mixing in future CGB behavior yet
 3. **Phase 1C — Cartridge foundation and No MBC closed baseline**
    Goal: replace the empty cartridge placeholder with typed header parsing, centralized classification, and `No MBC` as the first real device family.
    Scope:

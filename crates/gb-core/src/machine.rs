@@ -338,13 +338,16 @@ impl<S: TraceSink> Machine<S> {
                             .then_some(destination_address)
                     });
                     let dma_oam_active = dma.bus_state().active_region().is_some();
+                    bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
+                    let (oam_view, vram_view) = bus.video_views(BusMaster::Ppu);
                     ppu.tick_t_cycle(
                         context,
-                        bus.oam_view(BusMaster::Ppu),
-                        bus.vram_view(BusMaster::Ppu),
+                        oam_view,
+                        vram_view,
                         dma_oam_active,
                         dma_oam_conflict_address,
                     );
+                    bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
                     serial.tick_t_cycle(context);
                     if let Some(transfer_work) = dma_transfer_work {
                         let arbitration_state = BusArbitrationState::default()

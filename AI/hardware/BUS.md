@@ -297,11 +297,15 @@ Priority order:
 - Treat the bus as both an address decoder and an access arbiter.
 - Keep one source of truth for address decode plus access policy; do not let per-subsystem shortcuts become shadow decoders.
 - A pure address-router plus requester-facing domain views is the preferred long-term structural shape for this repo's bus, as long as the router itself stays timing-agnostic.
+- In the current repo, prefer `bus.rs` as a narrow facade plus focused child modules such as `router.rs`, `iohram.rs`, `wram.rs`, `video.rs`, and `view.rs` instead of one monolithic file that mixes decode, MMIO, storage, and video ownership.
 - A bus context or equivalent state bundle is a good fit for carrying model, PPU mode, LCD enable, DMA activity, boot ROM mapping, and later CGB-specific selectors.
 - A caller-aware access split or equivalent internal distinction between CPU-initiated and DMA-initiated accesses is recommended when the observable rules differ.
-- Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers.
+- Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers or in explicit domain-local access helpers reached from that one bus path.
 - A DMA-facing query such as `bus_constraints()` plus a separate transfer-commit path is a good fit for keeping arbitration policy separate from byte-copy mechanics.
 - `docboy` is an approved structural oracle for this domain split, especially for DMG PPU-facing `VRAM/OAM` views and explicit video-bus acquisition or release timing; use it as a cross-check, not as a code-copy source.
+- For the current DMG-first baseline, `IoHram` should own `FFxx`, `HRAM`, and `IE` routing plus MMIO handler dispatch, while `Wram` stays separate and `video.rs` owns `VRAM/OAM` storage plus acquisition state.
+- Keep a scheduler-visible ownership sync step or equally explicit equivalent for `VRAM/OAM`; the router must not guess live PPU or DMA ownership on its own.
+- Requester-facing OAM/VRAM views may expose real `acquire` / `release` operations, but observable policy must still stay coherent with the shared T-cycle scheduler rather than relying on ad hoc local borrowing conventions.
 - Prefer a centralized MMIO descriptor table or equivalent routed register map over scattered `match` blocks that each know only part of a register's semantics.
 - Let subsystem-owned handlers compose readback from live state, latched state, and forced bits; do not teach the bus to fake those register internals.
 - Do not special-case CPU opcode fetch, operand fetch, or stack accesses outside the common bus contract; they should use the same routed access path as any other CPU-visible memory transaction.
