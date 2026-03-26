@@ -957,6 +957,7 @@ impl Ppu {
         if self.advance_bg_fetcher(vram) {
             return;
         }
+        self.flush_pending_bg_fifo_fill();
         self.pop_bg_pixel_for_current_dot();
         self.advance_pre_visible_obj_match_x();
     }
@@ -1042,15 +1043,25 @@ impl Ppu {
         }
 
         let push = self.bg_pipeline_state.push;
-        push_bg_tile_pixels(
-            &mut self.bg_pipeline_state.fifo,
-            push.tile_low,
-            push.tile_high,
-        );
+        self.bg_pipeline_state.fill.queue_from_push(push);
         self.bg_pipeline_state.fetcher.next_fetch_pixel = push.next_fetch_pixel;
         self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
         self.bg_pipeline_state.push.reset();
         false
+    }
+
+    fn flush_pending_bg_fifo_fill(&mut self) {
+        if !self.bg_pipeline_state.fill.pending {
+            return;
+        }
+
+        let fill = self.bg_pipeline_state.fill;
+        push_bg_tile_pixels(
+            &mut self.bg_pipeline_state.fifo,
+            fill.tile_low,
+            fill.tile_high,
+        );
+        self.bg_pipeline_state.fill.reset();
     }
 
     fn pop_bg_pixel_for_current_dot(&mut self) {
@@ -1139,6 +1150,7 @@ impl Ppu {
 
         self.bg_pipeline_state.fifo.clear();
         self.bg_pipeline_state.push.reset();
+        self.bg_pipeline_state.fill.reset();
         self.bg_pipeline_state.fetcher.start_window();
         self.bg_pipeline_state.scx_discard_remaining = 0;
         self.bg_pipeline_state.window_started_this_line = true;
@@ -1951,6 +1963,7 @@ impl OamCorruptionController {
 struct BgPipelineState {
     fetcher: BgFetcherState,
     push: BgPushState,
+    fill: BgFifoFillState,
     fifo: VecDeque<u8>,
     mode3_started: bool,
     mode0_start_dot: u16,
@@ -1969,6 +1982,7 @@ impl BgPipelineState {
     fn reset(&mut self) {
         self.fetcher.reset();
         self.push.reset();
+        self.fill.reset();
         self.fifo.clear();
         self.mode3_started = false;
         self.mode0_start_dot = MODE0_START_DOT;
@@ -1990,6 +2004,7 @@ impl BgPipelineState {
         self.scx_discard_remaining = self.initial_scx_discard;
         self.pre_visible_obj_match_x = 0;
         self.push.reset();
+        self.fill.reset();
         self.fetcher.start_background();
     }
 
@@ -2107,6 +2122,27 @@ impl BgPushState {
         if self.pending && self.disposition == BgPushDisposition::InterruptedByObjectFetch {
             self.disposition = BgPushDisposition::Ready;
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct BgFifoFillState {
+    pending: bool,
+    source: PpuBgFetcherSource,
+    tile_low: u8,
+    tile_high: u8,
+}
+
+impl BgFifoFillState {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    fn queue_from_push(&mut self, push: BgPushState) {
+        self.pending = true;
+        self.source = push.source;
+        self.tile_low = push.tile_low;
+        self.tile_high = push.tile_high;
     }
 }
 
@@ -3633,11 +3669,17 @@ mod tests {
         ppu.advance_bg_push();
 
         assert!(!ppu.bg_pipeline_state.push.pending);
+        assert!(ppu.bg_pipeline_state.fill.pending);
         assert_eq!(
             ppu.bg_pipeline_state.fetcher.stage,
             PpuBgFetcherStage::TileIndex
         );
         assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 8);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 8);
+
+        ppu.flush_pending_bg_fifo_fill();
+
+        assert!(!ppu.bg_pipeline_state.fill.pending);
         assert_eq!(ppu.bg_pipeline_state.fifo.len(), 16);
         assert_eq!(
             ppu.bg_pipeline_state
@@ -3717,6 +3759,7 @@ mod tests {
         );
         assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
         assert_eq!(ppu.bg_pipeline_state.fifo.len(), 1);
+        assert!(!ppu.bg_pipeline_state.fill.pending);
         assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
     }
 
@@ -3749,12 +3792,49 @@ mod tests {
         let _ = ppu.bg_pipeline_state.fifo.pop_front();
         assert!(!ppu.advance_bg_push_stage());
         assert!(!ppu.bg_pipeline_state.push.pending);
+        assert!(ppu.bg_pipeline_state.fill.pending);
         assert_eq!(
             ppu.bg_pipeline_state.fetcher.stage,
             PpuBgFetcherStage::TileIndex
         );
         assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 8);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 8);
+
+        ppu.flush_pending_bg_fifo_fill();
+
+        assert!(!ppu.bg_pipeline_state.fill.pending);
         assert_eq!(ppu.bg_pipeline_state.fifo.len(), 16);
+    }
+
+    #[test]
+    fn bg_push_queues_fifo_fill_before_the_fill_phase_materializes_pixels() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
+        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+
+        assert!(!ppu.advance_bg_push_stage());
+        assert!(!ppu.bg_pipeline_state.push.pending);
+        assert!(ppu.bg_pipeline_state.fill.pending);
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
+
+        ppu.flush_pending_bg_fifo_fill();
+
+        assert!(!ppu.bg_pipeline_state.fill.pending);
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fifo
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2, 3, 0, 1, 2, 3]
+        );
     }
 
     #[test]
