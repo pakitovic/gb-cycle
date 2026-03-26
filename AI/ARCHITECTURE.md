@@ -194,7 +194,7 @@ to immediately materialize as a separate directory.
 - MMIO routing to the subsystem-owned register contract for each mapped address
 - one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
 - if a docboy-like internal domain is introduced, prefer `IoHram` / `Internal` naming over `CpuBus`; keep WRAM explicit instead of burying it inside a generic external or CPU-named bus so future CGB banking remains visible in the architecture
-- For the current DMG-first repo baseline, a concrete split of `bus.rs` plus `bus/map.rs`, `bus/router.rs`, `bus/iohram.rs`, `bus/wram.rs`, `bus/video.rs`, and `bus/view.rs` is the preferred shape.
+- For the current DMG-first repo baseline, a concrete split of `bus.rs` plus `bus/map.rs`, `bus/router.rs`, `bus/policy.rs`, `bus/access.rs`, `bus/iohram.rs`, `bus/wram.rs`, `bus/video.rs`, and `bus/view.rs` is the preferred shape.
 - In that split, `IoHram` owns routed `FFxx`, `HRAM`, and `IE` behavior; WRAM remains a separate explicit domain so later CGB bankability does not get buried inside an internal bus.
 - Video-domain acquisition or release is scheduler-visible state, not router behavior; ownership changes for `VRAM` and `OAM` should stay synchronized to the shared T-cycle timeline around PPU and DMA ticks rather than being invented inside the router.
 
