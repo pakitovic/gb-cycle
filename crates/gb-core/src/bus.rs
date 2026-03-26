@@ -4,13 +4,13 @@ mod iohram;
 mod map;
 mod policy;
 mod router;
+mod state;
 mod video;
 mod view;
 mod wram;
 
 use crate::cartridge::CartridgeSlot;
 use crate::model::ConsoleModel;
-use crate::ppu::{PpuAccessMode, PpuBusState};
 use crate::scheduler::CycleContext;
 pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use map::{
@@ -18,6 +18,11 @@ pub use map::{
     IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
 };
 pub use router::AddressRouter;
+pub use state::{
+    BootRomBusState, BusAccessDisposition, BusAccessKind, BusAccessResolution, BusArbitrationState,
+    BusBlockReason, BusMaster, BusRequester, BusStatus, DmaBusState, DmaCpuAccessPolicy,
+    DmaMemoryRegionImpact,
+};
 pub(crate) use video::{OamDomain, VramDomain};
 pub(crate) use view::{OamBusView, VramBusView};
 pub(crate) use wram::WramDomain;
@@ -29,223 +34,6 @@ const HRAM_LEN: usize = 0x007F;
 
 const BLOCKED_READ_VALUE: u8 = 0xFF;
 const DMG_UNUSABLE_READ_VALUE: u8 = 0x00;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BusStatus {
-    Ready,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BusRequester {
-    Cpu,
-    Dma,
-    Ppu,
-    Apu,
-    Serial,
-    Boot,
-    Cartridge,
-}
-
-pub type BusMaster = BusRequester;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BusAccessKind {
-    Read,
-    Write,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BusBlockReason {
-    DmaExternalBusConflict,
-    DmaVideoBusConflict,
-    PpuVramBlockedDuringMode3,
-    PpuOamBlockedDuringMode2,
-    PpuOamBlockedDuringMode3,
-    UnusableRegion,
-    UnusableRegionDuringOamBlock,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BusAccessDisposition {
-    Allowed,
-    BlockedRead { value: u8, reason: BusBlockReason },
-    IgnoredWrite { reason: BusBlockReason },
-}
-
-impl BusAccessDisposition {
-    pub const fn is_allowed(self) -> bool {
-        matches!(self, Self::Allowed)
-    }
-
-    pub const fn blocked_reason(self) -> Option<BusBlockReason> {
-        match self {
-            Self::Allowed => None,
-            Self::BlockedRead { reason, .. } | Self::IgnoredWrite { reason } => Some(reason),
-        }
-    }
-
-    pub const fn blocked_read_value(self) -> Option<u8> {
-        match self {
-            Self::BlockedRead { value, .. } => Some(value),
-            Self::Allowed | Self::IgnoredWrite { .. } => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum DmaCpuAccessPolicy {
-    #[default]
-    Unrestricted,
-    ExternalBusBlocked,
-    VideoBusBlocked,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DmaMemoryRegionImpact {
-    Oam,
-    Vram,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct DmaBusState {
-    cpu_access_policy: DmaCpuAccessPolicy,
-    active_region: Option<DmaMemoryRegionImpact>,
-    cpu_conflict_source_address: Option<u16>,
-}
-
-impl DmaBusState {
-    pub const fn unrestricted() -> Self {
-        Self {
-            cpu_access_policy: DmaCpuAccessPolicy::Unrestricted,
-            active_region: None,
-            cpu_conflict_source_address: None,
-        }
-    }
-
-    pub const fn external_bus_blocked(active_region: Option<DmaMemoryRegionImpact>) -> Self {
-        Self {
-            cpu_access_policy: DmaCpuAccessPolicy::ExternalBusBlocked,
-            active_region,
-            cpu_conflict_source_address: None,
-        }
-    }
-
-    pub const fn video_bus_blocked(active_region: Option<DmaMemoryRegionImpact>) -> Self {
-        Self {
-            cpu_access_policy: DmaCpuAccessPolicy::VideoBusBlocked,
-            active_region,
-            cpu_conflict_source_address: None,
-        }
-    }
-
-    pub const fn with_cpu_conflict_source_address(mut self, address: Option<u16>) -> Self {
-        self.cpu_conflict_source_address = address;
-        self
-    }
-
-    pub const fn cpu_access_policy(self) -> DmaCpuAccessPolicy {
-        self.cpu_access_policy
-    }
-
-    pub const fn active_region(self) -> Option<DmaMemoryRegionImpact> {
-        self.active_region
-    }
-
-    pub const fn cpu_conflict_source_address(self) -> Option<u16> {
-        self.cpu_conflict_source_address
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct BootRomBusState {
-    dmg_low_bytes_mapped: bool,
-}
-
-impl BootRomBusState {
-    pub const fn unmapped() -> Self {
-        Self {
-            dmg_low_bytes_mapped: false,
-        }
-    }
-
-    pub const fn map_dmg_low_bytes() -> Self {
-        Self {
-            dmg_low_bytes_mapped: true,
-        }
-    }
-
-    pub const fn maps_dmg_low_bytes(self) -> bool {
-        self.dmg_low_bytes_mapped
-    }
-
-    pub const fn overlays_read(self, address: u16) -> bool {
-        self.dmg_low_bytes_mapped && address <= 0x00FF
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct BusArbitrationState {
-    pub boot_rom: BootRomBusState,
-    pub ppu: PpuBusState,
-    pub dma: DmaBusState,
-}
-
-impl BusArbitrationState {
-    pub const fn with_boot_rom(mut self, boot_rom: BootRomBusState) -> Self {
-        self.boot_rom = boot_rom;
-        self
-    }
-
-    pub const fn with_ppu(mut self, ppu: PpuBusState) -> Self {
-        self.ppu = ppu;
-        self
-    }
-
-    pub const fn with_dma(mut self, dma: DmaBusState) -> Self {
-        self.dma = dma;
-        self
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct BusAccessResolution {
-    requester: BusRequester,
-    kind: BusAccessKind,
-    target: BusAddressInfo,
-    disposition: BusAccessDisposition,
-}
-
-impl BusAccessResolution {
-    pub const fn new(
-        requester: BusRequester,
-        kind: BusAccessKind,
-        target: BusAddressInfo,
-        disposition: BusAccessDisposition,
-    ) -> Self {
-        Self {
-            requester,
-            kind,
-            target,
-            disposition,
-        }
-    }
-
-    pub const fn requester(self) -> BusRequester {
-        self.requester
-    }
-
-    pub const fn kind(self) -> BusAccessKind {
-        self.kind
-    }
-
-    pub const fn target(self) -> BusAddressInfo {
-        self.target
-    }
-
-    pub const fn disposition(self) -> BusAccessDisposition {
-        self.disposition
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bus {
@@ -446,26 +234,6 @@ impl Bus {
         }
     }
 
-    pub(crate) fn video_views(&mut self, master: BusMaster) -> (OamBusView<'_>, VramBusView<'_>) {
-        (
-            OamBusView::new(master, &mut self.oam),
-            VramBusView::new(master, &mut self.vram),
-        )
-    }
-
-    pub(crate) fn sync_video_domain_ownership(&mut self, ppu: PpuBusState, dma: DmaBusState) {
-        let ppu_vram = ppu.is_lcd_enabled() && ppu.mode() == PpuAccessMode::Drawing;
-        let ppu_oam = ppu.is_lcd_enabled()
-            && matches!(ppu.mode(), PpuAccessMode::OamScan | PpuAccessMode::Drawing);
-        let dma_oam = dma.active_region() == Some(DmaMemoryRegionImpact::Oam);
-        let dma_vram = dma.active_region() == Some(DmaMemoryRegionImpact::Vram);
-
-        self.vram.set_acquired(BusMaster::Ppu, ppu_vram);
-        self.oam.set_acquired(BusMaster::Ppu, ppu_oam);
-        self.oam.set_acquired(BusMaster::Dma, dma_oam);
-        self.vram.set_acquired(BusMaster::Dma, dma_vram);
-    }
-
     pub fn scheduler_trace_message(
         &self,
         context: &CycleContext,
@@ -527,7 +295,7 @@ impl Bus {
 mod tests {
     use super::*;
     use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection};
-    use crate::ppu::{DmgObjPaletteReadPolicy, Ppu, PpuStartupState};
+    use crate::ppu::{DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBusState, PpuStartupState};
     use crate::scheduler::{CycleContext, TCycle};
 
     fn sync_test_video_ownership(ppu: &Ppu, oam: &mut OamDomain, vram: &mut VramDomain) {

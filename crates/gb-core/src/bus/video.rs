@@ -1,8 +1,9 @@
 use crate::ppu::{PpuAccessMode, PpuBusState};
 
 use super::{
-    BLOCKED_READ_VALUE, BusAccessDisposition, BusAccessKind, BusBlockReason, BusMaster,
-    BusRequester, DmaBusState, DmaCpuAccessPolicy, OAM_LEN, VRAM_LEN,
+    BLOCKED_READ_VALUE, Bus, BusAccessDisposition, BusAccessKind, BusBlockReason, BusMaster,
+    BusRequester, DmaBusState, DmaCpuAccessPolicy, DmaMemoryRegionImpact, OAM_LEN, OamBusView,
+    VRAM_LEN, VramBusView,
 };
 
 type BusMasterMask = u16;
@@ -182,6 +183,28 @@ impl VramDomain {
         }
 
         None
+    }
+}
+
+impl Bus {
+    pub(crate) fn video_views(&mut self, master: BusMaster) -> (OamBusView<'_>, VramBusView<'_>) {
+        (
+            OamBusView::new(master, &mut self.oam),
+            VramBusView::new(master, &mut self.vram),
+        )
+    }
+
+    pub(crate) fn sync_video_domain_ownership(&mut self, ppu: PpuBusState, dma: DmaBusState) {
+        let ppu_vram = ppu.is_lcd_enabled() && ppu.mode() == PpuAccessMode::Drawing;
+        let ppu_oam = ppu.is_lcd_enabled()
+            && matches!(ppu.mode(), PpuAccessMode::OamScan | PpuAccessMode::Drawing);
+        let dma_oam = dma.active_region() == Some(DmaMemoryRegionImpact::Oam);
+        let dma_vram = dma.active_region() == Some(DmaMemoryRegionImpact::Vram);
+
+        self.vram.set_acquired(BusMaster::Ppu, ppu_vram);
+        self.oam.set_acquired(BusMaster::Ppu, ppu_oam);
+        self.oam.set_acquired(BusMaster::Dma, dma_oam);
+        self.vram.set_acquired(BusMaster::Dma, dma_vram);
     }
 }
 
