@@ -968,6 +968,7 @@ impl Ppu {
         vram: &VramBusView<'_>,
         dma_oam_conflict_address: Option<u16>,
     ) -> bool {
+        self.sync_pending_obj_hit_ownership();
         self.latch_object_fetch_hits();
         self.try_start_object_fetch_from_latched_hit(false);
         self.advance_object_fetch(oam, vram, dma_oam_conflict_address)
@@ -986,7 +987,9 @@ impl Ppu {
     fn output_phase_blocked_by_pending_obj_hit(&self) -> bool {
         self.obj_enabled()
             && self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
-            && !self.obj_pipeline_state.pending_sprite_slots.is_empty()
+            && self
+                .obj_pipeline_state
+                .pending_hits_own_current_x(self.current_obj_match_x())
     }
 
     fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
@@ -1213,9 +1216,21 @@ impl Ppu {
             };
 
             if trigger_x == current_match_x {
-                self.obj_pipeline_state.queue_fetch_hit(sprite_slot);
+                self.obj_pipeline_state
+                    .queue_fetch_hit(sprite_slot, current_match_x);
             }
         }
+    }
+
+    fn sync_pending_obj_hit_ownership(&mut self) {
+        if !self.obj_enabled() {
+            self.obj_pipeline_state.clear_pending_fetch_hits();
+            return;
+        }
+
+        let current_match_x = self.current_obj_match_x();
+        self.obj_pipeline_state
+            .clear_pending_fetch_hits_if_stale(current_match_x);
     }
 
     fn try_start_object_fetch_from_latched_hit(&mut self, overlap_current_dot: bool) -> bool {
@@ -2225,6 +2240,7 @@ struct ObjPipelineState {
     fifo: VecDeque<ObjPixel>,
     fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
     pending_sprite_slots: VecDeque<u8>,
+    pending_match_x: Option<u8>,
     fetch: ObjFetchState,
 }
 
@@ -2233,6 +2249,7 @@ impl ObjPipelineState {
         self.fifo.clear();
         self.fetched_sprite_slots.fill(false);
         self.pending_sprite_slots.clear();
+        self.pending_match_x = None;
         self.fetch = ObjFetchState::default();
     }
 
@@ -2255,7 +2272,7 @@ impl ObjPipelineState {
         self.fetched_sprite_slots[sprite_slot as usize]
     }
 
-    fn queue_fetch_hit(&mut self, sprite_slot: u8) {
+    fn queue_fetch_hit(&mut self, sprite_slot: u8, match_x: u8) {
         if self.has_fetched(sprite_slot)
             || self
                 .pending_sprite_slots
@@ -2267,11 +2284,39 @@ impl ObjPipelineState {
             return;
         }
 
+        if self.pending_sprite_slots.is_empty() {
+            self.pending_match_x = Some(match_x);
+        } else {
+            debug_assert_eq!(self.pending_match_x, Some(match_x));
+        }
         self.pending_sprite_slots.push_back(sprite_slot);
     }
 
     fn pop_pending_fetch_hit(&mut self) -> Option<u8> {
-        self.pending_sprite_slots.pop_front()
+        let sprite_slot = self.pending_sprite_slots.pop_front();
+        if self.pending_sprite_slots.is_empty() {
+            self.pending_match_x = None;
+        }
+        sprite_slot
+    }
+
+    fn pending_hits_own_current_x(&self, current_match_x: u8) -> bool {
+        self.pending_match_x == Some(current_match_x) && !self.pending_sprite_slots.is_empty()
+    }
+
+    fn clear_pending_fetch_hits(&mut self) {
+        self.pending_sprite_slots.clear();
+        self.pending_match_x = None;
+    }
+
+    fn clear_pending_fetch_hits_if_stale(&mut self, current_match_x: u8) {
+        if self.fetch.stage != PpuObjFetcherStage::Idle {
+            return;
+        }
+
+        if self.pending_match_x.is_some() && self.pending_match_x != Some(current_match_x) {
+            self.clear_pending_fetch_hits();
+        }
     }
 }
 
@@ -3778,6 +3823,7 @@ mod tests {
     fn bg_push_can_handoff_to_a_latched_object_fetch_without_losing_the_tile() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.pre_visible_obj_match_x = 8;
         ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
         ppu.bg_pipeline_state.push.pending = true;
         ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
@@ -3793,7 +3839,7 @@ mod tests {
             tile_index: 0,
             attributes: 0,
         });
-        ppu.obj_pipeline_state.queue_fetch_hit(0);
+        ppu.obj_pipeline_state.queue_fetch_hit(0, 8);
 
         assert!(ppu.advance_bg_push());
         assert!(ppu.bg_pipeline_state.push.pending);
@@ -3890,9 +3936,10 @@ mod tests {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.pre_visible_obj_match_x = 8;
         ppu.bg_pipeline_state.visible_pixels_output = 12;
         ppu.bg_pipeline_state.fifo.push_back(3);
-        ppu.obj_pipeline_state.queue_fetch_hit(0);
+        ppu.obj_pipeline_state.queue_fetch_hit(0, 20);
 
         ppu.advance_mode3_output_phase();
 
@@ -3916,12 +3963,26 @@ mod tests {
         ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
         ppu.bg_pipeline_state.pre_visible_obj_match_x = 5;
-        ppu.obj_pipeline_state.queue_fetch_hit(0);
+        ppu.obj_pipeline_state.queue_fetch_hit(0, 5);
 
         ppu.advance_mode3_output_phase();
 
         assert_eq!(ppu.bg_pipeline_state.pre_visible_obj_match_x, 5);
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+    }
+
+    #[test]
+    fn stale_pending_obj_hit_is_cleared_once_current_x_moves_on() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.pre_visible_obj_match_x = 8;
+        ppu.bg_pipeline_state.visible_pixels_output = 5;
+        ppu.obj_pipeline_state.queue_fetch_hit(0, 12);
+
+        ppu.sync_pending_obj_hit_ownership();
+
+        assert!(ppu.obj_pipeline_state.pending_sprite_slots.is_empty());
+        assert_eq!(ppu.obj_pipeline_state.pending_match_x, None);
     }
 
     #[test]
@@ -4787,6 +4848,7 @@ mod tests {
         vram.set_acquired(BusMaster::Ppu, true);
 
         ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.pre_visible_obj_match_x = 8;
         ppu.bg_pipeline_state.fifo.push_back(0);
         ppu.mode2_scan_state.push(PpuSelectedSprite {
             oam_index: 0,
@@ -4795,7 +4857,7 @@ mod tests {
             tile_index: 0,
             attributes: 0,
         });
-        ppu.obj_pipeline_state.queue_fetch_hit(0);
+        ppu.obj_pipeline_state.queue_fetch_hit(0, 8);
 
         assert!(ppu.try_start_object_fetch_from_latched_hit(true));
         assert_eq!(
