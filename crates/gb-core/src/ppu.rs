@@ -338,6 +338,8 @@ pub struct PpuSnapshot {
     pub bg_fetcher_source: PpuBgFetcherSource,
     pub bg_fetcher_stage: PpuBgFetcherStage,
     pub bg_fetcher_stage_dot: u8,
+    pub bg_push_pending: bool,
+    pub bg_fill_pending: bool,
     pub bg_fifo_pixels: Vec<u8>,
     pub obj_fetcher_stage: PpuObjFetcherStage,
     pub obj_fetcher_stage_dot: u8,
@@ -650,6 +652,8 @@ impl Ppu {
             bg_fetcher_source: self.bg_pipeline_state.fetcher.source,
             bg_fetcher_stage: self.bg_pipeline_state.fetcher.stage,
             bg_fetcher_stage_dot: self.bg_pipeline_state.fetcher.stage_dot,
+            bg_push_pending: self.bg_pipeline_state.push.pending,
+            bg_fill_pending: self.bg_pipeline_state.fill.pending,
             bg_fifo_pixels: self.bg_pipeline_state.fifo.iter().copied().collect(),
             obj_fetcher_stage: self.obj_pipeline_state.fetch.stage,
             obj_fetcher_stage_dot: self.obj_pipeline_state.fetch.stage_dot,
@@ -946,78 +950,95 @@ impl Ppu {
                 false
             };
 
-        if !window_started_this_dot {
-            self.latch_object_fetch_hits();
-            self.try_start_object_fetch_from_latched_hit(false);
-        }
-        if self.advance_object_fetch(oam, vram, dma_oam_conflict_address) {
+        self.flush_pending_bg_fifo_fill();
+
+        if !window_started_this_dot
+            && self.advance_mode3_object_phase(oam, vram, dma_oam_conflict_address)
+        {
             return;
         }
 
-        if self.advance_bg_fetcher(vram) {
-            return;
-        }
-        self.flush_pending_bg_fifo_fill();
+        self.advance_mode3_output_phase();
+        let _ = self.advance_bg_fetcher(vram);
+    }
+
+    fn advance_mode3_object_phase(
+        &mut self,
+        oam: &OamBusView<'_>,
+        vram: &VramBusView<'_>,
+        dma_oam_conflict_address: Option<u16>,
+    ) -> bool {
+        self.latch_object_fetch_hits();
+        self.try_start_object_fetch_from_latched_hit(false);
+        self.advance_object_fetch(oam, vram, dma_oam_conflict_address)
+    }
+
+    fn advance_mode3_output_phase(&mut self) {
         self.pop_bg_pixel_for_current_dot();
         self.advance_pre_visible_obj_match_x();
     }
 
     fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
-        if matches!(
+        match (
             self.bg_pipeline_state.fetcher.stage,
-            PpuBgFetcherStage::Idle
+            self.bg_pipeline_state.fetcher.stage_dot,
         ) {
-            self.bg_pipeline_state.fetcher.start_background();
+            (PpuBgFetcherStage::Idle, _) => {
+                self.bg_pipeline_state.fetcher.start_background();
+                return false;
+            }
+            (PpuBgFetcherStage::WindowActivating, _) => {
+                self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+                self.bg_pipeline_state.fetcher.stage_dot = 0;
+                return false;
+            }
+            (PpuBgFetcherStage::Push, _) => {
+                return self.advance_bg_push_stage();
+            }
+            _ => {}
         }
-
-        if self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::WindowActivating {
-            self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
-            self.bg_pipeline_state.fetcher.stage_dot = 0;
-            return false;
-        }
-
-        if self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push {
-            return self.advance_bg_push_stage();
-        }
-
-        self.bg_pipeline_state.fetcher.stage_dot += 1;
-
-        if self.bg_pipeline_state.fetcher.stage_dot < 2 {
-            return false;
-        }
-
-        self.bg_pipeline_state.fetcher.stage_dot = 0;
 
         let fetcher = self.bg_pipeline_state.fetcher;
-
-        match fetcher.stage {
-            PpuBgFetcherStage::Idle => self.bg_pipeline_state.fetcher.start_background(),
-            PpuBgFetcherStage::WindowActivating => unreachable!(
-                "window activation delay is handled before the staged fetcher pipeline"
-            ),
-            PpuBgFetcherStage::TileIndex => {
+        match (fetcher.stage, fetcher.stage_dot) {
+            (PpuBgFetcherStage::TileIndex, 0) => {
+                self.bg_pipeline_state.fetcher.stage_dot = 1;
+            }
+            (PpuBgFetcherStage::TileIndex, 1) => {
                 self.bg_pipeline_state.fetcher.tile_index =
                     self.read_fetch_tile_index(vram, fetcher.source, fetcher.next_fetch_pixel);
                 self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+                self.bg_pipeline_state.fetcher.stage_dot = 0;
             }
-            PpuBgFetcherStage::TileDataLow => {
+            (PpuBgFetcherStage::TileDataLow, 0) => {
+                self.bg_pipeline_state.fetcher.stage_dot = 1;
+            }
+            (PpuBgFetcherStage::TileDataLow, 1) => {
                 self.bg_pipeline_state.fetcher.tile_low =
                     self.read_fetch_tile_data_byte(vram, fetcher.source, fetcher.tile_index, 0);
                 self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+                self.bg_pipeline_state.fetcher.stage_dot = 0;
             }
-            PpuBgFetcherStage::TileDataHigh => {
+            (PpuBgFetcherStage::TileDataHigh, 0) => {
+                self.bg_pipeline_state.fetcher.stage_dot = 1;
+            }
+            (PpuBgFetcherStage::TileDataHigh, 1) => {
                 self.bg_pipeline_state.fetcher.tile_high =
                     self.read_fetch_tile_data_byte(vram, fetcher.source, fetcher.tile_index, 1);
                 self.bg_pipeline_state
                     .push
                     .queue_from_fetcher(self.bg_pipeline_state.fetcher);
                 self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+                self.bg_pipeline_state.fetcher.stage_dot = 0;
             }
-            PpuBgFetcherStage::Push => {
-                if self.advance_bg_push() {
-                    return true;
-                }
-            }
+            (PpuBgFetcherStage::Idle, _)
+            | (PpuBgFetcherStage::WindowActivating, _)
+            | (PpuBgFetcherStage::Push, _) => unreachable!(
+                "special BG fetcher stages are handled before the explicit dot-stage automaton"
+            ),
+            (_, other_dot) => unreachable!(
+                "invalid BG fetcher stage_dot {other_dot} for non-push stage {:?}",
+                fetcher.stage
+            ),
         }
 
         false
@@ -1254,44 +1275,51 @@ impl Ppu {
         }
 
         self.bg_pipeline_state.extend_mode3_by_one_dot();
-        self.obj_pipeline_state.fetch.stage_dot += 1;
         if !self.obj_enabled() {
             self.obj_pipeline_state.fetch.cancelled = true;
         }
 
-        if self.obj_pipeline_state.fetch.stage_dot < 2 {
-            return true;
-        }
-
-        self.obj_pipeline_state.fetch.stage_dot = 0;
         let fetch = self.obj_pipeline_state.fetch;
-
-        match fetch.stage {
-            PpuObjFetcherStage::Idle => {}
-            PpuObjFetcherStage::Startup => {
+        match (fetch.stage, fetch.stage_dot) {
+            (PpuObjFetcherStage::Startup, 0) => {
+                self.obj_pipeline_state.fetch.stage_dot = 1;
+            }
+            (PpuObjFetcherStage::Startup, 1) => {
                 let resolved_sprite = fetch.sprite.map(|sprite| {
                     self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict_address)
                 });
                 self.obj_pipeline_state.fetch.resolved_sprite = resolved_sprite;
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataLow;
+                self.obj_pipeline_state.fetch.stage_dot = 0;
             }
-            PpuObjFetcherStage::TileDataLow => {
+            (PpuObjFetcherStage::TileDataLow, 0) => {
+                self.obj_pipeline_state.fetch.stage_dot = 1;
+            }
+            (PpuObjFetcherStage::TileDataLow, 1) => {
                 let resolved_sprite = fetch
                     .resolved_sprite
                     .expect("active OBJ fetch must resolve tile metadata before reading tile data");
                 self.obj_pipeline_state.fetch.tile_low =
                     self.read_obj_tile_data_byte(vram, resolved_sprite, 0);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
+                self.obj_pipeline_state.fetch.stage_dot = 0;
             }
-            PpuObjFetcherStage::TileDataHigh => {
+            (PpuObjFetcherStage::TileDataHigh, 0) => {
+                self.obj_pipeline_state.fetch.stage_dot = 1;
+            }
+            (PpuObjFetcherStage::TileDataHigh, 1) => {
                 let resolved_sprite = fetch
                     .resolved_sprite
                     .expect("active OBJ fetch must resolve tile metadata before reading tile data");
                 self.obj_pipeline_state.fetch.tile_high =
                     self.read_obj_tile_data_byte(vram, resolved_sprite, 1);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+                self.obj_pipeline_state.fetch.stage_dot = 0;
             }
-            PpuObjFetcherStage::Push => {
+            (PpuObjFetcherStage::Push, 0) => {
+                self.obj_pipeline_state.fetch.stage_dot = 1;
+            }
+            (PpuObjFetcherStage::Push, 1) => {
                 let resolved_sprite = fetch
                     .resolved_sprite
                     .expect("active OBJ fetch must keep resolved metadata until FIFO push");
@@ -1307,6 +1335,13 @@ impl Ppu {
                 self.obj_pipeline_state.fetch = ObjFetchState::default();
                 self.bg_pipeline_state.push.resume_after_object_fetch();
             }
+            (PpuObjFetcherStage::Idle, _) => unreachable!(
+                "idle OBJ fetch must have returned before entering the explicit dot automaton"
+            ),
+            (_, other_dot) => unreachable!(
+                "invalid OBJ fetcher stage_dot {other_dot} for stage {:?}",
+                fetch.stage
+            ),
         }
 
         true
@@ -3631,7 +3666,9 @@ mod tests {
             PpuBgFetcherStage::TileIndex
         );
         assert_eq!(after_first_push.bg_fetcher_stage_dot, 0);
-        assert_eq!(after_first_push.bg_fifo_pixels.len(), 8);
+        assert!(after_first_push.bg_fifo_pixels.is_empty());
+        assert!(!after_first_push.bg_push_pending);
+        assert!(after_first_push.bg_fill_pending);
         assert_eq!(after_first_push.visible_pixels_output, 0);
 
         for t_cycle in 87..92 {
@@ -3835,6 +3872,61 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![0, 1, 2, 3, 0, 1, 2, 3]
         );
+    }
+
+    #[test]
+    fn bg_fetcher_stage_dot_is_an_explicit_one_dot_automaton() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+        write_bg_tilemap_entry(&mut vram_bytes, 0, 0, 0);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x91;
+        ppu.bg_pipeline_state.fetcher.start_background();
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataLow
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataLow
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataHigh
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataHigh
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert!(!ppu.bg_pipeline_state.fill.pending);
     }
 
     #[test]
@@ -4628,6 +4720,107 @@ mod tests {
         assert!(left_edge >= MODE2_DOTS);
         assert!(first_visible >= MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1);
         assert!(first_visible <= MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS);
+    }
+
+    #[test]
+    fn overlapped_obj_fetch_uses_explicit_one_dot_stage_progression() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut oam_bytes = [0; 160];
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_oam_entry(&mut oam_bytes, 0, 16, 8, 0);
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+
+        let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        oam.set_acquired(BusMaster::Ppu, true);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state.queue_fetch_hit(0);
+
+        assert!(ppu.try_start_object_fetch_from_latched_hit(true));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::Startup
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::TileDataLow
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::TileDataLow
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::TileDataHigh
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::TileDataHigh
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Push);
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Push);
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
     }
 
     #[test]
