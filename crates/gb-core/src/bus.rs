@@ -863,10 +863,26 @@ mod tests {
     use crate::ppu::{DmgObjPaletteReadPolicy, PpuStartupState};
     use crate::scheduler::{CycleContext, TCycle};
 
+    fn sync_test_video_ownership(ppu: &Ppu, oam: &mut OamDomain, vram: &mut VramDomain) {
+        let bus_state = ppu.bus_state();
+        let ppu_vram = bus_state.is_lcd_enabled() && bus_state.mode() == PpuAccessMode::Drawing;
+        let ppu_oam = bus_state.is_lcd_enabled()
+            && matches!(
+                bus_state.mode(),
+                PpuAccessMode::OamScan | PpuAccessMode::Drawing
+            );
+
+        oam.set_acquired(BusMaster::Ppu, ppu_oam);
+        vram.set_acquired(BusMaster::Ppu, ppu_vram);
+        oam.set_acquired(BusMaster::Dma, false);
+        vram.set_acquired(BusMaster::Dma, false);
+    }
+
     fn tick_ppu(ppu: &mut Ppu, t_cycle: u64) {
         let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
         let mut oam = OamDomain::new();
         let mut vram = VramDomain::new();
+        sync_test_video_ownership(ppu, &mut oam, &mut vram);
         ppu.tick_t_cycle(
             &mut context,
             OamBusView::new(BusMaster::Ppu, &mut oam),

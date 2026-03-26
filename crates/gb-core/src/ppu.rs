@@ -2274,6 +2274,26 @@ mod tests {
 
     const TEST_VRAM_BYTES: usize = 0x2000;
 
+    fn sync_test_video_ownership(
+        ppu: &Ppu,
+        oam: &mut crate::bus::OamDomain,
+        vram: &mut crate::bus::VramDomain,
+        dma_oam_active: bool,
+    ) {
+        let bus_state = ppu.bus_state();
+        let ppu_vram = bus_state.is_lcd_enabled() && bus_state.mode() == PpuAccessMode::Drawing;
+        let ppu_oam = bus_state.is_lcd_enabled()
+            && matches!(
+                bus_state.mode(),
+                PpuAccessMode::OamScan | PpuAccessMode::Drawing
+            );
+
+        oam.set_acquired(BusMaster::Ppu, ppu_oam);
+        vram.set_acquired(BusMaster::Ppu, ppu_vram);
+        oam.set_acquired(BusMaster::Dma, dma_oam_active);
+        vram.set_acquired(BusMaster::Dma, false);
+    }
+
     fn tick_ppu(ppu: &mut Ppu, t_cycle: u64, oam_bytes: &[u8]) -> CycleContext {
         tick_ppu_with_vram(ppu, t_cycle, oam_bytes, &[0; TEST_VRAM_BYTES])
     }
@@ -2298,6 +2318,7 @@ mod tests {
         let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
         let mut oam = crate::bus::OamDomain::from_bytes(oam_bytes);
         let mut vram = crate::bus::VramDomain::from_bytes(vram_bytes);
+        sync_test_video_ownership(ppu, &mut oam, &mut vram, dma_oam_active);
         ppu.tick_t_cycle(
             &mut context,
             OamBusView::new(BusMaster::Ppu, &mut oam),
