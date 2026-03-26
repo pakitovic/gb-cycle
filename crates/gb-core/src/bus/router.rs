@@ -1,7 +1,8 @@
-use super::{
-    BusAccessKind, BusAddressInfo, BusArbitrationState, BusRegion, IoRegisterAccess,
-    IoRegisterAvailability, IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
+use super::map::{
+    BusAddressInfo, BusRegion, IoRegisterAccess, IoRegisterAvailability, IoRegisterInfo,
+    IoRegisterKind, IoRegisterOwner,
 };
+use super::{BusAccessKind, BusArbitrationState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct AddressRouter;
