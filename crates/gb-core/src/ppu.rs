@@ -974,8 +974,19 @@ impl Ppu {
     }
 
     fn advance_mode3_output_phase(&mut self) {
+        if self.output_phase_blocked_by_pending_obj_hit() {
+            self.bg_pipeline_state.extend_mode3_by_one_dot();
+            return;
+        }
+
         self.pop_bg_pixel_for_current_dot();
         self.advance_pre_visible_obj_match_x();
+    }
+
+    fn output_phase_blocked_by_pending_obj_hit(&self) -> bool {
+        self.obj_enabled()
+            && self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
+            && !self.obj_pipeline_state.pending_sprite_slots.is_empty()
     }
 
     fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
@@ -3872,6 +3883,45 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![0, 1, 2, 3, 0, 1, 2, 3]
         );
+    }
+
+    #[test]
+    fn pending_obj_hit_blocks_output_phase_and_stretches_mode3() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.visible_pixels_output = 12;
+        ppu.bg_pipeline_state.fifo.push_back(3);
+        ppu.obj_pipeline_state.queue_fetch_hit(0);
+
+        ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 12);
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fifo
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![3]
+        );
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+    }
+
+    #[test]
+    fn pending_obj_hit_stalls_pre_visible_match_x_until_fetch_service() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.pre_visible_obj_match_x = 5;
+        ppu.obj_pipeline_state.queue_fetch_hit(0);
+
+        ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.bg_pipeline_state.pre_visible_obj_match_x, 5);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
     }
 
     #[test]
