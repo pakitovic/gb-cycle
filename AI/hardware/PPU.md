@@ -20,6 +20,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - STAT/LY/LYC and LCD-visible interrupts
 - DMG-family OAM corruption behavior
 - reaction to DMA-declared OAM/VRAM contention without owning DMA scheduling
+- consumption of bus-originated OAM/VRAM domain views rather than unrelated raw backing arrays
 - tile fetcher state
 - background and object FIFO state
 - pixel FIFO state and output timing

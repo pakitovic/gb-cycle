@@ -1,3 +1,6 @@
+mod router;
+mod view;
+
 use crate::apu::Apu;
 use crate::boot::{BootController, StartupMemoryPolicy};
 use crate::cartridge::CartridgeSlot;
@@ -10,6 +13,8 @@ use crate::ppu::{OamCorruptionEventKind, Ppu, PpuAccessMode, PpuBusState};
 use crate::scheduler::CycleContext;
 use crate::serial::Serial;
 use crate::timer::Timer;
+pub use router::AddressRouter;
+pub(crate) use view::{OamBusView, VramBusView};
 
 const VRAM_LEN: usize = 0x2000;
 const WRAM_LEN: usize = 0x2000;
@@ -34,6 +39,8 @@ pub enum BusRequester {
     Boot,
     Cartridge,
 }
+
+pub type BusMaster = BusRequester;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BusAccessKind {
@@ -212,6 +219,20 @@ pub enum BusRegion {
 }
 
 impl BusRegion {
+    pub const fn domain(self) -> BusDomain {
+        match self {
+            Self::BootRom => BusDomain::BootRom,
+            Self::CartridgeRomBank0 | Self::CartridgeRomBankN | Self::CartridgeExternal => {
+                BusDomain::Cartridge
+            }
+            Self::Vram => BusDomain::Vram,
+            Self::WramBank0 | Self::WramBankN | Self::EchoRam => BusDomain::Wram,
+            Self::Oam => BusDomain::Oam,
+            Self::Unusable => BusDomain::Unusable,
+            Self::Mmio | Self::Hram | Self::InterruptEnable => BusDomain::IoHram,
+        }
+    }
+
     pub const fn owner(self) -> BusRegionOwner {
         match self {
             Self::BootRom => BusRegionOwner::Boot,
@@ -226,6 +247,17 @@ impl BusRegion {
             Self::InterruptEnable => BusRegionOwner::InterruptController,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BusDomain {
+    BootRom,
+    Cartridge,
+    Vram,
+    Wram,
+    Oam,
+    Unusable,
+    IoHram,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -260,6 +292,10 @@ impl BusAddressInfo {
 
     pub const fn region(self) -> BusRegion {
         self.region
+    }
+
+    pub const fn domain(self) -> BusDomain {
+        self.region.domain()
     }
 
     pub const fn owner(self) -> BusRegionOwner {
@@ -434,6 +470,7 @@ pub(crate) struct BusIoWriteView<'a> {
 pub struct Bus {
     console_model: ConsoleModel,
     status: BusStatus,
+    router: AddressRouter,
     vram: [u8; VRAM_LEN],
     wram: [u8; WRAM_LEN],
     oam: [u8; OAM_LEN],
@@ -451,6 +488,7 @@ impl Bus {
         Self {
             console_model,
             status: BusStatus::Ready,
+            router: AddressRouter::new(),
             vram: [0; VRAM_LEN],
             wram: [0; WRAM_LEN],
             oam: [0; OAM_LEN],
@@ -467,158 +505,11 @@ impl Bus {
     }
 
     pub fn decode_address(&self, address: u16) -> BusAddressInfo {
-        match address {
-            0x0000..=0x3FFF => BusAddressInfo::new(address, BusRegion::CartridgeRomBank0, address),
-            0x4000..=0x7FFF => {
-                BusAddressInfo::new(address, BusRegion::CartridgeRomBankN, address - 0x4000)
-            }
-            0x8000..=0x9FFF => BusAddressInfo::new(address, BusRegion::Vram, address - 0x8000),
-            0xA000..=0xBFFF => {
-                BusAddressInfo::new(address, BusRegion::CartridgeExternal, address - 0xA000)
-            }
-            0xC000..=0xCFFF => BusAddressInfo::new(address, BusRegion::WramBank0, address - 0xC000),
-            0xD000..=0xDFFF => BusAddressInfo::new(address, BusRegion::WramBankN, address - 0xD000),
-            0xE000..=0xFDFF => BusAddressInfo::new(address, BusRegion::EchoRam, address - 0xE000),
-            0xFE00..=0xFE9F => BusAddressInfo::new(address, BusRegion::Oam, address - 0xFE00),
-            0xFEA0..=0xFEFF => BusAddressInfo::new(address, BusRegion::Unusable, address - 0xFEA0),
-            0xFF00..=0xFF7F => BusAddressInfo::new(address, BusRegion::Mmio, address - 0xFF00),
-            0xFF80..=0xFFFE => BusAddressInfo::new(address, BusRegion::Hram, address - 0xFF80),
-            0xFFFF => BusAddressInfo::new(address, BusRegion::InterruptEnable, 0),
-        }
+        self.router.decode_address(address)
     }
 
     pub fn describe_io_register(&self, address: u16) -> Option<IoRegisterInfo> {
-        Some(match address {
-            0xFF00 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Joypad,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::Mixed,
-                IoRegisterKind::Joyp,
-            ),
-            0xFF01 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Serial,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::SerialData,
-            ),
-            0xFF02 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Serial,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::Mixed,
-                IoRegisterKind::SerialControl,
-            ),
-            0xFF03 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Reserved,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::Reserved,
-            ),
-            0xFF04 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Timer,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::Mixed,
-                IoRegisterKind::Div,
-            ),
-            0xFF05 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Timer,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::Tima,
-            ),
-            0xFF06 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Timer,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::Tma,
-            ),
-            0xFF07 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Timer,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::Mixed,
-                IoRegisterKind::Tac,
-            ),
-            0xFF08..=0xFF0E => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Reserved,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::Reserved,
-            ),
-            0xFF0F => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::InterruptController,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::Mixed,
-                IoRegisterKind::InterruptFlag,
-            ),
-            0xFF10..=0xFF3F => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Apu,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::Mixed,
-                IoRegisterKind::Sound,
-            ),
-            0xFF40..=0xFF45 | 0xFF47..=0xFF4B => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Ppu,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::Mixed,
-                IoRegisterKind::Lcd,
-            ),
-            0xFF46 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Dma,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::OamDma,
-            ),
-            0xFF4C => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Reserved,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::Reserved,
-            ),
-            0xFF4D | 0xFF4F | 0xFF51..=0xFF56 | 0xFF68..=0xFF70 | 0xFF72..=0xFF77 => {
-                IoRegisterInfo::new(
-                    address,
-                    IoRegisterOwner::CgbOnly,
-                    IoRegisterAvailability::CgbOnly,
-                    IoRegisterAccess::Mixed,
-                    IoRegisterKind::CgbSystem,
-                )
-            }
-            0xFF4E | 0xFF57..=0xFF67 | 0xFF71 | 0xFF78..=0xFF7F => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Reserved,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::Reserved,
-            ),
-            0xFF50 => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Boot,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::WriteOnly,
-                IoRegisterKind::BootRomDisable,
-            ),
-            0xFFFF => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::InterruptController,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::InterruptEnable,
-            ),
-            _ => return None,
-        })
+        self.router.describe_io_register(address)
     }
 
     pub fn resolve_access(
@@ -787,12 +678,12 @@ impl Bus {
         let _ = ppu.apply_oam_corruption_event(kind, &mut self.oam);
     }
 
-    pub(crate) fn oam_bytes(&self) -> &[u8] {
-        &self.oam
+    pub(crate) fn oam_view(&self, master: BusMaster) -> OamBusView<'_> {
+        OamBusView::new(master, &self.oam)
     }
 
-    pub(crate) fn vram_bytes(&self) -> &[u8] {
-        &self.vram
+    pub(crate) fn vram_view(&self, master: BusMaster) -> VramBusView<'_> {
+        VramBusView::new(master, &self.vram)
     }
 
     pub fn scheduler_trace_message(
@@ -848,11 +739,7 @@ impl Bus {
         address: u16,
         state: &BusArbitrationState,
     ) -> BusAddressInfo {
-        if kind == BusAccessKind::Read && state.boot_rom.overlays_read(address) {
-            return BusAddressInfo::new(address, BusRegion::BootRom, address);
-        }
-
-        self.decode_address(address)
+        self.router.resolve_nominal_target(kind, address, state)
     }
 
     fn evaluate_access_policy(
@@ -1333,7 +1220,13 @@ mod tests {
 
     fn tick_ppu(ppu: &mut Ppu, t_cycle: u64) {
         let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
-        ppu.tick_t_cycle(&mut context, &[0; 160], &[0; TEST_VRAM_BYTES], false, None);
+        ppu.tick_t_cycle(
+            &mut context,
+            OamBusView::new(BusMaster::Ppu, &[0; 160]),
+            VramBusView::new(BusMaster::Ppu, &[0; TEST_VRAM_BYTES]),
+            false,
+            None,
+        );
     }
 
     fn prepare_mode2_ppu_at_row(console_model: ConsoleModel, row: u8) -> Ppu {

@@ -1,3 +1,4 @@
+use crate::bus::{BusMaster, OamBusView, VramBusView};
 use crate::model::ConsoleModel;
 use crate::scheduler::{CycleContext, InterruptSource};
 use std::collections::VecDeque;
@@ -492,11 +493,14 @@ impl Ppu {
     pub(crate) fn tick_t_cycle(
         &mut self,
         _context: &mut CycleContext,
-        oam_bytes: &[u8],
-        vram_bytes: &[u8],
+        oam: OamBusView<'_>,
+        vram: VramBusView<'_>,
         dma_oam_active: bool,
         dma_oam_conflict_address: Option<u16>,
     ) {
+        debug_assert_eq!(oam.master(), BusMaster::Ppu);
+        debug_assert_eq!(vram.master(), BusMaster::Ppu);
+
         if !self.is_lcd_enabled() {
             return;
         }
@@ -506,8 +510,8 @@ impl Ppu {
         self.line_dot += 1;
         self.advance_lcd_restart_phase();
         self.prepare_visible_scanline_state();
-        self.advance_mode2_scan(oam_bytes, dma_oam_active);
-        self.advance_mode3_pipeline(oam_bytes, vram_bytes, dma_oam_conflict_address);
+        self.advance_mode2_scan(oam.bytes(), dma_oam_active);
+        self.advance_mode3_pipeline(oam.bytes(), vram.bytes(), dma_oam_conflict_address);
 
         if self.line_dot == DOTS_PER_SCANLINE {
             let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
@@ -2249,6 +2253,7 @@ fn obj_pixel_has_priority(candidate: ObjPixel, current: ObjPixel) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bus::BusMaster;
     use crate::scheduler::TCycle;
 
     const TEST_VRAM_BYTES: usize = 0x2000;
@@ -2277,8 +2282,8 @@ mod tests {
         let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
         ppu.tick_t_cycle(
             &mut context,
-            oam_bytes,
-            vram_bytes,
+            OamBusView::new(BusMaster::Ppu, oam_bytes),
+            VramBusView::new(BusMaster::Ppu, vram_bytes),
             dma_oam_active,
             dma_oam_conflict_address,
         );

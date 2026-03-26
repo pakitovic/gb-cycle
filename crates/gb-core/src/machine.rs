@@ -1,6 +1,8 @@
 use crate::apu::Apu;
 use crate::boot::BootController;
-use crate::bus::{Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusRequester};
+use crate::bus::{
+    Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester,
+};
 use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError, CartridgeSlot};
 use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuBusOperation, CpuCore};
 use crate::debugger::{
@@ -338,8 +340,8 @@ impl<S: TraceSink> Machine<S> {
                     let dma_oam_active = dma.bus_state().active_region().is_some();
                     ppu.tick_t_cycle(
                         context,
-                        bus.oam_bytes(),
-                        bus.vram_bytes(),
+                        bus.oam_view(BusMaster::Ppu),
+                        bus.vram_view(BusMaster::Ppu),
                         dma_oam_active,
                         dma_oam_conflict_address,
                     );

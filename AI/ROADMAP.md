@@ -160,7 +160,7 @@ coherent without refactoring.
    Acceptance criteria: the phase order is explicit and stable, there are no hidden cross-calls that bypass it, the scheduler owns ordering rather than reimplementing subsystem rules, and one `CycleContext`-style object or equivalent carries current-cycle events, derived signals, ownership facts, and queued side effects or IRQ requests.
 2. **Central arbitration** (`Phase 1`)
    Goal: unify decode, ownership, and access policy behind one requester-aware bus path.
-   Acceptance criteria: CPU and DMA-ready requesters use the same arbitration route, decode/ownership and access-policy layers stay distinct, and Phase `1` closes the requester-aware bus contract that Phase `3` later reuses for DMG OAM DMA source-bus-aware CPU blocking behavior.
+   Acceptance criteria: CPU and DMA-ready requesters use the same arbitration route, decode/ownership and access-policy layers stay distinct, Phase `1` closes the requester-aware bus contract that Phase `3` later reuses for DMG OAM DMA source-bus-aware CPU blocking behavior, and the architecture leaves room for a pure address router plus requester-facing domain views without moving timing policy into the router.
 3. **IRQ aggregation layer** (`Phase 2`)
    Goal: separate source request, `IF` visibility, and CPU acceptance.
    Acceptance criteria: PPU, timer, serial, and joypad only request; the CPU accepts by `IME/IE/IF` and fixed priority; timer keeps its delayed `4`-T-cycle (`1` M-cycle) request timing.
@@ -415,12 +415,15 @@ purely mechanical wiring that does not widen hardware scope.
    Scope:
    - requester identity for CPU, DMA, and future bus actors
    - decode result plus requester-aware access-policy evaluation
+   - a pure address-router path that resolves nominal domain or region ownership without deciding timing
    - explicit blocked-read and blocked-write result handling
    - policy inputs for boot-ROM overlay, PPU visibility, DMA-published constraints, and model availability
+   - bus-originated views for video domains such as VRAM and OAM so PPU-facing and DMA-facing access does not depend on unrelated raw slices
    Note: this subphase closes the arbitration contract only; functional DMG OAM DMA timing remains Phase `3`.
    Done criteria:
    - decode/ownership and access-policy layers are distinct in both code and tests
    - CPU and a synthetic DMA requester already exercise the same arbitration entry point
+   - the code structure can evolve toward domain-oriented handlers or controllers without changing the shared T-cycle scheduler contract
    - blocked accesses have explicit observable results rather than falling through to normal storage semantics
    Validation gate:
    - focused tests cover requester-specific arbitration through one common path

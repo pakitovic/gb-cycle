@@ -183,13 +183,17 @@ to immediately materialize as a separate directory.
 - memory reads and writes
 - memory-map region resolution
 - one central address-decode path over the full `0x0000-0xFFFF` map
+- one pure address-router layer that resolves nominal domain and region ownership without owning live timing
 - access arbitration
 - integration of cartridge, VRAM, WRAM, OAM, I/O, HRAM, IE, and boot ROM mapping
+- domain-oriented controllers or handlers for cartridge, VRAM, WRAM, OAM, boot-overlay, unusable-space, and IO/HRAM/IE behavior
 - modeling of access restrictions and conflicts when hardware makes them visible
 - two-layer arbitration made of decode / nominal ownership followed by requester-aware access policy
+- requester-facing or device-facing views for VRAM and OAM so PPU and DMA do not borrow raw backing arrays directly from unrelated call sites
 - routing of OAM and `FEA0-FEFF` access attempts and CPU-provided address-bearing micro-events into the DMG-family OAM corruption path when applicable
 - MMIO routing to the subsystem-owned register contract for each mapped address
 - one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
+- if a docboy-like internal domain is introduced, prefer `IoHram` / `Internal` naming over `CpuBus`; keep WRAM explicit instead of burying it inside a generic external or CPU-named bus so future CGB banking remains visible in the architecture
 
 ### `memory/` or bus-owned storage helpers
 

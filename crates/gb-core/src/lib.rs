@@ -20,10 +20,11 @@ pub use boot::{
     BootRomAssets, BootRomKind, BootSnapshot, BootStatus, StartupMemoryPolicy,
 };
 pub use bus::{
-    BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution, BusAddressInfo,
-    BusArbitrationState, BusBlockReason, BusRegion, BusRegionOwner, BusRequester, BusSnapshot,
-    BusStatus, DmaBusState, DmaCpuAccessPolicy, DmaMemoryRegionImpact, IoRegisterAccess,
-    IoRegisterAvailability, IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
+    AddressRouter, BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution,
+    BusAddressInfo, BusArbitrationState, BusBlockReason, BusDomain, BusMaster, BusRegion,
+    BusRegionOwner, BusRequester, BusSnapshot, BusStatus, DmaBusState, DmaCpuAccessPolicy,
+    DmaMemoryRegionImpact, IoRegisterAccess, IoRegisterAvailability, IoRegisterInfo,
+    IoRegisterKind, IoRegisterOwner,
 };
 pub use cartridge::{
     CartridgeClassification, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeHeader,

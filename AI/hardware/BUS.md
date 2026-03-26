@@ -49,6 +49,15 @@ Address alone is not enough: the bus must also consider the current temporal har
 - The bus should resolve accesses from address plus current hardware context, not from address alone.
 - CPU, DMA, and other actors must not bypass that central decode path with direct "fast" access to backing arrays.
 
+## Domain-oriented architecture baseline
+
+- Treat the routed target as `domain + region + offset`, not only as one flat region enum.
+- The current DMG-first preferred domain split is `BootRom`, `Cartridge`, `Vram`, `Wram`, `Oam`, `IoHram`, and `Unusable`.
+- If a docboy-like internal domain is introduced, prefer `IoHram` or `Internal` naming over `CpuBus`; `FFxx`, `HRAM`, and `IE` belong together there, while WRAM should stay explicit for future CGB expansion.
+- The address router or MMU should only resolve nominal routing and boot-overlay ownership. It must not decide live PPU Mode `3` blocking, DMA conflict policy, or other timing-dependent outcomes.
+- Timing-dependent blocked-access behavior remains the responsibility of arbitration plus the owning domain or device contract.
+- PPU and DMA may consume bus-originated OAM and VRAM views instead of raw storage pointers, but those views must still come from the same bus/domain layer and remain synchronized to the shared T-cycle timeline.
+
 ## Region contract baseline
 
 ### Cartridge fixed ROM `0x0000-0x3FFF`
@@ -246,10 +255,11 @@ Address alone is not enough: the bus must also consider the current temporal har
 Priority order:
 
 1. SameBoy
-2. binjgb
-3. GameRoy
-4. Mooneye GB
-5. Gambatte
+2. docboy
+3. binjgb
+4. GameRoy
+5. Mooneye GB
+6. Gambatte
 
 ## Tests
 
@@ -286,10 +296,12 @@ Priority order:
 - Favor explicit maps and handlers over opaque indirection.
 - Treat the bus as both an address decoder and an access arbiter.
 - Keep one source of truth for address decode plus access policy; do not let per-subsystem shortcuts become shadow decoders.
+- A pure address-router plus requester-facing domain views is the preferred long-term structural shape for this repo's bus, as long as the router itself stays timing-agnostic.
 - A bus context or equivalent state bundle is a good fit for carrying model, PPU mode, LCD enable, DMA activity, boot ROM mapping, and later CGB-specific selectors.
 - A caller-aware access split or equivalent internal distinction between CPU-initiated and DMA-initiated accesses is recommended when the observable rules differ.
 - Let subsystems define the state that causes restrictions or remapping, but keep the final blocked-access or routing decision in bus-facing handlers.
 - A DMA-facing query such as `bus_constraints()` plus a separate transfer-commit path is a good fit for keeping arbitration policy separate from byte-copy mechanics.
+- `docboy` is an approved structural oracle for this domain split, especially for DMG PPU-facing `VRAM/OAM` views and explicit video-bus acquisition or release timing; use it as a cross-check, not as a code-copy source.
 - Prefer a centralized MMIO descriptor table or equivalent routed register map over scattered `match` blocks that each know only part of a register's semantics.
 - Let subsystem-owned handlers compose readback from live state, latched state, and forced bits; do not teach the bus to fake those register internals.
 - Do not special-case CPU opcode fetch, operand fetch, or stack accesses outside the common bus contract; they should use the same routed access path as any other CPU-visible memory transaction.
