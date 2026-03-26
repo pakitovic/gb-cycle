@@ -213,6 +213,7 @@ pub enum PpuVisibleOutputState {
 pub enum PpuBgFetcherStage {
     #[default]
     Idle,
+    WindowActivating,
     TileIndex,
     TileDataLow,
     TileDataHigh,
@@ -938,11 +939,16 @@ impl Ppu {
                 .start_line(self.visible_registers.scx);
         }
 
-        if self.line_dot.saturating_sub(MODE2_DOTS) >= MODE3_BG_FETCH_PRIMING_DOTS {
-            self.maybe_start_window_for_current_position();
-        }
+        let window_started_this_dot =
+            if self.line_dot.saturating_sub(MODE2_DOTS) >= MODE3_BG_FETCH_PRIMING_DOTS {
+                self.maybe_start_window_for_current_position()
+            } else {
+                false
+            };
 
-        self.maybe_start_object_fetch();
+        if !window_started_this_dot {
+            self.maybe_start_object_fetch();
+        }
         if self.advance_object_fetch(oam, vram, dma_oam_conflict_address) {
             return;
         }
@@ -960,6 +966,12 @@ impl Ppu {
             self.bg_pipeline_state.fetcher.start_background();
         }
 
+        if self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::WindowActivating {
+            self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+            self.bg_pipeline_state.fetcher.stage_dot = 0;
+            return;
+        }
+
         self.bg_pipeline_state.fetcher.stage_dot += 1;
 
         if self.bg_pipeline_state.fetcher.stage_dot < 2 {
@@ -972,6 +984,9 @@ impl Ppu {
 
         match fetcher.stage {
             PpuBgFetcherStage::Idle => self.bg_pipeline_state.fetcher.start_background(),
+            PpuBgFetcherStage::WindowActivating => unreachable!(
+                "window activation delay is handled before the staged fetcher pipeline"
+            ),
             PpuBgFetcherStage::TileIndex => {
                 self.bg_pipeline_state.fetcher.tile_index =
                     self.read_fetch_tile_index(vram, fetcher.source, fetcher.next_fetch_pixel);
@@ -1053,12 +1068,12 @@ impl Ppu {
         self.visible_registers.obj_enabled()
     }
 
-    fn maybe_start_window_for_current_position(&mut self) {
+    fn maybe_start_window_for_current_position(&mut self) -> bool {
         if self.bg_pipeline_state.window_started_this_line
             || !self.bg_pipeline_state.window_wy_latch
             || !self.window_runtime_enabled()
         {
-            return;
+            return false;
         }
 
         if self.visible_registers.wx == 166 && !self.bg_pipeline_state.window_force_x0_this_line {
@@ -1069,15 +1084,15 @@ impl Ppu {
                 self.window_state.pending_wx166_next_line = true;
                 self.bg_pipeline_state.wx166_armed_this_line = true;
             }
-            return;
+            return false;
         }
 
         let Some(trigger_x) = self.window_trigger_x_for_current_line() else {
-            return;
+            return false;
         };
 
         if !self.should_start_window_now(trigger_x) {
-            return;
+            return false;
         }
 
         if self.visible_registers.wx == 0
@@ -1093,6 +1108,7 @@ impl Ppu {
         self.bg_pipeline_state.scx_discard_remaining = 0;
         self.bg_pipeline_state.window_started_this_line = true;
         self.bg_pipeline_state.window_force_x0_this_line = false;
+        true
     }
 
     fn window_runtime_enabled(&self) -> bool {
@@ -1958,7 +1974,12 @@ impl BgFetcherState {
 
     fn start_window(&mut self) {
         self.source = PpuBgFetcherSource::Window;
-        self.start_common();
+        self.stage = PpuBgFetcherStage::WindowActivating;
+        self.stage_dot = 0;
+        self.next_fetch_pixel = 0;
+        self.tile_index = 0;
+        self.tile_low = 0;
+        self.tile_high = 0;
     }
 
     fn start_common(&mut self) {

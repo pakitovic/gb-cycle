@@ -248,6 +248,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - The window must be part of the same Mode 3 fetcher/FIFO pipeline as BG and sprites; it must not be modeled as a second background compositor applied after the scanline has already been built.
 - Window start is a temporal pipeline event in the middle of the scanline rather than a frame-level or scanline-level mode switch.
 - When the window starts rendering, the BG FIFO should be cleared and the fetcher should restart from its initial fetch step.
+- In the current DMG baseline, treat the window trigger itself as one explicit activation dot before the restarted window fetcher begins advancing again; do not let the restart behave as if the first window fetch step had already consumed time on the same activation dot.
 - Window visibility must depend on the combined state of `LCDC.5`, the WY latch, and the runtime WX trigger rather than on a single late visibility flag.
 - Window Y addressing must come from a dedicated internal window line counter rather than from naïvely using `LY - WY` at all times.
 
