@@ -833,6 +833,9 @@ fn entering_vblank_can_raise_vblank_and_mode1_stat_together() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
+    machine
+        .load_cartridge(build_test_rom(&[0x18, 0xFE], 0x00))
+        .expect("NoMBC idle ROM should load");
 
     machine.write_bus(0xFF45, 0xFF);
     step_until_line_dot(&mut machine, 80);
@@ -860,6 +863,9 @@ fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
+    machine
+        .load_cartridge(build_test_rom(&[0x18, 0xFE], 0x00))
+        .expect("NoMBC idle ROM should load");
 
     seed_bg_tile_row(&mut machine, 0, 0, 0x00, 0xFF);
     seed_bg_tilemap_entry(&mut machine, 0, 0, 0);

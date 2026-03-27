@@ -77,6 +77,7 @@ When implementing timing:
 - This is a project-level deterministic ordering rule chosen to preserve documented dependencies; it is not presented as the one true internal Nintendo implementation.
 - Free-running divider-derived events such as timer input edges and `DIV-APU` edge detection belong to step `3`, after the shared counter advances and before autonomous peripherals consume those edges.
 - Immediate MMIO effects produced by a write on the access T-cycle, such as `DIV` reset behavior, `FF46` DMA start, `SC.7` transfer start, or `LCDC.7` LCD transitions, still belong to the owning device when the access commits in step `7`.
+- In the current March 27, 2026 DMG baseline, the shared scheduler now stages CPU-originated PPU MMIO writes during step `6` and commits them during step `7`. That keeps the runtime aligned with the documented phase contract without changing the existing DMG `Mode 3` rule that active-pipeline register snapshots only become visible on the next PPU dot after the commit.
 - `IF` updates from hardware sources belong to step `8`; CPU acceptance is a later CPU-owned decision and must not be collapsed into the producer path.
 - Another internal implementation shape is acceptable only if these same observable dependencies remain true.
 
@@ -96,6 +97,7 @@ When implementing timing:
 - For the PPU specifically, dot-by-dot progression is the intended interpretation of the shared T-cycle timeline.
 - MMIO reads and writes should also be modeled as ordered T-cycle events on that same timeline, not as timeless getters/setters attached to instruction completion.
 - Read or write side effects triggered by MMIO, such as `DIV` reset, `LCDC.7` LCD enable changes, `FF46` DMA start, `FF50` boot-ROM unmapping, `SC.7` transfer control, or `NRx4` channel triggers, should occur on the access T-cycle unless hardware evidence says otherwise.
+- Public setup/debug helpers such as `Machine::write_bus()` are outside that shared scheduler timeline and may still apply owner-visible MMIO state immediately; do not use those helpers as evidence that the runtime CPU path has no phase-`7` MMIO commit boundary.
 - Reads of dynamic MMIO state such as `LY`, `STAT` mode bits, interrupt flags, in-progress serial state, or APU channel-status bits should observe the live hardware state at the instant of the read.
 - Host-side persistence work such as save flushes, timestamp capture, or atomic file replacement is outside the emulated T-cycle timeline; it must not be used to reorder or retroactively redefine already-committed hardware-visible cartridge state.
 - `JOYP` should follow that same MMIO rule: `FF00` selection writes take effect on the access T-cycle, and later reads should observe the currently selected rows and current hardware-facing button state at the instant of the read.

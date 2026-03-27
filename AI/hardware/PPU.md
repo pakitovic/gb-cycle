@@ -55,6 +55,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - `LYC` is readable and writable storage, but its comparison effect belongs to the live PPU state and should be evaluated continuously against `LY`.
 - `SCX`, `SCY`, `WX`, and `WY` should be modeled as MMIO-visible PPU registers whose mid-frame writes participate in the same temporal PPU model rather than a deferred renderer recomputation.
 - `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
+- On the shared scheduler path, CPU-originated writes to PPU MMIO registers should stage during the CPU micro-operation phase and commit on the same T-cycle during the dedicated MMIO-commit phase. The PPU should therefore treat the MMIO-owned storage update itself as a phase-`7` device-owned event, distinct from the later next-dot-visible fetch/pipeline snapshots.
 - The implementation should keep one explicit current-dot-visible register block for active-LCD fetch and pixel mixing. In the current DMG baseline, that visible block may lag the MMIO-owned storage by one shared T-cycle so writes committed after the PPU tick become visible on the next PPU dot instead of retroactively changing the fetch already in progress.
 - That visible-register block should be the source of truth for Mode `3` BG/window/object fetch decisions, BG/OBJ palette lookup, and other active-pipeline reads of `LCDC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, and `OBP*`.
 - In the current March 27, 2026 DMG baseline, keep one second explicit register snapshot for the active pixel pipeline itself, separate from the current-dot-visible MMIO snapshot. This pipeline snapshot should represent the previous-dot DMG view used by the in-flight `Mode 3` pipeline, so live-write-sensitive logic does not have to recover "last `LCDC` / last `WX` / last `BGP`" ad hoc from unrelated state.
@@ -132,6 +133,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Entering VBlank at `LY = 144` should be able to request both the dedicated VBlank interrupt and the LCD STAT interrupt for Mode `1` independently when the corresponding `STAT` enable is set.
 - The same live mode state that feeds `STAT` must also feed VRAM/OAM accessibility decisions so software polling `STAT` sees the same timing the bus uses for blocking.
 - On the shared scheduler, the PPU dot tick should happen before current-cycle bus arbitration and interrupt aggregation so `STAT`, LCD IRQ requests, `LY`, and VRAM/OAM restrictions remain coherent for that T-cycle.
+- In the current March 27, 2026 baseline, the scheduler-backed CPU path now also keeps one explicit `CPU phase -> PPU MMIO commit phase -> interrupt aggregation` seam. That means `STAT` / `LCDC` side effects produced by a CPU MMIO write do not appear during the earlier PPU dot tick of the same T-cycle, but they do reach the owning PPU state before step `8` interrupt aggregation.
 
 ## STAT write quirk baseline
 

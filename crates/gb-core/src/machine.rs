@@ -2,6 +2,7 @@ use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{
     Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester,
+    IoRegisterOwner,
 };
 use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError, CartridgeSlot};
 use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuBusOperation, CpuCore};
@@ -15,7 +16,9 @@ use crate::joypad::Joypad;
 use crate::joypad::JoypadButton;
 use crate::model::MachineConfig;
 use crate::ppu::Ppu;
-use crate::scheduler::{CycleContext, GlobalScheduler, SchedulerPhase, TCycle};
+use crate::scheduler::{
+    CycleContext, GlobalScheduler, SchedulerPhase, SchedulerSideEffect, TCycle,
+};
 use crate::serial::{Serial, SerialPeer};
 use crate::timer::Timer;
 
@@ -39,6 +42,23 @@ fn current_cycle_interrupt_read_mask(context: &CycleContext, ppu: &Ppu, joypad: 
         mask |= 0x10;
     }
     mask
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PendingPpuMmioWrite {
+    address: u16,
+    value: u8,
+}
+
+fn cpu_write_targets_ppu_mmio(bus: &Bus, address: u16) -> bool {
+    bus.describe_io_register(address)
+        .is_some_and(|info| info.owner() == IoRegisterOwner::Ppu)
+}
+
+fn commit_pending_ppu_mmio_write(ppu: &mut Ppu, pending: &mut Option<PendingPpuMmioWrite>) {
+    if let Some(write) = pending.take() {
+        ppu.write_register(write.address, write.value);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -320,6 +340,7 @@ impl<S: TraceSink> Machine<S> {
         let interrupts = &mut self.interrupts;
         let joypad = &mut self.joypad;
         let cartridge = &mut self.cartridge;
+        let mut pending_ppu_mmio_write = None;
 
         self.scheduler
             .step_with_trace(&mut self.tracer, |context, tracer| match context.phase() {
@@ -428,23 +449,29 @@ impl<S: TraceSink> Machine<S> {
                             },
                         )),
                         CpuBusOperation::Write { address, value } => {
-                            bus.write_with_context(
-                                address,
-                                value,
-                                BusRequester::Cpu,
-                                &arbitration_state,
-                                Some(cartridge),
-                                BusIoWriteView {
-                                    apu: Some(apu),
-                                    timer: Some(timer),
-                                    serial: Some(serial),
-                                    dma: Some(dma),
-                                    boot: Some(boot),
-                                    interrupts: Some(interrupts),
-                                    joypad: Some(joypad),
-                                    ppu: Some(ppu),
-                                },
-                            );
+                            if cpu_write_targets_ppu_mmio(bus, address) {
+                                pending_ppu_mmio_write =
+                                    Some(PendingPpuMmioWrite { address, value });
+                                context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
+                            } else {
+                                bus.write_with_context(
+                                    address,
+                                    value,
+                                    BusRequester::Cpu,
+                                    &arbitration_state,
+                                    Some(cartridge),
+                                    BusIoWriteView {
+                                        apu: Some(apu),
+                                        timer: Some(timer),
+                                        serial: Some(serial),
+                                        dma: Some(dma),
+                                        boot: Some(boot),
+                                        interrupts: Some(interrupts),
+                                        joypad: Some(joypad),
+                                        ppu: Some(ppu),
+                                    },
+                                );
+                            }
                             None
                         }
                         CpuBusOperation::PendingInterruptMask => Some(interrupts.pending_mask()),
@@ -460,6 +487,7 @@ impl<S: TraceSink> Machine<S> {
                     });
                 }
                 SchedulerPhase::MmioSideEffectCommit => {
+                    commit_pending_ppu_mmio_write(ppu, &mut pending_ppu_mmio_write);
                     tracer.emit_with(TraceSubsystem::Boot, TraceLevel::Trace, || {
                         boot.scheduler_trace_message(context)
                     });
@@ -549,6 +577,21 @@ impl<S: TraceSink> Machine<S> {
 mod tests {
     use super::*;
     use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
+    use crate::ppu::PpuLcdState;
+    use crate::scheduler::SchedulerSideEffect;
+
+    const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+
+    fn build_test_rom(program: &[u8]) -> Vec<u8> {
+        let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+        for (offset, byte) in program.iter().copied().enumerate() {
+            rom[0x0100 + offset] = byte;
+        }
+        rom[0x0147] = 0x00;
+        rom[0x0148] = 0x00;
+        rom[0x0149] = 0x00;
+        rom
+    }
 
     #[test]
     fn machine_new_starts_on_the_first_t_cycle() {
@@ -626,5 +669,52 @@ mod tests {
             snapshot.cartridge.state,
             crate::CartridgeSlotState::Empty
         ));
+    }
+
+    #[test]
+    fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut pending = Some(PendingPpuMmioWrite {
+            address: 0xFF42,
+            value: 0x12,
+        });
+
+        assert_eq!(ppu.read_register(0xFF42), 0x00);
+
+        commit_pending_ppu_mmio_write(&mut ppu, &mut pending);
+
+        assert_eq!(ppu.read_register(0xFF42), 0x12);
+        assert!(pending.is_none());
+    }
+
+    #[test]
+    fn cpu_ppu_mmio_writes_commit_during_phase_7_of_the_same_t_cycle() {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(&[
+                0x3E, 0x00, // ld a,$00
+                0xE0, 0x40, // ldh ($40),a
+                0x18, 0xFE, // jr .
+            ]))
+            .expect("NoMBC test ROM should load");
+
+        let mut commit_context = None;
+        for _ in 0..32 {
+            let context = machine.step_t_cycle();
+            if machine.read_bus(0xFF40) == 0x00 {
+                commit_context = Some(context);
+                break;
+            }
+        }
+
+        let context = commit_context.expect("CPU LCDC write should commit within 32 T-cycles");
+        assert!(
+            context
+                .queued_side_effects()
+                .contains(&SchedulerSideEffect::CommitMmioWrite)
+        );
+        assert_eq!(machine.ppu().snapshot().lcd_state, PpuLcdState::Disabled);
     }
 }
