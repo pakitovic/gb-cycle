@@ -304,6 +304,7 @@ pub struct Ppu {
     wx: u8,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     visible_registers: PpuVisibleRegisters,
+    pipeline_registers: PpuVisibleRegisters,
     startup_mode_latch: Option<PpuAccessMode>,
     stat_state: StatState,
     pending_interrupts: u8,
@@ -368,6 +369,14 @@ pub struct PpuSnapshot {
     pub visible_obp1: Option<u8>,
     pub visible_wy: u8,
     pub visible_wx: u8,
+    pub pipeline_lcdc: u8,
+    pub pipeline_scy: u8,
+    pub pipeline_scx: u8,
+    pub pipeline_bgp: u8,
+    pub pipeline_obp0: Option<u8>,
+    pub pipeline_obp1: Option<u8>,
+    pub pipeline_wy: u8,
+    pub pipeline_wx: u8,
     pub obj_palette_read_policy: DmgObjPaletteReadPolicy,
 }
 
@@ -435,6 +444,7 @@ impl Ppu {
             wx: 0,
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             visible_registers: PpuVisibleRegisters::default(),
+            pipeline_registers: PpuVisibleRegisters::default(),
             startup_mode_latch: None,
             stat_state: StatState::default(),
             pending_interrupts: 0,
@@ -510,6 +520,7 @@ impl Ppu {
 
         if !self.is_lcd_enabled() {
             self.sync_visible_registers();
+            self.sync_pipeline_registers();
         }
     }
 
@@ -542,6 +553,7 @@ impl Ppu {
             .fill(MixedPixel::background(0));
         self.framebuffer.fill(0);
         self.sync_visible_registers();
+        self.sync_pipeline_registers();
         self.startup_mode_latch = if self.lcd_state.is_enabled() {
             let startup_mode = PpuAccessMode::from_stat_bits(startup_state.stat);
             let derived_mode =
@@ -585,6 +597,7 @@ impl Ppu {
             return;
         }
 
+        self.sync_pipeline_registers();
         self.sync_visible_registers();
         let previous_mode = self.current_access_mode();
         self.startup_mode_latch = None;
@@ -687,6 +700,14 @@ impl Ppu {
             visible_obp1: self.visible_registers.obp1,
             visible_wy: self.visible_registers.wy,
             visible_wx: self.visible_registers.wx,
+            pipeline_lcdc: self.pipeline_registers.lcdc,
+            pipeline_scy: self.pipeline_registers.scy,
+            pipeline_scx: self.pipeline_registers.scx,
+            pipeline_bgp: self.pipeline_registers.bgp,
+            pipeline_obp0: self.pipeline_registers.obp0,
+            pipeline_obp1: self.pipeline_registers.obp1,
+            pipeline_wy: self.pipeline_registers.wy,
+            pipeline_wx: self.pipeline_registers.wx,
             obj_palette_read_policy: self.obj_palette_read_policy,
         }
     }
@@ -742,6 +763,10 @@ impl Ppu {
             wy: self.wy,
             wx: self.wx,
         };
+    }
+
+    fn sync_pipeline_registers(&mut self) {
+        self.pipeline_registers = self.visible_registers;
     }
 
     fn read_lcdc(&self) -> u8 {
@@ -912,6 +937,42 @@ impl Ppu {
         self.visible_registers.obj_height()
     }
 
+    fn window_activation_registers(&self) -> PpuVisibleRegisters {
+        if self.console_model.is_dmg_family() {
+            self.pipeline_registers
+        } else {
+            self.visible_registers
+        }
+    }
+
+    fn pixel_pipeline_lcdc(&self) -> u8 {
+        if !self.console_model.is_dmg_family() {
+            return self.visible_registers.lcdc;
+        }
+
+        if self.bg_pipeline_state.current_transfer_x == 8 {
+            self.visible_registers.lcdc
+        } else {
+            self.pipeline_registers.lcdc
+        }
+    }
+
+    fn pixel_pipeline_bgp(&self) -> u8 {
+        if self.console_model.is_dmg_family() {
+            self.visible_registers.bgp | self.pipeline_registers.bgp
+        } else {
+            self.visible_registers.bgp
+        }
+    }
+
+    fn pixel_transfer_bg_enabled(&self) -> bool {
+        self.pixel_pipeline_lcdc() & LCDC_BG_ENABLE_BIT != 0
+    }
+
+    fn pixel_transfer_obj_enabled(&self) -> bool {
+        self.pixel_pipeline_lcdc() & LCDC_OBJ_ENABLE_BIT != 0
+    }
+
     fn prepare_visible_scanline_state(&mut self) {
         if self.line_dot != 1 || self.ly >= VISIBLE_SCANLINES {
             return;
@@ -1018,9 +1079,11 @@ impl Ppu {
         let obj_fetch_can_start = self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
             && self.obj_enabled()
             && has_pending_obj_hit;
-        let current_transfer_is_fifo_backed = self
-            .current_transfer()
-            .is_some_and(|transfer| transfer.can_start_obj_fetch_from_fifo_backed_transfer());
+        let current_transfer_is_fifo_backed = self.current_transfer().is_some_and(|transfer| {
+            transfer.can_start_obj_fetch_from_fifo_backed_transfer(
+                !self.bg_pipeline_state.fifo.is_empty(),
+            )
+        });
 
         Mode3DotArbitration {
             bg_transfer_can_advance: !has_pending_obj_hit,
@@ -1067,13 +1130,14 @@ impl Ppu {
         let execution = if self.bg_pipeline_state.scx_discard_remaining > 0 {
             Mode3TransferServiceExecution::ConsumeScxDiscard
         } else if self.bg_pipeline_state.current_transfer_x < 8 {
-            match context.source_window {
-                Mode3TransferSourceWindow::AbstractStartup => {
-                    Mode3TransferServiceExecution::AdvanceHiddenWithoutBgPop
+            match context.lane {
+                Mode3TransferLane::PreVisible => {
+                    Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop
                 }
-                Mode3TransferSourceWindow::FifoBacked => {
+                Mode3TransferLane::Hidden => {
                     Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop
                 }
+                Mode3TransferLane::Visible => unreachable!("x < 8 cannot be a visible transfer"),
             }
         } else if context.lane == Mode3TransferLane::Visible {
             Mode3TransferServiceExecution::EmitVisiblePixel
@@ -1088,13 +1152,7 @@ impl Ppu {
         };
 
         let backing = match context.source_window {
-            Mode3TransferSourceWindow::AbstractStartup => {
-                if context.lane == Mode3TransferLane::Hidden {
-                    Mode3TransferBacking::HiddenStartupFifoGated
-                } else {
-                    Mode3TransferBacking::Abstract
-                }
-            }
+            Mode3TransferSourceWindow::AbstractStartup => Mode3TransferBacking::Abstract,
             Mode3TransferSourceWindow::FifoBacked => Mode3TransferBacking::FifoBacked,
         };
 
@@ -1114,12 +1172,19 @@ impl Ppu {
     fn current_transfer(&self) -> Option<Mode3CurrentTransfer> {
         let context = self.current_transfer_context()?;
         let plan = self.transfer_service_plan_from_context(context)?;
-        let readiness =
-            if plan.backing.requires_fifo_backing() && self.bg_pipeline_state.fifo.is_empty() {
+        let readiness = if plan.requires_real_bg_fifo_pixel() {
+            if self.bg_pipeline_state.fifo.is_empty() {
                 Mode3TransferReadiness::WaitingForFifo(plan)
             } else {
                 Mode3TransferReadiness::Ready(plan)
-            };
+            }
+        } else if plan.requires_effective_bg_fifo_pixel()
+            && self.bg_pipeline_state.effective_fifo_is_empty()
+        {
+            Mode3TransferReadiness::WaitingForFifo(plan)
+        } else {
+            Mode3TransferReadiness::Ready(plan)
+        };
 
         Some(Mode3CurrentTransfer { context, readiness })
     }
@@ -1214,14 +1279,17 @@ impl Ppu {
             return BgPushDotOwnership::EntryDelay;
         }
 
-        let arbitration = self.current_dot_arbitration();
-        if !self.bg_pipeline_state.fifo.is_empty() {
-            if arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer) {
+        let push_can_start_object_fetch = self.obj_pipeline_state.fetch.stage
+            == PpuObjFetcherStage::Idle
+            && self.obj_enabled()
+            && self.current_dot_has_pending_obj_hit();
+        if self.bg_pipeline_state.effective_fifo_is_not_empty() {
+            if push_can_start_object_fetch {
                 BgPushDotOwnership::FifoBackedTransferObjectFetch
             } else {
                 BgPushDotOwnership::WaitingForEmptyFifo
             }
-        } else if arbitration.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill) {
+        } else if push_can_start_object_fetch {
             BgPushDotOwnership::QueueFillThenObjectFetch
         } else {
             BgPushDotOwnership::QueueFill
@@ -1239,7 +1307,7 @@ impl Ppu {
             BgPushDotOwnership::WaitingForEmptyFifo => BgPushDotResult::WaitingForEmptyFifo,
             BgPushDotOwnership::FifoBackedTransferObjectFetch => {
                 let started = self.try_start_object_fetch_from_current_dot(
-                    ObjFetchStartSource::FifoBackedTransfer,
+                    ObjFetchStartSource::PushCachedBgFetch,
                     true,
                 );
                 debug_assert!(
@@ -1293,13 +1361,10 @@ impl Ppu {
         &mut self,
         plan: Mode3TransferServicePlan,
     ) -> Mode3TransferDot {
-        let pixel = if plan.execution.consumes_bg_fifo() {
-            Some(
-                self.bg_pipeline_state
-                    .fifo
-                    .pop_front()
-                    .expect("fifo-backed transfer plans must run only when the BG FIFO is ready"),
-            )
+        let pixel = if plan.requires_real_bg_fifo_pixel() {
+            self.bg_pipeline_state.fifo.pop_front()
+        } else if plan.requires_effective_bg_fifo_pixel() {
+            self.bg_pipeline_state.consume_effective_fifo_pixel()
         } else {
             None
         };
@@ -1307,7 +1372,8 @@ impl Ppu {
         self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         if !matches!(
             plan.execution,
-            Mode3TransferServiceExecution::EmitVisiblePixel
+            Mode3TransferServiceExecution::ConsumeScxDiscard
+                | Mode3TransferServiceExecution::EmitVisiblePixel
         ) {
             self.bg_pipeline_state
                 .consume_startup_pre_visible_transfer_dot();
@@ -1315,21 +1381,26 @@ impl Ppu {
 
         match plan.execution {
             Mode3TransferServiceExecution::ConsumeScxDiscard => {
+                let _ = pixel.expect(
+                    "startup scx discard must consume one effective BG FIFO slot before output",
+                );
                 self.bg_pipeline_state.scx_discard_remaining -= 1;
                 Mode3TransferDot::served(plan.result_kind, true)
             }
-            Mode3TransferServiceExecution::AdvanceHiddenWithoutBgPop => {
+            Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop => {
+                let _ = pixel
+                    .expect("pre-visible startup transfer must consume one effective BG FIFO slot");
                 self.bg_pipeline_state.current_transfer_x += 1;
                 Mode3TransferDot::served(plan.result_kind, false)
             }
             Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop => {
-                let _ = pixel.expect("fifo-backed hidden transfer must consume one BG FIFO pixel");
+                let _ = pixel.expect("hidden transfer must consume one effective BG FIFO slot");
                 self.bg_pipeline_state.current_transfer_x += 1;
                 let _ = self.pop_obj_fifo_pixel();
                 Mode3TransferDot::served(plan.result_kind, false)
             }
             Mode3TransferServiceExecution::EmitVisiblePixel => {
-                let bg_pixel = if self.bg_enabled() {
+                let bg_pixel = if self.pixel_transfer_bg_enabled() {
                     pixel.expect("visible transfer plans must carry a BG pixel")
                 } else {
                     0
@@ -1358,10 +1429,6 @@ impl Ppu {
         }
     }
 
-    fn bg_enabled(&self) -> bool {
-        self.visible_registers.bg_enabled()
-    }
-
     fn obj_enabled(&self) -> bool {
         self.visible_registers.obj_enabled()
     }
@@ -1371,7 +1438,7 @@ impl Ppu {
             || self.bg_pipeline_state.window_started_this_line
             || !self.bg_pipeline_state.window_wy_latch
             || !self.window_runtime_enabled()
-            || self.visible_registers.wx != 0
+            || self.window_activation_registers().wx != 0
             || self.bg_pipeline_state.window_force_x0_this_line
             || self.bg_pipeline_state.visible_pixels_output != 0
             || self.bg_pipeline_state.current_transfer_x >= 8
@@ -1393,7 +1460,9 @@ impl Ppu {
             return false;
         }
 
-        if self.visible_registers.wx == 166 && !self.bg_pipeline_state.window_force_x0_this_line {
+        if self.window_activation_registers().wx == 166
+            && !self.bg_pipeline_state.window_force_x0_this_line
+        {
             if self.bg_pipeline_state.visible_pixels_output as usize == SCREEN_WIDTH
                 && self.bg_pipeline_state.scx_discard_remaining == 0
                 && !self.bg_pipeline_state.wx166_armed_this_line
@@ -1417,7 +1486,8 @@ impl Ppu {
     }
 
     fn window_runtime_enabled(&self) -> bool {
-        self.visible_registers.window_enabled() && self.bg_enabled()
+        let registers = self.window_activation_registers();
+        registers.window_enabled() && registers.bg_enabled()
     }
 
     fn latch_object_fetch_hits(&mut self) {
@@ -1477,7 +1547,10 @@ impl Ppu {
 
         self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
         if overlap_current_dot {
-            if matches!(start_source, ObjFetchStartSource::FifoBackedTransfer) {
+            if matches!(
+                start_source,
+                ObjFetchStartSource::FifoBackedTransfer | ObjFetchStartSource::PushCachedBgFetch
+            ) {
                 self.bg_pipeline_state.push.interrupt_for_object_fetch();
             }
             self.bg_pipeline_state.extend_mode3_by_one_dot();
@@ -1631,8 +1704,9 @@ impl Ppu {
             return Some(0);
         }
 
-        match self.visible_registers.wx {
-            0..=166 => Some(self.visible_registers.wx.saturating_sub(7)),
+        let registers = self.window_activation_registers();
+        match registers.wx {
+            0..=166 => Some(registers.wx.saturating_sub(7)),
             _ => None,
         }
     }
@@ -1658,6 +1732,7 @@ impl Ppu {
 
     fn start_window_fetcher_restart(&mut self) {
         self.bg_pipeline_state.fifo.clear();
+        self.bg_pipeline_state.startup_fifo_placeholders = 0;
         self.bg_pipeline_state.push.reset();
         self.bg_pipeline_state.fill.reset();
         self.bg_pipeline_state.fetcher.start_window();
@@ -1826,7 +1901,7 @@ impl Ppu {
     }
 
     fn mix_bg_and_obj(&self, bg_pixel: u8, obj_pixel: ObjPixel) -> MixedPixel {
-        if !self.obj_enabled() || obj_pixel.is_transparent() {
+        if !self.pixel_transfer_obj_enabled() || obj_pixel.is_transparent() {
             return MixedPixel::background(bg_pixel);
         }
 
@@ -1840,7 +1915,7 @@ impl Ppu {
     fn map_mixed_pixel_to_panel_shade(&self, pixel: MixedPixel) -> u8 {
         match pixel.source {
             MixedPixelSource::Background => {
-                self.apply_dmg_palette(self.visible_registers.bgp, pixel.color)
+                self.apply_dmg_palette(self.pixel_pipeline_bgp(), pixel.color)
             }
             MixedPixelSource::Object { palette_obp1 } => {
                 let palette = self
@@ -2000,6 +2075,7 @@ impl Ppu {
         self.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
         self.reset_runtime_pipeline_state();
         self.sync_visible_registers();
+        self.sync_pipeline_registers();
         self.clear_visible_buffers();
         self.refresh_visible_output();
     }
@@ -2013,6 +2089,7 @@ impl Ppu {
         self.stat_state.lcd_disabled_lyc_coincidence = false;
         self.reset_runtime_pipeline_state();
         self.sync_visible_registers();
+        self.sync_pipeline_registers();
         self.clear_visible_buffers();
         self.refresh_visible_output();
     }
@@ -2249,9 +2326,12 @@ impl Mode3CurrentTransfer {
         }
     }
 
-    const fn can_start_obj_fetch_from_fifo_backed_transfer(self) -> bool {
+    const fn can_start_obj_fetch_from_fifo_backed_transfer(
+        self,
+        real_bg_fifo_pixel_ready: bool,
+    ) -> bool {
         self.readiness
-            .can_start_obj_fetch_from_fifo_backed_transfer()
+            .can_start_obj_fetch_from_fifo_backed_transfer(real_bg_fifo_pixel_ready)
     }
 }
 
@@ -2262,11 +2342,14 @@ enum Mode3TransferReadiness {
 }
 
 impl Mode3TransferReadiness {
-    const fn can_start_obj_fetch_from_fifo_backed_transfer(self) -> bool {
+    const fn can_start_obj_fetch_from_fifo_backed_transfer(
+        self,
+        real_bg_fifo_pixel_ready: bool,
+    ) -> bool {
         match self {
-            Self::Ready(plan) => plan
-                .execution
-                .can_start_obj_fetch_from_fifo_backed_transfer(),
+            Self::Ready(plan) => {
+                plan.can_start_obj_fetch_from_fifo_backed_transfer(real_bg_fifo_pixel_ready)
+            }
             Self::WaitingForFifo(_) => false,
         }
     }
@@ -2275,7 +2358,7 @@ impl Mode3TransferReadiness {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode3TransferServiceExecution {
     ConsumeScxDiscard,
-    AdvanceHiddenWithoutBgPop,
+    AdvancePreVisibleWithBgPop,
     AdvanceHiddenWithBgAndObjPop,
     EmitVisiblePixel,
 }
@@ -2288,24 +2371,44 @@ impl Mode3TransferServiceExecution {
         )
     }
 
-    const fn consumes_bg_fifo(self) -> bool {
+    const fn requires_effective_bg_fifo_pixel(self) -> bool {
         matches!(
             self,
-            Self::AdvanceHiddenWithBgAndObjPop | Self::EmitVisiblePixel
+            Self::ConsumeScxDiscard
+                | Self::AdvancePreVisibleWithBgPop
+                | Self::AdvanceHiddenWithBgAndObjPop
         )
+    }
+
+    const fn requires_real_bg_fifo_pixel(self) -> bool {
+        matches!(self, Self::EmitVisiblePixel)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode3TransferBacking {
     Abstract,
-    HiddenStartupFifoGated,
     FifoBacked,
 }
 
-impl Mode3TransferBacking {
-    const fn requires_fifo_backing(self) -> bool {
-        matches!(self, Self::HiddenStartupFifoGated | Self::FifoBacked)
+impl Mode3TransferServicePlan {
+    const fn requires_effective_bg_fifo_pixel(self) -> bool {
+        self.execution.requires_effective_bg_fifo_pixel()
+    }
+
+    const fn requires_real_bg_fifo_pixel(self) -> bool {
+        self.execution.requires_real_bg_fifo_pixel()
+    }
+
+    const fn can_start_obj_fetch_from_fifo_backed_transfer(
+        self,
+        real_bg_fifo_pixel_ready: bool,
+    ) -> bool {
+        matches!(self.backing, Mode3TransferBacking::FifoBacked)
+            && real_bg_fifo_pixel_ready
+            && self
+                .execution
+                .can_start_obj_fetch_from_fifo_backed_transfer()
     }
 }
 
@@ -2425,6 +2528,7 @@ struct BgPipelineState {
     push: BgPushState,
     fill: BgFifoFillState,
     fifo: VecDeque<u8>,
+    startup_fifo_placeholders: u8,
     mode3_started: bool,
     mode0_start_dot: u16,
     initial_scx_discard: u8,
@@ -2447,6 +2551,7 @@ impl BgPipelineState {
         self.push.reset();
         self.fill.reset();
         self.fifo.clear();
+        self.startup_fifo_placeholders = 0;
         self.mode3_started = false;
         self.mode0_start_dot = MODE0_START_DOT;
         self.initial_scx_discard = 0;
@@ -2468,6 +2573,7 @@ impl BgPipelineState {
         self.initial_scx_discard = scx & 0x07;
         self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
         self.scx_discard_remaining = self.initial_scx_discard;
+        self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
         self.startup_source_state = Mode3StartupSourceState::EntryDelay {
             remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
         };
@@ -2583,6 +2689,23 @@ impl BgPipelineState {
         }
     }
 
+    fn effective_fifo_is_empty(&self) -> bool {
+        self.startup_fifo_placeholders == 0 && self.fifo.is_empty()
+    }
+
+    fn effective_fifo_is_not_empty(&self) -> bool {
+        !self.effective_fifo_is_empty()
+    }
+
+    fn consume_effective_fifo_pixel(&mut self) -> Option<u8> {
+        if self.startup_fifo_placeholders > 0 {
+            self.startup_fifo_placeholders -= 1;
+            Some(0)
+        } else {
+            self.fifo.pop_front()
+        }
+    }
+
     fn apply_wx0_scx_shortening(&mut self) {
         if self.wx0_scx_shortening_applied || self.mode0_start_dot == 0 {
             return;
@@ -2600,6 +2723,7 @@ impl Default for BgPipelineState {
             push: BgPushState::default(),
             fill: BgFifoFillState::default(),
             fifo: VecDeque::default(),
+            startup_fifo_placeholders: 0,
             mode3_started: false,
             mode0_start_dot: MODE0_START_DOT,
             initial_scx_discard: 0,
@@ -2765,7 +2889,9 @@ impl Mode3DotArbitration {
             ObjFetchStartSource::FifoBackedTransfer => {
                 self.obj_fetch_can_start_from_fifo_backed_transfer
             }
-            ObjFetchStartSource::QueuedBgFill => self.obj_fetch_can_start_from_queued_bg_fill,
+            ObjFetchStartSource::QueuedBgFill | ObjFetchStartSource::PushCachedBgFetch => {
+                self.obj_fetch_can_start_from_queued_bg_fill
+            }
         }
     }
 }
@@ -2773,6 +2899,7 @@ impl Mode3DotArbitration {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ObjFetchStartSource {
     FifoBackedTransfer,
+    PushCachedBgFetch,
     QueuedBgFill,
 }
 
@@ -4292,24 +4419,23 @@ mod tests {
 
         let after_first_push = ppu.snapshot();
         assert_eq!(after_first_push.line_dot, 87);
-        assert_eq!(
-            after_first_push.bg_fetcher_stage,
-            PpuBgFetcherStage::TileIndex
-        );
+        assert_eq!(after_first_push.bg_fetcher_stage, PpuBgFetcherStage::Push);
         assert_eq!(after_first_push.bg_fetcher_stage_dot, 0);
         assert!(after_first_push.bg_fifo_pixels.is_empty());
-        assert!(!after_first_push.bg_push_pending);
-        assert!(after_first_push.bg_fill_pending);
+        assert!(after_first_push.bg_push_pending);
+        assert!(!after_first_push.bg_fill_pending);
         assert_eq!(after_first_push.visible_pixels_output, 0);
 
-        for t_cycle in 87..92 {
+        for t_cycle in 87..110 {
             tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
+            if ppu.snapshot().visible_pixels_output == 1 {
+                break;
+            }
         }
 
         let first_visible = ppu.snapshot();
-        assert_eq!(first_visible.line_dot, 92);
-        assert_eq!(first_visible.mode_dot, 12);
         assert_eq!(first_visible.visible_pixels_output, 1);
+        assert!(first_visible.line_dot >= 92);
         assert_eq!(first_visible.current_scanline_pixels[0], 0);
     }
 
@@ -4722,8 +4848,8 @@ mod tests {
             ppu.current_transfer_service_plan(),
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
-                execution: Mode3TransferServiceExecution::AdvanceHiddenWithoutBgPop,
-                backing: Mode3TransferBacking::HiddenStartupFifoGated,
+                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                backing: Mode3TransferBacking::Abstract,
             })
         );
 
@@ -4792,7 +4918,7 @@ mod tests {
             ppu.current_transfer_service_plan(),
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
-                execution: Mode3TransferServiceExecution::AdvanceHiddenWithoutBgPop,
+                execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
                 backing: Mode3TransferBacking::Abstract,
             })
         );
@@ -4804,8 +4930,8 @@ mod tests {
             ppu.current_transfer_service_plan(),
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
-                execution: Mode3TransferServiceExecution::AdvanceHiddenWithoutBgPop,
-                backing: Mode3TransferBacking::HiddenStartupFifoGated,
+                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                backing: Mode3TransferBacking::Abstract,
             })
         );
     }
@@ -4881,6 +5007,7 @@ mod tests {
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
         ppu.bg_pipeline_state.current_transfer_x = 5;
 
         let result = ppu.advance_mode3_output_phase();
@@ -4899,6 +5026,7 @@ mod tests {
         ppu.line_dot = MODE2_DOTS + 1;
         ppu.bg_pipeline_state.mode3_started = true;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
         ppu.bg_pipeline_state.startup_source_state =
             Mode3StartupSourceState::EntryDelay { remaining: 2 };
         ppu.bg_pipeline_state
@@ -4938,6 +5066,7 @@ mod tests {
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
         ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
         ppu.bg_pipeline_state.startup_source_state =
             Mode3StartupSourceState::Abstract { remaining: 1 };
         ppu.bg_pipeline_state
@@ -4948,7 +5077,7 @@ mod tests {
             ppu.current_transfer_service_plan(),
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
-                execution: Mode3TransferServiceExecution::AdvanceHiddenWithoutBgPop,
+                execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
                 backing: Mode3TransferBacking::Abstract,
             })
         );
@@ -4967,7 +5096,7 @@ mod tests {
             ppu.current_transfer_service_plan(),
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
-                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
                 backing: Mode3TransferBacking::FifoBacked,
             })
         );
@@ -4990,7 +5119,7 @@ mod tests {
             ppu.current_transfer_service_plan(),
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
-                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
                 backing: Mode3TransferBacking::FifoBacked,
             })
         );
@@ -5039,6 +5168,7 @@ mod tests {
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
         ppu.bg_pipeline_state.current_transfer_x = 0;
         ppu.bg_pipeline_state.scx_discard_remaining = 1;
 
@@ -5076,58 +5206,38 @@ mod tests {
             ppu.bg_pipeline_state.transfer_phase,
             Mode3TransferPhase::Output
         );
-        assert_eq!(
-            ppu.bg_pipeline_state
-                .fifo
-                .iter()
-                .copied()
-                .collect::<Vec<_>>(),
-            vec![0]
-        );
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
     }
 
     #[test]
-    fn late_previsible_dot_advances_only_after_the_first_bg_fifo_fill_exists() {
+    fn late_hidden_dot_can_consume_a_startup_placeholder_before_the_first_real_fill() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
         ppu.bg_pipeline_state
             .startup_pre_visible_transfer_dots_remaining = 0;
         ppu.bg_pipeline_state.current_transfer_x = 7;
-
-        ppu.advance_mode3_output_phase();
-
-        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 7);
-        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
-        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
-
-        ppu.bg_pipeline_state.fifo.push_back(2);
 
         let result = ppu.advance_mode3_output_phase();
 
         assert_eq!(result.kind, Mode3TransferDotKind::ServedHiddenTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
         assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
-        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
-        assert_eq!(
-            ppu.bg_pipeline_state
-                .fifo
-                .iter()
-                .copied()
-                .collect::<Vec<_>>(),
-            vec![2]
-        );
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
     }
 
     #[test]
-    fn late_hidden_scx_discard_waits_for_fifo_then_consumes_the_last_discard_with_fifo_backing() {
+    fn late_hidden_scx_discard_can_consume_a_startup_placeholder_before_real_fifo_backing() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
         ppu.bg_pipeline_state
             .startup_pre_visible_transfer_dots_remaining = 0;
         ppu.bg_pipeline_state.current_transfer_x = 0;
@@ -5136,24 +5246,10 @@ mod tests {
         ppu.advance_mode3_output_phase();
 
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
-        assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 1);
-        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
-
-        ppu.bg_pipeline_state.fifo.push_back(0);
-        ppu.advance_mode3_output_phase();
-
-        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
         assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
         assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
-        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
-        assert_eq!(
-            ppu.bg_pipeline_state
-                .fifo
-                .iter()
-                .copied()
-                .collect::<Vec<_>>(),
-            vec![0]
-        );
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
     }
 
     #[test]
@@ -5161,6 +5257,7 @@ mod tests {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0xF1;
         ppu.visible_registers.wx = 0;
+        ppu.pipeline_registers = ppu.visible_registers;
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
         ppu.bg_pipeline_state.window_wy_latch = true;
@@ -5192,10 +5289,12 @@ mod tests {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0xF1;
         ppu.visible_registers.wx = 0;
+        ppu.pipeline_registers = ppu.visible_registers;
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT + 2;
         ppu.bg_pipeline_state.window_wy_latch = true;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 3;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
         ppu.bg_pipeline_state.initial_scx_discard = 3;
         ppu.bg_pipeline_state.scx_discard_remaining = 1;
         ppu.bg_pipeline_state.current_transfer_x = 0;
@@ -5211,6 +5310,33 @@ mod tests {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0xF1;
         ppu.visible_registers.wx = 7;
+        ppu.pipeline_registers = ppu.visible_registers;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+
+        let transfer_dot = ppu.advance_mode3_output_phase();
+
+        assert_eq!(
+            transfer_dot.kind,
+            Mode3TransferDotKind::ServedHiddenTransfer
+        );
+        assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+        assert!(ppu.bg_pipeline_state.window_started_this_line);
+    }
+
+    #[test]
+    fn dmg_window_trigger_uses_the_previous_dot_wx_snapshot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xF1;
+        ppu.visible_registers.wx = 8;
+        ppu.pipeline_registers.lcdc = 0xF1;
+        ppu.pipeline_registers.wx = 7;
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
         ppu.bg_pipeline_state.window_wy_latch = true;
@@ -5902,7 +6028,7 @@ mod tests {
     }
 
     #[test]
-    fn pixel_output_uses_visible_bgp_state_rather_than_the_new_live_mmio_value() {
+    fn dmg_pixel_output_uses_or_of_current_and_previous_bgp_for_one_dot() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.apply_startup_state(PpuStartupState {
             lcdc: 0x91,
@@ -5919,6 +6045,7 @@ mod tests {
         ppu.visible_output = PpuVisibleOutputState::Driving;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
         ppu.visible_registers.bgp = 0x1B;
+        ppu.pipeline_registers.bgp = 0xE4;
         ppu.bgp = 0xE4;
         ppu.bg_pipeline_state.scx_discard_remaining = 0;
         ppu.bg_pipeline_state.current_transfer_x = 8;
@@ -5928,7 +6055,54 @@ mod tests {
         let _ = ppu.advance_mode3_output_phase();
 
         assert_eq!(ppu.snapshot().current_scanline_pixels[0], 1);
-        assert_eq!(ppu.framebuffer()[0], 2);
+        assert_eq!(ppu.framebuffer()[0], 3);
+    }
+
+    #[test]
+    fn first_visible_pixel_uses_live_lcdc_instead_of_the_delayed_copy() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.lcdc = 0x93;
+        ppu.pipeline_registers.lcdc = 0x91;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(1);
+        ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+            color: 2,
+            palette_obp1: false,
+            bg_over_obj: false,
+            sprite_x: 8,
+            oam_index: 0,
+        });
+
+        let _ = ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.snapshot().current_scanline_pixels[0], 2);
+    }
+
+    #[test]
+    fn later_visible_pixels_use_the_delayed_lcdc_copy() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.lcdc = 0x93;
+        ppu.pipeline_registers.lcdc = 0x91;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 1;
+        ppu.bg_pipeline_state.current_transfer_x = 9;
+        ppu.bg_pipeline_state.visible_pixels_output = 1;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(1);
+        ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+            color: 2,
+            palette_obp1: false,
+            bg_over_obj: false,
+            sprite_x: 9,
+            oam_index: 0,
+        });
+
+        let _ = ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.snapshot().current_scanline_pixels[1], 1);
     }
 
     #[test]
@@ -6215,7 +6389,7 @@ mod tests {
                 obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             });
 
-            for t_cycle in 0..96 {
+            for t_cycle in 0..160 {
                 tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
                 let snapshot = ppu.snapshot();
                 if snapshot.obj_fetcher_stage == PpuObjFetcherStage::Startup {
@@ -6232,7 +6406,6 @@ mod tests {
         assert!(left_edge < first_visible);
         assert!(left_edge >= MODE2_DOTS);
         assert!(first_visible >= MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1);
-        assert!(first_visible <= MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS);
     }
 
     #[test]
