@@ -2204,6 +2204,13 @@ impl Mode3TransferBacking {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3StartupSourceState {
+    EntryDelay { remaining: u8 },
+    Abstract { remaining: u8 },
+    FifoBacked,
+}
+
 const fn register_affects_pixel(register: PpuPaletteRegister, pixel: MixedPixel) -> bool {
     matches!(
         (register, pixel.source),
@@ -2317,8 +2324,7 @@ struct BgPipelineState {
     mode0_start_dot: u16,
     initial_scx_discard: u8,
     scx_discard_remaining: u8,
-    startup_transfer_entry_delay_remaining: u8,
-    startup_abstract_source_window_dots_remaining: u8,
+    startup_source_state: Mode3StartupSourceState,
     startup_pre_visible_transfer_dots_remaining: u8,
     transfer_phase: Mode3TransferPhase,
     current_transfer_x: u8,
@@ -2340,8 +2346,7 @@ impl BgPipelineState {
         self.mode0_start_dot = MODE0_START_DOT;
         self.initial_scx_discard = 0;
         self.scx_discard_remaining = 0;
-        self.startup_transfer_entry_delay_remaining = 0;
-        self.startup_abstract_source_window_dots_remaining = 0;
+        self.startup_source_state = Mode3StartupSourceState::FifoBacked;
         self.startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
         self.transfer_phase = Mode3TransferPhase::Priming;
         self.current_transfer_x = 0;
@@ -2358,8 +2363,9 @@ impl BgPipelineState {
         self.initial_scx_discard = scx & 0x07;
         self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
         self.scx_discard_remaining = self.initial_scx_discard;
-        self.startup_transfer_entry_delay_remaining = MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8;
-        self.startup_abstract_source_window_dots_remaining = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
+        self.startup_source_state = Mode3StartupSourceState::EntryDelay {
+            remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
+        };
         self.startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
         self.transfer_phase = Mode3TransferPhase::Priming;
         self.current_transfer_x = 0;
@@ -2385,16 +2391,36 @@ impl BgPipelineState {
             return mode3_dot >= MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
         }
 
-        self.startup_transfer_entry_delay_remaining == 0
+        !matches!(
+            self.startup_source_state,
+            Mode3StartupSourceState::EntryDelay { .. }
+        )
     }
 
     fn consume_startup_transfer_entry_delay_dot(&mut self) -> bool {
-        if self.startup_transfer_entry_delay_remaining == 0 {
+        if !self.mode3_started {
             return false;
         }
 
-        self.startup_transfer_entry_delay_remaining -= 1;
-        true
+        match self.startup_source_state {
+            Mode3StartupSourceState::EntryDelay { remaining } => {
+                debug_assert!(
+                    remaining > 0,
+                    "entry delay state must keep a positive countdown"
+                );
+                if remaining == 1 {
+                    self.startup_source_state = Mode3StartupSourceState::Abstract {
+                        remaining: MODE3_ABSTRACT_SOURCE_WINDOW_DOTS,
+                    };
+                } else {
+                    self.startup_source_state = Mode3StartupSourceState::EntryDelay {
+                        remaining: remaining - 1,
+                    };
+                }
+                true
+            }
+            Mode3StartupSourceState::Abstract { .. } | Mode3StartupSourceState::FifoBacked => false,
+        }
     }
 
     fn current_startup_source_window(&self, mode3_dot: u16) -> Mode3TransferSourceWindow {
@@ -2406,10 +2432,12 @@ impl BgPipelineState {
             return Mode3TransferSourceWindow::FifoBacked;
         }
 
-        if self.startup_abstract_source_window_dots_remaining > 0 {
-            Mode3TransferSourceWindow::AbstractStartup
-        } else {
-            Mode3TransferSourceWindow::FifoBacked
+        match self.startup_source_state {
+            Mode3StartupSourceState::EntryDelay { .. }
+            | Mode3StartupSourceState::Abstract { .. } => {
+                Mode3TransferSourceWindow::AbstractStartup
+            }
+            Mode3StartupSourceState::FifoBacked => Mode3TransferSourceWindow::FifoBacked,
         }
     }
 
@@ -2422,8 +2450,25 @@ impl BgPipelineState {
     }
 
     fn consume_startup_source_window_dot(&mut self) {
-        if self.startup_abstract_source_window_dots_remaining > 0 {
-            self.startup_abstract_source_window_dots_remaining -= 1;
+        if !self.mode3_started {
+            return;
+        }
+
+        match self.startup_source_state {
+            Mode3StartupSourceState::Abstract { remaining } => {
+                debug_assert!(
+                    remaining > 0,
+                    "abstract startup state must keep a positive countdown"
+                );
+                if remaining == 1 {
+                    self.startup_source_state = Mode3StartupSourceState::FifoBacked;
+                } else {
+                    self.startup_source_state = Mode3StartupSourceState::Abstract {
+                        remaining: remaining - 1,
+                    };
+                }
+            }
+            Mode3StartupSourceState::EntryDelay { .. } | Mode3StartupSourceState::FifoBacked => {}
         }
     }
 
@@ -2454,8 +2499,7 @@ impl Default for BgPipelineState {
             mode0_start_dot: MODE0_START_DOT,
             initial_scx_discard: 0,
             scx_discard_remaining: 0,
-            startup_transfer_entry_delay_remaining: 0,
-            startup_abstract_source_window_dots_remaining: 0,
+            startup_source_state: Mode3StartupSourceState::FifoBacked,
             startup_pre_visible_transfer_dots_remaining: MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS,
             transfer_phase: Mode3TransferPhase::Priming,
             current_transfer_x: 0,
@@ -4645,9 +4689,8 @@ mod tests {
         ppu.line_dot = MODE2_DOTS + 1;
         ppu.bg_pipeline_state.mode3_started = true;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
-        ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining = 2;
-        ppu.bg_pipeline_state
-            .startup_abstract_source_window_dots_remaining = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
+        ppu.bg_pipeline_state.startup_source_state =
+            Mode3StartupSourceState::EntryDelay { remaining: 2 };
         ppu.bg_pipeline_state
             .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
         ppu.bg_pipeline_state.current_transfer_x = 5;
@@ -4655,8 +4698,8 @@ mod tests {
         let first = ppu.advance_mode3_output_phase();
         assert_eq!(first.kind, Mode3TransferDotKind::NotServed);
         assert_eq!(
-            ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining,
-            1
+            ppu.bg_pipeline_state.startup_source_state,
+            Mode3StartupSourceState::EntryDelay { remaining: 1 }
         );
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 5);
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
@@ -4664,8 +4707,10 @@ mod tests {
         let second = ppu.advance_mode3_output_phase();
         assert_eq!(second.kind, Mode3TransferDotKind::NotServed);
         assert_eq!(
-            ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining,
-            0
+            ppu.bg_pipeline_state.startup_source_state,
+            Mode3StartupSourceState::Abstract {
+                remaining: MODE3_ABSTRACT_SOURCE_WINDOW_DOTS
+            }
         );
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 5);
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
@@ -4683,9 +4728,8 @@ mod tests {
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
         ppu.bg_pipeline_state.mode3_started = true;
-        ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining = 0;
-        ppu.bg_pipeline_state
-            .startup_abstract_source_window_dots_remaining = 1;
+        ppu.bg_pipeline_state.startup_source_state =
+            Mode3StartupSourceState::Abstract { remaining: 1 };
         ppu.bg_pipeline_state
             .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
         ppu.bg_pipeline_state.current_transfer_x = 5;
@@ -4705,9 +4749,8 @@ mod tests {
             Mode3TransferDotKind::ServedPreVisibleTransfer
         );
         assert_eq!(
-            ppu.bg_pipeline_state
-                .startup_abstract_source_window_dots_remaining,
-            0
+            ppu.bg_pipeline_state.startup_source_state,
+            Mode3StartupSourceState::FifoBacked
         );
 
         assert_eq!(
@@ -4727,9 +4770,7 @@ mod tests {
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
         ppu.bg_pipeline_state.mode3_started = true;
-        ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining = 0;
-        ppu.bg_pipeline_state
-            .startup_abstract_source_window_dots_remaining = 0;
+        ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
         ppu.bg_pipeline_state
             .startup_pre_visible_transfer_dots_remaining = 1;
         ppu.bg_pipeline_state.current_transfer_x = 5;
