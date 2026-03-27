@@ -976,11 +976,16 @@ impl Ppu {
             return Mode3TransferDot::not_served();
         }
 
-        if let Some(result) = self.serve_previsible_transfer_dot() {
-            return result;
+        let Some(plan) = self.current_transfer_service_plan() else {
+            return Mode3TransferDot::not_served();
+        };
+
+        if plan.requires_fifo_backing && self.bg_pipeline_state.fifo.is_empty() {
+            self.bg_pipeline_state.extend_mode3_by_one_dot();
+            return Mode3TransferDot::not_served();
         }
 
-        self.pop_bg_pixel_for_current_dot()
+        self.execute_transfer_service_plan(plan)
     }
 
     fn current_dot_has_pending_obj_hit(&self) -> bool {
@@ -1004,43 +1009,75 @@ impl Ppu {
         }
     }
 
-    fn serve_previsible_transfer_dot(&mut self) -> Option<Mode3TransferDot> {
+    fn current_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
         let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
         if !(MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT..MODE3_BG_FETCH_PRIMING_DOTS)
             .contains(&mode3_dot)
         {
-            return None;
+            return self.current_fifo_backed_transfer_service_plan();
         }
 
         let late_hidden_transfer_dot = mode3_dot >= MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT;
-        if late_hidden_transfer_dot && self.bg_pipeline_state.fifo.is_empty() {
-            self.bg_pipeline_state.extend_mode3_by_one_dot();
-            return Some(Mode3TransferDot::not_served());
-        }
-
         if self.bg_pipeline_state.scx_discard_remaining > 0 {
-            self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-            self.bg_pipeline_state.scx_discard_remaining -= 1;
             let kind = if late_hidden_transfer_dot {
                 Mode3TransferDotKind::ServedHiddenTransfer
             } else {
                 Mode3TransferDotKind::ServedPreVisibleTransfer
             };
-            return Some(Mode3TransferDot::served(kind, true));
+            return Some(Mode3TransferServicePlan {
+                result_kind: kind,
+                action: Mode3TransferServiceAction::ConsumeScxDiscard,
+                source: Mode3TransferServiceSource::Abstract,
+                requires_fifo_backing: late_hidden_transfer_dot,
+            });
         }
 
         if self.bg_pipeline_state.current_transfer_x < 8 {
-            self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-            self.bg_pipeline_state.current_transfer_x += 1;
             let kind = if late_hidden_transfer_dot {
                 Mode3TransferDotKind::ServedHiddenTransfer
             } else {
                 Mode3TransferDotKind::ServedPreVisibleTransfer
             };
-            return Some(Mode3TransferDot::served(kind, false));
+            return Some(Mode3TransferServicePlan {
+                result_kind: kind,
+                action: Mode3TransferServiceAction::AdvanceHiddenX,
+                source: Mode3TransferServiceSource::Abstract,
+                requires_fifo_backing: late_hidden_transfer_dot,
+            });
         }
 
         None
+    }
+
+    fn current_fifo_backed_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
+        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
+
+        if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS
+            || self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
+        {
+            return None;
+        }
+
+        let action = if self.bg_pipeline_state.scx_discard_remaining > 0 {
+            Mode3TransferServiceAction::ConsumeScxDiscard
+        } else if self.bg_pipeline_state.current_transfer_x < 8 {
+            Mode3TransferServiceAction::AdvanceHiddenX
+        } else {
+            Mode3TransferServiceAction::EmitVisiblePixel
+        };
+
+        let result_kind = if matches!(action, Mode3TransferServiceAction::EmitVisiblePixel) {
+            Mode3TransferDotKind::ServedVisiblePixel
+        } else {
+            Mode3TransferDotKind::ServedHiddenTransfer
+        };
+
+        Some(Mode3TransferServicePlan {
+            result_kind,
+            action,
+            source: Mode3TransferServiceSource::FifoBacked,
+            requires_fifo_backing: true,
+        })
     }
 
     fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
@@ -1167,55 +1204,63 @@ impl Ppu {
         self.bg_pipeline_state.fill.reset();
     }
 
-    fn pop_bg_pixel_for_current_dot(&mut self) -> Mode3TransferDot {
-        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
-
-        if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS
-            || self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
-        {
-            return Mode3TransferDot::not_served();
-        }
-
-        let Some(pixel) = self.bg_pipeline_state.fifo.pop_front() else {
-            self.bg_pipeline_state.extend_mode3_by_one_dot();
-            return Mode3TransferDot::not_served();
-        };
-
-        if self.bg_pipeline_state.scx_discard_remaining > 0 {
-            self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-            self.bg_pipeline_state.scx_discard_remaining -= 1;
-            return Mode3TransferDot::served(Mode3TransferDotKind::ServedHiddenTransfer, true);
-        }
-
-        if self.bg_pipeline_state.current_transfer_x < 8 {
-            self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-            self.bg_pipeline_state.current_transfer_x += 1;
-            let _ = self.pop_obj_fifo_pixel();
-            return Mode3TransferDot::served(Mode3TransferDotKind::ServedHiddenTransfer, false);
-        }
-
-        let bg_pixel = if self.bg_enabled() { pixel } else { 0 };
-        let obj_pixel = self.pop_obj_fifo_pixel();
-        let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
-        let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
-            self.map_mixed_pixel_to_panel_shade(output_pixel)
+    fn execute_transfer_service_plan(
+        &mut self,
+        plan: Mode3TransferServicePlan,
+    ) -> Mode3TransferDot {
+        let pixel = if plan.source == Mode3TransferServiceSource::FifoBacked {
+            Some(
+                self.bg_pipeline_state
+                    .fifo
+                    .pop_front()
+                    .expect("fifo-backed transfer plans must run only when the BG FIFO is ready"),
+            )
         } else {
-            0
+            None
         };
-        let scanline_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
-            output_pixel.color
-        } else {
-            0
-        };
-        let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
-        self.current_scanline_mixed_pixels[visible_x] = output_pixel;
-        self.current_scanline_pixels[visible_x] = scanline_pixel;
-        self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+
         self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-        self.bg_pipeline_state.current_transfer_x =
-            self.bg_pipeline_state.current_transfer_x.saturating_add(1);
-        self.bg_pipeline_state.visible_pixels_output += 1;
-        Mode3TransferDot::served(Mode3TransferDotKind::ServedVisiblePixel, false)
+
+        match plan.action {
+            Mode3TransferServiceAction::ConsumeScxDiscard => {
+                self.bg_pipeline_state.scx_discard_remaining -= 1;
+                Mode3TransferDot::served(plan.result_kind, true)
+            }
+            Mode3TransferServiceAction::AdvanceHiddenX => {
+                self.bg_pipeline_state.current_transfer_x += 1;
+                if plan.source == Mode3TransferServiceSource::FifoBacked {
+                    let _ = self.pop_obj_fifo_pixel();
+                }
+                Mode3TransferDot::served(plan.result_kind, false)
+            }
+            Mode3TransferServiceAction::EmitVisiblePixel => {
+                let bg_pixel = if self.bg_enabled() {
+                    pixel.expect("visible transfer plans must carry a BG pixel")
+                } else {
+                    0
+                };
+                let obj_pixel = self.pop_obj_fifo_pixel();
+                let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
+                let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
+                    self.map_mixed_pixel_to_panel_shade(output_pixel)
+                } else {
+                    0
+                };
+                let scanline_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
+                    output_pixel.color
+                } else {
+                    0
+                };
+                let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
+                self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+                self.current_scanline_pixels[visible_x] = scanline_pixel;
+                self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+                self.bg_pipeline_state.current_transfer_x =
+                    self.bg_pipeline_state.current_transfer_x.saturating_add(1);
+                self.bg_pipeline_state.visible_pixels_output += 1;
+                Mode3TransferDot::served(plan.result_kind, false)
+            }
+        }
     }
 
     fn bg_enabled(&self) -> bool {
@@ -2057,6 +2102,27 @@ enum Mode3TransferPhase {
     #[default]
     Priming,
     Output,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3TransferServicePlan {
+    result_kind: Mode3TransferDotKind,
+    action: Mode3TransferServiceAction,
+    source: Mode3TransferServiceSource,
+    requires_fifo_backing: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferServiceAction {
+    ConsumeScxDiscard,
+    AdvanceHiddenX,
+    EmitVisiblePixel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferServiceSource {
+    Abstract,
+    FifoBacked,
 }
 
 const fn register_affects_pixel(register: PpuPaletteRegister, pixel: MixedPixel) -> bool {
@@ -4219,6 +4285,50 @@ mod tests {
     }
 
     #[test]
+    fn transfer_service_plan_distinguishes_abstract_hidden_and_fifo_backed_visible_paths() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                action: Mode3TransferServiceAction::AdvanceHiddenX,
+                source: Mode3TransferServiceSource::Abstract,
+                requires_fifo_backing: true,
+            })
+        );
+
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                action: Mode3TransferServiceAction::AdvanceHiddenX,
+                source: Mode3TransferServiceSource::FifoBacked,
+                requires_fifo_backing: true,
+            })
+        );
+
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedVisiblePixel,
+                action: Mode3TransferServiceAction::EmitVisiblePixel,
+                source: Mode3TransferServiceSource::FifoBacked,
+                requires_fifo_backing: true,
+            })
+        );
+    }
+
+    #[test]
     fn pending_obj_hit_blocks_output_phase_and_stretches_mode3() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
@@ -5173,7 +5283,7 @@ mod tests {
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.bg_pipeline_state.fifo.push_back(1);
 
-        ppu.pop_bg_pixel_for_current_dot();
+        let _ = ppu.advance_mode3_output_phase();
 
         assert_eq!(ppu.snapshot().current_scanline_pixels[0], 1);
         assert_eq!(ppu.framebuffer()[0], 2);
