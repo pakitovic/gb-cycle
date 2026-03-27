@@ -30,6 +30,8 @@ const MODE3_BASELINE_DOTS: u16 = 172;
 const MODE3_BG_FETCH_PRIMING_DOTS: u16 = 12;
 const MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT: u16 = MODE3_BG_FETCH_PRIMING_DOTS - 4;
 const MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT: u16 = MODE3_BG_FETCH_PRIMING_DOTS - 8;
+const MODE3_ABSTRACT_SOURCE_WINDOW_DOTS: u8 =
+    (MODE3_BG_FETCH_PRIMING_DOTS - MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT) as u8;
 const MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS: u8 =
     (MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT - MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT) as u8;
 const MODE0_START_DOT: u16 = MODE2_DOTS + MODE3_BASELINE_DOTS;
@@ -980,21 +982,24 @@ impl Ppu {
             return Mode3TransferDot::not_served();
         }
 
-        if !self.current_dot_arbitration().can_serve_bg_transfer() {
+        let transfer_dot = if !self.current_dot_arbitration().can_serve_bg_transfer() {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
-            return Mode3TransferDot::not_served();
-        }
+            Mode3TransferDot::not_served()
+        } else {
+            let Some(plan) = self.current_transfer_service_plan() else {
+                return Mode3TransferDot::not_served();
+            };
 
-        let Some(plan) = self.current_transfer_service_plan() else {
-            return Mode3TransferDot::not_served();
+            if plan.requires_fifo_backing && self.bg_pipeline_state.fifo.is_empty() {
+                self.bg_pipeline_state.extend_mode3_by_one_dot();
+                Mode3TransferDot::not_served()
+            } else {
+                self.execute_transfer_service_plan(plan)
+            }
         };
 
-        if plan.requires_fifo_backing && self.bg_pipeline_state.fifo.is_empty() {
-            self.bg_pipeline_state.extend_mode3_by_one_dot();
-            return Mode3TransferDot::not_served();
-        }
-
-        self.execute_transfer_service_plan(plan)
+        self.bg_pipeline_state.consume_startup_source_window_dot();
+        transfer_dot
     }
 
     fn current_dot_has_pending_obj_hit(&self) -> bool {
@@ -1048,11 +1053,9 @@ impl Ppu {
             Mode3TransferLane::Visible
         };
 
-        let source_window = if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS {
-            Mode3TransferSourceWindow::AbstractStartup
-        } else {
-            Mode3TransferSourceWindow::FifoBacked
-        };
+        let source_window = self
+            .bg_pipeline_state
+            .current_startup_source_window(mode3_dot);
 
         Some(Mode3TransferContext {
             lane,
@@ -2284,6 +2287,7 @@ struct BgPipelineState {
     initial_scx_discard: u8,
     scx_discard_remaining: u8,
     startup_transfer_entry_delay_remaining: u8,
+    startup_abstract_source_window_dots_remaining: u8,
     startup_transfer_dots_served: u8,
     transfer_phase: Mode3TransferPhase,
     current_transfer_x: u8,
@@ -2306,6 +2310,7 @@ impl BgPipelineState {
         self.initial_scx_discard = 0;
         self.scx_discard_remaining = 0;
         self.startup_transfer_entry_delay_remaining = 0;
+        self.startup_abstract_source_window_dots_remaining = 0;
         self.startup_transfer_dots_served = 0;
         self.transfer_phase = Mode3TransferPhase::Priming;
         self.current_transfer_x = 0;
@@ -2323,6 +2328,7 @@ impl BgPipelineState {
         self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
         self.scx_discard_remaining = self.initial_scx_discard;
         self.startup_transfer_entry_delay_remaining = MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8;
+        self.startup_abstract_source_window_dots_remaining = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
         self.startup_transfer_dots_served = 0;
         self.transfer_phase = Mode3TransferPhase::Priming;
         self.current_transfer_x = 0;
@@ -2358,6 +2364,28 @@ impl BgPipelineState {
 
         self.startup_transfer_entry_delay_remaining -= 1;
         true
+    }
+
+    fn current_startup_source_window(&self, mode3_dot: u16) -> Mode3TransferSourceWindow {
+        if !self.mode3_started {
+            if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS {
+                return Mode3TransferSourceWindow::AbstractStartup;
+            }
+
+            return Mode3TransferSourceWindow::FifoBacked;
+        }
+
+        if self.startup_abstract_source_window_dots_remaining > 0 {
+            Mode3TransferSourceWindow::AbstractStartup
+        } else {
+            Mode3TransferSourceWindow::FifoBacked
+        }
+    }
+
+    fn consume_startup_source_window_dot(&mut self) {
+        if self.startup_abstract_source_window_dots_remaining > 0 {
+            self.startup_abstract_source_window_dots_remaining -= 1;
+        }
     }
 
     fn apply_wx0_scx_shortening(&mut self) {
@@ -4548,6 +4576,8 @@ mod tests {
         ppu.bg_pipeline_state.mode3_started = true;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
         ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining = 2;
+        ppu.bg_pipeline_state
+            .startup_abstract_source_window_dots_remaining = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
         ppu.bg_pipeline_state.current_transfer_x = 5;
 
         let first = ppu.advance_mode3_output_phase();
@@ -4572,6 +4602,50 @@ mod tests {
         assert_eq!(third.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 6);
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+    }
+
+    #[test]
+    fn mode3_started_keeps_an_explicit_abstract_source_window_before_fifo_backed_transfer() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining = 0;
+        ppu.bg_pipeline_state
+            .startup_abstract_source_window_dots_remaining = 1;
+        ppu.bg_pipeline_state.current_transfer_x = 5;
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
+                action: Mode3TransferServiceAction::AdvanceHiddenX,
+                source: Mode3TransferServiceSource::Abstract,
+                requires_fifo_backing: false,
+            })
+        );
+
+        let transfer_dot = ppu.advance_mode3_output_phase();
+        assert_eq!(
+            transfer_dot.kind,
+            Mode3TransferDotKind::ServedPreVisibleTransfer
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .startup_abstract_source_window_dots_remaining,
+            0
+        );
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
+                action: Mode3TransferServiceAction::AdvanceHiddenX,
+                source: Mode3TransferServiceSource::FifoBacked,
+                requires_fifo_backing: true,
+            })
+        );
     }
 
     #[test]
