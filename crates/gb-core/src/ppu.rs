@@ -2366,7 +2366,7 @@ struct ObjPipelineState {
     fifo: VecDeque<ObjPixel>,
     fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
     pending_sprite_slots: VecDeque<u8>,
-    pending_owner: Option<ObjHitOwnership>,
+    pending_match_x: Option<u8>,
     fetch: ObjFetchState,
 }
 
@@ -2375,7 +2375,7 @@ impl ObjPipelineState {
         self.fifo.clear();
         self.fetched_sprite_slots.fill(false);
         self.pending_sprite_slots.clear();
-        self.pending_owner = None;
+        self.pending_match_x = None;
         self.fetch = ObjFetchState::default();
     }
 
@@ -2411,9 +2411,9 @@ impl ObjPipelineState {
         }
 
         if self.pending_sprite_slots.is_empty() {
-            self.pending_owner = Some(owner);
+            self.pending_match_x = Some(owner.match_x);
         } else {
-            debug_assert_eq!(self.pending_owner, Some(owner));
+            debug_assert_eq!(self.pending_match_x, Some(owner.match_x));
         }
         self.pending_sprite_slots.push_back(sprite_slot);
     }
@@ -2421,18 +2421,18 @@ impl ObjPipelineState {
     fn pop_pending_fetch_hit(&mut self) -> Option<u8> {
         let sprite_slot = self.pending_sprite_slots.pop_front();
         if self.pending_sprite_slots.is_empty() {
-            self.pending_owner = None;
+            self.pending_match_x = None;
         }
         sprite_slot
     }
 
     fn pending_hits_own_current_dot(&self, current_owner: ObjHitOwnership) -> bool {
-        self.pending_owner == Some(current_owner) && !self.pending_sprite_slots.is_empty()
+        self.pending_match_x == Some(current_owner.match_x) && !self.pending_sprite_slots.is_empty()
     }
 
     fn clear_pending_fetch_hits(&mut self) {
         self.pending_sprite_slots.clear();
-        self.pending_owner = None;
+        self.pending_match_x = None;
     }
 
     fn clear_pending_fetch_hits_if_stale(&mut self, current_owner: ObjHitOwnership) {
@@ -2440,7 +2440,7 @@ impl ObjPipelineState {
             return;
         }
 
-        if self.pending_owner.is_some() && self.pending_owner != Some(current_owner) {
+        if self.pending_match_x.is_some() && self.pending_match_x != Some(current_owner.match_x) {
             self.clear_pending_fetch_hits();
         }
     }
@@ -4474,11 +4474,11 @@ mod tests {
         ppu.sync_pending_obj_hit_ownership();
 
         assert!(ppu.obj_pipeline_state.pending_sprite_slots.is_empty());
-        assert_eq!(ppu.obj_pipeline_state.pending_owner, None);
+        assert_eq!(ppu.obj_pipeline_state.pending_match_x, None);
     }
 
     #[test]
-    fn stale_pending_obj_hit_is_cleared_once_dot_phase_changes_even_if_x_matches() {
+    fn pending_obj_hit_survives_dot_phase_changes_while_current_x_is_still_the_same() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
@@ -4495,8 +4495,15 @@ mod tests {
 
         ppu.sync_pending_obj_hit_ownership();
 
-        assert!(ppu.obj_pipeline_state.pending_sprite_slots.is_empty());
-        assert_eq!(ppu.obj_pipeline_state.pending_owner, None);
+        assert_eq!(
+            ppu.obj_pipeline_state
+                .pending_sprite_slots
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![0]
+        );
+        assert_eq!(ppu.obj_pipeline_state.pending_match_x, Some(6));
     }
 
     #[test]
