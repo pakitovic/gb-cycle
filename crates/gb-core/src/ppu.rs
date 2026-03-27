@@ -986,15 +986,15 @@ impl Ppu {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
             Mode3TransferDot::not_served()
         } else {
-            let Some(plan) = self.current_transfer_service_plan() else {
-                return Mode3TransferDot::not_served();
-            };
-
-            if plan.backing.requires_fifo_backing() && self.bg_pipeline_state.fifo.is_empty() {
-                self.bg_pipeline_state.extend_mode3_by_one_dot();
-                Mode3TransferDot::not_served()
-            } else {
-                self.execute_transfer_service_plan(plan)
+            match self.current_transfer_readiness() {
+                None => return Mode3TransferDot::not_served(),
+                Some(Mode3TransferReadiness::WaitingForFifo(_)) => {
+                    self.bg_pipeline_state.extend_mode3_by_one_dot();
+                    Mode3TransferDot::not_served()
+                }
+                Some(Mode3TransferReadiness::Ready(plan)) => {
+                    self.execute_transfer_service_plan(plan)
+                }
             }
         };
 
@@ -1015,14 +1015,13 @@ impl Ppu {
             && self.obj_enabled()
             && has_pending_obj_hit;
         let current_transfer_is_fifo_backed = self
-            .current_transfer_context()
-            .is_some_and(|context| context.source_window == Mode3TransferSourceWindow::FifoBacked);
+            .current_transfer_readiness()
+            .is_some_and(|readiness| readiness.can_start_obj_fetch_from_fifo_backed_transfer());
 
         Mode3DotArbitration {
             bg_transfer_can_advance: !has_pending_obj_hit,
             obj_fetch_can_start_from_fifo_backed_transfer: obj_fetch_can_start
-                && current_transfer_is_fifo_backed
-                && !self.bg_pipeline_state.fifo.is_empty(),
+                && current_transfer_is_fifo_backed,
             obj_fetch_can_start_from_queued_bg_fill: obj_fetch_can_start,
         }
     }
@@ -1091,6 +1090,15 @@ impl Ppu {
             action,
             backing,
         })
+    }
+
+    fn current_transfer_readiness(&self) -> Option<Mode3TransferReadiness> {
+        let plan = self.current_transfer_service_plan()?;
+        if plan.backing.requires_fifo_backing() && self.bg_pipeline_state.fifo.is_empty() {
+            Some(Mode3TransferReadiness::WaitingForFifo(plan))
+        } else {
+            Some(Mode3TransferReadiness::Ready(plan))
+        }
     }
 
     fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
@@ -2151,6 +2159,21 @@ struct Mode3TransferServicePlan {
     result_kind: Mode3TransferDotKind,
     action: Mode3TransferServiceAction,
     backing: Mode3TransferBacking,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferReadiness {
+    WaitingForFifo(Mode3TransferServicePlan),
+    Ready(Mode3TransferServicePlan),
+}
+
+impl Mode3TransferReadiness {
+    const fn can_start_obj_fetch_from_fifo_backed_transfer(self) -> bool {
+        match self {
+            Self::Ready(plan) => plan.backing.pops_bg_fifo(),
+            Self::WaitingForFifo(_) => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
