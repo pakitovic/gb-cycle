@@ -1195,43 +1195,84 @@ impl Ppu {
     }
 
     fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
-        if !self.bg_pipeline_state.push.pending {
-            return BgPushDotResult::NotReady;
-        }
-
-        if !self.bg_pipeline_state.push.advance_entry_delay() {
-            return BgPushDotResult::EntryDelay;
-        }
-
-        self.advance_bg_push()
+        let ownership = self.current_bg_push_dot_ownership();
+        self.execute_bg_push_dot_ownership(ownership)
     }
 
+    #[cfg(test)]
     fn advance_bg_push(&mut self) -> BgPushDotResult {
-        if !self.bg_pipeline_state.push.is_ready_for_fifo_push() {
-            return BgPushDotResult::NotReady;
+        self.execute_bg_push_dot_ownership(self.current_bg_push_dot_ownership())
+    }
+
+    fn current_bg_push_dot_ownership(&self) -> BgPushDotOwnership {
+        let push = self.bg_pipeline_state.push;
+        if !push.pending || push.disposition != BgPushDisposition::Ready {
+            return BgPushDotOwnership::NotReady;
         }
 
+        if push.entry_delay_remaining > 0 {
+            return BgPushDotOwnership::EntryDelay;
+        }
+
+        let arbitration = self.current_dot_arbitration();
         if !self.bg_pipeline_state.fifo.is_empty() {
-            if self.try_start_object_fetch_from_current_dot(
-                ObjFetchStartSource::FifoBackedTransfer,
-                true,
-            ) {
-                return BgPushDotResult::HandedOffToObjectFetch;
+            if arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer) {
+                BgPushDotOwnership::FifoBackedTransferObjectFetch
+            } else {
+                BgPushDotOwnership::WaitingForEmptyFifo
             }
-            return BgPushDotResult::WaitingForEmptyFifo;
+        } else if arbitration.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill) {
+            BgPushDotOwnership::QueueFillThenObjectFetch
+        } else {
+            BgPushDotOwnership::QueueFill
         }
+    }
 
+    fn execute_bg_push_dot_ownership(&mut self, ownership: BgPushDotOwnership) -> BgPushDotResult {
+        match ownership {
+            BgPushDotOwnership::NotReady => BgPushDotResult::NotReady,
+            BgPushDotOwnership::EntryDelay => {
+                debug_assert!(self.bg_pipeline_state.push.entry_delay_remaining > 0);
+                self.bg_pipeline_state.push.entry_delay_remaining -= 1;
+                BgPushDotResult::EntryDelay
+            }
+            BgPushDotOwnership::WaitingForEmptyFifo => BgPushDotResult::WaitingForEmptyFifo,
+            BgPushDotOwnership::FifoBackedTransferObjectFetch => {
+                let started = self.try_start_object_fetch_from_current_dot(
+                    ObjFetchStartSource::FifoBackedTransfer,
+                    true,
+                );
+                debug_assert!(
+                    started,
+                    "fifo-backed push ownership must only be selected when OBJ fetch can start"
+                );
+                BgPushDotResult::HandedOffToObjectFetch
+            }
+            BgPushDotOwnership::QueueFill | BgPushDotOwnership::QueueFillThenObjectFetch => {
+                self.queue_bg_fill_from_push();
+                if matches!(ownership, BgPushDotOwnership::QueueFillThenObjectFetch) {
+                    let started = self.try_start_object_fetch_from_current_dot(
+                        ObjFetchStartSource::QueuedBgFill,
+                        true,
+                    );
+                    debug_assert!(
+                        started,
+                        "queued-fill push ownership must only be selected when OBJ fetch can start"
+                    );
+                    BgPushDotResult::QueuedFillAndHandedOffToObjectFetch
+                } else {
+                    BgPushDotResult::QueuedFill
+                }
+            }
+        }
+    }
+
+    fn queue_bg_fill_from_push(&mut self) {
         let push = self.bg_pipeline_state.push;
         self.bg_pipeline_state.fill.queue_from_push(push);
         self.bg_pipeline_state.fetcher.next_fetch_pixel = push.next_fetch_pixel;
         self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
         self.bg_pipeline_state.push.reset();
-
-        if self.try_start_object_fetch_from_current_dot(ObjFetchStartSource::QueuedBgFill, true) {
-            return BgPushDotResult::QueuedFillAndHandedOffToObjectFetch;
-        }
-
-        BgPushDotResult::QueuedFill
     }
 
     fn flush_pending_bg_fifo_fill(&mut self) {
@@ -2644,19 +2685,6 @@ impl BgPushState {
         self.next_fetch_pixel = fetcher.next_fetch_pixel.wrapping_add(BG_TILE_WIDTH as u16);
     }
 
-    fn advance_entry_delay(&mut self) -> bool {
-        if self.entry_delay_remaining == 0 {
-            return true;
-        }
-
-        self.entry_delay_remaining -= 1;
-        false
-    }
-
-    fn is_ready_for_fifo_push(self) -> bool {
-        self.pending && self.disposition == BgPushDisposition::Ready
-    }
-
     fn interrupt_for_object_fetch(&mut self) {
         if !self.pending {
             return;
@@ -2708,6 +2736,16 @@ enum BgPushDotResult {
     HandedOffToObjectFetch,
     QueuedFillAndHandedOffToObjectFetch,
     QueuedFill,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BgPushDotOwnership {
+    NotReady,
+    EntryDelay,
+    WaitingForEmptyFifo,
+    FifoBackedTransferObjectFetch,
+    QueueFill,
+    QueueFillThenObjectFetch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4322,6 +4360,67 @@ mod tests {
                 .copied()
                 .collect::<Vec<_>>(),
             vec![0, 1, 2, 3, 0, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn current_bg_push_dot_ownership_distinguishes_fill_wait_and_obj_handoff_paths() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
+        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFill
+        );
+
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFillThenObjectFetch
+        );
+
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::FifoBackedTransferObjectFetch
+        );
+
+        ppu.obj_pipeline_state.clear_pending_fetch_hits();
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::WaitingForEmptyFifo
+        );
+
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::EntryDelay
+        );
+
+        ppu.bg_pipeline_state.push.pending = false;
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::NotReady
         );
     }
 
