@@ -1271,6 +1271,9 @@ impl Ppu {
                 self.bg_pipeline_state
                     .push
                     .queue_from_fetcher(self.bg_pipeline_state.fetcher);
+                self.bg_pipeline_state
+                    .fetcher
+                    .first_window_tile_after_activation = false;
                 self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
                 self.bg_pipeline_state.fetcher.stage_dot = 0;
             }
@@ -2788,6 +2791,7 @@ struct BgFetcherState {
     next_fetch_pixel: u16,
     bg_resume_fetch_pixel: u16,
     rewind_bg_resume_after_first_tile_index_dot: bool,
+    first_window_tile_after_activation: bool,
     tile_map_address: u16,
     tile_data_address: u16,
     tile_index: u8,
@@ -2812,6 +2816,7 @@ impl BgFetcherState {
         self.next_fetch_pixel = 0;
         self.bg_resume_fetch_pixel = bg_resume_fetch_pixel;
         self.rewind_bg_resume_after_first_tile_index_dot = true;
+        self.first_window_tile_after_activation = true;
         self.tile_map_address = 0;
         self.tile_data_address = 0;
         self.tile_index = 0;
@@ -2825,6 +2830,7 @@ impl BgFetcherState {
         self.next_fetch_pixel = 0;
         self.bg_resume_fetch_pixel = bg_resume_fetch_pixel;
         self.rewind_bg_resume_after_first_tile_index_dot = false;
+        self.first_window_tile_after_activation = false;
         self.tile_map_address = 0;
         self.tile_data_address = 0;
         self.tile_index = 0;
@@ -2839,6 +2845,7 @@ impl BgFetcherState {
 
         self.source = PpuBgFetcherSource::Background;
         self.next_fetch_pixel = self.bg_resume_fetch_pixel;
+        self.first_window_tile_after_activation = false;
     }
 }
 
@@ -2848,6 +2855,7 @@ struct BgPushState {
     disposition: BgPushDisposition,
     entry_delay_remaining: u8,
     source: PpuBgFetcherSource,
+    just_activated_window_tile: bool,
     tile_low: u8,
     tile_high: u8,
     next_fetch_pixel: u16,
@@ -2861,7 +2869,12 @@ impl BgPushState {
     fn queue_from_fetcher(&mut self, fetcher: BgFetcherState) {
         self.pending = true;
         self.disposition = BgPushDisposition::Ready;
-        self.entry_delay_remaining = 1;
+        self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
+        self.entry_delay_remaining = if self.just_activated_window_tile {
+            0
+        } else {
+            1
+        };
         self.source = fetcher.source;
         self.tile_low = fetcher.tile_low;
         self.tile_high = fetcher.tile_high;
@@ -4545,6 +4558,31 @@ mod tests {
                 .copied()
                 .collect::<Vec<_>>(),
             vec![0, 1, 2, 3, 0, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn first_window_tile_skips_the_normal_push_entry_delay() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram = crate::bus::VramDomain::from_bytes(&[0; TEST_VRAM_BYTES]);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0xB1;
+        ppu.bg_pipeline_state.fetcher.start_window(8);
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+        ppu.bg_pipeline_state.fetcher.tile_low = 0x55;
+        ppu.bg_pipeline_state.fetcher.tile_high = 0x33;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert_eq!(ppu.bg_pipeline_state.push.entry_delay_remaining, 0);
+        assert!(ppu.bg_pipeline_state.push.just_activated_window_tile);
+        assert!(
+            !ppu.bg_pipeline_state
+                .fetcher
+                .first_window_tile_after_activation
         );
     }
 
