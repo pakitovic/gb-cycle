@@ -1335,7 +1335,7 @@ impl Ppu {
             && !push.just_activated_window_tile
             && self.obj_enabled()
             && self.current_dot_has_pending_obj_hit();
-        if self.bg_pipeline_state.effective_fifo_is_not_empty() {
+        if self.bg_pipeline_state.fifo_contains_real_pixels() {
             if push_can_start_object_fetch {
                 BgPushDotOwnership::FifoBackedTransferObjectFetch
             } else {
@@ -2633,7 +2633,7 @@ impl BgPipelineState {
             0,
             MODE3_ABSTRACT_SOURCE_WINDOW_DOTS as usize,
         ));
-        self.startup_fifo_placeholders = 0;
+        self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
         self.startup_source_state = Mode3StartupSourceState::EntryDelay {
             remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
         };
@@ -2754,14 +2754,14 @@ impl BgPipelineState {
         self.startup_fifo_placeholders == 0 && self.fifo.is_empty()
     }
 
-    fn effective_fifo_is_not_empty(&self) -> bool {
-        !self.effective_fifo_is_empty()
+    fn fifo_contains_real_pixels(&self) -> bool {
+        self.fifo.len() > self.startup_fifo_placeholders as usize
     }
 
     fn consume_effective_fifo_pixel(&mut self) -> Option<u8> {
         if self.startup_fifo_placeholders > 0 {
             self.startup_fifo_placeholders -= 1;
-            Some(0)
+            self.fifo.pop_front().or(Some(0))
         } else {
             self.fifo.pop_front()
         }
@@ -4515,11 +4515,14 @@ mod tests {
 
         let after_first_push = ppu.snapshot();
         assert_eq!(after_first_push.line_dot, 87);
-        assert_eq!(after_first_push.bg_fetcher_stage, PpuBgFetcherStage::Push);
+        assert_eq!(
+            after_first_push.bg_fetcher_stage,
+            PpuBgFetcherStage::TileIndex
+        );
         assert_eq!(after_first_push.bg_fetcher_stage_dot, 0);
         assert_eq!(after_first_push.bg_fifo_pixels, vec![0; 4]);
-        assert!(after_first_push.bg_push_pending);
-        assert!(!after_first_push.bg_fill_pending);
+        assert!(!after_first_push.bg_push_pending);
+        assert!(after_first_push.bg_fill_pending);
         assert_eq!(after_first_push.visible_pixels_output, 0);
 
         for t_cycle in 87..110 {
@@ -4679,7 +4682,14 @@ mod tests {
             BgPushDotOwnership::QueueFillThenObjectFetch
         );
 
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
         ppu.bg_pipeline_state.fifo.push_back(0);
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFillThenObjectFetch
+        );
+
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
         assert_eq!(
             ppu.current_bg_push_dot_ownership(),
             BgPushDotOwnership::FifoBackedTransferObjectFetch
@@ -4701,6 +4711,30 @@ mod tests {
         assert_eq!(
             ppu.current_bg_push_dot_ownership(),
             BgPushDotOwnership::NotReady
+        );
+    }
+
+    #[test]
+    fn startup_dummy_fifo_pixels_do_not_block_the_first_real_bg_fill() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
+        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+        ppu.bg_pipeline_state.fifo.extend([0, 0, 0, 0]);
+
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFill
         );
     }
 
@@ -5869,6 +5903,7 @@ mod tests {
         vram.set_acquired(BusMaster::Ppu, true);
 
         ppu.visible_registers.lcdc = 0x91;
+        ppu.pipeline_registers.lcdc = 0x91;
         ppu.visible_registers.scy = 0;
         ppu.ly = 0;
         ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
