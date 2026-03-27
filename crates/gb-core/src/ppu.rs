@@ -973,6 +973,13 @@ impl Ppu {
     }
 
     fn advance_mode3_output_phase(&mut self) -> Mode3TransferDot {
+        if self
+            .bg_pipeline_state
+            .consume_startup_transfer_entry_delay_dot()
+        {
+            return Mode3TransferDot::not_served();
+        }
+
         if !self.current_dot_arbitration().can_serve_bg_transfer() {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
             return Mode3TransferDot::not_served();
@@ -1017,7 +1024,10 @@ impl Ppu {
 
     fn current_transfer_context(&self) -> Option<Mode3TransferContext> {
         let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
-        if mode3_dot < MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT {
+        if !self
+            .bg_pipeline_state
+            .startup_transfer_window_open(mode3_dot)
+        {
             return None;
         }
         if self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH {
@@ -2273,6 +2283,7 @@ struct BgPipelineState {
     mode0_start_dot: u16,
     initial_scx_discard: u8,
     scx_discard_remaining: u8,
+    startup_transfer_entry_delay_remaining: u8,
     startup_transfer_dots_served: u8,
     transfer_phase: Mode3TransferPhase,
     current_transfer_x: u8,
@@ -2294,6 +2305,7 @@ impl BgPipelineState {
         self.mode0_start_dot = MODE0_START_DOT;
         self.initial_scx_discard = 0;
         self.scx_discard_remaining = 0;
+        self.startup_transfer_entry_delay_remaining = 0;
         self.startup_transfer_dots_served = 0;
         self.transfer_phase = Mode3TransferPhase::Priming;
         self.current_transfer_x = 0;
@@ -2310,6 +2322,7 @@ impl BgPipelineState {
         self.initial_scx_discard = scx & 0x07;
         self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
         self.scx_discard_remaining = self.initial_scx_discard;
+        self.startup_transfer_entry_delay_remaining = MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8;
         self.startup_transfer_dots_served = 0;
         self.transfer_phase = Mode3TransferPhase::Priming;
         self.current_transfer_x = 0;
@@ -2328,6 +2341,23 @@ impl BgPipelineState {
 
     fn extend_mode3_by_one_dot(&mut self) {
         self.mode0_start_dot += 1;
+    }
+
+    fn startup_transfer_window_open(&self, mode3_dot: u16) -> bool {
+        if !self.mode3_started {
+            return mode3_dot >= MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
+        }
+
+        self.startup_transfer_entry_delay_remaining == 0
+    }
+
+    fn consume_startup_transfer_entry_delay_dot(&mut self) -> bool {
+        if self.startup_transfer_entry_delay_remaining == 0 {
+            return false;
+        }
+
+        self.startup_transfer_entry_delay_remaining -= 1;
+        true
     }
 
     fn apply_wx0_scx_shortening(&mut self) {
@@ -4507,6 +4537,41 @@ mod tests {
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 6);
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
         assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    }
+
+    #[test]
+    fn mode3_started_uses_explicit_startup_entry_delay_before_transfer_service() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + 1;
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining = 2;
+        ppu.bg_pipeline_state.current_transfer_x = 5;
+
+        let first = ppu.advance_mode3_output_phase();
+        assert_eq!(first.kind, Mode3TransferDotKind::NotServed);
+        assert_eq!(
+            ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining,
+            1
+        );
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 5);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+
+        let second = ppu.advance_mode3_output_phase();
+        assert_eq!(second.kind, Mode3TransferDotKind::NotServed);
+        assert_eq!(
+            ppu.bg_pipeline_state.startup_transfer_entry_delay_remaining,
+            0
+        );
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 5);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+
+        let third = ppu.advance_mode3_output_phase();
+        assert_eq!(third.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 6);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
     }
 
     #[test]
