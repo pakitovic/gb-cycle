@@ -1325,6 +1325,7 @@ impl Ppu {
 
         let push_can_start_object_fetch = self.obj_pipeline_state.fetch.stage
             == PpuObjFetcherStage::Idle
+            && !push.just_activated_window_tile
             && self.obj_enabled()
             && self.current_dot_has_pending_obj_hit();
         if self.bg_pipeline_state.effective_fifo_is_not_empty() {
@@ -4583,6 +4584,39 @@ mod tests {
             !ppu.bg_pipeline_state
                 .fetcher
                 .first_window_tile_after_activation
+        );
+    }
+
+    #[test]
+    fn first_window_tile_push_ignores_pending_obj_fetch_start() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xA3;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
+        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Window;
+        ppu.bg_pipeline_state.push.just_activated_window_tile = true;
+        ppu.bg_pipeline_state.push.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFill
         );
     }
 
