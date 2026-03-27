@@ -305,6 +305,7 @@ pub struct Ppu {
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     visible_registers: PpuVisibleRegisters,
     pipeline_registers: PpuVisibleRegisters,
+    last_unsigned_tile_data_fetch: u8,
     startup_mode_latch: Option<PpuAccessMode>,
     stat_state: StatState,
     pending_interrupts: u8,
@@ -447,6 +448,7 @@ impl Ppu {
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             visible_registers: PpuVisibleRegisters::default(),
             pipeline_registers: PpuVisibleRegisters::default(),
+            last_unsigned_tile_data_fetch: 0,
             startup_mode_latch: None,
             stat_state: StatState::default(),
             pending_interrupts: 0,
@@ -1258,11 +1260,13 @@ impl Ppu {
                 let tile_data_address =
                     self.compute_fetch_tile_data_address(fetcher.source, fetcher.tile_index, 0);
                 self.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
-                self.bg_pipeline_state.fetcher.tile_low =
-                    vram.read(tile_data_address as usize).unwrap_or(0);
+                let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
+                self.bg_pipeline_state.fetcher.tile_low = tile_data;
+                self.maybe_cache_unsigned_bgwin_tile_data_fetch(tile_data);
                 self.bg_pipeline_state.fetcher.stage_dot = 1;
             }
             (PpuBgFetcherStage::TileDataLow, 1) => {
+                self.maybe_apply_bgwin_tile_data_selector_glitch(vram, fetcher.source, 0);
                 self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
                 self.bg_pipeline_state.fetcher.stage_dot = 0;
             }
@@ -1270,11 +1274,13 @@ impl Ppu {
                 let tile_data_address =
                     self.compute_fetch_tile_data_address(fetcher.source, fetcher.tile_index, 1);
                 self.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
-                self.bg_pipeline_state.fetcher.tile_high =
-                    vram.read(tile_data_address as usize).unwrap_or(0);
+                let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
+                self.bg_pipeline_state.fetcher.tile_high = tile_data;
+                self.maybe_cache_unsigned_bgwin_tile_data_fetch(tile_data);
                 self.bg_pipeline_state.fetcher.stage_dot = 1;
             }
             (PpuBgFetcherStage::TileDataHigh, 1) => {
+                self.maybe_apply_bgwin_tile_data_selector_glitch(vram, fetcher.source, 1);
                 self.bg_pipeline_state
                     .push
                     .queue_from_fetcher(self.bg_pipeline_state.fetcher);
@@ -1820,7 +1826,8 @@ impl Ppu {
                 )
             }
             PpuBgFetcherSource::Window => {
-                let tile_map_base = if self.visible_registers.lcdc & LCDC_WINDOW_TILE_MAP_BIT != 0 {
+                let window_fetch_lcdc = self.window_fetch_lcdc();
+                let tile_map_base = if window_fetch_lcdc & LCDC_WINDOW_TILE_MAP_BIT != 0 {
                     0x1C00
                 } else {
                     0x1800
@@ -1849,12 +1856,75 @@ impl Ppu {
                 (self.window_state.window_line_counter % BG_TILE_WIDTH) as u16
             }
         };
-        let tile_data_base = bg_tile_data_base(self.visible_registers.lcdc, tile_index);
+        let tile_data_base = bg_tile_data_base(
+            match source {
+                PpuBgFetcherSource::Background => self.visible_registers.lcdc,
+                PpuBgFetcherSource::Window => self.window_fetch_lcdc(),
+            },
+            tile_index,
+        );
         tile_data_base + tile_row * TILE_ROW_BYTES + plane
     }
 
+    fn window_fetch_lcdc(&self) -> u8 {
+        if self.console_model.is_dmg_family() && self.bg_pipeline_state.mode3_started {
+            self.pipeline_registers.lcdc
+        } else {
+            self.visible_registers.lcdc
+        }
+    }
+
+    fn maybe_cache_unsigned_bgwin_tile_data_fetch(&mut self, tile_data: u8) {
+        if self.visible_registers.lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0 {
+            self.last_unsigned_tile_data_fetch = tile_data;
+        }
+    }
+
+    fn maybe_apply_bgwin_tile_data_selector_glitch(
+        &mut self,
+        vram: &VramBusView<'_>,
+        source: PpuBgFetcherSource,
+        plane: u16,
+    ) {
+        if !self.console_model.is_dmg_family() {
+            return;
+        }
+
+        let previous_uses_unsigned =
+            self.pipeline_registers.lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+        let current_uses_unsigned = self.visible_registers.lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+        if previous_uses_unsigned == current_uses_unsigned {
+            return;
+        }
+
+        let tile_index = self.bg_pipeline_state.fetcher.tile_index;
+        let reread_address = if previous_uses_unsigned && !current_uses_unsigned {
+            Some(self.compute_fetch_tile_data_address(source, tile_index, plane))
+        } else {
+            None
+        };
+        let tile_byte = if let Some(tile_data_address) = reread_address {
+            vram.read(tile_data_address as usize).unwrap_or(0)
+        } else if self.bg_pipeline_state.fetcher.tile_data_address & 0x0800 == 0 {
+            self.last_unsigned_tile_data_fetch
+        } else {
+            return;
+        };
+
+        let fetcher = &mut self.bg_pipeline_state.fetcher;
+        if let Some(tile_data_address) = reread_address {
+            fetcher.tile_data_address = tile_data_address;
+        }
+
+        if plane == 0 {
+            fetcher.tile_low = tile_byte;
+        } else {
+            fetcher.tile_high = tile_byte;
+        }
+    }
+
     fn read_obj_tile_data_byte(
-        &self,
+        &mut self,
         vram: &VramBusView<'_>,
         sprite: PpuSelectedSprite,
         plane: u16,
@@ -1864,8 +1934,9 @@ impl Ppu {
         };
         let byte_address =
             tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES + plane;
-
-        vram.read(byte_address as usize).unwrap_or(0)
+        let tile_data = vram.read(byte_address as usize).unwrap_or(0);
+        self.last_unsigned_tile_data_fetch = tile_data;
+        tile_data
     }
 
     fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> Option<(u8, u8)> {
@@ -5920,6 +5991,68 @@ mod tests {
         assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
         assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0xAB);
         assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x1011);
+    }
+
+    #[test]
+    fn bg_fetcher_uses_last_unsigned_fetch_data_when_tile_selector_flips_to_unsigned_on_low1() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        vram_bytes[0x1010] = 0x12;
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x81;
+        ppu.pipeline_registers.lcdc = 0x81;
+        ppu.ly = 0;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.tile_index = 1;
+        ppu.last_unsigned_tile_data_fetch = 0xCD;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0x12);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x1010);
+
+        ppu.pipeline_registers.lcdc = 0x81;
+        ppu.visible_registers.lcdc = 0x91;
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0xCD);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataHigh
+        );
+    }
+
+    #[test]
+    fn window_fetcher_uses_last_unsigned_fetch_data_when_tile_selector_flips_to_unsigned_on_high1()
+    {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        vram_bytes[0x1011] = 0x34;
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x81;
+        ppu.pipeline_registers.lcdc = 0x81;
+        ppu.window_state.window_line_counter = 0;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.tile_index = 1;
+        ppu.last_unsigned_tile_data_fetch = 0xEF;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x34);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x1011);
+
+        ppu.pipeline_registers.lcdc = 0x81;
+        ppu.visible_registers.lcdc = 0x91;
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0xEF);
+        assert!(ppu.bg_pipeline_state.push.pending);
     }
 
     #[test]
