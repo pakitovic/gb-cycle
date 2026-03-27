@@ -995,7 +995,7 @@ impl Ppu {
             && self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
             && self
                 .obj_pipeline_state
-                .pending_hits_own_current_x(self.current_obj_match_x())
+                .pending_hits_own_current_dot(self.current_obj_hit_ownership())
     }
 
     fn serve_previsible_transfer_dot(&mut self) -> Option<Mode3OutputDotResult> {
@@ -1294,7 +1294,7 @@ impl Ppu {
             return;
         }
 
-        let current_match_x = self.current_obj_match_x();
+        let current_owner = self.current_obj_hit_ownership();
         for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
             if self.obj_pipeline_state.has_fetched(sprite_slot) {
                 continue;
@@ -1307,9 +1307,9 @@ impl Ppu {
                 continue;
             };
 
-            if trigger_x == current_match_x {
+            if trigger_x == current_owner.match_x {
                 self.obj_pipeline_state
-                    .queue_fetch_hit(sprite_slot, current_match_x);
+                    .queue_fetch_hit(sprite_slot, current_owner);
             }
         }
     }
@@ -1320,9 +1320,9 @@ impl Ppu {
             return;
         }
 
-        let current_match_x = self.current_obj_match_x();
+        let current_owner = self.current_obj_hit_ownership();
         self.obj_pipeline_state
-            .clear_pending_fetch_hits_if_stale(current_match_x);
+            .clear_pending_fetch_hits_if_stale(current_owner);
     }
 
     fn try_start_object_fetch_from_latched_hit(&mut self, overlap_current_dot: bool) -> bool {
@@ -1351,8 +1351,21 @@ impl Ppu {
         true
     }
 
-    fn current_obj_match_x(&self) -> u8 {
-        self.bg_pipeline_state.current_transfer_x
+    fn current_obj_hit_ownership(&self) -> ObjHitOwnership {
+        let phase = if self.line_dot.saturating_sub(MODE2_DOTS) < MODE3_BG_FETCH_PRIMING_DOTS {
+            ObjHitPhase::PreVisible
+        } else if self.bg_pipeline_state.scx_discard_remaining > 0
+            || self.bg_pipeline_state.current_transfer_x < 8
+        {
+            ObjHitPhase::Hidden
+        } else {
+            ObjHitPhase::Visible
+        };
+
+        ObjHitOwnership {
+            match_x: self.bg_pipeline_state.current_transfer_x,
+            phase,
+        }
     }
 
     fn advance_object_fetch(
@@ -2394,7 +2407,7 @@ struct ObjPipelineState {
     fifo: VecDeque<ObjPixel>,
     fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
     pending_sprite_slots: VecDeque<u8>,
-    pending_match_x: Option<u8>,
+    pending_owner: Option<ObjHitOwnership>,
     fetch: ObjFetchState,
 }
 
@@ -2403,7 +2416,7 @@ impl ObjPipelineState {
         self.fifo.clear();
         self.fetched_sprite_slots.fill(false);
         self.pending_sprite_slots.clear();
-        self.pending_match_x = None;
+        self.pending_owner = None;
         self.fetch = ObjFetchState::default();
     }
 
@@ -2426,7 +2439,7 @@ impl ObjPipelineState {
         self.fetched_sprite_slots[sprite_slot as usize]
     }
 
-    fn queue_fetch_hit(&mut self, sprite_slot: u8, match_x: u8) {
+    fn queue_fetch_hit(&mut self, sprite_slot: u8, owner: ObjHitOwnership) {
         if self.has_fetched(sprite_slot)
             || self
                 .pending_sprite_slots
@@ -2439,9 +2452,9 @@ impl ObjPipelineState {
         }
 
         if self.pending_sprite_slots.is_empty() {
-            self.pending_match_x = Some(match_x);
+            self.pending_owner = Some(owner);
         } else {
-            debug_assert_eq!(self.pending_match_x, Some(match_x));
+            debug_assert_eq!(self.pending_owner, Some(owner));
         }
         self.pending_sprite_slots.push_back(sprite_slot);
     }
@@ -2449,29 +2462,42 @@ impl ObjPipelineState {
     fn pop_pending_fetch_hit(&mut self) -> Option<u8> {
         let sprite_slot = self.pending_sprite_slots.pop_front();
         if self.pending_sprite_slots.is_empty() {
-            self.pending_match_x = None;
+            self.pending_owner = None;
         }
         sprite_slot
     }
 
-    fn pending_hits_own_current_x(&self, current_match_x: u8) -> bool {
-        self.pending_match_x == Some(current_match_x) && !self.pending_sprite_slots.is_empty()
+    fn pending_hits_own_current_dot(&self, current_owner: ObjHitOwnership) -> bool {
+        self.pending_owner == Some(current_owner) && !self.pending_sprite_slots.is_empty()
     }
 
     fn clear_pending_fetch_hits(&mut self) {
         self.pending_sprite_slots.clear();
-        self.pending_match_x = None;
+        self.pending_owner = None;
     }
 
-    fn clear_pending_fetch_hits_if_stale(&mut self, current_match_x: u8) {
+    fn clear_pending_fetch_hits_if_stale(&mut self, current_owner: ObjHitOwnership) {
         if self.fetch.stage != PpuObjFetcherStage::Idle {
             return;
         }
 
-        if self.pending_match_x.is_some() && self.pending_match_x != Some(current_match_x) {
+        if self.pending_owner.is_some() && self.pending_owner != Some(current_owner) {
             self.clear_pending_fetch_hits();
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ObjHitOwnership {
+    match_x: u8,
+    phase: ObjHitPhase,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObjHitPhase {
+    PreVisible,
+    Hidden,
+    Visible,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -3995,7 +4021,8 @@ mod tests {
             tile_index: 0,
             attributes: 0,
         });
-        ppu.obj_pipeline_state.queue_fetch_hit(0, 8);
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
 
         assert!(ppu.advance_bg_push());
         assert!(ppu.bg_pipeline_state.push.pending);
@@ -4096,7 +4123,8 @@ mod tests {
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.bg_pipeline_state.visible_pixels_output = 12;
         ppu.bg_pipeline_state.fifo.push_back(3);
-        ppu.obj_pipeline_state.queue_fetch_hit(0, 20);
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
 
         let result = ppu.advance_mode3_output_phase();
 
@@ -4121,7 +4149,8 @@ mod tests {
         ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
         ppu.bg_pipeline_state.current_transfer_x = 5;
-        ppu.obj_pipeline_state.queue_fetch_hit(0, 5);
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
 
         ppu.advance_mode3_output_phase();
 
@@ -4331,7 +4360,8 @@ mod tests {
         ppu.bg_pipeline_state.current_transfer_x = 8;
         ppu.bg_pipeline_state.visible_pixels_output = 8;
         ppu.bg_pipeline_state.fifo.push_back(1);
-        ppu.obj_pipeline_state.queue_fetch_hit(0, 8);
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
 
         assert!(!ppu.current_dot_can_attempt_window_trigger());
     }
@@ -4376,22 +4406,43 @@ mod tests {
     }
 
     #[test]
-    fn current_obj_match_x_uses_the_explicit_transfer_phase() {
+    fn current_obj_hit_ownership_tracks_x_and_dot_phase() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
 
+        ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
         ppu.bg_pipeline_state.current_transfer_x = 6;
-        assert_eq!(ppu.current_obj_match_x(), 6);
+        assert_eq!(
+            ppu.current_obj_hit_ownership(),
+            ObjHitOwnership {
+                match_x: 6,
+                phase: ObjHitPhase::PreVisible,
+            }
+        );
 
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.bg_pipeline_state.current_transfer_x = 0;
         ppu.bg_pipeline_state.visible_pixels_output = 0;
-        assert_eq!(ppu.current_obj_match_x(), 0);
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+        assert_eq!(
+            ppu.current_obj_hit_ownership(),
+            ObjHitOwnership {
+                match_x: 0,
+                phase: ObjHitPhase::Hidden,
+            }
+        );
 
-        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.scx_discard_remaining = 0;
         ppu.bg_pipeline_state.current_transfer_x = 20;
         ppu.bg_pipeline_state.visible_pixels_output = 12;
-        assert_eq!(ppu.current_obj_match_x(), 20);
+        assert_eq!(
+            ppu.current_obj_hit_ownership(),
+            ObjHitOwnership {
+                match_x: 20,
+                phase: ObjHitPhase::Visible,
+            }
+        );
     }
 
     #[test]
@@ -4401,12 +4452,40 @@ mod tests {
         ppu.bg_pipeline_state.current_transfer_x = 13;
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.bg_pipeline_state.visible_pixels_output = 5;
-        ppu.obj_pipeline_state.queue_fetch_hit(0, 12);
+        ppu.obj_pipeline_state.queue_fetch_hit(
+            0,
+            ObjHitOwnership {
+                match_x: 12,
+                phase: ObjHitPhase::Visible,
+            },
+        );
 
         ppu.sync_pending_obj_hit_ownership();
 
         assert!(ppu.obj_pipeline_state.pending_sprite_slots.is_empty());
-        assert_eq!(ppu.obj_pipeline_state.pending_match_x, None);
+        assert_eq!(ppu.obj_pipeline_state.pending_owner, None);
+    }
+
+    #[test]
+    fn stale_pending_obj_hit_is_cleared_once_dot_phase_changes_even_if_x_matches() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 6;
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.obj_pipeline_state.queue_fetch_hit(
+            0,
+            ObjHitOwnership {
+                match_x: 6,
+                phase: ObjHitPhase::PreVisible,
+            },
+        );
+
+        ppu.sync_pending_obj_hit_ownership();
+
+        assert!(ppu.obj_pipeline_state.pending_sprite_slots.is_empty());
+        assert_eq!(ppu.obj_pipeline_state.pending_owner, None);
     }
 
     #[test]
@@ -5284,7 +5363,8 @@ mod tests {
             tile_index: 0,
             attributes: 0,
         });
-        ppu.obj_pipeline_state.queue_fetch_hit(0, 8);
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
 
         assert!(ppu.try_start_object_fetch_from_latched_hit(true));
         assert_eq!(
