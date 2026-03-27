@@ -943,12 +943,12 @@ impl Ppu {
                 .start_line(self.visible_registers.scx);
         }
 
-        let window_started_this_dot =
-            if self.line_dot.saturating_sub(MODE2_DOTS) >= MODE3_BG_FETCH_PRIMING_DOTS {
-                self.maybe_start_window_for_current_position()
-            } else {
-                false
-            };
+        self.maybe_apply_hidden_wx0_last_scx_discard_shortening();
+        let window_started_this_dot = if self.hidden_wx0_window_trigger_evaluation_enabled() {
+            self.maybe_start_hidden_wx0_window_for_current_dot()
+        } else {
+            false
+        };
 
         self.flush_pending_bg_fifo_fill();
 
@@ -958,7 +958,10 @@ impl Ppu {
             return;
         }
 
-        self.advance_mode3_output_phase();
+        let output_result = self.advance_mode3_output_phase();
+        if !window_started_this_dot {
+            let _ = self.maybe_start_window_after_served_output_dot(output_result);
+        }
         let _ = self.advance_bg_fetcher(vram);
     }
 
@@ -974,17 +977,17 @@ impl Ppu {
         self.advance_object_fetch(oam, vram, dma_oam_conflict_address)
     }
 
-    fn advance_mode3_output_phase(&mut self) {
+    fn advance_mode3_output_phase(&mut self) -> Mode3OutputDotResult {
         if self.output_phase_blocked_by_pending_obj_hit() {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
-            return;
+            return Mode3OutputDotResult::NotServed;
         }
 
-        if self.serve_abstract_previsible_transfer_dot() {
-            return;
+        if let Some(result) = self.serve_previsible_transfer_dot() {
+            return result;
         }
 
-        let _ = self.pop_bg_pixel_for_current_dot();
+        self.pop_bg_pixel_for_current_dot()
     }
 
     fn output_phase_blocked_by_pending_obj_hit(&self) -> bool {
@@ -995,27 +998,32 @@ impl Ppu {
                 .pending_hits_own_current_x(self.current_obj_match_x())
     }
 
-    fn serve_abstract_previsible_transfer_dot(&mut self) -> bool {
+    fn serve_previsible_transfer_dot(&mut self) -> Option<Mode3OutputDotResult> {
         let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
         if !(MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT..MODE3_BG_FETCH_PRIMING_DOTS)
             .contains(&mode3_dot)
         {
-            return false;
+            return None;
+        }
+
+        if mode3_dot >= MODE3_BG_FETCH_PRIMING_DOTS - 4 && self.bg_pipeline_state.fifo.is_empty() {
+            self.bg_pipeline_state.extend_mode3_by_one_dot();
+            return Some(Mode3OutputDotResult::NotServed);
         }
 
         if self.bg_pipeline_state.scx_discard_remaining > 0 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.scx_discard_remaining -= 1;
-            return true;
+            return Some(Mode3OutputDotResult::ServedPreVisibleTransfer);
         }
 
         if self.bg_pipeline_state.current_transfer_x < 8 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.current_transfer_x += 1;
-            return true;
+            return Some(Mode3OutputDotResult::ServedPreVisibleTransfer);
         }
 
-        false
+        None
     }
 
     fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
@@ -1142,14 +1150,14 @@ impl Ppu {
         if self.bg_pipeline_state.scx_discard_remaining > 0 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.scx_discard_remaining -= 1;
-            return Mode3OutputDotResult::Served;
+            return Mode3OutputDotResult::ServedHiddenTransfer;
         }
 
         if self.bg_pipeline_state.current_transfer_x < 8 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.current_transfer_x += 1;
             let _ = self.pop_obj_fifo_pixel();
-            return Mode3OutputDotResult::Served;
+            return Mode3OutputDotResult::ServedHiddenTransfer;
         }
 
         let bg_pixel = if self.bg_enabled() { pixel } else { 0 };
@@ -1173,7 +1181,7 @@ impl Ppu {
         self.bg_pipeline_state.current_transfer_x =
             self.bg_pipeline_state.current_transfer_x.saturating_add(1);
         self.bg_pipeline_state.visible_pixels_output += 1;
-        Mode3OutputDotResult::Served
+        Mode3OutputDotResult::ServedVisiblePixel
     }
 
     fn bg_enabled(&self) -> bool {
@@ -1184,7 +1192,7 @@ impl Ppu {
         self.visible_registers.obj_enabled()
     }
 
-    fn maybe_start_window_for_current_position(&mut self) -> bool {
+    fn maybe_start_hidden_wx0_window_for_current_dot(&mut self) -> bool {
         if self.bg_pipeline_state.window_started_this_line
             || !self.bg_pipeline_state.window_wy_latch
             || !self.window_runtime_enabled()
@@ -1192,8 +1200,43 @@ impl Ppu {
             return false;
         }
 
+        if self.visible_registers.wx != 0 || self.bg_pipeline_state.window_force_x0_this_line {
+            return false;
+        }
+
+        if !self.current_dot_can_attempt_window_trigger() {
+            return false;
+        }
+
+        if !self.should_start_hidden_wx0_window_now() {
+            return false;
+        }
+
+        if self.bg_pipeline_state.initial_scx_discard > 0
+            && self.bg_pipeline_state.visible_pixels_output == 0
+            && self.bg_pipeline_state.current_transfer_x < 8
+        {
+            self.bg_pipeline_state.apply_wx0_scx_shortening();
+        }
+
+        self.start_window_fetcher_restart();
+        true
+    }
+
+    fn maybe_start_window_after_served_output_dot(
+        &mut self,
+        output_result: Mode3OutputDotResult,
+    ) -> bool {
+        if !output_result.is_served()
+            || self.bg_pipeline_state.window_started_this_line
+            || !self.bg_pipeline_state.window_wy_latch
+            || !self.window_runtime_enabled()
+        {
+            return false;
+        }
+
         if self.visible_registers.wx == 166 && !self.bg_pipeline_state.window_force_x0_this_line {
-            if self.bg_pipeline_state.visible_pixels_output as usize == SCREEN_WIDTH - 1
+            if self.bg_pipeline_state.visible_pixels_output as usize == SCREEN_WIDTH
                 && self.bg_pipeline_state.scx_discard_remaining == 0
                 && !self.bg_pipeline_state.wx166_armed_this_line
             {
@@ -1207,31 +1250,43 @@ impl Ppu {
             return false;
         };
 
-        if !self.should_start_window_now(trigger_x) {
+        if !self.should_start_window_after_served_output_now(trigger_x, output_result) {
             return false;
         }
 
-        if self.visible_registers.wx == 0
-            && !self.bg_pipeline_state.window_force_x0_this_line
-            && self.bg_pipeline_state.initial_scx_discard > 0
-            && self.bg_pipeline_state.visible_pixels_output == 0
-            && self.bg_pipeline_state.current_transfer_x < 8
-        {
-            self.bg_pipeline_state.apply_wx0_scx_shortening();
-        }
-
-        self.bg_pipeline_state.fifo.clear();
-        self.bg_pipeline_state.push.reset();
-        self.bg_pipeline_state.fill.reset();
-        self.bg_pipeline_state.fetcher.start_window();
-        self.bg_pipeline_state.scx_discard_remaining = 0;
-        self.bg_pipeline_state.window_started_this_line = true;
-        self.bg_pipeline_state.window_force_x0_this_line = false;
+        self.start_window_fetcher_restart();
         true
     }
 
     fn window_runtime_enabled(&self) -> bool {
         self.visible_registers.window_enabled() && self.bg_enabled()
+    }
+
+    fn maybe_apply_hidden_wx0_last_scx_discard_shortening(&mut self) {
+        if self.bg_pipeline_state.window_started_this_line
+            || !self.bg_pipeline_state.window_wy_latch
+            || !self.window_runtime_enabled()
+            || self.visible_registers.wx != 0
+            || self.bg_pipeline_state.window_force_x0_this_line
+            || self.bg_pipeline_state.visible_pixels_output != 0
+            || self.bg_pipeline_state.current_transfer_x >= 8
+            || self.bg_pipeline_state.initial_scx_discard == 0
+            || self.bg_pipeline_state.scx_discard_remaining != 1
+            || !self.current_dot_is_free_for_window_trigger()
+        {
+            return;
+        }
+
+        self.bg_pipeline_state.apply_wx0_scx_shortening();
+    }
+
+    fn hidden_wx0_window_trigger_evaluation_enabled(&self) -> bool {
+        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
+        mode3_dot >= MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT
+            && self.visible_registers.wx == 0
+            && !self.bg_pipeline_state.window_force_x0_this_line
+            && self.bg_pipeline_state.visible_pixels_output == 0
+            && self.bg_pipeline_state.current_transfer_x < 8
     }
 
     fn latch_object_fetch_hits(&mut self) {
@@ -1434,20 +1489,74 @@ impl Ppu {
         }
     }
 
-    fn should_start_window_now(&self, trigger_x: u8) -> bool {
+    fn should_start_hidden_wx0_window_now(&self) -> bool {
+        self.bg_pipeline_state.visible_pixels_output == 0
+            && self.window_x0_can_claim_the_current_hidden_transfer_dot()
+            && self.bg_pipeline_state.initial_scx_discard == 0
+            && self.bg_pipeline_state.scx_discard_remaining == 0
+    }
+
+    fn should_start_window_after_served_output_now(
+        &self,
+        trigger_x: u8,
+        output_result: Mode3OutputDotResult,
+    ) -> bool {
         if self.bg_pipeline_state.visible_pixels_output != trigger_x {
             return false;
         }
 
         if trigger_x == 0 {
             return self.bg_pipeline_state.scx_discard_remaining == 0
-                || (self.visible_registers.wx == 0
-                    && !self.bg_pipeline_state.window_force_x0_this_line
-                    && self.bg_pipeline_state.initial_scx_discard > 0
-                    && self.bg_pipeline_state.scx_discard_remaining == 1);
+                && self.bg_pipeline_state.current_transfer_x >= 8
+                && output_result
+                    .can_start_window_after_x0_service(self.bg_pipeline_state.initial_scx_discard);
         }
 
         self.bg_pipeline_state.scx_discard_remaining == 0
+            && output_result == Mode3OutputDotResult::ServedVisiblePixel
+    }
+
+    fn window_x0_can_claim_the_current_hidden_transfer_dot(&self) -> bool {
+        self.bg_pipeline_state.current_transfer_x < 8
+            && self.current_dot_can_attempt_window_trigger()
+    }
+
+    fn current_dot_can_attempt_window_trigger(&self) -> bool {
+        if !self.current_dot_is_free_for_window_trigger() {
+            return false;
+        }
+
+        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
+        if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS {
+            return self.late_previsible_dot_has_real_fifo_readiness(mode3_dot);
+        }
+
+        !self.bg_pipeline_state.fifo.is_empty()
+    }
+
+    fn current_dot_is_free_for_window_trigger(&self) -> bool {
+        if self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle
+            || self.output_phase_blocked_by_pending_obj_hit()
+        {
+            return false;
+        }
+
+        true
+    }
+
+    fn late_previsible_dot_has_real_fifo_readiness(&self, mode3_dot: u16) -> bool {
+        (MODE3_BG_FETCH_PRIMING_DOTS - 4..MODE3_BG_FETCH_PRIMING_DOTS).contains(&mode3_dot)
+            && !self.bg_pipeline_state.fifo.is_empty()
+    }
+
+    fn start_window_fetcher_restart(&mut self) {
+        self.bg_pipeline_state.fifo.clear();
+        self.bg_pipeline_state.push.reset();
+        self.bg_pipeline_state.fill.reset();
+        self.bg_pipeline_state.fetcher.start_window();
+        self.bg_pipeline_state.scx_discard_remaining = 0;
+        self.bg_pipeline_state.window_started_this_line = true;
+        self.bg_pipeline_state.window_force_x0_this_line = false;
     }
 
     fn read_fetch_tile_index(
@@ -1936,7 +2045,20 @@ enum PpuPaletteRegister {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode3OutputDotResult {
     NotServed,
-    Served,
+    ServedPreVisibleTransfer,
+    ServedHiddenTransfer,
+    ServedVisiblePixel,
+}
+
+impl Mode3OutputDotResult {
+    fn is_served(self) -> bool {
+        !matches!(self, Self::NotServed)
+    }
+
+    fn can_start_window_after_x0_service(self, initial_scx_discard: u8) -> bool {
+        matches!(self, Self::ServedHiddenTransfer | Self::ServedVisiblePixel)
+            || (self == Self::ServedPreVisibleTransfer && initial_scx_discard == 0)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -3976,8 +4098,9 @@ mod tests {
         ppu.bg_pipeline_state.fifo.push_back(3);
         ppu.obj_pipeline_state.queue_fetch_hit(0, 20);
 
-        ppu.advance_mode3_output_phase();
+        let result = ppu.advance_mode3_output_phase();
 
+        assert_eq!(result, Mode3OutputDotResult::NotServed);
         assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 12);
         assert_eq!(
             ppu.bg_pipeline_state
@@ -4015,8 +4138,9 @@ mod tests {
         ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
         ppu.bg_pipeline_state.current_transfer_x = 5;
 
-        ppu.advance_mode3_output_phase();
+        let result = ppu.advance_mode3_output_phase();
 
+        assert_eq!(result, Mode3OutputDotResult::ServedPreVisibleTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 6);
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
         assert!(ppu.bg_pipeline_state.fifo.is_empty());
@@ -4047,8 +4171,9 @@ mod tests {
         ppu.bg_pipeline_state.current_transfer_x = 0;
         ppu.bg_pipeline_state.scx_discard_remaining = 1;
 
-        ppu.advance_mode3_output_phase();
+        let result = ppu.advance_mode3_output_phase();
 
+        assert_eq!(result, Mode3OutputDotResult::ServedPreVisibleTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
         assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
         assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
@@ -4067,14 +4192,148 @@ mod tests {
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
         ppu.bg_pipeline_state.current_transfer_x = 7;
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+        ppu.bg_pipeline_state.fifo.push_back(0);
 
-        ppu.advance_mode3_output_phase();
+        let result = ppu.advance_mode3_output_phase();
 
+        assert_eq!(result, Mode3OutputDotResult::ServedPreVisibleTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
         assert_eq!(
             ppu.bg_pipeline_state.transfer_phase,
             Mode3TransferPhase::Output
         );
+    }
+
+    #[test]
+    fn late_previsible_dot_advances_only_after_the_first_bg_fifo_fill_exists() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+
+        ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 7);
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+
+        ppu.bg_pipeline_state.fifo.push_back(2);
+
+        let result = ppu.advance_mode3_output_phase();
+
+        assert_eq!(result, Mode3OutputDotResult::ServedPreVisibleTransfer);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fifo
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![2]
+        );
+    }
+
+    #[test]
+    fn late_previsible_scx_discard_waits_for_fifo_then_consumes_the_last_discard_abstractly() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.current_transfer_x = 0;
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+
+        ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
+        assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 1);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
+        assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fifo
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![0]
+        );
+    }
+
+    #[test]
+    fn wx_zero_can_evaluate_window_trigger_on_late_previsible_dots_once_fifo_is_ready() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xF1;
+        ppu.visible_registers.wx = 0;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+
+        assert!(ppu.hidden_wx0_window_trigger_evaluation_enabled());
+        assert!(!ppu.current_dot_can_attempt_window_trigger());
+
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        assert!(ppu.current_dot_can_attempt_window_trigger());
+    }
+
+    #[test]
+    fn wx_zero_applies_its_last_scx_discard_shortening_before_hidden_fifo_backed_dots() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xF1;
+        ppu.visible_registers.wx = 0;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT + 2;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 3;
+        ppu.bg_pipeline_state.initial_scx_discard = 3;
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+        ppu.bg_pipeline_state.current_transfer_x = 0;
+
+        ppu.maybe_apply_hidden_wx0_last_scx_discard_shortening();
+
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 2);
+        assert!(!ppu.bg_pipeline_state.window_started_this_line);
+    }
+
+    #[test]
+    fn wx_seven_does_not_evaluate_window_trigger_before_bg_fetch_priming_finishes() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xF1;
+        ppu.visible_registers.wx = 7;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        assert!(!ppu.hidden_wx0_window_trigger_evaluation_enabled());
+    }
+
+    #[test]
+    fn pending_obj_hit_blocks_window_trigger_attempts_for_the_current_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x93;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.visible_pixels_output = 8;
+        ppu.bg_pipeline_state.fifo.push_back(1);
+        ppu.obj_pipeline_state.queue_fetch_hit(0, 8);
+
+        assert!(!ppu.current_dot_can_attempt_window_trigger());
     }
 
     #[test]
@@ -4088,14 +4347,32 @@ mod tests {
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.bg_pipeline_state.fifo.push_back(0);
 
-        ppu.advance_mode3_output_phase();
+        let result = ppu.advance_mode3_output_phase();
 
+        assert_eq!(result, Mode3OutputDotResult::ServedHiddenTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
         assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
         assert_eq!(
             ppu.bg_pipeline_state.transfer_phase,
             Mode3TransferPhase::Output
         );
+    }
+
+    #[test]
+    fn visible_bg_pixel_output_reports_a_visible_pixel_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x91;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(2);
+
+        let result = ppu.advance_mode3_output_phase();
+
+        assert_eq!(result, Mode3OutputDotResult::ServedVisiblePixel);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 9);
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 1);
     }
 
     #[test]
