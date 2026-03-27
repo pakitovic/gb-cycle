@@ -968,7 +968,7 @@ impl Ppu {
     }
 
     fn advance_mode3_output_phase(&mut self) -> Mode3TransferDot {
-        if self.output_phase_blocked_by_pending_obj_hit() {
+        if self.should_block_transfer_for_pending_obj_hit() {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
             return Mode3TransferDot::not_served();
         }
@@ -980,12 +980,16 @@ impl Ppu {
         self.pop_bg_pixel_for_current_dot()
     }
 
-    fn output_phase_blocked_by_pending_obj_hit(&self) -> bool {
+    fn current_dot_has_pending_obj_hit(&self) -> bool {
         self.obj_enabled()
-            && self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
             && self
                 .obj_pipeline_state
                 .pending_hits_own_current_dot(self.current_obj_hit_ownership())
+    }
+
+    fn should_block_transfer_for_pending_obj_hit(&self) -> bool {
+        self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
+            && self.current_dot_has_pending_obj_hit()
     }
 
     fn serve_previsible_transfer_dot(&mut self) -> Option<Mode3TransferDot> {
@@ -1113,11 +1117,10 @@ impl Ppu {
             return BgPushDotResult::NotReady;
         }
 
-        if self.try_start_object_fetch_from_latched_hit(true) {
-            return BgPushDotResult::HandedOffToObjectFetch;
-        }
-
         if !self.bg_pipeline_state.fifo.is_empty() {
+            if self.try_start_object_fetch_from_latched_hit(true) {
+                return BgPushDotResult::HandedOffToObjectFetch;
+            }
             return BgPushDotResult::WaitingForEmptyFifo;
         }
 
@@ -1126,6 +1129,11 @@ impl Ppu {
         self.bg_pipeline_state.fetcher.next_fetch_pixel = push.next_fetch_pixel;
         self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
         self.bg_pipeline_state.push.reset();
+
+        if self.try_start_object_fetch_from_latched_hit_for_queued_fill(true) {
+            return BgPushDotResult::QueuedFillAndHandedOffToObjectFetch;
+        }
+
         BgPushDotResult::QueuedFill
     }
 
@@ -1311,6 +1319,32 @@ impl Ppu {
         if overlap_current_dot {
             self.bg_pipeline_state.push.interrupt_for_object_fetch();
         }
+        if overlap_current_dot {
+            self.bg_pipeline_state.extend_mode3_by_one_dot();
+            self.obj_pipeline_state.fetch.stage_dot = 1;
+        }
+        true
+    }
+
+    fn try_start_object_fetch_from_latched_hit_for_queued_fill(
+        &mut self,
+        overlap_current_dot: bool,
+    ) -> bool {
+        if self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle || !self.obj_enabled() {
+            return false;
+        }
+        if !self.current_dot_has_pending_obj_hit() {
+            return false;
+        }
+
+        let Some(sprite_slot) = self.obj_pipeline_state.pop_pending_fetch_hit() else {
+            return false;
+        };
+        let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
+            return false;
+        };
+
+        self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
         if overlap_current_dot {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
             self.obj_pipeline_state.fetch.stage_dot = 1;
@@ -2337,6 +2371,7 @@ enum BgPushDotResult {
     EntryDelay,
     WaitingForEmptyFifo,
     HandedOffToObjectFetch,
+    QueuedFillAndHandedOffToObjectFetch,
     QueuedFill,
 }
 
@@ -4003,6 +4038,47 @@ mod tests {
         assert_eq!(ppu.bg_pipeline_state.fifo.len(), 1);
         assert!(!ppu.bg_pipeline_state.fill.pending);
         assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+    }
+
+    #[test]
+    fn bg_push_with_an_empty_fifo_can_queue_fill_and_start_object_fetch_on_the_same_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        assert_eq!(
+            ppu.advance_bg_push(),
+            BgPushDotResult::QueuedFillAndHandedOffToObjectFetch
+        );
+        assert!(!ppu.bg_pipeline_state.push.pending);
+        assert!(ppu.bg_pipeline_state.fill.pending);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex
+        );
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::Startup
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
     }
 
     #[test]
