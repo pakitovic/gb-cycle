@@ -986,15 +986,19 @@ impl Ppu {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
             Mode3TransferDot::not_served()
         } else {
-            match self.current_transfer_readiness() {
+            match self.current_transfer() {
                 None => return Mode3TransferDot::not_served(),
-                Some(Mode3TransferReadiness::WaitingForFifo(_)) => {
+                Some(Mode3CurrentTransfer {
+                    readiness: Mode3TransferReadiness::WaitingForFifo(_),
+                    ..
+                }) => {
                     self.bg_pipeline_state.extend_mode3_by_one_dot();
                     Mode3TransferDot::not_served()
                 }
-                Some(Mode3TransferReadiness::Ready(plan)) => {
-                    self.execute_transfer_service_plan(plan)
-                }
+                Some(Mode3CurrentTransfer {
+                    readiness: Mode3TransferReadiness::Ready(plan),
+                    ..
+                }) => self.execute_transfer_service_plan(plan),
             }
         };
 
@@ -1015,8 +1019,8 @@ impl Ppu {
             && self.obj_enabled()
             && has_pending_obj_hit;
         let current_transfer_is_fifo_backed = self
-            .current_transfer_readiness()
-            .is_some_and(|readiness| readiness.can_start_obj_fetch_from_fifo_backed_transfer());
+            .current_transfer()
+            .is_some_and(|transfer| transfer.can_start_obj_fetch_from_fifo_backed_transfer());
 
         Mode3DotArbitration {
             bg_transfer_can_advance: !has_pending_obj_hit,
@@ -1056,8 +1060,10 @@ impl Ppu {
         })
     }
 
-    fn current_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
-        let context = self.current_transfer_context()?;
+    fn transfer_service_plan_from_context(
+        &self,
+        context: Mode3TransferContext,
+    ) -> Option<Mode3TransferServicePlan> {
         let action = if self.bg_pipeline_state.scx_discard_remaining > 0 {
             Mode3TransferServiceAction::ConsumeScxDiscard
         } else if self.bg_pipeline_state.current_transfer_x < 8 {
@@ -1092,13 +1098,23 @@ impl Ppu {
         })
     }
 
-    fn current_transfer_readiness(&self) -> Option<Mode3TransferReadiness> {
-        let plan = self.current_transfer_service_plan()?;
-        if plan.backing.requires_fifo_backing() && self.bg_pipeline_state.fifo.is_empty() {
-            Some(Mode3TransferReadiness::WaitingForFifo(plan))
-        } else {
-            Some(Mode3TransferReadiness::Ready(plan))
-        }
+    #[cfg(test)]
+    fn current_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
+        self.current_transfer()
+            .map(|transfer| transfer.service_plan())
+    }
+
+    fn current_transfer(&self) -> Option<Mode3CurrentTransfer> {
+        let context = self.current_transfer_context()?;
+        let plan = self.transfer_service_plan_from_context(context)?;
+        let readiness =
+            if plan.backing.requires_fifo_backing() && self.bg_pipeline_state.fifo.is_empty() {
+                Mode3TransferReadiness::WaitingForFifo(plan)
+            } else {
+                Mode3TransferReadiness::Ready(plan)
+            };
+
+        Some(Mode3CurrentTransfer { context, readiness })
     }
 
     fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
@@ -1418,11 +1434,13 @@ impl Ppu {
 
     fn current_obj_hit_ownership(&self) -> ObjHitOwnership {
         let phase = self
-            .current_transfer_context()
-            .map_or(ObjHitPhase::PreVisible, |context| match context.lane {
-                Mode3TransferLane::PreVisible => ObjHitPhase::PreVisible,
-                Mode3TransferLane::Hidden => ObjHitPhase::Hidden,
-                Mode3TransferLane::Visible => ObjHitPhase::Visible,
+            .current_transfer()
+            .map_or(ObjHitPhase::PreVisible, |transfer| {
+                match transfer.context.lane {
+                    Mode3TransferLane::PreVisible => ObjHitPhase::PreVisible,
+                    Mode3TransferLane::Hidden => ObjHitPhase::Hidden,
+                    Mode3TransferLane::Visible => ObjHitPhase::Visible,
+                }
             });
 
         ObjHitOwnership {
@@ -2159,6 +2177,28 @@ struct Mode3TransferServicePlan {
     result_kind: Mode3TransferDotKind,
     action: Mode3TransferServiceAction,
     backing: Mode3TransferBacking,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3CurrentTransfer {
+    context: Mode3TransferContext,
+    readiness: Mode3TransferReadiness,
+}
+
+impl Mode3CurrentTransfer {
+    #[cfg(test)]
+    const fn service_plan(self) -> Mode3TransferServicePlan {
+        match self.readiness {
+            Mode3TransferReadiness::WaitingForFifo(plan) | Mode3TransferReadiness::Ready(plan) => {
+                plan
+            }
+        }
+    }
+
+    const fn can_start_obj_fetch_from_fifo_backed_transfer(self) -> bool {
+        self.readiness
+            .can_start_obj_fetch_from_fifo_backed_transfer()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4495,6 +4535,53 @@ mod tests {
         assert!(!fifo_backed.can_serve_bg_transfer());
         assert!(fifo_backed.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
         assert!(fifo_backed.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
+    }
+
+    #[test]
+    fn current_transfer_snapshot_keeps_context_and_readiness_together() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+
+        let waiting = ppu
+            .current_transfer()
+            .expect("hidden startup dot must have transfer state");
+        assert_eq!(
+            waiting.context,
+            Mode3TransferContext {
+                lane: Mode3TransferLane::Hidden,
+                source_window: Mode3TransferSourceWindow::FifoBacked,
+            }
+        );
+        assert_eq!(
+            waiting.readiness,
+            Mode3TransferReadiness::WaitingForFifo(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                action: Mode3TransferServiceAction::AdvanceHiddenX,
+                backing: Mode3TransferBacking::FifoBacked,
+            })
+        );
+
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        let ready = ppu
+            .current_transfer()
+            .expect("same hidden dot must stay describable");
+        assert_eq!(ready.context, waiting.context);
+        assert_eq!(ready.service_plan(), waiting.service_plan());
+        assert_eq!(
+            ready.readiness,
+            Mode3TransferReadiness::Ready(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                action: Mode3TransferServiceAction::AdvanceHiddenX,
+                backing: Mode3TransferBacking::FifoBacked,
+            })
+        );
     }
 
     #[test]
