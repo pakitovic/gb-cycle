@@ -28,6 +28,7 @@ const TOTAL_SCANLINES: u8 = 154;
 const MODE2_DOTS: u16 = 80;
 const MODE3_BASELINE_DOTS: u16 = 172;
 const MODE3_BG_FETCH_PRIMING_DOTS: u16 = 12;
+const MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT: u16 = MODE3_BG_FETCH_PRIMING_DOTS - 4;
 const MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT: u16 = MODE3_BG_FETCH_PRIMING_DOTS - 8;
 const MODE0_START_DOT: u16 = MODE2_DOTS + MODE3_BASELINE_DOTS;
 const DMG_PALETTE_RETROACTIVE_PIXELS: usize = 4;
@@ -40,7 +41,6 @@ const BG_TILE_WIDTH: u8 = 8;
 const BG_TILE_MAP_WIDTH: u8 = 32;
 const TILE_BYTES: u16 = 16;
 const TILE_ROW_BYTES: u16 = 2;
-const BG_FIFO_LOW_WATERMARK: usize = 8;
 const PPU_PENDING_VBLANK_INTERRUPT_BIT: u8 = 0x01;
 const PPU_PENDING_LCD_STAT_INTERRUPT_BIT: u8 = 0x02;
 const OAM_CORRUPTION_DOTS_PER_ROW: u16 = 4;
@@ -996,7 +996,8 @@ impl Ppu {
             return None;
         }
 
-        if mode3_dot >= MODE3_BG_FETCH_PRIMING_DOTS - 4 && self.bg_pipeline_state.fifo.is_empty() {
+        let late_hidden_transfer_dot = mode3_dot >= MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT;
+        if late_hidden_transfer_dot && self.bg_pipeline_state.fifo.is_empty() {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
             return Some(Mode3TransferDot::not_served());
         }
@@ -1004,19 +1005,23 @@ impl Ppu {
         if self.bg_pipeline_state.scx_discard_remaining > 0 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.scx_discard_remaining -= 1;
-            return Some(Mode3TransferDot::served(
-                Mode3TransferDotKind::ServedPreVisibleTransfer,
-                true,
-            ));
+            let kind = if late_hidden_transfer_dot {
+                Mode3TransferDotKind::ServedHiddenTransfer
+            } else {
+                Mode3TransferDotKind::ServedPreVisibleTransfer
+            };
+            return Some(Mode3TransferDot::served(kind, true));
         }
 
         if self.bg_pipeline_state.current_transfer_x < 8 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.current_transfer_x += 1;
-            return Some(Mode3TransferDot::served(
-                Mode3TransferDotKind::ServedPreVisibleTransfer,
-                false,
-            ));
+            let kind = if late_hidden_transfer_dot {
+                Mode3TransferDotKind::ServedHiddenTransfer
+            } else {
+                Mode3TransferDotKind::ServedPreVisibleTransfer
+            };
+            return Some(Mode3TransferDot::served(kind, false));
         }
 
         None
@@ -1112,8 +1117,8 @@ impl Ppu {
             return BgPushDotResult::HandedOffToObjectFetch;
         }
 
-        if self.bg_pipeline_state.fifo.len() > BG_FIFO_LOW_WATERMARK {
-            return BgPushDotResult::WaitingForFifoSpace;
+        if !self.bg_pipeline_state.fifo.is_empty() {
+            return BgPushDotResult::WaitingForEmptyFifo;
         }
 
         let push = self.bg_pipeline_state.push;
@@ -1314,7 +1319,9 @@ impl Ppu {
     }
 
     fn current_obj_hit_ownership(&self) -> ObjHitOwnership {
-        let phase = if self.line_dot.saturating_sub(MODE2_DOTS) < MODE3_BG_FETCH_PRIMING_DOTS {
+        let phase = if self.line_dot.saturating_sub(MODE2_DOTS)
+            < MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT
+        {
             ObjHitPhase::PreVisible
         } else if self.bg_pipeline_state.scx_discard_remaining > 0
             || self.bg_pipeline_state.current_transfer_x < 8
@@ -1476,20 +1483,11 @@ impl Ppu {
         if trigger_x == 0 {
             return self.bg_pipeline_state.scx_discard_remaining == 0
                 && self.bg_pipeline_state.current_transfer_x >= 8
-                && transfer_dot.can_start_window_after_x0_service(
-                    self.bg_pipeline_state.initial_scx_discard,
-                    self.previsible_x0_transfer_dot_has_fifo_readiness(),
-                );
+                && transfer_dot.can_start_window_after_x0_service();
         }
 
         self.bg_pipeline_state.scx_discard_remaining == 0
             && transfer_dot.kind == Mode3TransferDotKind::ServedVisiblePixel
-    }
-
-    fn previsible_x0_transfer_dot_has_fifo_readiness(&self) -> bool {
-        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
-        (MODE3_BG_FETCH_PRIMING_DOTS - 4..MODE3_BG_FETCH_PRIMING_DOTS).contains(&mode3_dot)
-            && !self.bg_pipeline_state.fifo.is_empty()
     }
 
     fn start_window_fetcher_restart(&mut self) {
@@ -2018,17 +2016,11 @@ impl Mode3TransferDot {
         !matches!(self.kind, Mode3TransferDotKind::NotServed)
     }
 
-    fn can_start_window_after_x0_service(
-        self,
-        initial_scx_discard: u8,
-        previsible_fifo_ready: bool,
-    ) -> bool {
+    fn can_start_window_after_x0_service(self) -> bool {
         matches!(
             self.kind,
             Mode3TransferDotKind::ServedHiddenTransfer | Mode3TransferDotKind::ServedVisiblePixel
-        ) || (self.kind == Mode3TransferDotKind::ServedPreVisibleTransfer
-            && initial_scx_discard == 0
-            && previsible_fifo_ready)
+        )
     }
 }
 
@@ -2343,7 +2335,7 @@ enum BgPushDisposition {
 enum BgPushDotResult {
     NotReady,
     EntryDelay,
-    WaitingForFifoSpace,
+    WaitingForEmptyFifo,
     HandedOffToObjectFetch,
     QueuedFill,
 }
@@ -3900,13 +3892,15 @@ mod tests {
 
         let result = ppu.advance_bg_push();
 
-        assert_eq!(result, BgPushDotResult::WaitingForFifoSpace);
+        assert_eq!(result, BgPushDotResult::WaitingForEmptyFifo);
         assert!(ppu.bg_pipeline_state.push.pending);
         assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
         assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 0);
         assert_eq!(ppu.bg_pipeline_state.fifo.len(), 9);
 
-        let _ = ppu.bg_pipeline_state.fifo.pop_front();
+        for _ in 0..9 {
+            let _ = ppu.bg_pipeline_state.fifo.pop_front();
+        }
         let result = ppu.advance_bg_push();
 
         assert_eq!(result, BgPushDotResult::QueuedFill);
@@ -3917,17 +3911,16 @@ mod tests {
             PpuBgFetcherStage::TileIndex
         );
         assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 8);
-        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 8);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 0);
 
         ppu.flush_pending_bg_fifo_fill();
 
         assert!(!ppu.bg_pipeline_state.fill.pending);
-        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 16);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 8);
         assert_eq!(
             ppu.bg_pipeline_state
                 .fifo
                 .iter()
-                .skip(8)
                 .copied()
                 .collect::<Vec<_>>(),
             vec![0, 1, 2, 3, 0, 1, 2, 3]
@@ -4035,13 +4028,15 @@ mod tests {
 
         assert_eq!(
             ppu.advance_bg_push_stage(),
-            BgPushDotResult::WaitingForFifoSpace
+            BgPushDotResult::WaitingForEmptyFifo
         );
         assert!(ppu.bg_pipeline_state.push.pending);
         assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
         assert_eq!(ppu.bg_pipeline_state.fifo.len(), 9);
 
-        let _ = ppu.bg_pipeline_state.fifo.pop_front();
+        for _ in 0..9 {
+            let _ = ppu.bg_pipeline_state.fifo.pop_front();
+        }
         assert_eq!(ppu.advance_bg_push_stage(), BgPushDotResult::QueuedFill);
         assert!(!ppu.bg_pipeline_state.push.pending);
         assert!(ppu.bg_pipeline_state.fill.pending);
@@ -4050,12 +4045,12 @@ mod tests {
             PpuBgFetcherStage::TileIndex
         );
         assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 8);
-        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 8);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 0);
 
         ppu.flush_pending_bg_fifo_fill();
 
         assert!(!ppu.bg_pipeline_state.fill.pending);
-        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 16);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 8);
     }
 
     #[test]
@@ -4197,7 +4192,7 @@ mod tests {
     }
 
     #[test]
-    fn abstract_previsible_hidden_service_moves_transfer_phase_to_output() {
+    fn fifo_backed_hidden_service_moves_transfer_phase_to_output() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
         ppu.ly = 0;
@@ -4208,11 +4203,19 @@ mod tests {
 
         let result = ppu.advance_mode3_output_phase();
 
-        assert_eq!(result.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedHiddenTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
         assert_eq!(
             ppu.bg_pipeline_state.transfer_phase,
             Mode3TransferPhase::Output
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fifo
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![0]
         );
     }
 
@@ -4235,7 +4238,7 @@ mod tests {
 
         let result = ppu.advance_mode3_output_phase();
 
-        assert_eq!(result.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedHiddenTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
         assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
@@ -4250,7 +4253,7 @@ mod tests {
     }
 
     #[test]
-    fn late_previsible_scx_discard_waits_for_fifo_then_consumes_the_last_discard_abstractly() {
+    fn late_hidden_scx_discard_waits_for_fifo_then_consumes_the_last_discard_with_fifo_backing() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
         ppu.ly = 0;
@@ -4302,10 +4305,7 @@ mod tests {
 
         let ready_dot = ppu.advance_mode3_output_phase();
 
-        assert_eq!(
-            ready_dot.kind,
-            Mode3TransferDotKind::ServedPreVisibleTransfer
-        );
+        assert_eq!(ready_dot.kind, Mode3TransferDotKind::ServedHiddenTransfer);
         assert!(ppu.maybe_start_window_after_transfer_dot(ready_dot));
         assert!(ppu.bg_pipeline_state.window_started_this_line);
         assert_eq!(
@@ -4349,7 +4349,7 @@ mod tests {
 
         assert_eq!(
             transfer_dot.kind,
-            Mode3TransferDotKind::ServedPreVisibleTransfer
+            Mode3TransferDotKind::ServedHiddenTransfer
         );
         assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
         assert!(ppu.bg_pipeline_state.window_started_this_line);
