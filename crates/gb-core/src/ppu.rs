@@ -943,25 +943,15 @@ impl Ppu {
                 .start_line(self.visible_registers.scx);
         }
 
-        self.maybe_apply_hidden_wx0_last_scx_discard_shortening();
-        let window_started_this_dot = if self.hidden_wx0_window_trigger_evaluation_enabled() {
-            self.maybe_start_hidden_wx0_window_for_current_dot()
-        } else {
-            false
-        };
-
         self.flush_pending_bg_fifo_fill();
 
-        if !window_started_this_dot
-            && self.advance_mode3_object_phase(oam, vram, dma_oam_conflict_address)
-        {
+        if self.advance_mode3_object_phase(oam, vram, dma_oam_conflict_address) {
             return;
         }
 
-        let output_result = self.advance_mode3_output_phase();
-        if !window_started_this_dot {
-            let _ = self.maybe_start_window_after_served_output_dot(output_result);
-        }
+        let output_dot = self.advance_mode3_output_phase();
+        self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
+        let _ = self.maybe_start_window_after_transfer_dot(output_dot);
         let _ = self.advance_bg_fetcher(vram);
     }
 
@@ -977,10 +967,10 @@ impl Ppu {
         self.advance_object_fetch(oam, vram, dma_oam_conflict_address)
     }
 
-    fn advance_mode3_output_phase(&mut self) -> Mode3OutputDotResult {
+    fn advance_mode3_output_phase(&mut self) -> Mode3TransferDot {
         if self.output_phase_blocked_by_pending_obj_hit() {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
-            return Mode3OutputDotResult::NotServed;
+            return Mode3TransferDot::not_served();
         }
 
         if let Some(result) = self.serve_previsible_transfer_dot() {
@@ -998,7 +988,7 @@ impl Ppu {
                 .pending_hits_own_current_dot(self.current_obj_hit_ownership())
     }
 
-    fn serve_previsible_transfer_dot(&mut self) -> Option<Mode3OutputDotResult> {
+    fn serve_previsible_transfer_dot(&mut self) -> Option<Mode3TransferDot> {
         let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
         if !(MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT..MODE3_BG_FETCH_PRIMING_DOTS)
             .contains(&mode3_dot)
@@ -1008,19 +998,25 @@ impl Ppu {
 
         if mode3_dot >= MODE3_BG_FETCH_PRIMING_DOTS - 4 && self.bg_pipeline_state.fifo.is_empty() {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
-            return Some(Mode3OutputDotResult::NotServed);
+            return Some(Mode3TransferDot::not_served());
         }
 
         if self.bg_pipeline_state.scx_discard_remaining > 0 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.scx_discard_remaining -= 1;
-            return Some(Mode3OutputDotResult::ServedPreVisibleTransfer);
+            return Some(Mode3TransferDot::served(
+                Mode3TransferDotKind::ServedPreVisibleTransfer,
+                true,
+            ));
         }
 
         if self.bg_pipeline_state.current_transfer_x < 8 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.current_transfer_x += 1;
-            return Some(Mode3OutputDotResult::ServedPreVisibleTransfer);
+            return Some(Mode3TransferDot::served(
+                Mode3TransferDotKind::ServedPreVisibleTransfer,
+                false,
+            ));
         }
 
         None
@@ -1133,31 +1129,31 @@ impl Ppu {
         self.bg_pipeline_state.fill.reset();
     }
 
-    fn pop_bg_pixel_for_current_dot(&mut self) -> Mode3OutputDotResult {
+    fn pop_bg_pixel_for_current_dot(&mut self) -> Mode3TransferDot {
         let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
 
         if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS
             || self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
         {
-            return Mode3OutputDotResult::NotServed;
+            return Mode3TransferDot::not_served();
         }
 
         let Some(pixel) = self.bg_pipeline_state.fifo.pop_front() else {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
-            return Mode3OutputDotResult::NotServed;
+            return Mode3TransferDot::not_served();
         };
 
         if self.bg_pipeline_state.scx_discard_remaining > 0 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.scx_discard_remaining -= 1;
-            return Mode3OutputDotResult::ServedHiddenTransfer;
+            return Mode3TransferDot::served(Mode3TransferDotKind::ServedHiddenTransfer, true);
         }
 
         if self.bg_pipeline_state.current_transfer_x < 8 {
             self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
             self.bg_pipeline_state.current_transfer_x += 1;
             let _ = self.pop_obj_fifo_pixel();
-            return Mode3OutputDotResult::ServedHiddenTransfer;
+            return Mode3TransferDot::served(Mode3TransferDotKind::ServedHiddenTransfer, false);
         }
 
         let bg_pixel = if self.bg_enabled() { pixel } else { 0 };
@@ -1181,7 +1177,7 @@ impl Ppu {
         self.bg_pipeline_state.current_transfer_x =
             self.bg_pipeline_state.current_transfer_x.saturating_add(1);
         self.bg_pipeline_state.visible_pixels_output += 1;
-        Mode3OutputDotResult::ServedVisiblePixel
+        Mode3TransferDot::served(Mode3TransferDotKind::ServedVisiblePixel, false)
     }
 
     fn bg_enabled(&self) -> bool {
@@ -1192,42 +1188,26 @@ impl Ppu {
         self.visible_registers.obj_enabled()
     }
 
-    fn maybe_start_hidden_wx0_window_for_current_dot(&mut self) -> bool {
-        if self.bg_pipeline_state.window_started_this_line
+    fn maybe_apply_wx0_shortening_after_transfer_dot(&mut self, transfer_dot: Mode3TransferDot) {
+        if !transfer_dot.consumed_scx_discard
+            || self.bg_pipeline_state.window_started_this_line
             || !self.bg_pipeline_state.window_wy_latch
             || !self.window_runtime_enabled()
+            || self.visible_registers.wx != 0
+            || self.bg_pipeline_state.window_force_x0_this_line
+            || self.bg_pipeline_state.visible_pixels_output != 0
+            || self.bg_pipeline_state.current_transfer_x >= 8
+            || self.bg_pipeline_state.initial_scx_discard == 0
+            || self.bg_pipeline_state.scx_discard_remaining != 0
         {
-            return false;
+            return;
         }
 
-        if self.visible_registers.wx != 0 || self.bg_pipeline_state.window_force_x0_this_line {
-            return false;
-        }
-
-        if !self.current_dot_can_attempt_window_trigger() {
-            return false;
-        }
-
-        if !self.should_start_hidden_wx0_window_now() {
-            return false;
-        }
-
-        if self.bg_pipeline_state.initial_scx_discard > 0
-            && self.bg_pipeline_state.visible_pixels_output == 0
-            && self.bg_pipeline_state.current_transfer_x < 8
-        {
-            self.bg_pipeline_state.apply_wx0_scx_shortening();
-        }
-
-        self.start_window_fetcher_restart();
-        true
+        self.bg_pipeline_state.apply_wx0_scx_shortening();
     }
 
-    fn maybe_start_window_after_served_output_dot(
-        &mut self,
-        output_result: Mode3OutputDotResult,
-    ) -> bool {
-        if !output_result.is_served()
+    fn maybe_start_window_after_transfer_dot(&mut self, transfer_dot: Mode3TransferDot) -> bool {
+        if !transfer_dot.is_served()
             || self.bg_pipeline_state.window_started_this_line
             || !self.bg_pipeline_state.window_wy_latch
             || !self.window_runtime_enabled()
@@ -1250,7 +1230,7 @@ impl Ppu {
             return false;
         };
 
-        if !self.should_start_window_after_served_output_now(trigger_x, output_result) {
+        if !self.should_start_window_after_transfer_dot_now(trigger_x, transfer_dot) {
             return false;
         }
 
@@ -1260,33 +1240,6 @@ impl Ppu {
 
     fn window_runtime_enabled(&self) -> bool {
         self.visible_registers.window_enabled() && self.bg_enabled()
-    }
-
-    fn maybe_apply_hidden_wx0_last_scx_discard_shortening(&mut self) {
-        if self.bg_pipeline_state.window_started_this_line
-            || !self.bg_pipeline_state.window_wy_latch
-            || !self.window_runtime_enabled()
-            || self.visible_registers.wx != 0
-            || self.bg_pipeline_state.window_force_x0_this_line
-            || self.bg_pipeline_state.visible_pixels_output != 0
-            || self.bg_pipeline_state.current_transfer_x >= 8
-            || self.bg_pipeline_state.initial_scx_discard == 0
-            || self.bg_pipeline_state.scx_discard_remaining != 1
-            || !self.current_dot_is_free_for_window_trigger()
-        {
-            return;
-        }
-
-        self.bg_pipeline_state.apply_wx0_scx_shortening();
-    }
-
-    fn hidden_wx0_window_trigger_evaluation_enabled(&self) -> bool {
-        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
-        mode3_dot >= MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT
-            && self.visible_registers.wx == 0
-            && !self.bg_pipeline_state.window_force_x0_this_line
-            && self.bg_pipeline_state.visible_pixels_output == 0
-            && self.bg_pipeline_state.current_transfer_x < 8
     }
 
     fn latch_object_fetch_hits(&mut self) {
@@ -1502,17 +1455,10 @@ impl Ppu {
         }
     }
 
-    fn should_start_hidden_wx0_window_now(&self) -> bool {
-        self.bg_pipeline_state.visible_pixels_output == 0
-            && self.window_x0_can_claim_the_current_hidden_transfer_dot()
-            && self.bg_pipeline_state.initial_scx_discard == 0
-            && self.bg_pipeline_state.scx_discard_remaining == 0
-    }
-
-    fn should_start_window_after_served_output_now(
+    fn should_start_window_after_transfer_dot_now(
         &self,
         trigger_x: u8,
-        output_result: Mode3OutputDotResult,
+        transfer_dot: Mode3TransferDot,
     ) -> bool {
         if self.bg_pipeline_state.visible_pixels_output != trigger_x {
             return false;
@@ -1521,43 +1467,18 @@ impl Ppu {
         if trigger_x == 0 {
             return self.bg_pipeline_state.scx_discard_remaining == 0
                 && self.bg_pipeline_state.current_transfer_x >= 8
-                && output_result
-                    .can_start_window_after_x0_service(self.bg_pipeline_state.initial_scx_discard);
+                && transfer_dot.can_start_window_after_x0_service(
+                    self.bg_pipeline_state.initial_scx_discard,
+                    self.previsible_x0_transfer_dot_has_fifo_readiness(),
+                );
         }
 
         self.bg_pipeline_state.scx_discard_remaining == 0
-            && output_result == Mode3OutputDotResult::ServedVisiblePixel
+            && transfer_dot.kind == Mode3TransferDotKind::ServedVisiblePixel
     }
 
-    fn window_x0_can_claim_the_current_hidden_transfer_dot(&self) -> bool {
-        self.bg_pipeline_state.current_transfer_x < 8
-            && self.current_dot_can_attempt_window_trigger()
-    }
-
-    fn current_dot_can_attempt_window_trigger(&self) -> bool {
-        if !self.current_dot_is_free_for_window_trigger() {
-            return false;
-        }
-
+    fn previsible_x0_transfer_dot_has_fifo_readiness(&self) -> bool {
         let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
-        if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS {
-            return self.late_previsible_dot_has_real_fifo_readiness(mode3_dot);
-        }
-
-        !self.bg_pipeline_state.fifo.is_empty()
-    }
-
-    fn current_dot_is_free_for_window_trigger(&self) -> bool {
-        if self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle
-            || self.output_phase_blocked_by_pending_obj_hit()
-        {
-            return false;
-        }
-
-        true
-    }
-
-    fn late_previsible_dot_has_real_fifo_readiness(&self, mode3_dot: u16) -> bool {
         (MODE3_BG_FETCH_PRIMING_DOTS - 4..MODE3_BG_FETCH_PRIMING_DOTS).contains(&mode3_dot)
             && !self.bg_pipeline_state.fifo.is_empty()
     }
@@ -2056,21 +1977,49 @@ enum PpuPaletteRegister {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode3OutputDotResult {
+enum Mode3TransferDotKind {
     NotServed,
     ServedPreVisibleTransfer,
     ServedHiddenTransfer,
     ServedVisiblePixel,
 }
 
-impl Mode3OutputDotResult {
-    fn is_served(self) -> bool {
-        !matches!(self, Self::NotServed)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3TransferDot {
+    kind: Mode3TransferDotKind,
+    consumed_scx_discard: bool,
+}
+
+impl Mode3TransferDot {
+    const fn not_served() -> Self {
+        Self {
+            kind: Mode3TransferDotKind::NotServed,
+            consumed_scx_discard: false,
+        }
     }
 
-    fn can_start_window_after_x0_service(self, initial_scx_discard: u8) -> bool {
-        matches!(self, Self::ServedHiddenTransfer | Self::ServedVisiblePixel)
-            || (self == Self::ServedPreVisibleTransfer && initial_scx_discard == 0)
+    const fn served(kind: Mode3TransferDotKind, consumed_scx_discard: bool) -> Self {
+        Self {
+            kind,
+            consumed_scx_discard,
+        }
+    }
+
+    fn is_served(self) -> bool {
+        !matches!(self.kind, Mode3TransferDotKind::NotServed)
+    }
+
+    fn can_start_window_after_x0_service(
+        self,
+        initial_scx_discard: u8,
+        previsible_fifo_ready: bool,
+    ) -> bool {
+        matches!(
+            self.kind,
+            Mode3TransferDotKind::ServedHiddenTransfer | Mode3TransferDotKind::ServedVisiblePixel
+        ) || (self.kind == Mode3TransferDotKind::ServedPreVisibleTransfer
+            && initial_scx_discard == 0
+            && previsible_fifo_ready)
     }
 }
 
@@ -4128,7 +4077,7 @@ mod tests {
 
         let result = ppu.advance_mode3_output_phase();
 
-        assert_eq!(result, Mode3OutputDotResult::NotServed);
+        assert_eq!(result.kind, Mode3TransferDotKind::NotServed);
         assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 12);
         assert_eq!(
             ppu.bg_pipeline_state
@@ -4169,7 +4118,7 @@ mod tests {
 
         let result = ppu.advance_mode3_output_phase();
 
-        assert_eq!(result, Mode3OutputDotResult::ServedPreVisibleTransfer);
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 6);
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
         assert!(ppu.bg_pipeline_state.fifo.is_empty());
@@ -4202,7 +4151,8 @@ mod tests {
 
         let result = ppu.advance_mode3_output_phase();
 
-        assert_eq!(result, Mode3OutputDotResult::ServedPreVisibleTransfer);
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
+        assert!(result.consumed_scx_discard);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
         assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
         assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
@@ -4225,7 +4175,7 @@ mod tests {
 
         let result = ppu.advance_mode3_output_phase();
 
-        assert_eq!(result, Mode3OutputDotResult::ServedPreVisibleTransfer);
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
         assert_eq!(
             ppu.bg_pipeline_state.transfer_phase,
@@ -4252,7 +4202,7 @@ mod tests {
 
         let result = ppu.advance_mode3_output_phase();
 
-        assert_eq!(result, Mode3OutputDotResult::ServedPreVisibleTransfer);
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
         assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
@@ -4300,7 +4250,7 @@ mod tests {
     }
 
     #[test]
-    fn wx_zero_can_evaluate_window_trigger_on_late_previsible_dots_once_fifo_is_ready() {
+    fn wx_zero_previsible_window_start_requires_a_late_fifo_backed_served_dot() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0xF1;
         ppu.visible_registers.wx = 0;
@@ -4308,17 +4258,31 @@ mod tests {
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
         ppu.bg_pipeline_state.window_wy_latch = true;
         ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
 
-        assert!(ppu.hidden_wx0_window_trigger_evaluation_enabled());
-        assert!(!ppu.current_dot_can_attempt_window_trigger());
+        let not_ready_dot = ppu.advance_mode3_output_phase();
+        assert_eq!(not_ready_dot.kind, Mode3TransferDotKind::NotServed);
+        assert!(!ppu.maybe_start_window_after_transfer_dot(not_ready_dot));
 
         ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
 
-        assert!(ppu.current_dot_can_attempt_window_trigger());
+        let ready_dot = ppu.advance_mode3_output_phase();
+
+        assert_eq!(
+            ready_dot.kind,
+            Mode3TransferDotKind::ServedPreVisibleTransfer
+        );
+        assert!(ppu.maybe_start_window_after_transfer_dot(ready_dot));
+        assert!(ppu.bg_pipeline_state.window_started_this_line);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.source,
+            PpuBgFetcherSource::Window
+        );
     }
 
     #[test]
-    fn wx_zero_applies_its_last_scx_discard_shortening_before_hidden_fifo_backed_dots() {
+    fn wx_zero_last_scx_discard_shortening_is_applied_from_the_served_transfer_dot() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0xF1;
         ppu.visible_registers.wx = 0;
@@ -4329,15 +4293,15 @@ mod tests {
         ppu.bg_pipeline_state.initial_scx_discard = 3;
         ppu.bg_pipeline_state.scx_discard_remaining = 1;
         ppu.bg_pipeline_state.current_transfer_x = 0;
-
-        ppu.maybe_apply_hidden_wx0_last_scx_discard_shortening();
+        let transfer_dot = ppu.advance_mode3_output_phase();
+        ppu.maybe_apply_wx0_shortening_after_transfer_dot(transfer_dot);
 
         assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 2);
         assert!(!ppu.bg_pipeline_state.window_started_this_line);
     }
 
     #[test]
-    fn wx_seven_does_not_evaluate_window_trigger_before_bg_fetch_priming_finishes() {
+    fn wx_seven_starts_window_from_the_first_served_x0_transfer_dot() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0xF1;
         ppu.visible_registers.wx = 7;
@@ -4346,14 +4310,23 @@ mod tests {
         ppu.bg_pipeline_state.window_wy_latch = true;
         ppu.bg_pipeline_state.current_transfer_x = 7;
         ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
 
-        assert!(!ppu.hidden_wx0_window_trigger_evaluation_enabled());
+        let transfer_dot = ppu.advance_mode3_output_phase();
+
+        assert_eq!(
+            transfer_dot.kind,
+            Mode3TransferDotKind::ServedPreVisibleTransfer
+        );
+        assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+        assert!(ppu.bg_pipeline_state.window_started_this_line);
     }
 
     #[test]
-    fn pending_obj_hit_blocks_window_trigger_attempts_for_the_current_dot() {
+    fn pending_obj_hit_blocks_window_start_because_the_output_dot_is_not_served() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x93;
+        ppu.visible_registers.wx = 15;
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
         ppu.bg_pipeline_state.window_wy_latch = true;
@@ -4363,7 +4336,11 @@ mod tests {
         ppu.obj_pipeline_state
             .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
 
-        assert!(!ppu.current_dot_can_attempt_window_trigger());
+        let transfer_dot = ppu.advance_mode3_output_phase();
+
+        assert_eq!(transfer_dot.kind, Mode3TransferDotKind::NotServed);
+        assert!(!ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+        assert!(!ppu.bg_pipeline_state.window_started_this_line);
     }
 
     #[test]
@@ -4379,7 +4356,8 @@ mod tests {
 
         let result = ppu.advance_mode3_output_phase();
 
-        assert_eq!(result, Mode3OutputDotResult::ServedHiddenTransfer);
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedHiddenTransfer);
+        assert!(result.consumed_scx_discard);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
         assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
         assert_eq!(
@@ -4400,7 +4378,7 @@ mod tests {
 
         let result = ppu.advance_mode3_output_phase();
 
-        assert_eq!(result, Mode3OutputDotResult::ServedVisiblePixel);
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedVisiblePixel);
         assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 9);
         assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 1);
     }
