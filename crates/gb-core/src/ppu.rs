@@ -990,7 +990,7 @@ impl Ppu {
                 return Mode3TransferDot::not_served();
             };
 
-            if plan.requires_fifo_backing && self.bg_pipeline_state.fifo.is_empty() {
+            if plan.backing.requires_fifo_backing() && self.bg_pipeline_state.fifo.is_empty() {
                 self.bg_pipeline_state.extend_mode3_by_one_dot();
                 Mode3TransferDot::not_served()
             } else {
@@ -1075,19 +1075,21 @@ impl Ppu {
             context.lane.dot_kind()
         };
 
-        let (source, requires_fifo_backing) = match context.source_window {
-            Mode3TransferSourceWindow::AbstractStartup => (
-                Mode3TransferServiceSource::Abstract,
-                context.lane == Mode3TransferLane::Hidden,
-            ),
-            Mode3TransferSourceWindow::FifoBacked => (Mode3TransferServiceSource::FifoBacked, true),
+        let backing = match context.source_window {
+            Mode3TransferSourceWindow::AbstractStartup => {
+                if context.lane == Mode3TransferLane::Hidden {
+                    Mode3TransferBacking::HiddenStartupFifoGated
+                } else {
+                    Mode3TransferBacking::Abstract
+                }
+            }
+            Mode3TransferSourceWindow::FifoBacked => Mode3TransferBacking::FifoBacked,
         };
 
         Some(Mode3TransferServicePlan {
             result_kind,
             action,
-            source,
-            requires_fifo_backing,
+            backing,
         })
     }
 
@@ -1219,7 +1221,7 @@ impl Ppu {
         &mut self,
         plan: Mode3TransferServicePlan,
     ) -> Mode3TransferDot {
-        let pixel = if plan.source == Mode3TransferServiceSource::FifoBacked {
+        let pixel = if plan.backing.pops_bg_fifo() {
             Some(
                 self.bg_pipeline_state
                     .fifo
@@ -1243,7 +1245,7 @@ impl Ppu {
             }
             Mode3TransferServiceAction::AdvanceHiddenX => {
                 self.bg_pipeline_state.current_transfer_x += 1;
-                if plan.source == Mode3TransferServiceSource::FifoBacked {
+                if plan.backing.pops_obj_fifo_on_hidden_service() {
                     let _ = self.pop_obj_fifo_pixel();
                 }
                 Mode3TransferDot::served(plan.result_kind, false)
@@ -2148,8 +2150,7 @@ struct Mode3TransferContext {
 struct Mode3TransferServicePlan {
     result_kind: Mode3TransferDotKind,
     action: Mode3TransferServiceAction,
-    source: Mode3TransferServiceSource,
-    requires_fifo_backing: bool,
+    backing: Mode3TransferBacking,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2160,9 +2161,24 @@ enum Mode3TransferServiceAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode3TransferServiceSource {
+enum Mode3TransferBacking {
     Abstract,
+    HiddenStartupFifoGated,
     FifoBacked,
+}
+
+impl Mode3TransferBacking {
+    const fn requires_fifo_backing(self) -> bool {
+        matches!(self, Self::HiddenStartupFifoGated | Self::FifoBacked)
+    }
+
+    const fn pops_bg_fifo(self) -> bool {
+        matches!(self, Self::FifoBacked)
+    }
+
+    const fn pops_obj_fifo_on_hidden_service(self) -> bool {
+        matches!(self, Self::FifoBacked)
+    }
 }
 
 const fn register_affects_pixel(register: PpuPaletteRegister, pixel: MixedPixel) -> bool {
@@ -4430,8 +4446,7 @@ mod tests {
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
                 action: Mode3TransferServiceAction::AdvanceHiddenX,
-                source: Mode3TransferServiceSource::Abstract,
-                requires_fifo_backing: true,
+                backing: Mode3TransferBacking::HiddenStartupFifoGated,
             })
         );
 
@@ -4442,8 +4457,7 @@ mod tests {
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
                 action: Mode3TransferServiceAction::AdvanceHiddenX,
-                source: Mode3TransferServiceSource::FifoBacked,
-                requires_fifo_backing: true,
+                backing: Mode3TransferBacking::FifoBacked,
             })
         );
 
@@ -4454,8 +4468,7 @@ mod tests {
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedVisiblePixel,
                 action: Mode3TransferServiceAction::EmitVisiblePixel,
-                source: Mode3TransferServiceSource::FifoBacked,
-                requires_fifo_backing: true,
+                backing: Mode3TransferBacking::FifoBacked,
             })
         );
     }
@@ -4503,8 +4516,7 @@ mod tests {
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
                 action: Mode3TransferServiceAction::AdvanceHiddenX,
-                source: Mode3TransferServiceSource::Abstract,
-                requires_fifo_backing: false,
+                backing: Mode3TransferBacking::Abstract,
             })
         );
 
@@ -4516,8 +4528,7 @@ mod tests {
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
                 action: Mode3TransferServiceAction::AdvanceHiddenX,
-                source: Mode3TransferServiceSource::Abstract,
-                requires_fifo_backing: true,
+                backing: Mode3TransferBacking::HiddenStartupFifoGated,
             })
         );
     }
@@ -4661,8 +4672,7 @@ mod tests {
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
                 action: Mode3TransferServiceAction::AdvanceHiddenX,
-                source: Mode3TransferServiceSource::Abstract,
-                requires_fifo_backing: false,
+                backing: Mode3TransferBacking::Abstract,
             })
         );
 
@@ -4682,8 +4692,7 @@ mod tests {
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
                 action: Mode3TransferServiceAction::AdvanceHiddenX,
-                source: Mode3TransferServiceSource::FifoBacked,
-                requires_fifo_backing: true,
+                backing: Mode3TransferBacking::FifoBacked,
             })
         );
     }
@@ -4708,8 +4717,7 @@ mod tests {
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
                 action: Mode3TransferServiceAction::AdvanceHiddenX,
-                source: Mode3TransferServiceSource::FifoBacked,
-                requires_fifo_backing: true,
+                backing: Mode3TransferBacking::FifoBacked,
             })
         );
 
@@ -4730,8 +4738,7 @@ mod tests {
             Some(Mode3TransferServicePlan {
                 result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
                 action: Mode3TransferServiceAction::AdvanceHiddenX,
-                source: Mode3TransferServiceSource::FifoBacked,
-                requires_fifo_backing: true,
+                backing: Mode3TransferBacking::FifoBacked,
             })
         );
     }
