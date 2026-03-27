@@ -2442,11 +2442,17 @@ enum Mode3TransferBacking {
 
 impl Mode3TransferServicePlan {
     const fn requires_effective_bg_fifo_pixel(self) -> bool {
-        self.execution.requires_effective_bg_fifo_pixel()
+        self.execution.requires_effective_bg_fifo_pixel() && !self.requires_real_bg_fifo_pixel()
     }
 
     const fn requires_real_bg_fifo_pixel(self) -> bool {
         self.execution.requires_real_bg_fifo_pixel()
+            || (matches!(self.backing, Mode3TransferBacking::FifoBacked)
+                && matches!(
+                    self.execution,
+                    Mode3TransferServiceExecution::ConsumeScxDiscard
+                        | Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop
+                ))
     }
 
     const fn can_start_obj_fetch_from_fifo_backed_transfer(
@@ -2722,6 +2728,7 @@ impl BgPipelineState {
                 );
                 if remaining == 1 {
                     self.startup_source_state = Mode3StartupSourceState::FifoBacked;
+                    self.startup_fifo_placeholders = 0;
                 } else {
                     self.startup_source_state = Mode3StartupSourceState::Abstract {
                         remaining: remaining - 1,
