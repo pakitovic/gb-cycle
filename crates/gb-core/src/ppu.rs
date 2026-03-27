@@ -1003,8 +1003,8 @@ impl Ppu {
             && self.obj_enabled()
             && has_pending_obj_hit;
         let current_transfer_is_fifo_backed = self
-            .current_transfer_service_plan()
-            .is_some_and(|plan| plan.source == Mode3TransferServiceSource::FifoBacked);
+            .current_transfer_context()
+            .is_some_and(|context| context.source_window == Mode3TransferSourceWindow::FifoBacked);
 
         Mode3DotArbitration {
             bg_transfer_can_advance: !has_pending_obj_hit,
@@ -1015,75 +1015,72 @@ impl Ppu {
         }
     }
 
-    fn current_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
+    fn current_transfer_context(&self) -> Option<Mode3TransferContext> {
         let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
-        if !(MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT..MODE3_BG_FETCH_PRIMING_DOTS)
-            .contains(&mode3_dot)
-        {
-            return self.current_fifo_backed_transfer_service_plan();
+        if mode3_dot < MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT {
+            return None;
         }
-
-        let late_hidden_transfer_dot = self.bg_pipeline_state.startup_transfer_dots_served
-            >= MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
-        if self.bg_pipeline_state.scx_discard_remaining > 0 {
-            let kind = if late_hidden_transfer_dot {
-                Mode3TransferDotKind::ServedHiddenTransfer
-            } else {
-                Mode3TransferDotKind::ServedPreVisibleTransfer
-            };
-            return Some(Mode3TransferServicePlan {
-                result_kind: kind,
-                action: Mode3TransferServiceAction::ConsumeScxDiscard,
-                source: Mode3TransferServiceSource::Abstract,
-                requires_fifo_backing: late_hidden_transfer_dot,
-            });
-        }
-
-        if self.bg_pipeline_state.current_transfer_x < 8 {
-            let kind = if late_hidden_transfer_dot {
-                Mode3TransferDotKind::ServedHiddenTransfer
-            } else {
-                Mode3TransferDotKind::ServedPreVisibleTransfer
-            };
-            return Some(Mode3TransferServicePlan {
-                result_kind: kind,
-                action: Mode3TransferServiceAction::AdvanceHiddenX,
-                source: Mode3TransferServiceSource::Abstract,
-                requires_fifo_backing: late_hidden_transfer_dot,
-            });
-        }
-
-        None
-    }
-
-    fn current_fifo_backed_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
-        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
-
-        if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS
-            || self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
-        {
+        if self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH {
             return None;
         }
 
+        let lane = if self.bg_pipeline_state.scx_discard_remaining > 0
+            || self.bg_pipeline_state.current_transfer_x < 8
+        {
+            if self.bg_pipeline_state.startup_transfer_dots_served
+                < MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS
+            {
+                Mode3TransferLane::PreVisible
+            } else {
+                Mode3TransferLane::Hidden
+            }
+        } else {
+            Mode3TransferLane::Visible
+        };
+
+        let source_window = if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS {
+            Mode3TransferSourceWindow::AbstractStartup
+        } else {
+            Mode3TransferSourceWindow::FifoBacked
+        };
+
+        Some(Mode3TransferContext {
+            lane,
+            source_window,
+        })
+    }
+
+    fn current_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
+        let context = self.current_transfer_context()?;
         let action = if self.bg_pipeline_state.scx_discard_remaining > 0 {
             Mode3TransferServiceAction::ConsumeScxDiscard
         } else if self.bg_pipeline_state.current_transfer_x < 8 {
             Mode3TransferServiceAction::AdvanceHiddenX
-        } else {
+        } else if context.lane == Mode3TransferLane::Visible {
             Mode3TransferServiceAction::EmitVisiblePixel
+        } else {
+            return None;
         };
 
         let result_kind = if matches!(action, Mode3TransferServiceAction::EmitVisiblePixel) {
             Mode3TransferDotKind::ServedVisiblePixel
         } else {
-            Mode3TransferDotKind::ServedHiddenTransfer
+            context.lane.dot_kind()
+        };
+
+        let (source, requires_fifo_backing) = match context.source_window {
+            Mode3TransferSourceWindow::AbstractStartup => (
+                Mode3TransferServiceSource::Abstract,
+                context.lane == Mode3TransferLane::Hidden,
+            ),
+            Mode3TransferSourceWindow::FifoBacked => (Mode3TransferServiceSource::FifoBacked, true),
         };
 
         Some(Mode3TransferServicePlan {
             result_kind,
             action,
-            source: Mode3TransferServiceSource::FifoBacked,
-            requires_fifo_backing: true,
+            source,
+            requires_fifo_backing,
         })
     }
 
@@ -1405,22 +1402,13 @@ impl Ppu {
     }
 
     fn current_obj_hit_ownership(&self) -> ObjHitOwnership {
-        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
-        let phase = if mode3_dot < MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT {
-            ObjHitPhase::PreVisible
-        } else if self.bg_pipeline_state.scx_discard_remaining > 0
-            || self.bg_pipeline_state.current_transfer_x < 8
-        {
-            if self.bg_pipeline_state.startup_transfer_dots_served
-                < MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS
-            {
-                ObjHitPhase::PreVisible
-            } else {
-                ObjHitPhase::Hidden
-            }
-        } else {
-            ObjHitPhase::Visible
-        };
+        let phase = self
+            .current_transfer_context()
+            .map_or(ObjHitPhase::PreVisible, |context| match context.lane {
+                Mode3TransferLane::PreVisible => ObjHitPhase::PreVisible,
+                Mode3TransferLane::Hidden => ObjHitPhase::Hidden,
+                Mode3TransferLane::Visible => ObjHitPhase::Visible,
+            });
 
         ObjHitOwnership {
             match_x: self.bg_pipeline_state.current_transfer_x,
@@ -2120,6 +2108,35 @@ enum Mode3TransferPhase {
     #[default]
     Priming,
     Output,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferLane {
+    PreVisible,
+    Hidden,
+    Visible,
+}
+
+impl Mode3TransferLane {
+    const fn dot_kind(self) -> Mode3TransferDotKind {
+        match self {
+            Self::PreVisible => Mode3TransferDotKind::ServedPreVisibleTransfer,
+            Self::Hidden => Mode3TransferDotKind::ServedHiddenTransfer,
+            Self::Visible => Mode3TransferDotKind::ServedVisiblePixel,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferSourceWindow {
+    AbstractStartup,
+    FifoBacked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3TransferContext {
+    lane: Mode3TransferLane,
+    source_window: Mode3TransferSourceWindow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4732,6 +4749,8 @@ mod tests {
         ppu.visible_registers.lcdc = 0x82;
         ppu.ly = 0;
         ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.startup_transfer_dots_served =
+            MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
         ppu.bg_pipeline_state.current_transfer_x = 0;
         ppu.bg_pipeline_state.scx_discard_remaining = 1;
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
