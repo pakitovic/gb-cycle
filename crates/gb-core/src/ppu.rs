@@ -963,12 +963,15 @@ impl Ppu {
     ) -> bool {
         self.sync_pending_obj_hit_ownership();
         self.latch_object_fetch_hits();
-        self.try_start_object_fetch_from_latched_hit(false);
+        self.try_start_object_fetch_from_current_dot(
+            ObjFetchStartSource::FifoBackedTransfer,
+            false,
+        );
         self.advance_object_fetch(oam, vram, dma_oam_conflict_address)
     }
 
     fn advance_mode3_output_phase(&mut self) -> Mode3TransferDot {
-        if self.should_block_transfer_for_pending_obj_hit() {
+        if !self.current_dot_arbitration().can_serve_bg_transfer() {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
             return Mode3TransferDot::not_served();
         }
@@ -987,9 +990,18 @@ impl Ppu {
                 .pending_hits_own_current_dot(self.current_obj_hit_ownership())
     }
 
-    fn should_block_transfer_for_pending_obj_hit(&self) -> bool {
-        self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
-            && self.current_dot_has_pending_obj_hit()
+    fn current_dot_arbitration(&self) -> Mode3DotArbitration {
+        let has_pending_obj_hit = self.current_dot_has_pending_obj_hit();
+        let obj_fetch_can_start = self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
+            && self.obj_enabled()
+            && has_pending_obj_hit;
+
+        Mode3DotArbitration {
+            bg_transfer_can_advance: !has_pending_obj_hit,
+            obj_fetch_can_start_from_fifo_backed_transfer: obj_fetch_can_start
+                && !self.bg_pipeline_state.fifo.is_empty(),
+            obj_fetch_can_start_from_queued_bg_fill: obj_fetch_can_start,
+        }
     }
 
     fn serve_previsible_transfer_dot(&mut self) -> Option<Mode3TransferDot> {
@@ -1049,6 +1061,7 @@ impl Ppu {
                 return matches!(
                     self.advance_bg_push_stage(),
                     BgPushDotResult::HandedOffToObjectFetch
+                        | BgPushDotResult::QueuedFillAndHandedOffToObjectFetch
                 );
             }
             _ => {}
@@ -1118,7 +1131,10 @@ impl Ppu {
         }
 
         if !self.bg_pipeline_state.fifo.is_empty() {
-            if self.try_start_object_fetch_from_latched_hit(true) {
+            if self.try_start_object_fetch_from_current_dot(
+                ObjFetchStartSource::FifoBackedTransfer,
+                true,
+            ) {
                 return BgPushDotResult::HandedOffToObjectFetch;
             }
             return BgPushDotResult::WaitingForEmptyFifo;
@@ -1130,7 +1146,7 @@ impl Ppu {
         self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
         self.bg_pipeline_state.push.reset();
 
-        if self.try_start_object_fetch_from_latched_hit_for_queued_fill(true) {
+        if self.try_start_object_fetch_from_current_dot(ObjFetchStartSource::QueuedBgFill, true) {
             return BgPushDotResult::QueuedFillAndHandedOffToObjectFetch;
         }
 
@@ -1300,40 +1316,15 @@ impl Ppu {
             .clear_pending_fetch_hits_if_stale(current_owner);
     }
 
-    fn try_start_object_fetch_from_latched_hit(&mut self, overlap_current_dot: bool) -> bool {
-        if self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle || !self.obj_enabled() {
-            return false;
-        }
-        if !self.obj_fetch_startup_ready() {
-            return false;
-        }
-
-        let Some(sprite_slot) = self.obj_pipeline_state.pop_pending_fetch_hit() else {
-            return false;
-        };
-        let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
-            return false;
-        };
-
-        self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
-        if overlap_current_dot {
-            self.bg_pipeline_state.push.interrupt_for_object_fetch();
-        }
-        if overlap_current_dot {
-            self.bg_pipeline_state.extend_mode3_by_one_dot();
-            self.obj_pipeline_state.fetch.stage_dot = 1;
-        }
-        true
-    }
-
-    fn try_start_object_fetch_from_latched_hit_for_queued_fill(
+    fn try_start_object_fetch_from_current_dot(
         &mut self,
+        start_source: ObjFetchStartSource,
         overlap_current_dot: bool,
     ) -> bool {
-        if self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle || !self.obj_enabled() {
-            return false;
-        }
-        if !self.current_dot_has_pending_obj_hit() {
+        if !self
+            .current_dot_arbitration()
+            .can_start_obj_fetch(start_source)
+        {
             return false;
         }
 
@@ -1346,6 +1337,9 @@ impl Ppu {
 
         self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
         if overlap_current_dot {
+            if matches!(start_source, ObjFetchStartSource::FifoBackedTransfer) {
+                self.bg_pipeline_state.push.interrupt_for_object_fetch();
+            }
             self.bg_pipeline_state.extend_mode3_by_one_dot();
             self.obj_pipeline_state.fetch.stage_dot = 1;
         }
@@ -2373,6 +2367,34 @@ enum BgPushDotResult {
     HandedOffToObjectFetch,
     QueuedFillAndHandedOffToObjectFetch,
     QueuedFill,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3DotArbitration {
+    bg_transfer_can_advance: bool,
+    obj_fetch_can_start_from_fifo_backed_transfer: bool,
+    obj_fetch_can_start_from_queued_bg_fill: bool,
+}
+
+impl Mode3DotArbitration {
+    const fn can_serve_bg_transfer(self) -> bool {
+        self.bg_transfer_can_advance
+    }
+
+    const fn can_start_obj_fetch(self, start_source: ObjFetchStartSource) -> bool {
+        match start_source {
+            ObjFetchStartSource::FifoBackedTransfer => {
+                self.obj_fetch_can_start_from_fifo_backed_transfer
+            }
+            ObjFetchStartSource::QueuedBgFill => self.obj_fetch_can_start_from_queued_bg_fill,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObjFetchStartSource {
+    FifoBackedTransfer,
+    QueuedBgFill,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -4168,6 +4190,35 @@ mod tests {
     }
 
     #[test]
+    fn current_dot_arbitration_distinguishes_fifo_backed_and_queued_fill_obj_start() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        let empty_fifo = ppu.current_dot_arbitration();
+        assert!(!empty_fifo.can_serve_bg_transfer());
+        assert!(!empty_fifo.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+        assert!(empty_fifo.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
+
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        let fifo_backed = ppu.current_dot_arbitration();
+        assert!(!fifo_backed.can_serve_bg_transfer());
+        assert!(fifo_backed.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+        assert!(fifo_backed.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
+    }
+
+    #[test]
     fn pending_obj_hit_blocks_output_phase_and_stretches_mode3() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
@@ -5460,7 +5511,10 @@ mod tests {
         ppu.obj_pipeline_state
             .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
 
-        assert!(ppu.try_start_object_fetch_from_latched_hit(true));
+        assert!(ppu.try_start_object_fetch_from_current_dot(
+            ObjFetchStartSource::FifoBackedTransfer,
+            true,
+        ));
         assert_eq!(
             ppu.obj_pipeline_state.fetch.stage,
             PpuObjFetcherStage::Startup

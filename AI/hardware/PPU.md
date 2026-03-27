@@ -216,6 +216,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Mode 3 should include an explicit object-fetch path instead of treating sprite timing as a scalar penalty.
 - Object fetch should be able to wait for the BG fetcher to reach the relevant point before the sprite data is incorporated into the object FIFO.
 - Sprite fetch work should be able to stall pixel output and lengthen Mode 3 on the shared dot timeline.
+- Mode `3` should expose one explicit per-dot arbitration boundary for "BG may serve this dot" versus "OBJ may start on this dot", and that arbitration should stay shared between output-side BG service and push-side BG/window/OBJ handoff paths instead of being rebuilt by separate ad hoc checks.
 - The special DMG timing penalty involving `SCX & 7 > 0` together with a sprite at `X = 0` should have an explicit path in the design even if the exact timing remains documented as partially unsettled.
 - Avoid reducing sprite timing to "add N dots per sprite" without internal fetcher state.
 - BG/window/object fetch helpers should consume `VramBusView` / `OamBusView`-style domain clients rather than unrelated `&[u8]` slices so future bus-ownership, storage, and CGB-bank changes do not force another PPU boundary rewrite.
