@@ -298,6 +298,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Starting the window should reset the fetcher to its initial fetch step rather than continuing from the current BG fetch phase.
 - The window-start event should alter the remaining pixel sequence of the current scanline without replaying or recomputing the whole line.
 - The DMG special case `WX = 0 && (SCX & 7) > 0` should be modeled as an explicit path that shortens Mode 3 by `1` dot.
+- In the current March 27, 2026 baseline, once the window fetcher is already active, turning `LCDC.5` off should be able to abort the active window fetch back to background fetch on the same fetch-stage boundary rather than waiting for the whole window tile to finish. That reprise should restore BG fetch progress from the saved BG-side fetch pixel, leaving the stage-local tile/index/data contract explicit instead of recomputing a fresh whole-line window/BG split.
 
 ## Window line-counter baseline
 
@@ -490,6 +491,8 @@ Priority order:
 - A fetcher model with explicit stages such as tile index, tile data low, tile data high, and FIFO push is preferred over opaque bulk tile reads.
 - Treat the framebuffer as an emulator-side output buffer only; hardware pixel production should conceptually flow through fetcher -> FIFO -> LCD output.
 - The fetcher and pixel path should be able to grow future metadata such as bank source, palette selection, or priority-related information without redesigning the whole pipeline.
+- In the current March 27, 2026 baseline, the BG/window fetcher should also keep one explicit fetch-phase state for the addresses it just computed. Tilemap address selection belongs to the tile-index phase, while tile-data address selection belongs to each low/high data phase separately. Keep those addresses materialized in fetcher state and exposed through debug snapshots instead of recomputing them only inside a read helper, so later `SCX` / `SCY` / `LCDC` live-write closure can reason about one visible phase boundary at a time.
+- In that same current baseline, background tile-data address selection on DMG should be recomputed independently for the low and high bitplanes from the current-dot-visible `SCY` and `LCDC.4`, rather than sharing one latched address across both planes. That keeps room for the documented DMG `SCY` and tile-selector bitplane desync behavior.
 - Do not hard-code DMG palette mapping as the final renderer boundary; keep a stage where hardware pixel meaning can later expand for CGB palettes and tile attributes.
 - Treat CGB palette and tile-attribute support as future extensions of the same pixel pipeline, not as a replacement renderer.
 - SCX startup discard, window start behavior, and sprite fetch pauses must be able to delay pixel output and therefore stretch Mode 3 naturally.
