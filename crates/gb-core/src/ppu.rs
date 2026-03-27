@@ -2628,7 +2628,12 @@ impl BgPipelineState {
         self.initial_scx_discard = scx & 0x07;
         self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
         self.scx_discard_remaining = self.initial_scx_discard;
-        self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
+        self.fifo.clear();
+        self.fifo.extend(std::iter::repeat_n(
+            0,
+            MODE3_ABSTRACT_SOURCE_WINDOW_DOTS as usize,
+        ));
+        self.startup_fifo_placeholders = 0;
         self.startup_source_state = Mode3StartupSourceState::EntryDelay {
             remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
         };
@@ -4501,7 +4506,7 @@ mod tests {
         assert_eq!(drawing_start.mode0_start_dot, 252);
         assert_eq!(drawing_start.bg_fetcher_stage, PpuBgFetcherStage::TileIndex);
         assert_eq!(drawing_start.bg_fetcher_stage_dot, 1);
-        assert!(drawing_start.bg_fifo_pixels.is_empty());
+        assert_eq!(drawing_start.bg_fifo_pixels, vec![0; 8]);
         assert_eq!(drawing_start.visible_pixels_output, 0);
 
         for t_cycle in 80..87 {
@@ -4512,7 +4517,7 @@ mod tests {
         assert_eq!(after_first_push.line_dot, 87);
         assert_eq!(after_first_push.bg_fetcher_stage, PpuBgFetcherStage::Push);
         assert_eq!(after_first_push.bg_fetcher_stage_dot, 0);
-        assert!(after_first_push.bg_fifo_pixels.is_empty());
+        assert_eq!(after_first_push.bg_fifo_pixels, vec![0; 4]);
         assert!(after_first_push.bg_push_pending);
         assert!(!after_first_push.bg_fill_pending);
         assert_eq!(after_first_push.visible_pixels_output, 0);
