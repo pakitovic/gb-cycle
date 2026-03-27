@@ -1000,10 +1000,14 @@ impl Ppu {
         let obj_fetch_can_start = self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
             && self.obj_enabled()
             && has_pending_obj_hit;
+        let current_transfer_is_fifo_backed = self
+            .current_transfer_service_plan()
+            .is_some_and(|plan| plan.source == Mode3TransferServiceSource::FifoBacked);
 
         Mode3DotArbitration {
             bg_transfer_can_advance: !has_pending_obj_hit,
             obj_fetch_can_start_from_fifo_backed_transfer: obj_fetch_can_start
+                && current_transfer_is_fifo_backed
                 && !self.bg_pipeline_state.fifo.is_empty(),
             obj_fetch_can_start_from_queued_bg_fill: obj_fetch_can_start,
         }
@@ -4089,6 +4093,7 @@ mod tests {
     fn bg_push_can_handoff_to_a_latched_object_fetch_without_losing_the_tile() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
         ppu.bg_pipeline_state.current_transfer_x = 8;
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
@@ -4259,6 +4264,7 @@ mod tests {
     fn current_dot_arbitration_distinguishes_fifo_backed_and_queued_fill_obj_start() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
         ppu.bg_pipeline_state.current_transfer_x = 8;
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.mode2_scan_state.push(PpuSelectedSprite {
@@ -4326,6 +4332,32 @@ mod tests {
                 requires_fifo_backing: true,
             })
         );
+    }
+
+    #[test]
+    fn fifo_backed_obj_start_requires_a_fifo_backed_transfer_dot_not_just_a_nonempty_fifo() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 15,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        let arbitration = ppu.current_dot_arbitration();
+        assert!(!arbitration.can_serve_bg_transfer());
+        assert!(!arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+        assert!(arbitration.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
     }
 
     #[test]
@@ -5608,6 +5640,7 @@ mod tests {
         vram.set_acquired(BusMaster::Ppu, true);
 
         ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
         ppu.bg_pipeline_state.current_transfer_x = 8;
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.bg_pipeline_state.fifo.push_back(0);
