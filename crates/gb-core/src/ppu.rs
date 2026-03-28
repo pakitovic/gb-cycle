@@ -1088,7 +1088,7 @@ impl Ppu {
         let current_transfer_is_fifo_backed = self.current_transfer().is_some_and(|transfer| {
             transfer.can_start_obj_fetch_from_fifo_backed_transfer(
                 !self.bg_pipeline_state.fifo.is_empty(),
-            )
+            ) && self.bg_fetcher_ready_for_fifo_backed_obj_start()
         });
 
         Mode3DotArbitration {
@@ -1632,6 +1632,13 @@ impl Ppu {
             match_x: self.bg_pipeline_state.current_transfer_x,
             phase,
         }
+    }
+
+    fn bg_fetcher_ready_for_fifo_backed_obj_start(&self) -> bool {
+        !matches!(
+            self.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex | PpuBgFetcherStage::TileDataLow
+        )
     }
 
     fn advance_object_fetch(
@@ -5161,6 +5168,37 @@ mod tests {
         assert!(!arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
         assert!(arbitration.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
         assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
+    }
+
+    #[test]
+    fn fifo_backed_obj_start_waits_until_bg_fetcher_leaves_tile_data_low() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        let tile_index = ppu.current_dot_arbitration();
+        assert!(!tile_index.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+        let tile_data_low = ppu.current_dot_arbitration();
+        assert!(!tile_data_low.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+        let tile_data_high = ppu.current_dot_arbitration();
+        assert!(tile_data_high.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
     }
 
     #[test]
