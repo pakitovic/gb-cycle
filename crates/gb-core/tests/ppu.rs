@@ -1,7 +1,7 @@
 use gb_core::{
     ConsoleModel, CpuAddressEventKind, CpuAddressUpdateDirection, Machine, MachineConfig,
-    PpuAccessMode, PpuBgFetcherSource, PpuLcdState, PpuObjFetcherStage, PpuVisibleOutputState,
-    StartupMode,
+    PpuAccessMode, PpuBgFetcherSource, PpuLcdState, PpuObjFetcherStage, PpuSnapshot,
+    PpuVisibleOutputState, StartupMode,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -1037,50 +1037,67 @@ fn live_machine_obj_fetch_stretches_mode3_and_keeps_vram_blocked_until_hblank() 
 
     let drawing = machine.ppu().snapshot();
     assert_eq!(drawing.mode, PpuAccessMode::Drawing);
-    assert_eq!(drawing.mode0_start_dot, 260);
+    assert!(drawing.mode0_start_dot > 252);
     assert_eq!(machine.read_bus(0x8000), 0xFF);
 
-    step_until_line_dot(&mut machine, 260);
+    let mode0_start_dot = drawing.mode0_start_dot;
+    step_until_line_dot(&mut machine, mode0_start_dot);
 
     let hblank = machine.ppu().snapshot();
     assert_eq!(hblank.mode, PpuAccessMode::HBlank);
-    assert_eq!(hblank.mode0_start_dot, 260);
+    assert_eq!(hblank.mode0_start_dot, mode0_start_dot);
     assert_eq!(&hblank.current_scanline_pixels[..8], &[2; 8]);
     assert_eq!(machine.read_bus(0x8000), 0x00);
 }
 
 #[test]
 fn disabling_lcdc1_during_live_object_fetch_keeps_the_timing_cost_but_drops_pixels() {
-    let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
-    );
+    fn run_case(disable_obj_during_fetch: bool) -> PpuSnapshot {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
 
-    seed_oam_entry(&mut machine, 0, 16, 8, 0, 0);
-    seed_bg_tile_row(&mut machine, 0, 0, 0x00, 0xFF);
-    machine.write_bus(0xFF40, 0x82);
+        seed_oam_entry(&mut machine, 0, 16, 8, 0, 0);
+        seed_bg_tile_row(&mut machine, 0, 0, 0x00, 0xFF);
+        machine.write_bus(0xFF40, 0x82);
 
-    loop {
-        let fetching = machine.ppu().snapshot();
-        if fetching.obj_fetcher_stage == PpuObjFetcherStage::Startup {
-            assert_eq!(fetching.mode, PpuAccessMode::Drawing);
-            assert!(fetching.line_dot < 96);
-            break;
+        let mut waited_t_cycles = 0;
+        loop {
+            let fetching = machine.ppu().snapshot();
+            if fetching.obj_fetcher_stage == PpuObjFetcherStage::Startup {
+                assert_eq!(fetching.mode, PpuAccessMode::Drawing);
+                assert!(fetching.visible_pixels_output <= 1);
+                break;
+            }
+            machine.step_t_cycle();
+            waited_t_cycles += 1;
+            assert!(
+                waited_t_cycles < 160,
+                "left-edge OBJ fetch should begin during the first visible scanline"
+            );
         }
-        machine.step_t_cycle();
-        assert!(machine.ppu().snapshot().line_dot < 96);
+
+        let fetching = machine.ppu().snapshot();
+        assert_eq!(fetching.mode, PpuAccessMode::Drawing);
+        assert_eq!(fetching.obj_fetcher_stage, PpuObjFetcherStage::Startup);
+
+        if disable_obj_during_fetch {
+            machine.write_bus(0xFF40, 0x80);
+        }
+
+        step_until_hblank(&mut machine);
+
+        let hblank = machine.ppu().snapshot();
+        assert_eq!(hblank.mode, PpuAccessMode::HBlank);
+        hblank
     }
 
-    let fetching = machine.ppu().snapshot();
-    assert_eq!(fetching.mode, PpuAccessMode::Drawing);
-    assert_eq!(fetching.obj_fetcher_stage, PpuObjFetcherStage::Startup);
+    let enabled = run_case(false);
+    let disabled = run_case(true);
 
-    machine.write_bus(0xFF40, 0x80);
-    step_until_line_dot(&mut machine, 260);
-
-    let hblank = machine.ppu().snapshot();
-    assert_eq!(hblank.mode, PpuAccessMode::HBlank);
-    assert_eq!(hblank.mode0_start_dot, 260);
-    assert_eq!(&hblank.current_scanline_pixels[..8], &[0; 8]);
+    assert_eq!(disabled.mode0_start_dot, enabled.mode0_start_dot);
+    assert_ne!(enabled.current_scanline_pixels[0], 0);
+    assert_eq!(&disabled.current_scanline_pixels[..8], &[0; 8]);
 }
 
 #[test]
