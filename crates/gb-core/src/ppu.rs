@@ -1,3 +1,4 @@
+use crate::bus::{BusMaster, OamBusView, VramBusView};
 use crate::model::ConsoleModel;
 use crate::scheduler::{CycleContext, InterruptSource};
 use std::collections::VecDeque;
@@ -27,7 +28,12 @@ const TOTAL_SCANLINES: u8 = 154;
 const MODE2_DOTS: u16 = 80;
 const MODE3_BASELINE_DOTS: u16 = 172;
 const MODE3_BG_FETCH_PRIMING_DOTS: u16 = 12;
+const MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT: u16 = MODE3_BG_FETCH_PRIMING_DOTS - 4;
 const MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT: u16 = MODE3_BG_FETCH_PRIMING_DOTS - 8;
+const MODE3_ABSTRACT_SOURCE_WINDOW_DOTS: u8 =
+    (MODE3_BG_FETCH_PRIMING_DOTS - MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT) as u8;
+const MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS: u8 =
+    (MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT - MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT) as u8;
 const MODE0_START_DOT: u16 = MODE2_DOTS + MODE3_BASELINE_DOTS;
 const DMG_PALETTE_RETROACTIVE_PIXELS: usize = 4;
 const OAM_ENTRY_BYTES: usize = 4;
@@ -39,7 +45,6 @@ const BG_TILE_WIDTH: u8 = 8;
 const BG_TILE_MAP_WIDTH: u8 = 32;
 const TILE_BYTES: u16 = 16;
 const TILE_ROW_BYTES: u16 = 2;
-const BG_FIFO_LOW_WATERMARK: usize = 8;
 const PPU_PENDING_VBLANK_INTERRUPT_BIT: u8 = 0x01;
 const PPU_PENDING_LCD_STAT_INTERRUPT_BIT: u8 = 0x02;
 const OAM_CORRUPTION_DOTS_PER_ROW: u16 = 4;
@@ -212,6 +217,7 @@ pub enum PpuVisibleOutputState {
 pub enum PpuBgFetcherStage {
     #[default]
     Idle,
+    WindowActivating,
     TileIndex,
     TileDataLow,
     TileDataHigh,
@@ -297,6 +303,11 @@ pub struct Ppu {
     wy: u8,
     wx: u8,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
+    visible_registers: PpuVisibleRegisters,
+    pipeline_registers: PpuVisibleRegisters,
+    last_unsigned_tile_data_fetch: u8,
+    last_unsigned_tile_data_low_fetch: u8,
+    last_unsigned_tile_data_high_fetch: u8,
     startup_mode_latch: Option<PpuAccessMode>,
     stat_state: StatState,
     pending_interrupts: u8,
@@ -335,6 +346,10 @@ pub struct PpuSnapshot {
     pub bg_fetcher_source: PpuBgFetcherSource,
     pub bg_fetcher_stage: PpuBgFetcherStage,
     pub bg_fetcher_stage_dot: u8,
+    pub bg_fetcher_tile_map_address: u16,
+    pub bg_fetcher_tile_data_address: u16,
+    pub bg_push_pending: bool,
+    pub bg_fill_pending: bool,
     pub bg_fifo_pixels: Vec<u8>,
     pub obj_fetcher_stage: PpuObjFetcherStage,
     pub obj_fetcher_stage_dot: u8,
@@ -351,7 +366,65 @@ pub struct PpuSnapshot {
     pub obp1: Option<u8>,
     pub wy: u8,
     pub wx: u8,
+    pub visible_lcdc: u8,
+    pub visible_scy: u8,
+    pub visible_scx: u8,
+    pub visible_bgp: u8,
+    pub visible_obp0: Option<u8>,
+    pub visible_obp1: Option<u8>,
+    pub visible_wy: u8,
+    pub visible_wx: u8,
+    pub pipeline_lcdc: u8,
+    pub pipeline_scy: u8,
+    pub pipeline_scx: u8,
+    pub pipeline_bgp: u8,
+    pub pipeline_obp0: Option<u8>,
+    pub pipeline_obp1: Option<u8>,
+    pub pipeline_wy: u8,
+    pub pipeline_wx: u8,
     pub obj_palette_read_policy: DmgObjPaletteReadPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+struct PpuVisibleRegisters {
+    lcdc: u8,
+    scy: u8,
+    scx: u8,
+    bgp: u8,
+    obp0: Option<u8>,
+    obp1: Option<u8>,
+    wy: u8,
+    wx: u8,
+}
+
+impl PpuVisibleRegisters {
+    const fn bg_enabled(self) -> bool {
+        self.lcdc & LCDC_BG_ENABLE_BIT != 0
+    }
+
+    const fn obj_enabled(self) -> bool {
+        self.lcdc & LCDC_OBJ_ENABLE_BIT != 0
+    }
+
+    const fn window_enabled(self) -> bool {
+        self.lcdc & LCDC_WINDOW_ENABLE_BIT != 0
+    }
+
+    const fn obj_height(self) -> u8 {
+        if self.lcdc & LCDC_OBJ_SIZE_BIT != 0 {
+            16
+        } else {
+            8
+        }
+    }
+
+    fn obj_palette(self, palette_obp1: bool, policy: DmgObjPaletteReadPolicy) -> u8 {
+        if palette_obp1 {
+            self.obp1.unwrap_or(policy.default_read_value())
+        } else {
+            self.obp0.unwrap_or(policy.default_read_value())
+        }
+    }
 }
 
 impl Ppu {
@@ -375,6 +448,11 @@ impl Ppu {
             wy: 0,
             wx: 0,
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+            visible_registers: PpuVisibleRegisters::default(),
+            pipeline_registers: PpuVisibleRegisters::default(),
+            last_unsigned_tile_data_fetch: 0,
+            last_unsigned_tile_data_low_fetch: 0,
+            last_unsigned_tile_data_high_fetch: 0,
             startup_mode_latch: None,
             stat_state: StatState::default(),
             pending_interrupts: 0,
@@ -428,6 +506,7 @@ impl Ppu {
     }
 
     pub fn write_register(&mut self, address: u16, value: u8) {
+        let previous_lcdc = self.lcdc;
         match address {
             0xFF40 => self.write_lcdc(value),
             0xFF41 => self.write_stat(value),
@@ -446,6 +525,40 @@ impl Ppu {
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
             _ => {}
+        }
+
+        if matches!(address, 0xFF40 | 0xFF42)
+            && self.current_access_mode() == PpuAccessMode::Drawing
+        {
+            if self.bg_pipeline_state.push.pending {
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .mark_live_register_write_while_push_pending(
+                        address,
+                        previous_lcdc,
+                        self.lcdc,
+                        self.bg_pipeline_state.push.entry_delay_remaining > 0,
+                    );
+            }
+
+            if self.bg_pipeline_state.fill.pending {
+                self.bg_pipeline_state
+                    .fill
+                    .cached
+                    .mark_live_register_write_while_fill_pending(
+                        address,
+                        previous_lcdc,
+                        self.lcdc,
+                        self.bg_pipeline_state.fill.includes_real_tile_pixels,
+                        self.bg_pipeline_state.fill.startup_dummy_pixels,
+                    );
+            }
+        }
+
+        if !self.is_lcd_enabled() {
+            self.sync_visible_registers();
+            self.sync_pipeline_registers();
         }
     }
 
@@ -477,6 +590,8 @@ impl Ppu {
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
         self.framebuffer.fill(0);
+        self.sync_visible_registers();
+        self.sync_pipeline_registers();
         self.startup_mode_latch = if self.lcd_state.is_enabled() {
             let startup_mode = PpuAccessMode::from_stat_bits(startup_state.stat);
             let derived_mode =
@@ -492,22 +607,43 @@ impl Ppu {
     pub(crate) fn tick_t_cycle(
         &mut self,
         _context: &mut CycleContext,
-        oam_bytes: &[u8],
-        vram_bytes: &[u8],
+        oam: OamBusView<'_>,
+        vram: VramBusView<'_>,
         dma_oam_active: bool,
         dma_oam_conflict_address: Option<u16>,
     ) {
+        debug_assert_eq!(oam.master(), BusMaster::Ppu);
+        debug_assert_eq!(vram.master(), BusMaster::Ppu);
+        debug_assert_eq!(
+            oam.is_acquired_by_master(),
+            self.is_lcd_enabled()
+                && matches!(
+                    self.current_access_mode(),
+                    PpuAccessMode::OamScan | PpuAccessMode::Drawing
+                )
+        );
+        debug_assert_eq!(
+            oam.is_acquired(),
+            oam.is_acquired_by_master() || dma_oam_active
+        );
+        debug_assert_eq!(
+            vram.is_acquired_by_master(),
+            self.is_lcd_enabled() && self.current_access_mode() == PpuAccessMode::Drawing
+        );
+
         if !self.is_lcd_enabled() {
             return;
         }
 
+        self.sync_pipeline_registers();
+        self.sync_visible_registers();
         let previous_mode = self.current_access_mode();
         self.startup_mode_latch = None;
         self.line_dot += 1;
         self.advance_lcd_restart_phase();
         self.prepare_visible_scanline_state();
-        self.advance_mode2_scan(oam_bytes, dma_oam_active);
-        self.advance_mode3_pipeline(oam_bytes, vram_bytes, dma_oam_conflict_address);
+        self.advance_mode2_scan(&oam, dma_oam_active);
+        self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict_address);
 
         if self.line_dot == DOTS_PER_SCANLINE {
             let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
@@ -571,6 +707,10 @@ impl Ppu {
             bg_fetcher_source: self.bg_pipeline_state.fetcher.source,
             bg_fetcher_stage: self.bg_pipeline_state.fetcher.stage,
             bg_fetcher_stage_dot: self.bg_pipeline_state.fetcher.stage_dot,
+            bg_fetcher_tile_map_address: self.bg_pipeline_state.fetcher.tile_map_address,
+            bg_fetcher_tile_data_address: self.bg_pipeline_state.fetcher.tile_data_address,
+            bg_push_pending: self.bg_pipeline_state.push.pending,
+            bg_fill_pending: self.bg_pipeline_state.fill.pending,
             bg_fifo_pixels: self.bg_pipeline_state.fifo.iter().copied().collect(),
             obj_fetcher_stage: self.obj_pipeline_state.fetch.stage,
             obj_fetcher_stage_dot: self.obj_pipeline_state.fetch.stage_dot,
@@ -592,6 +732,22 @@ impl Ppu {
             obp1: self.obp1,
             wy: self.wy,
             wx: self.wx,
+            visible_lcdc: self.visible_registers.lcdc,
+            visible_scy: self.visible_registers.scy,
+            visible_scx: self.visible_registers.scx,
+            visible_bgp: self.visible_registers.bgp,
+            visible_obp0: self.visible_registers.obp0,
+            visible_obp1: self.visible_registers.obp1,
+            visible_wy: self.visible_registers.wy,
+            visible_wx: self.visible_registers.wx,
+            pipeline_lcdc: self.pipeline_registers.lcdc,
+            pipeline_scy: self.pipeline_registers.scy,
+            pipeline_scx: self.pipeline_registers.scx,
+            pipeline_bgp: self.pipeline_registers.bgp,
+            pipeline_obp0: self.pipeline_registers.obp0,
+            pipeline_obp1: self.pipeline_registers.obp1,
+            pipeline_wy: self.pipeline_registers.wy,
+            pipeline_wx: self.pipeline_registers.wx,
             obj_palette_read_policy: self.obj_palette_read_policy,
         }
     }
@@ -634,6 +790,23 @@ impl Ppu {
 
     fn is_lcd_enabled(&self) -> bool {
         self.lcd_state.is_enabled()
+    }
+
+    fn sync_visible_registers(&mut self) {
+        self.visible_registers = PpuVisibleRegisters {
+            lcdc: self.lcdc,
+            scy: self.scy,
+            scx: self.scx,
+            bgp: self.bgp,
+            obp0: self.obp0,
+            obp1: self.obp1,
+            wy: self.wy,
+            wx: self.wx,
+        };
+    }
+
+    fn sync_pipeline_registers(&mut self) {
+        self.pipeline_registers = self.visible_registers;
     }
 
     fn read_lcdc(&self) -> u8 {
@@ -721,10 +894,11 @@ impl Ppu {
             return MODE0_START_DOT;
         }
 
-        (MODE0_START_DOT as i16
-            + self.bg_pipeline_state.latched_scx_discard(self.scx) as i16
-            + self.bg_pipeline_state.mode0_extension_dots()
-            + self.obj_pipeline_state.stall_dots as i16) as u16
+        if self.bg_pipeline_state.mode3_started {
+            self.bg_pipeline_state.mode0_start_dot
+        } else {
+            MODE0_START_DOT + u16::from(self.visible_registers.scx & 0x07)
+        }
     }
 
     pub(crate) fn current_mode2_oam_row(&self) -> Option<u8> {
@@ -751,7 +925,7 @@ impl Ppu {
             .apply(self.console_model, row, event, oam_bytes)
     }
 
-    fn advance_mode2_scan(&mut self, oam_bytes: &[u8], dma_oam_active: bool) {
+    fn advance_mode2_scan(&mut self, oam: &OamBusView<'_>, dma_oam_active: bool) {
         let raster_state = self.current_raster_state();
 
         if self.ly >= VISIBLE_SCANLINES
@@ -770,7 +944,7 @@ impl Ppu {
             return;
         }
 
-        let nominal_sprite = read_oam_sprite(oam_bytes, oam_index);
+        let nominal_sprite = read_oam_sprite(oam, oam_index);
         let sprite = if dma_oam_active && self.console_model.is_dmg_family() {
             let Some((y, x)) = self.mode2_scan_state.latched_oam_word() else {
                 return;
@@ -800,11 +974,43 @@ impl Ppu {
     }
 
     fn current_obj_height(&self) -> u8 {
-        if self.lcdc & LCDC_OBJ_SIZE_BIT != 0 {
-            16
+        self.visible_registers.obj_height()
+    }
+
+    fn window_activation_registers(&self) -> PpuVisibleRegisters {
+        if self.console_model.is_dmg_family() {
+            self.pipeline_registers
         } else {
-            8
+            self.visible_registers
         }
+    }
+
+    fn pixel_pipeline_lcdc(&self) -> u8 {
+        if !self.console_model.is_dmg_family() {
+            return self.visible_registers.lcdc;
+        }
+
+        if self.bg_pipeline_state.current_transfer_x == 8 {
+            self.visible_registers.lcdc
+        } else {
+            self.pipeline_registers.lcdc
+        }
+    }
+
+    fn pixel_pipeline_bgp(&self) -> u8 {
+        if self.console_model.is_dmg_family() {
+            self.visible_registers.bgp | self.pipeline_registers.bgp
+        } else {
+            self.visible_registers.bgp
+        }
+    }
+
+    fn pixel_transfer_bg_enabled(&self) -> bool {
+        self.pixel_pipeline_lcdc() & LCDC_BG_ENABLE_BIT != 0
+    }
+
+    fn pixel_transfer_obj_enabled(&self) -> bool {
+        self.pixel_pipeline_lcdc() & LCDC_OBJ_ENABLE_BIT != 0
     }
 
     fn prepare_visible_scanline_state(&mut self) {
@@ -812,11 +1018,12 @@ impl Ppu {
             return;
         }
 
-        if self.wy < VISIBLE_SCANLINES && self.ly == self.wy {
+        if self.visible_registers.wy < VISIBLE_SCANLINES && self.ly == self.visible_registers.wy {
             self.window_state.wy_triggered = true;
         }
 
-        let wy_latch = self.window_state.wy_triggered && self.wy < VISIBLE_SCANLINES;
+        let wy_latch =
+            self.window_state.wy_triggered && self.visible_registers.wy < VISIBLE_SCANLINES;
         let force_x0_this_line = wy_latch && self.window_state.pending_wx166_next_line;
         self.window_state.pending_wx166_next_line = false;
         self.bg_pipeline_state
@@ -825,8 +1032,8 @@ impl Ppu {
 
     fn advance_mode3_pipeline(
         &mut self,
-        oam_bytes: &[u8],
-        vram_bytes: &[u8],
+        oam: &OamBusView<'_>,
+        vram: &VramBusView<'_>,
         dma_oam_conflict_address: Option<u16>,
     ) {
         if self.ly >= VISIBLE_SCANLINES
@@ -837,187 +1044,740 @@ impl Ppu {
         }
 
         if !self.bg_pipeline_state.mode3_started {
-            self.bg_pipeline_state.start_line(self.scx);
+            self.bg_pipeline_state
+                .start_line(self.visible_registers.scx);
         }
 
-        if self.line_dot.saturating_sub(MODE2_DOTS) >= MODE3_BG_FETCH_PRIMING_DOTS {
-            self.maybe_start_window_for_current_position();
-        }
+        self.maybe_recompute_pending_background_fill(vram);
+        self.flush_pending_bg_fifo_fill();
 
-        self.maybe_start_object_fetch();
-        if self.advance_object_fetch(oam_bytes, vram_bytes, dma_oam_conflict_address) {
+        if self.advance_mode3_object_phase(oam, vram, dma_oam_conflict_address) {
             return;
         }
 
-        self.advance_bg_fetcher(vram_bytes);
-        self.pop_bg_pixel_for_current_dot();
-        self.advance_pre_visible_obj_match_x();
+        let output_dot = self.advance_mode3_output_phase();
+        self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
+        let _ = self.maybe_start_window_after_transfer_dot(output_dot);
+        let _ = self.advance_bg_fetcher(vram);
     }
 
-    fn advance_bg_fetcher(&mut self, vram_bytes: &[u8]) {
-        if matches!(
+    fn advance_mode3_object_phase(
+        &mut self,
+        oam: &OamBusView<'_>,
+        vram: &VramBusView<'_>,
+        dma_oam_conflict_address: Option<u16>,
+    ) -> bool {
+        self.sync_pending_obj_hit_ownership();
+        self.latch_object_fetch_hits();
+        self.try_start_object_fetch_from_current_dot(
+            ObjFetchStartSource::FifoBackedTransfer,
+            false,
+        );
+        self.advance_object_fetch(oam, vram, dma_oam_conflict_address)
+    }
+
+    fn advance_mode3_output_phase(&mut self) -> Mode3TransferDot {
+        if self
+            .bg_pipeline_state
+            .consume_startup_transfer_entry_delay_dot()
+        {
+            return Mode3TransferDot::not_served();
+        }
+
+        let transfer_dot = if !self.current_dot_arbitration().can_serve_bg_transfer() {
+            self.bg_pipeline_state.extend_mode3_by_one_dot();
+            Mode3TransferDot::not_served()
+        } else {
+            match self.current_transfer() {
+                None => return Mode3TransferDot::not_served(),
+                Some(Mode3CurrentTransfer {
+                    readiness: Mode3TransferReadiness::WaitingForFifo(_),
+                    ..
+                }) => {
+                    self.bg_pipeline_state.extend_mode3_by_one_dot();
+                    Mode3TransferDot::not_served()
+                }
+                Some(Mode3CurrentTransfer {
+                    readiness: Mode3TransferReadiness::Ready(plan),
+                    ..
+                }) => self.execute_transfer_service_plan(plan),
+            }
+        };
+
+        self.bg_pipeline_state.consume_startup_source_window_dot();
+        transfer_dot
+    }
+
+    fn current_dot_has_pending_obj_hit(&self) -> bool {
+        self.obj_enabled()
+            && self
+                .obj_pipeline_state
+                .pending_hits_own_current_dot(self.current_obj_hit_ownership())
+    }
+
+    fn current_dot_arbitration(&self) -> Mode3DotArbitration {
+        let has_pending_obj_hit = self.current_dot_has_pending_obj_hit();
+        let obj_fetch_can_start = self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
+            && self.obj_enabled()
+            && has_pending_obj_hit;
+        let current_transfer_is_fifo_backed = self.current_transfer().is_some_and(|transfer| {
+            transfer.can_start_obj_fetch_from_fifo_backed_transfer(
+                !self.bg_pipeline_state.fifo.is_empty(),
+            ) && self.bg_fetcher_ready_for_fifo_backed_obj_start()
+        });
+
+        Mode3DotArbitration {
+            bg_transfer_can_advance: !has_pending_obj_hit,
+            obj_fetch_can_start_from_fifo_backed_transfer: obj_fetch_can_start
+                && current_transfer_is_fifo_backed,
+            obj_fetch_can_start_from_queued_bg_fill: obj_fetch_can_start,
+        }
+    }
+
+    fn current_transfer_context(&self) -> Option<Mode3TransferContext> {
+        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
+        if !self
+            .bg_pipeline_state
+            .startup_transfer_window_open(mode3_dot)
+        {
+            return None;
+        }
+        if self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH {
+            return None;
+        }
+
+        let lane = if self.bg_pipeline_state.scx_discard_remaining > 0
+            || self.bg_pipeline_state.current_transfer_x < 8
+        {
+            self.bg_pipeline_state.current_startup_transfer_lane()
+        } else {
+            Mode3TransferLane::Visible
+        };
+
+        let source_window = self
+            .bg_pipeline_state
+            .current_startup_source_window(mode3_dot);
+
+        Some(Mode3TransferContext {
+            lane,
+            source_window,
+        })
+    }
+
+    fn transfer_service_plan_from_context(
+        &self,
+        context: Mode3TransferContext,
+    ) -> Option<Mode3TransferServicePlan> {
+        let execution = if self.bg_pipeline_state.scx_discard_remaining > 0 {
+            Mode3TransferServiceExecution::ConsumeScxDiscard
+        } else if self.bg_pipeline_state.current_transfer_x < 8 {
+            match context.lane {
+                Mode3TransferLane::PreVisible => {
+                    Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop
+                }
+                Mode3TransferLane::Hidden => {
+                    Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop
+                }
+                Mode3TransferLane::Visible => unreachable!("x < 8 cannot be a visible transfer"),
+            }
+        } else if context.lane == Mode3TransferLane::Visible {
+            Mode3TransferServiceExecution::EmitVisiblePixel
+        } else {
+            return None;
+        };
+
+        let result_kind = if matches!(execution, Mode3TransferServiceExecution::EmitVisiblePixel) {
+            Mode3TransferDotKind::ServedVisiblePixel
+        } else {
+            context.lane.dot_kind()
+        };
+
+        let backing = match context.source_window {
+            Mode3TransferSourceWindow::AbstractStartup => Mode3TransferBacking::Abstract,
+            Mode3TransferSourceWindow::FifoBacked => Mode3TransferBacking::FifoBacked,
+        };
+
+        Some(Mode3TransferServicePlan {
+            result_kind,
+            execution,
+            backing,
+        })
+    }
+
+    #[cfg(test)]
+    fn current_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
+        self.current_transfer()
+            .map(|transfer| transfer.service_plan())
+    }
+
+    fn current_transfer(&self) -> Option<Mode3CurrentTransfer> {
+        let context = self.current_transfer_context()?;
+        let plan = self.transfer_service_plan_from_context(context)?;
+        let readiness = if plan.requires_real_bg_fifo_pixel() {
+            if self.bg_pipeline_state.fifo.is_empty() {
+                Mode3TransferReadiness::WaitingForFifo(plan)
+            } else {
+                Mode3TransferReadiness::Ready(plan)
+            }
+        } else if plan.requires_effective_bg_fifo_pixel()
+            && self.bg_pipeline_state.effective_fifo_is_empty()
+        {
+            Mode3TransferReadiness::WaitingForFifo(plan)
+        } else {
+            Mode3TransferReadiness::Ready(plan)
+        };
+
+        Some(Mode3CurrentTransfer { context, readiness })
+    }
+
+    fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
+        self.maybe_abort_window_fetcher_to_background();
+        self.maybe_recompute_pending_background_push(vram);
+
+        match (
             self.bg_pipeline_state.fetcher.stage,
-            PpuBgFetcherStage::Idle
+            self.bg_pipeline_state.fetcher.stage_dot,
         ) {
-            self.bg_pipeline_state.fetcher.start_background();
+            (PpuBgFetcherStage::Idle, _) => {
+                self.bg_pipeline_state.fetcher.start_background();
+                return false;
+            }
+            (PpuBgFetcherStage::WindowActivating, _) => {
+                self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+                self.bg_pipeline_state.fetcher.stage_dot = 0;
+                return false;
+            }
+            (PpuBgFetcherStage::Push, _) => {
+                return matches!(
+                    self.advance_bg_push_stage(),
+                    BgPushDotResult::HandedOffToObjectFetch
+                        | BgPushDotResult::QueuedFillAndHandedOffToObjectFetch
+                );
+            }
+            _ => {}
         }
 
-        self.bg_pipeline_state.fetcher.stage_dot += 1;
-
-        if self.bg_pipeline_state.fetcher.stage_dot < 2 {
-            return;
+        if self
+            .bg_pipeline_state
+            .fetcher
+            .post_alignment_fetch_restart_delay_dots
+            > 0
+        {
+            self.bg_pipeline_state
+                .fetcher
+                .post_alignment_fetch_restart_delay_dots -= 1;
+            return false;
         }
-
-        self.bg_pipeline_state.fetcher.stage_dot = 0;
 
         let fetcher = self.bg_pipeline_state.fetcher;
-
-        match fetcher.stage {
-            PpuBgFetcherStage::Idle => self.bg_pipeline_state.fetcher.start_background(),
-            PpuBgFetcherStage::TileIndex => {
-                self.bg_pipeline_state.fetcher.tile_index = self.read_fetch_tile_index(
-                    vram_bytes,
-                    fetcher.source,
-                    fetcher.next_fetch_pixel,
-                );
-                self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+        match (fetcher.stage, fetcher.stage_dot) {
+            (PpuBgFetcherStage::TileIndex, 0) => {
+                if fetcher.source == PpuBgFetcherSource::Background {
+                    self.bg_pipeline_state.fetcher.cached_origin = self
+                        .bg_pipeline_state
+                        .peek_startup_background_fetch_origin();
+                }
+                let tile_map_address =
+                    self.compute_fetch_tile_index_address(fetcher.source, fetcher.fetch_x);
+                self.bg_pipeline_state.fetcher.tile_map_address = tile_map_address;
+                let delay_tileindex_read = fetcher.source == PpuBgFetcherSource::Background
+                    && self
+                        .bg_pipeline_state
+                        .startup_background_tileindex_reads_on_stage_one();
+                if !delay_tileindex_read {
+                    self.bg_pipeline_state.fetcher.tile_index =
+                        vram.read(tile_map_address as usize).unwrap_or(0);
+                }
+                if fetcher.source == PpuBgFetcherSource::Window {
+                    self.bg_pipeline_state.fetcher.window_tilemap_x = self
+                        .bg_pipeline_state
+                        .fetcher
+                        .window_tilemap_x
+                        .wrapping_add(1);
+                }
+                if self
+                    .bg_pipeline_state
+                    .fetcher
+                    .rewind_bg_resume_after_first_tile_index_dot
+                {
+                    self.bg_pipeline_state.fetcher.bg_resume_fetch_pixel = self
+                        .bg_pipeline_state
+                        .fetcher
+                        .bg_resume_fetch_pixel
+                        .wrapping_sub(BG_TILE_WIDTH as u16);
+                    self.bg_pipeline_state
+                        .fetcher
+                        .rewind_bg_resume_after_first_tile_index_dot = false;
+                }
+                self.bg_pipeline_state.fetcher.stage_dot = 1;
             }
-            PpuBgFetcherStage::TileDataLow => {
-                self.bg_pipeline_state.fetcher.tile_low = self.read_fetch_tile_data_byte(
-                    vram_bytes,
+            (PpuBgFetcherStage::TileIndex, 1) => {
+                if fetcher.source == PpuBgFetcherSource::Background
+                    && self
+                        .bg_pipeline_state
+                        .startup_background_tileindex_reads_on_stage_one()
+                {
+                    self.bg_pipeline_state.fetcher.tile_index = vram
+                        .read(self.bg_pipeline_state.fetcher.tile_map_address as usize)
+                        .unwrap_or(0);
+                }
+                self.maybe_apply_bgwin_tilemap_selector_glitch(vram, fetcher.source);
+                self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+                self.bg_pipeline_state.fetcher.stage_dot = 0;
+            }
+            (PpuBgFetcherStage::TileDataLow, 0) => {
+                let tile_data_address = self.compute_fetch_tile_data_address(
                     fetcher.source,
+                    fetcher.fetch_x,
                     fetcher.tile_index,
                     0,
                 );
-                self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
-            }
-            PpuBgFetcherStage::TileDataHigh => {
-                self.bg_pipeline_state.fetcher.tile_high = self.read_fetch_tile_data_byte(
-                    vram_bytes,
+                self.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
+                let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
+                self.bg_pipeline_state.fetcher.tile_low = tile_data;
+                self.maybe_cache_unsigned_bgwin_tile_data_fetch(
                     fetcher.source,
+                    fetcher.fetch_x,
+                    0,
+                    tile_data,
+                );
+                self.bg_pipeline_state.fetcher.stage_dot = 1;
+            }
+            (PpuBgFetcherStage::TileDataLow, 1) => {
+                self.maybe_apply_bgwin_tile_data_selector_glitch(vram, fetcher.source, 0);
+                self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+                self.bg_pipeline_state.fetcher.stage_dot = 0;
+            }
+            (PpuBgFetcherStage::TileDataHigh, 0) => {
+                let tile_data_address = self.compute_fetch_tile_data_address(
+                    fetcher.source,
+                    fetcher.fetch_x,
                     fetcher.tile_index,
                     1,
                 );
-                self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
-            }
-            PpuBgFetcherStage::Push => {
-                if self.bg_pipeline_state.fifo.len() > BG_FIFO_LOW_WATERMARK {
-                    return;
-                }
-
-                push_bg_tile_pixels(
-                    &mut self.bg_pipeline_state.fifo,
-                    fetcher.tile_low,
-                    fetcher.tile_high,
+                self.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
+                let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
+                self.bg_pipeline_state.fetcher.tile_high = tile_data;
+                self.maybe_cache_unsigned_bgwin_tile_data_fetch(
+                    fetcher.source,
+                    fetcher.fetch_x,
+                    1,
+                    tile_data,
                 );
-                self.bg_pipeline_state.fetcher.next_fetch_pixel =
-                    fetcher.next_fetch_pixel.wrapping_add(BG_TILE_WIDTH as u16);
-                self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+                self.bg_pipeline_state.fetcher.stage_dot = 1;
+            }
+            (PpuBgFetcherStage::TileDataHigh, 1) => {
+                self.maybe_apply_bgwin_tile_data_selector_glitch(vram, fetcher.source, 1);
+                if self.bg_pipeline_state.startup_alignment_seed_pending() {
+                    self.bg_pipeline_state
+                        .push
+                        .queue_startup_alignment_seed_from_fetcher(self.bg_pipeline_state.fetcher);
+                    self.bg_pipeline_state
+                        .fetcher
+                        .first_window_tile_after_activation = false;
+                    self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+                    self.bg_pipeline_state.fetcher.stage_dot = 0;
+                    let push_result = self.advance_bg_push_stage();
+                    if matches!(
+                        push_result,
+                        BgPushDotResult::HandedOffToObjectFetch
+                            | BgPushDotResult::QueuedFillAndHandedOffToObjectFetch
+                    ) {
+                        return true;
+                    }
+                    return false;
+                }
+                self.bg_pipeline_state
+                    .push
+                    .queue_from_fetcher(self.bg_pipeline_state.fetcher);
+                if fetcher.source == PpuBgFetcherSource::Background {
+                    self.bg_pipeline_state
+                        .advance_startup_background_fetch_tile();
+                }
+                let mut advance_push_immediately = false;
+                if self
+                    .bg_pipeline_state
+                    .take_startup_first_real_push_skip_entry_delay()
+                {
+                    self.bg_pipeline_state.push.entry_delay_remaining = 0;
+                    advance_push_immediately = true;
+                }
+                self.bg_pipeline_state
+                    .fetcher
+                    .first_window_tile_after_activation = false;
+                self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+                self.bg_pipeline_state.fetcher.stage_dot = 0;
+                if advance_push_immediately {
+                    return matches!(
+                        self.advance_bg_push_stage(),
+                        BgPushDotResult::HandedOffToObjectFetch
+                            | BgPushDotResult::QueuedFillAndHandedOffToObjectFetch
+                    );
+                }
+            }
+            (PpuBgFetcherStage::Idle, _)
+            | (PpuBgFetcherStage::WindowActivating, _)
+            | (PpuBgFetcherStage::Push, _) => unreachable!(
+                "special BG fetcher stages are handled before the explicit dot-stage automaton"
+            ),
+            (_, other_dot) => unreachable!(
+                "invalid BG fetcher stage_dot {other_dot} for non-push stage {:?}",
+                fetcher.stage
+            ),
+        }
+
+        false
+    }
+
+    fn maybe_abort_window_fetcher_to_background(&mut self) {
+        if self.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Window {
+            return;
+        }
+
+        if self.visible_registers.window_enabled() {
+            return;
+        }
+
+        self.bg_pipeline_state.fetcher.abort_window_to_background();
+    }
+
+    fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
+        let ownership = self.current_bg_push_dot_ownership();
+        self.execute_bg_push_dot_ownership(ownership)
+    }
+
+    #[cfg(test)]
+    fn advance_bg_push(&mut self) -> BgPushDotResult {
+        self.execute_bg_push_dot_ownership(self.current_bg_push_dot_ownership())
+    }
+
+    fn current_bg_push_dot_ownership(&self) -> BgPushDotOwnership {
+        let push = self.bg_pipeline_state.push;
+        if !push.pending || push.disposition != BgPushDisposition::Ready {
+            return BgPushDotOwnership::NotReady;
+        }
+
+        if push.entry_delay_remaining > 0 {
+            return BgPushDotOwnership::EntryDelay;
+        }
+
+        let push_can_start_object_fetch = self.obj_pipeline_state.fetch.stage
+            == PpuObjFetcherStage::Idle
+            && !push.just_activated_window_tile
+            && self.obj_enabled()
+            && self.current_dot_has_pending_obj_hit()
+            && (!push.cached.is_startup_alignment_seed()
+                || self.bg_pipeline_state.current_transfer_x < 8);
+        if self.bg_pipeline_state.fifo_contains_real_pixels() {
+            if push_can_start_object_fetch {
+                BgPushDotOwnership::FifoBackedTransferObjectFetch
+            } else {
+                BgPushDotOwnership::WaitingForEmptyFifo
+            }
+        } else if push_can_start_object_fetch {
+            BgPushDotOwnership::QueueFillThenObjectFetch
+        } else {
+            BgPushDotOwnership::QueueFill
+        }
+    }
+
+    fn execute_bg_push_dot_ownership(&mut self, ownership: BgPushDotOwnership) -> BgPushDotResult {
+        match ownership {
+            BgPushDotOwnership::NotReady => BgPushDotResult::NotReady,
+            BgPushDotOwnership::EntryDelay => {
+                debug_assert!(self.bg_pipeline_state.push.entry_delay_remaining > 0);
+                self.bg_pipeline_state.push.entry_delay_remaining -= 1;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .same_cycle_live_tilemap_refetch_window_open = true;
+                BgPushDotResult::EntryDelay
+            }
+            BgPushDotOwnership::WaitingForEmptyFifo => {
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .same_cycle_live_tilemap_refetch_window_open =
+                    self.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
+                        && self.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16
+                        && self.bg_pipeline_state.fifo.len()
+                            == self.bg_pipeline_state.startup_fifo_placeholders as usize + 2;
+                BgPushDotResult::WaitingForEmptyFifo
+            }
+            BgPushDotOwnership::FifoBackedTransferObjectFetch => {
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .same_cycle_live_tilemap_refetch_window_open = false;
+                let started = self.try_start_object_fetch_from_current_dot(
+                    ObjFetchStartSource::PushCachedBgFetch,
+                    true,
+                );
+                debug_assert!(
+                    started,
+                    "fifo-backed push ownership must only be selected when OBJ fetch can start"
+                );
+                BgPushDotResult::HandedOffToObjectFetch
+            }
+            BgPushDotOwnership::QueueFill | BgPushDotOwnership::QueueFillThenObjectFetch => {
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .same_cycle_live_tilemap_refetch_window_open = false;
+                self.queue_bg_fill_from_push();
+                if matches!(ownership, BgPushDotOwnership::QueueFillThenObjectFetch) {
+                    let started = self.try_start_object_fetch_from_current_dot(
+                        ObjFetchStartSource::QueuedBgFill,
+                        true,
+                    );
+                    debug_assert!(
+                        started,
+                        "queued-fill push ownership must only be selected when OBJ fetch can start"
+                    );
+                    BgPushDotResult::QueuedFillAndHandedOffToObjectFetch
+                } else {
+                    BgPushDotResult::QueuedFill
+                }
             }
         }
     }
 
-    fn pop_bg_pixel_for_current_dot(&mut self) {
-        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
+    fn queue_bg_fill_from_push(&mut self) {
+        let push = self.bg_pipeline_state.push;
+        if push.cached.is_startup_alignment_seed() {
+            self.bg_pipeline_state.begin_post_alignment_followup();
+            self.bg_pipeline_state
+                .fill
+                .queue_startup_alignment_from_push(
+                    push,
+                    self.bg_pipeline_state.startup_fifo_placeholders,
+                );
+        } else {
+            self.bg_pipeline_state.fill.queue_from_push(push);
+        }
+        self.bg_pipeline_state.fetcher.fetch_x = push.next_fetch_pixel;
+        self.bg_pipeline_state.fetcher.next_fetch_pixel = push.next_fetch_pixel;
+        self.bg_pipeline_state
+            .fetcher
+            .post_alignment_fetch_restart_delay_dots = if push.cached.is_startup_alignment_seed() {
+            1
+        } else {
+            0
+        };
+        self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+        self.bg_pipeline_state.push.reset();
+    }
 
-        if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS
-            || self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
+    fn flush_pending_bg_fifo_fill(&mut self) {
+        if !self.bg_pipeline_state.fill.pending {
+            return;
+        }
+
+        let fill = self.bg_pipeline_state.fill;
+        if fill.startup_dummy_pixels > 0 {
+            self.bg_pipeline_state
+                .fifo
+                .extend(std::iter::repeat_n(0, fill.startup_dummy_pixels as usize));
+        }
+        if fill.includes_real_tile_pixels {
+            push_bg_tile_pixels(
+                &mut self.bg_pipeline_state.fifo,
+                fill.cached.tile_low,
+                fill.cached.tile_high,
+            );
+        }
+        self.bg_pipeline_state.fill.reset();
+    }
+
+    fn maybe_recompute_pending_background_fill(&mut self, vram: &VramBusView<'_>) {
+        if !self.bg_pipeline_state.fill.pending
+            || self.bg_pipeline_state.fill.cached.source != PpuBgFetcherSource::Background
+            || !self.bg_pipeline_state.fill.includes_real_tile_pixels
         {
             return;
         }
 
-        let Some(pixel) = self.bg_pipeline_state.fifo.pop_front() else {
-            if self.bg_pipeline_state.scx_discard_remaining == 0 {
-                self.bg_pipeline_state.window_extra_stall_dots += 1;
-            }
+        let Some(recomputed) = recompute_live_background_cached_slice(
+            self.bg_pipeline_state.fill.cached,
+            vram,
+            self.lcdc,
+            self.scy,
+            self.ly,
+            self.last_unsigned_tile_data_low_fetch,
+            self.last_unsigned_tile_data_high_fetch,
+        ) else {
             return;
         };
 
-        if self.bg_pipeline_state.scx_discard_remaining > 0 {
-            self.bg_pipeline_state.scx_discard_remaining -= 1;
+        self.bg_pipeline_state.fill.cached = recomputed;
+    }
+
+    fn maybe_recompute_pending_background_push(&mut self, vram: &VramBusView<'_>) {
+        if !self.bg_pipeline_state.push.pending
+            || self.bg_pipeline_state.push.cached.source != PpuBgFetcherSource::Background
+        {
             return;
         }
 
-        let bg_pixel = if self.bg_enabled() { pixel } else { 0 };
-        let obj_pixel = self.pop_obj_fifo_pixel();
-        let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
-        let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
-            self.map_mixed_pixel_to_panel_shade(output_pixel)
-        } else {
-            0
+        let Some(recomputed) = recompute_live_background_cached_slice(
+            self.bg_pipeline_state.push.cached,
+            vram,
+            self.lcdc,
+            self.scy,
+            self.ly,
+            self.last_unsigned_tile_data_low_fetch,
+            self.last_unsigned_tile_data_high_fetch,
+        ) else {
+            return;
         };
-        let scanline_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
-            output_pixel.color
-        } else {
-            0
-        };
-        let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
-        self.current_scanline_mixed_pixels[visible_x] = output_pixel;
-        self.current_scanline_pixels[visible_x] = scanline_pixel;
-        self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
-        self.bg_pipeline_state.visible_pixels_output += 1;
+
+        self.bg_pipeline_state.push.cached = recomputed;
+        self.bg_pipeline_state.fetcher.tile_map_address = recomputed.tile_map_address;
+        self.bg_pipeline_state.fetcher.tile_index = recomputed.tile_index;
+        self.bg_pipeline_state.fetcher.tile_data_address = recomputed.tile_data_address;
+        self.bg_pipeline_state.fetcher.tile_low = recomputed.tile_low;
+        self.bg_pipeline_state.fetcher.tile_high = recomputed.tile_high;
     }
 
-    fn bg_enabled(&self) -> bool {
-        self.lcdc & LCDC_BG_ENABLE_BIT != 0
+    fn execute_transfer_service_plan(
+        &mut self,
+        plan: Mode3TransferServicePlan,
+    ) -> Mode3TransferDot {
+        let pixel = if plan.requires_real_bg_fifo_pixel() {
+            self.bg_pipeline_state.fifo.pop_front()
+        } else if plan.requires_effective_bg_fifo_pixel() {
+            self.bg_pipeline_state.consume_effective_fifo_pixel()
+        } else {
+            None
+        };
+
+        self.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        if !matches!(
+            plan.execution,
+            Mode3TransferServiceExecution::ConsumeScxDiscard
+                | Mode3TransferServiceExecution::EmitVisiblePixel
+        ) {
+            self.bg_pipeline_state
+                .consume_startup_pre_visible_transfer_dot();
+        }
+
+        match plan.execution {
+            Mode3TransferServiceExecution::ConsumeScxDiscard => {
+                let _ = pixel.expect(
+                    "startup scx discard must consume one effective BG FIFO slot before output",
+                );
+                self.bg_pipeline_state.scx_discard_remaining -= 1;
+                Mode3TransferDot::served(plan.result_kind, true)
+            }
+            Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop => {
+                let _ = pixel
+                    .expect("pre-visible startup transfer must consume one effective BG FIFO slot");
+                self.bg_pipeline_state.current_transfer_x += 1;
+                Mode3TransferDot::served(plan.result_kind, false)
+            }
+            Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop => {
+                let _ = pixel.expect("hidden transfer must consume one effective BG FIFO slot");
+                self.bg_pipeline_state.current_transfer_x += 1;
+                let _ = self.pop_obj_fifo_pixel();
+                Mode3TransferDot::served(plan.result_kind, false)
+            }
+            Mode3TransferServiceExecution::EmitVisiblePixel => {
+                let bg_pixel = if self.pixel_transfer_bg_enabled() {
+                    pixel.expect("visible transfer plans must carry a BG pixel")
+                } else {
+                    0
+                };
+                let obj_pixel = self.pop_obj_fifo_pixel();
+                let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
+                let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
+                    self.map_mixed_pixel_to_panel_shade(output_pixel)
+                } else {
+                    0
+                };
+                let scanline_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
+                    output_pixel.color
+                } else {
+                    0
+                };
+                let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
+                self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+                self.current_scanline_pixels[visible_x] = scanline_pixel;
+                self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+                self.bg_pipeline_state.current_transfer_x =
+                    self.bg_pipeline_state.current_transfer_x.saturating_add(1);
+                self.bg_pipeline_state.visible_pixels_output += 1;
+                Mode3TransferDot::served(plan.result_kind, false)
+            }
+        }
     }
 
     fn obj_enabled(&self) -> bool {
-        self.lcdc & LCDC_OBJ_ENABLE_BIT != 0
+        self.visible_registers.obj_enabled()
     }
 
-    fn maybe_start_window_for_current_position(&mut self) {
-        if self.bg_pipeline_state.window_started_this_line
+    fn maybe_apply_wx0_shortening_after_transfer_dot(&mut self, transfer_dot: Mode3TransferDot) {
+        if !transfer_dot.consumed_scx_discard
+            || self.bg_pipeline_state.window_started_this_line
             || !self.bg_pipeline_state.window_wy_latch
             || !self.window_runtime_enabled()
+            || self.window_activation_registers().wx != 0
+            || self.bg_pipeline_state.window_force_x0_this_line
+            || self.bg_pipeline_state.visible_pixels_output != 0
+            || self.bg_pipeline_state.current_transfer_x >= 8
+            || self.bg_pipeline_state.initial_scx_discard == 0
+            || self.bg_pipeline_state.scx_discard_remaining != 0
         {
             return;
         }
 
-        if self.wx == 166 && !self.bg_pipeline_state.window_force_x0_this_line {
-            if self.bg_pipeline_state.visible_pixels_output as usize == SCREEN_WIDTH - 1
+        self.bg_pipeline_state.apply_wx0_scx_shortening();
+    }
+
+    fn maybe_start_window_after_transfer_dot(&mut self, transfer_dot: Mode3TransferDot) -> bool {
+        if !transfer_dot.is_served()
+            || self.bg_pipeline_state.window_started_this_line
+            || !self.bg_pipeline_state.window_wy_latch
+            || !self.window_runtime_enabled()
+        {
+            return false;
+        }
+
+        if self.window_activation_registers().wx == 166
+            && !self.bg_pipeline_state.window_force_x0_this_line
+        {
+            if self.bg_pipeline_state.visible_pixels_output as usize == SCREEN_WIDTH
                 && self.bg_pipeline_state.scx_discard_remaining == 0
                 && !self.bg_pipeline_state.wx166_armed_this_line
             {
                 self.window_state.pending_wx166_next_line = true;
                 self.bg_pipeline_state.wx166_armed_this_line = true;
             }
-            return;
+            return false;
         }
 
         let Some(trigger_x) = self.window_trigger_x_for_current_line() else {
-            return;
+            return false;
         };
 
-        if !self.should_start_window_now(trigger_x) {
-            return;
+        if !self.should_start_window_after_transfer_dot_now(trigger_x, transfer_dot) {
+            return false;
         }
 
-        if self.wx == 0
-            && !self.bg_pipeline_state.window_force_x0_this_line
-            && self.bg_pipeline_state.initial_scx_discard > 0
-            && self.bg_pipeline_state.scx_discard_remaining == 1
-        {
-            self.bg_pipeline_state.wx0_scx_shortening_applied = true;
-        }
-
-        self.bg_pipeline_state.fifo.clear();
-        self.bg_pipeline_state.fetcher.start_window();
-        self.bg_pipeline_state.scx_discard_remaining = 0;
-        self.bg_pipeline_state.window_started_this_line = true;
-        self.bg_pipeline_state.window_force_x0_this_line = false;
+        self.start_window_fetcher_restart();
+        true
     }
 
     fn window_runtime_enabled(&self) -> bool {
-        self.lcdc & LCDC_WINDOW_ENABLE_BIT != 0 && self.bg_enabled()
+        let registers = self.window_activation_registers();
+        registers.window_enabled() && registers.bg_enabled()
     }
 
-    fn maybe_start_object_fetch(&mut self) {
-        if self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle || !self.obj_enabled() {
+    fn latch_object_fetch_hits(&mut self) {
+        if !self.obj_enabled() {
             return;
         }
 
-        let current_match_x = self.current_obj_match_x();
+        let current_owner = self.current_obj_hit_ownership();
         for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
             if self.obj_pipeline_state.has_fetched(sprite_slot) {
                 continue;
@@ -1030,42 +1790,85 @@ impl Ppu {
                 continue;
             };
 
-            if trigger_x == current_match_x {
-                self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
-                break;
+            if trigger_x == current_owner.match_x {
+                self.obj_pipeline_state
+                    .queue_fetch_hit(sprite_slot, current_owner);
             }
         }
     }
 
-    fn current_obj_match_x(&self) -> u8 {
-        if self.bg_pipeline_state.pre_visible_obj_match_x < 8 {
-            self.bg_pipeline_state.pre_visible_obj_match_x
-        } else {
-            self.bg_pipeline_state
-                .visible_pixels_output
-                .saturating_add(8)
+    fn sync_pending_obj_hit_ownership(&mut self) {
+        if !self.obj_enabled() {
+            self.obj_pipeline_state.clear_pending_fetch_hits();
+            return;
+        }
+
+        let current_owner = self.current_obj_hit_ownership();
+        self.obj_pipeline_state
+            .clear_pending_fetch_hits_if_stale(current_owner);
+    }
+
+    fn try_start_object_fetch_from_current_dot(
+        &mut self,
+        start_source: ObjFetchStartSource,
+        overlap_current_dot: bool,
+    ) -> bool {
+        if !self
+            .current_dot_arbitration()
+            .can_start_obj_fetch(start_source)
+        {
+            return false;
+        }
+
+        let Some(sprite_slot) = self.obj_pipeline_state.pop_pending_fetch_hit() else {
+            return false;
+        };
+        let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
+            return false;
+        };
+
+        self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
+        if overlap_current_dot {
+            if matches!(
+                start_source,
+                ObjFetchStartSource::FifoBackedTransfer | ObjFetchStartSource::PushCachedBgFetch
+            ) {
+                self.bg_pipeline_state.push.interrupt_for_object_fetch();
+            }
+            self.bg_pipeline_state.extend_mode3_by_one_dot();
+            self.obj_pipeline_state.fetch.stage_dot = 1;
+        }
+        true
+    }
+
+    fn current_obj_hit_ownership(&self) -> ObjHitOwnership {
+        let phase = self
+            .current_transfer()
+            .map_or(ObjHitPhase::PreVisible, |transfer| {
+                match transfer.context.lane {
+                    Mode3TransferLane::PreVisible => ObjHitPhase::PreVisible,
+                    Mode3TransferLane::Hidden => ObjHitPhase::Hidden,
+                    Mode3TransferLane::Visible => ObjHitPhase::Visible,
+                }
+            });
+
+        ObjHitOwnership {
+            match_x: self.bg_pipeline_state.current_transfer_x,
+            phase,
         }
     }
 
-    fn advance_pre_visible_obj_match_x(&mut self) {
-        if self.bg_pipeline_state.pre_visible_obj_match_x >= 8
-            || self.bg_pipeline_state.visible_pixels_output != 0
-        {
-            return;
-        }
-
-        let mode3_dot = self.line_dot.saturating_sub(MODE2_DOTS);
-        if mode3_dot < MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT {
-            return;
-        }
-
-        self.bg_pipeline_state.pre_visible_obj_match_x += 1;
+    fn bg_fetcher_ready_for_fifo_backed_obj_start(&self) -> bool {
+        !matches!(
+            self.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex | PpuBgFetcherStage::TileDataLow
+        )
     }
 
     fn advance_object_fetch(
         &mut self,
-        oam_bytes: &[u8],
-        vram_bytes: &[u8],
+        oam: &OamBusView<'_>,
+        vram: &VramBusView<'_>,
         dma_oam_conflict_address: Option<u16>,
     ) -> bool {
         if self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle {
@@ -1078,45 +1881,52 @@ impl Ppu {
             return false;
         }
 
-        self.obj_pipeline_state.stall_dots += 1;
-        self.obj_pipeline_state.fetch.stage_dot += 1;
+        self.bg_pipeline_state.extend_mode3_by_one_dot();
         if !self.obj_enabled() {
             self.obj_pipeline_state.fetch.cancelled = true;
         }
 
-        if self.obj_pipeline_state.fetch.stage_dot < 2 {
-            return true;
-        }
-
-        self.obj_pipeline_state.fetch.stage_dot = 0;
         let fetch = self.obj_pipeline_state.fetch;
-
-        match fetch.stage {
-            PpuObjFetcherStage::Idle => {}
-            PpuObjFetcherStage::Startup => {
+        match (fetch.stage, fetch.stage_dot) {
+            (PpuObjFetcherStage::Startup, 0) => {
+                self.obj_pipeline_state.fetch.stage_dot = 1;
+            }
+            (PpuObjFetcherStage::Startup, 1) => {
                 let resolved_sprite = fetch.sprite.map(|sprite| {
-                    self.resolve_obj_fetch_sprite(oam_bytes, sprite, dma_oam_conflict_address)
+                    self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict_address)
                 });
                 self.obj_pipeline_state.fetch.resolved_sprite = resolved_sprite;
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataLow;
+                self.obj_pipeline_state.fetch.stage_dot = 0;
             }
-            PpuObjFetcherStage::TileDataLow => {
+            (PpuObjFetcherStage::TileDataLow, 0) => {
+                self.obj_pipeline_state.fetch.stage_dot = 1;
+            }
+            (PpuObjFetcherStage::TileDataLow, 1) => {
                 let resolved_sprite = fetch
                     .resolved_sprite
                     .expect("active OBJ fetch must resolve tile metadata before reading tile data");
                 self.obj_pipeline_state.fetch.tile_low =
-                    self.read_obj_tile_data_byte(vram_bytes, resolved_sprite, 0);
+                    self.read_obj_tile_data_byte(vram, resolved_sprite, 0);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
+                self.obj_pipeline_state.fetch.stage_dot = 0;
             }
-            PpuObjFetcherStage::TileDataHigh => {
+            (PpuObjFetcherStage::TileDataHigh, 0) => {
+                self.obj_pipeline_state.fetch.stage_dot = 1;
+            }
+            (PpuObjFetcherStage::TileDataHigh, 1) => {
                 let resolved_sprite = fetch
                     .resolved_sprite
                     .expect("active OBJ fetch must resolve tile metadata before reading tile data");
                 self.obj_pipeline_state.fetch.tile_high =
-                    self.read_obj_tile_data_byte(vram_bytes, resolved_sprite, 1);
+                    self.read_obj_tile_data_byte(vram, resolved_sprite, 1);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+                self.obj_pipeline_state.fetch.stage_dot = 0;
             }
-            PpuObjFetcherStage::Push => {
+            (PpuObjFetcherStage::Push, 0) => {
+                self.obj_pipeline_state.fetch.stage_dot = 1;
+            }
+            (PpuObjFetcherStage::Push, 1) => {
                 let resolved_sprite = fetch
                     .resolved_sprite
                     .expect("active OBJ fetch must keep resolved metadata until FIFO push");
@@ -1130,7 +1940,15 @@ impl Ppu {
                 }
                 self.obj_pipeline_state.mark_fetched(fetch.sprite_slot);
                 self.obj_pipeline_state.fetch = ObjFetchState::default();
+                self.bg_pipeline_state.push.resume_after_object_fetch();
             }
+            (PpuObjFetcherStage::Idle, _) => unreachable!(
+                "idle OBJ fetch must have returned before entering the explicit dot automaton"
+            ),
+            (_, other_dot) => unreachable!(
+                "invalid OBJ fetcher stage_dot {other_dot} for stage {:?}",
+                fetch.stage
+            ),
         }
 
         true
@@ -1155,12 +1973,12 @@ impl Ppu {
 
     fn resolve_obj_fetch_sprite(
         &mut self,
-        oam_bytes: &[u8],
+        oam: &OamBusView<'_>,
         sprite: PpuSelectedSprite,
         dma_oam_conflict_address: Option<u16>,
     ) -> PpuSelectedSprite {
         let (tile_index, attributes) =
-            read_obj_fetch_sprite_metadata(oam_bytes, sprite, dma_oam_conflict_address);
+            read_obj_fetch_sprite_metadata(oam, sprite, dma_oam_conflict_address);
         self.mode2_scan_state.latch_oam_word(tile_index, attributes);
 
         PpuSelectedSprite {
@@ -1175,39 +1993,61 @@ impl Ppu {
             return Some(0);
         }
 
-        match self.wx {
-            0..=166 => Some(self.wx.saturating_sub(7)),
+        let registers = self.window_activation_registers();
+        match registers.wx {
+            0..=166 => Some(registers.wx.saturating_sub(7)),
             _ => None,
         }
     }
 
-    fn should_start_window_now(&self, trigger_x: u8) -> bool {
+    fn should_start_window_after_transfer_dot_now(
+        &self,
+        trigger_x: u8,
+        transfer_dot: Mode3TransferDot,
+    ) -> bool {
         if self.bg_pipeline_state.visible_pixels_output != trigger_x {
             return false;
         }
 
         if trigger_x == 0 {
             return self.bg_pipeline_state.scx_discard_remaining == 0
-                || (self.wx == 0
-                    && !self.bg_pipeline_state.window_force_x0_this_line
-                    && self.bg_pipeline_state.initial_scx_discard > 0
-                    && self.bg_pipeline_state.scx_discard_remaining == 1);
+                && self.bg_pipeline_state.current_transfer_x >= 8
+                && transfer_dot.can_start_window_after_x0_service();
         }
 
         self.bg_pipeline_state.scx_discard_remaining == 0
+            && transfer_dot.kind == Mode3TransferDotKind::ServedVisiblePixel
     }
 
-    fn read_fetch_tile_index(
+    fn start_window_fetcher_restart(&mut self) {
+        let bg_resume_fetch_pixel = self.bg_pipeline_state.fetcher.next_fetch_pixel;
+        self.bg_pipeline_state.fifo.clear();
+        self.bg_pipeline_state.startup_fifo_placeholders = 0;
+        self.bg_pipeline_state.push.reset();
+        self.bg_pipeline_state.fill.reset();
+        self.bg_pipeline_state
+            .fetcher
+            .start_window(bg_resume_fetch_pixel);
+        self.bg_pipeline_state.scx_discard_remaining = 0;
+        self.bg_pipeline_state.window_started_this_line = true;
+        self.bg_pipeline_state.window_force_x0_this_line = false;
+    }
+
+    fn compute_fetch_tile_index_address(
         &self,
-        vram_bytes: &[u8],
         source: PpuBgFetcherSource,
         next_fetch_pixel: u16,
-    ) -> u8 {
+    ) -> u16 {
         let (tile_map_base, tile_x, tile_y) = match source {
             PpuBgFetcherSource::Background => {
-                let bg_x = self.scx.wrapping_add(next_fetch_pixel as u8);
-                let bg_y = self.scy.wrapping_add(self.ly);
-                let tile_map_base = if self.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
+                let bg_x = self
+                    .visible_registers
+                    .scx
+                    .wrapping_add(next_fetch_pixel as u8);
+                let bg_fetch_scy = self.bg_fetch_scy(next_fetch_pixel);
+                let bg_fetch_lcdc = self.bg_fetch_tilemap_lcdc(next_fetch_pixel);
+                let bg_y = bg_fetch_scy.wrapping_add(self.ly);
+                let tile_map_base = if bg_fetch_lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
                     0x1C00
                 } else {
                     0x1800
@@ -1219,47 +2059,193 @@ impl Ppu {
                 )
             }
             PpuBgFetcherSource::Window => {
-                let tile_map_base = if self.lcdc & LCDC_WINDOW_TILE_MAP_BIT != 0 {
+                let tile_map_base = if self.window_fetch_lcdc() & LCDC_WINDOW_TILE_MAP_BIT != 0 {
                     0x1C00
                 } else {
                     0x1800
                 };
                 (
                     tile_map_base,
-                    (next_fetch_pixel / BG_TILE_WIDTH as u16) as usize,
+                    self.bg_pipeline_state.fetcher.window_tilemap_x as usize,
                     (self.window_state.window_line_counter / BG_TILE_WIDTH) as usize,
                 )
             }
         };
-        let tile_map_address = tile_map_base + tile_y * BG_TILE_MAP_WIDTH as usize + tile_x;
-
-        vram_bytes.get(tile_map_address).copied().unwrap_or(0)
+        (tile_map_base + tile_y * BG_TILE_MAP_WIDTH as usize + tile_x) as u16
     }
 
-    fn read_fetch_tile_data_byte(
+    fn compute_fetch_tile_data_address(
         &self,
-        vram_bytes: &[u8],
         source: PpuBgFetcherSource,
+        fetch_x: u16,
         tile_index: u8,
         plane: u16,
-    ) -> u8 {
+    ) -> u16 {
         let tile_row = match source {
             PpuBgFetcherSource::Background => {
-                (self.scy.wrapping_add(self.ly) % BG_TILE_WIDTH) as u16
+                (self.bg_fetch_scy(fetch_x).wrapping_add(self.ly) % BG_TILE_WIDTH) as u16
             }
             PpuBgFetcherSource::Window => {
                 (self.window_state.window_line_counter % BG_TILE_WIDTH) as u16
             }
         };
-        let tile_data_base = bg_tile_data_base(self.lcdc, tile_index);
-        let byte_address = tile_data_base + tile_row * TILE_ROW_BYTES + plane;
+        let tile_data_base = bg_tile_data_base(
+            match source {
+                PpuBgFetcherSource::Background => self.bg_fetch_tiledata_lcdc(fetch_x),
+                PpuBgFetcherSource::Window => self.window_fetch_lcdc(),
+            },
+            tile_index,
+        );
+        tile_data_base + tile_row * TILE_ROW_BYTES + plane
+    }
 
-        vram_bytes.get(byte_address as usize).copied().unwrap_or(0)
+    fn bg_fetch_tilemap_uses_pipeline_snapshot(&self, next_fetch_pixel: u16) -> bool {
+        let _ = next_fetch_pixel;
+        self.console_model.is_dmg_family()
+            && self
+                .bg_pipeline_state
+                .startup_background_tilemap_uses_pipeline_snapshot()
+    }
+
+    fn bg_fetch_tiledata_uses_pipeline_snapshot(&self, next_fetch_pixel: u16) -> bool {
+        let _ = next_fetch_pixel;
+        self.console_model.is_dmg_family()
+            && self
+                .bg_pipeline_state
+                .startup_background_tiledata_uses_pipeline_snapshot()
+    }
+
+    fn bg_fetch_tilemap_lcdc(&self, next_fetch_pixel: u16) -> u8 {
+        if self.bg_fetch_tilemap_uses_pipeline_snapshot(next_fetch_pixel) {
+            self.pipeline_registers.lcdc
+        } else {
+            self.visible_registers.lcdc
+        }
+    }
+
+    fn bg_fetch_tiledata_lcdc(&self, next_fetch_pixel: u16) -> u8 {
+        if self.bg_fetch_tiledata_uses_pipeline_snapshot(next_fetch_pixel) {
+            self.pipeline_registers.lcdc
+        } else {
+            self.visible_registers.lcdc
+        }
+    }
+
+    fn bg_fetch_scy(&self, next_fetch_pixel: u16) -> u8 {
+        if self.bg_fetch_tiledata_uses_pipeline_snapshot(next_fetch_pixel) {
+            self.pipeline_registers.scy
+        } else {
+            self.visible_registers.scy
+        }
+    }
+
+    fn window_fetch_lcdc(&self) -> u8 {
+        self.visible_registers.lcdc
+    }
+
+    fn maybe_cache_unsigned_bgwin_tile_data_fetch(
+        &mut self,
+        source: PpuBgFetcherSource,
+        next_fetch_pixel: u16,
+        plane: u16,
+        tile_data: u8,
+    ) {
+        if self.bg_pipeline_state.startup_alignment_seed_pending() {
+            return;
+        }
+        let lcdc = match source {
+            PpuBgFetcherSource::Background => self.bg_fetch_tiledata_lcdc(next_fetch_pixel),
+            PpuBgFetcherSource::Window => self.window_fetch_lcdc(),
+        };
+        if lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0 {
+            self.last_unsigned_tile_data_fetch = tile_data;
+            if plane == 0 {
+                self.last_unsigned_tile_data_low_fetch = tile_data;
+            } else {
+                self.last_unsigned_tile_data_high_fetch = tile_data;
+            }
+        }
+    }
+
+    fn maybe_apply_bgwin_tile_data_selector_glitch(
+        &mut self,
+        vram: &VramBusView<'_>,
+        source: PpuBgFetcherSource,
+        plane: u16,
+    ) {
+        if !self.console_model.is_dmg_family() {
+            return;
+        }
+
+        let previous_uses_unsigned =
+            self.pipeline_registers.lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+        let current_uses_unsigned = self.visible_registers.lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+        if previous_uses_unsigned == current_uses_unsigned {
+            return;
+        }
+
+        let tile_index = self.bg_pipeline_state.fetcher.tile_index;
+        let reread_address = if previous_uses_unsigned && !current_uses_unsigned {
+            Some(self.compute_fetch_tile_data_address(
+                source,
+                self.bg_pipeline_state.fetcher.fetch_x,
+                tile_index,
+                plane,
+            ))
+        } else {
+            None
+        };
+        let tile_byte = if let Some(tile_data_address) = reread_address {
+            vram.read(tile_data_address as usize).unwrap_or(0)
+        } else {
+            match plane {
+                0 => self.last_unsigned_tile_data_low_fetch,
+                _ => self.last_unsigned_tile_data_high_fetch,
+            }
+        };
+
+        let fetcher = &mut self.bg_pipeline_state.fetcher;
+        if let Some(tile_data_address) = reread_address {
+            fetcher.tile_data_address = tile_data_address;
+        }
+
+        if plane == 0 {
+            fetcher.tile_low = tile_byte;
+        } else {
+            fetcher.tile_high = tile_byte;
+        }
+    }
+
+    fn maybe_apply_bgwin_tilemap_selector_glitch(
+        &mut self,
+        vram: &VramBusView<'_>,
+        source: PpuBgFetcherSource,
+    ) {
+        if !self.console_model.is_dmg_family() {
+            return;
+        }
+
+        let map_bit = match source {
+            PpuBgFetcherSource::Background => LCDC_BG_TILE_MAP_BIT,
+            PpuBgFetcherSource::Window => LCDC_WINDOW_TILE_MAP_BIT,
+        };
+        let previous_selects_high = self.pipeline_registers.lcdc & map_bit != 0;
+        let current_selects_high = self.visible_registers.lcdc & map_bit != 0;
+        if previous_selects_high == current_selects_high {
+            return;
+        }
+
+        let tile_map_address =
+            self.compute_fetch_tile_index_address(source, self.bg_pipeline_state.fetcher.fetch_x);
+        let tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+        let fetcher = &mut self.bg_pipeline_state.fetcher;
+        fetcher.tile_map_address = tile_map_address;
+        fetcher.tile_index = tile_index;
     }
 
     fn read_obj_tile_data_byte(
-        &self,
-        vram_bytes: &[u8],
+        &mut self,
+        vram: &VramBusView<'_>,
         sprite: PpuSelectedSprite,
         plane: u16,
     ) -> u8 {
@@ -1268,8 +2254,9 @@ impl Ppu {
         };
         let byte_address =
             tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES + plane;
-
-        vram_bytes.get(byte_address as usize).copied().unwrap_or(0)
+        let tile_data = vram.read(byte_address as usize).unwrap_or(0);
+        self.last_unsigned_tile_data_fetch = tile_data;
+        tile_data
     }
 
     fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> Option<(u8, u8)> {
@@ -1354,7 +2341,7 @@ impl Ppu {
     }
 
     fn mix_bg_and_obj(&self, bg_pixel: u8, obj_pixel: ObjPixel) -> MixedPixel {
-        if !self.obj_enabled() || obj_pixel.is_transparent() {
+        if !self.pixel_transfer_obj_enabled() || obj_pixel.is_transparent() {
             return MixedPixel::background(bg_pixel);
         }
 
@@ -1367,15 +2354,13 @@ impl Ppu {
 
     fn map_mixed_pixel_to_panel_shade(&self, pixel: MixedPixel) -> u8 {
         match pixel.source {
-            MixedPixelSource::Background => self.apply_dmg_palette(self.bgp, pixel.color),
+            MixedPixelSource::Background => {
+                self.apply_dmg_palette(self.pixel_pipeline_bgp(), pixel.color)
+            }
             MixedPixelSource::Object { palette_obp1 } => {
-                let palette = if palette_obp1 {
-                    self.obp1
-                        .unwrap_or(self.obj_palette_read_policy.default_read_value())
-                } else {
-                    self.obp0
-                        .unwrap_or(self.obj_palette_read_policy.default_read_value())
-                };
+                let palette = self
+                    .visible_registers
+                    .obj_palette(palette_obp1, self.obj_palette_read_policy);
                 self.apply_dmg_palette(palette, pixel.color)
             }
         }
@@ -1529,6 +2514,8 @@ impl Ppu {
         self.line_dot = 0;
         self.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
         self.reset_runtime_pipeline_state();
+        self.sync_visible_registers();
+        self.sync_pipeline_registers();
         self.clear_visible_buffers();
         self.refresh_visible_output();
     }
@@ -1541,19 +2528,21 @@ impl Ppu {
         self.lcd_restart_phase = PpuLcdRestartPhase::startup_mode0_window();
         self.stat_state.lcd_disabled_lyc_coincidence = false;
         self.reset_runtime_pipeline_state();
+        self.sync_visible_registers();
+        self.sync_pipeline_registers();
         self.clear_visible_buffers();
         self.refresh_visible_output();
     }
 
     fn write_dmg_palette_register(&mut self, register: PpuPaletteRegister, value: u8) {
         let previous_visible = match register {
-            PpuPaletteRegister::Bgp => self.bgp,
+            PpuPaletteRegister::Bgp => self.visible_registers.bgp,
             PpuPaletteRegister::Obp0 => self
-                .obp0
-                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+                .visible_registers
+                .obj_palette(false, self.obj_palette_read_policy),
             PpuPaletteRegister::Obp1 => self
-                .obp1
-                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+                .visible_registers
+                .obj_palette(true, self.obj_palette_read_policy),
         };
 
         match register {
@@ -1620,7 +2609,7 @@ impl Ppu {
                 let palette = if register == PpuPaletteRegister::Bgp {
                     palette_override
                 } else {
-                    self.bgp
+                    self.visible_registers.bgp
                 };
                 self.apply_dmg_palette(palette, pixel.color)
             }
@@ -1629,12 +2618,9 @@ impl Ppu {
                     (PpuPaletteRegister::Obp0, false) | (PpuPaletteRegister::Obp1, true) => {
                         palette_override
                     }
-                    (_, false) => self
-                        .obp0
-                        .unwrap_or(self.obj_palette_read_policy.default_read_value()),
-                    (_, true) => self
-                        .obp1
-                        .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+                    _ => self
+                        .visible_registers
+                        .obj_palette(palette_obp1, self.obj_palette_read_policy),
                 };
                 self.apply_dmg_palette(palette, pixel.color)
             }
@@ -1678,6 +2664,205 @@ enum PpuPaletteRegister {
     Bgp,
     Obp0,
     Obp1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferDotKind {
+    NotServed,
+    ServedPreVisibleTransfer,
+    ServedHiddenTransfer,
+    ServedVisiblePixel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3TransferDot {
+    kind: Mode3TransferDotKind,
+    consumed_scx_discard: bool,
+}
+
+impl Mode3TransferDot {
+    const fn not_served() -> Self {
+        Self {
+            kind: Mode3TransferDotKind::NotServed,
+            consumed_scx_discard: false,
+        }
+    }
+
+    const fn served(kind: Mode3TransferDotKind, consumed_scx_discard: bool) -> Self {
+        Self {
+            kind,
+            consumed_scx_discard,
+        }
+    }
+
+    fn is_served(self) -> bool {
+        !matches!(self.kind, Mode3TransferDotKind::NotServed)
+    }
+
+    fn can_start_window_after_x0_service(self) -> bool {
+        matches!(
+            self.kind,
+            Mode3TransferDotKind::ServedHiddenTransfer | Mode3TransferDotKind::ServedVisiblePixel
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Mode3TransferPhase {
+    #[default]
+    Priming,
+    Output,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferLane {
+    PreVisible,
+    Hidden,
+    Visible,
+}
+
+impl Mode3TransferLane {
+    const fn dot_kind(self) -> Mode3TransferDotKind {
+        match self {
+            Self::PreVisible => Mode3TransferDotKind::ServedPreVisibleTransfer,
+            Self::Hidden => Mode3TransferDotKind::ServedHiddenTransfer,
+            Self::Visible => Mode3TransferDotKind::ServedVisiblePixel,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferSourceWindow {
+    AbstractStartup,
+    FifoBacked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3TransferContext {
+    lane: Mode3TransferLane,
+    source_window: Mode3TransferSourceWindow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3TransferServicePlan {
+    result_kind: Mode3TransferDotKind,
+    execution: Mode3TransferServiceExecution,
+    backing: Mode3TransferBacking,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3CurrentTransfer {
+    context: Mode3TransferContext,
+    readiness: Mode3TransferReadiness,
+}
+
+impl Mode3CurrentTransfer {
+    #[cfg(test)]
+    const fn service_plan(self) -> Mode3TransferServicePlan {
+        match self.readiness {
+            Mode3TransferReadiness::WaitingForFifo(plan) | Mode3TransferReadiness::Ready(plan) => {
+                plan
+            }
+        }
+    }
+
+    const fn can_start_obj_fetch_from_fifo_backed_transfer(
+        self,
+        real_bg_fifo_pixel_ready: bool,
+    ) -> bool {
+        self.readiness
+            .can_start_obj_fetch_from_fifo_backed_transfer(real_bg_fifo_pixel_ready)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferReadiness {
+    WaitingForFifo(Mode3TransferServicePlan),
+    Ready(Mode3TransferServicePlan),
+}
+
+impl Mode3TransferReadiness {
+    const fn can_start_obj_fetch_from_fifo_backed_transfer(
+        self,
+        real_bg_fifo_pixel_ready: bool,
+    ) -> bool {
+        match self {
+            Self::Ready(plan) => {
+                plan.can_start_obj_fetch_from_fifo_backed_transfer(real_bg_fifo_pixel_ready)
+            }
+            Self::WaitingForFifo(_) => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferServiceExecution {
+    ConsumeScxDiscard,
+    AdvancePreVisibleWithBgPop,
+    AdvanceHiddenWithBgAndObjPop,
+    EmitVisiblePixel,
+}
+
+impl Mode3TransferServiceExecution {
+    const fn can_start_obj_fetch_from_fifo_backed_transfer(self) -> bool {
+        matches!(
+            self,
+            Self::AdvanceHiddenWithBgAndObjPop | Self::EmitVisiblePixel
+        )
+    }
+
+    const fn requires_effective_bg_fifo_pixel(self) -> bool {
+        matches!(
+            self,
+            Self::ConsumeScxDiscard
+                | Self::AdvancePreVisibleWithBgPop
+                | Self::AdvanceHiddenWithBgAndObjPop
+        )
+    }
+
+    const fn requires_real_bg_fifo_pixel(self) -> bool {
+        matches!(self, Self::EmitVisiblePixel)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3TransferBacking {
+    Abstract,
+    FifoBacked,
+}
+
+impl Mode3TransferServicePlan {
+    const fn requires_effective_bg_fifo_pixel(self) -> bool {
+        self.execution.requires_effective_bg_fifo_pixel() && !self.requires_real_bg_fifo_pixel()
+    }
+
+    const fn requires_real_bg_fifo_pixel(self) -> bool {
+        self.execution.requires_real_bg_fifo_pixel()
+            || (matches!(self.backing, Mode3TransferBacking::FifoBacked)
+                && matches!(
+                    self.execution,
+                    Mode3TransferServiceExecution::ConsumeScxDiscard
+                        | Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop
+                ))
+    }
+
+    const fn can_start_obj_fetch_from_fifo_backed_transfer(
+        self,
+        real_bg_fifo_pixel_ready: bool,
+    ) -> bool {
+        matches!(self.backing, Mode3TransferBacking::FifoBacked)
+            && real_bg_fifo_pixel_ready
+            && self
+                .execution
+                .can_start_obj_fetch_from_fifo_backed_transfer()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode3StartupSourceState {
+    EntryDelay { remaining: u8 },
+    Abstract { remaining: u8 },
+    FifoBacked,
 }
 
 const fn register_affects_pixel(register: PpuPaletteRegister, pixel: MixedPixel) -> bool {
@@ -1783,16 +2968,23 @@ impl OamCorruptionController {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct BgPipelineState {
     fetcher: BgFetcherState,
+    push: BgPushState,
+    fill: BgFifoFillState,
     fifo: VecDeque<u8>,
+    startup_fetch_seam: BgStartupFetchSeamState,
+    startup_fifo_placeholders: u8,
     mode3_started: bool,
+    mode0_start_dot: u16,
     initial_scx_discard: u8,
     scx_discard_remaining: u8,
-    pre_visible_obj_match_x: u8,
+    startup_source_state: Mode3StartupSourceState,
+    startup_pre_visible_transfer_dots_remaining: u8,
+    transfer_phase: Mode3TransferPhase,
+    current_transfer_x: u8,
     visible_pixels_output: u8,
-    window_extra_stall_dots: u16,
     window_wy_latch: bool,
     window_force_x0_this_line: bool,
     window_started_this_line: bool,
@@ -1803,13 +2995,20 @@ struct BgPipelineState {
 impl BgPipelineState {
     fn reset(&mut self) {
         self.fetcher.reset();
+        self.push.reset();
+        self.fill.reset();
         self.fifo.clear();
+        self.startup_fetch_seam = BgStartupFetchSeamState::Inactive;
+        self.startup_fifo_placeholders = 0;
         self.mode3_started = false;
+        self.mode0_start_dot = MODE0_START_DOT;
         self.initial_scx_discard = 0;
         self.scx_discard_remaining = 0;
-        self.pre_visible_obj_match_x = 0;
+        self.startup_source_state = Mode3StartupSourceState::FifoBacked;
+        self.startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
+        self.transfer_phase = Mode3TransferPhase::Priming;
+        self.current_transfer_x = 0;
         self.visible_pixels_output = 0;
-        self.window_extra_stall_dots = 0;
         self.window_wy_latch = false;
         self.window_force_x0_this_line = false;
         self.window_started_this_line = false;
@@ -1820,17 +3019,20 @@ impl BgPipelineState {
     fn start_line(&mut self, scx: u8) {
         self.mode3_started = true;
         self.initial_scx_discard = scx & 0x07;
+        self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
         self.scx_discard_remaining = self.initial_scx_discard;
-        self.pre_visible_obj_match_x = 0;
+        self.fifo.clear();
+        self.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
+        self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
+        self.startup_source_state = Mode3StartupSourceState::EntryDelay {
+            remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
+        };
+        self.startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
+        self.transfer_phase = Mode3TransferPhase::Priming;
+        self.current_transfer_x = 0;
+        self.push.reset();
+        self.fill.reset();
         self.fetcher.start_background();
-    }
-
-    fn latched_scx_discard(&self, live_scx: u8) -> u8 {
-        if self.mode3_started {
-            self.initial_scx_discard
-        } else {
-            live_scx & 0x07
-        }
     }
 
     fn prepare_window_line(&mut self, wy_latch: bool, force_x0_this_line: bool) {
@@ -1841,13 +3043,319 @@ impl BgPipelineState {
         self.wx166_armed_this_line = false;
     }
 
-    fn mode0_extension_dots(&self) -> i16 {
-        self.window_extra_stall_dots as i16
-            - if self.wx0_scx_shortening_applied {
-                1
-            } else {
-                0
+    fn extend_mode3_by_one_dot(&mut self) {
+        self.mode0_start_dot += 1;
+    }
+
+    fn startup_transfer_window_open(&self, mode3_dot: u16) -> bool {
+        if !self.mode3_started {
+            return mode3_dot >= MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
+        }
+
+        !matches!(
+            self.startup_source_state,
+            Mode3StartupSourceState::EntryDelay { .. }
+        )
+    }
+
+    fn consume_startup_transfer_entry_delay_dot(&mut self) -> bool {
+        if !self.mode3_started {
+            return false;
+        }
+
+        match self.startup_source_state {
+            Mode3StartupSourceState::EntryDelay { remaining } => {
+                debug_assert!(
+                    remaining > 0,
+                    "entry delay state must keep a positive countdown"
+                );
+                if remaining == 1 {
+                    self.startup_source_state = Mode3StartupSourceState::Abstract {
+                        remaining: MODE3_ABSTRACT_SOURCE_WINDOW_DOTS,
+                    };
+                } else {
+                    self.startup_source_state = Mode3StartupSourceState::EntryDelay {
+                        remaining: remaining - 1,
+                    };
+                }
+                true
             }
+            Mode3StartupSourceState::Abstract { .. } | Mode3StartupSourceState::FifoBacked => false,
+        }
+    }
+
+    fn current_startup_source_window(&self, mode3_dot: u16) -> Mode3TransferSourceWindow {
+        if !self.mode3_started {
+            if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS {
+                return Mode3TransferSourceWindow::AbstractStartup;
+            }
+
+            return Mode3TransferSourceWindow::FifoBacked;
+        }
+
+        match self.startup_source_state {
+            Mode3StartupSourceState::EntryDelay { .. }
+            | Mode3StartupSourceState::Abstract { .. } => {
+                Mode3TransferSourceWindow::AbstractStartup
+            }
+            Mode3StartupSourceState::FifoBacked => Mode3TransferSourceWindow::FifoBacked,
+        }
+    }
+
+    fn current_startup_transfer_lane(&self) -> Mode3TransferLane {
+        if self.startup_pre_visible_transfer_dots_remaining > 0 {
+            Mode3TransferLane::PreVisible
+        } else {
+            Mode3TransferLane::Hidden
+        }
+    }
+
+    fn consume_startup_source_window_dot(&mut self) {
+        if !self.mode3_started {
+            return;
+        }
+
+        match self.startup_source_state {
+            Mode3StartupSourceState::Abstract { remaining } => {
+                debug_assert!(
+                    remaining > 0,
+                    "abstract startup state must keep a positive countdown"
+                );
+                if remaining == 1 {
+                    self.startup_source_state = Mode3StartupSourceState::FifoBacked;
+                } else {
+                    self.startup_source_state = Mode3StartupSourceState::Abstract {
+                        remaining: remaining - 1,
+                    };
+                }
+            }
+            Mode3StartupSourceState::EntryDelay { .. } | Mode3StartupSourceState::FifoBacked => {}
+        }
+    }
+
+    fn consume_startup_pre_visible_transfer_dot(&mut self) {
+        if self.startup_pre_visible_transfer_dots_remaining > 0 {
+            self.startup_pre_visible_transfer_dots_remaining -= 1;
+        }
+    }
+
+    fn effective_fifo_is_empty(&self) -> bool {
+        self.startup_fifo_placeholders == 0 && self.fifo.is_empty()
+    }
+
+    fn fifo_contains_real_pixels(&self) -> bool {
+        self.fifo.len() > self.startup_fifo_placeholders as usize
+    }
+
+    fn consume_effective_fifo_pixel(&mut self) -> Option<u8> {
+        if self.startup_fifo_placeholders > 0 {
+            self.startup_fifo_placeholders -= 1;
+            self.fifo.pop_front().or(Some(0))
+        } else {
+            self.fifo.pop_front()
+        }
+    }
+
+    fn apply_wx0_scx_shortening(&mut self) {
+        if self.wx0_scx_shortening_applied || self.mode0_start_dot == 0 {
+            return;
+        }
+
+        self.wx0_scx_shortening_applied = true;
+        self.mode0_start_dot -= 1;
+    }
+
+    fn peek_startup_background_fetch_origin(&self) -> BgCachedSliceOrigin {
+        match self.startup_fetch_seam {
+            BgStartupFetchSeamState::PostAlignment {
+                next_startup_continuation_slice,
+                startup_continuation_visible_tiles_remaining,
+                ..
+            } if startup_continuation_visible_tiles_remaining > 0 => {
+                BgCachedSliceOrigin::from_startup_continuation_slice(
+                    next_startup_continuation_slice,
+                )
+            }
+            BgStartupFetchSeamState::Inactive
+            | BgStartupFetchSeamState::AlignmentSeedPending
+            | BgStartupFetchSeamState::PostAlignment { .. } => BgCachedSliceOrigin::Ordinary,
+        }
+    }
+
+    fn startup_alignment_seed_pending(&self) -> bool {
+        matches!(
+            self.startup_fetch_seam,
+            BgStartupFetchSeamState::AlignmentSeedPending
+        )
+    }
+
+    fn startup_background_tilemap_uses_pipeline_snapshot(&self) -> bool {
+        match self.startup_fetch_seam {
+            BgStartupFetchSeamState::Inactive => false,
+            BgStartupFetchSeamState::AlignmentSeedPending => true,
+            BgStartupFetchSeamState::PostAlignment {
+                delayed_background_tilemap_tiles_remaining,
+                ..
+            } => delayed_background_tilemap_tiles_remaining > 0,
+        }
+    }
+
+    fn startup_background_tiledata_uses_pipeline_snapshot(&self) -> bool {
+        match self.startup_fetch_seam {
+            BgStartupFetchSeamState::Inactive => false,
+            BgStartupFetchSeamState::AlignmentSeedPending => true,
+            BgStartupFetchSeamState::PostAlignment {
+                delayed_background_tileindex_read_tiles_remaining: _,
+                delayed_background_tiledata_tiles_remaining,
+                ..
+            } => delayed_background_tiledata_tiles_remaining > 0,
+        }
+    }
+
+    fn startup_background_tileindex_reads_on_stage_one(&self) -> bool {
+        match self.startup_fetch_seam {
+            BgStartupFetchSeamState::Inactive | BgStartupFetchSeamState::AlignmentSeedPending => {
+                false
+            }
+            BgStartupFetchSeamState::PostAlignment {
+                delayed_background_tileindex_read_tiles_remaining,
+                ..
+            } => delayed_background_tileindex_read_tiles_remaining > 0,
+        }
+    }
+
+    fn begin_post_alignment_followup(&mut self) {
+        self.startup_fetch_seam = BgStartupFetchSeamState::PostAlignment {
+            first_real_push_skips_entry_delay: false,
+            next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile2,
+            startup_continuation_visible_tiles_remaining: 2,
+            delayed_background_tileindex_read_tiles_remaining: 1,
+            delayed_background_tilemap_tiles_remaining: 0,
+            delayed_background_tiledata_tiles_remaining: 1,
+        };
+    }
+
+    fn take_startup_first_real_push_skip_entry_delay(&mut self) -> bool {
+        let skip_entry_delay = match &mut self.startup_fetch_seam {
+            BgStartupFetchSeamState::PostAlignment {
+                first_real_push_skips_entry_delay,
+                ..
+            } => {
+                let skip = *first_real_push_skips_entry_delay;
+                *first_real_push_skips_entry_delay = false;
+                skip
+            }
+            BgStartupFetchSeamState::Inactive | BgStartupFetchSeamState::AlignmentSeedPending => {
+                false
+            }
+        };
+        self.maybe_finish_startup_fetch_seam();
+        skip_entry_delay
+    }
+
+    fn advance_startup_background_fetch_tile(&mut self) {
+        if let BgStartupFetchSeamState::PostAlignment {
+            next_startup_continuation_slice,
+            startup_continuation_visible_tiles_remaining,
+            delayed_background_tileindex_read_tiles_remaining,
+            delayed_background_tilemap_tiles_remaining,
+            delayed_background_tiledata_tiles_remaining,
+            ..
+        } = &mut self.startup_fetch_seam
+        {
+            if *startup_continuation_visible_tiles_remaining > 0 {
+                *next_startup_continuation_slice = next_startup_continuation_slice.next();
+                *startup_continuation_visible_tiles_remaining -= 1;
+            }
+            if *delayed_background_tileindex_read_tiles_remaining > 0 {
+                *delayed_background_tileindex_read_tiles_remaining -= 1;
+            }
+            if *delayed_background_tilemap_tiles_remaining > 0 {
+                *delayed_background_tilemap_tiles_remaining -= 1;
+            }
+            if *delayed_background_tiledata_tiles_remaining > 0 {
+                *delayed_background_tiledata_tiles_remaining -= 1;
+            }
+        }
+        self.maybe_finish_startup_fetch_seam();
+    }
+
+    fn maybe_finish_startup_fetch_seam(&mut self) {
+        if let BgStartupFetchSeamState::PostAlignment {
+            first_real_push_skips_entry_delay: false,
+            next_startup_continuation_slice: _,
+            startup_continuation_visible_tiles_remaining: 0,
+            delayed_background_tileindex_read_tiles_remaining: 0,
+            delayed_background_tilemap_tiles_remaining: 0,
+            delayed_background_tiledata_tiles_remaining: 0,
+        } = self.startup_fetch_seam
+        {
+            self.startup_fetch_seam = BgStartupFetchSeamState::Inactive;
+        }
+    }
+}
+
+impl Default for BgPipelineState {
+    fn default() -> Self {
+        Self {
+            fetcher: BgFetcherState::default(),
+            push: BgPushState::default(),
+            fill: BgFifoFillState::default(),
+            fifo: VecDeque::default(),
+            startup_fetch_seam: BgStartupFetchSeamState::Inactive,
+            startup_fifo_placeholders: 0,
+            mode3_started: false,
+            mode0_start_dot: MODE0_START_DOT,
+            initial_scx_discard: 0,
+            scx_discard_remaining: 0,
+            startup_source_state: Mode3StartupSourceState::FifoBacked,
+            startup_pre_visible_transfer_dots_remaining: MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS,
+            transfer_phase: Mode3TransferPhase::Priming,
+            current_transfer_x: 0,
+            visible_pixels_output: 0,
+            window_wy_latch: false,
+            window_force_x0_this_line: false,
+            window_started_this_line: false,
+            wx0_scx_shortening_applied: false,
+            wx166_armed_this_line: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum BgStartupFetchSeamState {
+    #[default]
+    Inactive,
+    AlignmentSeedPending,
+    PostAlignment {
+        first_real_push_skips_entry_delay: bool,
+        next_startup_continuation_slice: BgStartupContinuationSlice,
+        startup_continuation_visible_tiles_remaining: u8,
+        delayed_background_tileindex_read_tiles_remaining: u8,
+        delayed_background_tilemap_tiles_remaining: u8,
+        delayed_background_tiledata_tiles_remaining: u8,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum BgStartupContinuationSlice {
+    #[default]
+    None,
+    VisibleTile2,
+    VisibleTile3,
+}
+
+impl BgStartupContinuationSlice {
+    const fn next(self) -> Self {
+        match self {
+            Self::None => Self::None,
+            Self::VisibleTile2 => Self::VisibleTile3,
+            Self::VisibleTile3 => Self::None,
+        }
+    }
+
+    const fn is_third_visible_tile(self) -> bool {
+        matches!(self, Self::VisibleTile3)
     }
 }
 
@@ -1856,7 +3364,16 @@ struct BgFetcherState {
     source: PpuBgFetcherSource,
     stage: PpuBgFetcherStage,
     stage_dot: u8,
+    cached_origin: BgCachedSliceOrigin,
+    fetch_x: u16,
     next_fetch_pixel: u16,
+    post_alignment_fetch_restart_delay_dots: u8,
+    window_tilemap_x: u8,
+    bg_resume_fetch_pixel: u16,
+    rewind_bg_resume_after_first_tile_index_dot: bool,
+    first_window_tile_after_activation: bool,
+    tile_map_address: u16,
+    tile_data_address: u16,
     tile_index: u8,
     tile_low: u8,
     tile_high: u8,
@@ -1869,22 +3386,416 @@ impl BgFetcherState {
 
     fn start_background(&mut self) {
         self.source = PpuBgFetcherSource::Background;
-        self.start_common();
+        self.start_common(0);
     }
 
-    fn start_window(&mut self) {
+    fn start_window(&mut self, bg_resume_fetch_pixel: u16) {
         self.source = PpuBgFetcherSource::Window;
-        self.start_common();
-    }
-
-    fn start_common(&mut self) {
-        self.stage = PpuBgFetcherStage::TileIndex;
+        self.stage = PpuBgFetcherStage::WindowActivating;
         self.stage_dot = 0;
+        self.cached_origin = BgCachedSliceOrigin::Ordinary;
+        self.fetch_x = 0;
         self.next_fetch_pixel = 0;
+        self.post_alignment_fetch_restart_delay_dots = 0;
+        self.window_tilemap_x = 0;
+        self.bg_resume_fetch_pixel = bg_resume_fetch_pixel;
+        self.rewind_bg_resume_after_first_tile_index_dot = true;
+        self.first_window_tile_after_activation = true;
+        self.tile_map_address = 0;
+        self.tile_data_address = 0;
         self.tile_index = 0;
         self.tile_low = 0;
         self.tile_high = 0;
     }
+
+    fn start_common(&mut self, bg_resume_fetch_pixel: u16) {
+        self.stage = PpuBgFetcherStage::TileIndex;
+        self.stage_dot = 0;
+        self.cached_origin = BgCachedSliceOrigin::Ordinary;
+        self.fetch_x = 0;
+        self.next_fetch_pixel = 0;
+        self.post_alignment_fetch_restart_delay_dots = 0;
+        self.window_tilemap_x = 0;
+        self.bg_resume_fetch_pixel = bg_resume_fetch_pixel;
+        self.rewind_bg_resume_after_first_tile_index_dot = false;
+        self.first_window_tile_after_activation = false;
+        self.tile_map_address = 0;
+        self.tile_data_address = 0;
+        self.tile_index = 0;
+        self.tile_low = 0;
+        self.tile_high = 0;
+    }
+
+    fn abort_window_to_background(&mut self) {
+        if self.source != PpuBgFetcherSource::Window {
+            return;
+        }
+
+        self.source = PpuBgFetcherSource::Background;
+        self.cached_origin = BgCachedSliceOrigin::Ordinary;
+        self.fetch_x = self.bg_resume_fetch_pixel;
+        self.next_fetch_pixel = self.bg_resume_fetch_pixel;
+        self.post_alignment_fetch_restart_delay_dots = 0;
+        self.window_tilemap_x = 0;
+        self.first_window_tile_after_activation = false;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct BgPushState {
+    pending: bool,
+    disposition: BgPushDisposition,
+    entry_delay_remaining: u8,
+    just_activated_window_tile: bool,
+    next_fetch_pixel: u16,
+    cached: BgCachedSlice,
+}
+
+impl BgPushState {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    fn queue_from_fetcher(&mut self, fetcher: BgFetcherState) {
+        self.pending = true;
+        self.disposition = BgPushDisposition::Ready;
+        self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
+        self.entry_delay_remaining = if self.just_activated_window_tile {
+            0
+        } else {
+            1
+        };
+        self.next_fetch_pixel = fetcher.fetch_x.wrapping_add(BG_TILE_WIDTH as u16);
+        self.cached = BgCachedSlice::from_fetcher(fetcher);
+    }
+
+    fn queue_startup_alignment_seed_from_fetcher(&mut self, fetcher: BgFetcherState) {
+        self.pending = true;
+        self.disposition = BgPushDisposition::Ready;
+        self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
+        self.entry_delay_remaining = 0;
+        self.next_fetch_pixel = fetcher.fetch_x.wrapping_add(BG_TILE_WIDTH as u16);
+        self.cached = BgCachedSlice::from_fetcher(fetcher)
+            .with_origin(BgCachedSliceOrigin::StartupAlignmentSeed);
+    }
+
+    fn interrupt_for_object_fetch(&mut self) {
+        if !self.pending {
+            return;
+        }
+
+        self.disposition = BgPushDisposition::InterruptedByObjectFetch;
+    }
+
+    fn resume_after_object_fetch(&mut self) {
+        if self.pending && self.disposition == BgPushDisposition::InterruptedByObjectFetch {
+            self.disposition = BgPushDisposition::Ready;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct BgFifoFillState {
+    pending: bool,
+    startup_dummy_pixels: u8,
+    includes_real_tile_pixels: bool,
+    cached: BgCachedSlice,
+}
+
+impl BgFifoFillState {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    fn queue_from_push(&mut self, push: BgPushState) {
+        self.pending = true;
+        self.startup_dummy_pixels = 0;
+        self.includes_real_tile_pixels = true;
+        self.cached = push.cached;
+    }
+
+    fn queue_startup_alignment_from_push(&mut self, push: BgPushState, startup_dummy_pixels: u8) {
+        self.pending = true;
+        self.startup_dummy_pixels = startup_dummy_pixels;
+        self.includes_real_tile_pixels = true;
+        self.cached = push.cached.with_origin(push.cached.queued_fill_origin());
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum BgCachedSliceOrigin {
+    #[default]
+    Ordinary,
+    StartupAlignmentSeed,
+    StartupAlignmentFill,
+    StartupContinuation(BgStartupContinuationSlice),
+}
+
+impl BgCachedSliceOrigin {
+    const fn from_startup_continuation_slice(slice: BgStartupContinuationSlice) -> Self {
+        match slice {
+            BgStartupContinuationSlice::None => Self::Ordinary,
+            slice => Self::StartupContinuation(slice),
+        }
+    }
+
+    const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
+        match self {
+            Self::StartupContinuation(slice) => slice,
+            Self::Ordinary | Self::StartupAlignmentSeed | Self::StartupAlignmentFill => {
+                BgStartupContinuationSlice::None
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct BgCachedSlice {
+    source: PpuBgFetcherSource,
+    origin: BgCachedSliceOrigin,
+    fetch_x: u16,
+    same_cycle_live_tilemap_refetch_window_open: bool,
+    needs_live_tilemap_refetch: bool,
+    needs_live_tile_data_refetch: bool,
+    needs_live_tile_data_unsigned_reuse: bool,
+    tile_map_address: u16,
+    tile_data_address: u16,
+    tile_index: u8,
+    tile_low: u8,
+    tile_high: u8,
+}
+
+impl BgCachedSlice {
+    fn from_fetcher(fetcher: BgFetcherState) -> Self {
+        Self {
+            source: fetcher.source,
+            origin: fetcher.cached_origin,
+            fetch_x: fetcher.fetch_x,
+            same_cycle_live_tilemap_refetch_window_open: false,
+            needs_live_tilemap_refetch: false,
+            needs_live_tile_data_refetch: false,
+            needs_live_tile_data_unsigned_reuse: false,
+            tile_map_address: fetcher.tile_map_address,
+            tile_data_address: fetcher.tile_data_address,
+            tile_index: fetcher.tile_index,
+            tile_low: fetcher.tile_low,
+            tile_high: fetcher.tile_high,
+        }
+    }
+
+    fn with_origin(mut self, origin: BgCachedSliceOrigin) -> Self {
+        self.origin = origin;
+        self
+    }
+
+    const fn is_background(self) -> bool {
+        matches!(self.source, PpuBgFetcherSource::Background)
+    }
+
+    const fn is_startup_alignment_seed(self) -> bool {
+        matches!(self.origin, BgCachedSliceOrigin::StartupAlignmentSeed)
+    }
+
+    const fn queued_fill_origin(self) -> BgCachedSliceOrigin {
+        match self.origin {
+            BgCachedSliceOrigin::StartupAlignmentSeed => BgCachedSliceOrigin::StartupAlignmentFill,
+            origin => origin,
+        }
+    }
+
+    const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
+        self.origin.startup_continuation_slice()
+    }
+
+    const fn is_third_visible_post_startup_push(self) -> bool {
+        self.startup_continuation_slice().is_third_visible_tile()
+            && self.fetch_x == BG_TILE_WIDTH as u16 * 2
+    }
+
+    fn mark_live_register_write_while_push_pending(
+        &mut self,
+        address: u16,
+        previous_lcdc: u8,
+        lcdc: u8,
+        entry_delay_active: bool,
+    ) {
+        if !self.is_background() || self.is_startup_alignment_seed() {
+            return;
+        }
+
+        let tile_data_selector_changed = (previous_lcdc ^ lcdc) & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+        let needs_tilemap_refetch = address == 0xFF40
+            && (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT != 0
+            && (entry_delay_active
+                || self.same_cycle_live_tilemap_refetch_window_open
+                || self.is_third_visible_post_startup_push());
+        let needs_tile_data_refetch = match address {
+            0xFF40 => tile_data_selector_changed && lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT == 0,
+            0xFF42 => true,
+            _ => false,
+        };
+        let needs_tile_data_unsigned_reuse = address == 0xFF40
+            && tile_data_selector_changed
+            && lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+
+        self.needs_live_tilemap_refetch |= needs_tilemap_refetch;
+        self.needs_live_tile_data_refetch |= needs_tile_data_refetch;
+        self.needs_live_tile_data_unsigned_reuse |= needs_tile_data_unsigned_reuse;
+    }
+
+    fn mark_live_register_write_while_fill_pending(
+        &mut self,
+        address: u16,
+        previous_lcdc: u8,
+        lcdc: u8,
+        includes_real_tile_pixels: bool,
+        startup_dummy_pixels: u8,
+    ) {
+        if !self.is_background() || !includes_real_tile_pixels {
+            return;
+        }
+
+        if address == 0xFF40
+            && (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT != 0
+            && startup_dummy_pixels == 0
+            && (self.same_cycle_live_tilemap_refetch_window_open
+                || self.is_third_visible_post_startup_push())
+        {
+            self.needs_live_tilemap_refetch = true;
+        }
+
+        let tile_data_selector_changed = (previous_lcdc ^ lcdc) & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+        let needs_tile_data_refetch = match address {
+            0xFF40 => tile_data_selector_changed && lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT == 0,
+            0xFF42 => true,
+            _ => false,
+        };
+        let needs_tile_data_unsigned_reuse = address == 0xFF40
+            && tile_data_selector_changed
+            && lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+
+        self.needs_live_tile_data_refetch |= needs_tile_data_refetch;
+        self.needs_live_tile_data_unsigned_reuse |= needs_tile_data_unsigned_reuse;
+    }
+}
+
+fn recompute_live_background_cached_slice(
+    mut cached: BgCachedSlice,
+    vram: &VramBusView<'_>,
+    lcdc: u8,
+    scy: u8,
+    ly: u8,
+    last_unsigned_tile_data_low_fetch: u8,
+    last_unsigned_tile_data_high_fetch: u8,
+) -> Option<BgCachedSlice> {
+    if cached.source != PpuBgFetcherSource::Background
+        || (!cached.needs_live_tilemap_refetch
+            && !cached.needs_live_tile_data_refetch
+            && !cached.needs_live_tile_data_unsigned_reuse)
+    {
+        return None;
+    }
+
+    let mut tile_map_address = cached.tile_map_address;
+    let mut tile_index = cached.tile_index;
+    if cached.needs_live_tilemap_refetch {
+        let tile_map_offset = cached.tile_map_address & 0x03FF;
+        let tile_map_base = if lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
+            0x1C00
+        } else {
+            0x1800
+        };
+        tile_map_address = tile_map_base | tile_map_offset;
+        tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+    }
+
+    let tile_data_row = if cached.needs_live_tile_data_refetch {
+        u16::from(scy.wrapping_add(ly) % BG_TILE_WIDTH)
+    } else {
+        (cached.tile_data_address.saturating_sub(1) & (TILE_BYTES - 1)) / TILE_ROW_BYTES
+    };
+    let tile_low_address = bg_tile_data_base(lcdc, tile_index) + tile_data_row * TILE_ROW_BYTES;
+    let tile_high_address = tile_low_address + 1;
+    let (tile_low, tile_high) =
+        if cached.needs_live_tile_data_unsigned_reuse && !cached.needs_live_tilemap_refetch {
+            (
+                last_unsigned_tile_data_low_fetch,
+                last_unsigned_tile_data_high_fetch,
+            )
+        } else {
+            (
+                vram.read(tile_low_address as usize).unwrap_or(0),
+                vram.read(tile_high_address as usize).unwrap_or(0),
+            )
+        };
+
+    cached.tile_map_address = tile_map_address;
+    cached.tile_data_address = tile_high_address;
+    cached.tile_index = tile_index;
+    cached.tile_low = tile_low;
+    cached.tile_high = tile_high;
+    cached.needs_live_tilemap_refetch = false;
+    cached.needs_live_tile_data_refetch = false;
+    cached.needs_live_tile_data_unsigned_reuse = false;
+    Some(cached)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum BgPushDisposition {
+    #[default]
+    Ready,
+    InterruptedByObjectFetch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BgPushDotResult {
+    NotReady,
+    EntryDelay,
+    WaitingForEmptyFifo,
+    HandedOffToObjectFetch,
+    QueuedFillAndHandedOffToObjectFetch,
+    QueuedFill,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BgPushDotOwnership {
+    NotReady,
+    EntryDelay,
+    WaitingForEmptyFifo,
+    FifoBackedTransferObjectFetch,
+    QueueFill,
+    QueueFillThenObjectFetch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode3DotArbitration {
+    bg_transfer_can_advance: bool,
+    obj_fetch_can_start_from_fifo_backed_transfer: bool,
+    obj_fetch_can_start_from_queued_bg_fill: bool,
+}
+
+impl Mode3DotArbitration {
+    const fn can_serve_bg_transfer(self) -> bool {
+        self.bg_transfer_can_advance
+    }
+
+    const fn can_start_obj_fetch(self, start_source: ObjFetchStartSource) -> bool {
+        match start_source {
+            ObjFetchStartSource::FifoBackedTransfer => {
+                self.obj_fetch_can_start_from_fifo_backed_transfer
+            }
+            ObjFetchStartSource::QueuedBgFill | ObjFetchStartSource::PushCachedBgFetch => {
+                self.obj_fetch_can_start_from_queued_bg_fill
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObjFetchStartSource {
+    FifoBackedTransfer,
+    PushCachedBgFetch,
+    QueuedBgFill,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -1912,16 +3823,18 @@ struct StatState {
 struct ObjPipelineState {
     fifo: VecDeque<ObjPixel>,
     fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
+    pending_sprite_slots: VecDeque<u8>,
+    pending_match_x: Option<u8>,
     fetch: ObjFetchState,
-    stall_dots: u16,
 }
 
 impl ObjPipelineState {
     fn reset(&mut self) {
         self.fifo.clear();
         self.fetched_sprite_slots.fill(false);
+        self.pending_sprite_slots.clear();
+        self.pending_match_x = None;
         self.fetch = ObjFetchState::default();
-        self.stall_dots = 0;
     }
 
     fn start_fetch(&mut self, sprite_slot: u8, sprite: PpuSelectedSprite) {
@@ -1942,6 +3855,66 @@ impl ObjPipelineState {
     fn has_fetched(&self, sprite_slot: u8) -> bool {
         self.fetched_sprite_slots[sprite_slot as usize]
     }
+
+    fn queue_fetch_hit(&mut self, sprite_slot: u8, owner: ObjHitOwnership) {
+        if self.has_fetched(sprite_slot)
+            || self
+                .pending_sprite_slots
+                .iter()
+                .any(|queued_slot| *queued_slot == sprite_slot)
+            || (self.fetch.stage != PpuObjFetcherStage::Idle
+                && self.fetch.sprite_slot == sprite_slot)
+        {
+            return;
+        }
+
+        if self.pending_sprite_slots.is_empty() {
+            self.pending_match_x = Some(owner.match_x);
+        } else {
+            debug_assert_eq!(self.pending_match_x, Some(owner.match_x));
+        }
+        self.pending_sprite_slots.push_back(sprite_slot);
+    }
+
+    fn pop_pending_fetch_hit(&mut self) -> Option<u8> {
+        let sprite_slot = self.pending_sprite_slots.pop_front();
+        if self.pending_sprite_slots.is_empty() {
+            self.pending_match_x = None;
+        }
+        sprite_slot
+    }
+
+    fn pending_hits_own_current_dot(&self, current_owner: ObjHitOwnership) -> bool {
+        self.pending_match_x == Some(current_owner.match_x) && !self.pending_sprite_slots.is_empty()
+    }
+
+    fn clear_pending_fetch_hits(&mut self) {
+        self.pending_sprite_slots.clear();
+        self.pending_match_x = None;
+    }
+
+    fn clear_pending_fetch_hits_if_stale(&mut self, current_owner: ObjHitOwnership) {
+        if self.fetch.stage != PpuObjFetcherStage::Idle {
+            return;
+        }
+
+        if self.pending_match_x.is_some() && self.pending_match_x != Some(current_owner.match_x) {
+            self.clear_pending_fetch_hits();
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ObjHitOwnership {
+    match_x: u8,
+    phase: ObjHitPhase,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObjHitPhase {
+    PreVisible,
+    Hidden,
+    Visible,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -2147,21 +4120,19 @@ fn push_bg_tile_pixels(fifo: &mut VecDeque<u8>, tile_low: u8, tile_high: u8) {
     }
 }
 
-fn read_oam_sprite(oam_bytes: &[u8], oam_index: u8) -> Option<PpuSelectedSprite> {
+fn read_oam_sprite(oam: &OamBusView<'_>, oam_index: u8) -> Option<PpuSelectedSprite> {
     let entry_start = oam_index as usize * OAM_ENTRY_BYTES;
-    let entry = oam_bytes.get(entry_start..entry_start + OAM_ENTRY_BYTES)?;
-
     Some(PpuSelectedSprite {
         oam_index,
-        y: entry[0],
-        x: entry[1],
-        tile_index: entry[2],
-        attributes: entry[3],
+        y: oam.read(entry_start)?,
+        x: oam.read(entry_start + 1)?,
+        tile_index: oam.read(entry_start + 2)?,
+        attributes: oam.read(entry_start + 3)?,
     })
 }
 
 fn read_obj_fetch_sprite_metadata(
-    oam_bytes: &[u8],
+    oam: &OamBusView<'_>,
     sprite: PpuSelectedSprite,
     dma_oam_conflict_address: Option<u16>,
 ) -> (u8, u8) {
@@ -2171,14 +4142,8 @@ fn read_obj_fetch_sprite_metadata(
         .map(|address| address & !0x0001)
         .unwrap_or(nominal_word_address);
     let word_offset = word_address.saturating_sub(0xFE00) as usize;
-    let tile_index = oam_bytes
-        .get(word_offset)
-        .copied()
-        .unwrap_or(sprite.tile_index);
-    let attributes = oam_bytes
-        .get(word_offset + 1)
-        .copied()
-        .unwrap_or(sprite.attributes);
+    let tile_index = oam.read(word_offset).unwrap_or(sprite.tile_index);
+    let attributes = oam.read(word_offset + 1).unwrap_or(sprite.attributes);
 
     (tile_index, attributes)
 }
@@ -2249,9 +4214,30 @@ fn obj_pixel_has_priority(candidate: ObjPixel, current: ObjPixel) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bus::BusMaster;
     use crate::scheduler::TCycle;
 
     const TEST_VRAM_BYTES: usize = 0x2000;
+
+    fn sync_test_video_ownership(
+        ppu: &Ppu,
+        oam: &mut crate::bus::OamDomain,
+        vram: &mut crate::bus::VramDomain,
+        dma_oam_active: bool,
+    ) {
+        let bus_state = ppu.bus_state();
+        let ppu_vram = bus_state.is_lcd_enabled() && bus_state.mode() == PpuAccessMode::Drawing;
+        let ppu_oam = bus_state.is_lcd_enabled()
+            && matches!(
+                bus_state.mode(),
+                PpuAccessMode::OamScan | PpuAccessMode::Drawing
+            );
+
+        oam.set_acquired(BusMaster::Ppu, ppu_oam);
+        vram.set_acquired(BusMaster::Ppu, ppu_vram);
+        oam.set_acquired(BusMaster::Dma, dma_oam_active);
+        vram.set_acquired(BusMaster::Dma, false);
+    }
 
     fn tick_ppu(ppu: &mut Ppu, t_cycle: u64, oam_bytes: &[u8]) -> CycleContext {
         tick_ppu_with_vram(ppu, t_cycle, oam_bytes, &[0; TEST_VRAM_BYTES])
@@ -2275,10 +4261,13 @@ mod tests {
         dma_oam_conflict_address: Option<u16>,
     ) -> CycleContext {
         let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
+        let mut oam = crate::bus::OamDomain::from_bytes(oam_bytes);
+        let mut vram = crate::bus::VramDomain::from_bytes(vram_bytes);
+        sync_test_video_ownership(ppu, &mut oam, &mut vram, dma_oam_active);
         ppu.tick_t_cycle(
             &mut context,
-            oam_bytes,
-            vram_bytes,
+            OamBusView::new(BusMaster::Ppu, &mut oam),
+            VramBusView::new(BusMaster::Ppu, &mut vram),
             dma_oam_active,
             dma_oam_conflict_address,
         );
@@ -2738,6 +4727,69 @@ mod tests {
         assert_eq!(ppu.snapshot().line_dot, 1);
         assert_eq!(ppu.snapshot().mode, PpuAccessMode::OamScan);
         assert_eq!(ppu.snapshot().mode_dot, 1);
+    }
+
+    #[test]
+    fn visible_mode3_registers_lag_enabled_writes_until_the_next_t_cycle() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let oam_bytes = [0; 160];
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x80,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xFC,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+
+        for t_cycle in 0..80 {
+            tick_ppu(&mut ppu, t_cycle, &oam_bytes);
+        }
+
+        let before = ppu.snapshot();
+        assert_eq!(before.mode, PpuAccessMode::Drawing);
+        assert_eq!(before.visible_lcdc, 0x80);
+        assert_eq!(before.visible_scy, 0x00);
+        assert_eq!(before.visible_scx, 0x00);
+        assert_eq!(before.visible_bgp, 0xFC);
+        assert_eq!(before.visible_wy, 0x00);
+        assert_eq!(before.visible_wx, 0x00);
+
+        ppu.write_register(0xFF40, 0x91);
+        ppu.write_register(0xFF42, 0x12);
+        ppu.write_register(0xFF43, 0x34);
+        ppu.write_register(0xFF47, 0x1B);
+        ppu.write_register(0xFF4A, 0x56);
+        ppu.write_register(0xFF4B, 0x78);
+
+        let pending = ppu.snapshot();
+        assert_eq!(pending.lcdc, 0x91);
+        assert_eq!(pending.scy, 0x12);
+        assert_eq!(pending.scx, 0x34);
+        assert_eq!(pending.bgp, 0x1B);
+        assert_eq!(pending.wy, 0x56);
+        assert_eq!(pending.wx, 0x78);
+        assert_eq!(pending.visible_lcdc, 0x80);
+        assert_eq!(pending.visible_scy, 0x00);
+        assert_eq!(pending.visible_scx, 0x00);
+        assert_eq!(pending.visible_bgp, 0xFC);
+        assert_eq!(pending.visible_wy, 0x00);
+        assert_eq!(pending.visible_wx, 0x00);
+
+        tick_ppu(&mut ppu, 80, &oam_bytes);
+
+        let after = ppu.snapshot();
+        assert_eq!(after.visible_lcdc, 0x91);
+        assert_eq!(after.visible_scy, 0x12);
+        assert_eq!(after.visible_scx, 0x34);
+        assert_eq!(after.visible_bgp, 0x1B);
+        assert_eq!(after.visible_wy, 0x56);
+        assert_eq!(after.visible_wx, 0x78);
     }
 
     #[test]
@@ -3221,7 +5273,7 @@ mod tests {
     }
 
     #[test]
-    fn mode3_bg_fetcher_fills_the_fifo_before_visible_pixels_begin() {
+    fn mode3_startup_keeps_dummy_occupancy_out_of_the_fifo_until_alignment_push() {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         let oam_bytes = [0; 160];
         let mut vram_bytes = [0; TEST_VRAM_BYTES];
@@ -3266,19 +5318,1910 @@ mod tests {
             after_first_push.bg_fetcher_stage,
             PpuBgFetcherStage::TileIndex
         );
-        assert_eq!(after_first_push.bg_fetcher_stage_dot, 0);
-        assert_eq!(after_first_push.bg_fifo_pixels.len(), 8);
+        assert_eq!(after_first_push.bg_fetcher_stage_dot, 1);
+        assert_eq!(
+            after_first_push.bg_fifo_pixels,
+            vec![0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 2, 3]
+        );
+        assert!(!after_first_push.bg_push_pending);
+        assert!(!after_first_push.bg_fill_pending);
         assert_eq!(after_first_push.visible_pixels_output, 0);
 
-        for t_cycle in 87..92 {
+        for t_cycle in 87..110 {
             tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
+            if ppu.snapshot().visible_pixels_output == 1 {
+                break;
+            }
         }
 
         let first_visible = ppu.snapshot();
-        assert_eq!(first_visible.line_dot, 92);
-        assert_eq!(first_visible.mode_dot, 12);
         assert_eq!(first_visible.visible_pixels_output, 1);
+        assert!(first_visible.line_dot >= 92);
         assert_eq!(first_visible.current_scanline_pixels[0], 0);
+    }
+
+    #[test]
+    fn mode3_startup_fetches_the_first_three_visible_background_tiles_in_order() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let oam_bytes = [0; 160];
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x00, 0x00);
+        write_bg_tile_row(&mut vram_bytes, 1, 0, 0xFF, 0x00);
+        write_bg_tile_row(&mut vram_bytes, 2, 0, 0x00, 0xFF);
+        write_bg_tilemap_entry(&mut vram_bytes, 0, 0, 0);
+        write_bg_tilemap_entry(&mut vram_bytes, 1, 0, 1);
+        write_bg_tilemap_entry(&mut vram_bytes, 2, 0, 2);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+
+        for t_cycle in 0..140 {
+            tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
+            if ppu.snapshot().visible_pixels_output == 24 {
+                break;
+            }
+        }
+
+        let snapshot = ppu.snapshot();
+        assert_eq!(snapshot.visible_pixels_output, 24);
+        assert_eq!(snapshot.current_scanline_pixels[..8], [0; 8]);
+        assert_eq!(snapshot.current_scanline_pixels[8..16], [1; 8]);
+        assert_eq!(snapshot.current_scanline_pixels[16..24], [2; 8]);
+    }
+
+    #[test]
+    fn startup_post_alignment_seam_labels_only_the_second_and_third_visible_tiles() {
+        let mut pipeline = BgPipelineState::default();
+
+        pipeline.begin_post_alignment_followup();
+        assert_eq!(
+            pipeline
+                .peek_startup_background_fetch_origin()
+                .startup_continuation_slice(),
+            BgStartupContinuationSlice::VisibleTile2
+        );
+        pipeline.advance_startup_background_fetch_tile();
+
+        assert_eq!(
+            pipeline
+                .peek_startup_background_fetch_origin()
+                .startup_continuation_slice(),
+            BgStartupContinuationSlice::VisibleTile3
+        );
+        pipeline.advance_startup_background_fetch_tile();
+
+        assert_eq!(
+            pipeline.peek_startup_background_fetch_origin(),
+            BgCachedSliceOrigin::Ordinary
+        );
+        assert_eq!(
+            pipeline.startup_fetch_seam,
+            BgStartupFetchSeamState::Inactive
+        );
+    }
+
+    #[test]
+    fn bg_push_waits_for_fifo_space_without_losing_the_fetched_tile() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.fetcher.fetch_x = 0;
+        ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 0;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+        ppu.bg_pipeline_state.fifo = (0..=8).collect();
+
+        let result = ppu.advance_bg_push();
+
+        assert_eq!(result, BgPushDotResult::WaitingForEmptyFifo);
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 0);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 9);
+
+        for _ in 0..9 {
+            let _ = ppu.bg_pipeline_state.fifo.pop_front();
+        }
+        let result = ppu.advance_bg_push();
+
+        assert_eq!(result, BgPushDotResult::QueuedFill);
+        assert!(!ppu.bg_pipeline_state.push.pending);
+        assert!(ppu.bg_pipeline_state.fill.pending);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 8);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 0);
+
+        ppu.flush_pending_bg_fifo_fill();
+
+        assert!(!ppu.bg_pipeline_state.fill.pending);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 8);
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fifo
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2, 3, 0, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn first_window_tile_skips_the_normal_push_entry_delay() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram = crate::bus::VramDomain::from_bytes(&[0; TEST_VRAM_BYTES]);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0xB1;
+        ppu.bg_pipeline_state.fetcher.start_window(8);
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+        ppu.bg_pipeline_state.fetcher.tile_low = 0x55;
+        ppu.bg_pipeline_state.fetcher.tile_high = 0x33;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert_eq!(ppu.bg_pipeline_state.push.entry_delay_remaining, 0);
+        assert!(ppu.bg_pipeline_state.push.just_activated_window_tile);
+        assert!(
+            !ppu.bg_pipeline_state
+                .fetcher
+                .first_window_tile_after_activation
+        );
+    }
+
+    #[test]
+    fn first_window_tile_push_ignores_pending_obj_fetch_start() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xA3;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Window;
+        ppu.bg_pipeline_state.push.just_activated_window_tile = true;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFill
+        );
+    }
+
+    #[test]
+    fn current_bg_push_dot_ownership_distinguishes_fill_wait_and_obj_handoff_paths() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFill
+        );
+
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFillThenObjectFetch
+        );
+
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFillThenObjectFetch
+        );
+
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::FifoBackedTransferObjectFetch
+        );
+
+        ppu.obj_pipeline_state.clear_pending_fetch_hits();
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::WaitingForEmptyFifo
+        );
+
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::EntryDelay
+        );
+
+        ppu.bg_pipeline_state.push.pending = false;
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::NotReady
+        );
+    }
+
+    #[test]
+    fn startup_dummy_fifo_pixels_do_not_block_the_first_real_bg_fill() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+        ppu.bg_pipeline_state.fifo.extend([0, 0, 0, 0]);
+
+        assert_eq!(
+            ppu.current_bg_push_dot_ownership(),
+            BgPushDotOwnership::QueueFill
+        );
+    }
+
+    #[test]
+    fn latching_object_hits_queues_all_matching_sprite_slots_once() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 1,
+            y: 16,
+            x: 8,
+            tile_index: 1,
+            attributes: 0,
+        });
+
+        ppu.latch_object_fetch_hits();
+        ppu.latch_object_fetch_hits();
+
+        assert_eq!(
+            ppu.obj_pipeline_state
+                .pending_sprite_slots
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+    }
+
+    #[test]
+    fn bg_push_can_handoff_to_a_latched_object_fetch_without_losing_the_tile() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        assert_eq!(
+            ppu.advance_bg_push(),
+            BgPushDotResult::HandedOffToObjectFetch
+        );
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert_eq!(
+            ppu.bg_pipeline_state.push.disposition,
+            BgPushDisposition::InterruptedByObjectFetch
+        );
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::Startup
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 1);
+        assert!(!ppu.bg_pipeline_state.fill.pending);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+    }
+
+    #[test]
+    fn bg_push_with_an_empty_fifo_can_queue_fill_and_start_object_fetch_on_the_same_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        assert_eq!(
+            ppu.advance_bg_push(),
+            BgPushDotResult::QueuedFillAndHandedOffToObjectFetch
+        );
+        assert!(!ppu.bg_pipeline_state.push.pending);
+        assert!(ppu.bg_pipeline_state.fill.pending);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex
+        );
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::Startup
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    }
+
+    #[test]
+    fn bg_push_stage_waits_one_dot_on_entry_then_retries_every_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.fetcher.fetch_x = 0;
+        ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 0;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+        ppu.bg_pipeline_state.fifo = (0..=8).collect();
+
+        assert_eq!(ppu.advance_bg_push_stage(), BgPushDotResult::EntryDelay);
+        assert_eq!(ppu.bg_pipeline_state.push.entry_delay_remaining, 0);
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 9);
+
+        assert_eq!(
+            ppu.advance_bg_push_stage(),
+            BgPushDotResult::WaitingForEmptyFifo
+        );
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 9);
+
+        for _ in 0..9 {
+            let _ = ppu.bg_pipeline_state.fifo.pop_front();
+        }
+        assert_eq!(ppu.advance_bg_push_stage(), BgPushDotResult::QueuedFill);
+        assert!(!ppu.bg_pipeline_state.push.pending);
+        assert!(ppu.bg_pipeline_state.fill.pending);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 8);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 0);
+
+        ppu.flush_pending_bg_fifo_fill();
+
+        assert!(!ppu.bg_pipeline_state.fill.pending);
+        assert_eq!(ppu.bg_pipeline_state.fifo.len(), 8);
+    }
+
+    #[test]
+    fn bg_push_queues_fifo_fill_before_the_fill_phase_materializes_pixels() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
+
+        assert_eq!(ppu.advance_bg_push_stage(), BgPushDotResult::QueuedFill);
+        assert!(!ppu.bg_pipeline_state.push.pending);
+        assert!(ppu.bg_pipeline_state.fill.pending);
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
+
+        ppu.flush_pending_bg_fifo_fill();
+
+        assert!(!ppu.bg_pipeline_state.fill.pending);
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fifo
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2, 3, 0, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn bg_push_stage_reports_not_ready_when_no_cached_slice_is_pending() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        assert_eq!(ppu.advance_bg_push_stage(), BgPushDotResult::NotReady);
+    }
+
+    #[test]
+    fn current_dot_arbitration_distinguishes_fifo_backed_and_queued_fill_obj_start() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        let empty_fifo = ppu.current_dot_arbitration();
+        assert!(!empty_fifo.can_serve_bg_transfer());
+        assert!(!empty_fifo.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+        assert!(empty_fifo.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
+
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        let fifo_backed = ppu.current_dot_arbitration();
+        assert!(!fifo_backed.can_serve_bg_transfer());
+        assert!(fifo_backed.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+        assert!(fifo_backed.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
+    }
+
+    #[test]
+    fn current_transfer_snapshot_keeps_context_and_readiness_together() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+
+        let waiting = ppu
+            .current_transfer()
+            .expect("hidden startup dot must have transfer state");
+        assert_eq!(
+            waiting.context,
+            Mode3TransferContext {
+                lane: Mode3TransferLane::Hidden,
+                source_window: Mode3TransferSourceWindow::FifoBacked,
+            }
+        );
+        assert_eq!(
+            waiting.readiness,
+            Mode3TransferReadiness::WaitingForFifo(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                backing: Mode3TransferBacking::FifoBacked,
+            })
+        );
+
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        let ready = ppu
+            .current_transfer()
+            .expect("same hidden dot must stay describable");
+        assert_eq!(ready.context, waiting.context);
+        assert_eq!(ready.service_plan(), waiting.service_plan());
+        assert_eq!(
+            ready.readiness,
+            Mode3TransferReadiness::Ready(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                backing: Mode3TransferBacking::FifoBacked,
+            })
+        );
+    }
+
+    #[test]
+    fn transfer_service_plan_distinguishes_abstract_hidden_and_fifo_backed_visible_paths() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                backing: Mode3TransferBacking::Abstract,
+            })
+        );
+
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                backing: Mode3TransferBacking::FifoBacked,
+            })
+        );
+
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedVisiblePixel,
+                execution: Mode3TransferServiceExecution::EmitVisiblePixel,
+                backing: Mode3TransferBacking::FifoBacked,
+            })
+        );
+    }
+
+    #[test]
+    fn fifo_backed_obj_start_requires_a_fifo_backed_transfer_dot_not_just_a_nonempty_fifo() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 15,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        let arbitration = ppu.current_dot_arbitration();
+        assert!(!arbitration.can_serve_bg_transfer());
+        assert!(!arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+        assert!(arbitration.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
+    }
+
+    #[test]
+    fn fifo_backed_obj_start_waits_until_bg_fetcher_leaves_tile_data_low() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        let tile_index = ppu.current_dot_arbitration();
+        assert!(!tile_index.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+        let tile_data_low = ppu.current_dot_arbitration();
+        assert!(!tile_data_low.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+        let tile_data_high = ppu.current_dot_arbitration();
+        assert!(tile_data_high.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+    }
+
+    #[test]
+    fn abstract_startup_service_kind_tracks_served_progress_not_raw_mode3_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT;
+        ppu.bg_pipeline_state.current_transfer_x = 2;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining =
+            MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS - 2;
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
+                execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
+                backing: Mode3TransferBacking::Abstract,
+            })
+        );
+
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                backing: Mode3TransferBacking::Abstract,
+            })
+        );
+    }
+
+    #[test]
+    fn obj_hit_ownership_tracks_served_startup_progress_not_raw_mode3_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.line_dot = MODE2_DOTS + MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT;
+        ppu.bg_pipeline_state.current_transfer_x = 2;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining =
+            MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS - 2;
+
+        assert_eq!(
+            ppu.current_obj_hit_ownership().phase,
+            ObjHitPhase::PreVisible
+        );
+
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+
+        assert_eq!(ppu.current_obj_hit_ownership().phase, ObjHitPhase::Hidden);
+    }
+
+    #[test]
+    fn pending_obj_hit_blocks_output_phase_and_stretches_mode3() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.current_transfer_x = 20;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.visible_pixels_output = 12;
+        ppu.bg_pipeline_state.fifo.push_back(3);
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        let result = ppu.advance_mode3_output_phase();
+
+        assert_eq!(result.kind, Mode3TransferDotKind::NotServed);
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 12);
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .fifo
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![3]
+        );
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+    }
+
+    #[test]
+    fn pending_obj_hit_stalls_pre_visible_match_x_until_fetch_service() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.current_transfer_x = 5;
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 5);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+    }
+
+    #[test]
+    fn hidden_startup_dot_advances_pre_visible_match_x_without_bg_fifo_pop() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+        ppu.bg_pipeline_state.current_transfer_x = 5;
+
+        let result = ppu.advance_mode3_output_phase();
+
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 6);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    }
+
+    #[test]
+    fn mode3_started_uses_explicit_startup_entry_delay_before_transfer_service() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + 1;
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
+        ppu.bg_pipeline_state.startup_source_state =
+            Mode3StartupSourceState::EntryDelay { remaining: 2 };
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 5;
+
+        let first = ppu.advance_mode3_output_phase();
+        assert_eq!(first.kind, Mode3TransferDotKind::NotServed);
+        assert_eq!(
+            ppu.bg_pipeline_state.startup_source_state,
+            Mode3StartupSourceState::EntryDelay { remaining: 1 }
+        );
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 5);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+
+        let second = ppu.advance_mode3_output_phase();
+        assert_eq!(second.kind, Mode3TransferDotKind::NotServed);
+        assert_eq!(
+            ppu.bg_pipeline_state.startup_source_state,
+            Mode3StartupSourceState::Abstract {
+                remaining: MODE3_ABSTRACT_SOURCE_WINDOW_DOTS
+            }
+        );
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 5);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+
+        let third = ppu.advance_mode3_output_phase();
+        assert_eq!(third.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 6);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+    }
+
+    #[test]
+    fn mode3_started_keeps_an_explicit_abstract_source_window_before_fifo_backed_transfer() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+        ppu.bg_pipeline_state.startup_source_state =
+            Mode3StartupSourceState::Abstract { remaining: 1 };
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 5;
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
+                execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
+                backing: Mode3TransferBacking::Abstract,
+            })
+        );
+
+        let transfer_dot = ppu.advance_mode3_output_phase();
+        assert_eq!(
+            transfer_dot.kind,
+            Mode3TransferDotKind::ServedPreVisibleTransfer
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state.startup_source_state,
+            Mode3StartupSourceState::FifoBacked
+        );
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
+                execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
+                backing: Mode3TransferBacking::FifoBacked,
+            })
+        );
+    }
+
+    #[test]
+    fn mode3_started_keeps_an_explicit_previsible_lane_before_hidden_transfer() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 1;
+        ppu.bg_pipeline_state.current_transfer_x = 5;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
+                execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
+                backing: Mode3TransferBacking::FifoBacked,
+            })
+        );
+
+        let transfer_dot = ppu.advance_mode3_output_phase();
+        assert_eq!(
+            transfer_dot.kind,
+            Mode3TransferDotKind::ServedPreVisibleTransfer
+        );
+        assert_eq!(
+            ppu.bg_pipeline_state
+                .startup_pre_visible_transfer_dots_remaining,
+            0
+        );
+
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        assert_eq!(
+            ppu.current_transfer_service_plan(),
+            Some(Mode3TransferServicePlan {
+                result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
+                execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
+                backing: Mode3TransferBacking::FifoBacked,
+            })
+        );
+    }
+
+    #[test]
+    fn bg_fifo_starvation_after_priming_does_not_advance_pre_visible_match_x() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.current_transfer_x = 5;
+
+        ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 5);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+    }
+
+    #[test]
+    fn abstract_previsible_scx_discard_keeps_lx_zero_until_hidden_transfer_begins() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+        ppu.bg_pipeline_state.current_transfer_x = 0;
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+
+        let result = ppu.advance_mode3_output_phase();
+
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedPreVisibleTransfer);
+        assert!(result.consumed_scx_discard);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
+        assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+        assert_eq!(
+            ppu.bg_pipeline_state.transfer_phase,
+            Mode3TransferPhase::Output
+        );
+    }
+
+    #[test]
+    fn fifo_backed_hidden_service_moves_transfer_phase_to_output() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        let result = ppu.advance_mode3_output_phase();
+
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedHiddenTransfer);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
+        assert_eq!(
+            ppu.bg_pipeline_state.transfer_phase,
+            Mode3TransferPhase::Output
+        );
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    }
+
+    #[test]
+    fn late_hidden_dot_can_consume_a_startup_placeholder_before_the_first_real_fill() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+
+        let result = ppu.advance_mode3_output_phase();
+
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedHiddenTransfer);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    }
+
+    #[test]
+    fn late_hidden_scx_discard_can_consume_a_startup_placeholder_before_real_fifo_backing() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 0;
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+
+        ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
+        assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+        assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    }
+
+    #[test]
+    fn wx_zero_previsible_window_start_requires_a_late_fifo_backed_served_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xF1;
+        ppu.visible_registers.wx = 0;
+        ppu.pipeline_registers = ppu.visible_registers;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+
+        let not_ready_dot = ppu.advance_mode3_output_phase();
+        assert_eq!(not_ready_dot.kind, Mode3TransferDotKind::NotServed);
+        assert!(!ppu.maybe_start_window_after_transfer_dot(not_ready_dot));
+
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+
+        let ready_dot = ppu.advance_mode3_output_phase();
+
+        assert_eq!(ready_dot.kind, Mode3TransferDotKind::ServedHiddenTransfer);
+        assert!(ppu.maybe_start_window_after_transfer_dot(ready_dot));
+        assert!(ppu.bg_pipeline_state.window_started_this_line);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.source,
+            PpuBgFetcherSource::Window
+        );
+    }
+
+    #[test]
+    fn wx_zero_last_scx_discard_shortening_is_applied_from_the_served_transfer_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xF1;
+        ppu.visible_registers.wx = 0;
+        ppu.pipeline_registers = ppu.visible_registers;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT + 2;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 3;
+        ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+        ppu.bg_pipeline_state.initial_scx_discard = 3;
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+        ppu.bg_pipeline_state.current_transfer_x = 0;
+        let transfer_dot = ppu.advance_mode3_output_phase();
+        ppu.maybe_apply_wx0_shortening_after_transfer_dot(transfer_dot);
+
+        assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 2);
+        assert!(!ppu.bg_pipeline_state.window_started_this_line);
+    }
+
+    #[test]
+    fn wx_seven_starts_window_from_the_first_served_x0_transfer_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xF1;
+        ppu.visible_registers.wx = 7;
+        ppu.pipeline_registers = ppu.visible_registers;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+
+        let transfer_dot = ppu.advance_mode3_output_phase();
+
+        assert_eq!(
+            transfer_dot.kind,
+            Mode3TransferDotKind::ServedHiddenTransfer
+        );
+        assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+        assert!(ppu.bg_pipeline_state.window_started_this_line);
+    }
+
+    #[test]
+    fn dmg_window_trigger_uses_the_previous_dot_wx_snapshot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0xF1;
+        ppu.visible_registers.wx = 8;
+        ppu.pipeline_registers.lcdc = 0xF1;
+        ppu.pipeline_registers.wx = 7;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 7;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+
+        let transfer_dot = ppu.advance_mode3_output_phase();
+
+        assert_eq!(
+            transfer_dot.kind,
+            Mode3TransferDotKind::ServedHiddenTransfer
+        );
+        assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+        assert!(ppu.bg_pipeline_state.window_started_this_line);
+    }
+
+    #[test]
+    fn pending_obj_hit_blocks_window_start_because_the_output_dot_is_not_served() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x93;
+        ppu.visible_registers.wx = 15;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.window_wy_latch = true;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.visible_pixels_output = 8;
+        ppu.bg_pipeline_state.fifo.push_back(1);
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        let transfer_dot = ppu.advance_mode3_output_phase();
+
+        assert_eq!(transfer_dot.kind, Mode3TransferDotKind::NotServed);
+        assert!(!ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+        assert!(!ppu.bg_pipeline_state.window_started_this_line);
+    }
+
+    #[test]
+    fn bg_fifo_discard_after_priming_keeps_lx_zero_until_discard_finishes() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 0;
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+
+        let result = ppu.advance_mode3_output_phase();
+
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedHiddenTransfer);
+        assert!(result.consumed_scx_discard);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 0);
+        assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
+        assert_eq!(
+            ppu.bg_pipeline_state.transfer_phase,
+            Mode3TransferPhase::Output
+        );
+    }
+
+    #[test]
+    fn visible_bg_pixel_output_reports_a_visible_pixel_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x91;
+        ppu.ly = 0;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(2);
+
+        let result = ppu.advance_mode3_output_phase();
+
+        assert_eq!(result.kind, Mode3TransferDotKind::ServedVisiblePixel);
+        assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 9);
+        assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 1);
+    }
+
+    #[test]
+    fn current_obj_hit_ownership_tracks_x_and_dot_phase() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+        ppu.bg_pipeline_state.current_transfer_x = 6;
+        assert_eq!(
+            ppu.current_obj_hit_ownership(),
+            ObjHitOwnership {
+                match_x: 6,
+                phase: ObjHitPhase::PreVisible,
+            }
+        );
+
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 0;
+        ppu.bg_pipeline_state.visible_pixels_output = 0;
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+        assert_eq!(
+            ppu.current_obj_hit_ownership(),
+            ObjHitOwnership {
+                match_x: 0,
+                phase: ObjHitPhase::Hidden,
+            }
+        );
+
+        ppu.bg_pipeline_state.scx_discard_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 20;
+        ppu.bg_pipeline_state.visible_pixels_output = 12;
+        assert_eq!(
+            ppu.current_obj_hit_ownership(),
+            ObjHitOwnership {
+                match_x: 20,
+                phase: ObjHitPhase::Visible,
+            }
+        );
+    }
+
+    #[test]
+    fn stale_pending_obj_hit_is_cleared_once_current_x_moves_on() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.bg_pipeline_state.current_transfer_x = 13;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.visible_pixels_output = 5;
+        ppu.obj_pipeline_state.queue_fetch_hit(
+            0,
+            ObjHitOwnership {
+                match_x: 12,
+                phase: ObjHitPhase::Visible,
+            },
+        );
+
+        ppu.sync_pending_obj_hit_ownership();
+
+        assert!(ppu.obj_pipeline_state.pending_sprite_slots.is_empty());
+        assert_eq!(ppu.obj_pipeline_state.pending_match_x, None);
+    }
+
+    #[test]
+    fn pending_obj_hit_survives_dot_phase_changes_while_current_x_is_still_the_same() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 6;
+        ppu.bg_pipeline_state.scx_discard_remaining = 1;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.obj_pipeline_state.queue_fetch_hit(
+            0,
+            ObjHitOwnership {
+                match_x: 6,
+                phase: ObjHitPhase::PreVisible,
+            },
+        );
+
+        ppu.sync_pending_obj_hit_ownership();
+
+        assert_eq!(
+            ppu.obj_pipeline_state
+                .pending_sprite_slots
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![0]
+        );
+        assert_eq!(ppu.obj_pipeline_state.pending_match_x, Some(6));
+    }
+
+    #[test]
+    fn bg_fetcher_stage_dot_is_an_explicit_one_dot_automaton() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+        write_bg_tilemap_entry(&mut vram_bytes, 0, 0, 0);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x91;
+        ppu.bg_pipeline_state.fetcher.start_background();
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataLow
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataLow
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataHigh
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataHigh
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
+        assert!(ppu.bg_pipeline_state.push.pending);
+        assert!(!ppu.bg_pipeline_state.fill.pending);
+    }
+
+    #[test]
+    fn bg_fetcher_records_the_tilemap_address_for_the_current_phase() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        vram_bytes[0x1C64] = 0x66;
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x99;
+        ppu.visible_registers.scx = 24;
+        ppu.visible_registers.scy = 16;
+        ppu.ly = 8;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.fetch_x = 8;
+        ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 8;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1C64);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_index, 0x66);
+    }
+
+    #[test]
+    fn window_fetcher_aborts_to_background_and_restores_bg_progress_when_win_enable_turns_off() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tilemap_entry(&mut vram_bytes, 1, 0, 0x11);
+        write_window_tilemap_entry(&mut vram_bytes, 0, 0, 0x22);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x91;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.fetch_x = 0;
+        ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 0;
+        ppu.bg_pipeline_state.fetcher.bg_resume_fetch_pixel = 8;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.source,
+            PpuBgFetcherSource::Background
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 8);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_index, 0x11);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1801);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
+    }
+
+    #[test]
+    fn first_window_tile_index_dot_rewinds_bg_resume_progress_by_one_tile() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tilemap_entry(&mut vram_bytes, 1, 0, 0x11);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x91;
+        ppu.pipeline_registers = ppu.visible_registers;
+        ppu.bg_pipeline_state.fetcher.start_window(8);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileIndex
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.source,
+            PpuBgFetcherSource::Background
+        );
+        assert_eq!(ppu.bg_pipeline_state.fetcher.bg_resume_fetch_pixel, 0);
+    }
+
+    #[test]
+    fn window_fetcher_advances_tilemap_x_on_tile_index_dot_zero() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_window_tilemap_entry(&mut vram_bytes, 0, 0, 0x11);
+        write_window_tilemap_entry(&mut vram_bytes, 1, 0, 0x22);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0xE1;
+        ppu.pipeline_registers = ppu.visible_registers;
+        ppu.bg_pipeline_state.fetcher.start_window(8);
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1C00);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_index, 0x11);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.window_tilemap_x, 1);
+
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1C01);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_index, 0x22);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.window_tilemap_x, 2);
+    }
+
+    #[test]
+    fn bg_fetcher_recomputes_scy_for_each_tile_data_plane_read_on_dmg() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x12, 0x34);
+        write_bg_tile_row(&mut vram_bytes, 0, 1, 0x56, 0x78);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x91;
+        ppu.visible_registers.scy = 0;
+        ppu.pipeline_registers = ppu.visible_registers;
+        ppu.ly = 0;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.tile_index = 0;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0x12);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x0000);
+
+        ppu.visible_registers.scy = 1;
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x78);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x0003);
+    }
+
+    #[test]
+    fn bg_fetcher_recomputes_tile_data_address_when_tile_selector_changes_between_planes() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tile_row(&mut vram_bytes, 1, 0, 0x12, 0x34);
+        vram_bytes[0x1011] = 0xAB;
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x91;
+        ppu.pipeline_registers.lcdc = 0x91;
+        ppu.visible_registers.scy = 0;
+        ppu.ly = 0;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.tile_index = 1;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0x12);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x0010);
+
+        ppu.visible_registers.lcdc = 0x81;
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x1011);
+    }
+
+    #[test]
+    fn cached_background_push_recomputes_tilemap_and_tiledata_on_push_dot_zero_map_change() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tilemap_entry(&mut vram_bytes, 1, 0, 0);
+        write_window_tilemap_entry(&mut vram_bytes, 1, 0, 1);
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x12, 0x34);
+        write_bg_tile_row(&mut vram_bytes, 1, 0, 0xAB, 0xCD);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.fetch_x = 8;
+        ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 16;
+        ppu.bg_pipeline_state.fetcher.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.fetcher.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fetcher.tile_index = 0;
+        ppu.bg_pipeline_state.fetcher.tile_low = 0x12;
+        ppu.bg_pipeline_state.fetcher.tile_high = 0x34;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.origin =
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2);
+        ppu.bg_pipeline_state.push.cached.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.push.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.push.cached.tile_index = 0;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x34;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 16;
+
+        assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
+        ppu.write_register(0xFF40, 0x99);
+        assert!(ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1C01);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_index, 1);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x0011);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0xCD);
+        assert_eq!(ppu.bg_pipeline_state.push.cached.tile_low, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.push.cached.tile_high, 0xCD);
+        assert_eq!(ppu.bg_pipeline_state.push.entry_delay_remaining, 0);
+    }
+
+    #[test]
+    fn cached_background_push_accepts_same_tcycle_tilemap_refetch_after_entry_delay_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tilemap_entry(&mut vram_bytes, 1, 0, 0);
+        write_window_tilemap_entry(&mut vram_bytes, 1, 0, 1);
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x12, 0x34);
+        write_bg_tile_row(&mut vram_bytes, 1, 0, 0xAB, 0xCD);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.fetch_x = 8;
+        ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 16;
+        ppu.bg_pipeline_state.fetcher.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.fetcher.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fetcher.tile_index = 0;
+        ppu.bg_pipeline_state.fetcher.tile_low = 0x12;
+        ppu.bg_pipeline_state.fetcher.tile_high = 0x34;
+        ppu.bg_pipeline_state.push.pending = true;
+        ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+        ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.origin =
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2);
+        ppu.bg_pipeline_state.push.cached.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.push.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.push.cached.tile_index = 0;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x34;
+        ppu.bg_pipeline_state.push.next_fetch_pixel = 16;
+
+        assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
+        assert_eq!(ppu.advance_bg_push(), BgPushDotResult::EntryDelay);
+        assert_eq!(ppu.bg_pipeline_state.push.entry_delay_remaining, 0);
+        assert!(
+            ppu.bg_pipeline_state
+                .push
+                .cached
+                .same_cycle_live_tilemap_refetch_window_open
+        );
+
+        ppu.write_register(0xFF40, 0x99);
+        assert!(ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0xCD);
+        assert!(!ppu.bg_pipeline_state.push.pending);
+        assert!(
+            !ppu.bg_pipeline_state
+                .push
+                .cached
+                .same_cycle_live_tilemap_refetch_window_open
+        );
+    }
+
+    #[test]
+    fn cached_background_fill_recomputes_tilemap_before_the_next_flush_when_same_tcycle_window_is_open()
+     {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tilemap_entry(&mut vram_bytes, 1, 0, 0);
+        write_window_tilemap_entry(&mut vram_bytes, 1, 0, 1);
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x12, 0x34);
+        write_bg_tile_row(&mut vram_bytes, 1, 0, 0xAB, 0xCD);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.fill.pending = true;
+        ppu.bg_pipeline_state.fill.startup_dummy_pixels = 0;
+        ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
+        ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fill.cached.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.fill.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fill.cached.tile_index = 0;
+        ppu.bg_pipeline_state.fill.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.fill.cached.tile_high = 0x34;
+        ppu.bg_pipeline_state
+            .fill
+            .cached
+            .same_cycle_live_tilemap_refetch_window_open = true;
+
+        assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
+        ppu.write_register(0xFF40, 0x99);
+        assert!(ppu.bg_pipeline_state.fill.cached.needs_live_tilemap_refetch);
+
+        ppu.maybe_recompute_pending_background_fill(&VramBusView::new(BusMaster::Ppu, &mut vram));
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_map_address, 0x1C01);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_index, 1);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_data_address, 0x0011);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0xCD);
+    }
+
+    #[test]
+    fn third_startup_continuation_fill_marks_live_tilemap_refetch_on_lcdc3_write() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.fill.pending = true;
+        ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
+        ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fill.cached.origin =
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3);
+        ppu.bg_pipeline_state.fill.cached.fetch_x = BG_TILE_WIDTH as u16 * 2;
+        ppu.bg_pipeline_state.fill.cached.tile_map_address = 0x1802;
+        ppu.bg_pipeline_state.fill.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fill.cached.tile_index = 0;
+        ppu.bg_pipeline_state.fill.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.fill.cached.tile_high = 0x34;
+
+        ppu.write_register(0xFF40, 0x99);
+        assert!(ppu.bg_pipeline_state.fill.cached.needs_live_tilemap_refetch);
+    }
+
+    #[test]
+    fn ordinary_cached_fill_ignores_lcdc3_write_without_the_narrow_live_window() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.fill.pending = true;
+        ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
+        ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fill.cached.tile_map_address = 0x1803;
+        ppu.bg_pipeline_state.fill.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fill.cached.tile_index = 0;
+        ppu.bg_pipeline_state.fill.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.fill.cached.tile_high = 0x34;
+
+        ppu.write_register(0xFF40, 0x99);
+        assert!(!ppu.bg_pipeline_state.fill.cached.needs_live_tilemap_refetch);
+    }
+
+    #[test]
+    fn queue_from_push_preserves_the_same_tcycle_tilemap_refetch_window() {
+        let mut fill = BgFifoFillState::default();
+        let mut push = BgPushState {
+            pending: true,
+            ..BgPushState::default()
+        };
+        push.cached.source = PpuBgFetcherSource::Background;
+        push.cached.same_cycle_live_tilemap_refetch_window_open = true;
+
+        fill.queue_from_push(push);
+
+        assert!(fill.cached.same_cycle_live_tilemap_refetch_window_open);
+    }
+
+    #[test]
+    fn cached_background_fill_recomputes_tiledata_before_the_next_flush() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_bg_tilemap_entry(&mut vram_bytes, 1, 0, 0);
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x12, 0x34);
+        write_bg_tile_row(&mut vram_bytes, 0, 1, 0xAB, 0xCD);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.fill.pending = true;
+        ppu.bg_pipeline_state.fill.startup_dummy_pixels = 0;
+        ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
+        ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fill.cached.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.fill.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fill.cached.tile_index = 0;
+        ppu.bg_pipeline_state.fill.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.fill.cached.tile_high = 0x34;
+
+        assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
+        ppu.write_register(0xFF42, 0x01);
+        assert!(
+            ppu.bg_pipeline_state
+                .fill
+                .cached
+                .needs_live_tile_data_refetch
+        );
+
+        ppu.maybe_recompute_pending_background_fill(&VramBusView::new(BusMaster::Ppu, &mut vram));
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_data_address, 0x0003);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0xCD);
+    }
+
+    #[test]
+    fn bg_fetcher_uses_last_unsigned_fetch_data_when_tile_selector_flips_to_unsigned_on_low1() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        vram_bytes[0x1010] = 0x12;
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x81;
+        ppu.pipeline_registers.lcdc = 0x81;
+        ppu.ly = 0;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.tile_index = 1;
+        ppu.last_unsigned_tile_data_fetch = 0xCD;
+        ppu.last_unsigned_tile_data_low_fetch = 0xCD;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0x12);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x1010);
+
+        ppu.pipeline_registers.lcdc = 0x81;
+        ppu.visible_registers.lcdc = 0x91;
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0xCD);
+        assert_eq!(
+            ppu.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataHigh
+        );
+    }
+
+    #[test]
+    fn window_fetcher_uses_last_unsigned_fetch_data_when_tile_selector_flips_to_unsigned_on_high1()
+    {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        vram_bytes[0x1011] = 0x34;
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x81;
+        ppu.pipeline_registers.lcdc = 0x81;
+        ppu.window_state.window_line_counter = 0;
+        ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
+        ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+        ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+        ppu.bg_pipeline_state.fetcher.tile_index = 1;
+        ppu.last_unsigned_tile_data_fetch = 0xEF;
+        ppu.last_unsigned_tile_data_high_fetch = 0xEF;
+
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x34);
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x1011);
+
+        ppu.pipeline_registers.lcdc = 0x81;
+        ppu.visible_registers.lcdc = 0x91;
+        assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+        assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0xEF);
+        assert!(ppu.bg_pipeline_state.push.pending);
     }
 
     #[test]
@@ -3575,7 +7518,10 @@ mod tests {
             0xA0,
         );
 
-        let (tile_index, attributes) = read_obj_fetch_sprite_metadata(&oam_bytes, sprite, None);
+        let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+        let oam = OamBusView::new(BusMaster::Ppu, &mut oam);
+
+        let (tile_index, attributes) = read_obj_fetch_sprite_metadata(&oam, sprite, None);
 
         assert_eq!(tile_index, 0x44);
         assert_eq!(attributes, 0xA0);
@@ -3601,8 +7547,10 @@ mod tests {
         );
         write_oam_entry_with_attributes(&mut oam_bytes, 5, 32, 40, 0x99, 0x10);
 
-        let (tile_index, attributes) =
-            read_obj_fetch_sprite_metadata(&oam_bytes, sprite, Some(0xFE17));
+        let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+        let oam = OamBusView::new(BusMaster::Ppu, &mut oam);
+
+        let (tile_index, attributes) = read_obj_fetch_sprite_metadata(&oam, sprite, Some(0xFE17));
 
         assert_eq!(tile_index, 0x99);
         assert_eq!(attributes, 0x10);
@@ -3735,6 +7683,84 @@ mod tests {
             &[0, 1, 2, 3, 0, 1, 2, 3]
         );
         assert_eq!(&ppu.framebuffer()[..8], &[3, 2, 1, 0, 3, 2, 1, 0]);
+    }
+
+    #[test]
+    fn dmg_pixel_output_uses_or_of_current_and_previous_bgp_for_one_dot() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x83,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.visible_registers.bgp = 0x1B;
+        ppu.pipeline_registers.bgp = 0xE4;
+        ppu.bgp = 0xE4;
+        ppu.bg_pipeline_state.scx_discard_remaining = 0;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(1);
+
+        let _ = ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.snapshot().current_scanline_pixels[0], 1);
+        assert_eq!(ppu.framebuffer()[0], 3);
+    }
+
+    #[test]
+    fn first_visible_pixel_uses_live_lcdc_instead_of_the_delayed_copy() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.lcdc = 0x93;
+        ppu.pipeline_registers.lcdc = 0x91;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(1);
+        ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+            color: 2,
+            palette_obp1: false,
+            bg_over_obj: false,
+            sprite_x: 8,
+            oam_index: 0,
+        });
+
+        let _ = ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.snapshot().current_scanline_pixels[0], 2);
+    }
+
+    #[test]
+    fn later_visible_pixels_use_the_delayed_lcdc_copy() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        ppu.visible_output = PpuVisibleOutputState::Driving;
+        ppu.visible_registers.lcdc = 0x93;
+        ppu.pipeline_registers.lcdc = 0x91;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 1;
+        ppu.bg_pipeline_state.current_transfer_x = 9;
+        ppu.bg_pipeline_state.visible_pixels_output = 1;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(1);
+        ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+            color: 2,
+            palette_obp1: false,
+            bg_over_obj: false,
+            sprite_x: 9,
+            oam_index: 0,
+        });
+
+        let _ = ppu.advance_mode3_output_phase();
+
+        assert_eq!(ppu.snapshot().current_scanline_pixels[1], 1);
     }
 
     #[test]
@@ -3950,52 +7976,68 @@ mod tests {
 
     #[test]
     fn turning_off_lcdc1_during_object_fetch_cancels_sprite_pixels_but_keeps_timing_cost() {
-        let mut ppu = Ppu::new(ConsoleModel::Dmg);
         let mut oam_bytes = [0; 160];
         let mut vram_bytes = [0; TEST_VRAM_BYTES];
 
         write_oam_entry(&mut oam_bytes, 0, 16, 8, 0);
         write_bg_tile_row(&mut vram_bytes, 0, 0, 0xFF, 0x00);
 
-        ppu.apply_startup_state(PpuStartupState {
-            lcdc: 0x82,
-            stat: 0x82,
-            scy: 0x00,
-            scx: 0x00,
-            ly: 0x00,
-            lyc: 0x00,
-            bgp: 0x00,
-            wy: 0x00,
-            wx: 0x00,
-            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
-        });
+        fn run_case(
+            disable_obj_during_fetch: bool,
+            oam_bytes: &[u8; 160],
+            vram_bytes: &[u8; TEST_VRAM_BYTES],
+        ) -> PpuSnapshot {
+            let mut ppu = Ppu::new(ConsoleModel::Dmg);
+            ppu.apply_startup_state(PpuStartupState {
+                lcdc: 0x82,
+                stat: 0x82,
+                scy: 0x00,
+                scx: 0x00,
+                ly: 0x00,
+                lyc: 0x00,
+                bgp: 0x00,
+                wy: 0x00,
+                wx: 0x00,
+                obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+            });
 
-        for t_cycle in 0..80 {
-            tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
-        }
-
-        let mut t_cycle = 80;
-        loop {
-            let fetching = ppu.snapshot();
-            if fetching.obj_fetcher_stage == PpuObjFetcherStage::Startup {
-                break;
+            for t_cycle in 0..80 {
+                tick_ppu_with_vram(&mut ppu, t_cycle, oam_bytes, vram_bytes);
             }
 
-            tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
-            t_cycle += 1;
-            assert!(
-                t_cycle < 96,
-                "left-edge OBJ fetch should begin during early Mode 3"
-            );
+            let mut t_cycle = 80;
+            loop {
+                let fetching = ppu.snapshot();
+                if fetching.obj_fetcher_stage == PpuObjFetcherStage::Startup {
+                    break;
+                }
+
+                tick_ppu_with_vram(&mut ppu, t_cycle, oam_bytes, vram_bytes);
+                t_cycle += 1;
+                assert!(
+                    ppu.current_access_mode() == PpuAccessMode::Drawing,
+                    "left-edge OBJ fetch must still begin during Mode 3"
+                );
+                assert!(
+                    ppu.snapshot().visible_pixels_output <= 1,
+                    "left-edge OBJ fetch should still begin around the left edge"
+                );
+            }
+
+            if disable_obj_during_fetch {
+                ppu.write_register(0xFF40, 0x80);
+            }
+
+            let _ = tick_until_hblank(&mut ppu, t_cycle, oam_bytes, vram_bytes);
+            ppu.snapshot()
         }
 
-        ppu.write_register(0xFF40, 0x80);
+        let enabled = run_case(false, &oam_bytes, &vram_bytes);
+        let disabled = run_case(true, &oam_bytes, &vram_bytes);
 
-        let _ = tick_until_hblank(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
-
-        let snapshot = ppu.snapshot();
-        assert_eq!(snapshot.mode0_start_dot, MODE0_START_DOT + 8);
-        assert_eq!(&snapshot.current_scanline_pixels[..8], &[0; 8]);
+        assert_eq!(disabled.mode0_start_dot, enabled.mode0_start_dot);
+        assert_ne!(enabled.current_scanline_pixels[0], 0);
+        assert_eq!(&disabled.current_scanline_pixels[..8], &[0; 8]);
     }
 
     #[test]
@@ -4021,7 +8063,7 @@ mod tests {
                 obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             });
 
-            for t_cycle in 0..96 {
+            for t_cycle in 0..160 {
                 tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
                 let snapshot = ppu.snapshot();
                 if snapshot.obj_fetcher_stage == PpuObjFetcherStage::Startup {
@@ -4038,7 +8080,114 @@ mod tests {
         assert!(left_edge < first_visible);
         assert!(left_edge >= MODE2_DOTS);
         assert!(first_visible >= MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1);
-        assert!(first_visible <= MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS);
+    }
+
+    #[test]
+    fn overlapped_obj_fetch_uses_explicit_one_dot_stage_progression() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+        let mut oam_bytes = [0; 160];
+        let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+        write_oam_entry(&mut oam_bytes, 0, 16, 8, 0);
+        write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+
+        let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+        let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+        oam.set_acquired(BusMaster::Ppu, true);
+        vram.set_acquired(BusMaster::Ppu, true);
+
+        ppu.visible_registers.lcdc = 0x82;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.current_transfer_x = 8;
+        ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: 0,
+            y: 16,
+            x: 8,
+            tile_index: 0,
+            attributes: 0,
+        });
+        ppu.obj_pipeline_state
+            .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+        assert!(ppu.try_start_object_fetch_from_current_dot(
+            ObjFetchStartSource::FifoBackedTransfer,
+            true,
+        ));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::Startup
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::TileDataLow
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::TileDataLow
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::TileDataHigh
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::TileDataHigh
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Push);
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Push);
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
     }
 
     #[test]

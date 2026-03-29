@@ -183,13 +183,24 @@ to immediately materialize as a separate directory.
 - memory reads and writes
 - memory-map region resolution
 - one central address-decode path over the full `0x0000-0xFFFF` map
+- one pure address-router layer that resolves nominal domain and region ownership without owning live timing
 - access arbitration
 - integration of cartridge, VRAM, WRAM, OAM, I/O, HRAM, IE, and boot ROM mapping
+- domain-oriented controllers or handlers for cartridge, VRAM, WRAM, OAM, boot-overlay, unusable-space, and IO/HRAM/IE behavior
 - modeling of access restrictions and conflicts when hardware makes them visible
 - two-layer arbitration made of decode / nominal ownership followed by requester-aware access policy
+- requester-facing or device-facing views for VRAM and OAM so PPU and DMA do not borrow raw backing arrays directly from unrelated call sites
 - routing of OAM and `FEA0-FEFF` access attempts and CPU-provided address-bearing micro-events into the DMG-family OAM corruption path when applicable
 - MMIO routing to the subsystem-owned register contract for each mapped address
 - one source of truth for MMIO ownership, model availability, access class, and read/write side-effect policy
+- if a docboy-like internal domain is introduced, prefer `IoHram` / `Internal` naming over `CpuBus`; keep WRAM explicit instead of burying it inside a generic external or CPU-named bus so future CGB banking remains visible in the architecture
+- For the current DMG-first repo baseline, a concrete split of `bus.rs` plus `bus/state.rs`, `bus/map.rs`, `bus/router.rs`, `bus/dispatch.rs`, `bus/policy.rs`, `bus/access.rs`, `bus/corruption.rs`, `bus/iohram.rs`, `bus/wram.rs`, `bus/video.rs`, `bus/view.rs`, and `bus/meta.rs` is the preferred shape.
+- In that split, `IoHram` owns routed `FFxx`, `HRAM`, and `IE` behavior; WRAM remains a separate explicit domain so later CGB bankability does not get buried inside an internal bus.
+- Video-domain acquisition or release is scheduler-visible state, not router behavior; ownership changes for `VRAM` and `OAM` should stay synchronized to the shared T-cycle timeline around PPU and DMA ticks rather than being invented inside the router.
+- DMG-family OAM-corruption trigger classification is a good fit for a dedicated bus child module such as `bus/corruption.rs`: the bus still routes address-space and IDU-originated triggers, while the PPU remains the owner of the corruption formulas and live Mode `2` row behavior.
+- Shared requester, blocked-access, and arbitration-state types are a good fit for `bus/state.rs` so the bus facade can stay focused on orchestration while the public T-cycle-visible bus contract remains explicit and reusable across CPU, DMA, boot, and tests.
+- A requester-facing access pipeline module such as `bus/dispatch.rs` is a good fit for `resolve_access`, `read/write` entry points, and the DMG CPU↔DMA source-bus redirection rule, leaving `bus.rs` as composition plus narrow façade.
+- Metadata and observability helpers such as `BusSnapshot` and the bus scheduler trace formatter are a good fit for `bus/meta.rs`, keeping the facade focused on composition rather than debug-facing presentation.
 
 ### `memory/` or bus-owned storage helpers
 

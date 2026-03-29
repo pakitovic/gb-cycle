@@ -243,10 +243,11 @@ This checklist should move only when one of the following becomes true:
 
 ## Differential oracle policy
 
-- Use SameBoy as the differential oracle for DMG behavior whenever comparable observables are available.
+- Use SameBoy as the default differential oracle for general DMG behavior whenever comparable observables are available.
+- Use docboy as an approved secondary oracle for DMG PPU and bus work, especially for pixel FIFO, window timing, LCD restart behavior, and video-bus interaction where a second high-precision implementation helps localize a divergence.
 - Differential comparison should support at least three granularities: end of test, end of instruction, and short T-cycle windows for reduced scenarios.
 - Prefer a clear "first point of divergence" workflow over one final hash or framebuffer mismatch.
-- If another oracle is introduced in the future, document its automation path and arbitration policy explicitly before treating it as closure evidence.
+- A newly approved oracle may be used immediately for architectural consultation and manual differential study, but it should not count as closure evidence until its artifact-import or automation path is documented explicitly.
 
 ## Execution-mode validation policy
 
@@ -256,7 +257,7 @@ This checklist should move only when one of the following becomes true:
 - Mode-sensitive loader tests should cover the documented category matrix for `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`.
 - When a test exercises heuristics, partial implementations, or manual overrides, the captured artifacts should say so explicitly rather than looking like ordinary strict-mode evidence.
 - Curated ROM manifests may opt individual cases into `experimental` only when the case itself depends on a documented heuristic or partial implementation; that opt-in must live in the manifest, not as a silent suite-wide default or an implicit runner override.
-- Differential comparison against SameBoy should always run under `Strict`, not under `Permissive` or `Experimental`.
+- Differential comparison against SameBoy or docboy should always run under `Strict`, not under `Permissive` or `Experimental`.
 
 ## Validation tooling requirements
 

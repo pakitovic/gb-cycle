@@ -32,6 +32,7 @@ Primary documentation should be consulted before using emulator source code as g
 
 - gbdev resources — https://gbdev.io/resources/
 - awesome-gbdev — https://github.com/gbdev/awesome-gbdev
+- GB Emulator Shootout — https://gbdev.io/GBEmulatorShootout/
 - use the awesome-gbdev testing section to discover and cross-check broader external DMG-closure suites that are not listed above directly
 
 ## Audio references
@@ -50,12 +51,13 @@ Use this order when implementation examples or behavioral cross-checks are neede
 This default order balances coverage, maintainability, and accessibility; it is not a literal accuracy ranking for every subsystem.
 
 1. SameBoy — https://github.com/LIJI32/SameBoy
-2. binjgb — https://github.com/binji/binjgb
-3. GameRoy — https://github.com/Rodrigodd/gameroy
-4. accurateboy — https://github.com/Atem2069/accurateboy
-5. Mooneye GB — https://github.com/Gekkio/mooneye-gb
-6. Danger Boy — https://github.com/austinthresher/dangerboy
-7. Gambatte — https://github.com/gb-archive/gambatte
+2. docboy — https://github.com/Docheinstein/docboy
+3. binjgb — https://github.com/binji/binjgb
+4. GameRoy — https://github.com/Rodrigodd/gameroy
+5. accurateboy — https://github.com/Atem2069/accurateboy
+6. Mooneye GB — https://github.com/Gekkio/mooneye-gb
+7. Danger Boy — https://github.com/austinthresher/dangerboy
+8. Gambatte — https://github.com/gb-archive/gambatte
 
 ## How to use the consultation tier
 
@@ -68,6 +70,7 @@ This default order balances coverage, maintainability, and accessibility; it is 
 ## Practical specialization by reference
 
 - SameBoy: best general reference and the practical ceiling for DMG/CGB behavior, LCD timing, audio, and compatibility study; use it as the DMG differential oracle when comparable traces or observables are available.
+- docboy: approved high-precision DMG oracle for PPU pixel FIFO, window timing, LCD restart behavior, and bus-domain/view architecture; use it as the first structural cross-check when studying DMG PPU or video-bus behavior and as a second oracle when SameBoy alone is not enough to localize a divergence.
 - binjgb: strong reference for timing, CPU/bus behavior, and compact architecture.
 - GameRoy: useful reference for idiomatic Rust-oriented structure.
 - accurateboy: especially valuable for PPU, fetcher, and pixel FIFO behavior.

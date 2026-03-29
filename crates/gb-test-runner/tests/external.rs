@@ -229,10 +229,9 @@ fn acid_curated_suite_passes_from_repo_store() {
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
 fn mealybug_curated_suite_updates_report_from_repo_store() {
-    let Some(report) = run_curated_suite_and_update_report(
-        &mealybug_tearoom_dmg_curated_suite(),
-        "curated mealybug suite",
-    ) else {
+    let suite = mealybug_tearoom_dmg_curated_suite();
+    let expected_case_count = suite.cases.len();
+    let Some(report) = run_curated_suite_and_update_report(&suite, "curated mealybug suite") else {
         return;
     };
     assert_eq!(
@@ -240,20 +239,19 @@ fn mealybug_curated_suite_updates_report_from_repo_store() {
         Some("mealybug-tearoom-tests"),
         "{report:#?}"
     );
-    assert_eq!(report.cases.len(), 10, "{report:#?}");
+    assert_eq!(report.cases.len(), expected_case_count, "{report:#?}");
 }
 
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
 fn mooneye_curated_suite_updates_report_from_repo_store() {
-    let Some(report) = run_curated_suite_and_update_report(
-        &mooneye_acceptance_dmg_curated_suite(),
-        "curated mooneye suite",
-    ) else {
+    let suite = mooneye_acceptance_dmg_curated_suite();
+    let expected_case_count = suite.cases.len();
+    let Some(report) = run_curated_suite_and_update_report(&suite, "curated mooneye suite") else {
         return;
     };
     assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
-    assert_eq!(report.cases.len(), 66, "{report:#?}");
+    assert_eq!(report.cases.len(), expected_case_count, "{report:#?}");
 }
 
 #[test]
