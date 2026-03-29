@@ -3511,19 +3511,14 @@ impl BgFifoFillState {
         self.pending = true;
         self.startup_dummy_pixels = 0;
         self.includes_real_tile_pixels = true;
-        self.cached = push
-            .cached
-            .with_same_cycle_live_tilemap_refetch_window_open(false);
+        self.cached = push.cached;
     }
 
     fn queue_startup_alignment_from_push(&mut self, push: BgPushState, startup_dummy_pixels: u8) {
         self.pending = true;
         self.startup_dummy_pixels = startup_dummy_pixels;
         self.includes_real_tile_pixels = true;
-        self.cached = push
-            .cached
-            .with_same_cycle_live_tilemap_refetch_window_open(false)
-            .with_origin(push.cached.queued_fill_origin());
+        self.cached = push.cached.with_origin(push.cached.queued_fill_origin());
     }
 }
 
@@ -3590,11 +3585,6 @@ impl BgCachedSlice {
 
     fn with_origin(mut self, origin: BgCachedSliceOrigin) -> Self {
         self.origin = origin;
-        self
-    }
-
-    fn with_same_cycle_live_tilemap_refetch_window_open(mut self, open: bool) -> Self {
-        self.same_cycle_live_tilemap_refetch_window_open = open;
         self
     }
 
@@ -3668,6 +3658,8 @@ impl BgCachedSlice {
         if address == 0xFF40
             && (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT != 0
             && startup_dummy_pixels == 0
+            && (self.same_cycle_live_tilemap_refetch_window_open
+                || self.is_third_visible_post_startup_push())
         {
             self.needs_live_tilemap_refetch = true;
         }
@@ -6982,7 +6974,8 @@ mod tests {
     }
 
     #[test]
-    fn cached_background_fill_recomputes_tilemap_before_the_next_flush() {
+    fn cached_background_fill_recomputes_tilemap_before_the_next_flush_when_same_tcycle_window_is_open()
+     {
         let mut ppu = Ppu::new(ConsoleModel::Dmg);
         let mut vram_bytes = [0; TEST_VRAM_BYTES];
 
@@ -7017,6 +7010,10 @@ mod tests {
         ppu.bg_pipeline_state.fill.cached.tile_index = 0;
         ppu.bg_pipeline_state.fill.cached.tile_low = 0x12;
         ppu.bg_pipeline_state.fill.cached.tile_high = 0x34;
+        ppu.bg_pipeline_state
+            .fill
+            .cached
+            .same_cycle_live_tilemap_refetch_window_open = true;
 
         assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
         ppu.write_register(0xFF40, 0x99);
@@ -7054,6 +7051,7 @@ mod tests {
         ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
         ppu.bg_pipeline_state.fill.cached.origin =
             BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3);
+        ppu.bg_pipeline_state.fill.cached.fetch_x = BG_TILE_WIDTH as u16 * 2;
         ppu.bg_pipeline_state.fill.cached.tile_map_address = 0x1802;
         ppu.bg_pipeline_state.fill.cached.tile_data_address = 0x0001;
         ppu.bg_pipeline_state.fill.cached.tile_index = 0;
@@ -7062,6 +7060,53 @@ mod tests {
 
         ppu.write_register(0xFF40, 0x99);
         assert!(ppu.bg_pipeline_state.fill.cached.needs_live_tilemap_refetch);
+    }
+
+    #[test]
+    fn ordinary_cached_fill_ignores_lcdc3_write_without_the_narrow_live_window() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.fill.pending = true;
+        ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
+        ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fill.cached.tile_map_address = 0x1803;
+        ppu.bg_pipeline_state.fill.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fill.cached.tile_index = 0;
+        ppu.bg_pipeline_state.fill.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.fill.cached.tile_high = 0x34;
+
+        ppu.write_register(0xFF40, 0x99);
+        assert!(!ppu.bg_pipeline_state.fill.cached.needs_live_tilemap_refetch);
+    }
+
+    #[test]
+    fn queue_from_push_preserves_the_same_tcycle_tilemap_refetch_window() {
+        let mut fill = BgFifoFillState::default();
+        let mut push = BgPushState {
+            pending: true,
+            ..BgPushState::default()
+        };
+        push.cached.source = PpuBgFetcherSource::Background;
+        push.cached.same_cycle_live_tilemap_refetch_window_open = true;
+
+        fill.queue_from_push(push);
+
+        assert!(fill.cached.same_cycle_live_tilemap_refetch_window_open);
     }
 
     #[test]
