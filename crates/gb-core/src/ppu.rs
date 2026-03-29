@@ -529,69 +529,31 @@ impl Ppu {
 
         if matches!(address, 0xFF40 | 0xFF42)
             && self.current_access_mode() == PpuAccessMode::Drawing
-            && self.bg_pipeline_state.push.pending
-            && self.bg_pipeline_state.push.source == PpuBgFetcherSource::Background
-            && !self.bg_pipeline_state.push.startup_alignment_seed
         {
-            let tile_data_selector_changed =
-                (previous_lcdc ^ self.lcdc) & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
-            let needs_tilemap_refetch = address == 0xFF40
-                && (previous_lcdc ^ self.lcdc) & LCDC_BG_TILE_MAP_BIT != 0
-                && (self.bg_pipeline_state.push.entry_delay_remaining > 0
-                    || self
-                        .bg_pipeline_state
-                        .push
-                        .same_cycle_live_tilemap_refetch_window_open);
-            let needs_tile_data_refetch = match address {
-                0xFF40 => {
-                    tile_data_selector_changed && self.lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT == 0
-                }
-                0xFF42 => self.bg_pipeline_state.push.source == PpuBgFetcherSource::Background,
-                _ => false,
-            };
-            let needs_tile_data_unsigned_reuse = address == 0xFF40
-                && tile_data_selector_changed
-                && self.lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
-            self.bg_pipeline_state.push.needs_live_tilemap_refetch |= needs_tilemap_refetch;
-            self.bg_pipeline_state.push.needs_live_tile_data_refetch |= needs_tile_data_refetch;
-            self.bg_pipeline_state
-                .push
-                .needs_live_tile_data_unsigned_reuse |= needs_tile_data_unsigned_reuse;
-        }
+            if self.bg_pipeline_state.push.pending {
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .mark_live_register_write_while_push_pending(
+                        address,
+                        previous_lcdc,
+                        self.lcdc,
+                        self.bg_pipeline_state.push.entry_delay_remaining > 0,
+                    );
+            }
 
-        if address == 0xFF40
-            && self.current_access_mode() == PpuAccessMode::Drawing
-            && (previous_lcdc ^ self.lcdc) & LCDC_BG_TILE_MAP_BIT != 0
-            && self.bg_pipeline_state.fill.pending
-            && self.bg_pipeline_state.fill.source == PpuBgFetcherSource::Background
-            && self.bg_pipeline_state.fill.includes_real_tile_pixels
-            && self.bg_pipeline_state.fill.startup_dummy_pixels == 0
-        {
-            self.bg_pipeline_state.fill.needs_live_tilemap_refetch = true;
-        }
-
-        if matches!(address, 0xFF40 | 0xFF42)
-            && self.current_access_mode() == PpuAccessMode::Drawing
-            && self.bg_pipeline_state.fill.pending
-            && self.bg_pipeline_state.fill.source == PpuBgFetcherSource::Background
-            && self.bg_pipeline_state.fill.includes_real_tile_pixels
-        {
-            let tile_data_selector_changed =
-                (previous_lcdc ^ self.lcdc) & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
-            let needs_tile_data_refetch = match address {
-                0xFF40 => {
-                    tile_data_selector_changed && self.lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT == 0
-                }
-                0xFF42 => true,
-                _ => false,
-            };
-            let needs_tile_data_unsigned_reuse = address == 0xFF40
-                && tile_data_selector_changed
-                && self.lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
-            self.bg_pipeline_state.fill.needs_live_tile_data_refetch |= needs_tile_data_refetch;
-            self.bg_pipeline_state
-                .fill
-                .needs_live_tile_data_unsigned_reuse |= needs_tile_data_unsigned_reuse;
+            if self.bg_pipeline_state.fill.pending {
+                self.bg_pipeline_state
+                    .fill
+                    .cached
+                    .mark_live_register_write_while_fill_pending(
+                        address,
+                        previous_lcdc,
+                        self.lcdc,
+                        self.bg_pipeline_state.fill.includes_real_tile_pixels,
+                        self.bg_pipeline_state.fill.startup_dummy_pixels,
+                    );
+            }
         }
 
         if !self.is_lcd_enabled() {
@@ -1311,11 +1273,9 @@ impl Ppu {
         match (fetcher.stage, fetcher.stage_dot) {
             (PpuBgFetcherStage::TileIndex, 0) => {
                 if fetcher.source == PpuBgFetcherSource::Background {
-                    self.bg_pipeline_state
-                        .fetcher
-                        .startup_continuation_visible_tile_index = self
+                    self.bg_pipeline_state.fetcher.cached_origin = self
                         .bg_pipeline_state
-                        .peek_startup_background_fetch_tile_index();
+                        .peek_startup_background_fetch_origin();
                 }
                 let tile_map_address =
                     self.compute_fetch_tile_index_address(fetcher.source, fetcher.fetch_x);
@@ -1427,16 +1387,12 @@ impl Ppu {
                     }
                     return false;
                 }
-                self.bg_pipeline_state.push.queue_from_fetcher(
-                    self.bg_pipeline_state.fetcher,
-                    self.bg_pipeline_state
-                        .fetcher
-                        .startup_continuation_visible_tile_index,
-                );
+                self.bg_pipeline_state
+                    .push
+                    .queue_from_fetcher(self.bg_pipeline_state.fetcher);
                 if fetcher.source == PpuBgFetcherSource::Background {
-                    let _ = self
-                        .bg_pipeline_state
-                        .consume_startup_background_fetch_tile();
+                    self.bg_pipeline_state
+                        .advance_startup_background_fetch_tile();
                 }
                 let mut advance_push_immediately = false;
                 if self
@@ -1510,7 +1466,8 @@ impl Ppu {
             && !push.just_activated_window_tile
             && self.obj_enabled()
             && self.current_dot_has_pending_obj_hit()
-            && (!push.startup_alignment_seed || self.bg_pipeline_state.current_transfer_x < 8);
+            && (!push.cached.is_startup_alignment_seed()
+                || self.bg_pipeline_state.current_transfer_x < 8);
         if self.bg_pipeline_state.fifo_contains_real_pixels() {
             if push_can_start_object_fetch {
                 BgPushDotOwnership::FifoBackedTransferObjectFetch
@@ -1532,15 +1489,17 @@ impl Ppu {
                 self.bg_pipeline_state.push.entry_delay_remaining -= 1;
                 self.bg_pipeline_state
                     .push
+                    .cached
                     .same_cycle_live_tilemap_refetch_window_open = true;
                 BgPushDotResult::EntryDelay
             }
             BgPushDotOwnership::WaitingForEmptyFifo => {
                 self.bg_pipeline_state
                     .push
+                    .cached
                     .same_cycle_live_tilemap_refetch_window_open =
-                    self.bg_pipeline_state.push.source == PpuBgFetcherSource::Background
-                        && self.bg_pipeline_state.fetcher.fetch_x == BG_TILE_WIDTH as u16
+                    self.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
+                        && self.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16
                         && self.bg_pipeline_state.fifo.len()
                             == self.bg_pipeline_state.startup_fifo_placeholders as usize + 2;
                 BgPushDotResult::WaitingForEmptyFifo
@@ -1548,6 +1507,7 @@ impl Ppu {
             BgPushDotOwnership::FifoBackedTransferObjectFetch => {
                 self.bg_pipeline_state
                     .push
+                    .cached
                     .same_cycle_live_tilemap_refetch_window_open = false;
                 let started = self.try_start_object_fetch_from_current_dot(
                     ObjFetchStartSource::PushCachedBgFetch,
@@ -1562,6 +1522,7 @@ impl Ppu {
             BgPushDotOwnership::QueueFill | BgPushDotOwnership::QueueFillThenObjectFetch => {
                 self.bg_pipeline_state
                     .push
+                    .cached
                     .same_cycle_live_tilemap_refetch_window_open = false;
                 self.queue_bg_fill_from_push();
                 if matches!(ownership, BgPushDotOwnership::QueueFillThenObjectFetch) {
@@ -1583,26 +1544,26 @@ impl Ppu {
 
     fn queue_bg_fill_from_push(&mut self) {
         let push = self.bg_pipeline_state.push;
-        if push.startup_alignment_seed {
+        if push.cached.is_startup_alignment_seed() {
             self.bg_pipeline_state.begin_post_alignment_followup();
             self.bg_pipeline_state
                 .fill
                 .queue_startup_alignment_from_push(
                     push,
                     self.bg_pipeline_state.startup_fifo_placeholders,
-                    self.bg_pipeline_state.fetcher,
                 );
         } else {
-            self.bg_pipeline_state
-                .fill
-                .queue_from_push(push, self.bg_pipeline_state.fetcher);
+            self.bg_pipeline_state.fill.queue_from_push(push);
         }
         self.bg_pipeline_state.fetcher.fetch_x = push.next_fetch_pixel;
         self.bg_pipeline_state.fetcher.next_fetch_pixel = push.next_fetch_pixel;
         self.bg_pipeline_state
             .fetcher
-            .post_alignment_fetch_restart_delay_dots =
-            if push.startup_alignment_seed { 1 } else { 0 };
+            .post_alignment_fetch_restart_delay_dots = if push.cached.is_startup_alignment_seed() {
+            1
+        } else {
+            0
+        };
         self.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
         self.bg_pipeline_state.push.reset();
     }
@@ -1621,150 +1582,61 @@ impl Ppu {
         if fill.includes_real_tile_pixels {
             push_bg_tile_pixels(
                 &mut self.bg_pipeline_state.fifo,
-                fill.tile_low,
-                fill.tile_high,
+                fill.cached.tile_low,
+                fill.cached.tile_high,
             );
         }
         self.bg_pipeline_state.fill.reset();
     }
 
     fn maybe_recompute_pending_background_fill(&mut self, vram: &VramBusView<'_>) {
-        if !self.bg_pipeline_state.fill.needs_live_tilemap_refetch
-            && !self.bg_pipeline_state.fill.needs_live_tile_data_refetch
-            && !self
-                .bg_pipeline_state
-                .fill
-                .needs_live_tile_data_unsigned_reuse
-            || !self.bg_pipeline_state.fill.pending
-            || self.bg_pipeline_state.fill.source != PpuBgFetcherSource::Background
+        if !self.bg_pipeline_state.fill.pending
+            || self.bg_pipeline_state.fill.cached.source != PpuBgFetcherSource::Background
             || !self.bg_pipeline_state.fill.includes_real_tile_pixels
         {
             return;
         }
 
-        let mut tile_map_address = self.bg_pipeline_state.fill.tile_map_address;
-        let mut tile_index = self.bg_pipeline_state.fill.tile_index;
-        if self.bg_pipeline_state.fill.needs_live_tilemap_refetch {
-            let tile_map_offset = self.bg_pipeline_state.fill.tile_map_address & 0x03FF;
-            let tile_map_base = if self.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
-                0x1C00
-            } else {
-                0x1800
-            };
-            tile_map_address = tile_map_base | tile_map_offset;
-            tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
-        }
-        let tile_data_row = if self.bg_pipeline_state.fill.needs_live_tile_data_refetch {
-            u16::from(self.scy.wrapping_add(self.ly) % BG_TILE_WIDTH)
-        } else {
-            (self
-                .bg_pipeline_state
-                .fill
-                .tile_data_address
-                .saturating_sub(1)
-                & (TILE_BYTES - 1))
-                / TILE_ROW_BYTES
-        };
-        let tile_low_address =
-            bg_tile_data_base(self.lcdc, tile_index) + tile_data_row * TILE_ROW_BYTES;
-        let tile_high_address = tile_low_address + 1;
-        let (tile_low, tile_high) = if self
-            .bg_pipeline_state
-            .fill
-            .needs_live_tile_data_unsigned_reuse
-            && !self.bg_pipeline_state.fill.needs_live_tilemap_refetch
-        {
-            (
-                self.last_unsigned_tile_data_low_fetch,
-                self.last_unsigned_tile_data_high_fetch,
-            )
-        } else {
-            (
-                vram.read(tile_low_address as usize).unwrap_or(0),
-                vram.read(tile_high_address as usize).unwrap_or(0),
-            )
+        let Some(recomputed) = recompute_live_background_cached_slice(
+            self.bg_pipeline_state.fill.cached,
+            vram,
+            self.lcdc,
+            self.scy,
+            self.ly,
+            self.last_unsigned_tile_data_low_fetch,
+            self.last_unsigned_tile_data_high_fetch,
+        ) else {
+            return;
         };
 
-        self.bg_pipeline_state.fill.tile_map_address = tile_map_address;
-        self.bg_pipeline_state.fill.tile_data_address = tile_high_address;
-        self.bg_pipeline_state.fill.tile_index = tile_index;
-        self.bg_pipeline_state.fill.tile_low = tile_low;
-        self.bg_pipeline_state.fill.tile_high = tile_high;
-        self.bg_pipeline_state.fill.needs_live_tilemap_refetch = false;
-        self.bg_pipeline_state.fill.needs_live_tile_data_refetch = false;
-        self.bg_pipeline_state
-            .fill
-            .needs_live_tile_data_unsigned_reuse = false;
+        self.bg_pipeline_state.fill.cached = recomputed;
     }
 
     fn maybe_recompute_pending_background_push(&mut self, vram: &VramBusView<'_>) {
-        if !self.bg_pipeline_state.push.needs_live_tilemap_refetch
-            && !self.bg_pipeline_state.push.needs_live_tile_data_refetch
-            && !self
-                .bg_pipeline_state
-                .push
-                .needs_live_tile_data_unsigned_reuse
-            || !self.bg_pipeline_state.push.pending
-            || self.bg_pipeline_state.push.source != PpuBgFetcherSource::Background
+        if !self.bg_pipeline_state.push.pending
+            || self.bg_pipeline_state.push.cached.source != PpuBgFetcherSource::Background
         {
             return;
         }
 
-        let mut tile_index = self.bg_pipeline_state.fetcher.tile_index;
-        if self.bg_pipeline_state.push.needs_live_tilemap_refetch {
-            let tile_map_offset = self.bg_pipeline_state.fetcher.tile_map_address & 0x03FF;
-            let tile_map_base = if self.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
-                0x1C00
-            } else {
-                0x1800
-            };
-            let tile_map_address = tile_map_base | tile_map_offset;
-            tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
-            self.bg_pipeline_state.fetcher.tile_map_address = tile_map_address;
-            self.bg_pipeline_state.fetcher.tile_index = tile_index;
-        }
-
-        let tile_data_row = if self.bg_pipeline_state.push.needs_live_tile_data_refetch {
-            u16::from(self.scy.wrapping_add(self.ly) % BG_TILE_WIDTH)
-        } else {
-            (self
-                .bg_pipeline_state
-                .fetcher
-                .tile_data_address
-                .saturating_sub(1)
-                & (TILE_BYTES - 1))
-                / TILE_ROW_BYTES
-        };
-        let tile_low_address =
-            bg_tile_data_base(self.lcdc, tile_index) + tile_data_row * TILE_ROW_BYTES;
-        let tile_high_address = tile_low_address + 1;
-        let (tile_low, tile_high) = if self
-            .bg_pipeline_state
-            .push
-            .needs_live_tile_data_unsigned_reuse
-            && !self.bg_pipeline_state.push.needs_live_tilemap_refetch
-        {
-            (
-                self.last_unsigned_tile_data_low_fetch,
-                self.last_unsigned_tile_data_high_fetch,
-            )
-        } else {
-            (
-                vram.read(tile_low_address as usize).unwrap_or(0),
-                vram.read(tile_high_address as usize).unwrap_or(0),
-            )
+        let Some(recomputed) = recompute_live_background_cached_slice(
+            self.bg_pipeline_state.push.cached,
+            vram,
+            self.lcdc,
+            self.scy,
+            self.ly,
+            self.last_unsigned_tile_data_low_fetch,
+            self.last_unsigned_tile_data_high_fetch,
+        ) else {
+            return;
         };
 
-        self.bg_pipeline_state.push.tile_low = tile_low;
-        self.bg_pipeline_state.push.tile_high = tile_high;
-        self.bg_pipeline_state.fetcher.tile_data_address = tile_high_address;
-        self.bg_pipeline_state.fetcher.tile_low = tile_low;
-        self.bg_pipeline_state.fetcher.tile_high = tile_high;
-        self.bg_pipeline_state.push.needs_live_tilemap_refetch = false;
-        self.bg_pipeline_state.push.needs_live_tile_data_refetch = false;
-        self.bg_pipeline_state
-            .push
-            .needs_live_tile_data_unsigned_reuse = false;
+        self.bg_pipeline_state.push.cached = recomputed;
+        self.bg_pipeline_state.fetcher.tile_map_address = recomputed.tile_map_address;
+        self.bg_pipeline_state.fetcher.tile_index = recomputed.tile_index;
+        self.bg_pipeline_state.fetcher.tile_data_address = recomputed.tile_data_address;
+        self.bg_pipeline_state.fetcher.tile_low = recomputed.tile_low;
+        self.bg_pipeline_state.fetcher.tile_high = recomputed.tile_high;
     }
 
     fn execute_transfer_service_plan(
@@ -3293,18 +3165,20 @@ impl BgPipelineState {
         self.mode0_start_dot -= 1;
     }
 
-    fn peek_startup_background_fetch_tile_index(&self) -> u8 {
+    fn peek_startup_background_fetch_origin(&self) -> BgCachedSliceOrigin {
         match self.startup_fetch_seam {
             BgStartupFetchSeamState::PostAlignment {
-                startup_continuation_visible_tile_index_next,
+                next_startup_continuation_slice,
                 startup_continuation_visible_tiles_remaining,
                 ..
             } if startup_continuation_visible_tiles_remaining > 0 => {
-                startup_continuation_visible_tile_index_next
+                BgCachedSliceOrigin::from_startup_continuation_slice(
+                    next_startup_continuation_slice,
+                )
             }
             BgStartupFetchSeamState::Inactive
             | BgStartupFetchSeamState::AlignmentSeedPending
-            | BgStartupFetchSeamState::PostAlignment { .. } => 0,
+            | BgStartupFetchSeamState::PostAlignment { .. } => BgCachedSliceOrigin::Ordinary,
         }
     }
 
@@ -3353,7 +3227,7 @@ impl BgPipelineState {
     fn begin_post_alignment_followup(&mut self) {
         self.startup_fetch_seam = BgStartupFetchSeamState::PostAlignment {
             first_real_push_skips_entry_delay: false,
-            startup_continuation_visible_tile_index_next: 1,
+            next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile2,
             startup_continuation_visible_tiles_remaining: 2,
             delayed_background_tileindex_read_tiles_remaining: 1,
             delayed_background_tilemap_tiles_remaining: 0,
@@ -3379,10 +3253,9 @@ impl BgPipelineState {
         skip_entry_delay
     }
 
-    fn consume_startup_background_fetch_tile(&mut self) -> u8 {
-        let mut startup_continuation_visible_tile_index = 0;
+    fn advance_startup_background_fetch_tile(&mut self) {
         if let BgStartupFetchSeamState::PostAlignment {
-            startup_continuation_visible_tile_index_next,
+            next_startup_continuation_slice,
             startup_continuation_visible_tiles_remaining,
             delayed_background_tileindex_read_tiles_remaining,
             delayed_background_tilemap_tiles_remaining,
@@ -3391,10 +3264,7 @@ impl BgPipelineState {
         } = &mut self.startup_fetch_seam
         {
             if *startup_continuation_visible_tiles_remaining > 0 {
-                startup_continuation_visible_tile_index =
-                    *startup_continuation_visible_tile_index_next;
-                *startup_continuation_visible_tile_index_next =
-                    startup_continuation_visible_tile_index.saturating_add(1);
+                *next_startup_continuation_slice = next_startup_continuation_slice.next();
                 *startup_continuation_visible_tiles_remaining -= 1;
             }
             if *delayed_background_tileindex_read_tiles_remaining > 0 {
@@ -3408,13 +3278,12 @@ impl BgPipelineState {
             }
         }
         self.maybe_finish_startup_fetch_seam();
-        startup_continuation_visible_tile_index
     }
 
     fn maybe_finish_startup_fetch_seam(&mut self) {
         if let BgStartupFetchSeamState::PostAlignment {
             first_real_push_skips_entry_delay: false,
-            startup_continuation_visible_tile_index_next: _,
+            next_startup_continuation_slice: _,
             startup_continuation_visible_tiles_remaining: 0,
             delayed_background_tileindex_read_tiles_remaining: 0,
             delayed_background_tilemap_tiles_remaining: 0,
@@ -3460,7 +3329,7 @@ enum BgStartupFetchSeamState {
     AlignmentSeedPending,
     PostAlignment {
         first_real_push_skips_entry_delay: bool,
-        startup_continuation_visible_tile_index_next: u8,
+        next_startup_continuation_slice: BgStartupContinuationSlice,
         startup_continuation_visible_tiles_remaining: u8,
         delayed_background_tileindex_read_tiles_remaining: u8,
         delayed_background_tilemap_tiles_remaining: u8,
@@ -3469,11 +3338,33 @@ enum BgStartupFetchSeamState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum BgStartupContinuationSlice {
+    #[default]
+    None,
+    VisibleTile2,
+    VisibleTile3,
+}
+
+impl BgStartupContinuationSlice {
+    const fn next(self) -> Self {
+        match self {
+            Self::None => Self::None,
+            Self::VisibleTile2 => Self::VisibleTile3,
+            Self::VisibleTile3 => Self::None,
+        }
+    }
+
+    const fn is_third_visible_tile(self) -> bool {
+        matches!(self, Self::VisibleTile3)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct BgFetcherState {
     source: PpuBgFetcherSource,
     stage: PpuBgFetcherStage,
     stage_dot: u8,
-    startup_continuation_visible_tile_index: u8,
+    cached_origin: BgCachedSliceOrigin,
     fetch_x: u16,
     next_fetch_pixel: u16,
     post_alignment_fetch_restart_delay_dots: u8,
@@ -3502,7 +3393,7 @@ impl BgFetcherState {
         self.source = PpuBgFetcherSource::Window;
         self.stage = PpuBgFetcherStage::WindowActivating;
         self.stage_dot = 0;
-        self.startup_continuation_visible_tile_index = 0;
+        self.cached_origin = BgCachedSliceOrigin::Ordinary;
         self.fetch_x = 0;
         self.next_fetch_pixel = 0;
         self.post_alignment_fetch_restart_delay_dots = 0;
@@ -3520,7 +3411,7 @@ impl BgFetcherState {
     fn start_common(&mut self, bg_resume_fetch_pixel: u16) {
         self.stage = PpuBgFetcherStage::TileIndex;
         self.stage_dot = 0;
-        self.startup_continuation_visible_tile_index = 0;
+        self.cached_origin = BgCachedSliceOrigin::Ordinary;
         self.fetch_x = 0;
         self.next_fetch_pixel = 0;
         self.post_alignment_fetch_restart_delay_dots = 0;
@@ -3541,7 +3432,7 @@ impl BgFetcherState {
         }
 
         self.source = PpuBgFetcherSource::Background;
-        self.startup_continuation_visible_tile_index = 0;
+        self.cached_origin = BgCachedSliceOrigin::Ordinary;
         self.fetch_x = self.bg_resume_fetch_pixel;
         self.next_fetch_pixel = self.bg_resume_fetch_pixel;
         self.post_alignment_fetch_restart_delay_dots = 0;
@@ -3555,17 +3446,9 @@ struct BgPushState {
     pending: bool,
     disposition: BgPushDisposition,
     entry_delay_remaining: u8,
-    source: PpuBgFetcherSource,
     just_activated_window_tile: bool,
-    startup_alignment_seed: bool,
-    startup_continuation_visible_tile_index: u8,
-    same_cycle_live_tilemap_refetch_window_open: bool,
-    needs_live_tilemap_refetch: bool,
-    needs_live_tile_data_refetch: bool,
-    needs_live_tile_data_unsigned_reuse: bool,
-    tile_low: u8,
-    tile_high: u8,
     next_fetch_pixel: u16,
+    cached: BgCachedSlice,
 }
 
 impl BgPushState {
@@ -3573,36 +3456,27 @@ impl BgPushState {
         *self = Self::default();
     }
 
-    fn queue_from_fetcher(
-        &mut self,
-        fetcher: BgFetcherState,
-        startup_continuation_visible_tile_index: u8,
-    ) {
+    fn queue_from_fetcher(&mut self, fetcher: BgFetcherState) {
         self.pending = true;
         self.disposition = BgPushDisposition::Ready;
         self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
-        self.startup_alignment_seed = false;
-        self.startup_continuation_visible_tile_index = startup_continuation_visible_tile_index;
-        self.same_cycle_live_tilemap_refetch_window_open = false;
-        self.needs_live_tilemap_refetch = false;
-        self.needs_live_tile_data_refetch = false;
-        self.needs_live_tile_data_unsigned_reuse = false;
         self.entry_delay_remaining = if self.just_activated_window_tile {
             0
         } else {
             1
         };
-        self.source = fetcher.source;
-        self.tile_low = fetcher.tile_low;
-        self.tile_high = fetcher.tile_high;
         self.next_fetch_pixel = fetcher.fetch_x.wrapping_add(BG_TILE_WIDTH as u16);
+        self.cached = BgCachedSlice::from_fetcher(fetcher);
     }
 
     fn queue_startup_alignment_seed_from_fetcher(&mut self, fetcher: BgFetcherState) {
-        self.queue_from_fetcher(fetcher, 0);
-        self.startup_alignment_seed = true;
+        self.pending = true;
+        self.disposition = BgPushDisposition::Ready;
+        self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
         self.entry_delay_remaining = 0;
         self.next_fetch_pixel = fetcher.fetch_x.wrapping_add(BG_TILE_WIDTH as u16);
+        self.cached = BgCachedSlice::from_fetcher(fetcher)
+            .with_origin(BgCachedSliceOrigin::StartupAlignmentSeed);
     }
 
     fn interrupt_for_object_fetch(&mut self) {
@@ -3625,8 +3499,67 @@ struct BgFifoFillState {
     pending: bool,
     startup_dummy_pixels: u8,
     includes_real_tile_pixels: bool,
+    cached: BgCachedSlice,
+}
+
+impl BgFifoFillState {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    fn queue_from_push(&mut self, push: BgPushState) {
+        self.pending = true;
+        self.startup_dummy_pixels = 0;
+        self.includes_real_tile_pixels = true;
+        self.cached = push
+            .cached
+            .with_same_cycle_live_tilemap_refetch_window_open(false);
+    }
+
+    fn queue_startup_alignment_from_push(&mut self, push: BgPushState, startup_dummy_pixels: u8) {
+        self.pending = true;
+        self.startup_dummy_pixels = startup_dummy_pixels;
+        self.includes_real_tile_pixels = true;
+        self.cached = push
+            .cached
+            .with_same_cycle_live_tilemap_refetch_window_open(false)
+            .with_origin(push.cached.queued_fill_origin());
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum BgCachedSliceOrigin {
+    #[default]
+    Ordinary,
+    StartupAlignmentSeed,
+    StartupAlignmentFill,
+    StartupContinuation(BgStartupContinuationSlice),
+}
+
+impl BgCachedSliceOrigin {
+    const fn from_startup_continuation_slice(slice: BgStartupContinuationSlice) -> Self {
+        match slice {
+            BgStartupContinuationSlice::None => Self::Ordinary,
+            slice => Self::StartupContinuation(slice),
+        }
+    }
+
+    const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
+        match self {
+            Self::StartupContinuation(slice) => slice,
+            Self::Ordinary | Self::StartupAlignmentSeed | Self::StartupAlignmentFill => {
+                BgStartupContinuationSlice::None
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct BgCachedSlice {
     source: PpuBgFetcherSource,
-    startup_continuation_visible_tile_index: u8,
+    origin: BgCachedSliceOrigin,
+    fetch_x: u16,
+    same_cycle_live_tilemap_refetch_window_open: bool,
     needs_live_tilemap_refetch: bool,
     needs_live_tile_data_refetch: bool,
     needs_live_tile_data_unsigned_reuse: bool,
@@ -3637,47 +3570,182 @@ struct BgFifoFillState {
     tile_high: u8,
 }
 
-impl BgFifoFillState {
-    fn reset(&mut self) {
-        *self = Self::default();
+impl BgCachedSlice {
+    fn from_fetcher(fetcher: BgFetcherState) -> Self {
+        Self {
+            source: fetcher.source,
+            origin: fetcher.cached_origin,
+            fetch_x: fetcher.fetch_x,
+            same_cycle_live_tilemap_refetch_window_open: false,
+            needs_live_tilemap_refetch: false,
+            needs_live_tile_data_refetch: false,
+            needs_live_tile_data_unsigned_reuse: false,
+            tile_map_address: fetcher.tile_map_address,
+            tile_data_address: fetcher.tile_data_address,
+            tile_index: fetcher.tile_index,
+            tile_low: fetcher.tile_low,
+            tile_high: fetcher.tile_high,
+        }
     }
 
-    fn queue_from_push(&mut self, push: BgPushState, fetcher: BgFetcherState) {
-        self.pending = true;
-        self.startup_dummy_pixels = 0;
-        self.includes_real_tile_pixels = true;
-        self.source = push.source;
-        self.startup_continuation_visible_tile_index = push.startup_continuation_visible_tile_index;
-        self.needs_live_tilemap_refetch = false;
-        self.needs_live_tile_data_refetch = false;
-        self.needs_live_tile_data_unsigned_reuse = false;
-        self.tile_map_address = fetcher.tile_map_address;
-        self.tile_data_address = fetcher.tile_data_address;
-        self.tile_index = fetcher.tile_index;
-        self.tile_low = push.tile_low;
-        self.tile_high = push.tile_high;
+    fn with_origin(mut self, origin: BgCachedSliceOrigin) -> Self {
+        self.origin = origin;
+        self
     }
 
-    fn queue_startup_alignment_from_push(
+    fn with_same_cycle_live_tilemap_refetch_window_open(mut self, open: bool) -> Self {
+        self.same_cycle_live_tilemap_refetch_window_open = open;
+        self
+    }
+
+    const fn is_background(self) -> bool {
+        matches!(self.source, PpuBgFetcherSource::Background)
+    }
+
+    const fn is_startup_alignment_seed(self) -> bool {
+        matches!(self.origin, BgCachedSliceOrigin::StartupAlignmentSeed)
+    }
+
+    const fn queued_fill_origin(self) -> BgCachedSliceOrigin {
+        match self.origin {
+            BgCachedSliceOrigin::StartupAlignmentSeed => BgCachedSliceOrigin::StartupAlignmentFill,
+            origin => origin,
+        }
+    }
+
+    const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
+        self.origin.startup_continuation_slice()
+    }
+
+    const fn is_third_visible_post_startup_push(self) -> bool {
+        self.startup_continuation_slice().is_third_visible_tile()
+            && self.fetch_x == BG_TILE_WIDTH as u16 * 2
+    }
+
+    fn mark_live_register_write_while_push_pending(
         &mut self,
-        push: BgPushState,
-        startup_dummy_pixels: u8,
-        fetcher: BgFetcherState,
+        address: u16,
+        previous_lcdc: u8,
+        lcdc: u8,
+        entry_delay_active: bool,
     ) {
-        self.pending = true;
-        self.startup_dummy_pixels = startup_dummy_pixels;
-        self.includes_real_tile_pixels = true;
-        self.source = push.source;
-        self.startup_continuation_visible_tile_index = 0;
-        self.needs_live_tilemap_refetch = false;
-        self.needs_live_tile_data_refetch = false;
-        self.needs_live_tile_data_unsigned_reuse = false;
-        self.tile_map_address = fetcher.tile_map_address;
-        self.tile_data_address = fetcher.tile_data_address;
-        self.tile_index = fetcher.tile_index;
-        self.tile_low = push.tile_low;
-        self.tile_high = push.tile_high;
+        if !self.is_background() || self.is_startup_alignment_seed() {
+            return;
+        }
+
+        let tile_data_selector_changed = (previous_lcdc ^ lcdc) & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+        let needs_tilemap_refetch = address == 0xFF40
+            && (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT != 0
+            && (entry_delay_active
+                || self.same_cycle_live_tilemap_refetch_window_open
+                || self.is_third_visible_post_startup_push());
+        let needs_tile_data_refetch = match address {
+            0xFF40 => tile_data_selector_changed && lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT == 0,
+            0xFF42 => true,
+            _ => false,
+        };
+        let needs_tile_data_unsigned_reuse = address == 0xFF40
+            && tile_data_selector_changed
+            && lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+
+        self.needs_live_tilemap_refetch |= needs_tilemap_refetch;
+        self.needs_live_tile_data_refetch |= needs_tile_data_refetch;
+        self.needs_live_tile_data_unsigned_reuse |= needs_tile_data_unsigned_reuse;
     }
+
+    fn mark_live_register_write_while_fill_pending(
+        &mut self,
+        address: u16,
+        previous_lcdc: u8,
+        lcdc: u8,
+        includes_real_tile_pixels: bool,
+        startup_dummy_pixels: u8,
+    ) {
+        if !self.is_background() || !includes_real_tile_pixels {
+            return;
+        }
+
+        if address == 0xFF40
+            && (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT != 0
+            && startup_dummy_pixels == 0
+        {
+            self.needs_live_tilemap_refetch = true;
+        }
+
+        let tile_data_selector_changed = (previous_lcdc ^ lcdc) & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+        let needs_tile_data_refetch = match address {
+            0xFF40 => tile_data_selector_changed && lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT == 0,
+            0xFF42 => true,
+            _ => false,
+        };
+        let needs_tile_data_unsigned_reuse = address == 0xFF40
+            && tile_data_selector_changed
+            && lcdc & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
+
+        self.needs_live_tile_data_refetch |= needs_tile_data_refetch;
+        self.needs_live_tile_data_unsigned_reuse |= needs_tile_data_unsigned_reuse;
+    }
+}
+
+fn recompute_live_background_cached_slice(
+    mut cached: BgCachedSlice,
+    vram: &VramBusView<'_>,
+    lcdc: u8,
+    scy: u8,
+    ly: u8,
+    last_unsigned_tile_data_low_fetch: u8,
+    last_unsigned_tile_data_high_fetch: u8,
+) -> Option<BgCachedSlice> {
+    if cached.source != PpuBgFetcherSource::Background
+        || (!cached.needs_live_tilemap_refetch
+            && !cached.needs_live_tile_data_refetch
+            && !cached.needs_live_tile_data_unsigned_reuse)
+    {
+        return None;
+    }
+
+    let mut tile_map_address = cached.tile_map_address;
+    let mut tile_index = cached.tile_index;
+    if cached.needs_live_tilemap_refetch {
+        let tile_map_offset = cached.tile_map_address & 0x03FF;
+        let tile_map_base = if lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
+            0x1C00
+        } else {
+            0x1800
+        };
+        tile_map_address = tile_map_base | tile_map_offset;
+        tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+    }
+
+    let tile_data_row = if cached.needs_live_tile_data_refetch {
+        u16::from(scy.wrapping_add(ly) % BG_TILE_WIDTH)
+    } else {
+        (cached.tile_data_address.saturating_sub(1) & (TILE_BYTES - 1)) / TILE_ROW_BYTES
+    };
+    let tile_low_address = bg_tile_data_base(lcdc, tile_index) + tile_data_row * TILE_ROW_BYTES;
+    let tile_high_address = tile_low_address + 1;
+    let (tile_low, tile_high) =
+        if cached.needs_live_tile_data_unsigned_reuse && !cached.needs_live_tilemap_refetch {
+            (
+                last_unsigned_tile_data_low_fetch,
+                last_unsigned_tile_data_high_fetch,
+            )
+        } else {
+            (
+                vram.read(tile_low_address as usize).unwrap_or(0),
+                vram.read(tile_high_address as usize).unwrap_or(0),
+            )
+        };
+
+    cached.tile_map_address = tile_map_address;
+    cached.tile_data_address = tile_high_address;
+    cached.tile_index = tile_index;
+    cached.tile_low = tile_low;
+    cached.tile_high = tile_high;
+    cached.needs_live_tilemap_refetch = false;
+    cached.needs_live_tile_data_refetch = false;
+    cached.needs_live_tile_data_unsigned_reuse = false;
+    Some(cached)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -5325,13 +5393,26 @@ mod tests {
         let mut pipeline = BgPipelineState::default();
 
         pipeline.begin_post_alignment_followup();
-        assert_eq!(pipeline.peek_startup_background_fetch_tile_index(), 1);
-        assert_eq!(pipeline.consume_startup_background_fetch_tile(), 1);
+        assert_eq!(
+            pipeline
+                .peek_startup_background_fetch_origin()
+                .startup_continuation_slice(),
+            BgStartupContinuationSlice::VisibleTile2
+        );
+        pipeline.advance_startup_background_fetch_tile();
 
-        assert_eq!(pipeline.peek_startup_background_fetch_tile_index(), 2);
-        assert_eq!(pipeline.consume_startup_background_fetch_tile(), 2);
+        assert_eq!(
+            pipeline
+                .peek_startup_background_fetch_origin()
+                .startup_continuation_slice(),
+            BgStartupContinuationSlice::VisibleTile3
+        );
+        pipeline.advance_startup_background_fetch_tile();
 
-        assert_eq!(pipeline.peek_startup_background_fetch_tile_index(), 0);
+        assert_eq!(
+            pipeline.peek_startup_background_fetch_origin(),
+            BgCachedSliceOrigin::Ordinary
+        );
         assert_eq!(
             pipeline.startup_fetch_seam,
             BgStartupFetchSeamState::Inactive
@@ -5346,9 +5427,9 @@ mod tests {
         ppu.bg_pipeline_state.fetcher.fetch_x = 0;
         ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 0;
         ppu.bg_pipeline_state.push.pending = true;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state.push.tile_low = 0x55;
-        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
         ppu.bg_pipeline_state.fifo = (0..=8).collect();
 
@@ -5425,10 +5506,10 @@ mod tests {
         ppu.bg_pipeline_state.push.pending = true;
         ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
         ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Window;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Window;
         ppu.bg_pipeline_state.push.just_activated_window_tile = true;
-        ppu.bg_pipeline_state.push.tile_low = 0x55;
-        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
 
         ppu.mode2_scan_state.push(PpuSelectedSprite {
@@ -5458,9 +5539,9 @@ mod tests {
         ppu.bg_pipeline_state.push.pending = true;
         ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
         ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state.push.tile_low = 0x55;
-        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
 
         assert_eq!(
@@ -5526,9 +5607,9 @@ mod tests {
         ppu.bg_pipeline_state.push.pending = true;
         ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
         ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state.push.tile_low = 0x55;
-        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
         ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
         ppu.bg_pipeline_state.fifo.extend([0, 0, 0, 0]);
@@ -5583,9 +5664,9 @@ mod tests {
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
         ppu.bg_pipeline_state.push.pending = true;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state.push.tile_low = 0x55;
-        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
         ppu.bg_pipeline_state.fifo.push_back(0);
 
@@ -5626,9 +5707,9 @@ mod tests {
         ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
         ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
         ppu.bg_pipeline_state.push.pending = true;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state.push.tile_low = 0x55;
-        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
 
         ppu.mode2_scan_state.push(PpuSelectedSprite {
@@ -5669,9 +5750,9 @@ mod tests {
         ppu.bg_pipeline_state.push.pending = true;
         ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
         ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state.push.tile_low = 0x55;
-        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
         ppu.bg_pipeline_state.fifo = (0..=8).collect();
 
@@ -5716,9 +5797,9 @@ mod tests {
         ppu.bg_pipeline_state.push.pending = true;
         ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
         ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state.push.tile_low = 0x55;
-        ppu.bg_pipeline_state.push.tile_high = 0x33;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
 
         assert_eq!(ppu.advance_bg_push_stage(), BgPushDotResult::QueuedFill);
@@ -6800,17 +6881,19 @@ mod tests {
         ppu.bg_pipeline_state.push.pending = true;
         ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
         ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state
-            .push
-            .startup_continuation_visible_tile_index = 1;
-        ppu.bg_pipeline_state.push.tile_low = 0x12;
-        ppu.bg_pipeline_state.push.tile_high = 0x34;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.origin =
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2);
+        ppu.bg_pipeline_state.push.cached.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.push.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.push.cached.tile_index = 0;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x34;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 16;
 
         assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
         ppu.write_register(0xFF40, 0x99);
-        assert!(ppu.bg_pipeline_state.push.needs_live_tilemap_refetch);
+        assert!(ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
 
         assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
         assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1C01);
@@ -6818,8 +6901,8 @@ mod tests {
         assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x0011);
         assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0xAB);
         assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0xCD);
-        assert_eq!(ppu.bg_pipeline_state.push.tile_low, 0xAB);
-        assert_eq!(ppu.bg_pipeline_state.push.tile_high, 0xCD);
+        assert_eq!(ppu.bg_pipeline_state.push.cached.tile_low, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.push.cached.tile_high, 0xCD);
         assert_eq!(ppu.bg_pipeline_state.push.entry_delay_remaining, 0);
     }
 
@@ -6863,12 +6946,14 @@ mod tests {
         ppu.bg_pipeline_state.push.pending = true;
         ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
         ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
-        ppu.bg_pipeline_state.push.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state
-            .push
-            .startup_continuation_visible_tile_index = 1;
-        ppu.bg_pipeline_state.push.tile_low = 0x12;
-        ppu.bg_pipeline_state.push.tile_high = 0x34;
+        ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.push.cached.origin =
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2);
+        ppu.bg_pipeline_state.push.cached.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.push.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.push.cached.tile_index = 0;
+        ppu.bg_pipeline_state.push.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.push.cached.tile_high = 0x34;
         ppu.bg_pipeline_state.push.next_fetch_pixel = 16;
 
         assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
@@ -6877,19 +6962,21 @@ mod tests {
         assert!(
             ppu.bg_pipeline_state
                 .push
+                .cached
                 .same_cycle_live_tilemap_refetch_window_open
         );
 
         ppu.write_register(0xFF40, 0x99);
-        assert!(ppu.bg_pipeline_state.push.needs_live_tilemap_refetch);
+        assert!(ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
 
         assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_low, 0xAB);
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_high, 0xCD);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0xCD);
         assert!(!ppu.bg_pipeline_state.push.pending);
         assert!(
             !ppu.bg_pipeline_state
                 .push
+                .cached
                 .same_cycle_live_tilemap_refetch_window_open
         );
     }
@@ -6924,23 +7011,57 @@ mod tests {
         ppu.bg_pipeline_state.fill.pending = true;
         ppu.bg_pipeline_state.fill.startup_dummy_pixels = 0;
         ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
-        ppu.bg_pipeline_state.fill.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state.fill.tile_map_address = 0x1801;
-        ppu.bg_pipeline_state.fill.tile_data_address = 0x0001;
-        ppu.bg_pipeline_state.fill.tile_index = 0;
-        ppu.bg_pipeline_state.fill.tile_low = 0x12;
-        ppu.bg_pipeline_state.fill.tile_high = 0x34;
+        ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fill.cached.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.fill.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fill.cached.tile_index = 0;
+        ppu.bg_pipeline_state.fill.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.fill.cached.tile_high = 0x34;
 
         assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
         ppu.write_register(0xFF40, 0x99);
-        assert!(ppu.bg_pipeline_state.fill.needs_live_tilemap_refetch);
+        assert!(ppu.bg_pipeline_state.fill.cached.needs_live_tilemap_refetch);
 
         ppu.maybe_recompute_pending_background_fill(&VramBusView::new(BusMaster::Ppu, &mut vram));
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_map_address, 0x1C01);
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_index, 1);
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_data_address, 0x0011);
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_low, 0xAB);
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_high, 0xCD);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_map_address, 0x1C01);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_index, 1);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_data_address, 0x0011);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0xCD);
+    }
+
+    #[test]
+    fn third_startup_continuation_fill_marks_live_tilemap_refetch_on_lcdc3_write() {
+        let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xE4,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu.bg_pipeline_state.mode3_started = true;
+        ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+        ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+        ppu.bg_pipeline_state.fill.pending = true;
+        ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
+        ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fill.cached.origin =
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3);
+        ppu.bg_pipeline_state.fill.cached.tile_map_address = 0x1802;
+        ppu.bg_pipeline_state.fill.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fill.cached.tile_index = 0;
+        ppu.bg_pipeline_state.fill.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.fill.cached.tile_high = 0x34;
+
+        ppu.write_register(0xFF40, 0x99);
+        assert!(ppu.bg_pipeline_state.fill.cached.needs_live_tilemap_refetch);
     }
 
     #[test]
@@ -6972,21 +7093,26 @@ mod tests {
         ppu.bg_pipeline_state.fill.pending = true;
         ppu.bg_pipeline_state.fill.startup_dummy_pixels = 0;
         ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
-        ppu.bg_pipeline_state.fill.source = PpuBgFetcherSource::Background;
-        ppu.bg_pipeline_state.fill.tile_map_address = 0x1801;
-        ppu.bg_pipeline_state.fill.tile_data_address = 0x0001;
-        ppu.bg_pipeline_state.fill.tile_index = 0;
-        ppu.bg_pipeline_state.fill.tile_low = 0x12;
-        ppu.bg_pipeline_state.fill.tile_high = 0x34;
+        ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
+        ppu.bg_pipeline_state.fill.cached.tile_map_address = 0x1801;
+        ppu.bg_pipeline_state.fill.cached.tile_data_address = 0x0001;
+        ppu.bg_pipeline_state.fill.cached.tile_index = 0;
+        ppu.bg_pipeline_state.fill.cached.tile_low = 0x12;
+        ppu.bg_pipeline_state.fill.cached.tile_high = 0x34;
 
         assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
         ppu.write_register(0xFF42, 0x01);
-        assert!(ppu.bg_pipeline_state.fill.needs_live_tile_data_refetch);
+        assert!(
+            ppu.bg_pipeline_state
+                .fill
+                .cached
+                .needs_live_tile_data_refetch
+        );
 
         ppu.maybe_recompute_pending_background_fill(&VramBusView::new(BusMaster::Ppu, &mut vram));
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_data_address, 0x0003);
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_low, 0xAB);
-        assert_eq!(ppu.bg_pipeline_state.fill.tile_high, 0xCD);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_data_address, 0x0003);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0xAB);
+        assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0xCD);
     }
 
     #[test]
