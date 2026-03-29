@@ -257,6 +257,25 @@ cargo run -p gb-test-runner --bin run_differential -- \
   `memory_text_output.txt`, `blargg_console.txt`, `framebuffer.png`, or
   `trace.txt`.
 
+  The built-in cartridge mapper oracle lane uses that `case-bundle` layout:
+
+```bash
+cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- \
+  --suite phase-6-cartridge-oracle \
+  --sameboy-root /path/to/SameBoy \
+  --build-if-missing
+
+cargo run -p gb-test-runner --bin run_differential -- \
+  --oracle sameboy \
+  --suite phase-6-cartridge-oracle
+```
+
+  That suite compares retained synthetic `MBC1`, `MBC2`, `MBC3`, and `MBC5`
+  Phase `6` `serial_hex` artifacts, and its `MBC3` case includes explicit
+  pre-run RTC advancement in the typed runner metadata, so it currently belongs
+  on the generic `case-bundle` differential path rather than the framebuffer-
+  only `sameboy-tester` path.
+
   The `sameboy-tester` layout is currently framebuffer-only. It expects SameBoy
   Tester artifacts mirrored by ROM-relative path, for example
   `acid/dmg-acid2.bmp` under the oracle root.

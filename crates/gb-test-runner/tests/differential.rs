@@ -7,6 +7,7 @@ use gb_core::ExecutionMode;
 use gb_test_runner::{
     DifferentialCaseMismatch, DifferentialCaseOutcome, DifferentialExecutionError,
     DifferentialOracle, DifferentialRunner, phase_2_cpu_timing_suite,
+    phase_6_cartridge_oracle_suite,
 };
 
 fn unique_temp_dir(label: &str) -> PathBuf {
@@ -25,6 +26,10 @@ fn single_phase_2_case_suite() -> gb_test_runner::RomSuite {
     let mut suite = phase_2_cpu_timing_suite();
     suite.cases.truncate(1);
     suite
+}
+
+fn phase_6_cartridge_suite() -> gb_test_runner::RomSuite {
+    phase_6_cartridge_oracle_suite()
 }
 
 #[test]
@@ -114,4 +119,29 @@ fn differential_runner_rejects_non_strict_cases() {
         error,
         DifferentialExecutionError::NonStrictCase { .. }
     ));
+}
+
+#[test]
+fn differential_runner_matches_imported_trace_artifacts_for_phase_6_cartridge_suite() {
+    let oracle_root = unique_temp_dir("phase6-match");
+    fs::create_dir_all(&oracle_root).expect("oracle root should be creatable");
+    let suite = phase_6_cartridge_suite();
+
+    for case in &suite.cases {
+        let case_dir = oracle_root.join(&case.id);
+        fs::create_dir_all(&case_dir).expect("oracle case dir should be creatable");
+        let expected_serial = match &case.pass_condition {
+            gb_test_runner::PassCondition::SerialHexExact(expected) => expected,
+            _ => panic!("phase 6 cartridge oracle suite should be serial-hex based"),
+        };
+        fs::write(case_dir.join("serial_hex.txt"), expected_serial)
+            .expect("oracle serial hex should be writable");
+    }
+
+    let report = DifferentialRunner::new(DifferentialOracle::SameBoy, &oracle_root)
+        .run_suite(&suite)
+        .expect("differential suite should run");
+
+    assert!(report.all_matched(), "{report:#?}");
+    assert!(report.cases.iter().all(|case| case.local_report.passed()));
 }

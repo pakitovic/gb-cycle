@@ -295,6 +295,7 @@ fn differential_outcome_name(outcome: &DifferentialCaseOutcome) -> &'static str 
 fn capture_name(capture: crate::CaptureKind) -> &'static str {
     match capture {
         crate::CaptureKind::Serial => "serial",
+        crate::CaptureKind::SerialHex => "serial-hex",
         crate::CaptureKind::MemoryTextOutput => "memory-text-output",
         crate::CaptureKind::BlarggConsoleText => "blargg-console-text",
         crate::CaptureKind::Framebuffer => "framebuffer",

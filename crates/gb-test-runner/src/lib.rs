@@ -6,7 +6,9 @@ mod fetch_external_roms;
 mod framebuffer_oracle;
 mod run_differential_cli;
 mod run_rom_suite_cli;
+mod run_sameboy_case_bundle_cli;
 mod run_sameboy_tester_cli;
+mod sameboy_case_bundle;
 mod sameboy_tester;
 mod workspace_paths;
 
@@ -50,7 +52,13 @@ pub use external_roms::{
 pub use fetch_external_roms::{fetch_external_roms_help_text, run_fetch_external_roms_command};
 pub use run_differential_cli::{differential_cli_help_text, run_differential_command};
 pub use run_rom_suite_cli::{rom_suite_cli_help_text, run_rom_suite_command};
+pub use run_sameboy_case_bundle_cli::{
+    run_sameboy_case_bundle_command, sameboy_case_bundle_cli_help_text,
+};
 pub use run_sameboy_tester_cli::{run_sameboy_tester_command, sameboy_tester_cli_help_text};
+pub use sameboy_case_bundle::{
+    SameBoyCaseBundleExecutionError, SameBoyCaseBundleRunner, SameBoyCaseBundleSuiteReport,
+};
 pub use sameboy_tester::{
     SameBoyTesterExecutionError, SameBoyTesterImageFormat, SameBoyTesterRunner,
     SameBoyTesterSuiteReport,
@@ -58,7 +66,8 @@ pub use sameboy_tester::{
 pub use workspace_paths::{
     BOOT_ROM_ROOT_ENV_VAR, BOOT_ROM_STORE_DIR, ORACLE_STORE_DIR, boot_rom_image_path,
     boot_rom_kind_for_console_model, boot_rom_store_root, discover_boot_rom_store_root,
-    oracle_layout_root, oracle_store_root, sameboy_tester_oracle_root,
+    oracle_layout_root, oracle_store_root, sameboy_case_bundle_oracle_root,
+    sameboy_tester_oracle_root,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -96,6 +105,7 @@ pub struct EarlyHardeningChecklistEntry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CaptureKind {
     Serial,
+    SerialHex,
     MemoryTextOutput,
     BlarggConsoleText,
     Framebuffer,
@@ -231,6 +241,7 @@ impl MemoryTextOutputSpec {
 pub enum PassCondition {
     SerialExact(String),
     SerialContains(String),
+    SerialHexExact(String),
     MemoryTextOutputContains {
         spec: MemoryTextOutputSpec,
         expected_substring: String,
@@ -247,6 +258,7 @@ impl PassCondition {
     pub fn required_capture(&self) -> CaptureKind {
         match self {
             Self::SerialExact(_) | Self::SerialContains(_) => CaptureKind::Serial,
+            Self::SerialHexExact(_) => CaptureKind::SerialHex,
             Self::MemoryTextOutputContains { .. } => CaptureKind::MemoryTextOutput,
             Self::BlarggConsoleTextContains(_) => CaptureKind::BlarggConsoleText,
             Self::MooneyeResult => CaptureKind::Snapshot,
@@ -342,6 +354,7 @@ pub struct RomTestCase {
     pub console_model: ConsoleModel,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
+    pub startup_cartridge_rtc_seconds: Option<u64>,
     pub startup_memory_writes: Vec<StartupMemoryWrite>,
     pub external_stimuli: ExternalStimulusPlan,
     pub stop_condition: Option<ExecutionStopCondition>,
@@ -368,6 +381,7 @@ impl RomTestCase {
             console_model: ConsoleModel::Dmg,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
+            startup_cartridge_rtc_seconds: None,
             startup_memory_writes: Vec::new(),
             external_stimuli: ExternalStimulusPlan::new(),
             stop_condition: None,
@@ -390,6 +404,11 @@ impl RomTestCase {
 
     pub fn with_execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
         self.execution_mode = execution_mode;
+        self
+    }
+
+    pub fn with_startup_cartridge_rtc_seconds(mut self, seconds: u64) -> Self {
+        self.startup_cartridge_rtc_seconds = Some(seconds);
         self
     }
 
@@ -571,8 +590,13 @@ fn phase_4_trace_path(name: &str) -> PathBuf {
     PathBuf::from("crates/gb-core/tests/fixtures/traces/phase4").join(name)
 }
 
+fn phase_6_rom_path(name: &str) -> PathBuf {
+    PathBuf::from("crates/gb-core/tests/fixtures/roms/phase6").join(name)
+}
+
 const PHASE_SENTINEL_ADDRESS: u16 = 0xC010;
 const PHASE_SENTINEL_VALUE: u8 = 0xA5;
+const PHASE_6_MBC3_STARTUP_RTC_SECONDS: u64 = 93_784;
 
 pub fn phase_2_cpu_timing_suite() -> RomSuite {
     RomSuite::new("phase-2-cpu-timing", TestSubsystem::Cpu)
@@ -768,6 +792,43 @@ pub fn phase_4_ppu_oam_corruption_suite() -> RomSuite {
         )
 }
 
+pub fn phase_6_cartridge_oracle_suite() -> RomSuite {
+    RomSuite::new("phase-6-cartridge-oracle", TestSubsystem::Cartridge)
+        .with_case(RomTestCase::new(
+            "phase6-mbc1-standard-banking",
+            phase_6_rom_path("phase6_mbc1_standard_banking.gb"),
+            Timeout::TCycles(200_000),
+            PassCondition::SerialHexExact("4D31533A011F1122".to_string()),
+        ))
+        .with_case(RomTestCase::new(
+            "phase6-mbc1-small-rom-mask-and-ram",
+            phase_6_rom_path("phase6_mbc1_small_rom_mask_and_ram.gb"),
+            Timeout::TCycles(200_000),
+            PassCondition::SerialHexExact("4D314D3A01003344".to_string()),
+        ))
+        .with_case(RomTestCase::new(
+            "phase6-mbc2-control-decode-and-nibble-ram",
+            phase_6_rom_path("phase6_mbc2_control_decode_and_nibble_ram.gb"),
+            Timeout::TCycles(200_000),
+            PassCondition::SerialHexExact("4D323A0103FBFBFB".to_string()),
+        ))
+        .with_case(
+            RomTestCase::new(
+                "phase6-mbc3-banking-ram-and-rtc",
+                phase_6_rom_path("phase6_mbc3_banking_ram_and_rtc.gb"),
+                Timeout::TCycles(200_000),
+                PassCondition::SerialHexExact("4D333A01204060335504030201042A".to_string()),
+            )
+            .with_startup_cartridge_rtc_seconds(PHASE_6_MBC3_STARTUP_RTC_SECONDS),
+        )
+        .with_case(RomTestCase::new(
+            "phase6-mbc5-rom-banking-rumble-and-ram",
+            phase_6_rom_path("phase6_mbc5_rom_banking_rumble_and_ram.gb"),
+            Timeout::TCycles(200_000),
+            PassCondition::SerialHexExact("4D353A0100FF000001331133".to_string()),
+        ))
+}
+
 pub fn mealybug_tearoom_dmg_curated_suite() -> RomSuite {
     curated_test_roms::mealybug_tearoom_dmg_curated_suite()
 }
@@ -781,6 +842,7 @@ pub fn built_in_rom_suites() -> Vec<RomSuite> {
         phase_2_cpu_timing_suite(),
         phase_2_interrupt_timing_suite(),
         phase_4_ppu_oam_corruption_suite(),
+        phase_6_cartridge_oracle_suite(),
     ];
     suites.extend(curated_test_rom_family_suites());
     suites
@@ -859,9 +921,17 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
             current_evidence: &[
                 "gb-core-unit-and-integration-coverage",
                 "hardware-style-persistence-tests",
+                "phase-6-cartridge-oracle",
             ],
-            active_oracles: &["unit-contracts"],
-            remaining_gaps: &["external-oracle-material", "phase-8-save-load-determinism"],
+            active_oracles: &[
+                "unit-contracts",
+                "trace-fixture",
+                "differential-case-bundle",
+            ],
+            remaining_gaps: &[
+                "imported-sameboy-cartridge-oracle-artifacts",
+                "phase-8-save-load-determinism",
+            ],
         },
         EarlyHardeningChecklistEntry {
             subsystem: TestSubsystem::Joypad,
@@ -987,6 +1057,7 @@ pub struct CapturedMemoryTextOutput {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CapturedArtifacts {
     pub serial: Option<String>,
+    pub serial_hex: Option<String>,
     pub memory_text_output: Option<CapturedMemoryTextOutput>,
     pub blargg_console_text: Option<String>,
     pub framebuffer_pgm: Option<Vec<u8>>,
@@ -1204,6 +1275,13 @@ impl RunnerMachine {
             Self::Summary(_) => {}
         }
     }
+
+    fn advance_cartridge_rtc_seconds(&mut self, seconds: u64) {
+        match self {
+            Self::Buffered(machine) => machine.advance_cartridge_rtc_seconds(seconds),
+            Self::Summary(machine) => machine.advance_cartridge_rtc_seconds(seconds),
+        }
+    }
 }
 
 impl Default for RomRunner {
@@ -1289,6 +1367,7 @@ impl RomRunner {
                 source,
             }
         })?;
+        self.apply_startup_cartridge_state(case, &mut machine);
         self.apply_startup_memory_writes(case, &mut machine);
 
         let mut executed_t_cycles = 0_u64;
@@ -1506,6 +1585,12 @@ impl RomRunner {
         }
     }
 
+    fn apply_startup_cartridge_state(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
+        if let Some(seconds) = case.startup_cartridge_rtc_seconds {
+            machine.advance_cartridge_rtc_seconds(seconds);
+        }
+    }
+
     fn apply_startup_memory_writes(&self, case: &RomTestCase, machine: &mut RunnerMachine) {
         for write in &case.startup_memory_writes {
             machine.write_bus(write.address, write.value);
@@ -1522,6 +1607,10 @@ impl RomRunner {
 
         if case.capture_plan.contains(CaptureKind::Serial) {
             artifacts.serial = Some(String::from_utf8_lossy(serial_bytes).into_owned());
+        }
+
+        if case.capture_plan.contains(CaptureKind::SerialHex) {
+            artifacts.serial_hex = Some(encode_bytes_as_upper_hex(serial_bytes));
         }
 
         if case.capture_plan.contains(CaptureKind::MemoryTextOutput)
@@ -1582,6 +1671,18 @@ impl RomRunner {
                     RomCaseOutcome::Failed(RomCaseFailure::SerialExactMismatch {
                         expected: expected.clone(),
                         actual: evaluation.artifacts.serial.clone().unwrap_or_default(),
+                    })
+                }
+            }
+            PassCondition::SerialHexExact(expected) => {
+                if !evaluation.budget_exhausted(case.timeout) {
+                    RomCaseOutcome::Failed(RomCaseFailure::TimeoutExceeded)
+                } else if evaluation.artifacts.serial_hex.as_deref() == Some(expected.as_str()) {
+                    RomCaseOutcome::Passed
+                } else {
+                    RomCaseOutcome::Failed(RomCaseFailure::SerialExactMismatch {
+                        expected: expected.clone(),
+                        actual: evaluation.artifacts.serial_hex.clone().unwrap_or_default(),
                     })
                 }
             }
@@ -1772,6 +1873,18 @@ impl RomRunner {
                     fs::write(&path, serial).map_err(|source| RomExecutionError::ReadFile {
                         path: path.clone(),
                         operation: "write serial artifact",
+                        source,
+                    })?;
+                    written_paths.push(path);
+                }
+                CaptureKind::SerialHex => {
+                    let Some(serial_hex) = &artifacts.serial_hex else {
+                        continue;
+                    };
+                    let path = case_dir.join("serial_hex.txt");
+                    fs::write(&path, serial_hex).map_err(|source| RomExecutionError::ReadFile {
+                        path: path.clone(),
+                        operation: "write serial hex artifact",
                         source,
                     })?;
                     written_paths.push(path);
@@ -2027,9 +2140,19 @@ pub(crate) fn render_memory_text_output(captured: &CapturedMemoryTextOutput) -> 
     )
 }
 
+fn encode_bytes_as_upper_hex(bytes: &[u8]) -> String {
+    let mut rendered = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(&mut rendered, "{byte:02X}");
+    }
+    rendered
+}
+
 pub(crate) fn artifact_file_name(capture: CaptureKind) -> &'static str {
     match capture {
         CaptureKind::Serial => "serial.txt",
+        CaptureKind::SerialHex => "serial_hex.txt",
         CaptureKind::MemoryTextOutput => "memory_text_output.txt",
         CaptureKind::BlarggConsoleText => "blargg_console.txt",
         CaptureKind::Framebuffer => "framebuffer.png",

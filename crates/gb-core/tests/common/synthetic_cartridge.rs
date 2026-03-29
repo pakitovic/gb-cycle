@@ -87,6 +87,33 @@ impl ProgramBuilder {
         self.bytes.extend_from_slice(&[0xEA, low, high]);
     }
 
+    pub fn emit_serial_byte(&mut self, value: u8) {
+        self.ld_a_imm(value);
+        self.emit_serial_from_a();
+    }
+
+    pub fn emit_serial_bytes(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.emit_serial_byte(byte);
+        }
+    }
+
+    pub fn emit_serial_from_a16(&mut self, address: u16) {
+        self.ld_a_from_a16(address);
+        self.emit_serial_from_a();
+    }
+
+    pub fn emit_serial_from_a(&mut self) {
+        self.bytes.extend_from_slice(&[0xE0, 0x01]);
+        self.ld_a_imm(0x81);
+        self.bytes.extend_from_slice(&[0xE0, 0x02]);
+        self.bytes.extend_from_slice(&[
+            0xF0, 0x02, // ldh a, ($02)
+            0xE6, 0x80, // and $80
+            0x20, 0xFA, // jr nz, wait_serial_complete
+        ]);
+    }
+
     pub fn jr_self(&mut self) {
         self.bytes.extend_from_slice(&[0x18, 0xFE]);
     }

@@ -8,7 +8,7 @@ use gb_test_runner::{
     Timeout, acid_dmg_curated_suite, blargg_dmg_curated_suite, daid_dmg_curated_suite,
     hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
     mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
-    phase_4_ppu_oam_corruption_suite,
+    phase_4_ppu_oam_corruption_suite, phase_6_cartridge_oracle_suite,
 };
 
 #[test]
@@ -956,6 +956,34 @@ fn curated_mooneye_suite_matches_the_active_gbemu_dmg_list_and_keeps_case_specif
                 && matches!(case.pass_condition, PassCondition::MooneyeResult)
         }
     }));
+}
+
+#[test]
+fn phase_6_cartridge_oracle_suite_tracks_reserved_mapper_fixtures() {
+    let suite = phase_6_cartridge_oracle_suite();
+
+    assert_eq!(suite.subsystem, TestSubsystem::Cartridge);
+    assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.cases.len(), 5);
+    assert!(suite.cases.iter().all(|case| {
+        case.capture_plan.contains(CaptureKind::SerialHex)
+            && case.capture_plan.contains(CaptureKind::Snapshot)
+            && case.failure_artifacts.contains(CaptureKind::SerialHex)
+            && matches!(case.pass_condition, PassCondition::SerialHexExact(_))
+    }));
+
+    let mbc3 = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "phase6-mbc3-banking-ram-and-rtc")
+        .expect("phase 6 suite should include the MBC3 RTC case");
+    assert_eq!(
+        mbc3.rom_path,
+        PathBuf::from(
+            "crates/gb-core/tests/fixtures/roms/phase6/phase6_mbc3_banking_ram_and_rtc.gb"
+        )
+    );
+    assert_eq!(mbc3.startup_cartridge_rtc_seconds, Some(93_784));
 }
 
 fn trace_fixture_path(case: &RomTestCase) -> &Path {

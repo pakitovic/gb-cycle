@@ -413,6 +413,31 @@ impl DifferentialRunner {
                     })
                 }
             }
+            CaptureKind::SerialHex => {
+                let local = artifacts.serial_hex.clone().ok_or(
+                    DifferentialExecutionError::MissingLocalArtifact {
+                        case_id: local_report.case_id.clone(),
+                        capture: compared_capture,
+                    },
+                )?;
+                let oracle = fs::read_to_string(oracle_artifact_path).map_err(|source| {
+                    DifferentialExecutionError::ReadOracleArtifact {
+                        path: oracle_artifact_path.to_path_buf(),
+                        operation: "read serial hex oracle artifact",
+                        source,
+                    }
+                })?;
+
+                if local == oracle {
+                    DifferentialCaseOutcome::Matched
+                } else {
+                    DifferentialCaseOutcome::Diverged(DifferentialCaseMismatch::SerialMismatch {
+                        oracle_artifact_path: oracle_artifact_path.to_path_buf(),
+                        oracle,
+                        local,
+                    })
+                }
+            }
             CaptureKind::MemoryTextOutput => {
                 let local = artifacts.memory_text_output.clone().ok_or(
                     DifferentialExecutionError::MissingLocalArtifact {
@@ -782,6 +807,18 @@ fn write_captured_artifact(
                 DifferentialExecutionError::WriteArtifact {
                     path: path.clone(),
                     operation: "write serial artifact",
+                    source,
+                }
+            })?;
+        }
+        CaptureKind::SerialHex => {
+            let Some(serial_hex) = &artifacts.serial_hex else {
+                return Ok(None);
+            };
+            fs::write(&path, serial_hex).map_err(|source| {
+                DifferentialExecutionError::WriteArtifact {
+                    path: path.clone(),
+                    operation: "write serial hex artifact",
                     source,
                 }
             })?;
@@ -1230,6 +1267,7 @@ fn render_differential_summary(
 fn capture_name(capture: CaptureKind) -> &'static str {
     match capture {
         CaptureKind::Serial => "serial",
+        CaptureKind::SerialHex => "serial-hex",
         CaptureKind::MemoryTextOutput => "memory-text-output",
         CaptureKind::BlarggConsoleText => "blargg-console-text",
         CaptureKind::Framebuffer => "framebuffer",
@@ -1793,6 +1831,7 @@ mod tests {
         let memory = sample_memory_text_output();
         let artifacts = CapturedArtifacts {
             serial: Some("serial".to_string()),
+            serial_hex: Some("73657269616C".to_string()),
             memory_text_output: Some(memory.clone()),
             blargg_console_text: Some("console".to_string()),
             framebuffer_pgm: Some(vec![

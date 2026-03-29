@@ -32,6 +32,10 @@ pub fn sameboy_tester_oracle_root(workspace_root: &Path) -> PathBuf {
     oracle_layout_root(workspace_root, "sameboy", "sameboy-tester")
 }
 
+pub fn sameboy_case_bundle_oracle_root(workspace_root: &Path) -> PathBuf {
+    oracle_layout_root(workspace_root, "sameboy", "case-bundle")
+}
+
 pub fn boot_rom_kind_for_console_model(console_model: ConsoleModel) -> Option<BootRomKind> {
     match console_model {
         ConsoleModel::Dmg0 => Some(BootRomKind::Dmg0),
@@ -53,7 +57,8 @@ mod tests {
 
     use super::{
         BOOT_ROM_STORE_DIR, ORACLE_STORE_DIR, boot_rom_image_path, boot_rom_kind_for_console_model,
-        boot_rom_store_root, oracle_layout_root, sameboy_tester_oracle_root,
+        boot_rom_store_root, oracle_layout_root, sameboy_case_bundle_oracle_root,
+        sameboy_tester_oracle_root,
     };
 
     #[test]
@@ -71,6 +76,10 @@ mod tests {
         assert_eq!(
             sameboy_tester_oracle_root(workspace_root),
             workspace_root.join(format!("{ORACLE_STORE_DIR}/sameboy/sameboy-tester"))
+        );
+        assert_eq!(
+            sameboy_case_bundle_oracle_root(workspace_root),
+            workspace_root.join(format!("{ORACLE_STORE_DIR}/sameboy/case-bundle"))
         );
     }
 
