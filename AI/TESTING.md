@@ -74,10 +74,15 @@ project is still bringing up later hardware blocks such as APU and save states.
   Remaining final-closure gaps: a green repo-gated `mealybug-tearoom` slice,
   broader rendering/timing differential coverage, and the still-deferred
   non-curated exploratory ROMs.
-- `Cartridge`: internal gate only. Current evidence: unit and integration coverage
-  for `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, and hardware-style persistence.
-  Remaining final-closure gaps: external oracle material beyond synthetic/unit
-  coverage and later save/load determinism once Phase `8` exists.
+- `Cartridge`: repo gate present for the currently closed mapper-oracle slice.
+  Current evidence: unit and integration coverage for `NoMbc`, `Mbc1`, `Mbc2`,
+  `Mbc3`, `Mbc5`, hardware-style persistence, the built-in
+  `phase-6-cartridge-oracle` differential-ready synthetic suite in
+  `gb-test-runner`, and retained SameBoy `case-bundle` `serial_hex` artifacts
+  for the shipped `MBC1`, `MBC2`, `MBC3`, and `MBC5` mapper edge cases.
+  Remaining final-closure gaps: explicit `M161` identification, broader
+  special-cartridge closure, and later save/load determinism once Phase `8`
+  exists.
 - `Joypad` / `Serial`: internal gate only. Current evidence: closed Phase `5`
   synthetic coverage and subsystem tests. Remaining final-closure gaps: promoted
   external closure ROMs and differential comparison hooks.
@@ -231,6 +236,20 @@ This checklist should move only when one of the following becomes true:
   log artifacts rather than the serial or memory-text channels used by the
   Blargg text suites. When `--oracle-artifact-root` is omitted, the repo-local
   default is `/.oracles/<oracle>/<layout>/`.
+- The current built-in cartridge lane for that differential path is
+  `phase-6-cartridge-oracle`, which reuses the retained synthetic Phase `6`
+  `MBC1`, `MBC2`, `MBC3`, and `MBC5` ROM fixtures under a stable
+  `TestSubsystem::Cartridge` suite contract. That lane currently uses the
+  `case-bundle` layout rather than `sameboy-tester`, because the `MBC3` case
+  needs explicit pre-run RTC advancement and the relevant compared artifact is a
+  portable `serial_hex.txt` payload rather than a framebuffer image.
+- The repo now also includes a companion SameBoy `case-bundle` materialization
+  command under
+  `cargo run -p gb-test-runner --bin run_sameboy_case_bundle -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --runner-binary <path>] [--build-if-missing]`.
+  This command executes the selected suite through a small `libsameboy`-backed
+  helper, writes portable cartridge-lane artifacts such as
+  `/.oracles/sameboy/case-bundle/<case-id>/serial_hex.txt`, and is the intended
+  oracle-materialization path for `phase-6-cartridge-oracle`.
 - The repo now also includes a companion SameBoy Tester materialization command
   under
   `cargo run -p gb-test-runner --bin run_sameboy_tester -- --suite <suite-name> [--oracle-root <dir>] [--sameboy-root <dir> | --tester-binary <path>]`.

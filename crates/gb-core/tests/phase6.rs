@@ -9,15 +9,19 @@ use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 
 const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_PHASE6_FIXTURES";
 const MBC1_STANDARD_ROM_NAME: &str = "phase6_mbc1_standard_banking.gb";
-const MBC1_STANDARD_TRACE_NAME: &str = "phase6_mbc1_standard_banking.trace";
+const MBC1_STANDARD_SERIAL: &[u8] = &[b'M', b'1', b'S', b':', 0x01, 0x1F, 0x11, 0x22];
 const MBC1_SMALL_ROM_NAME: &str = "phase6_mbc1_small_rom_mask_and_ram.gb";
-const MBC1_SMALL_TRACE_NAME: &str = "phase6_mbc1_small_rom_mask_and_ram.trace";
+const MBC1_SMALL_SERIAL: &[u8] = &[b'M', b'1', b'M', b':', 0x01, 0x00, 0x33, 0x44];
 const MBC2_ROM_NAME: &str = "phase6_mbc2_control_decode_and_nibble_ram.gb";
-const MBC2_TRACE_NAME: &str = "phase6_mbc2_control_decode_and_nibble_ram.trace";
+const MBC2_SERIAL: &[u8] = &[b'M', b'2', b':', 0x01, 0x03, 0xFB, 0xFB, 0xFB];
 const MBC3_ROM_NAME: &str = "phase6_mbc3_banking_ram_and_rtc.gb";
-const MBC3_TRACE_NAME: &str = "phase6_mbc3_banking_ram_and_rtc.trace";
+const MBC3_SERIAL: &[u8] = &[
+    b'M', b'3', b':', 0x01, 0x20, 0x40, 0x60, 0x33, 0x55, 0x04, 0x03, 0x02, 0x01, 0x04, 0x2A,
+];
 const MBC5_ROM_NAME: &str = "phase6_mbc5_rom_banking_rumble_and_ram.gb";
-const MBC5_TRACE_NAME: &str = "phase6_mbc5_rom_banking_rumble_and_ram.trace";
+const MBC5_SERIAL: &[u8] = &[
+    b'M', b'5', b':', 0x01, 0x00, 0xFF, 0x00, 0x00, 0x01, 0x33, 0x11, 0x33,
+];
 const STANDARD_SENTINEL_ADDRESS: u16 = 0xC10F;
 const SMALL_SENTINEL_ADDRESS: u16 = 0xC11F;
 const MBC2_SENTINEL_ADDRESS: u16 = 0xC12F;
@@ -42,19 +46,6 @@ fn ensure_binary_fixture(path: &Path, expected: &[u8]) -> Vec<u8> {
     fixture
 }
 
-fn ensure_text_fixture(path: &Path, expected: &str) -> String {
-    if fixture_accept_writes_enabled() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("fixture directory should be creatable");
-        }
-        fs::write(path, expected).expect("text fixture should be writable");
-    }
-
-    let fixture = common::read_text_fixture(path).expect("text fixture should be readable");
-    assert_eq!(fixture, expected);
-    fixture
-}
-
 fn load_fixture_machine(rom_name: &str, expected_rom: &[u8]) -> Machine {
     let rom_fixture_path = common::rom_fixtures_dir().join("phase6").join(rom_name);
     let rom_fixture = ensure_binary_fixture(&rom_fixture_path, expected_rom);
@@ -67,20 +58,28 @@ fn load_fixture_machine(rom_name: &str, expected_rom: &[u8]) -> Machine {
     machine
 }
 
-fn assert_trace_fixture(trace_name: &str, trace: &str) {
-    let trace_fixture_path = common::trace_fixtures_dir().join("phase6").join(trace_name);
-    ensure_text_fixture(&trace_fixture_path, trace);
-}
-
 fn step_until_wram_sentinel(machine: &mut Machine, address: u16) {
-    for _ in 0..1000 {
+    for _ in 0..80_000 {
         if machine.read_bus(address) == SENTINEL_VALUE {
             return;
         }
         machine.step_t_cycle();
     }
 
-    panic!("sentinel at {address:#06X} was not reached within 1000 T-cycles");
+    panic!("sentinel at {address:#06X} was not reached within 80000 T-cycles");
+}
+
+fn assert_serial_output(machine: &mut Machine, expected: &[u8]) {
+    let mut serial = Vec::new();
+    for _ in 0..80_000 {
+        serial.extend(machine.take_serial_output_bytes());
+        if serial.len() >= expected.len() {
+            break;
+        }
+        machine.step_t_cycle();
+    }
+
+    assert_eq!(serial, expected);
 }
 
 fn build_standard_mbc1_program() -> Vec<u8> {
@@ -115,6 +114,11 @@ fn build_standard_mbc1_program() -> Vec<u8> {
     program.ld_a16_from_a(0x6000);
     program.ld_a_from_a16(0xA000);
     program.ld_a16_from_a(0xC103);
+
+    program.emit_serial_bytes(b"M1S:");
+    for address in [0xC100, 0xC101, 0xC102, 0xC103] {
+        program.emit_serial_from_a16(address);
+    }
 
     program.ld_a_imm(SENTINEL_VALUE);
     program.ld_a16_from_a(STANDARD_SENTINEL_ADDRESS);
@@ -155,6 +159,11 @@ fn build_small_mask_mbc1_program() -> Vec<u8> {
     program.ld_a16_from_a(0x6000);
     program.ld_a_from_a16(0xA000);
     program.ld_a16_from_a(0xC113);
+
+    program.emit_serial_bytes(b"M1M:");
+    for address in [0xC110, 0xC111, 0xC112, 0xC113] {
+        program.emit_serial_from_a16(address);
+    }
 
     program.ld_a_imm(SENTINEL_VALUE);
     program.ld_a16_from_a(SMALL_SENTINEL_ADDRESS);
@@ -199,6 +208,11 @@ fn build_mbc2_program() -> Vec<u8> {
     program.ld_a16_from_a(0x0000);
     program.ld_a_from_a16(0xA000);
     program.ld_a16_from_a(0xC126);
+
+    program.emit_serial_bytes(b"M2:");
+    for address in [0xC120, 0xC122, 0xC123, 0xC124, 0xC126] {
+        program.emit_serial_from_a16(address);
+    }
 
     program.ld_a_imm(SENTINEL_VALUE);
     program.ld_a16_from_a(MBC2_SENTINEL_ADDRESS);
@@ -281,6 +295,14 @@ fn build_mbc3_program() -> Vec<u8> {
     program.ld_a_from_a16(0xA000);
     program.ld_a16_from_a(0xC13B);
 
+    program.emit_serial_bytes(b"M3:");
+    for address in [
+        0xC130, 0xC131, 0xC132, 0xC133, 0xC134, 0xC135, 0xC136, 0xC137, 0xC138, 0xC139, 0xC13A,
+        0xC13B,
+    ] {
+        program.emit_serial_from_a16(address);
+    }
+
     program.ld_a_imm(SENTINEL_VALUE);
     program.ld_a16_from_a(MBC3_SENTINEL_ADDRESS);
     program.jr_self();
@@ -342,6 +364,13 @@ fn build_mbc5_program() -> Vec<u8> {
     program.ld_a_from_a16(0xA000);
     program.ld_a16_from_a(0xC148);
 
+    program.emit_serial_bytes(b"M5:");
+    for address in [
+        0xC140, 0xC141, 0xC142, 0xC143, 0xC144, 0xC145, 0xC146, 0xC147, 0xC148,
+    ] {
+        program.emit_serial_from_a16(address);
+    }
+
     program.ld_a_imm(SENTINEL_VALUE);
     program.ld_a16_from_a(MBC5_SENTINEL_ADDRESS);
     program.jr_self();
@@ -352,6 +381,7 @@ fn build_mbc5_program() -> Vec<u8> {
 fn build_standard_mbc1_rom() -> Vec<u8> {
     BankedCartridgeBuilder::new(0x04, 0x03, 0x03)
         .stamp_bank_start_markers()
+        .write_bank_bytes(16, 0x0104, &[0x10])
         .write_program(&build_standard_mbc1_program())
         .build()
 }
@@ -385,7 +415,7 @@ fn build_mbc5_rom() -> Vec<u8> {
 }
 
 #[test]
-fn phase_6_mbc1_standard_banking_rom_fixture_matches_expected_state_and_trace() {
+fn phase_6_mbc1_standard_banking_rom_fixture_matches_expected_state_and_serial() {
     let expected_rom = build_standard_mbc1_rom();
     let mut machine = load_fixture_machine(MBC1_STANDARD_ROM_NAME, &expected_rom);
 
@@ -395,15 +425,11 @@ fn phase_6_mbc1_standard_banking_rom_fixture_matches_expected_state_and_trace() 
     assert_eq!(machine.read_bus(0xC101), 0x1F);
     assert_eq!(machine.read_bus(0xC102), 0x11);
     assert_eq!(machine.read_bus(0xC103), 0x22);
-
-    assert_trace_fixture(
-        MBC1_STANDARD_TRACE_NAME,
-        &machine.tracer().sink().render_text(),
-    );
+    assert_serial_output(&mut machine, MBC1_STANDARD_SERIAL);
 }
 
 #[test]
-fn phase_6_mbc1_small_rom_mask_and_ram_fixture_matches_expected_state_and_trace() {
+fn phase_6_mbc1_small_rom_mask_and_ram_fixture_matches_expected_state_and_serial() {
     let expected_rom = build_small_mask_mbc1_rom();
     let mut machine = load_fixture_machine(MBC1_SMALL_ROM_NAME, &expected_rom);
 
@@ -413,15 +439,11 @@ fn phase_6_mbc1_small_rom_mask_and_ram_fixture_matches_expected_state_and_trace(
     assert_eq!(machine.read_bus(0xC111), 0x00);
     assert_eq!(machine.read_bus(0xC112), 0x33);
     assert_eq!(machine.read_bus(0xC113), 0x44);
-
-    assert_trace_fixture(
-        MBC1_SMALL_TRACE_NAME,
-        &machine.tracer().sink().render_text(),
-    );
+    assert_serial_output(&mut machine, MBC1_SMALL_SERIAL);
 }
 
 #[test]
-fn phase_6_mbc2_control_decode_and_nibble_ram_fixture_matches_expected_state_and_trace() {
+fn phase_6_mbc2_control_decode_and_nibble_ram_fixture_matches_expected_state_and_serial() {
     let expected_rom = build_mbc2_rom();
     let mut machine = load_fixture_machine(MBC2_ROM_NAME, &expected_rom);
 
@@ -434,12 +456,11 @@ fn phase_6_mbc2_control_decode_and_nibble_ram_fixture_matches_expected_state_and
     assert_eq!(machine.read_bus(0xC124), 0xFB);
     assert_eq!(machine.read_bus(0xC125), 0xFF);
     assert_eq!(machine.read_bus(0xC126), 0xFB);
-
-    assert_trace_fixture(MBC2_TRACE_NAME, &machine.tracer().sink().render_text());
+    assert_serial_output(&mut machine, MBC2_SERIAL);
 }
 
 #[test]
-fn phase_6_mbc3_banking_ram_and_rtc_fixture_matches_expected_state_and_trace() {
+fn phase_6_mbc3_banking_ram_and_rtc_fixture_matches_expected_state_and_serial() {
     let expected_rom = build_mbc3_rom();
     let mut machine = load_fixture_machine(MBC3_ROM_NAME, &expected_rom);
     machine.advance_cartridge_rtc_seconds(93_784);
@@ -458,12 +479,11 @@ fn phase_6_mbc3_banking_ram_and_rtc_fixture_matches_expected_state_and_trace() {
     assert_eq!(machine.read_bus(0xC139), 0x01);
     assert_eq!(machine.read_bus(0xC13A), 0x04);
     assert_eq!(machine.read_bus(0xC13B), 0x2A);
-
-    assert_trace_fixture(MBC3_TRACE_NAME, &machine.tracer().sink().render_text());
+    assert_serial_output(&mut machine, MBC3_SERIAL);
 }
 
 #[test]
-fn phase_6_mbc5_rom_banking_rumble_and_ram_fixture_matches_expected_state_and_trace() {
+fn phase_6_mbc5_rom_banking_rumble_and_ram_fixture_matches_expected_state_and_serial() {
     let expected_rom = build_mbc5_rom();
     let mut machine = load_fixture_machine(MBC5_ROM_NAME, &expected_rom);
 
@@ -479,6 +499,5 @@ fn phase_6_mbc5_rom_banking_rumble_and_ram_fixture_matches_expected_state_and_tr
     assert_eq!(machine.read_bus(0xC147), 0x11);
     assert_eq!(machine.read_bus(0xC148), 0x33);
     assert!(machine.cartridge().rumble_on());
-
-    assert_trace_fixture(MBC5_TRACE_NAME, &machine.tracer().sink().render_text());
+    assert_serial_output(&mut machine, MBC5_SERIAL);
 }

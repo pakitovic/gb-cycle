@@ -517,6 +517,9 @@ fn manifest_case_to_rom_test_case(family: &str, case: CuratedTestRomCase) -> Rom
         "serial-contains" => PassCondition::SerialContains(
             expected.unwrap_or_else(|| panic!("missing expected string for case {id}")),
         ),
+        "serial-hex-exact" => PassCondition::SerialHexExact(
+            expected.unwrap_or_else(|| panic!("missing expected string for case {id}")),
+        ),
         "blargg-console-contains" => PassCondition::BlarggConsoleTextContains(
             expected.unwrap_or_else(|| panic!("missing expected string for case {id}")),
         ),
@@ -527,6 +530,7 @@ fn manifest_case_to_rom_test_case(family: &str, case: CuratedTestRomCase) -> Rom
         },
         "mooneye-result" => PassCondition::MooneyeResult,
         "info-serial" => PassCondition::Informational(CaptureKind::Serial),
+        "info-serial-hex" => PassCondition::Informational(CaptureKind::SerialHex),
         "info-memory-text-output" => PassCondition::Informational(CaptureKind::MemoryTextOutput),
         "info-blargg-console-text" => PassCondition::Informational(CaptureKind::BlarggConsoleText),
         "info-snapshot" => PassCondition::Informational(CaptureKind::Snapshot),
@@ -600,6 +604,9 @@ fn capture_plan_for_pass_condition(pass_condition: &PassCondition) -> CapturePla
         PassCondition::SerialContains(_) | PassCondition::SerialExact(_) => CapturePlan::new()
             .with_capture(CaptureKind::Serial)
             .with_capture(CaptureKind::Snapshot),
+        PassCondition::SerialHexExact(_) => CapturePlan::new()
+            .with_capture(CaptureKind::SerialHex)
+            .with_capture(CaptureKind::Snapshot),
         PassCondition::MemoryTextOutputContains { .. } => CapturePlan::new()
             .with_capture(CaptureKind::MemoryTextOutput)
             .with_capture(CaptureKind::Snapshot),
@@ -628,6 +635,9 @@ fn failure_artifacts_for_pass_condition(pass_condition: &PassCondition) -> Failu
                 .with_artifact(CaptureKind::Serial)
                 .with_artifact(CaptureKind::Snapshot)
         }
+        PassCondition::SerialHexExact(_) => FailureArtifactPolicy::new()
+            .with_artifact(CaptureKind::SerialHex)
+            .with_artifact(CaptureKind::Snapshot),
         PassCondition::MemoryTextOutputContains { .. } => FailureArtifactPolicy::new()
             .with_artifact(CaptureKind::MemoryTextOutput)
             .with_artifact(CaptureKind::Snapshot),

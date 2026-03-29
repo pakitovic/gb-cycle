@@ -8,6 +8,7 @@ use gb_test_runner::{
     BootRomVerificationMode, CaptureKind, MemoryTextOutputSpec, PassCondition, RomCaseFailure,
     RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase, StartupMemoryWrite,
     TEST_ROM_ROOT_ENV_VAR, Timeout, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
+    phase_6_cartridge_oracle_suite,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -177,6 +178,15 @@ fn runner_executes_phase_2_interrupt_suite_with_typed_external_stimuli() {
     let report = RomRunner::new()
         .run_suite(&phase_2_interrupt_timing_suite())
         .expect("phase 2 interrupt suite should execute");
+
+    assert!(report.all_passed(), "{report:#?}");
+}
+
+#[test]
+fn runner_executes_phase_6_cartridge_oracle_suite_against_reserved_fixtures() {
+    let report = RomRunner::new()
+        .run_suite(&phase_6_cartridge_oracle_suite())
+        .expect("phase 6 cartridge suite should execute");
 
     assert!(report.all_passed(), "{report:#?}");
 }

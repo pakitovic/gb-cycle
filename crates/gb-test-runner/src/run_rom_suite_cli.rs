@@ -423,11 +423,13 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
     match pass_condition {
         crate::PassCondition::SerialExact(_) => "serial-exact",
         crate::PassCondition::SerialContains(_) => "serial-contains",
+        crate::PassCondition::SerialHexExact(_) => "serial-hex-exact",
         crate::PassCondition::MemoryTextOutputContains { .. } => "memory-text-output",
         crate::PassCondition::BlarggConsoleTextContains(_) => "blargg-console-text",
         crate::PassCondition::MooneyeResult => "mooneye-result",
         crate::PassCondition::Informational(capture) => match capture {
             crate::CaptureKind::Serial => "info-serial",
+            crate::CaptureKind::SerialHex => "info-serial-hex",
             crate::CaptureKind::MemoryTextOutput => "info-memory-text-output",
             crate::CaptureKind::BlarggConsoleText => "info-blargg-console-text",
             crate::CaptureKind::Framebuffer => "info-framebuffer",
@@ -443,6 +445,7 @@ fn pass_condition_name(pass_condition: &crate::PassCondition) -> &'static str {
 fn capture_name(capture: crate::CaptureKind) -> &'static str {
     match capture {
         crate::CaptureKind::Serial => "serial",
+        crate::CaptureKind::SerialHex => "serial-hex",
         crate::CaptureKind::MemoryTextOutput => "memory-text-output",
         crate::CaptureKind::BlarggConsoleText => "blargg-console-text",
         crate::CaptureKind::Framebuffer => "framebuffer",
@@ -668,6 +671,7 @@ mod tests {
                 diagnostics: Vec::new(),
                 artifacts: CapturedArtifacts {
                     serial: Some("serial-text".to_string()),
+                    serial_hex: Some("73657269616C2D74657874".to_string()),
                     memory_text_output: Some(CapturedMemoryTextOutput {
                         status: 0,
                         signature: [0xDE, 0xB0, 0x61],
