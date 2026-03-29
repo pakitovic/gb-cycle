@@ -32,6 +32,11 @@ Update this document whenever:
 Keep roadmap TODOs concrete and implementation-linked. Do not use this document as a general idea backlog.
 If no single phase owns the remainder cleanly, place the TODO under `Cross-phase`.
 
+### Current local PPU spike
+
+- March 29, 2026 local work is intentionally pushing a larger `Mode 3` startup/fetcher refactor before re-closing the external baseline. The active seam under test is `startup alignment -> first real fill -> second/third visible tiles`, with the alignment fetch treated as a real BG tile candidate instead of a pure dummy seed.
+- That spike is structurally promising for long-term PPU health and debuggability, but it is not yet stable. The currently open fallout is concentrated in `SCX discard`, early-left-edge raster timing, and `acid/dmg-acid2`, so do not mark the startup/fetch closure criteria complete until those gates are reclosed.
+
 ---
 
 ## Authority boundaries
