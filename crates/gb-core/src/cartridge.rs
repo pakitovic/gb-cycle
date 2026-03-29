@@ -22,6 +22,8 @@ const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
 const RAM_ABSENT_READ_VALUE: u8 = 0xFF;
 const NO_MBC_SUPPORTED_ROM_BYTES: usize = 32 * 1024;
 const NO_MBC_SUPPORTED_RAM_BYTES: usize = 8 * 1024;
+const M161_BANK_BYTES: usize = 32 * 1024;
+const M161_SUPPORTED_ROM_BYTES_MAX: usize = 8 * M161_BANK_BYTES;
 const MBC2_SUPPORTED_ROM_BYTES_MAX: usize = 256 * 1024;
 const MBC2_RAM_CELL_COUNT: usize = 512;
 const MBC2_RAM_ADDRESS_MASK: usize = MBC2_RAM_CELL_COUNT - 1;
@@ -31,6 +33,7 @@ const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
 const MBC1_STANDARD_ROM_SIZES: [usize; 5] =
     [32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024];
 const MBC1_LARGE_ROM_SIZES: [usize; 2] = [1024 * 1024, 2 * 1024 * 1024];
+const M161_KNOWN_SUBTITLE_SET: [&[u8]; 4] = [b"TETRIS", b"TENNIS", b"ALLEY WAY", b"YAKUMAN"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CartridgeSlotState {
@@ -2030,6 +2033,10 @@ fn classify_loaded_cartridge(
         return classification;
     }
 
+    if let Some(classification) = classify_documented_special_variant(header, rom_bytes) {
+        return classification;
+    }
+
     if compatibility.heuristic_policy == HeuristicPolicy::AllowExperimental
         && let Some(classification) = classify_experimental_heuristic(header, rom_bytes)
     {
@@ -2049,6 +2056,22 @@ fn classify_planned_variant(header: &CartridgeHeader) -> Option<CartridgeClassif
         )),
         _ => None,
     }
+}
+
+fn classify_documented_special_variant(
+    header: &CartridgeHeader,
+    rom_bytes: &[u8],
+) -> Option<CartridgeClassification> {
+    if is_m161_multicart_signature(header, rom_bytes) {
+        return Some(unsupported(
+            header.cartridge_type,
+            "M161",
+            UnsupportedCartridgeCategory::DocumentedButUnsupported,
+            "M161 multicart classification came from the explicit Mani 4-in-1 signature path",
+        ));
+    }
+
+    None
 }
 
 fn classify_experimental_heuristic(
@@ -2122,6 +2145,50 @@ fn is_mbc1m_multicart_signature(header: &CartridgeHeader, rom_bytes: &[u8]) -> b
         let end = start + NINTENDO_LOGO_LEN;
         rom_bytes.get(start..end) == Some(header.nintendo_logo.as_slice())
     })
+}
+
+fn is_m161_multicart_signature(header: &CartridgeHeader, rom_bytes: &[u8]) -> bool {
+    if rom_bytes.len() < M161_KNOWN_SUBTITLE_SET.len() * M161_BANK_BYTES
+        || rom_bytes.len() > M161_SUPPORTED_ROM_BYTES_MAX
+        || !rom_bytes.len().is_multiple_of(M161_BANK_BYTES)
+    {
+        return false;
+    }
+
+    let mut seen_titles = [false; M161_KNOWN_SUBTITLE_SET.len()];
+
+    for bank_start in (0..rom_bytes.len()).step_by(M161_BANK_BYTES) {
+        let bank_logo_start = bank_start + NINTENDO_LOGO_START;
+        let bank_logo_end = bank_logo_start + NINTENDO_LOGO_LEN;
+        let bank_title_start = bank_start + TITLE_START;
+        let bank_title_end = bank_start + TITLE_END_INCLUSIVE;
+
+        let Some(bank_logo) = rom_bytes.get(bank_logo_start..bank_logo_end) else {
+            return false;
+        };
+        let Some(bank_title) = rom_bytes.get(bank_title_start..=bank_title_end) else {
+            return false;
+        };
+
+        for (title_index, expected_title) in M161_KNOWN_SUBTITLE_SET.iter().enumerate() {
+            if !matches_padded_title(bank_title, expected_title) {
+                continue;
+            }
+
+            if seen_titles[title_index]
+                || bank_logo != header.nintendo_logo.as_slice()
+                || rom_bytes.get(bank_start + CARTRIDGE_TYPE_ADDRESS).copied() != Some(0x00)
+                || rom_bytes.get(bank_start + ROM_SIZE_ADDRESS).copied() != Some(0x00)
+                || rom_bytes.get(bank_start + RAM_SIZE_ADDRESS).copied() != Some(0x00)
+            {
+                return false;
+            }
+
+            seen_titles[title_index] = true;
+        }
+    }
+
+    seen_titles.into_iter().all(|seen| seen)
 }
 
 fn is_ems_multicart_signature(title_bytes: &[u8], raw_type: u8, destination_code: u8) -> bool {
@@ -2803,6 +2870,33 @@ mod tests {
         build_banked_mbc1_rom_with_type(0x03, rom_size_code, ram_size_code)
     }
 
+    fn build_m161_signature_rom() -> Vec<u8> {
+        let mut rom = vec![0xFF; 5 * M161_BANK_BYTES];
+        let titles = [
+            b"MANI 4 IN 1".as_slice(),
+            b"TETRIS".as_slice(),
+            b"TENNIS".as_slice(),
+            b"ALLEY WAY".as_slice(),
+            b"YAKUMAN".as_slice(),
+        ];
+
+        for (bank, title) in titles.into_iter().enumerate() {
+            let start = bank * M161_BANK_BYTES;
+            let bank_rom = &mut rom[start..start + M161_BANK_BYTES];
+            bank_rom[ENTRY_POINT_START..ENTRY_POINT_START + ENTRY_POINT_LEN]
+                .copy_from_slice(&[0x00, 0xC3, 0x50, 0x01]);
+            bank_rom[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN]
+                .copy_from_slice(&[0xCE; NINTENDO_LOGO_LEN]);
+            bank_rom[TITLE_START..=TITLE_END_INCLUSIVE].fill(0x00);
+            bank_rom[TITLE_START..TITLE_START + title.len()].copy_from_slice(title);
+            bank_rom[CARTRIDGE_TYPE_ADDRESS] = 0x00;
+            bank_rom[ROM_SIZE_ADDRESS] = 0x00;
+            bank_rom[RAM_SIZE_ADDRESS] = 0x00;
+        }
+
+        rom
+    }
+
     fn mark_mbc1_multicart_subheaders(rom: &mut [u8]) {
         let logo = rom[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN].to_vec();
 
@@ -2979,6 +3073,16 @@ mod tests {
         assert_eq!(
             experimental_mbc1m.selection(),
             CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc1)
+        );
+
+        let m161_rom = build_m161_signature_rom();
+        let m161_header = CartridgeHeader::parse(&m161_rom).expect("header should parse");
+        let m161_classification =
+            classify_loaded_cartridge(&m161_header, &m161_rom, &CompatibilityPolicy::strict());
+        assert_eq!(m161_classification.detected_name(), "M161");
+        assert_eq!(
+            m161_classification.selection(),
+            CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::DocumentedButUnsupported)
         );
     }
 

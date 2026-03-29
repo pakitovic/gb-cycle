@@ -690,11 +690,13 @@ Priority order:
   the currently wired experimental heuristic path can reclassify `EMS`, `Bung`,
   and `Wisdom Tree` signatures only when the loader is in explicit
   experimental-heuristic mode.
-- The remaining special-cartridge policy gap after this baseline is explicit
-  `M161` identification. The taxonomy and controlled-failure path are in place,
-  but the repo still lacks a trusted deliberate detection rule for `M161`, so
-  that cartridge should remain a tracked special-policy TODO rather than an
-  accidental unknown-code outcome.
+- In the current baseline, `M161` identification is now closed through one
+  explicit documented-special signature path for the known Mani `4-in-1`
+  multicart shape. The loader recognizes the distinct set of `32 KiB`
+  no-MBC subheaders for `Tetris`, `Tennis`, `Alleyway`, and `Yakuman` in
+  strict mode, reports `M161` deliberately as documented-but-unsupported
+  hardware, and keeps that path separate from the lower-confidence opt-in
+  experimental heuristics used for `EMS`, `Bung`, and `Wisdom Tree`.
 - In the current baseline, `cartridge` now exposes a typed persistence contract
   directly from the mapper layer, including explicit capability metadata plus
   per-mapper payload shapes for `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, and `Mbc5`.
