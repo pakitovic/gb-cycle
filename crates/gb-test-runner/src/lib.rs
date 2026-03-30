@@ -34,9 +34,9 @@ pub use boot_rom_verification::{
 };
 pub use curated_test_roms::{
     TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STORE_DIR, acid_dmg_curated_suite,
-    blargg_dmg_curated_suite, cpp_dmg_curated_suite, curated_test_rom_families,
-    curated_test_rom_family_suites, daid_dmg_curated_suite, discover_test_rom_store_root,
-    hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
+    blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, cpp_dmg_curated_suite,
+    curated_test_rom_families, curated_test_rom_family_suites, daid_dmg_curated_suite,
+    discover_test_rom_store_root, hacktix_dmg_curated_suite, materialize_curated_test_rom_families,
     materialize_curated_test_rom_store, test_rom_store_root, update_curated_test_report,
 };
 pub use differential::{
@@ -861,7 +861,7 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
         EarlyHardeningChecklistEntry {
             subsystem: TestSubsystem::Cpu,
             status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &["phase-2-cpu-timing", "blargg-dmg-curated"],
+            current_evidence: &["phase-2-cpu-timing", "blargg-dmg-repo-gated-family"],
             active_oracles: &["trace-fixture", "serial-contains"],
             remaining_gaps: &[
                 "differential-oracle",
@@ -872,7 +872,7 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
         EarlyHardeningChecklistEntry {
             subsystem: TestSubsystem::Interrupts,
             status: EarlyHardeningStatus::RepoGatePresent,
-            current_evidence: &["phase-2-interrupt-timing", "blargg-dmg-curated"],
+            current_evidence: &["phase-2-interrupt-timing", "blargg-dmg-repo-gated-family"],
             active_oracles: &["trace-fixture", "blargg-console-text", "serial-contains"],
             remaining_gaps: &["differential-oracle", "longer-run-determinism"],
         },
@@ -888,7 +888,7 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
             status: EarlyHardeningStatus::RepoGatePresent,
             current_evidence: &[
                 "phase-3-and-phase-4-integration-coverage",
-                "blargg-dmg-curated",
+                "blargg-dmg-repo-gated-family",
             ],
             active_oracles: &["serial-contains", "memory-text-output"],
             remaining_gaps: &[
@@ -904,11 +904,21 @@ pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
             remaining_gaps: &["promoted-external-suite", "differential-oracle"],
         },
         EarlyHardeningChecklistEntry {
+            subsystem: TestSubsystem::Apu,
+            status: EarlyHardeningStatus::RepoGatePresent,
+            current_evidence: &[
+                "gb-core-apu-mmio-and-power-coverage",
+                "blargg-dmg-repo-gated-family",
+            ],
+            active_oracles: &["unit-contracts", "memory-text-output"],
+            remaining_gaps: &["differential-oracle", "frontend-export-validation"],
+        },
+        EarlyHardeningChecklistEntry {
             subsystem: TestSubsystem::Ppu,
             status: EarlyHardeningStatus::RepoGatePresent,
             current_evidence: &[
                 "phase-4-ppu-oam-corruption",
-                "blargg-dmg-curated",
+                "blargg-dmg-repo-gated-family",
                 "acid-dmg-curated",
             ],
             active_oracles: &["trace-fixture", "memory-text-output", "framebuffer-fixture"],
@@ -2223,9 +2233,10 @@ mod tests {
     use super::{
         BootRomAssets, CaptureKind, CapturedMemoryTextOutput, MOONEYE_FAIL_SIGNATURE,
         MOONEYE_PASS_SIGNATURE, MooneyeTestResult, PassCondition, RomTestCase, RunnerMachine,
-        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, built_in_rom_suite_by_name,
-        detect_mooneye_result, early_phase_9_partial_checklist, hacktix_dmg_curated_suite,
-        memory_text_output_completion_reached, mooneye_result_for_signature,
+        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, blargg_dmg_repo_gated_suite,
+        built_in_rom_suite_by_name, detect_mooneye_result, early_phase_9_partial_checklist,
+        hacktix_dmg_curated_suite, memory_text_output_completion_reached,
+        mooneye_result_for_signature,
     };
     use gb_core::{
         ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
@@ -2320,7 +2331,7 @@ mod tests {
 
         assert_eq!(suite.name, "blargg-dmg-curated");
         assert_eq!(suite.family.as_deref(), Some("blargg"));
-        assert_eq!(suite.cases.len(), 26);
+        assert_eq!(suite.cases.len(), 38);
         assert!(
             suite
                 .cases
@@ -2338,6 +2349,27 @@ mod tests {
                 .cases
                 .iter()
                 .any(|case| case.id == "blargg-instr-timing")
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "blargg-dmg-sound-01-registers")
+        );
+    }
+
+    #[test]
+    fn blargg_repo_gated_suite_now_matches_the_promoted_curated_family() {
+        let suite = blargg_dmg_repo_gated_suite();
+
+        assert_eq!(suite.name, "blargg-dmg-curated");
+        assert_eq!(suite.family.as_deref(), Some("blargg"));
+        assert_eq!(suite.cases.len(), 38);
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
         );
     }
 
@@ -2619,7 +2651,7 @@ mod tests {
     }
 
     #[test]
-    fn early_phase_9_partial_checklist_tracks_cpu_and_ppu_repo_gates() {
+    fn early_phase_9_partial_checklist_tracks_cpu_apu_and_ppu_status() {
         let checklist = early_phase_9_partial_checklist();
 
         let cpu = checklist
@@ -2627,15 +2659,35 @@ mod tests {
             .find(|entry| entry.subsystem == TestSubsystem::Cpu)
             .expect("cpu entry should exist");
         assert_eq!(cpu.status, super::EarlyHardeningStatus::RepoGatePresent);
-        assert!(cpu.current_evidence.contains(&"blargg-dmg-curated"));
+        assert!(
+            cpu.current_evidence
+                .contains(&"blargg-dmg-repo-gated-family")
+        );
         assert!(cpu.active_oracles.contains(&"serial-contains"));
+
+        let apu = checklist
+            .iter()
+            .find(|entry| entry.subsystem == TestSubsystem::Apu)
+            .expect("apu entry should exist");
+        assert_eq!(apu.status, super::EarlyHardeningStatus::RepoGatePresent);
+        assert!(
+            apu.current_evidence
+                .contains(&"blargg-dmg-repo-gated-family")
+        );
+        assert!(
+            !apu.remaining_gaps
+                .contains(&"green-promotion-of-blargg-dmg-sound")
+        );
 
         let ppu = checklist
             .iter()
             .find(|entry| entry.subsystem == TestSubsystem::Ppu)
             .expect("ppu entry should exist");
         assert_eq!(ppu.status, super::EarlyHardeningStatus::RepoGatePresent);
-        assert!(ppu.current_evidence.contains(&"blargg-dmg-curated"));
+        assert!(
+            ppu.current_evidence
+                .contains(&"blargg-dmg-repo-gated-family")
+        );
         assert!(ppu.current_evidence.contains(&"acid-dmg-curated"));
         assert!(!ppu.remaining_gaps.contains(&"repo-gated-dmg-acid2"));
     }

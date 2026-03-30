@@ -59,6 +59,7 @@ The source of truth should be an internal `16`-bit system counter advanced by th
   - timer glitch behavior through the effective TIMA signal
   - APU frame-sequencer advancement if the reset produces the documented falling edge seen by `DIV-APU`
 - Keep the ownership split explicit: timer owns `DIV` and the shared counter; APU owns `div_apu`, frame-sequencer phase, and the downstream sound clocks.
+- The timer-owned divider path should expose enough explicit edge information that autonomous ticks can publish `DIV`-derived events to the scheduler and `DIV` reset writes can synchronously report whether an immediate `DIV-APU` edge occurred on that write.
 
 ## Timing / accuracy requirements
 
@@ -126,6 +127,7 @@ Priority order:
 - Make the source of each timing decision visible in comments or docs.
 - Prefer a source-of-truth shape like `system_counter`, `tima`, `tma`, `tac`, `previous_timer_signal`, and an explicit overflow state machine, even if field names differ.
 - Expose enough divider-edge information or shared-counter state that the APU can derive `DIV-APU` from the same source instead of cloning timer logic in parallel.
+- For the current DMG `SkipBoot` baseline, the APU-side `div_apu` seed should be derived from the same full hidden `system_counter` phase as the timer, including the current low-byte `0xC8` boot seed, rather than from visible `DIV` alone.
 - A pure helper such as `selected_timer_bit(tac)` is a good fit for frequency selection logic.
 - `tick()`, `read()`, and `write()` should all be aware of the timer's internal temporal state; register writes are not simple blind setters in the precise model.
 - The timer should request its interrupt through the global interrupt controller path, not by mutating unrelated CPU or bus flags ad hoc.

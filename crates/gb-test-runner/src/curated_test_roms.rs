@@ -127,6 +127,10 @@ pub fn blargg_dmg_curated_suite() -> RomSuite {
     manifest_suite("blargg")
 }
 
+pub fn blargg_dmg_repo_gated_suite() -> RomSuite {
+    blargg_dmg_curated_suite()
+}
+
 pub fn daid_dmg_curated_suite() -> RomSuite {
     manifest_suite("daid")
 }
@@ -771,14 +775,14 @@ mod tests {
         CuratedTestRomCase, GBEMU_SHOOTOUT_TESTROMS_DIR, PersistedCaseStatus, PersistedSuiteStatus,
         REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
         TEST_ROM_REPORT_FILE_NAME, TEST_ROM_ROOT_ENV_VAR, TEST_ROM_STATUS_DIR_NAME,
-        blargg_dmg_curated_suite, capture_plan_for_pass_condition, curated_test_rom_families,
-        curated_test_rom_family_suites, curated_test_rom_manifests, discover_test_rom_store_root,
-        dmg_boot_trademark_tile_startup_writes, failure_artifacts_for_pass_condition,
-        load_persisted_suite_status, manifest_case_to_rom_test_case,
-        materialize_curated_test_rom_families, materialize_curated_test_rom_store,
-        parse_manifest_subsystem, render_markdown_report, report_rom_display,
-        report_status_display, sort_persisted_case_statuses, test_rom_store_root,
-        update_curated_test_report,
+        blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite, capture_plan_for_pass_condition,
+        curated_test_rom_families, curated_test_rom_family_suites, curated_test_rom_manifests,
+        discover_test_rom_store_root, dmg_boot_trademark_tile_startup_writes,
+        failure_artifacts_for_pass_condition, load_persisted_suite_status,
+        manifest_case_to_rom_test_case, materialize_curated_test_rom_families,
+        materialize_curated_test_rom_store, parse_manifest_subsystem, render_markdown_report,
+        report_rom_display, report_status_display, sort_persisted_case_statuses,
+        test_rom_store_root, update_curated_test_report,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, PassCondition, RomCaseFailure, RomCaseOutcome,
@@ -858,13 +862,13 @@ mod tests {
     }
 
     #[test]
-    fn curated_blargg_manifest_tracks_supported_individual_roms_only() {
+    fn curated_blargg_manifest_tracks_the_full_individual_shootout_list() {
         let suite = blargg_dmg_curated_suite();
 
         assert_eq!(suite.name, "blargg-dmg-curated");
         assert_eq!(suite.family.as_deref(), Some("blargg"));
         assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
-        assert_eq!(suite.cases.len(), 26);
+        assert_eq!(suite.cases.len(), 38);
         assert!(
             suite
                 .cases
@@ -875,7 +879,29 @@ mod tests {
             suite
                 .cases
                 .iter()
+                .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
+        );
+        assert!(
+            suite
+                .cases
+                .iter()
                 .all(|case| case.rom_path.starts_with(Path::new("blargg")))
+        );
+    }
+
+    #[test]
+    fn repo_gated_blargg_suite_now_matches_the_promoted_curated_family() {
+        let suite = blargg_dmg_repo_gated_suite();
+
+        assert_eq!(suite.name, "blargg-dmg-curated");
+        assert_eq!(suite.family.as_deref(), Some("blargg"));
+        assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+        assert_eq!(suite.cases.len(), 38);
+        assert!(
+            suite
+                .cases
+                .iter()
+                .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
         );
     }
 

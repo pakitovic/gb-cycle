@@ -7,7 +7,7 @@ use gb_core::{
     StartupMode, TraceSummaryBuffer,
 };
 use gb_test_runner::{
-    RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_curated_suite, boot_rom_image_path,
+    RomRunner, RomSuite, acid_dmg_curated_suite, blargg_dmg_repo_gated_suite, boot_rom_image_path,
     boot_rom_kind_for_console_model, cpp_dmg_curated_suite, daid_dmg_curated_suite,
     discover_boot_rom_store_root, discover_test_rom_store_root, hacktix_dmg_curated_suite,
     mealybug_tearoom_dmg_curated_suite, mooneye_acceptance_dmg_curated_suite,
@@ -31,9 +31,10 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn run_curated_suite_and_update_report(
+fn run_curated_suite(
     suite: &RomSuite,
     suite_label: &str,
+    update_report: bool,
 ) -> Option<gb_test_runner::RomSuiteReport> {
     let workspace_root = workspace_root();
 
@@ -57,8 +58,10 @@ fn run_curated_suite_and_update_report(
     let report = RomRunner::new()
         .run_suite(suite)
         .unwrap_or_else(|_| panic!("{suite_label} should execute"));
-    update_curated_test_report(&workspace_root, &report)
-        .expect("curated report should update after a repo-managed suite run");
+    if update_report {
+        update_curated_test_report(&workspace_root, &report)
+            .expect("curated report should update after a repo-managed suite run");
+    }
     Some(report)
 }
 
@@ -207,9 +210,11 @@ fn real_boot_with_verified_mgb_boot_rom_reaches_cartridge_entry_via_ff50_handoff
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
 fn blargg_curated_suite_passes_from_repo_store() {
-    let Some(report) =
-        run_curated_suite_and_update_report(&blargg_dmg_curated_suite(), "curated blargg suite")
-    else {
+    let Some(report) = run_curated_suite(
+        &blargg_dmg_repo_gated_suite(),
+        "repo-gated blargg suite",
+        true,
+    ) else {
         return;
     };
     assert!(report.all_passed(), "{report:#?}");
@@ -218,8 +223,7 @@ fn blargg_curated_suite_passes_from_repo_store() {
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
 fn acid_curated_suite_passes_from_repo_store() {
-    let Some(report) =
-        run_curated_suite_and_update_report(&acid_dmg_curated_suite(), "curated acid suite")
+    let Some(report) = run_curated_suite(&acid_dmg_curated_suite(), "curated acid suite", true)
     else {
         return;
     };
@@ -231,7 +235,7 @@ fn acid_curated_suite_passes_from_repo_store() {
 fn mealybug_curated_suite_updates_report_from_repo_store() {
     let suite = mealybug_tearoom_dmg_curated_suite();
     let expected_case_count = suite.cases.len();
-    let Some(report) = run_curated_suite_and_update_report(&suite, "curated mealybug suite") else {
+    let Some(report) = run_curated_suite(&suite, "curated mealybug suite", true) else {
         return;
     };
     assert_eq!(
@@ -247,7 +251,7 @@ fn mealybug_curated_suite_updates_report_from_repo_store() {
 fn mooneye_curated_suite_updates_report_from_repo_store() {
     let suite = mooneye_acceptance_dmg_curated_suite();
     let expected_case_count = suite.cases.len();
-    let Some(report) = run_curated_suite_and_update_report(&suite, "curated mooneye suite") else {
+    let Some(report) = run_curated_suite(&suite, "curated mooneye suite", true) else {
         return;
     };
     assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
@@ -257,8 +261,7 @@ fn mooneye_curated_suite_updates_report_from_repo_store() {
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
 fn daid_curated_suite_updates_report_from_repo_store() {
-    let Some(report) =
-        run_curated_suite_and_update_report(&daid_dmg_curated_suite(), "curated daid suite")
+    let Some(report) = run_curated_suite(&daid_dmg_curated_suite(), "curated daid suite", true)
     else {
         return;
     };
@@ -269,8 +272,7 @@ fn daid_curated_suite_updates_report_from_repo_store() {
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
 fn cpp_curated_suite_updates_report_from_repo_store() {
-    let Some(report) =
-        run_curated_suite_and_update_report(&cpp_dmg_curated_suite(), "curated cpp suite")
+    let Some(report) = run_curated_suite(&cpp_dmg_curated_suite(), "curated cpp suite", true)
     else {
         return;
     };
@@ -282,7 +284,7 @@ fn cpp_curated_suite_updates_report_from_repo_store() {
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
 fn hacktix_curated_suite_updates_report_from_repo_store() {
     let Some(report) =
-        run_curated_suite_and_update_report(&hacktix_dmg_curated_suite(), "curated hacktix suite")
+        run_curated_suite(&hacktix_dmg_curated_suite(), "curated hacktix suite", true)
     else {
         return;
     };

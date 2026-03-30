@@ -46,7 +46,8 @@ statuses do not appear in the table.
   oracle mix: serial, Blargg BG-map console text, and cartridge RAM text
   supported scope: individual ROMs only
   current green set: `cpu_instrs 01..11`, `halt_bug`,
-  `mem_timing 01..03`, `mem_timing-2 01..03`, and `oam_bug 1..6,8`
+  `mem_timing 01..03`, `mem_timing-2 01..03`, `oam_bug 1..6,8`, and
+  `dmg_sound 01..12`
 - `daid-dmg-curated`
   source family: `daid`
   current status: exploratory, not repo-gated
@@ -94,8 +95,8 @@ make run-mooneye
 make run-cpp
 ```
 
-Those exploratory targets update `/.roms/test/test-report.md` even when the
-suite still contains failing ROM cases, and each `make run-*` target
+Those exploratory targets update `/.roms/test/test-report.md` even
+when the suite still contains failing ROM cases, and each `make run-*` target
 materializes its own family before executing.
 
 Run one curated family directly and update the report:

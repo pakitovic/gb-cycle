@@ -1,5 +1,5 @@
 use crate::model::ConsoleModel;
-use crate::scheduler::{CycleContext, InterruptSource};
+use crate::scheduler::{CycleContext, DerivedEdge, InterruptSource};
 
 const TIMER_ENABLE_MASK: u8 = 0x04;
 const TIMER_CONTROL_MASK: u8 = 0x07;
@@ -41,6 +41,11 @@ pub struct TimerSnapshot {
     pub tac: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct DividerResetEffects {
+    pub apu_frame_sequencer_edge: bool,
+}
+
 impl Timer {
     pub fn new(console_model: ConsoleModel) -> Self {
         Self {
@@ -68,10 +73,18 @@ impl Timer {
         (self.system_counter >> 8) as u8
     }
 
-    pub fn write_div(&mut self, _value: u8) {
+    pub fn write_div(&mut self, value: u8) {
+        let _ = self.write_div_with_effects(value);
+    }
+
+    pub(crate) fn write_div_with_effects(&mut self, _value: u8) -> DividerResetEffects {
         let previous_signal = self.current_timer_signal();
+        let previous_div_apu_signal = self.current_div_apu_signal();
         self.system_counter = 0;
         self.apply_timer_signal_change(previous_signal, TimerSignalChangeOrigin::MmioWrite);
+        DividerResetEffects {
+            apu_frame_sequencer_edge: previous_div_apu_signal && !self.current_div_apu_signal(),
+        }
     }
 
     pub fn read_tima(&self) -> u8 {
@@ -141,18 +154,33 @@ impl Timer {
         )
     }
 
+    pub(crate) fn div_apu_source_high(&self) -> bool {
+        self.current_div_apu_signal()
+    }
+
     pub(crate) fn tick_t_cycle(&mut self, context: &mut CycleContext) {
         self.reloaded_this_t_cycle = false;
         self.advance_overflow_pipeline(context);
 
+        let previous_timer_signal = self.current_timer_signal();
+        let previous_div_apu_signal = self.current_div_apu_signal();
         self.system_counter = self.system_counter.wrapping_add(1);
+        context.push_derived_edge(DerivedEdge::DividerTick);
         let current_signal = self.current_timer_signal();
         self.process_timer_signal_edge(
-            self.previous_timer_signal,
+            previous_timer_signal,
             current_signal,
             TimerSignalChangeOrigin::AutonomousTick,
         );
         self.previous_timer_signal = current_signal;
+
+        if previous_timer_signal && !current_signal {
+            context.push_derived_edge(DerivedEdge::TimerInputFallingEdge);
+        }
+
+        if previous_div_apu_signal && !self.current_div_apu_signal() {
+            context.push_derived_edge(DerivedEdge::ApuFrameSequencerEdge);
+        }
     }
 
     fn advance_overflow_pipeline(&mut self, context: &mut CycleContext) {
@@ -222,6 +250,10 @@ impl Timer {
         let bit = selected_timer_bit(self.tac);
         self.system_counter & (1 << bit) != 0
     }
+
+    fn current_div_apu_signal(&self) -> bool {
+        self.system_counter & (1 << 12) != 0
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -258,10 +290,11 @@ mod tests {
 
         assert_eq!(timer.read_div(), 0xAB);
 
-        timer.write_div(0xFF);
+        let effects = timer.write_div_with_effects(0xFF);
 
         assert_eq!(timer.read_div(), 0x00);
         assert_eq!(timer.system_counter, 0);
+        assert!(!effects.apu_frame_sequencer_edge);
     }
 
     #[test]
@@ -331,10 +364,27 @@ mod tests {
             tac: 0x05,
         });
 
-        timer.write_div(0x00);
+        let effects = timer.write_div_with_effects(0x00);
 
         assert_eq!(timer.read_tima(), 0x10);
         assert_eq!(timer.read_div(), 0x00);
+        assert!(!effects.apu_frame_sequencer_edge);
+    }
+
+    #[test]
+    fn div_write_reports_when_the_apu_frame_sequencer_edge_occurs() {
+        let mut timer = Timer::new(ConsoleModel::Dmg);
+        timer.apply_startup_state(TimerStartupState {
+            system_counter: 0x1000,
+            tima: 0x00,
+            tma: 0x00,
+            tac: 0x00,
+        });
+
+        let effects = timer.write_div_with_effects(0x00);
+
+        assert!(effects.apu_frame_sequencer_edge);
+        assert_eq!(timer.snapshot().system_counter, 0x0000);
     }
 
     #[test]
@@ -481,5 +531,29 @@ mod tests {
 
         assert_eq!(timer.read_tma(), 0x34);
         assert_eq!(timer.read_tima(), 0x34);
+    }
+
+    #[test]
+    fn shared_divider_tick_publishes_timer_and_apu_edges_into_the_cycle_context() {
+        let mut timer = Timer::new(ConsoleModel::Dmg);
+        timer.apply_startup_state(TimerStartupState {
+            system_counter: 0x1FFF,
+            tima: 0x0F,
+            tma: 0x00,
+            tac: 0x05,
+        });
+
+        let context = tick_timer(&mut timer, 0);
+
+        assert_eq!(
+            context.derived_edges(),
+            &[
+                DerivedEdge::DividerTick,
+                DerivedEdge::TimerInputFallingEdge,
+                DerivedEdge::ApuFrameSequencerEdge,
+            ]
+        );
+        assert_eq!(timer.snapshot().system_counter, 0x2000);
+        assert_eq!(timer.read_tima(), 0x10);
     }
 }

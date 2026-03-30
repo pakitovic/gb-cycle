@@ -169,8 +169,14 @@ impl IoHramDomain {
                 }
             }
             IoRegisterKind::Div => {
-                if let Some(timer) = io.timer {
-                    timer.write_div(value);
+                let BusIoWriteView { apu, timer, .. } = io;
+                if let Some(timer) = timer {
+                    let effects = timer.write_div_with_effects(value);
+                    if effects.apu_frame_sequencer_edge
+                        && let Some(apu) = apu
+                    {
+                        apu.on_div_apu_edge();
+                    }
                 }
             }
             IoRegisterKind::Tima => {
@@ -214,8 +220,13 @@ impl IoHramDomain {
                 }
             }
             IoRegisterKind::Sound => {
-                if let Some(apu) = io.apu {
-                    apu.write_register(address, value);
+                let BusIoWriteView { apu, timer, .. } = io;
+                if let Some(apu) = apu {
+                    let div_apu_source_high = address == 0xFF26
+                        && timer
+                            .as_ref()
+                            .is_some_and(|timer| timer.div_apu_source_high());
+                    apu.write_register_with_div_apu_source(address, value, div_apu_source_high);
                 }
             }
             IoRegisterKind::CgbSystem | IoRegisterKind::Reserved => {}

@@ -8,7 +8,7 @@ debug.breakpoint_count=0 debug.enabled_breakpoint_count=0
 debug.watchpoint_count=0 debug.enabled_watchpoint_count=0
 cpu.console_model=Dmg cpu.status=Ready cpu.startup_pc=0x0100 cpu.pc=0x0100 cpu.execution_state=FetchOpcode { t_cycle: 2 } cpu.current_opcode=None
 bus.console_model=Dmg bus.status=Ready
-apu.console_model=Dmg apu.status=Ready apu.powered=true apu.div_apu=0
+apu.console_model=Dmg apu.status=Ready apu.powered=true apu.div_apu=5
 ppu.console_model=Dmg ppu.status=RegistersReady
 dma.console_model=Dmg dma.status=Ready
 timer.console_model=Dmg timer.status=Ready

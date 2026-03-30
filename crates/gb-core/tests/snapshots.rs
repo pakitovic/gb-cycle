@@ -31,7 +31,7 @@ fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
     );
     assert_eq!(snapshot.cpu.current_opcode, None);
     assert!(snapshot.apu.powered);
-    assert_eq!(snapshot.apu.div_apu, 0);
+    assert_eq!(snapshot.apu.div_apu, 5);
     assert_eq!(snapshot.serial.sb, 0x00);
     assert_eq!(snapshot.serial.clock_mode, SerialClockMode::External);
     assert_eq!(snapshot.serial.transfer_state, SerialTransferState::Idle);
