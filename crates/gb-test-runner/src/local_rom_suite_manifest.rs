@@ -554,6 +554,202 @@ pressed = true
     }
 
     #[test]
+    fn local_manifest_supports_explicit_suite_metadata_tcycle_stimuli_and_fixture_oracles() {
+        let workspace = unique_temp_dir("explicit-contract");
+        let absolute_fixture = workspace.join("fixtures").join("absolute-frame.png");
+        fs::create_dir_all(
+            absolute_fixture
+                .parent()
+                .expect("fixture path should have a parent"),
+        )
+        .expect("fixture parent should be creatable");
+        fs::write(&absolute_fixture, []).expect("absolute fixture placeholder should be writable");
+
+        let manifest_path = write_manifest(
+            &workspace,
+            "commercial-smoke.toml",
+            &format!(
+                r#"
+version = 1
+suite_name = "commercial-smoke"
+family = "local-commercial"
+subsystem = "joypad"
+
+[[case]]
+id = "mgb-serial"
+rom = "commercial/pokemon.gb"
+external_rom_root_key = "GB_CYCLE_LOCAL_COMMERCIAL_ROOT"
+console = "mgb"
+startup = "real-boot"
+mode = "permissive"
+timeout_tcycles = 4096
+oracle = "serial-exact"
+expected = "OK"
+
+[[case.stimulus]]
+tcycle = 512
+button = "a"
+pressed = true
+
+[[case]]
+id = "dmg0-trace"
+rom = "commercial/zelda.gb"
+console = "dmg0"
+startup = "skip-boot"
+mode = "experimental"
+timeout_frames = 12
+oracle = "trace-fixture"
+fixture = "fixtures/zelda.trace"
+
+[[case]]
+id = "cgb-framebuffer"
+rom = "commercial/links-awakening.gb"
+console = "cgb"
+timeout_frames = 24
+oracle = "framebuffer-fixture-set"
+fixtures = ["fixtures/frame-a.png", "{absolute_fixture}"]
+
+[[case.stimulus]]
+tcycle = 2048
+button = "select"
+pressed = false
+
+[[case]]
+id = "cgb-serial-hex"
+rom = "commercial/metroid2.gb"
+console = "cgb"
+timeout_tcycles = 8192
+oracle = "serial-hex-exact"
+expected = "DEADBEEF"
+"#,
+                absolute_fixture = absolute_fixture.display()
+            ),
+        );
+
+        let suite =
+            load_local_rom_suite_manifest(&manifest_path).expect("manifest should load cleanly");
+        assert_eq!(suite.name, "commercial-smoke");
+        assert_eq!(suite.family.as_deref(), Some("local-commercial"));
+        assert_eq!(suite.subsystem, TestSubsystem::Joypad);
+        assert_eq!(suite.cases.len(), 4);
+
+        let serial_case = &suite.cases[0];
+        assert_eq!(serial_case.console_model, ConsoleModel::Mgb);
+        assert_eq!(serial_case.startup_mode, StartupMode::RealBoot);
+        assert_eq!(serial_case.execution_mode, ExecutionMode::Permissive);
+        assert_eq!(serial_case.timeout, crate::Timeout::TCycles(4096));
+        assert_eq!(
+            serial_case.external_rom_root_key.as_deref(),
+            Some("GB_CYCLE_LOCAL_COMMERCIAL_ROOT")
+        );
+        assert_eq!(
+            serial_case.pass_condition,
+            PassCondition::SerialExact("OK".to_string())
+        );
+        assert!(serial_case.capture_plan.contains(CaptureKind::Serial));
+        assert_eq!(
+            serial_case.external_stimuli.stimuli()[0].when,
+            StimulusTime::TCycle(512)
+        );
+        assert_eq!(
+            serial_case.external_stimuli.stimuli()[0].action,
+            ExternalStimulusAction::JoypadSetButton {
+                button: JoypadButton::A,
+                pressed: true,
+            }
+        );
+
+        let trace_case = &suite.cases[1];
+        assert_eq!(trace_case.console_model, ConsoleModel::Dmg0);
+        assert_eq!(trace_case.execution_mode, ExecutionMode::Experimental);
+        assert_eq!(
+            trace_case.pass_condition,
+            PassCondition::TraceFixture(workspace.join("fixtures").join("zelda.trace"))
+        );
+        assert!(trace_case.capture_plan.contains(CaptureKind::Trace));
+
+        let framebuffer_case = &suite.cases[2];
+        assert_eq!(framebuffer_case.console_model, ConsoleModel::Cgb);
+        assert_eq!(
+            framebuffer_case.pass_condition,
+            PassCondition::FramebufferFixtureSet(vec![
+                workspace.join("fixtures").join("frame-a.png"),
+                absolute_fixture.clone(),
+            ])
+        );
+        assert!(
+            framebuffer_case
+                .capture_plan
+                .contains(CaptureKind::Framebuffer)
+        );
+        assert_eq!(
+            framebuffer_case.external_stimuli.stimuli()[0].action,
+            ExternalStimulusAction::JoypadSetButton {
+                button: JoypadButton::Select,
+                pressed: false,
+            }
+        );
+
+        let serial_hex_case = &suite.cases[3];
+        assert_eq!(
+            serial_hex_case.pass_condition,
+            PassCondition::SerialHexExact("DEADBEEF".to_string())
+        );
+        assert!(
+            serial_hex_case
+                .capture_plan
+                .contains(CaptureKind::SerialHex)
+        );
+    }
+
+    #[test]
+    fn local_manifest_reports_unsupported_subsystem_and_missing_timeout_errors() {
+        let workspace = unique_temp_dir("invalid-contract");
+
+        let unsupported_subsystem_manifest = write_manifest(
+            &workspace,
+            "unsupported-subsystem.toml",
+            r#"
+version = 1
+subsystem = "video"
+
+[[case]]
+rom = "commercial/tetris.gb"
+timeout_frames = 1
+"#,
+        );
+        let unsupported_subsystem = load_local_rom_suite_manifest(&unsupported_subsystem_manifest)
+            .expect_err("unsupported subsystem should fail");
+        match unsupported_subsystem {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("unsupported subsystem"));
+            }
+            other => panic!("unexpected manifest error: {other:?}"),
+        }
+
+        let missing_timeout_manifest = write_manifest(
+            &workspace,
+            "missing-timeout.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "commercial/tetris.gb"
+oracle = "info-serial"
+"#,
+        );
+        let missing_timeout = load_local_rom_suite_manifest(&missing_timeout_manifest)
+            .expect_err("missing timeout should fail");
+        match missing_timeout {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("must specify either timeout_frames or timeout_tcycles"));
+            }
+            other => panic!("unexpected manifest error: {other:?}"),
+        }
+    }
+
+    #[test]
     fn local_manifest_rejects_unsupported_version() {
         let workspace = unique_temp_dir("version");
         let manifest_path = write_manifest(
