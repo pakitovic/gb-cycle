@@ -4,7 +4,10 @@ use crate::bus::{
     Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester,
     IoRegisterOwner,
 };
-use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError, CartridgeSlot};
+use crate::cartridge::{
+    CartridgeDiagnostic, CartridgeLoadError, CartridgePersistentStateError, CartridgeSlot,
+    PersistentCartState,
+};
 use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuBusOperation, CpuCore};
 use crate::debugger::{
     DebugControl, MachineSnapshot, TraceBuffer, TraceLevel, TraceSink, TraceSnapshotProvider,
@@ -243,6 +246,13 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn cartridge(&self) -> &CartridgeSlot {
         &self.cartridge
+    }
+
+    pub fn restore_cartridge_persistent_state(
+        &mut self,
+        state: &PersistentCartState,
+    ) -> Result<(), CartridgePersistentStateError> {
+        self.cartridge.restore_persistent_state(state)
     }
 
     pub fn advance_cartridge_rtc_seconds(&mut self, seconds: u64) {
@@ -576,6 +586,7 @@ impl<S: TraceSink> Machine<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cartridge::PersistentCartState;
     use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
     use crate::ppu::PpuLcdState;
     use crate::scheduler::SchedulerSideEffect;
@@ -590,6 +601,19 @@ mod tests {
         rom[0x0147] = 0x00;
         rom[0x0148] = 0x00;
         rom[0x0149] = 0x00;
+        rom
+    }
+
+    fn build_test_rom_with_header(
+        program: &[u8],
+        cartridge_type: u8,
+        rom_size: u8,
+        ram_size: u8,
+    ) -> Vec<u8> {
+        let mut rom = build_test_rom(program);
+        rom[0x0147] = cartridge_type;
+        rom[0x0148] = rom_size;
+        rom[0x0149] = ram_size;
         rom
     }
 
@@ -618,6 +642,24 @@ mod tests {
         assert_eq!(first.t_cycle(), TCycle::new(0));
         assert_eq!(second.t_cycle(), TCycle::new(1));
         assert_eq!(machine.next_t_cycle(), TCycle::new(2));
+    }
+
+    #[test]
+    fn machine_can_restore_cartridge_persistent_state_through_a_narrow_host_api() {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom_with_header(&[0x00], 0x09, 0x00, 0x02))
+            .expect("NoMBC+RAM+BATTERY test ROM should load");
+
+        machine
+            .restore_cartridge_persistent_state(&PersistentCartState::NoMbcRam {
+                ram: vec![0xAB; 8 * 1024],
+            })
+            .expect("restoring cartridge RAM should succeed");
+
+        assert_eq!(machine.read_bus(0xA000), 0xAB);
     }
 
     #[test]

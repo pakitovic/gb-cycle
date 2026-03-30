@@ -1,3 +1,1731 @@
-fn main() {
-    let _ = gb_core::Machine::new(gb_core::MachineConfig::new(gb_core::ConsoleModel::Dmg));
+use gb_core::{
+    BootRomAssets, BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeHeader,
+    CartridgeHeaderParseError, CartridgeLoadError, CartridgePersistentStateError,
+    CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy, ConsoleModel, ExecutionMode,
+    Machine, MachineConfig, PersistentCartState, SgbFlag, StartupMode, TraceBuffer,
+    TraceSummaryBuffer, UnsupportedCartridgeCategory,
+};
+use gb_persistence::{
+    CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveKeyError, FilesystemCartridgeSaveBackend,
+    uses_battery_backed_hardware_persistence,
+};
+use sha2::{Digest, Sha256};
+use std::env;
+use std::fs;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+const DEFAULT_SKIP_BOOT_FRAME_LIMIT: u32 = 120;
+const DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT: u32 = 120;
+const DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT: u32 = 480;
+const DEFAULT_BOOT_ROM_ROOT_ENV_VAR: &str = "GB_CYCLE_BOOT_ROM_ROOT";
+const DEFAULT_BOOT_ROM_DIR: &str = ".roms/bootrom";
+const FRAMEBUFFER_WIDTH: usize = 160;
+const FRAMEBUFFER_HEIGHT: usize = 144;
+const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CliAction {
+    ShowGeneralHelp,
+    ShowRunHelp,
+    ShowInspectHelp,
+    Run(RunOptions),
+    InspectRom(InspectRomOptions),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum BootRomVerificationMode {
+    Off,
+    Warn,
+    #[default]
+    Strict,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum RunModel {
+    Dmg0,
+    #[default]
+    Dmg,
+    Mgb,
+}
+
+impl RunModel {
+    fn console_model(self) -> ConsoleModel {
+        match self {
+            Self::Dmg0 => ConsoleModel::Dmg0,
+            Self::Dmg => ConsoleModel::Dmg,
+            Self::Mgb => ConsoleModel::Mgb,
+        }
+    }
+
+    fn boot_rom_kind(self) -> BootRomKind {
+        match self {
+            Self::Dmg0 => BootRomKind::Dmg0,
+            Self::Dmg => BootRomKind::Dmg,
+            Self::Mgb => BootRomKind::Mgb,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Dmg0 => "dmg0",
+            Self::Dmg => "dmg",
+            Self::Mgb => "mgb",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum SavePolicy {
+    Manual,
+    #[default]
+    OnClose,
+    OnWrite,
+}
+
+impl SavePolicy {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::OnClose => "on-close",
+            Self::OnWrite => "on-write",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FramebufferOutputFormat {
+    Pgm,
+    Png,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DefaultRunBudget {
+    SkipBootFrames {
+        frame_limit: u32,
+    },
+    RealBootPostHandoff {
+        post_handoff_frame_limit: u32,
+        safety_frame_limit: u32,
+    },
+}
+
+impl DefaultRunBudget {
+    fn for_startup_mode(startup_mode: StartupMode) -> Self {
+        match startup_mode {
+            StartupMode::SkipBoot => Self::SkipBootFrames {
+                frame_limit: DEFAULT_SKIP_BOOT_FRAME_LIMIT,
+            },
+            StartupMode::RealBoot => Self::RealBootPostHandoff {
+                post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
+                safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RunOptions {
+    rom_path: PathBuf,
+    model: RunModel,
+    startup_mode: StartupMode,
+    execution_mode: ExecutionMode,
+    boot_rom_dir: Option<PathBuf>,
+    boot_rom_verify: BootRomVerificationMode,
+    frame_limit: Option<u32>,
+    tcycle_limit: Option<u64>,
+    default_run_budget: Option<DefaultRunBudget>,
+    serial_stdout: bool,
+    serial_out: Option<PathBuf>,
+    framebuffer_out: Option<PathBuf>,
+    trace_out: Option<PathBuf>,
+    save_dir: Option<PathBuf>,
+    save_key: Option<String>,
+    save_policy: SavePolicy,
+}
+
+impl RunOptions {
+    fn default_with_rom(rom_path: PathBuf) -> Self {
+        Self {
+            rom_path,
+            model: RunModel::default(),
+            startup_mode: StartupMode::SkipBoot,
+            execution_mode: ExecutionMode::Strict,
+            boot_rom_dir: None,
+            boot_rom_verify: BootRomVerificationMode::Strict,
+            frame_limit: None,
+            tcycle_limit: None,
+            default_run_budget: None,
+            serial_stdout: false,
+            serial_out: None,
+            framebuffer_out: None,
+            trace_out: None,
+            save_dir: None,
+            save_key: None,
+            save_policy: SavePolicy::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InspectRomOptions {
+    rom_path: PathBuf,
+    execution_mode: ExecutionMode,
+}
+
+enum CliMachine {
+    Buffered(Machine<TraceBuffer>),
+    Summary(Machine<TraceSummaryBuffer>),
+}
+
+impl CliMachine {
+    fn new(config: MachineConfig, capture_trace: bool) -> Self {
+        if capture_trace {
+            Self::Buffered(Machine::new(config))
+        } else {
+            Self::Summary(Machine::new_summary(config))
+        }
+    }
+
+    fn load_cartridge(
+        &mut self,
+        rom_bytes: Vec<u8>,
+    ) -> Result<Vec<CartridgeDiagnostic>, CartridgeLoadError> {
+        match self {
+            Self::Buffered(machine) => machine.load_cartridge(rom_bytes),
+            Self::Summary(machine) => machine.load_cartridge(rom_bytes),
+        }
+    }
+
+    fn step_t_cycle(&mut self) {
+        match self {
+            Self::Buffered(machine) => {
+                machine.step_t_cycle();
+            }
+            Self::Summary(machine) => {
+                machine.step_t_cycle();
+            }
+        }
+    }
+
+    fn take_serial_output_bytes(&mut self) -> Vec<u8> {
+        match self {
+            Self::Buffered(machine) => machine.take_serial_output_bytes(),
+            Self::Summary(machine) => machine.take_serial_output_bytes(),
+        }
+    }
+
+    fn at_frame_origin(&self) -> bool {
+        match self {
+            Self::Buffered(machine) => machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0,
+            Self::Summary(machine) => machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0,
+        }
+    }
+
+    fn is_boot_rom_mapped(&self) -> bool {
+        match self {
+            Self::Buffered(machine) => machine.boot().is_boot_rom_mapped(),
+            Self::Summary(machine) => machine.boot().is_boot_rom_mapped(),
+        }
+    }
+
+    fn framebuffer(&self) -> &[u8] {
+        match self {
+            Self::Buffered(machine) => machine.ppu().framebuffer(),
+            Self::Summary(machine) => machine.ppu().framebuffer(),
+        }
+    }
+
+    fn cartridge(&self) -> &CartridgeSlot {
+        match self {
+            Self::Buffered(machine) => machine.cartridge(),
+            Self::Summary(machine) => machine.cartridge(),
+        }
+    }
+
+    fn restore_cartridge_persistent_state(
+        &mut self,
+        state: &PersistentCartState,
+    ) -> Result<(), CartridgePersistentStateError> {
+        match self {
+            Self::Buffered(machine) => machine.restore_cartridge_persistent_state(state),
+            Self::Summary(machine) => machine.restore_cartridge_persistent_state(state),
+        }
+    }
+
+    fn trace_text(&self) -> Option<String> {
+        match self {
+            Self::Buffered(machine) => Some(machine.tracer().sink().render_text()),
+            Self::Summary(_) => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SaveSession {
+    backend: FilesystemCartridgeSaveBackend,
+    key: CartridgeSaveKey,
+    last_saved_state: PersistentCartState,
+    loaded_existing_save: bool,
+    save_writes: usize,
+}
+
+impl SaveSession {
+    fn save_path(&self) -> PathBuf {
+        self.backend.path_for_key(&self.key)
+    }
+}
+
+fn main() -> ExitCode {
+    let mut stdout = io::stdout().lock();
+    let mut stderr = io::stderr().lock();
+    match run_cli_command(env::args().skip(1), &mut stdout, &mut stderr) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            let _ = writeln!(stderr, "error: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn general_help_text() -> &'static str {
+    concat!(
+        "Usage:\n",
+        "  gb-cli run <rom> [options]\n",
+        "  gb-cli inspect-rom <rom> [--mode <strict|permissive|experimental>]\n",
+        "\n",
+        "Commands:\n",
+        "  run         Execute one ROM with the DMG-family headless runner\n",
+        "  inspect-rom Parse the cartridge header and report mapper compatibility\n",
+        "\n",
+        "Run `gb-cli <command> --help` for command-specific options.\n",
+    )
+}
+
+fn run_help_text() -> &'static str {
+    concat!(
+        "Usage:\n",
+        "  gb-cli run <rom> [options]\n",
+        "\n",
+        "Options:\n",
+        "  --model <dmg0|dmg|mgb>                 Select the DMG-family startup model (default: dmg)\n",
+        "  --startup <skip-boot|real-boot>        Choose startup path (default: skip-boot)\n",
+        "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
+        "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
+        "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
+        "  --frames <n>                           Stop after <n> completed frames\n",
+        "  --tcycles <n>                          Stop after <n> T-cycles\n",
+        "                                         If neither limit is provided, skip-boot stops after 120 completed frames\n",
+        "                                         and real-boot stops after boot-ROM handoff plus 120 completed frames\n",
+        "                                         with a 480-frame safety cap if handoff never arrives\n",
+        "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
+        "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
+        "  --framebuffer-out <path>               Save the final 160x144 framebuffer as PGM, or PNG when <path> ends in .png\n",
+        "  --trace-out <path>                     Save the scheduler trace text for the run\n",
+        "  --save-dir <dir>                       Load/save battery-backed cartridge persistence under this directory\n",
+        "  --save-key <key>                       Override the derived save key (ASCII alnum, '_' or '-')\n",
+        "  --save-policy <manual|on-close|on-write>\n",
+        "                                         Select automatic persistence behavior (default: on-close)\n",
+    )
+}
+
+fn inspect_help_text() -> &'static str {
+    concat!(
+        "Usage:\n",
+        "  gb-cli inspect-rom <rom> [--mode <strict|permissive|experimental>]\n",
+        "\n",
+        "Options:\n",
+        "  --mode <strict|permissive|experimental> Evaluate loader compatibility under the selected mode\n",
+    )
+}
+
+fn run_cli_command<I, S, W1, W2>(
+    arguments: I,
+    stdout: &mut W1,
+    stderr: &mut W2,
+) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+    W1: Write,
+    W2: Write,
+{
+    match parse_cli_arguments(arguments)? {
+        CliAction::ShowGeneralHelp => write_text(stdout, general_help_text()),
+        CliAction::ShowRunHelp => write_text(stdout, run_help_text()),
+        CliAction::ShowInspectHelp => write_text(stdout, inspect_help_text()),
+        CliAction::Run(options) => run_command(options, stdout, stderr),
+        CliAction::InspectRom(options) => inspect_rom_command(options, stdout),
+    }
+}
+
+fn parse_cli_arguments<I, S>(arguments: I) -> Result<CliAction, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut arguments = arguments.into_iter();
+    let Some(command) = arguments.next() else {
+        return Ok(CliAction::ShowGeneralHelp);
+    };
+
+    match command.as_ref() {
+        "--help" | "-h" => Ok(CliAction::ShowGeneralHelp),
+        "run" => parse_run_arguments(arguments),
+        "inspect-rom" => parse_inspect_rom_arguments(arguments),
+        other => Err(format!(
+            "unknown subcommand {other:?}; run `gb-cli --help` for usage"
+        )),
+    }
+}
+
+fn parse_run_arguments<I, S>(arguments: I) -> Result<CliAction, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut arguments = arguments.into_iter();
+    let mut rom_path = None;
+    let mut options = None;
+    let mut save_policy_explicit = false;
+
+    while let Some(argument) = arguments.next() {
+        match argument.as_ref() {
+            "--help" | "-h" => return Ok(CliAction::ShowRunHelp),
+            "--model" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--model requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().model = parse_run_model(value.as_ref())?;
+            }
+            "--startup" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--startup requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().startup_mode = parse_startup_mode(value.as_ref())?;
+            }
+            "--mode" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--mode requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().execution_mode = parse_execution_mode(value.as_ref())?;
+            }
+            "--boot-rom-dir" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--boot-rom-dir requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().boot_rom_dir = Some(PathBuf::from(value.as_ref()));
+            }
+            "--boot-rom-verify" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--boot-rom-verify requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().boot_rom_verify =
+                    parse_boot_rom_verification_mode(value.as_ref())?;
+            }
+            "--frames" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--frames requires a value".to_string());
+                };
+                let parsed = parse_positive_u32("--frames", value.as_ref())?;
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().frame_limit = Some(parsed);
+            }
+            "--tcycles" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--tcycles requires a value".to_string());
+                };
+                let parsed = parse_positive_u64("--tcycles", value.as_ref())?;
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().tcycle_limit = Some(parsed);
+            }
+            "--serial-stdout" => {
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().serial_stdout = true;
+            }
+            "--serial-out" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--serial-out requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().serial_out = Some(PathBuf::from(value.as_ref()));
+            }
+            "--framebuffer-out" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--framebuffer-out requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().framebuffer_out = Some(PathBuf::from(value.as_ref()));
+            }
+            "--trace-out" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--trace-out requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().trace_out = Some(PathBuf::from(value.as_ref()));
+            }
+            "--save-dir" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--save-dir requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().save_dir = Some(PathBuf::from(value.as_ref()));
+            }
+            "--save-key" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--save-key requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().save_key = Some(value.as_ref().to_string());
+            }
+            "--save-policy" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--save-policy requires a value".to_string());
+                };
+                ensure_run_options_initialized(&mut options, &rom_path)?;
+                options.as_mut().unwrap().save_policy = parse_save_policy(value.as_ref())?;
+                save_policy_explicit = true;
+            }
+            value if value.starts_with("--") => {
+                return Err(format!(
+                    "unknown run option {value:?}; run `gb-cli run --help`"
+                ));
+            }
+            value => {
+                if rom_path.is_some() {
+                    return Err(format!(
+                        "unexpected extra positional argument {value:?}; run `gb-cli run --help`"
+                    ));
+                }
+                rom_path = Some(PathBuf::from(value));
+                options = Some(RunOptions::default_with_rom(
+                    rom_path.clone().expect("rom_path was just assigned"),
+                ));
+            }
+        }
+    }
+
+    let mut options = options.ok_or_else(|| {
+        "missing required ROM path; run `gb-cli run --help` for usage".to_string()
+    })?;
+    if options.save_dir.is_none() {
+        if options.save_key.is_some() {
+            return Err("--save-key requires --save-dir".to_string());
+        }
+        if save_policy_explicit {
+            return Err("--save-policy requires --save-dir".to_string());
+        }
+    }
+    if options.frame_limit.is_none() && options.tcycle_limit.is_none() {
+        options.default_run_budget = Some(DefaultRunBudget::for_startup_mode(options.startup_mode));
+    }
+
+    Ok(CliAction::Run(options))
+}
+
+fn parse_inspect_rom_arguments<I, S>(arguments: I) -> Result<CliAction, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut arguments = arguments.into_iter();
+    let mut rom_path = None;
+    let mut execution_mode = ExecutionMode::Strict;
+
+    while let Some(argument) = arguments.next() {
+        match argument.as_ref() {
+            "--help" | "-h" => return Ok(CliAction::ShowInspectHelp),
+            "--mode" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--mode requires a value".to_string());
+                };
+                execution_mode = parse_execution_mode(value.as_ref())?;
+            }
+            value if value.starts_with("--") => {
+                return Err(format!(
+                    "unknown inspect-rom option {value:?}; run `gb-cli inspect-rom --help`"
+                ));
+            }
+            value => {
+                if rom_path.is_some() {
+                    return Err(format!(
+                        "unexpected extra positional argument {value:?}; run `gb-cli inspect-rom --help`"
+                    ));
+                }
+                rom_path = Some(PathBuf::from(value));
+            }
+        }
+    }
+
+    Ok(CliAction::InspectRom(InspectRomOptions {
+        rom_path: rom_path.ok_or_else(|| {
+            "missing required ROM path; run `gb-cli inspect-rom --help` for usage".to_string()
+        })?,
+        execution_mode,
+    }))
+}
+
+fn ensure_run_options_initialized(
+    options: &mut Option<RunOptions>,
+    rom_path: &Option<PathBuf>,
+) -> Result<(), String> {
+    if options.is_none() {
+        if let Some(rom_path) = rom_path {
+            *options = Some(RunOptions::default_with_rom(rom_path.clone()));
+        } else {
+            return Err(
+                "the ROM path must be the first positional argument to `gb-cli run`".to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_command<W1: Write, W2: Write>(
+    options: RunOptions,
+    stdout: &mut W1,
+    stderr: &mut W2,
+) -> Result<(), String> {
+    let current_dir = env::current_dir()
+        .map_err(|error| format!("failed to determine current directory: {error}"))?;
+    let rom_path = resolve_path(&current_dir, &options.rom_path);
+    let rom_bytes = fs::read(&rom_path)
+        .map_err(|error| format!("failed to read ROM {}: {error}", rom_path.display()))?;
+
+    let boot_rom_assets = load_boot_rom_assets(&options, &current_dir, stderr)?;
+    let config = MachineConfig::new(options.model.console_model())
+        .with_startup_mode(options.startup_mode)
+        .with_compatibility(compatibility_for_execution_mode(options.execution_mode))
+        .with_boot_rom_assets(boot_rom_assets);
+    let mut machine = CliMachine::new(config, options.trace_out.is_some());
+    let diagnostics = machine
+        .load_cartridge(rom_bytes)
+        .map_err(format_cartridge_load_error)?;
+    write_cartridge_diagnostics(stderr, &diagnostics)?;
+
+    let save_root = options
+        .save_dir
+        .as_ref()
+        .map(|path| resolve_path(&current_dir, path));
+    if let Some(save_root) = &save_root {
+        validate_directory_input("--save-dir", save_root)?;
+    }
+    let mut save_session = open_save_session(
+        save_root.as_deref(),
+        &options,
+        &rom_path,
+        &mut machine,
+        stderr,
+    )?;
+
+    let frame_limit = options.frame_limit;
+    let tcycle_limit = options.tcycle_limit;
+    let default_run_budget = options.default_run_budget;
+    let mut executed_tcycles = 0_u64;
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.at_frame_origin();
+    let mut boot_rom_was_mapped = machine.is_boot_rom_mapped();
+    let mut completed_frames_at_boot_handoff = None;
+    let mut serial_byte_count = 0_usize;
+    let mut serial_capture = options.serial_out.as_ref().map(|_| Vec::new());
+
+    while !run_limit_reached(
+        frame_limit,
+        tcycle_limit,
+        completed_frames,
+        executed_tcycles,
+    ) && !default_run_limit_reached(
+        default_run_budget,
+        completed_frames,
+        completed_frames_at_boot_handoff,
+    ) {
+        machine.step_t_cycle();
+        executed_tcycles += 1;
+
+        let boot_rom_is_mapped = machine.is_boot_rom_mapped();
+        if completed_frames_at_boot_handoff.is_none() && boot_rom_was_mapped && !boot_rom_is_mapped
+        {
+            completed_frames_at_boot_handoff = Some(completed_frames);
+        }
+        boot_rom_was_mapped = boot_rom_is_mapped;
+
+        let serial_bytes = machine.take_serial_output_bytes();
+        if !serial_bytes.is_empty() {
+            serial_byte_count += serial_bytes.len();
+            if options.serial_stdout {
+                stdout
+                    .write_all(&serial_bytes)
+                    .map_err(|error| format!("failed to write serial stdout: {error}"))?;
+                stdout
+                    .flush()
+                    .map_err(|error| format!("failed to flush serial stdout: {error}"))?;
+            }
+            if let Some(capture) = &mut serial_capture {
+                capture.extend_from_slice(&serial_bytes);
+            }
+        }
+
+        let now_at_frame_origin = machine.at_frame_origin();
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+            if matches!(options.save_policy, SavePolicy::OnWrite)
+                && let Some(save_session) = &mut save_session
+            {
+                flush_save_if_changed(save_session, &machine, "frame-boundary")?;
+            }
+        }
+        at_frame_origin = now_at_frame_origin;
+    }
+
+    if let Some(serial_out) = &options.serial_out {
+        let serial_bytes = serial_capture.as_deref().unwrap_or_default();
+        write_bytes_with_parent(serial_out, serial_bytes)?;
+    }
+    if let Some(framebuffer_out) = &options.framebuffer_out {
+        let framebuffer_image = encode_framebuffer_artifact(framebuffer_out, machine.framebuffer())
+            .map_err(|error| {
+                format!(
+                    "failed to encode framebuffer artifact {}: {error}",
+                    framebuffer_out.display()
+                )
+            })?;
+        write_bytes_with_parent(framebuffer_out, &framebuffer_image)?;
+    }
+    if let Some(trace_out) = &options.trace_out {
+        let Some(trace_text) = machine.trace_text() else {
+            return Err("trace output requested without an in-memory trace buffer".to_string());
+        };
+        write_text_file_with_parent(trace_out, &trace_text)?;
+    }
+
+    if let Some(save_session) = &mut save_session {
+        match options.save_policy {
+            SavePolicy::Manual => {}
+            SavePolicy::OnClose | SavePolicy::OnWrite => {
+                flush_save_if_changed(save_session, &machine, "run-complete")?;
+            }
+        }
+    }
+
+    writeln_checked(stderr, &format!("rom={}", rom_path.display()))?;
+    writeln_checked(stderr, &format!("model={}", options.model.name()))?;
+    writeln_checked(
+        stderr,
+        &format!("startup={}", startup_mode_name(options.startup_mode)),
+    )?;
+    writeln_checked(
+        stderr,
+        &format!("mode={}", execution_mode_name(options.execution_mode)),
+    )?;
+    writeln_checked(stderr, &format!("executed_tcycles={executed_tcycles}"))?;
+    writeln_checked(stderr, &format!("completed_frames={completed_frames}"))?;
+    writeln_checked(stderr, &format!("serial_bytes={serial_byte_count}"))?;
+    if let Some(framebuffer_out) = &options.framebuffer_out {
+        writeln_checked(
+            stderr,
+            &format!("framebuffer_out={}", framebuffer_out.display()),
+        )?;
+    }
+    if let Some(trace_out) = &options.trace_out {
+        writeln_checked(stderr, &format!("trace_out={}", trace_out.display()))?;
+    }
+    if let Some(serial_out) = &options.serial_out {
+        writeln_checked(stderr, &format!("serial_out={}", serial_out.display()))?;
+    }
+    if let Some(save_session) = &save_session {
+        writeln_checked(stderr, &format!("save_key={}", save_session.key.as_str()))?;
+        writeln_checked(
+            stderr,
+            &format!("save_file={}", save_session.save_path().display()),
+        )?;
+        writeln_checked(
+            stderr,
+            &format!("save_loaded_existing={}", save_session.loaded_existing_save),
+        )?;
+        writeln_checked(
+            stderr,
+            &format!("save_policy={}", options.save_policy.name()),
+        )?;
+        writeln_checked(stderr, &format!("save_writes={}", save_session.save_writes))?;
+    }
+
+    Ok(())
+}
+
+fn inspect_rom_command<W: Write>(options: InspectRomOptions, output: &mut W) -> Result<(), String> {
+    let current_dir = env::current_dir()
+        .map_err(|error| format!("failed to determine current directory: {error}"))?;
+    let rom_path = resolve_path(&current_dir, &options.rom_path);
+    let rom_bytes = fs::read(&rom_path)
+        .map_err(|error| format!("failed to read ROM {}: {error}", rom_path.display()))?;
+    let header = CartridgeHeader::parse(&rom_bytes).map_err(format_header_parse_error)?;
+    let compatibility = compatibility_for_execution_mode(options.execution_mode);
+
+    let (load_status, classification, diagnostics, rejection_reason) =
+        match CartridgeSlot::load(rom_bytes, &compatibility) {
+            Ok(report) => {
+                let classification = report
+                    .cartridge()
+                    .classification()
+                    .expect("loaded cartridges should always expose a classification");
+                (
+                    "ok",
+                    classification,
+                    report.diagnostics().to_vec(),
+                    None::<String>,
+                )
+            }
+            Err(CartridgeLoadError::Rejected {
+                classification,
+                reason,
+                diagnostics,
+                ..
+            }) => ("rejected", classification, diagnostics, Some(reason)),
+            Err(CartridgeLoadError::HeaderParse(error)) => {
+                return Err(format_header_parse_error(error));
+            }
+        };
+
+    writeln_checked(output, &format!("rom={}", rom_path.display()))?;
+    writeln_checked(output, &format!("title={}", header.title))?;
+    writeln_checked(
+        output,
+        &format!(
+            "execution_mode={}",
+            execution_mode_name(options.execution_mode)
+        ),
+    )?;
+    writeln_checked(output, &format!("load_status={load_status}"))?;
+    writeln_checked(
+        output,
+        &format!("cartridge_type=0x{:02X}", header.cartridge_type),
+    )?;
+    writeln_checked(
+        output,
+        &format!("mapper_name={}", classification.detected_name()),
+    )?;
+    writeln_checked(
+        output,
+        &format!("selection={}", selection_name(classification.selection())),
+    )?;
+    writeln_checked(
+        output,
+        &format!("selection_reason={}", classification.reason()),
+    )?;
+    writeln_checked(
+        output,
+        &format!("cgb_flag={}", cgb_flag_name(header.cgb_flag)),
+    )?;
+    writeln_checked(
+        output,
+        &format!("sgb_flag={}", sgb_flag_name(header.sgb_flag)),
+    )?;
+    writeln_checked(
+        output,
+        &format!("rom_size_code=0x{:02X}", header.rom_size.raw_code),
+    )?;
+    writeln_checked(
+        output,
+        &format!(
+            "rom_size_bytes={}",
+            optional_usize_name(header.rom_size.decoded_bytes)
+        ),
+    )?;
+    writeln_checked(
+        output,
+        &format!(
+            "rom_bank_count={}",
+            optional_usize_name(header.rom_size.bank_count)
+        ),
+    )?;
+    writeln_checked(
+        output,
+        &format!("ram_size_code=0x{:02X}", header.ram_size.raw_code),
+    )?;
+    writeln_checked(
+        output,
+        &format!(
+            "ram_size_bytes={}",
+            optional_usize_name(header.ram_size.decoded_bytes)
+        ),
+    )?;
+    writeln_checked(
+        output,
+        &format!(
+            "ram_bank_count={}",
+            optional_usize_name(header.ram_size.bank_count)
+        ),
+    )?;
+    writeln_checked(output, &format!("diagnostic_count={}", diagnostics.len()))?;
+    for diagnostic in diagnostics {
+        writeln_checked(
+            output,
+            &format!(
+                "diagnostic={} {}",
+                diagnostic_severity_name(diagnostic.severity),
+                diagnostic.message
+            ),
+        )?;
+    }
+    if let Some(reason) = rejection_reason {
+        writeln_checked(output, &format!("rejection_reason={reason}"))?;
+    }
+
+    Ok(())
+}
+
+fn open_save_session<W: Write>(
+    save_root: Option<&Path>,
+    options: &RunOptions,
+    rom_path: &Path,
+    machine: &mut CliMachine,
+    stderr: &mut W,
+) -> Result<Option<SaveSession>, String> {
+    let Some(save_root) = save_root else {
+        return Ok(None);
+    };
+
+    let metadata = machine.cartridge().persistence_metadata();
+    if !uses_battery_backed_hardware_persistence(metadata) {
+        writeln_checked(stderr, "save=skipped not_battery_backed=true")?;
+        return Ok(None);
+    }
+
+    let key = if let Some(key) = &options.save_key {
+        parse_save_key(key)?
+    } else {
+        derive_save_key(rom_path)?
+    };
+
+    let backend = FilesystemCartridgeSaveBackend::new(save_root);
+    let mut loaded_existing_save = false;
+    let mut last_saved_state = machine.cartridge().persistent_state();
+
+    if let Some(envelope) = backend.load(&key).map_err(|error| {
+        format!(
+            "failed to load save {}: {error}",
+            backend.path_for_key(&key).display()
+        )
+    })? {
+        let elapsed_seconds = backend
+            .current_unix_seconds()
+            .saturating_sub(envelope.backend_metadata.saved_at_unix_seconds);
+        let mut restored_state = envelope.persistent_state;
+        apply_elapsed_off_session_seconds(&mut restored_state, elapsed_seconds);
+        machine
+            .restore_cartridge_persistent_state(&restored_state)
+            .map_err(|error| format!("failed to restore cartridge persistence: {error:?}"))?;
+        last_saved_state = machine.cartridge().persistent_state();
+        loaded_existing_save = true;
+        writeln_checked(
+            stderr,
+            &format!(
+                "save_loaded path={} elapsed_seconds={elapsed_seconds}",
+                backend.path_for_key(&key).display()
+            ),
+        )?;
+    }
+
+    Ok(Some(SaveSession {
+        backend,
+        key,
+        last_saved_state,
+        loaded_existing_save,
+        save_writes: 0,
+    }))
+}
+
+fn flush_save_if_changed(
+    save_session: &mut SaveSession,
+    machine: &CliMachine,
+    reason: &str,
+) -> Result<bool, String> {
+    let current_state = machine.cartridge().persistent_state();
+    if current_state == save_session.last_saved_state {
+        return Ok(false);
+    }
+
+    save_session
+        .backend
+        .save(
+            &save_session.key,
+            machine.cartridge().persistence_metadata(),
+            &current_state,
+        )
+        .map_err(|error| {
+            format!(
+                "failed to save cartridge persistence ({reason}) to {}: {error}",
+                save_session.save_path().display()
+            )
+        })?;
+    save_session.last_saved_state = current_state;
+    save_session.save_writes += 1;
+    Ok(true)
+}
+
+fn load_boot_rom_assets<W: Write>(
+    options: &RunOptions,
+    current_dir: &Path,
+    stderr: &mut W,
+) -> Result<BootRomAssets, String> {
+    if options.startup_mode != StartupMode::RealBoot {
+        return Ok(BootRomAssets::none());
+    }
+
+    let root = resolve_boot_rom_root(options.boot_rom_dir.as_deref(), current_dir);
+    validate_explicit_directory_input("--boot-rom-dir", options.boot_rom_dir.as_deref(), &root)?;
+    let image_path = root.join(BootRomAssets::filename(options.model.boot_rom_kind()));
+    match options.boot_rom_verify {
+        BootRomVerificationMode::Off => {}
+        BootRomVerificationMode::Warn => {
+            if let Err(error) = verify_boot_rom_file(&image_path, options.model.boot_rom_kind()) {
+                writeln_checked(stderr, &format!("warning: {error}"))?;
+            }
+        }
+        BootRomVerificationMode::Strict => {
+            verify_boot_rom_file(&image_path, options.model.boot_rom_kind())?;
+        }
+    }
+
+    if !root.is_dir() {
+        return Ok(BootRomAssets::none());
+    }
+
+    BootRomAssets::from_directory(&root).map_err(|error| {
+        format!(
+            "failed to load boot ROM assets from {}: {error}",
+            root.display()
+        )
+    })
+}
+
+fn resolve_boot_rom_root(explicit_root: Option<&Path>, current_dir: &Path) -> PathBuf {
+    if let Some(explicit_root) = explicit_root {
+        return resolve_path(current_dir, explicit_root);
+    }
+    if let Some(root) = env::var_os(DEFAULT_BOOT_ROM_ROOT_ENV_VAR) {
+        return PathBuf::from(root);
+    }
+    current_dir.join(DEFAULT_BOOT_ROM_DIR)
+}
+
+fn resolve_path(current_dir: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        current_dir.join(path)
+    }
+}
+
+fn validate_explicit_directory_input(
+    flag: &str,
+    explicit_path: Option<&Path>,
+    resolved_path: &Path,
+) -> Result<(), String> {
+    if explicit_path.is_some() {
+        validate_directory_input(flag, resolved_path)?;
+    }
+    Ok(())
+}
+
+fn validate_directory_input(flag: &str, path: &Path) -> Result<(), String> {
+    if path.exists() && !path.is_dir() {
+        return Err(format!(
+            "{flag} expects a directory path: {}",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn write_cartridge_diagnostics<W: Write>(
+    stderr: &mut W,
+    diagnostics: &[CartridgeDiagnostic],
+) -> Result<(), String> {
+    for diagnostic in diagnostics {
+        writeln_checked(
+            stderr,
+            &format!(
+                "{}: {}",
+                diagnostic_severity_name(diagnostic.severity),
+                diagnostic.message
+            ),
+        )?;
+    }
+    Ok(())
+}
+
+fn write_bytes_with_parent(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create directory {}: {error}", parent.display()))?;
+    }
+    fs::write(path, bytes).map_err(|error| format!("failed to write {}: {error}", path.display()))
+}
+
+fn write_text_file_with_parent(path: &Path, text: &str) -> Result<(), String> {
+    write_bytes_with_parent(path, text.as_bytes())
+}
+
+fn write_text<W: Write>(writer: &mut W, text: &str) -> Result<(), String> {
+    writer
+        .write_all(text.as_bytes())
+        .map_err(|error| format!("failed to write output: {error}"))
+}
+
+fn writeln_checked<W: Write>(writer: &mut W, line: &str) -> Result<(), String> {
+    writer
+        .write_all(line.as_bytes())
+        .and_then(|()| writer.write_all(b"\n"))
+        .map_err(|error| format!("failed to write output: {error}"))
+}
+
+fn run_limit_reached(
+    frame_limit: Option<u32>,
+    tcycle_limit: Option<u64>,
+    completed_frames: u32,
+    executed_tcycles: u64,
+) -> bool {
+    frame_limit.is_some_and(|limit| completed_frames >= limit)
+        || tcycle_limit.is_some_and(|limit| executed_tcycles >= limit)
+}
+
+fn default_run_limit_reached(
+    default_run_budget: Option<DefaultRunBudget>,
+    completed_frames: u32,
+    completed_frames_at_boot_handoff: Option<u32>,
+) -> bool {
+    match default_run_budget {
+        Some(DefaultRunBudget::SkipBootFrames { frame_limit }) => completed_frames >= frame_limit,
+        Some(DefaultRunBudget::RealBootPostHandoff {
+            post_handoff_frame_limit,
+            safety_frame_limit,
+        }) => match completed_frames_at_boot_handoff {
+            Some(frames_at_handoff) => {
+                completed_frames >= frames_at_handoff.saturating_add(post_handoff_frame_limit)
+            }
+            None => completed_frames >= safety_frame_limit,
+        },
+        None => false,
+    }
+}
+
+fn compatibility_for_execution_mode(execution_mode: ExecutionMode) -> CompatibilityPolicy {
+    match execution_mode {
+        ExecutionMode::Strict => CompatibilityPolicy::strict(),
+        ExecutionMode::Permissive => CompatibilityPolicy::permissive(),
+        ExecutionMode::Experimental => CompatibilityPolicy::experimental(),
+    }
+}
+
+fn parse_run_model(value: &str) -> Result<RunModel, String> {
+    match value {
+        "dmg0" => Ok(RunModel::Dmg0),
+        "dmg" => Ok(RunModel::Dmg),
+        "mgb" => Ok(RunModel::Mgb),
+        _ => Err(format!(
+            "unsupported --model value {value:?}; expected one of: dmg0, dmg, mgb"
+        )),
+    }
+}
+
+fn parse_startup_mode(value: &str) -> Result<StartupMode, String> {
+    match value {
+        "skip-boot" => Ok(StartupMode::SkipBoot),
+        "real-boot" => Ok(StartupMode::RealBoot),
+        _ => Err(format!(
+            "unsupported --startup value {value:?}; expected skip-boot or real-boot"
+        )),
+    }
+}
+
+fn parse_execution_mode(value: &str) -> Result<ExecutionMode, String> {
+    match value {
+        "strict" => Ok(ExecutionMode::Strict),
+        "permissive" => Ok(ExecutionMode::Permissive),
+        "experimental" => Ok(ExecutionMode::Experimental),
+        _ => Err(format!(
+            "unsupported --mode value {value:?}; expected strict, permissive, or experimental"
+        )),
+    }
+}
+
+fn parse_boot_rom_verification_mode(value: &str) -> Result<BootRomVerificationMode, String> {
+    match value {
+        "off" => Ok(BootRomVerificationMode::Off),
+        "warn" => Ok(BootRomVerificationMode::Warn),
+        "strict" => Ok(BootRomVerificationMode::Strict),
+        _ => Err(format!(
+            "unsupported --boot-rom-verify value {value:?}; expected off, warn, or strict"
+        )),
+    }
+}
+
+fn parse_save_policy(value: &str) -> Result<SavePolicy, String> {
+    match value {
+        "manual" => Ok(SavePolicy::Manual),
+        "on-close" => Ok(SavePolicy::OnClose),
+        "on-write" => Ok(SavePolicy::OnWrite),
+        _ => Err(format!(
+            "unsupported --save-policy value {value:?}; expected manual, on-close, or on-write"
+        )),
+    }
+}
+
+fn parse_positive_u32(flag: &str, value: &str) -> Result<u32, String> {
+    let parsed = value
+        .parse::<u32>()
+        .map_err(|error| format!("invalid {flag} value {value:?}: {error}"))?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be greater than zero"));
+    }
+    Ok(parsed)
+}
+
+fn parse_positive_u64(flag: &str, value: &str) -> Result<u64, String> {
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|error| format!("invalid {flag} value {value:?}: {error}"))?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be greater than zero"));
+    }
+    Ok(parsed)
+}
+
+fn derive_save_key(rom_path: &Path) -> Result<CartridgeSaveKey, String> {
+    let stem = rom_path
+        .file_stem()
+        .or_else(|| rom_path.file_name())
+        .ok_or_else(|| {
+            format!(
+                "could not derive a save key from ROM path {}; use --save-key instead",
+                rom_path.display()
+            )
+        })?
+        .to_string_lossy();
+    let mut sanitized = String::new();
+    let mut inserted_separator = false;
+    for character in stem.chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '_' | '-') {
+            sanitized.push(character);
+            inserted_separator = false;
+        } else if !inserted_separator {
+            sanitized.push('_');
+            inserted_separator = true;
+        }
+    }
+    let sanitized = sanitized.trim_matches('_').to_string();
+    if sanitized.is_empty() {
+        return Err(format!(
+            "derived save key from {} is empty after sanitization; use --save-key instead",
+            rom_path.display()
+        ));
+    }
+    parse_save_key(&sanitized)
+}
+
+fn parse_save_key(key: &str) -> Result<CartridgeSaveKey, String> {
+    CartridgeSaveKey::new(key).map_err(format_save_key_error)
+}
+
+fn format_save_key_error(error: CartridgeSaveKeyError) -> String {
+    error.to_string()
+}
+
+fn apply_elapsed_off_session_seconds(state: &mut PersistentCartState, elapsed_seconds: u64) {
+    match state {
+        PersistentCartState::Mbc3Rtc { rtc } | PersistentCartState::Mbc3RamRtc { rtc, .. } => {
+            rtc.apply_elapsed_seconds(elapsed_seconds);
+        }
+        _ => {}
+    }
+}
+
+fn framebuffer_output_format(path: &Path) -> FramebufferOutputFormat {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+    {
+        FramebufferOutputFormat::Png
+    } else {
+        FramebufferOutputFormat::Pgm
+    }
+}
+
+fn encode_framebuffer_artifact(path: &Path, framebuffer: &[u8]) -> io::Result<Vec<u8>> {
+    match framebuffer_output_format(path) {
+        FramebufferOutputFormat::Pgm => Ok(encode_framebuffer_pgm(framebuffer)),
+        FramebufferOutputFormat::Png => encode_framebuffer_png(framebuffer),
+    }
+}
+
+fn encode_framebuffer_pgm(framebuffer: &[u8]) -> Vec<u8> {
+    let mut encoded = format!("P5\n{FRAMEBUFFER_WIDTH} {FRAMEBUFFER_HEIGHT}\n3\n").into_bytes();
+    encoded.extend_from_slice(framebuffer);
+    encoded
+}
+
+fn encode_framebuffer_png(framebuffer: &[u8]) -> io::Result<Vec<u8>> {
+    let pixels = framebuffer
+        .iter()
+        .map(|pixel| framebuffer_pixel_to_grayscale(*pixel))
+        .collect::<Vec<_>>();
+    encode_grayscale_png(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, &pixels)
+}
+
+fn encode_grayscale_png(width: usize, height: usize, pixels: &[u8]) -> io::Result<Vec<u8>> {
+    let mut encoded = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut encoded, width as u32, height as u32);
+        encoder.set_color(png::ColorType::Grayscale);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().map_err(png_encoding_io_error)?;
+        writer
+            .write_image_data(pixels)
+            .map_err(png_encoding_io_error)?;
+    }
+    Ok(encoded)
+}
+
+fn framebuffer_pixel_to_grayscale(pixel: u8) -> u8 {
+    match pixel {
+        0..=3 => DMG_GRAYSCALE_SHADES[usize::from(pixel)],
+        _ => DMG_GRAYSCALE_SHADES[3],
+    }
+}
+
+fn png_encoding_io_error(source: png::EncodingError) -> io::Error {
+    io::Error::other(source.to_string())
+}
+
+fn verify_boot_rom_file(path: &Path, kind: BootRomKind) -> Result<(), String> {
+    let bytes = fs::read(path).map_err(|error| {
+        format!(
+            "failed to read boot ROM asset {:?} at {}: {}",
+            kind,
+            path.display(),
+            error
+        )
+    })?;
+    let actual_sha256 = sha256_hex(&bytes);
+    let expected_sha256 = expected_boot_rom_sha256(kind);
+    if actual_sha256 != expected_sha256 {
+        return Err(format!(
+            "boot ROM asset {:?} at {} has unexpected sha256: expected {}, got {}",
+            kind,
+            path.display(),
+            expected_sha256,
+            actual_sha256
+        ));
+    }
+    Ok(())
+}
+
+fn expected_boot_rom_sha256(kind: BootRomKind) -> &'static str {
+    match kind {
+        BootRomKind::Dmg0 => "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e",
+        BootRomKind::Dmg => "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7",
+        BootRomKind::Mgb => "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2",
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn format_cartridge_load_error(error: CartridgeLoadError) -> String {
+    match error {
+        CartridgeLoadError::HeaderParse(error) => format_header_parse_error(error),
+        CartridgeLoadError::Rejected {
+            classification,
+            execution_mode,
+            reason,
+            diagnostics,
+        } => {
+            let mut message = format!(
+                "cartridge rejected under {}: mapper={} selection={} reason={}",
+                execution_mode_name(execution_mode),
+                classification.detected_name(),
+                selection_name(classification.selection()),
+                reason,
+            );
+            if !diagnostics.is_empty() {
+                let joined = diagnostics
+                    .into_iter()
+                    .map(|diagnostic| {
+                        format!(
+                            "{} {}",
+                            diagnostic_severity_name(diagnostic.severity),
+                            diagnostic.message
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                message.push_str(&format!(" diagnostics=[{joined}]"));
+            }
+            message
+        }
+    }
+}
+
+fn format_header_parse_error(error: CartridgeHeaderParseError) -> String {
+    match error {
+        CartridgeHeaderParseError::ImageTooSmall {
+            actual_size,
+            minimum_size,
+        } => format!(
+            "ROM image is too small to contain a cartridge header: expected at least {} bytes, got {}",
+            minimum_size, actual_size
+        ),
+    }
+}
+
+fn startup_mode_name(startup_mode: StartupMode) -> &'static str {
+    match startup_mode {
+        StartupMode::SkipBoot => "skip-boot",
+        StartupMode::RealBoot => "real-boot",
+    }
+}
+
+fn execution_mode_name(execution_mode: ExecutionMode) -> &'static str {
+    match execution_mode {
+        ExecutionMode::Strict => "strict",
+        ExecutionMode::Permissive => "permissive",
+        ExecutionMode::Experimental => "experimental",
+    }
+}
+
+fn diagnostic_severity_name(severity: CartridgeDiagnosticSeverity) -> &'static str {
+    match severity {
+        CartridgeDiagnosticSeverity::Warning => "warning",
+        CartridgeDiagnosticSeverity::Error => "error",
+    }
+}
+
+fn selection_name(selection: CartridgeSelection) -> &'static str {
+    match selection {
+        CartridgeSelection::Supported(_) => "supported",
+        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::PlannedVariant) => {
+            "unsupported-planned-variant"
+        }
+        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::DocumentedButUnsupported) => {
+            "unsupported-documented"
+        }
+        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::ExperimentalHeuristic) => {
+            "unsupported-experimental-heuristic"
+        }
+        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::AccessorySpecialCase) => {
+            "unsupported-accessory"
+        }
+        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::UnknownCode) => {
+            "unsupported-unknown"
+        }
+    }
+}
+
+fn cgb_flag_name(flag: CgbFlag) -> String {
+    match flag {
+        CgbFlag::None => "none".to_string(),
+        CgbFlag::Supported => "supported".to_string(),
+        CgbFlag::Only => "only".to_string(),
+        CgbFlag::Unknown(value) => format!("unknown(0x{value:02X})"),
+    }
+}
+
+fn sgb_flag_name(flag: SgbFlag) -> String {
+    match flag {
+        SgbFlag::None => "none".to_string(),
+        SgbFlag::Supported => "supported".to_string(),
+        SgbFlag::Unknown(value) => format!("unknown(0x{value:02X})"),
+    }
+}
+
+fn optional_usize_name(value: Option<usize>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gb_persistence::FilesystemCartridgeSaveBackend;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        env::temp_dir().join(format!(
+            "gb-cli-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn build_test_rom_with_header(
+        program: &[u8],
+        cartridge_type: u8,
+        rom_size: u8,
+        ram_size: u8,
+    ) -> Vec<u8> {
+        let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
+        for (offset, byte) in program.iter().copied().enumerate() {
+            rom[0x0100 + offset] = byte;
+        }
+        rom[0x0147] = cartridge_type;
+        rom[0x0148] = rom_size;
+        rom[0x0149] = ram_size;
+        rom
+    }
+
+    fn build_single_byte_serial_rom(byte: u8) -> Vec<u8> {
+        build_test_rom_with_header(
+            &[
+                0x3E, byte, // LD A,d8
+                0xE0, 0x01, // LDH (SB),A
+                0x3E, 0x81, // LD A,$81
+                0xE0, 0x02, // LDH (SC),A
+                0xC3, 0x08, 0x01, // JP $0108
+            ],
+            0x00,
+            0x00,
+            0x00,
+        )
+    }
+
+    fn build_battery_backed_serial_and_ram_rom(byte: u8, ram_value: u8) -> Vec<u8> {
+        build_test_rom_with_header(
+            &[
+                0x3E, ram_value, // LD A,d8
+                0xEA, 0x00, 0xA0, // LD ($A000),A
+                0x3E, byte, // LD A,d8
+                0xE0, 0x01, // LDH (SB),A
+                0x3E, 0x81, // LD A,$81
+                0xE0, 0x02, // LDH (SC),A
+                0xC3, 0x0D, 0x01, // JP $010D
+            ],
+            0x09,
+            0x00,
+            0x02,
+        )
+    }
+
+    #[test]
+    fn parse_run_arguments_keep_the_dmg_first_defaults() {
+        let action = parse_cli_arguments(["run", "demo.gb"]).expect("run arguments should parse");
+
+        match action {
+            CliAction::Run(options) => {
+                assert_eq!(options.model, RunModel::Dmg);
+                assert_eq!(options.startup_mode, StartupMode::SkipBoot);
+                assert_eq!(options.execution_mode, ExecutionMode::Strict);
+                assert_eq!(
+                    options.default_run_budget,
+                    Some(DefaultRunBudget::SkipBootFrames {
+                        frame_limit: DEFAULT_SKIP_BOOT_FRAME_LIMIT,
+                    })
+                );
+                assert_eq!(options.frame_limit, None);
+                assert_eq!(options.tcycle_limit, None);
+            }
+            other => panic!("expected run action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_run_arguments_use_the_real_boot_default_budget_profile_when_no_limit_is_provided() {
+        let action = parse_cli_arguments(["run", "demo.gb", "--startup", "real-boot"])
+            .expect("real-boot arguments should parse");
+
+        match action {
+            CliAction::Run(options) => {
+                assert_eq!(options.startup_mode, StartupMode::RealBoot);
+                assert_eq!(
+                    options.default_run_budget,
+                    Some(DefaultRunBudget::RealBootPostHandoff {
+                        post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
+                        safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
+                    })
+                );
+                assert_eq!(options.frame_limit, None);
+                assert_eq!(options.tcycle_limit, None);
+            }
+            other => panic!("expected run action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn default_run_limit_profiles_cover_skip_boot_post_handoff_and_safety_cap() {
+        assert!(default_run_limit_reached(
+            Some(DefaultRunBudget::SkipBootFrames {
+                frame_limit: DEFAULT_SKIP_BOOT_FRAME_LIMIT,
+            }),
+            DEFAULT_SKIP_BOOT_FRAME_LIMIT,
+            None,
+        ));
+        assert!(!default_run_limit_reached(
+            Some(DefaultRunBudget::RealBootPostHandoff {
+                post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
+                safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
+            }),
+            DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
+            None,
+        ));
+        assert!(default_run_limit_reached(
+            Some(DefaultRunBudget::RealBootPostHandoff {
+                post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
+                safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
+            }),
+            DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
+            None,
+        ));
+        assert!(!default_run_limit_reached(
+            Some(DefaultRunBudget::RealBootPostHandoff {
+                post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
+                safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
+            }),
+            121,
+            Some(2),
+        ));
+        assert!(default_run_limit_reached(
+            Some(DefaultRunBudget::RealBootPostHandoff {
+                post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
+                safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
+            }),
+            122,
+            Some(2),
+        ));
+    }
+
+    #[test]
+    fn inspect_rom_reports_the_supported_nomcb_header_shape() {
+        let temp_dir = unique_temp_dir("inspect-rom");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+        let rom_path = temp_dir.join("inspect.gb");
+        fs::write(&rom_path, build_single_byte_serial_rom(b'O'))
+            .expect("test ROM should be writable");
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        run_cli_command(
+            [
+                "inspect-rom",
+                rom_path.to_str().expect("path should be valid UTF-8"),
+            ],
+            &mut stdout,
+            &mut stderr,
+        )
+        .expect("inspect-rom should succeed");
+
+        let output = String::from_utf8(stdout).expect("inspect output should be UTF-8");
+        assert!(output.contains("load_status=ok"));
+        assert!(output.contains("mapper_name=ROM ONLY"));
+        assert!(output.contains("selection=supported"));
+        assert!(stderr.is_empty());
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn run_command_emits_requested_artifacts_and_persists_battery_backed_ram() {
+        let temp_dir = unique_temp_dir("run-artifacts");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+        let rom_path = temp_dir.join("battery_serial.gb");
+        let serial_path = temp_dir.join("artifacts/serial.bin");
+        let framebuffer_path = temp_dir.join("artifacts/framebuffer.png");
+        let trace_path = temp_dir.join("artifacts/trace.txt");
+        let save_root = temp_dir.join("saves");
+        fs::write(
+            &rom_path,
+            build_battery_backed_serial_and_ram_rom(b'R', 0x5A),
+        )
+        .expect("test ROM should be writable");
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        run_cli_command(
+            [
+                "run",
+                rom_path.to_str().expect("path should be valid UTF-8"),
+                "--tcycles",
+                "10000",
+                "--serial-out",
+                serial_path.to_str().expect("path should be valid UTF-8"),
+                "--framebuffer-out",
+                framebuffer_path
+                    .to_str()
+                    .expect("path should be valid UTF-8"),
+                "--trace-out",
+                trace_path.to_str().expect("path should be valid UTF-8"),
+                "--save-dir",
+                save_root.to_str().expect("path should be valid UTF-8"),
+            ],
+            &mut stdout,
+            &mut stderr,
+        )
+        .expect("run command should succeed");
+
+        assert!(
+            stdout.is_empty(),
+            "serial was written to a file, not stdout"
+        );
+        assert_eq!(
+            fs::read(&serial_path).expect("serial output should exist"),
+            b"R"
+        );
+        let framebuffer = fs::read(&framebuffer_path).expect("framebuffer should exist");
+        assert!(framebuffer.starts_with(b"\x89PNG\r\n\x1A\n"));
+        let decoder = png::Decoder::new(std::io::Cursor::new(&framebuffer));
+        let mut reader = decoder.read_info().expect("PNG should decode");
+        let mut buffer = vec![0; reader.output_buffer_size()];
+        let info = reader
+            .next_frame(&mut buffer)
+            .expect("PNG frame should decode");
+        assert_eq!(info.width, FRAMEBUFFER_WIDTH as u32);
+        assert_eq!(info.height, FRAMEBUFFER_HEIGHT as u32);
+        assert_eq!(info.color_type, png::ColorType::Grayscale);
+        let trace = fs::read_to_string(&trace_path).expect("trace should exist");
+        assert!(trace.contains("t_cycle="));
+
+        let save_key = derive_save_key(&rom_path).expect("save key should derive");
+        let backend = FilesystemCartridgeSaveBackend::new(&save_root);
+        let envelope = backend
+            .load(&save_key)
+            .expect("save should be readable")
+            .expect("save should exist");
+        match envelope.persistent_state {
+            PersistentCartState::NoMbcRam { ram } => assert_eq!(ram[0], 0x5A),
+            other => panic!("expected NoMbcRam persistence, got {other:?}"),
+        }
+
+        let stderr_output = String::from_utf8(stderr).expect("stderr should be UTF-8");
+        assert!(stderr_output.contains("save_writes=1"));
+        assert!(stderr_output.contains("serial_bytes=1"));
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn framebuffer_artifact_defaults_to_pgm_when_path_is_not_png() {
+        let encoded = encode_framebuffer_artifact(Path::new("framebuffer.pgm"), &[0, 1, 2, 3])
+            .expect("PGM encoding should succeed");
+
+        assert!(encoded.starts_with(b"P5\n160 144\n3\n"));
+    }
 }

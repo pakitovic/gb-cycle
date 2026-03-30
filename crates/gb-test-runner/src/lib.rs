@@ -4,6 +4,7 @@ mod differential;
 pub mod external_roms;
 mod fetch_external_roms;
 mod framebuffer_oracle;
+mod local_rom_suite_manifest;
 mod run_differential_cli;
 mod run_rom_suite_cli;
 mod run_sameboy_case_bundle_cli;
@@ -50,6 +51,7 @@ pub use external_roms::{
     load_external_rom_source_manifest, local_commercial_rom_store_root,
 };
 pub use fetch_external_roms::{fetch_external_roms_help_text, run_fetch_external_roms_command};
+pub use local_rom_suite_manifest::{LocalRomSuiteManifestError, load_local_rom_suite_manifest};
 pub use run_differential_cli::{differential_cli_help_text, run_differential_command};
 pub use run_rom_suite_cli::{rom_suite_cli_help_text, run_rom_suite_command};
 pub use run_sameboy_case_bundle_cli::{

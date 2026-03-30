@@ -38,6 +38,23 @@ Mid-term planned extensions, not yet materialized as separate crates:
 - additional tooling such as richer debugger and utilities
 - broader integration tests and ROM suites
 
+### `gb-cli`
+
+The workspace now includes a headless CLI runner for the DMG family:
+
+```bash
+cargo run -p gb-cli -- inspect-rom path/to/rom.gb
+cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts/serial.bin
+```
+
+- `run` currently exposes the DMG-family models `dmg0`, `dmg`, and `mgb`
+- `run` supports `skip-boot` and `real-boot`, plus `strict`, `permissive`, and `experimental` compatibility modes
+- `real-boot` looks for boot ROM assets in `GB_CYCLE_BOOT_ROM_ROOT` or the repo-local `/.roms/bootrom/` store and can verify the expected DMG-family SHA-256 hashes
+- `--framebuffer-out` writes the final `160x144` framebuffer as a binary PGM image, or as a real PNG when the output path ends in `.png`
+- `--trace-out` writes the in-memory scheduler trace text for the run
+- `--save-dir` loads and stores battery-backed cartridge persistence using the host-side `.gbsav` format from `gb-persistence`
+- if neither `--frames` nor `--tcycles` is provided, `skip-boot` stops after `120` completed frames by default, while `real-boot` stops after boot-ROM handoff plus `120` completed post-handoff frames with a `480`-frame safety cap
+
 ### Requirements
 
 - Rust `1.93.1` via `rustup`
@@ -193,6 +210,10 @@ make run-mooneye
 - keep private commercial ROMs out of that path; use the separate gitignored
   `/.roms/local-commercial/` directory for local-only assets that must never be
   referenced by CI
+- for ad hoc local commercial-ROM bring-up, `run_rom_suite` also accepts
+  `--manifest <path>` with typed per-case metadata and deterministic joypad
+  stimuli; when a manifest-driven case captures the framebuffer, the runner
+  writes a sibling PNG next to the ROM using the ROM stem
 - to audit the current built-in suites and their oracle channels without reading
   the source, run:
 
@@ -218,6 +239,39 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --suite acid-dmg-curated
 ```bash
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite blargg-dmg-curated
 ```
+
+- to drive one local commercial ROM with real boot plus deterministic `Start`
+  input, write a manifest like this and run it with `--manifest`:
+
+```toml
+version = 1
+
+[[case]]
+id = "tetris-dmg-start"
+rom = ".roms/local-commercial/tetris.gb"
+console = "dmg"
+startup = "real-boot"
+mode = "strict"
+timeout_frames = 760
+oracle = "info-framebuffer"
+
+[[case.stimulus]]
+frame = 650
+button = "start"
+pressed = true
+
+[[case.stimulus]]
+frame = 690
+button = "start"
+pressed = false
+```
+
+```bash
+cargo run -p gb-test-runner --bin run_rom_suite -- --manifest .artifacts/tetris-start.toml
+```
+
+  The final framebuffer PNG lands next to the ROM as
+  `/.roms/local-commercial/tetris.png`.
 
 - to run the current exploratory `mealybug-tearoom` DMG subset and retain its
   mismatch artifacts, run:

@@ -145,6 +145,11 @@ This checklist should move only when one of the following becomes true:
   the curated family manifest order instead of being alphabetized by ROM
   filename.
 - Keep redistributable external test ROMs and non-redistributable commercial ROMs in separate stores. The current local-only commercial bucket is `/.roms/local-commercial/`, and it must remain outside CI, docs about official closure, and public automation targets.
+- For ad hoc local commercial-ROM bring-up that still needs deterministic host
+  input, prefer `gb-test-runner --manifest <path>` over growing `gb-cli`
+  into a second harness. That manifest path should carry the typed case
+  contract directly, including model, startup mode, timeout, oracle, and any
+  scheduled joypad stimuli.
 - Keep local boot ROM images under the repo-managed gitignored `/.roms/bootrom/`
   store, using the canonical filenames from `gb-core` (`dmg0_boot.bin`,
   `dmg_boot.bin`, `mgb_boot.bin`) so local real-boot runs do not depend on ad
@@ -154,6 +159,11 @@ This checklist should move only when one of the following becomes true:
   `RealBoot` verifies the observed SHA-256 against the expected
   `dmg0/dmg/mgb` hashes before execution so local bring-up does not silently
   proceed on the wrong firmware bytes.
+- For ad hoc local `gb-cli` bring-up with `RealBoot`, keep the default no-limit
+  behavior tied to the actual boot path instead of reusing the `SkipBoot`
+  budget blindly: the CLI should treat boot-ROM handoff as the semantic start
+  of the post-boot run window, while still retaining a finite safety cap when
+  `FF50` never unmapped.
 - Keep one repo-local ignored real-boot regression for those verified DMG-family
   assets so `dmg0`, `dmg`, and `mgb` can be exercised one by one against the
   real core, real bus, and real `FF50` handoff path without baking machine-local
@@ -164,6 +174,13 @@ This checklist should move only when one of the following becomes true:
 - Keep imported differential oracle artifacts under the repo-managed gitignored
   `/.oracles/<oracle>/<layout>/` tree instead of scattering them under `/tmp`,
   so repeated validation runs have one visible workspace-local location.
+- For ad hoc local framebuffer inspection outside `gb-test-runner`, keep
+  `gb-cli --framebuffer-out` extension-driven: a `.png` target should emit a
+  real grayscale PNG for human viewing, while non-`.png` targets may stay on
+  the lighter raw-PGM path used for low-friction local artifacts.
+- For manifest-driven local `gb-test-runner` cases that capture framebuffer,
+  export the resulting PNG beside the ROM using the ROM stem so one-off local
+  commercial bring-up does not require a separate artifact-root convention.
 - The minimum DMG closure baseline should include automated CPU / interrupt coverage
   through curated Blargg DMG automation sourced from `GBEmulatorShootout`,
   curated Acid DMG coverage for basic PPU validation, and `mealybug-tearoom-tests`
