@@ -1996,14 +1996,50 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 Use this section to capture concrete remaining work when a change lands without
 fully closing its relevant roadmap scope or done criteria.
 
+This section should stay lean in status noise and rich in re-entry context.
+Closed work belongs in the phase prose above, the owning `AI/*` handbook, tests,
+traces, and version history, not in the active TODO ledger.
+
+When an open item is non-trivial, the entry should make four things obvious:
+
+1. What exact behavior or validation gap remains open.
+2. What evidence is already in hand.
+3. Which superseded directions should not be retried first.
+4. What the highest-value next step is.
+
 Suggested entry style:
 
 - In a phase section: `[subsystem] short remaining-work summary`
 - In `Cross-phase`: `[Cross-phase][subsystem] short remaining-work summary`
 
+Maintenance rules for this section:
+
+- Remove TODOs outright when the remainder is closed and no longer affects
+  planning.
+- Rewrite TODOs when the remaining work is still real but the old wording points
+  to a superseded diagnostic path.
+- Do not keep archival `Done` bullets here.
+- For timing-sensitive items, include the failing families, the relevant oracle
+  or suite, and enough resume guidance to avoid broad speculative rewrites.
+
+Triage rules for deciding whether something belongs here:
+
+- Record it here when a shipped change leaves one concrete behavior gap, one
+  oracle gap, one resume constraint, or one known non-final assumption that
+  changes later planning.
+- Do not record it here when the remainder is purely informational, already
+  closed by committed tests, or only useful as historical narrative.
+- Prefer phase-owned TODOs when one subsystem or roadmap block clearly owns the
+  remaining work.
+- Prefer `Cross-phase` only when the remainder spans validation, shared tooling,
+  or more than one owning subsystem.
+- If an item has both architectural context and one actionable next step, keep
+  the architectural context short and put most of the weight on the actionable
+  next step.
+
 ### Cross-phase
 
-- [Cross-phase][MOONEYE-DMG-INVENTORY] The exploratory curated `mooneye` suite now mirrors the active `GBEmulatorShootout` DMG list across `acceptance/*`, `emulator-only/mbc1/*`, `emulator-only/mbc2/*`, `emulator-only/mbc5/*`, and `manual-only/sprite_priority.gb`, keeping the upstream order and runtimes under one repo-managed manifest instead of stopping at the former acceptance-only prefix. The inventory expansion originally landed with `24` first-pass greens and `5` intentional follow-up reds; later focused mapper fixes closed `emulator-only/mbc1/ram_64kb.gb` by masking standard-wiring RAM-bank selection to the validated bank count, the MBC2 control-window fix that restricts mapper commands to `0x0000..=0x3FFF` closed both `emulator-only/mbc2/ram.gb` and `emulator-only/mbc2/bits_unused.gb`, `emulator-only/mbc1/multicart_rom_8Mb.gb` now runs green under an explicit `experimental` MBC1M heuristic path keyed off repeated multicart subheaders, and `manual-only/sprite_priority.gb` now runs green under a committed framebuffer-fixture oracle sourced from the `GBEmulatorShootout` reference PNG rather than the `mooneye-result` register protocol. That closes the imported emulator/manual-only extension to `29` greens and `0` reds, while the full exploratory `mooneye` suite currently sits at `92` greens and `3` remaining reds: `acceptance/ppu/intr_2_mode0_timing_sprites.gb`, `acceptance/ppu/lcdon_timing-GS.gb`, and `acceptance/ppu/lcdon_write_timing-GS.gb`. Phase dependency: this lane is still not oracle-closed, because the multicart green is explicitly non-`Strict` and later Phase `4/6/9` closure should not treat the `mooneye` DMG lane as fully triaged until those remaining PPU rows are explained against a trusted oracle and the experimental multicart heuristic is either retired or promoted under a documented strict-mode contract.
+- None currently.
 
 ### Phase 0 — Verification, debugging, and base architecture infrastructure
 
@@ -2015,17 +2051,7 @@ Suggested entry style:
 
 ### Phase 2 — CPU and real temporal control
 
-#### Done:
-
-- [CPU][BOOT] The remaining production-firmware validation gap beyond the synthetic Phase `2.4` handoff baseline is now closed for the DMG family. Repo-local ignored coverage in `crates/gb-test-runner/tests/external.rs` verifies the pinned `dmg0`, `dmg`, and `mgb` boot ROM assets by SHA-256, runs each one under `RealBoot` on the shared core and bus, and proves cartridge entry only through the executed `FF50` handoff plus next-fetch transition at `0x0100`.
-- [CPU][DIAGNOSTICS] Unsupported decoded opcodes now enter one explicit unsupported-opcode diagnostic trap immediately after the real fetch retires, keeping the failure visible in CPU snapshots and scheduler traces instead of falling into a silent non-retiring execute loop.
-- [CPU][HALT] Phase `2.6` now includes explicit `EI ; HALT` pending-IRQ verification and one targeted refinement: when `HALT` is the delayed-`EI` follower with an already pending interrupt, the interrupt is serviced once and returns to the `HALT` opcode instead of falling into the ordinary HALT-bug wake path or skipping ahead past `HALT`.
-- [CPU][MMIO-BRIDGE] The minimum MMIO-facing opcode bridge is now landed through `LDH (a8),A`, `LDH A,(a8)`, `LD (C),A`, and `LD A,(C)`, with direct CPU integration tests and synthetic-ROM builder helpers so later joypad, serial, and boot-adjacent validation can target `FF00-FF7F` without raw-byte boilerplate.
-- [CPU][OAM-PREP] The shared address-bearing event subset required by Phase `4.8` is already landed through `[hli]` / `[hld]`, fetch-time `PC` increments, stack/control-flow, interrupt service, and observable address-bearing `inc/dec` publication.
-- [CPU][PHASE2-SYNTHETIC-ROMS] The first full synthetic Phase `2` asset family now ships: reproducible `NoMBC` ROMs and golden traces for fetch/immediate order, control-flow plus stack plus CB timing, `EI` delay plus priority, `HALT` / `STOP` / `HALT` bug chronology, and timer `IF` visibility plus interrupt service. `crates/gb-core/tests/phase2.rs` is now the source of truth for those builders, traces, and expected end states.
-- [TEST-RUNNER][EXTERNAL-STIMULI] `gb-test-runner` metadata now supports deterministic external stimuli, and the shipped `phase2_halt_stop_and_halt_bug` contract uses one explicit joypad `A` press at `t_cycle = 380` so the `STOP` wake is part of the typed suite definition instead of a hidden local-harness assumption.
-- [TIMER][RELOAD-WRITE-ARBITRATION] The reload-cycle timer write contract is now explicit and tested: `TIMA` writes on the reload T-cycle are ignored, `TMA` writes on that same cycle feed the reloaded `TIMA`, and the curated `mooneye` cases `timer/tima_write_reloading` and `timer/tma_write_reloading` now pass under `Strict`.
-- [TIMER][MOONEYE-RAPID-TOGGLE] The curated DMG `mooneye` `timer/rapid_toggle` case now passes under `Strict`. The closing fix lives in the CPU-owned interrupt accept boundary rather than in new timer arithmetic: after scheduler phase `8` exposes the timer request in `IF`, the CPU may still accept that pending IRQ during the current opcode-fetch M-cycle as long as the next opcode byte has not been latched yet. That matches the Mooneye loop timing without changing the existing timer overflow/reload pipeline.
+- None currently.
 
 ### Phase 3 — Base DMA
 
@@ -2093,13 +2119,23 @@ Suggested entry style:
 - [PPU][MOONEYE-LCD-RESTART] The curated DMG `mooneye` acceptance lane now closes `ppu/stat_lyc_onoff`: LCD-off `STAT` coincidence readback is latched from the last active-LCD comparison, `LYC` writes while LCD-off update storage without recomputing that retained result, and LCD re-enable now exposes one provisional DMG-family restart state with a short early-dot `STAT.mode = 0` startup window instead of reporting Mode `2` immediately after the enable write. That closes the specific `stat_lyc_onoff` acceptance contract, but it does not yet close the broader restarted-line timing. `ppu/lcdon_timing-GS` and `ppu/lcdon_write_timing-GS` remain red, and the current diagnostic reduction still leaves a fine `LY/STAT` boundary mismatch around the early restarted lines, so Phase `4` should not treat LCD restart timing as fully oracle-validated yet.
 - [PPU][MOONEYE-STAT-TIMING] The same curated DMG `mooneye` lane has now closed several previously open PPU timing and LCD STAT cases beyond the LCD-off coincidence path: `ppu/hblank_ly_scx_timing-GS`, `ppu/intr_2_0_timing`, and `ppu/vblank_stat_intr-GS` are now green in the repo-managed report. The remaining open case in this narrower timing slice is `ppu/intr_2_mode0_timing_sprites`, so Phase `9` should still avoid marking DMG sprite-coupled Mode `2 -> 0` timing as fully closed until that acceptance row is fixed or reconciled against a trusted oracle.
 
-#### Done:
+#### Phase 4 re-entry rules
 
-- [PPU][BASELINE] The implementation side of Phase `4.1` through `4.8` is landed: scheduler spine, Mode `2`, BG/window/OBJ Mode `3`, `STAT/LY/LYC/IRQ`, LCD power transitions, and the routed DMG-family OAM-corruption model. The remaining Phase `4` work is validation-grade closure rather than another missing baseline implementation block.
-- [PPU][OAM-CORRUPTION-CONTRACT] The external-validation skeleton for OAM corruption is now explicit in `gb-test-runner`, including reserved Phase `4` ROM/trace targets for direct Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr` / `dec rr`, `[hli]` / `[hld]`, stack plus interrupt-service paths, DMG-family model coverage, and one CGB negative case.
-- [PPU][OAM-CORRUPTION-DIRECT-ROM] One first locally generated `NoMBC` ROM plus golden trace now ships for the direct Mode `2` OAM-write path, proving the reserved Phase `4` names can be backed by real executable assets and locking the baseline write-corruption timing to one reproducible machine trace.
-- [PPU][OAM-CORRUPTION-SYNTHETIC-ROMS] The full first synthetic Phase `4` asset family now ships: dedicated `NoMBC` ROMs and golden traces for direct Mode `2` OAM access, `FEA0-FEFF` reads, DMG-family and CGB `inc rr` model coverage, one `[hli]` / `[hld]` combined-event ROM, and one stack-plus-interrupt-service ROM. The checked-in builders in `crates/gb-core/tests/phase4.rs` are now the reproducible source of truth for those assets.
-- [PPU][MOONEYE-STAT-LYC-ONOFF] The curated DMG `mooneye` acceptance case `ppu/stat_lyc_onoff` now passes under `Strict` after making LCD-off coincidence retention and LCD re-enable `STAT` readback timing explicit in the PPU model instead of recomputing coincidence from reset `LY = 0` or reporting Mode `2` immediately on re-enable.
+- Resume from one failing family at a time and prefer the smallest oracle-backed
+  reproduction that still distinguishes the suspected same-T-cycle window.
+- Capture the baseline and final copies of `/.roms/test/test-report.md` for any
+  exploratory rerun of curated external suites, especially
+  `mealybug-tearoom-dmg-curated`, `acid-dmg-curated`, and
+  `mooneye-acceptance-dmg-curated`.
+- Treat cached background slices already resident in `Push`, `fill.pending`, or
+  the visible FIFO as the first suspect for the remaining second/third-tile
+  live-write failures.
+- Do not reopen generic startup realignment, broad tilemap rereads, or broad
+  cached-slice retargeting before a new trace proves the fault starts earlier
+  than the cached-slice seam.
+- When a candidate fix touches `STAT`, LCD restart, or sprite-coupled mode
+  boundaries, rerun the narrow mooneye LCD timing slice before trusting any
+  localized mealybug improvement.
 
 ### Phase 5 — Input and simple peripherals
 
@@ -2107,10 +2143,7 @@ Suggested entry style:
 
 ### Phase 6 — Banked cartridges, special cartridges, and cartridge persistence
 
-- [MBC1][ORACLE-BANKING] The shipped `MBC1` implementation, integration coverage, and retained synthetic ROM fixtures now cover the documented bank-selection edge cases locally, and the built-in `phase-6-cartridge-oracle` suite now gives that mapper one stable differential lane in `gb-test-runner`. The repo-local SameBoy `case-bundle` materialization path now records matched portable `serial_hex` artifacts for the `0x20` / `0x40` / `0x60` anomaly, the small-ROM high-window bank-`0` case, and the large-ROM mode-`1` low-window remap. Phase dependency: this mapper-oracle slice is closed; later Phase `6` work should extend this evidence rather than reopening it.
-- [MBC2][ORACLE-RAM] The shipped `MBC2` implementation, integration coverage, and retained synthetic ROM fixture now cover address-bit-`8` control decode, `0 -> 1` banking, nibble RAM, and low-`9`-bit echo aliasing locally, and the built-in `phase-6-cartridge-oracle` suite now gives that mapper one stable differential lane in `gb-test-runner`. The repo-local SameBoy `case-bundle` materialization path now records matched portable `serial_hex` artifacts for the stable control-decode and nibble-RAM observables used by that lane. Phase dependency: this mapper-oracle slice is closed; later Phase `6` work should extend this evidence rather than reopening it.
-- [MBC3][ORACLE-RTC] The shipped `MBC3` implementation, integration coverage, and retained synthetic ROM fixture now cover standard banking, RAM-versus-RTC selection, latch sequencing, and the live-versus-latched RTC contract locally, and the built-in `phase-6-cartridge-oracle` suite now carries that mapper through typed runner metadata including explicit pre-run RTC advancement. The repo-local SameBoy `case-bundle` materialization path now records matched portable `serial_hex` artifacts for the selected banking and RTC observables used by that lane. Phase dependency: this mapper-oracle slice is closed; later RTC closure work should build on this evidence rather than reopening it.
-- [MBC5][ORACLE-RUMBLE] The shipped `MBC5` implementation, integration coverage, and retained synthetic ROM fixture now cover bank-`0` visibility, `9`-bit ROM banking across the `0xFF -> 0x100` boundary, linear SRAM, and rumble-capable register behavior locally, and the built-in `phase-6-cartridge-oracle` suite now gives that mapper one stable differential lane in `gb-test-runner`. The repo-local SameBoy `case-bundle` materialization path now records matched portable `serial_hex` artifacts for the selected bank-selection and rumble observables used by that lane. Phase dependency: this mapper-oracle slice is closed; later Phase `6` work should extend this evidence rather than reopening it.
+- None currently.
 
 ### Phase 7 — Audio
 
@@ -2123,17 +2156,6 @@ Suggested entry style:
 ### Phase 9 — Final DMG hardening, differential validation, and closure
 
 - None currently.
-
-#### Done:
-
-- [TEST-RUNNER][EXECUTION] `gb-test-runner` is no longer contract-only. It now executes typed ROM suites end to end against `gb-core`, supports deterministic external stimuli, timeout policy, serial / framebuffer / snapshot capture, retained failure artifacts, and opt-in external ROM roots without requiring a frontend.
-- [TEST-RUNNER][OFFICIAL-ROM-SMOKE] The first opt-in official external suite contract now ships as `retrio-blargg-cpu-smoke`, reserving the full `retrio/blargg cpu_instrs/individual` block (`01` through `11`) under `GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT` and using serial output as the machine-readable pass channel. All `11` individual CPU cases are now green against the real external assets in `release`, so Phase `9` already has an official serial-based CPU bring-up path that runs end to end without frontend help for the whole individual `cpu_instrs` set.
-- [TEST-RUNNER][OFFICIAL-CPU-INSTRS-FULL] The official `retrio/blargg cpu_instrs/cpu_instrs.gb` multi-ROM is now integrated as a separate typed external suite contract and also passes in `release`, using the ROM's own final serial report `Passed all tests` as the machine-readable success condition. That gives the repo both granular coverage from the `11` individual CPU ROMs and the full upstream aggregate CPU run.
-- [TEST-RUNNER][OFFICIAL-INSTR-TIMING] The official `retrio/blargg instr_timing` ROM is now integrated as its own typed external suite contract under the same repo-managed asset store and also passes in `release`. The repo-managed `GBEmulatorShootout` Blargg DMG curated suite now carries the matching `instr_timing.gb` case again as part of the default external DMG block, so the timing-focused CPU path is no longer confined to the opt-in official lane. That gives Phase `9` one timing-focused CPU oracle on top of the functional `cpu_instrs` coverage without needing a frontend or ad hoc local asset wiring.
-- [TEST-RUNNER][OFFICIAL-MEM-TIMING] The official `retrio/blargg mem_timing` pair is now integrated as typed external suite metadata and both cases pass in `release`, but not through one hard-coded output channel: the original `mem_timing` ROM still uses serial, while `mem_timing-2` now runs through the ROM's own cartridge-RAM text/status contract at `A000..A004`. That means the runner can already distinguish between serial-driven and RAM-driven official ROMs without inventing ad hoc case-local harness code.
-- [TEST-RUNNER][OFFICIAL-HALT-BUG] The official `retrio/blargg halt_bug` ROM now passes in `release` too. The key missing piece was not CPU behavior but output capture: this ROM reports its self-validated result through the upstream `console.s` LCD text console rather than serial or cartridge RAM. `gb-test-runner` now has a typed Blargg-console text extractor based on `BGMAP0` plus `SCY`, so the test is automated without relying on manual framebuffer inspection or a circular screenshot fixture.
-- [TEST-RUNNER][EXTERNAL-ASSET-STORE] External official ROM assets now have a repo-managed acquisition path instead of ad hoc local clones. The workspace ships `crates/gb-test-runner/data/sources.toml` as the pinned source manifest, `fetch_external_roms` populates the gitignored `/.roms/external-test/` store after hash verification, `gb-test-runner` can fall back to that default store when the suite-specific environment variable is unset, and CI uses the same fetch path for the current smoke job. Private commercial ROMs remain segregated under `/.roms/local-commercial/` and are not part of the public automation contract.
-- [CPU][OFFICIAL-ROM-BRINGUP] Bringing up the official individual `cpu_instrs` ROMs has already forced concrete runtime fixes in the current branch baseline, including the `32 KiB` strict-loading admission for header-coded `MBC1` images, a broader ALU / flag / rotate / `ADD HL,rr` CPU block, the signed-`SP` arithmetic path `LD HL,SP+r8` / `ADD SP,r8`, the missing `SP/HL` transfer block `LD (a16),SP` / `LD SP,HL`, and the remaining practical CB matrix needed by the official `09` / `10` / `11` cases (`RRC`, `SLA`, `SRA`, `SWAP`, `RES`, and `SET` for both register and `(HL)` targets).
 
 ---
 
