@@ -1,10 +1,11 @@
+use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
 use crate::{
     CapturedArtifacts, EarlyHardeningStatus, RomRunner, RomSuite, RomSuiteReport,
     TEST_ROM_ROOT_ENV_VAR, Timeout, built_in_rom_suite_by_name, built_in_rom_suites,
-    early_phase_9_partial_checklist, update_curated_test_report,
+    early_phase_9_partial_checklist, load_local_rom_suite_manifest, update_curated_test_report,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,8 +18,14 @@ enum RomSuiteCliAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum RomSuiteCliTarget {
+    BuiltIn { suite_name: String },
+    Manifest { manifest_path: PathBuf },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct RomSuiteCliOptions {
-    suite_name: String,
+    target: RomSuiteCliTarget,
     case_id: Option<String>,
     failure_artifact_root: Option<PathBuf>,
     timeout_override: Option<Timeout>,
@@ -31,6 +38,7 @@ pub fn rom_suite_cli_help_text() -> &'static str {
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --list-detailed\n",
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist\n",
         "  cargo run -p gb-test-runner --bin run_rom_suite -- --suite <suite-name> [--case <case-id>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>]\n",
+        "  cargo run -p gb-test-runner --bin run_rom_suite -- --manifest <path> [--case <case-id>] [--failure-artifact-root <dir>] [--timeout-frames <n> | --timeout-tcycles <n>]\n",
     )
 }
 
@@ -68,6 +76,7 @@ where
     S: AsRef<str>,
 {
     let mut suite_name = None;
+    let mut manifest_path = None;
     let mut case_id = None;
     let mut failure_artifact_root = None;
     let mut timeout_override = None;
@@ -80,6 +89,12 @@ where
                     return Err("--suite requires a value".to_string());
                 };
                 suite_name = Some(value.as_ref().to_string());
+            }
+            "--manifest" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--manifest requires a value".to_string());
+                };
+                manifest_path = Some(PathBuf::from(value.as_ref()));
             }
             "--case" => {
                 let Some(value) = arguments.next() else {
@@ -125,12 +140,24 @@ where
         }
     }
 
-    let Some(suite_name) = suite_name else {
-        return Err("missing required --suite <suite-name>; run with --list".to_string());
+    let target = match (suite_name, manifest_path) {
+        (Some(_), Some(_)) => {
+            return Err(
+                "--suite <suite-name> and --manifest <path> are mutually exclusive".to_string(),
+            );
+        }
+        (Some(suite_name), None) => RomSuiteCliTarget::BuiltIn { suite_name },
+        (None, Some(manifest_path)) => RomSuiteCliTarget::Manifest { manifest_path },
+        (None, None) => {
+            return Err(
+                "missing required --suite <suite-name> or --manifest <path>; run with --help"
+                    .to_string(),
+            );
+        }
     };
 
     Ok(RomSuiteCliAction::Run(RomSuiteCliOptions {
-        suite_name,
+        target,
         case_id,
         failure_artifact_root,
         timeout_override,
@@ -159,8 +186,16 @@ fn run_selected_suite<W: Write>(
         .run_suite(&suite)
         .map_err(|error| format!("failed to execute suite {}: {error:?}", suite.name))?;
     write_suite_report(output, &report)?;
-    if let Some(report_path) = update_curated_test_report(runner.workspace_root(), &report)? {
-        writeln_checked(output, &format!("test_report={}", report_path.display()))?;
+    match &options.target {
+        RomSuiteCliTarget::BuiltIn { .. } => {
+            if let Some(report_path) = update_curated_test_report(runner.workspace_root(), &report)?
+            {
+                writeln_checked(output, &format!("test_report={}", report_path.display()))?;
+            }
+        }
+        RomSuiteCliTarget::Manifest { .. } => {
+            write_manifest_framebuffer_exports(output, &runner, &suite, &report)?;
+        }
     }
 
     if report.all_non_failing() {
@@ -171,18 +206,30 @@ fn run_selected_suite<W: Write>(
 }
 
 fn select_suite_for_options(options: &RomSuiteCliOptions) -> Result<RomSuite, String> {
-    let Some(mut suite) = built_in_rom_suite_by_name(&options.suite_name) else {
-        return Err(format!(
-            "unknown suite {:?}; run with --list for the built-in catalog",
-            options.suite_name
-        ));
+    let suite = match &options.target {
+        RomSuiteCliTarget::BuiltIn { suite_name } => {
+            let Some(suite) = built_in_rom_suite_by_name(suite_name) else {
+                return Err(format!(
+                    "unknown suite {:?}; run with --list for the built-in catalog",
+                    suite_name
+                ));
+            };
+            suite
+        }
+        RomSuiteCliTarget::Manifest { manifest_path } => {
+            load_local_rom_suite_manifest(manifest_path).map_err(|error| error.to_string())?
+        }
     };
 
-    if let Some(case_id) = &options.case_id {
-        let Some(case) = suite.cases.into_iter().find(|case| case.id == *case_id) else {
+    select_case_for_options(suite, options.case_id.as_deref())
+}
+
+fn select_case_for_options(mut suite: RomSuite, case_id: Option<&str>) -> Result<RomSuite, String> {
+    if let Some(case_id) = case_id {
+        let Some(case) = suite.cases.into_iter().find(|case| case.id == case_id) else {
             return Err(format!(
                 "suite {:?} does not contain case {:?}",
-                options.suite_name, case_id
+                suite.name, case_id
             ));
         };
         suite = if let Some(family) = suite.family {
@@ -195,6 +242,54 @@ fn select_suite_for_options(options: &RomSuiteCliOptions) -> Result<RomSuite, St
     }
 
     Ok(suite)
+}
+
+fn write_manifest_framebuffer_exports<W: Write>(
+    output: &mut W,
+    runner: &RomRunner,
+    suite: &RomSuite,
+    report: &RomSuiteReport,
+) -> Result<(), String> {
+    for case_report in &report.cases {
+        let Some(framebuffer_pgm) = &case_report.artifacts.framebuffer_pgm else {
+            continue;
+        };
+
+        let Some(case) = suite
+            .cases
+            .iter()
+            .find(|case| case.id == case_report.case_id)
+        else {
+            return Err(format!(
+                "internal error: case {:?} was reported but not found in suite {:?}",
+                case_report.case_id, suite.name
+            ));
+        };
+
+        let rom_path = runner.resolve_case_rom_path(case).map_err(|error| {
+            format!("failed to resolve ROM path for case {}: {error:?}", case.id)
+        })?;
+        let png_path = rom_path.with_extension("png");
+        let framebuffer_png = crate::framebuffer_oracle::convert_pgm_to_png(framebuffer_pgm)
+            .map_err(|error| {
+                format!(
+                    "failed to convert framebuffer capture for case {}: {}",
+                    case.id, error.message
+                )
+            })?;
+        fs::write(&png_path, framebuffer_png).map_err(|error| {
+            format!(
+                "failed to write framebuffer PNG {}: {error}",
+                png_path.display()
+            )
+        })?;
+        writeln_checked(
+            output,
+            &format!("case={} framebuffer_png={}", case.id, png_path.display()),
+        )?;
+    }
+
+    Ok(())
 }
 
 fn write_suite_catalog<W: Write>(output: &mut W) -> Result<(), String> {
@@ -517,18 +612,40 @@ fn writeln_checked<W: Write>(output: &mut W, line: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::{CapturedMemoryTextOutput, TestSubsystem};
 
     use super::{
-        RomSuiteCliAction, RomSuiteCliOptions, parse_rom_suite_arguments, rom_suite_cli_help_text,
-        run_rom_suite_command_with_runner, select_suite_for_options, write_suite_report,
+        RomSuiteCliAction, RomSuiteCliOptions, RomSuiteCliTarget, parse_rom_suite_arguments,
+        rom_suite_cli_help_text, run_rom_suite_command_with_runner, select_suite_for_options,
+        write_suite_report,
     };
     use crate::{
         CapturedArtifacts, RomCaseOutcome, RomCaseReport, RomRunner, RomSuiteReport,
         default_workspace_root,
     };
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "gb-cycle-run-rom-suite-cli-{}-{}-{}",
+            label,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn write_manifest(dir: &Path, name: &str, body: &str) -> PathBuf {
+        let path = dir.join(name);
+        fs::create_dir_all(dir).expect("manifest parent should be creatable");
+        fs::write(&path, body).expect("manifest should be writable");
+        path
+    }
 
     #[test]
     fn parse_arguments_supports_help_list_and_timeout_overrides() {
@@ -561,10 +678,24 @@ mod tests {
             ])
             .expect("run args should parse"),
             RomSuiteCliAction::Run(RomSuiteCliOptions {
-                suite_name: "phase-2-cpu-timing".to_string(),
+                target: RomSuiteCliTarget::BuiltIn {
+                    suite_name: "phase-2-cpu-timing".to_string(),
+                },
                 case_id: Some("phase2-fetch-immediate-order".to_string()),
                 failure_artifact_root: Some(PathBuf::from("/tmp/artifacts")),
                 timeout_override: Some(crate::Timeout::TCycles(1234)),
+            })
+        );
+        assert_eq!(
+            parse_rom_suite_arguments(["--manifest", "/tmp/local-case.toml"])
+                .expect("manifest args should parse"),
+            RomSuiteCliAction::Run(RomSuiteCliOptions {
+                target: RomSuiteCliTarget::Manifest {
+                    manifest_path: PathBuf::from("/tmp/local-case.toml"),
+                },
+                case_id: None,
+                failure_artifact_root: None,
+                timeout_override: None,
             })
         );
     }
@@ -579,12 +710,23 @@ mod tests {
             parse_rom_suite_arguments(["--suite", "phase-2-cpu-timing", "--timeout-frames", "NaN"])
                 .expect_err("invalid timeout should be rejected");
         assert!(invalid_timeout.contains("invalid --timeout-frames value"));
+
+        let conflicting_targets = parse_rom_suite_arguments([
+            "--suite",
+            "phase-2-cpu-timing",
+            "--manifest",
+            "/tmp/local-case.toml",
+        ])
+        .expect_err("conflicting target selectors should be rejected");
+        assert!(conflicting_targets.contains("mutually exclusive"));
     }
 
     #[test]
     fn select_suite_rejects_unknown_suites_and_unknown_cases() {
         let unknown_suite = select_suite_for_options(&RomSuiteCliOptions {
-            suite_name: "unknown".to_string(),
+            target: RomSuiteCliTarget::BuiltIn {
+                suite_name: "unknown".to_string(),
+            },
             case_id: None,
             failure_artifact_root: None,
             timeout_override: None,
@@ -593,7 +735,9 @@ mod tests {
         assert!(unknown_suite.contains("unknown suite"));
 
         let unknown_case = select_suite_for_options(&RomSuiteCliOptions {
-            suite_name: "phase-2-cpu-timing".to_string(),
+            target: RomSuiteCliTarget::BuiltIn {
+                suite_name: "phase-2-cpu-timing".to_string(),
+            },
             case_id: Some("missing-case".to_string()),
             failure_artifact_root: None,
             timeout_override: None,
@@ -719,5 +863,66 @@ mod tests {
         let output = String::from_utf8(output).expect("command output should be utf-8");
         assert!(output.contains("suite=phase-2-cpu-timing"));
         assert!(output.contains("case=phase2-fetch-immediate-order outcome=Passed"));
+    }
+
+    #[test]
+    fn manifest_command_executes_local_case_and_exports_framebuffer_png_next_to_the_rom() {
+        let workspace_root = default_workspace_root();
+        let temp_root = unique_temp_dir("manifest-export");
+        let rom_path = temp_root
+            .join("fixtures")
+            .join("phase2_fetch_immediate_order.gb");
+        fs::create_dir_all(
+            rom_path
+                .parent()
+                .expect("temporary ROM path should have a parent"),
+        )
+        .expect("temporary ROM parent should be creatable");
+        fs::copy(
+            workspace_root
+                .join("crates/gb-core/tests/fixtures/roms/phase2/phase2_fetch_immediate_order.gb"),
+            &rom_path,
+        )
+        .expect("fixture ROM should copy into the temporary manifest workspace");
+
+        let manifest_path = write_manifest(
+            &temp_root,
+            "local-case.toml",
+            &format!(
+                r#"
+version = 1
+
+[[case]]
+id = "phase2-export"
+rom = "{}"
+timeout_tcycles = 32
+oracle = "info-framebuffer"
+"#,
+                rom_path.display()
+            ),
+        );
+
+        let mut output = Vec::new();
+        run_rom_suite_command_with_runner(
+            [
+                "--manifest",
+                manifest_path
+                    .to_str()
+                    .expect("manifest path should be utf-8"),
+            ],
+            RomRunner::new().with_workspace_root(workspace_root),
+            &mut output,
+        )
+        .expect("manifest-driven local case should execute");
+
+        let rendered = String::from_utf8(output).expect("manifest output should be utf-8");
+        let png_path = rom_path.with_extension("png");
+        assert!(rendered.contains("suite=local-case subsystem=CrossSubsystem"));
+        assert!(rendered.contains("case=phase2-export outcome=Informational"));
+        assert!(rendered.contains(&format!(
+            "case=phase2-export framebuffer_png={}",
+            png_path.display()
+        )));
+        assert!(png_path.is_file());
     }
 }
