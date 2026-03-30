@@ -48,6 +48,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - the frame sequencer / `DIV-APU` counter
   - left/right mixer and HPF state
   - per-channel active status as reflected in `NR52`
+- The internal state shape should stay coherent as one APU-owned structure with explicit master-control ownership plus per-channel register and runtime state, rather than a flat byte bank plus synthetic status masks.
 - Do not collapse the design into "channel -> final sample" without keeping the digital generator, DAC, mixer, and HPF stages explicit.
 
 ## NR52 power-gating baseline
@@ -58,6 +59,13 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - make those other registers read-only until power is restored
   - leave wave RAM accessible
   - leave the `DIV-APU` counter intact rather than resetting it
+- Powering the APU on through `NR52` should reset the frame sequencer so the
+  next step is `0`, while still deriving the timing of that next step from the
+  live shared divider source rather than from a synthetic fresh timer.
+- If the shared `DIV-APU` source bit is already high when `NR52` powers the APU
+  on, the first frame-sequencer event should be skipped and the next real step-0
+  edge should therefore arrive `8192` T-cycles later than the low-source case.
+- Applying direct-boot or startup audio state with `powered = false` should converge to that same observable powered-off contract, except for the configured wave-RAM startup contents and the preserved `DIV-APU` phase.
 - `NR52` bits `0..=3` should remain read-only live status bits that report whether each channel's generation circuit is active.
 - The low `NR52` bits must not be treated as DAC-enabled indicators; they report active channels, not DAC state.
 
@@ -67,6 +75,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - For the current DMG target, `div_apu` should advance on the falling edge of `DIV` bit `4` (`1 -> 0`), i.e. at `512` Hz under ordinary operation.
 - A write to `DIV` should be able to advance the APU frame-sequencer path immediately if clearing `DIV` produces that same falling edge.
 - The frame sequencer must be derived from the same underlying divider/system-counter state already used to expose `DIV`; it must not be modeled as an unrelated free-running audio timer.
+- `div_apu` startup / direct-boot phase should therefore be synthesized from the same hidden shared-counter phase that produces visible `DIV`, not from an unrelated zeroed audio seed or from the visible `DIV` byte alone.
 - The frame sequencer should provide the slow control clocks only:
   - sound length at `256` Hz
   - CH1 sweep at `128` Hz
@@ -77,6 +86,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 
 - The shared scheduler should advance the shared divider/system-counter and resolve `DIV`-derived edge events before ticking the APU for that T-cycle.
 - The APU should then consume those already-derived slow-control events together with its own fast per-channel timers on the same T-cycle timeline.
+- `DIV` reset MMIO writes should remain able to notify the APU immediately when the reset itself produces the `DIV-APU` falling edge; that write-time path should reuse timer-owned divider knowledge rather than cloning divider logic inside the APU or bus.
 - The scheduler must not rederive frame-sequencer rules internally; it only provides ordered clock inputs and calls into the APU at the correct phase.
 
 ## Slow control clocks versus fast channel clocks
@@ -207,6 +217,15 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The design should leave room for replacing the host-facing resampler later without rewriting the DAC, mixer, or HPF logic.
 - Conversion from the core's internal analog representation into host `float` or `int16` output should be a final representation step after HPF, not part of the hardware model itself.
 - The core should keep a sufficiently precise internal analog representation so host-format conversion does not force the hardware model to clip or renormalize early.
+
+Current branch baseline, March 30, 2026:
+
+- The master APU path now exposes an explicit output snapshot in the core branch baseline: resolved per-channel digital outputs, per-channel DAC outputs, stereo mixer output after `NR51`, stereo master output after `NR50`, plus post-HPF output and persistent HPF capacitor state.
+- The current DMG-facing DAC stage is now explicit in the core branch baseline instead of remaining an inferred later backend concern: enabled-DAC digital `0..15` is mapped linearly onto a negative-slope internal analog range, while DAC-off remains a separate explicit zero-output path rather than being collapsed into one more ordinary converted sample.
+- An inactive channel with its DAC still enabled therefore contributes the converted analog level for digital `0`, and local coverage now locks that distinction against the DAC-off path for the shared output pipeline.
+- `NR51` routing and `NR50` master-volume changes now update the live post-HPF preview immediately on the shared T-cycle timeline instead of waiting for a frontend audio boundary; local coverage already fixes independent left/right routing, the documented `NR50` `0 -> factor 1` and `7 -> factor 8` semantics, and HPF-visible pops from output-path changes.
+- The HPF now keeps explicit persistent left/right state in the APU core and is clocked from the same T-cycle timeline as the rest of the subsystem instead of being deferred to host audio code.
+- The current host-facing boundary in `gb-core` is the typed post-HPF snapshot path rather than a real-time backend callback. Machine-level integration coverage now fixes that reading snapshots at different host-side cadences does not feed back into APU timing, mixer behavior, or HPF evolution.
 
 ## CH1 baseline (pulse + sweep)
 
@@ -414,6 +433,15 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - fast waveform/period timing on the shared T-cycle timeline
   - slow frame-sequencer clocks for length and envelope
 
+Current branch baseline, March 30, 2026:
+
+- `CH1` and `CH2` now own explicit pulse runtime state in the core branch baseline: duty selection, non-resetting duty-step counters, T-cycle period timers, `64`-step length counters, immediate length-enable state, and envelope timer plus current-volume state.
+- `CH1` now keeps a separate sweep block with explicit timer, enable flag, and shadow-period ownership instead of collapsing sweep into generic pulse helpers or leaking it into `CH2`.
+- The shared frame sequencer now clocks `CH1` / `CH2` length, `CH1` sweep, and both pulse envelopes directly on the APU timeline, while the fast pulse timers keep advancing independently each T-cycle.
+- Unit and integration coverage now already guards trigger-time reloads, the "trigger resets timer but not duty step" rule, period-write delay until the current sample ends, the second sweep overflow check, extra length clocking on `NR14` / `NR24`, the low frequency-timer bits preserved on trigger, the trigger-time envelope `+1` reload quirk before an envelope step, the post-power-on first-trigger output suppression latch for both pulse channels, and `NR52` live-bit clearing through length expiry or sweep overflow on the machine timeline.
+- The finer `CH1` sweep micro-timing block is now explicit in the current branch baseline instead of being hand-waved: sweep clocks can still overflow with `shift = 0`, sweep pace `0` behaves as an internal `8`-step cadence, writes that move `NR10` from pace `0` back to non-zero re-enter on the correct sweep-phase boundary, subtraction uses the documented `11`-bit two's-complement path, and clearing negate after a subtraction-mode calculation disables `CH1` immediately.
+- The previously open pulse follow-up quirk is now explicit too: after `NR52` power-on, the first trigger on `CH1`/`CH2` suppresses the initial duty output until the first real duty-step advance, and an `NR52` power cycle rearms that latch instead of leaving it as accidental state. For powered startup snapshots, inactive pulse channels currently keep that latch pending as the repo's explicit inference for hidden post-power-on state.
+
 ## CH3 baseline (wave channel)
 
 - CH3 should be modeled as a distinct wave-channel block rather than as a pulse channel with a replaceable waveform.
@@ -501,8 +529,8 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - That length counter should be clocked only by the frame sequencer's `256` Hz length clock, not by the channel's fast sample timer.
 - `NR34` bit `6` should enable or disable the CH3 length unit immediately on write.
 - If the length counter expires while enabled, CH3 should be disabled.
-- Extra length clocking on `NR34` writes should remain an explicit CH3 work item rather than disappearing behind generic channel code.
-- Keep an explicit CH3 follow-up item for the documented trigger-with-length-0 quirk where the effective reloaded length can become `255` instead of `256` depending on frame-sequencer state.
+- Extra length clocking on `NR34` writes should remain an explicit CH3 path rather than disappearing behind generic channel code.
+- Trigger-with-length-0 should keep the documented `255` versus `256` seam explicit on the shared frame-sequencer timeline instead of being flattened into an unconditional full reload.
 
 ## CH3 wave RAM access and DMG retrigger-corruption baseline
 
@@ -527,6 +555,17 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - fast sample timing and wave-RAM fetch progression on the shared T-cycle timeline
   - slow frame-sequencer clocks for length only
 - CH3's resolved digital output should be a function of its internal active state, DAC state, buffered sample, and current `NR32` output level rather than of raw MMIO register rereads at mix time.
+
+Current branch baseline, March 30, 2026:
+
+- `CH3` now owns explicit wave RAM, `sample_index`, `sample_buffer`, period timer, `256`-step length counter, and immediate length-enable state in the core branch baseline instead of living as a register-only placeholder.
+- The wave channel now advances on its own fast timer, keeps the buffered-sample model explicit, preserves the existing buffered sample across trigger, and only loads the next nibble when the internal sample-fetch boundary is reached.
+- Trigger now carries an explicit DMG-facing startup delay before the first post-trigger wave fetch instead of treating CH3 as if the first fetch happened after only one ordinary period reload.
+- `NR34` now owns explicit extra-length-clock and trigger-with-length-0 handling in the core branch baseline, including the `255` reload-visible case on first-half trigger writes instead of leaving that seam as a deferred note.
+- `NR32` now behaves as CH3 digital attenuation over the buffered sample rather than as a synthetic mixer knob, and the digital mute path remains separate from DAC disable or channel inactivity.
+- Unit coverage now fixes buffered-read behavior, period-write delay until the next fetch boundary, immediate `NR32` attenuation semantics, the DMG active-wave-RAM access window, and the DMG retrigger-corruption seam keyed to the internal byte position exactly `2` T-cycles before the next wave fetch. Integration coverage now ties CH3 back to `NR52` length expiry on the shared frame-sequencer timeline and to wave-RAM preservation across `NR52` power-off.
+- The current explicit DMG active-wave-RAM policy is that, while CH3 is active, MMIO reads and writes only succeed on the exact T-cycle where CH3 performs its internal wave-RAM fetch; outside that fetch window, reads return `0xFF` and writes are ignored.
+- External evidence has moved the CH3 quirk lane forward: `dmg_sound 03-trigger`, `09-wave read while on`, `10-wave trigger while on`, and `12-wave write while on` now pass in the current branch baseline, so the remaining audio red set has moved away from CH3 retrigger timing and into the still-open `CH4` / power-off lanes.
 
 ## CH4 baseline (noise / LFSR)
 
@@ -624,6 +663,14 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - slow frame-sequencer clocks for length and envelope
 - CH4's resolved digital output should be a function of its internal active state, DAC state, current LFSR output bit, and current envelope-derived volume rather than of raw MMIO register rereads at mix time.
 
+Current branch baseline, March 30, 2026:
+
+- `CH4` now owns explicit `NR43` decode, a fast `noise_timer`, live `lfsr_state`, envelope runtime (`initial_volume`, direction, pace, timer, current volume), and trigger-time reload of timer / envelope / LFSR instead of remaining a length-only placeholder.
+- The frame sequencer now clocks both CH4 length and CH4 envelope on the shared slow-control timeline, while the fast T-cycle path advances the decoded noise timer and LFSR independently.
+- DMG power-off semantics are now explicit for the shared `NRx1` length family: on DMG, writes to `NR11/NR21/NR31/NR41` while `NR52=0` update only the internal length counters, and those counters survive the power-off interval instead of being reset to the powered-on defaults.
+- External evidence has closed the CH4-facing Blargg lane needed for the current Phase `7` bring-up: `dmg_sound 02-len ctr`, `08-len ctr during power`, and `11-regs after power` now pass alongside the already-green pulse and CH3 cases.
+- The remaining CH4 follow-up that used to stay implicit is now covered locally as well: unit tests lock the active 7-bit LFSR window through a live `15-bit -> 7-bit` width change without dropping `channel_active`, and verify that retrigger reloads the LFSR out of that lock-up state instead of needing a fake mute flag.
+
 ## Timing / accuracy requirements
 
 - Keep channel and frame-sequencer timing visible.
@@ -661,6 +708,10 @@ Priority order:
 ## Tests
 
 - audio-focused ROMs where available
+- in this repo, wire the DMG-facing external APU lane through the individual
+  Blargg `dmg_sound 01..12` ROMs from `GBEmulatorShootout`; keep any later
+  changes to that promoted repo-gated slice explicit instead of silently
+  treating the family as permanently closed
 - register semantics tests
 - frame-sequencer timing tests
 - direct-boot register-readback tests for the published post-boot audio snapshot when startup presets bypass firmware execution
@@ -686,13 +737,13 @@ Priority order:
 - tests that CH1 trigger reloads period/envelope/sweep state but does not activate the channel while DAC is off
 - tests for CH1 length expiry, CH1 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
 - sweep tests covering trigger-time shadow copy, immediate overflow check, timed writeback, second overflow check, and the rule that `NR13` / `NR14` writes do not update the sweep shadow automatically
-- dedicated CH1 quirk tests for period-`0`-treated-as-`8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever those behaviors are implemented
+- dedicated CH1 quirk tests for period-`0`-treated-as-`8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path
 - tests for `NR21`-`NR24` ownership and MMIO semantics, including `NR23` write-only readback policy
 - tests for CH2 duty-step behavior, including "retrigger resets timer but not duty step"
 - tests for CH2 period-write delay where `NR23` / `NR24` changes apply after the current sample ends
 - tests that CH2 trigger reloads period/envelope state but does not activate the channel while DAC is off
 - tests for CH2 length expiry, CH2 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
-- dedicated CH2 quirk tests for envelope-timer `0 -> 8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path whenever those behaviors are implemented
+- dedicated CH2 quirk tests for envelope-timer `0 -> 8`, extra length clocking, low frequency-timer bits on trigger, and the first-duty-step-after-power-on path
 - tests for `NR30`-`NR34` ownership and MMIO semantics, including `NR31` / `NR33` write-only readback policy
 - tests that wave RAM remains accessible and is not cleared by `NR52` power-off
 - tests for CH3 period-timer cadence at one tick every `2` dots, `32`-sample index progression, and sample-buffer reload from wave RAM

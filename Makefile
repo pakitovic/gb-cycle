@@ -15,7 +15,7 @@ help:
 	@echo "  make fetch-test-roms      Materialize .roms/test from the pinned GBEmulatorShootout source using a temporary checkout"
 	@echo "                           Set FAMILIES=all or FAMILIES=\"blargg acid\" to limit the fetch"
 	@echo "  make run-acid             Fetch and run the curated supported Acid DMG family"
-	@echo "  make run-blargg           Fetch and run the curated supported Blargg DMG family"
+	@echo "  make run-blargg           Fetch and run the repo-gated Blargg DMG family, including dmg_sound"
 	@echo "  make run-daid             Fetch and run the exploratory Daid DMG family and update the report"
 	@echo "  make run-mooneye          Fetch and run the exploratory Mooneye DMG family and update the report"
 	@echo "  make run-hacktix          Fetch and run the exploratory Hacktix DMG family and update the report"

@@ -1,4 +1,4 @@
-use crate::apu::{ApuStartupState, WaveRamStartupPolicy};
+use crate::apu::{ApuStartupState, WaveRamStartupPolicy, div_apu_phase_from_system_counter};
 use crate::bus::BootRomBusState;
 use crate::cartridge::CartridgeSlot;
 use crate::cpu::CpuStartupState;
@@ -368,7 +368,7 @@ impl BootController {
         Some(BootDirectBootState {
             cpu,
             io,
-            apu: build_skip_boot_apu_state(io),
+            apu: build_skip_boot_apu_state(dmg_family_skip_boot_system_counter, io),
             ppu: PpuStartupState {
                 lcdc: io.lcdc,
                 stat: io.stat,
@@ -546,8 +546,7 @@ const fn dmg_family_skip_boot_audio_snapshot() -> BootAudioSnapshot {
     }
 }
 
-fn build_skip_boot_apu_state(io: BootIoSnapshot) -> ApuStartupState {
-    let system_counter = u16::from(io.div) << 8;
+fn build_skip_boot_apu_state(system_counter: u16, io: BootIoSnapshot) -> ApuStartupState {
     let audio = io.audio;
 
     ApuStartupState {
@@ -573,7 +572,7 @@ fn build_skip_boot_apu_state(io: BootIoSnapshot) -> ApuStartupState {
         nr50: audio.nr50,
         nr51: audio.nr51,
         channel_active_mask: audio.nr52 & 0x0F,
-        div_apu: ((system_counter >> 4) & 0x07) as u8,
+        div_apu: div_apu_phase_from_system_counter(system_counter),
         wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
     }
 }

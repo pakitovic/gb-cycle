@@ -361,6 +361,7 @@ impl<S: TraceSink> Machine<S> {
                     });
                 }
                 SchedulerPhase::AutonomousPeripheralTicks => {
+                    apu.tick_t_cycle(context);
                     let dma_transfer_work = dma.tick_t_cycle(context);
                     let dma_oam_conflict_address = dma_transfer_work.and_then(|transfer_work| {
                         let destination_address = transfer_work.destination_address();

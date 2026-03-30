@@ -156,21 +156,21 @@ make run-mooneye
   external ROM suites; it includes the Rust checks plus the coverage threshold
   gate through `cargo cov-check`
 - `make test-roms` fetches the curated ROM store if needed and runs the
-  repository-gated green external DMG block; that block intentionally includes
-  only the currently supported non-APU, non-CGB suites
+  repository-gated green external DMG block
 - `make coverage` emits `lcov.info` through `cargo cov-lcov`
 - GitHub uses two workflows:
   `ci` for Rust checks plus coverage
   `test-roms` for the supported external DMG block
 - `make test-roms` runs the same repository-gated external DMG block explicitly:
-  the curated supported Blargg DMG family
+  the repo-gated Blargg DMG family
   `blargg-dmg-curated`
   and the curated Acid DMG family
   `acid-dmg-curated`
 - the curated Acid DMG family mixes one blocking framebuffer oracle
   `dmg-acid2.gb` with one informational framebuffer capture case `which.gb`,
   matching the upstream `GBEmulatorShootout` classification
-- `make run-blargg` runs the curated supported Blargg DMG family
+- `make run-blargg` runs the repo-gated Blargg DMG family, including
+  `dmg_sound 01..12`
 - `make run-acid` runs the curated supported Acid DMG family
 - `make run-daid` runs the current exploratory `daid` DMG subset and updates
   `/.roms/test/test-report.md`
@@ -185,9 +185,13 @@ make run-mooneye
 - the current curated Blargg family intentionally uses only individual ROMs
   from `GBEmulatorShootout`; it does not use multi-ROM bundles such as
   `cpu_instrs.gb`
-- the upstream `oam_bug/7-timing_effect.gb`, APU suites, CGB-only ROMs, and
-  other still-red cases stay outside the default managed block until they are
-  intentionally promoted
+- the full curated Blargg family now includes the DMG `dmg_sound 01..12`
+  individual ROMs from `GBEmulatorShootout`, and that audio slice is now
+  intentionally promoted into the repo-gated block used by `make run-blargg`
+  and `make test-roms`
+- the upstream `oam_bug/7-timing_effect.gb`, CGB-only ROMs, and other still-red
+  cases stay outside the default managed block until they are intentionally
+  promoted
 - one exploratory `mealybug-tearoom` DMG subset is also integrated as
   `mealybug-tearoom-dmg-curated`, but it is currently outside the default
   gate because it still diverges from the upstream framebuffer fixtures under
@@ -234,7 +238,8 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --early-checklist
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite acid-dmg-curated
 ```
 
-- to run the curated supported Blargg DMG family, run:
+- to run the full curated Blargg DMG family, including the now-promoted Phase
+  `7` `dmg_sound` slice, run:
 
 ```bash
 cargo run -p gb-test-runner --bin run_rom_suite -- --suite blargg-dmg-curated

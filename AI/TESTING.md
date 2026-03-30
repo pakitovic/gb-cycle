@@ -67,6 +67,15 @@ project is still bringing up later hardware blocks such as APU and save states.
 - `DMA`: internal gate only. Current evidence: closed Phase `3` unit and integration
   coverage. Remaining final-closure gaps: a promoted external ROM slice and later
   differential tooling.
+- `APU`: repo gate present. Current evidence: repo-local APU MMIO/power-readback
+  coverage, repo-local unit and machine integration coverage for the explicit
+  `DAC -> NR51 -> NR50 -> HPF` output path and the current non-intrusive
+  post-HPF snapshot capture boundary, plus the full curated
+  `blargg-dmg-curated` family now promoted into the repo-gated external DMG
+  block, including Blargg `dmg_sound 01..12`.
+  Remaining final-closure gaps: differential oracle coverage and later
+  frontend/export validation beyond that now-explicit core-owned snapshot
+  capture boundary.
 - `PPU`: repo gate present for the currently closed OAM-corruption slice. Current
   evidence: Phase `4` synthetic OAM-corruption ROMs, curated Blargg `oam_bug`
   singles `1..6,8`, a repo-gated `dmg-acid2` framebuffer oracle, and the
@@ -312,13 +321,13 @@ This checklist should move only when one of the following becomes true:
 - When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make test` and `make coverage` locally as well before the PR is updated.
 - The GitHub `ci` workflow is intentionally limited to formatting, linting, tests, typos, dependency policy, and the coverage gate. Keep external ROM execution out of that workflow.
 - The repository-gated external official ROM block currently includes the green
-  non-APU, non-CGB DMG suites sourced from `GBEmulatorShootout`: the curated
-  supported Blargg DMG family made of individual ROMs only (`cpu_instrs 01..11`,
-  `halt_bug`, `instr_timing`, `mem_timing 01..03`, `mem_timing-2 01..03`, and
-  `oam_bug 1..6,8`) plus the curated Acid DMG framebuffer oracle family. Keep
-  APU-specific suites, multi-ROM bundles, CGB-only suites, and still-red
-  exploratory ROMs out of the default external-ROM workflow until they are
-  green and intentionally promoted.
+  non-CGB DMG suites sourced from `GBEmulatorShootout`: the full repo-gated
+  Blargg DMG family (`cpu_instrs 01..11`, `halt_bug`, `instr_timing`,
+  `mem_timing 01..03`, `mem_timing-2 01..03`, `oam_bug 1..6,8`, and
+  `dmg_sound 01..12`) plus the curated Acid DMG framebuffer oracle family.
+- Keep multi-ROM bundles, CGB-only suites, and still-red exploratory ROMs out
+  of the default external-ROM workflow until they are green and intentionally
+  promoted.
 - For the current infrastructure-heavy stage, keep the aggregate coverage gate across `gb-core`, `gb-test-runner`, and `gb-persistence` at or above `90%` for lines, regions, and functions, but do not satisfy that threshold with hollow tests that only exercise trivial getters or app placeholders.
 - When immediate automated coverage is temporarily impractical, record the missing test coverage, the reason it is deferred, and the remaining risk in the change report; add a roadmap TODO as well if the gap is concrete and non-trivial.
 - ROM-based validation and oracle comparison complement automated tests; they do not replace the expectation that new code should usually leave behind unit or integration coverage.

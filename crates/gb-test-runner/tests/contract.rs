@@ -5,8 +5,8 @@ use gb_test_runner::{
     CaptureKind, CapturePlan, ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan,
     FailureArtifactPolicy, MemoryTextOutputSpec, PassCondition, RomCaseValidationError, RomSuite,
     RomSuiteValidationError, RomTestCase, StimulusTime, TEST_ROM_ROOT_ENV_VAR, TestSubsystem,
-    Timeout, acid_dmg_curated_suite, blargg_dmg_curated_suite, daid_dmg_curated_suite,
-    hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
+    Timeout, acid_dmg_curated_suite, blargg_dmg_curated_suite, blargg_dmg_repo_gated_suite,
+    daid_dmg_curated_suite, hacktix_dmg_curated_suite, mealybug_tearoom_dmg_curated_suite,
     mooneye_acceptance_dmg_curated_suite, phase_2_cpu_timing_suite, phase_2_interrupt_timing_suite,
     phase_4_ppu_oam_corruption_suite, phase_6_cartridge_oracle_suite,
 };
@@ -543,13 +543,13 @@ fn phase_4_rom_automation_targets_validate_for_ppu_oam_corruption() {
 }
 
 #[test]
-fn curated_blargg_suite_tracks_the_supported_individual_shootout_list() {
+fn curated_blargg_suite_tracks_the_full_individual_shootout_list() {
     let suite = blargg_dmg_curated_suite();
 
     assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
     assert_eq!(suite.validate(), Ok(()));
     assert_eq!(suite.family.as_deref(), Some("blargg"));
-    assert_eq!(suite.cases.len(), 26);
+    assert_eq!(suite.cases.len(), 38);
     assert!(
         suite
             .cases
@@ -567,6 +567,28 @@ fn curated_blargg_suite_tracks_the_supported_individual_shootout_list() {
             .cases
             .iter()
             .any(|case| case.id == "blargg-instr-timing")
+    );
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
+    );
+}
+
+#[test]
+fn repo_gated_blargg_suite_now_matches_the_promoted_curated_family() {
+    let suite = blargg_dmg_repo_gated_suite();
+
+    assert_eq!(suite.subsystem, TestSubsystem::CrossSubsystem);
+    assert_eq!(suite.validate(), Ok(()));
+    assert_eq!(suite.family.as_deref(), Some("blargg"));
+    assert_eq!(suite.cases.len(), 38);
+    assert!(
+        suite
+            .cases
+            .iter()
+            .any(|case| case.id == "blargg-dmg-sound-12-wave-write-while-on")
     );
 }
 
