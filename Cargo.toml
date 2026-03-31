@@ -4,5 +4,6 @@ members = [
     "crates/gb-test-runner",
     "crates/gb-cli",
     "crates/gb-persistence",
+    "crates/gb-desktop",
 ]
 resolver = "2"

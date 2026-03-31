@@ -26,6 +26,7 @@ crates/
   gb-core/    Pure emulation logic
   gb-test-runner/  Typed ROM harness, executable suites, and validation helpers
   gb-cli/     Current CLI frontend
+  gb-desktop/ SDL3 desktop frontend
   gb-persistence/  Host-side cartridge save backends and format
 AI/           Architecture, roadmap, and technical documentation
 Makefile      Local verification pipeline and utilities
@@ -33,7 +34,6 @@ Makefile      Local verification pipeline and utilities
 
 Mid-term planned extensions, not yet materialized as separate crates:
 
-- `gb-desktop`
 - `gb-web`
 - additional tooling such as richer debugger and utilities
 - broader integration tests and ROM suites
@@ -54,6 +54,19 @@ cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts
 - `--trace-out` writes the in-memory scheduler trace text for the run
 - `--save-dir` loads and stores battery-backed cartridge persistence using the host-side `.gbsav` format from `gb-persistence`
 - if neither `--frames` nor `--tcycles` is provided, `skip-boot` stops after `120` completed frames by default, while `real-boot` stops after boot-ROM handoff plus `120` completed post-handoff frames with a `480`-frame safety cap
+
+### `gb-desktop`
+
+The workspace now also includes an SDL3-based desktop frontend scaffold:
+
+```bash
+cargo run -p gb-desktop -- path/to/rom.gb
+```
+
+- it currently opens a desktop window, renders the live `160x144` framebuffer, maps keyboard and SDL3 gamepad input to the joypad path, supports basic gamepad hotplug plus preferred-device selection and remappable gamepad bindings, plays audio through SDL3, and loads/saves battery-backed cartridge persistence
+- the window title now also reports live FPS, average frame time, and relative emulation speed so desktop performance issues can be measured without attaching a profiler first
+- it reuses the same DMG-family startup model, startup mode, execution mode, boot-ROM search, and battery-save concepts as `gb-cli`
+- host audio playback now consumes a typed post-HPF sample-capture boundary from `gb-core`, so the desktop frontend only performs final host-side `f32` normalization and SDL3 queueing instead of owning APU semantics
 
 ### Requirements
 

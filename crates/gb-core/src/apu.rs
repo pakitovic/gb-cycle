@@ -1,5 +1,6 @@
 use crate::model::ConsoleModel;
 use crate::scheduler::{CycleContext, DerivedEdge};
+use std::mem;
 
 const CHANNEL_ACTIVE_CH1: u8 = 0x01;
 const CHANNEL_ACTIVE_CH2: u8 = 0x02;
@@ -48,6 +49,9 @@ const ANALOG_ONE: i32 = 15_000_000;
 const DAC_ANALOG_STEP: i32 = 2_000_000;
 const HPF_CHARGE_FACTOR_NUMERATOR: i64 = 999_958;
 const HPF_CHARGE_FACTOR_DENOMINATOR: i64 = 1_000_000;
+pub const DMG_FAMILY_APU_CAPTURE_CLOCK_HZ: u32 = 4_194_304;
+pub const APU_HOST_MAX_ABS_SAMPLE: i32 = ANALOG_ONE * 4 * 8;
+const DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64: u64 = DMG_FAMILY_APU_CAPTURE_CLOCK_HZ as u64;
 
 const PULSE_DUTY_PATTERNS: [[bool; 8]; 4] = [
     [false, false, false, false, false, false, false, true],
@@ -144,6 +148,24 @@ pub struct ApuStereoOutputSnapshot {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ApuHostSample {
+    pub left: i32,
+    pub right: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApuSampleCaptureError {
+    OutputSampleRateZero,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApuSampleCapture {
+    output_sample_rate_hz: u32,
+    sample_phase_accumulator: u64,
+    pending_samples: Vec<ApuHostSample>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ApuHpfCapacitorSnapshot {
     pub left: i64,
     pub right: i64,
@@ -190,6 +212,58 @@ struct FrameSequencerClocks {
 impl ApuStereoOutputSnapshot {
     const fn new(left: i32, right: i32) -> Self {
         Self { left, right }
+    }
+}
+
+impl From<ApuStereoOutputSnapshot> for ApuHostSample {
+    fn from(value: ApuStereoOutputSnapshot) -> Self {
+        Self {
+            left: value.left,
+            right: value.right,
+        }
+    }
+}
+
+impl ApuSampleCapture {
+    pub fn new(output_sample_rate_hz: u32) -> Result<Self, ApuSampleCaptureError> {
+        if output_sample_rate_hz == 0 {
+            return Err(ApuSampleCaptureError::OutputSampleRateZero);
+        }
+
+        Ok(Self {
+            output_sample_rate_hz,
+            sample_phase_accumulator: 0,
+            pending_samples: Vec::new(),
+        })
+    }
+
+    pub fn output_sample_rate_hz(&self) -> u32 {
+        self.output_sample_rate_hz
+    }
+
+    pub fn pending_sample_count(&self) -> usize {
+        self.pending_samples.len()
+    }
+
+    pub fn record_t_cycle(&mut self, apu: &Apu) {
+        self.record_output_t_cycle(apu.host_output_sample());
+    }
+
+    pub fn record_output_t_cycle(&mut self, sample: ApuHostSample) {
+        self.sample_phase_accumulator += u64::from(self.output_sample_rate_hz);
+        while self.sample_phase_accumulator >= DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64 {
+            self.sample_phase_accumulator -= DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64;
+            self.pending_samples.push(sample);
+        }
+    }
+
+    pub fn drain_samples(&mut self) -> Vec<ApuHostSample> {
+        mem::take(&mut self.pending_samples)
+    }
+
+    pub fn drain_samples_into(&mut self, destination: &mut Vec<ApuHostSample>) {
+        destination.clear();
+        mem::swap(destination, &mut self.pending_samples);
     }
 }
 
@@ -1781,6 +1855,10 @@ impl Apu {
         }
     }
 
+    pub fn host_output_sample(&self) -> ApuHostSample {
+        self.output_path.current_output.into()
+    }
+
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
         format!(
             "t_cycle={} phase={} console_model={:?} status={:?}",
@@ -2142,6 +2220,109 @@ mod tests {
         assert!(after_second_tick.hpf_output.right < after_first_tick.hpf_output.right);
         assert!(after_second_tick.hpf_capacitor.left > after_first_tick.hpf_capacitor.left);
         assert!(after_second_tick.hpf_capacitor.right > after_first_tick.hpf_capacitor.right);
+    }
+
+    #[test]
+    fn host_output_sample_matches_the_live_post_hpf_output_snapshot() {
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+        apu.write_register(0xFF26, 0x80);
+        apu.write_register(0xFF12, 0x08);
+        apu.write_register(0xFF24, 0x77);
+        apu.write_register(0xFF25, 0x11);
+
+        let output_snapshot = apu.snapshot().output.hpf_output;
+
+        assert_eq!(
+            apu.host_output_sample(),
+            ApuHostSample {
+                left: output_snapshot.left,
+                right: output_snapshot.right,
+            }
+        );
+    }
+
+    #[test]
+    fn sample_capture_rejects_zero_sample_rate() {
+        assert_eq!(
+            ApuSampleCapture::new(0).expect_err("zero sample rate must fail"),
+            ApuSampleCaptureError::OutputSampleRateZero
+        );
+    }
+
+    #[test]
+    fn sample_capture_can_emit_one_sample_per_t_cycle() {
+        let mut capture =
+            ApuSampleCapture::new(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ).expect("valid sample rate");
+
+        capture.record_output_t_cycle(ApuHostSample { left: 1, right: -1 });
+        capture.record_output_t_cycle(ApuHostSample { left: 2, right: -2 });
+        capture.record_output_t_cycle(ApuHostSample { left: 3, right: -3 });
+
+        assert_eq!(
+            capture.drain_samples(),
+            vec![
+                ApuHostSample { left: 1, right: -1 },
+                ApuHostSample { left: 2, right: -2 },
+                ApuHostSample { left: 3, right: -3 },
+            ]
+        );
+    }
+
+    #[test]
+    fn sample_capture_emits_samples_at_the_requested_fractional_rate() {
+        let mut capture =
+            ApuSampleCapture::new(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ / 4).expect("valid sample rate");
+
+        for sample_index in 0..8 {
+            capture.record_output_t_cycle(ApuHostSample {
+                left: sample_index,
+                right: -sample_index,
+            });
+        }
+
+        assert_eq!(
+            capture.drain_samples(),
+            vec![
+                ApuHostSample { left: 3, right: -3 },
+                ApuHostSample { left: 7, right: -7 },
+            ]
+        );
+    }
+
+    #[test]
+    fn sample_capture_produces_the_exact_requested_sample_count_over_one_second() {
+        let mut capture = ApuSampleCapture::new(48_000).expect("valid sample rate");
+
+        for _ in 0..DMG_FAMILY_APU_CAPTURE_CLOCK_HZ {
+            capture.record_output_t_cycle(ApuHostSample::default());
+        }
+
+        assert_eq!(capture.pending_sample_count(), 48_000);
+        assert_eq!(capture.drain_samples().len(), 48_000);
+    }
+
+    #[test]
+    fn sample_capture_can_drain_into_a_reusable_buffer() {
+        let mut capture =
+            ApuSampleCapture::new(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ).expect("valid sample rate");
+        let mut reusable_buffer = vec![ApuHostSample {
+            left: 99,
+            right: -99,
+        }];
+
+        capture.record_output_t_cycle(ApuHostSample { left: 7, right: -7 });
+        capture.record_output_t_cycle(ApuHostSample { left: 8, right: -8 });
+
+        capture.drain_samples_into(&mut reusable_buffer);
+
+        assert_eq!(
+            reusable_buffer,
+            vec![
+                ApuHostSample { left: 7, right: -7 },
+                ApuHostSample { left: 8, right: -8 },
+            ]
+        );
+        assert_eq!(capture.pending_sample_count(), 0);
     }
 
     #[test]

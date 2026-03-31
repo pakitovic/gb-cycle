@@ -416,6 +416,8 @@ to immediately materialize as a separate directory.
 - Keep file I/O, audio output, video output, and input outside the core.
 - Use traits or narrow interfaces where frontend services must be injected.
 - The same core should be usable by CLI tools, desktop apps, benchmarks, tests, and WebAssembly.
+- Frontend crates should adapt one shared core-facing session contract while owning host-only concerns such as boot-ROM search paths, battery-save paths and flush policy, video presentation, frame pacing / `vsync` policy, audio backend configuration, preferred host-device selection, and remappable input bindings outside `gb-core`.
+- Frontend host input adapters may aggregate multiple host sources such as keyboard and SDL gamepad state, and they may refresh host controller state explicitly after pumping host events when that reduces backend-specific latency or event-queue quirks, but they must only publish effective `JoypadButton` transitions into the core rather than bypassing joypad-owned hardware semantics or writing precomposed `JOYP` state.
 
 ## Scalability policy
 

@@ -1221,6 +1221,11 @@ contracts instead of reopening them through peripheral-local shortcuts.
    selection, active-low semantics, simultaneous-row combination, direct-boot
    startup state, and the guarantee that selection writes affect readback on
    the same shared machine timeline.
+   Status: done in the current branch baseline for both the core boundary and
+   the desktop host adapter. `gb-desktop` now aggregates keyboard plus SDL3
+   gamepad state on the host side, including active-pad hotplug handoff, while
+   only forwarding effective `JoypadButton` transitions into `gb-core` instead
+   of reintroducing frontend-owned `JOYP` composition.
 2. `Phase 5.2` - Joypad visible-edge interrupt generation through the shared
    interrupt path.
    Acceptance criteria: joypad tracks the previously visible low nibble, raises
@@ -1723,6 +1728,10 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    `ApuSnapshot` now exposes an explicit output-path snapshot with per-channel
    digital output, per-channel DAC output, stereo mixer output, stereo
    master-volume output, post-HPF output, and persistent left/right HPF state.
+   The core-facing host boundary is now also explicit as typed post-HPF stereo
+   samples plus `ApuSampleCapture`, so frontends choose output cadence and
+   final sample-format conversion without pulling SDL, browser, or libretro
+   concerns into `gb-core`.
    Unit coverage now fixes DAC-enabled inactive versus DAC-off behavior,
    independent `NR51` routing, documented `NR50` factor semantics, HPF
    persistence, and immediate routing-driven pop-visible changes, while

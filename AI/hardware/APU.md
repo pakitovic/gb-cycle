@@ -218,14 +218,16 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Conversion from the core's internal analog representation into host `float` or `int16` output should be a final representation step after HPF, not part of the hardware model itself.
 - The core should keep a sufficiently precise internal analog representation so host-format conversion does not force the hardware model to clip or renormalize early.
 
-Current branch baseline, March 30, 2026:
+Current branch baseline, March 31, 2026:
 
 - The master APU path now exposes an explicit output snapshot in the core branch baseline: resolved per-channel digital outputs, per-channel DAC outputs, stereo mixer output after `NR51`, stereo master output after `NR50`, plus post-HPF output and persistent HPF capacitor state.
 - The current DMG-facing DAC stage is now explicit in the core branch baseline instead of remaining an inferred later backend concern: enabled-DAC digital `0..15` is mapped linearly onto a negative-slope internal analog range, while DAC-off remains a separate explicit zero-output path rather than being collapsed into one more ordinary converted sample.
 - An inactive channel with its DAC still enabled therefore contributes the converted analog level for digital `0`, and local coverage now locks that distinction against the DAC-off path for the shared output pipeline.
 - `NR51` routing and `NR50` master-volume changes now update the live post-HPF preview immediately on the shared T-cycle timeline instead of waiting for a frontend audio boundary; local coverage already fixes independent left/right routing, the documented `NR50` `0 -> factor 1` and `7 -> factor 8` semantics, and HPF-visible pops from output-path changes.
 - The HPF now keeps explicit persistent left/right state in the APU core and is clocked from the same T-cycle timeline as the rest of the subsystem instead of being deferred to host audio code.
-- The current host-facing boundary in `gb-core` is the typed post-HPF snapshot path rather than a real-time backend callback. Machine-level integration coverage now fixes that reading snapshots at different host-side cadences does not feed back into APU timing, mixer behavior, or HPF evolution.
+- The current host-facing boundary in `gb-core` is now explicit as typed post-HPF stereo samples plus a capture helper: `Apu::host_output_sample()` exposes the live post-HPF analog state, and `ApuSampleCapture` advances a frontend-chosen output cadence without feeding host sample rate or host callback timing back into the hardware model.
+- Machine-level integration coverage now fixes that reading snapshots at different host-side cadences does not feed back into APU timing, mixer behavior, or HPF evolution, while local sample-capture coverage now fixes zero-rate rejection, exact long-run sample counts, and deterministic fractional-rate capture from the shared T-cycle timeline.
+- Final normalization to host `float` or other sink-native sample types remains frontend-owned, so SDL, WebAssembly, libretro, or offline tooling can all consume the same core capture boundary without the APU depending on any concrete backend API.
 
 ## CH1 baseline (pulse + sweep)
 
