@@ -113,7 +113,13 @@ fn decode_png_framebuffer(
             path: path.to_path_buf(),
             message: source.to_string(),
         })?;
-    let mut buffer = vec![0; reader.output_buffer_size()];
+    let output_buffer_size = reader
+        .output_buffer_size()
+        .ok_or_else(|| FramebufferOracleError {
+            path: path.to_path_buf(),
+            message: "PNG decoder did not expose an output buffer size".to_string(),
+        })?;
+    let mut buffer = vec![0; output_buffer_size];
     let info = reader
         .next_frame(&mut buffer)
         .map_err(|source| FramebufferOracleError {

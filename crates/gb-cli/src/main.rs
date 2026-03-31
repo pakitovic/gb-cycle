@@ -1693,7 +1693,12 @@ mod tests {
         assert!(framebuffer.starts_with(b"\x89PNG\r\n\x1A\n"));
         let decoder = png::Decoder::new(std::io::Cursor::new(&framebuffer));
         let mut reader = decoder.read_info().expect("PNG should decode");
-        let mut buffer = vec![0; reader.output_buffer_size()];
+        let mut buffer = vec![
+            0;
+            reader
+                .output_buffer_size()
+                .expect("PNG decoder should expose an output buffer size")
+        ];
         let info = reader
             .next_frame(&mut buffer)
             .expect("PNG frame should decode");

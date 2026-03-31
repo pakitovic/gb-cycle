@@ -8,5 +8,5 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 gb-core = { version = "0.1.0", path = "../gb-core" }
 gb-persistence = { version = "0.1.0", path = "../gb-persistence" }
-png = "0.17"
+png = "0.18"
 sha2 = "0.10"
