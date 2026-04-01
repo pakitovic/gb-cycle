@@ -146,7 +146,12 @@ This checklist should move only when one of the following becomes true:
 - Curated family runs should update `/.roms/test/test-report.md` with a simple
   per-ROM status table so repo-managed `PASS` / `FAIL` / `INFO` state stays
   visible without re-reading logs; the markdown view should render those states
-  as `✅`, `❌`, and `ℹ️` rather than repeating the raw persisted strings.
+  as `✅`, `❌`, and `ℹ️` rather than repeating the raw persisted strings. The
+  report header should also include a `non-failing/total` summary for the exact
+  set of persisted rows currently rendered in that markdown file, counting both
+  `PASS` and `INFO` in the numerator, so a first partial run reports only its
+  own rows while later partial updates keep counting the broader persisted
+  context already present in the report.
   When multiple curated families are present in the report, they should render
   in the fixed order `acid`, `blargg`, `daid`, `ax6`, `mooneye`, `samesuite`,
   `hacktix`, `cpp`, `mealybug-tearoom-tests`; families with no persisted cases

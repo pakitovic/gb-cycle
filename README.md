@@ -163,8 +163,9 @@ make run-mooneye
   matching manifest under `crates/gb-test-runner/data/*.toml`
 - the runner updates `/.roms/test/test-report.md` with a simple
   `family | rom | status` table when a curated family suite executes, using
-  `✅`, `❌` and `ℹ️` in the status column and keeping each family's curated ROM
-  order from the manifest
+  `✅`, `❌` and `ℹ️` in the status column, adding a `non-failing/total`
+  summary in the `# Test Report (...)` header, and keeping each family's
+  curated ROM order from the manifest
 - repo-managed local-only support assets now also live under gitignored roots
   inside the workspace:
   `/.roms/bootrom/` for DMG/MGB boot ROM images and

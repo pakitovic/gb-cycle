@@ -711,9 +711,13 @@ fn dmg_boot_logo_vram_startup_writes() -> Vec<StartupMemoryWrite> {
 fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
     let mut ordered_suites = suites.to_vec();
     ordered_suites.sort_by(compare_report_suites);
+    let (non_failing_cases, total_cases) = report_summary_counts(&ordered_suites);
 
     let mut report = String::new();
-    let _ = writeln!(&mut report, "# Test Report");
+    let _ = writeln!(
+        &mut report,
+        "# Test Report ({non_failing_cases}/{total_cases})"
+    );
     let _ = writeln!(&mut report);
     let _ = writeln!(&mut report, "| family | rom | status |");
     let _ = writeln!(&mut report, "| --- | --- | --- |");
@@ -730,6 +734,22 @@ fn render_markdown_report(suites: &[PersistedSuiteStatus]) -> String {
         }
     }
     report
+}
+
+fn report_summary_counts(suites: &[PersistedSuiteStatus]) -> (usize, usize) {
+    let mut non_failing_cases = 0;
+    let mut total_cases = 0;
+
+    for suite in suites {
+        for case in &suite.cases {
+            total_cases += 1;
+            if matches!(case.status.as_str(), "PASS" | "INFO") {
+                non_failing_cases += 1;
+            }
+        }
+    }
+
+    (non_failing_cases, total_cases)
 }
 
 fn report_family_rank(family: &str) -> Option<usize> {
@@ -1258,6 +1278,7 @@ mod tests {
 
         let rendered_report =
             fs::read_to_string(report_path).expect("markdown report should be readable");
+        assert!(rendered_report.starts_with("# Test Report (1/2)\n"));
         assert!(rendered_report.contains(&format!(
             "| blargg | cpu_instrs/01-special.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
@@ -1311,6 +1332,7 @@ mod tests {
 
         let rendered_report =
             fs::read_to_string(report_path).expect("markdown report should be readable");
+        assert!(rendered_report.starts_with("# Test Report (1/1)\n"));
         assert!(rendered_report.contains(&format!(
             "| blargg | halt_bug.gb | {REPORT_STATUS_PASS_EMOJI} |"
         )));
@@ -1350,6 +1372,7 @@ mod tests {
 
         let rendered_report =
             fs::read_to_string(report_path).expect("markdown report should be readable");
+        assert!(rendered_report.starts_with("# Test Report (1/1)\n"));
         assert!(
             rendered_report.contains(&format!("| acid | which.gb | {REPORT_STATUS_INFO_EMOJI} |"))
         );
@@ -1414,6 +1437,7 @@ mod tests {
             },
         ]);
 
+        assert!(rendered.starts_with("# Test Report (4/4)\n"));
         let acid_which = rendered
             .find(&format!("| acid | which.gb | {REPORT_STATUS_INFO_EMOJI} |"))
             .expect("acid informational row should exist");
@@ -1456,6 +1480,7 @@ mod tests {
             }],
         }]);
 
+        assert!(rendered.starts_with("# Test Report (1/1)\n"));
         let future_case = rendered
             .find(&format!(
                 "| future | probe.gb | {REPORT_STATUS_INFO_EMOJI} |"
@@ -1464,6 +1489,58 @@ mod tests {
         assert!(future_case > 0);
         assert!(!rendered.contains("| acid | - | - |"));
         assert!(!rendered.contains("| mealybug-tearoom-tests | - | - |"));
+    }
+
+    #[test]
+    fn curated_test_report_header_counts_all_persisted_context_after_partial_family_update() {
+        let workspace_root = unique_temp_dir("report-summary-context");
+        fs::create_dir_all(test_rom_store_root(&workspace_root))
+            .expect("test rom store root should be creatable");
+
+        let acid_report = RomSuiteReport {
+            suite_name: "acid-dmg-curated".to_string(),
+            family: Some("acid".to_string()),
+            subsystem: TestSubsystem::Ppu,
+            cases: vec![
+                report_case("acid-which", "acid/which.gb", RomCaseOutcome::Informational),
+                report_case(
+                    "acid-dmg-acid2",
+                    "acid/dmg-acid2.gb",
+                    RomCaseOutcome::Passed,
+                ),
+            ],
+        };
+        update_curated_test_report(&workspace_root, &acid_report)
+            .expect("acid report should write");
+
+        let blargg_report = RomSuiteReport {
+            suite_name: "blargg-dmg-curated".to_string(),
+            family: Some("blargg".to_string()),
+            subsystem: TestSubsystem::CrossSubsystem,
+            cases: vec![report_case(
+                "blargg-halt-bug",
+                "blargg/halt_bug.gb",
+                RomCaseOutcome::Failed(RomCaseFailure::TimeoutExceeded),
+            )],
+        };
+        let report_path = update_curated_test_report(&workspace_root, &blargg_report)
+            .expect("blargg partial report should write")
+            .expect("curated suite should emit a report path");
+
+        let rendered_report =
+            fs::read_to_string(report_path).expect("markdown report should be readable");
+        assert!(rendered_report.starts_with("# Test Report (2/3)\n"));
+        assert!(
+            rendered_report.contains(&format!("| acid | which.gb | {REPORT_STATUS_INFO_EMOJI} |"))
+        );
+        assert!(rendered_report.contains(&format!(
+            "| acid | dmg-acid2.gb | {REPORT_STATUS_PASS_EMOJI} |"
+        )));
+        assert!(rendered_report.contains(&format!(
+            "| blargg | halt_bug.gb | {REPORT_STATUS_FAIL_EMOJI} |"
+        )));
+
+        fs::remove_dir_all(workspace_root).expect("temp workspace should be removable");
     }
 
     #[test]
