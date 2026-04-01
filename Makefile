@@ -2,14 +2,15 @@
 
 FAMILIES ?= all
 
-.PHONY: help setup hooks tools ci coverage test-roms fetch-test-roms run-acid run-blargg run-daid run-mooneye run-hacktix run-cpp run-mealybug
+.PHONY: help setup hooks tools ci coverage coverage-check test-roms fetch-test-roms run-acid run-blargg run-daid run-mooneye run-hacktix run-cpp run-mealybug
 
 help:
 	@echo "Available targets:"
 	@echo "  make setup                Configure git hooks and install local cargo tools"
 	@echo "  make hooks                Configure repository git hooks"
 	@echo "  make tools                Install local cargo tools used by this repository"
-	@echo "  make ci                   Run the local pre-push gate (fmt, clippy, test, typos, deny, coverage check)"
+	@echo "  make ci                   Run the local pre-push gate (fmt, clippy, typos, deny, workspace tests via coverage, per-crate coverage check)"
+	@echo "  make coverage-check       Run one workspace coverage sweep, then enforce per-crate coverage gates"
 	@echo "  make coverage             Run complete workspace coverage and emit the HTML report"
 	@echo "  make test-roms            Fetch and run all local curated DMG ROM suites"
 	@echo "  make fetch-test-roms      Materialize .roms/test from the pinned GBEmulatorShootout source using a temporary checkout"
@@ -37,10 +38,18 @@ tools:
 ci:
 	cargo fmt-check
 	cargo lint
-	cargo tests
 	typos
 	cargo deny-check
-	cargo cov-check
+	$(MAKE) coverage-check
+
+coverage-check:
+	cargo cov-clean
+	cargo cov-run
+	cargo cov-check-core
+	cargo cov-check-test-runner
+	cargo cov-check-persistence
+	cargo cov-check-cli
+	cargo cov-check-desktop
 
 coverage:
 	cargo cov-html

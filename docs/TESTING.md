@@ -326,7 +326,7 @@ This checklist should move only when one of the following becomes true:
 - New production code should normally introduce automated unit tests or integration tests in the same change.
 - Prefer unit tests for local logic and integration tests when the behavior only becomes meaningful across subsystem boundaries.
 - Treat "code first, tests later" as an exception that must be justified explicitly, not as the default workflow.
-- Before opening or updating a pull request, run at least `make ci` locally so formatting, clippy, tests, typos, and `cargo deny` do not first surface in CI.
+- Before opening or updating a pull request, run at least `make ci` locally so formatting, clippy, workspace tests, typos, and `cargo deny` do not first surface in CI.
 - When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make test-roms` and `make coverage` locally as well before the PR is updated.
 - The GitHub `ci` workflow is intentionally limited to formatting, linting, tests, typos, dependency policy, and the coverage gate. Keep external ROM execution out of that workflow.
 - The GitHub `test-roms` workflow currently runs the workflow-managed non-CGB
@@ -340,7 +340,13 @@ This checklist should move only when one of the following becomes true:
 - Keep multi-ROM bundles, CGB-only suites, and still-red exploratory ROMs out
   of the default external-ROM workflow until they are green and intentionally
   promoted.
-- For the current infrastructure-heavy stage, keep the aggregate coverage gate across `gb-core`, `gb-test-runner`, and `gb-persistence` at or above `90%` for lines, regions, and functions, but do not satisfy that threshold with hollow tests that only exercise trivial getters or app placeholders.
+- When a new workspace crate is created, add it to the repo-owned coverage gate
+  immediately: wire a dedicated `cargo llvm-cov report -p <crate>
+  --fail-under-*` alias into `.cargo/config.toml`, add that alias to the
+  `coverage-check` target in `Makefile` so `make ci` exercises it, and default
+  the new crate to `90/90/90` for lines/regions/functions whenever that is
+  practical for the initial landing.
+- For the current infrastructure-heavy stage, keep the repo-owned coverage gate per crate rather than aggregated across crates. The current temporary floors are `gb-core` at `90/90/90`, `gb-test-runner` at `84.22/84.63/78.87`, `gb-persistence` at `84.84/79.37/84.44`, `gb-cli` at `64.47/61.23/59.48`, and `gb-desktop` at `45.24/48.05/48.76` for lines/regions/functions respectively; do not satisfy those thresholds with hollow tests that only exercise trivial getters or app placeholders.
 - When immediate automated coverage is temporarily impractical, record the missing test coverage, the reason it is deferred, and the remaining risk in the change report; add a roadmap TODO as well if the gap is concrete and non-trivial.
 - ROM-based validation and oracle comparison complement automated tests; they do not replace the expectation that new code should usually leave behind unit or integration coverage.
 
@@ -543,6 +549,13 @@ When a change affects observable timing or ordering:
 ## CI stratification policy
 
 - The regular CI path should always run critical unit tests, critical short integration tests, a stable subset of external ROMs, and save/load determinism coverage under `Strict`.
+- Coverage thresholds enforced with `cargo-llvm-cov --fail-under-*` must be checked per repo-gated crate, not as one aggregated multi-crate report, so a strong crate cannot hide a weaker one behind a shared total.
+- New workspace crates should join that per-crate gate in the same change that
+  introduces them unless a documented blocker exists; if the crate cannot meet
+  the intended `90/90/90` floor yet, record the temporary lower floor
+  explicitly in this file and in `docs/ROADMAP.md` rather than leaving the crate
+  outside `make ci`.
+- For the current repo-owned coverage gate, prefer one clean instrumented workspace run with `cargo llvm-cov --workspace --no-report`, then evaluate the gated crates separately with `cargo llvm-cov report -p <crate> --fail-under-*` so the signal stays per-crate without paying for repeated test execution. This keeps `make ci` from re-running the same tests once via `cargo test` and again via coverage while still enforcing floors for the full current workspace surface. The current temporary per-crate floors are `gb-core` `90/90/90`, `gb-test-runner` `84.22/84.63/78.87`, `gb-persistence` `84.84/79.37/84.44`, `gb-cli` `64.47/61.23/59.48`, and `gb-desktop` `45.24/48.05/48.76` for lines/regions/functions.
 - Experimental suites may exist in nightly or manual jobs, but they must publish artifacts separately and must not gate or dilute the official strict-mode closure signal.
 - Longer differential runs, soak tests, and broader external ROM inventories may live in nightly or manual suites, but they must remain documented and runnable.
 - When external ROMs are part of CI, the workflow should fetch them through the same repo-managed manifest-driven path used locally instead of embedding one-off download logic per job.
