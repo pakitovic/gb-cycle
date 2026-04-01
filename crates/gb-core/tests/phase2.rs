@@ -123,24 +123,12 @@ impl ProgramBuilder {
         self.bytes.extend_from_slice(&[0xEA, low, high]);
     }
 
-    #[allow(dead_code)]
     fn ldh_a8_from_a(&mut self, offset: u8) {
         self.bytes.extend_from_slice(&[0xE0, offset]);
     }
 
-    #[allow(dead_code)]
-    fn ldh_a_from_a8(&mut self, offset: u8) {
-        self.bytes.extend_from_slice(&[0xF0, offset]);
-    }
-
-    #[allow(dead_code)]
     fn ld_ff00_plus_c_from_a(&mut self) {
         self.bytes.push(0xE2);
-    }
-
-    #[allow(dead_code)]
-    fn ld_a_from_ff00_plus_c(&mut self) {
-        self.bytes.push(0xF2);
     }
 
     fn jr_offset(&mut self, offset: i8) {

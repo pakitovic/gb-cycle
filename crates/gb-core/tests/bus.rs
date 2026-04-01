@@ -240,6 +240,35 @@ fn video_bus_dma_constraints_take_precedence_over_ppu_mode_restrictions() {
 }
 
 #[test]
+fn public_bus_state_accessors_expose_blocked_values_and_built_resolutions() {
+    let blocked = BusAccessDisposition::BlockedRead {
+        value: 0xA5,
+        reason: BusBlockReason::PpuOamBlockedDuringMode3,
+    };
+    let ignored = BusAccessDisposition::IgnoredWrite {
+        reason: BusBlockReason::DmaExternalBusConflict,
+    };
+    let dma_state = DmaBusState::video_bus_blocked(Some(DmaMemoryRegionImpact::Vram))
+        .with_cpu_conflict_source_address(Some(0x8123));
+    let boot_state = BootRomBusState::map_dmg_low_bytes();
+    let bus = Bus::new(ConsoleModel::Dmg);
+
+    assert_eq!(blocked.blocked_read_value(), Some(0xA5));
+    assert_eq!(ignored.blocked_read_value(), None);
+    assert_eq!(dma_state.cpu_conflict_source_address(), Some(0x8123));
+    assert!(boot_state.maps_dmg_low_bytes());
+
+    let resolution = bus.resolve_access(
+        BusRequester::Boot,
+        BusAccessKind::Write,
+        0x0000,
+        &BusArbitrationState::default(),
+    );
+    assert_eq!(resolution.requester(), BusRequester::Boot);
+    assert_eq!(resolution.kind(), BusAccessKind::Write);
+}
+
+#[test]
 fn unusable_area_readback_tracks_oam_blocked_periods() {
     let bus = Bus::new(ConsoleModel::Dmg);
     let oam_blocked =

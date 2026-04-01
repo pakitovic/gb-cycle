@@ -2731,6 +2731,735 @@ mod tests {
     }
 
     #[test]
+    fn private_helpers_cover_remaining_flag_paths_decoder_tables_and_cb_operations() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+
+        assert_eq!(interrupt_vector(InterruptSource::VBlank), 0x0040);
+        assert_eq!(interrupt_vector(InterruptSource::LcdStat), 0x0048);
+        assert_eq!(interrupt_vector(InterruptSource::Timer), 0x0050);
+        assert_eq!(interrupt_vector(InterruptSource::Serial), 0x0058);
+        assert_eq!(interrupt_vector(InterruptSource::Joypad), 0x0060);
+        assert_eq!(highest_pending_interrupt_from_mask(0x00), None,);
+        assert_eq!(
+            highest_pending_interrupt_from_mask(0x02),
+            Some(InterruptSource::LcdStat),
+        );
+        assert_eq!(
+            highest_pending_interrupt_from_mask(0x01),
+            Some(InterruptSource::VBlank),
+        );
+        assert_eq!(
+            highest_pending_interrupt_from_mask(0x04),
+            Some(InterruptSource::Timer),
+        );
+        assert_eq!(
+            highest_pending_interrupt_from_mask(0x08),
+            Some(InterruptSource::Serial),
+        );
+        assert_eq!(
+            highest_pending_interrupt_from_mask(0x10),
+            Some(InterruptSource::Joypad),
+        );
+
+        assert_eq!(decode_register16(0), Register16::BC);
+        assert_eq!(decode_register16(1), Register16::DE);
+        assert_eq!(decode_register16(2), Register16::HL);
+        assert_eq!(decode_register16(3), Register16::SP);
+        assert_eq!(
+            decode_register8_operand(2),
+            Register8Operand::Register(Register8::D),
+        );
+        assert_eq!(
+            decode_register8_operand(3),
+            Register8Operand::Register(Register8::E),
+        );
+        assert_eq!(
+            decode_register8_operand(4),
+            Register8Operand::Register(Register8::H),
+        );
+        assert_eq!(
+            decode_register8_operand(5),
+            Register8Operand::Register(Register8::L),
+        );
+        assert_eq!(decode_register8_operand(6), Register8Operand::IndirectHl,);
+        assert_eq!(
+            decode_register8_operand(7),
+            Register8Operand::Register(Register8::A),
+        );
+        assert_eq!(decode_stack_register16(0), StackRegister16::BC);
+        assert_eq!(decode_stack_register16(1), StackRegister16::DE);
+        assert_eq!(decode_stack_register16(2), StackRegister16::HL);
+        assert_eq!(decode_stack_register16(3), StackRegister16::AF);
+        assert_eq!(decode_alu_operation(0), AluOperation::Add);
+        assert_eq!(decode_alu_operation(1), AluOperation::Adc);
+        assert_eq!(decode_alu_operation(2), AluOperation::Sub);
+        assert_eq!(decode_alu_operation(3), AluOperation::Sbc);
+        assert_eq!(decode_alu_operation(4), AluOperation::And);
+        assert_eq!(decode_alu_operation(5), AluOperation::Xor);
+        assert_eq!(decode_alu_operation(6), AluOperation::Or);
+        assert_eq!(decode_alu_operation(7), AluOperation::Compare);
+        assert_eq!(decode_relative_jump_condition(0x18), None);
+        assert_eq!(
+            decode_relative_jump_condition(0x20),
+            Some(ConditionCode::Nz),
+        );
+        assert_eq!(decode_relative_jump_condition(0x28), Some(ConditionCode::Z),);
+        assert_eq!(
+            decode_relative_jump_condition(0x30),
+            Some(ConditionCode::Nc),
+        );
+        assert_eq!(decode_relative_jump_condition(0x38), Some(ConditionCode::C),);
+        assert_eq!(decode_absolute_jump_condition(0xC3), None);
+        assert_eq!(
+            decode_absolute_jump_condition(0xC2),
+            Some(ConditionCode::Nz),
+        );
+        assert_eq!(decode_absolute_jump_condition(0xCA), Some(ConditionCode::Z),);
+        assert_eq!(
+            decode_absolute_jump_condition(0xD2),
+            Some(ConditionCode::Nc),
+        );
+        assert_eq!(decode_absolute_jump_condition(0xDA), Some(ConditionCode::C),);
+        assert_eq!(decode_call_condition(0xCD), None);
+        assert_eq!(decode_call_condition(0xC4), Some(ConditionCode::Nz));
+        assert_eq!(decode_call_condition(0xCC), Some(ConditionCode::Z));
+        assert_eq!(decode_call_condition(0xD4), Some(ConditionCode::Nc));
+        assert_eq!(decode_call_condition(0xDC), Some(ConditionCode::C));
+        assert_eq!(decode_return_condition(0xC9), None);
+        assert_eq!(decode_return_condition(0xC0), Some(ConditionCode::Nz));
+        assert_eq!(decode_return_condition(0xC8), Some(ConditionCode::Z));
+        assert_eq!(decode_return_condition(0xD0), Some(ConditionCode::Nc));
+        assert_eq!(decode_return_condition(0xD8), Some(ConditionCode::C));
+        assert_eq!(
+            decode_hl_update_direction(0x22),
+            CpuAddressUpdateDirection::Increment,
+        );
+        assert_eq!(
+            decode_hl_update_direction(0x2A),
+            CpuAddressUpdateDirection::Increment,
+        );
+        assert_eq!(
+            decode_hl_update_direction(0x32),
+            CpuAddressUpdateDirection::Decrement,
+        );
+        assert_eq!(
+            decode_hl_update_direction(0x3A),
+            CpuAddressUpdateDirection::Decrement,
+        );
+
+        cpu.write_register16(Register16::DE, 0x1234);
+        cpu.write_register16(Register16::HL, 0xABCD);
+        assert_eq!(cpu.de(), 0x1234);
+        assert_eq!(cpu.hl(), 0xABCD);
+        assert_eq!(cpu.read_stack_register16(StackRegister16::DE), 0x1234);
+        assert_eq!(cpu.read_stack_register16(StackRegister16::HL), 0xABCD);
+        cpu.write_stack_register16(StackRegister16::HL, 0x5678);
+        assert_eq!(cpu.hl(), 0x5678);
+
+        cpu.registers.sp = 0xC000;
+        assert_eq!(
+            cpu.increment_or_decrement_register16(
+                Register16::SP,
+                CpuAddressUpdateDirection::Increment,
+            ),
+            0xC001,
+        );
+        assert_eq!(cpu.registers.sp, 0xC001);
+        assert_eq!(
+            cpu.increment_or_decrement_register16(
+                Register16::DE,
+                CpuAddressUpdateDirection::Decrement,
+            ),
+            0x1233,
+        );
+        assert_eq!(cpu.de(), 0x1233);
+
+        cpu.registers.f = 0;
+        assert!(cpu.condition_is_met(Some(ConditionCode::Nc)));
+        cpu.registers.f = FLAG_C;
+        assert!(cpu.condition_is_met(Some(ConditionCode::C)));
+
+        cpu.registers.f = FLAG_C;
+        cpu.update_dec_flags(0x10, 0x0F);
+        assert_eq!(cpu.registers.f, FLAG_N | FLAG_H | FLAG_C);
+        cpu.registers.f = 0;
+        cpu.update_dec_flags(0x01, 0x00);
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_N);
+
+        cpu.registers.a = 0xFF;
+        cpu.registers.f = FLAG_C;
+        cpu.adc_to_a(0x00);
+        assert_eq!(cpu.registers.a, 0x00);
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_H | FLAG_C);
+
+        cpu.registers.a = 0x10;
+        cpu.sub_from_a(0x01);
+        assert_eq!(cpu.registers.a, 0x0F);
+        assert_eq!(cpu.registers.f, FLAG_N | FLAG_H);
+
+        cpu.registers.a = 0x00;
+        cpu.registers.f = FLAG_C;
+        cpu.sbc_from_a(0x00);
+        assert_eq!(cpu.registers.a, 0xFF);
+        assert_eq!(cpu.registers.f, FLAG_N | FLAG_H | FLAG_C);
+
+        cpu.registers.a = 0xF0;
+        cpu.and_with_a(0x0F);
+        assert_eq!(cpu.registers.a, 0x00);
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_H);
+
+        cpu.registers.a = 0xFF;
+        cpu.xor_with_a(0x0F);
+        assert_eq!(cpu.registers.a, 0xF0);
+        assert_eq!(cpu.registers.f, 0);
+
+        cpu.registers.a = 0x00;
+        cpu.or_with_a(0x00);
+        assert_eq!(cpu.registers.a, 0x00);
+        assert_eq!(cpu.registers.f, FLAG_Z);
+
+        cpu.registers.a = 0x01;
+        cpu.compare_a(0x01);
+        assert_eq!(cpu.registers.a, 0x01);
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_N);
+
+        cpu.write_register16(Register16::HL, 0xFFFF);
+        cpu.registers.f = FLAG_Z;
+        cpu.add_to_hl(0x0001);
+        assert_eq!(cpu.hl(), 0x0000);
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_H | FLAG_C);
+
+        cpu.registers.a = 0x55;
+        cpu.registers.f = FLAG_Z | FLAG_C;
+        cpu.complement_a();
+        assert_eq!(cpu.registers.a, 0xAA);
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_N | FLAG_H | FLAG_C);
+
+        cpu.registers.f = FLAG_Z;
+        cpu.set_carry_flag();
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_C);
+
+        cpu.registers.f = FLAG_Z | FLAG_C;
+        cpu.complement_carry_flag();
+        assert_eq!(cpu.registers.f, FLAG_Z);
+
+        cpu.registers.a = 0x01;
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x0F),
+            DecodedOpcode::Complete
+        ));
+        assert_eq!(cpu.registers.a, 0x80);
+        assert_eq!(cpu.registers.f, FLAG_C);
+
+        cpu.registers.a = 0x80;
+        cpu.registers.f = FLAG_C;
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x1F),
+            DecodedOpcode::Complete
+        ));
+        assert_eq!(cpu.registers.a, 0xC0);
+        assert_eq!(cpu.registers.f, 0);
+
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x10),
+            DecodedOpcode::Execute(CpuInstructionKind::Stop)
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x02),
+            DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
+                destination: MemoryAddressSource::BC,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x12),
+            DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
+                destination: MemoryAddressSource::DE,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0xEA),
+            DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
+                destination: MemoryAddressSource::Immediate16,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0xE0),
+            DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
+                destination: MemoryAddressSource::HighImmediate8,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0xE2),
+            DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
+                destination: MemoryAddressSource::HighC,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x0A),
+            DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
+                source: MemoryAddressSource::BC,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x1A),
+            DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
+                source: MemoryAddressSource::DE,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0xFA),
+            DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
+                source: MemoryAddressSource::Immediate16,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0xF0),
+            DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
+                source: MemoryAddressSource::HighImmediate8,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0xF2),
+            DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
+                source: MemoryAddressSource::HighC,
+            })
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x08),
+            DecodedOpcode::Execute(CpuInstructionKind::StoreSpToImmediate16)
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0xF8),
+            DecodedOpcode::Execute(CpuInstructionKind::LoadHlFromSpPlusImmediate)
+        ));
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0xE8),
+            DecodedOpcode::Execute(CpuInstructionKind::AddSpImmediate)
+        ));
+
+        let mut pending_mask_queries = 0;
+        assert_eq!(
+            cpu.current_highest_pending_interrupt(&mut |operation| {
+                pending_mask_queries += 1;
+                assert_eq!(operation, CpuBusOperation::PendingInterruptMask);
+                Some(0x10)
+            }),
+            Some(InterruptSource::Joypad),
+        );
+        assert_eq!(pending_mask_queries, 1);
+
+        let rlc = cpu.decode_cb_opcode(0x07).expect("RLC A should decode");
+        assert_eq!(rlc.target(), Register8Operand::Register(Register8::A));
+        assert_eq!(cpu.apply_cb_operation(rlc, 0x80), Some(0x01));
+        assert_eq!(cpu.registers.f, FLAG_C);
+
+        let rrc = cpu.decode_cb_opcode(0x08).expect("RRC B should decode");
+        assert_eq!(cpu.apply_cb_operation(rrc, 0x01), Some(0x80));
+        assert_eq!(cpu.registers.f, FLAG_C);
+
+        let sla = cpu.decode_cb_opcode(0x20).expect("SLA B should decode");
+        assert_eq!(cpu.apply_cb_operation(sla, 0x81), Some(0x02));
+        assert_eq!(cpu.registers.f, FLAG_C);
+
+        let sra = cpu.decode_cb_opcode(0x28).expect("SRA B should decode");
+        assert_eq!(cpu.apply_cb_operation(sra, 0x81), Some(0xC0));
+        assert_eq!(cpu.registers.f, FLAG_C);
+
+        let swap = cpu.decode_cb_opcode(0x30).expect("SWAP B should decode");
+        assert_eq!(cpu.apply_cb_operation(swap, 0xF0), Some(0x0F));
+        assert_eq!(cpu.registers.f, 0);
+
+        let srl = cpu.decode_cb_opcode(0x38).expect("SRL B should decode");
+        assert_eq!(cpu.apply_cb_operation(srl, 0x01), Some(0x00));
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_C);
+
+        cpu.registers.f = FLAG_C;
+        let bit = cpu.decode_cb_opcode(0x58).expect("BIT 3,B should decode");
+        assert_eq!(cpu.apply_cb_operation(bit, 0x00), None);
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_H | FLAG_C);
+
+        let reset = cpu.decode_cb_opcode(0x80).expect("RES 0,B should decode");
+        assert_eq!(cpu.apply_cb_operation(reset, 0xFF), Some(0xFE));
+
+        let set = cpu.decode_cb_opcode(0xFF).expect("SET 7,A should decode");
+        assert_eq!(set.target(), Register8Operand::Register(Register8::A));
+        assert_eq!(cpu.apply_cb_operation(set, 0x00), Some(0x80));
+    }
+
+    #[test]
+    fn private_execute_machine_cycle_paths_cover_remaining_decoder_and_invariant_regions() {
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.complete_execute_machine_cycle(0xAA, 2, &mut |_| None);
+        assert_eq!(
+            cpu.execution_state,
+            CpuExecutionState::Execute {
+                opcode: 0xAA,
+                step: 2,
+                t_cycle: LAST_MACHINE_CYCLE_T,
+            },
+        );
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.write_register16(Register16::HL, 0x0001);
+        cpu.registers.sp = 0x0001;
+        cpu.instruction_kind = Some(CpuInstructionKind::AddHl {
+            source: Register16::SP,
+        });
+        cpu.complete_execute_machine_cycle(0x39, 0, &mut |_| None);
+        assert_eq!(cpu.hl(), 0x0002);
+        assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.write_register16(Register16::BC, 0x0001);
+        cpu.write_register16(Register16::HL, 0x0001);
+        cpu.instruction_kind = Some(CpuInstructionKind::AddHl {
+            source: Register16::BC,
+        });
+        cpu.complete_execute_machine_cycle(0x09, 0, &mut |_| None);
+        assert_eq!(cpu.hl(), 0x0002);
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.write_register16(Register16::DE, 0x0002);
+        cpu.write_register16(Register16::HL, 0x0001);
+        cpu.instruction_kind = Some(CpuInstructionKind::AddHl {
+            source: Register16::DE,
+        });
+        cpu.complete_execute_machine_cycle(0x19, 0, &mut |_| None);
+        assert_eq!(cpu.hl(), 0x0003);
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.write_register16(Register16::HL, 0xC000);
+        cpu.instruction_kind = Some(CpuInstructionKind::DecrementHlMemory);
+        cpu.complete_execute_machine_cycle(0x35, 0, &mut |_| Some(0x10));
+        cpu.complete_execute_machine_cycle(0x35, 1, &mut |_| None);
+        assert_eq!(cpu.registers.f, FLAG_N | FLAG_H);
+        assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.registers.a = 0x0F;
+        cpu.instruction_kind = Some(CpuInstructionKind::AluImmediate {
+            operation: AluOperation::Add,
+        });
+        cpu.complete_execute_machine_cycle(0xC6, 0, &mut |_| Some(0x01));
+        assert_eq!(cpu.registers.a, 0x10);
+        assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.registers.a = 0xF0;
+        cpu.write_register16(Register16::HL, 0xC100);
+        cpu.instruction_kind = Some(CpuInstructionKind::AluFromHl {
+            operation: AluOperation::And,
+        });
+        cpu.complete_execute_machine_cycle(0xA6, 0, &mut |_| Some(0x0F));
+        assert_eq!(cpu.registers.a, 0x00);
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_H);
+        assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.registers.f = 0;
+        cpu.operand16_latch = 0x0034;
+        cpu.instruction_kind = Some(CpuInstructionKind::Call {
+            condition: Some(ConditionCode::Z),
+        });
+        cpu.complete_execute_machine_cycle(0xCC, 1, &mut |_| Some(0x12));
+        assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.registers.f = FLAG_Z;
+        cpu.registers.sp = 0xC000;
+        cpu.instruction_kind = Some(CpuInstructionKind::Return {
+            condition: Some(ConditionCode::Z),
+        });
+        cpu.complete_execute_machine_cycle(0xC8, 0, &mut |_| None);
+        cpu.complete_execute_machine_cycle(0xC8, 1, &mut |_| Some(0x78));
+        cpu.complete_execute_machine_cycle(0xC8, 2, &mut |_| Some(0x56));
+        cpu.complete_execute_machine_cycle(0xC8, 3, &mut |_| None);
+        assert_eq!(cpu.registers.pc, 0x5678);
+        assert_eq!(cpu.registers.sp, 0xC002);
+        assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.registers.f = 0;
+        cpu.instruction_kind = Some(CpuInstructionKind::Return {
+            condition: Some(ConditionCode::Z),
+        });
+        cpu.complete_execute_machine_cycle(0xC8, 0, &mut |_| None);
+        assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        cpu.apply_startup_state(CpuStartupState::power_on_reset());
+        cpu.registers.a = 0x81;
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x07),
+            DecodedOpcode::Complete
+        ));
+        assert_eq!(cpu.registers.a, 0x03);
+        assert_eq!(cpu.registers.f, FLAG_C);
+
+        cpu.registers.a = 0x80;
+        cpu.registers.f = FLAG_C;
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x17),
+            DecodedOpcode::Complete
+        ));
+        assert_eq!(cpu.registers.a, 0x01);
+        assert_eq!(cpu.registers.f, FLAG_C);
+
+        cpu.registers.f = 0;
+        cpu.registers.d = 0x01;
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x15),
+            DecodedOpcode::Complete
+        ));
+        assert_eq!(cpu.registers.d, 0x00);
+        assert_eq!(cpu.registers.f, FLAG_Z | FLAG_N);
+        assert!(matches!(
+            cpu.decode_fetched_opcode(0x35),
+            DecodedOpcode::Execute(CpuInstructionKind::DecrementHlMemory)
+        ));
+
+        cpu.operand16_latch = 0xBEEF;
+        assert_eq!(
+            cpu.resolve_memory_address(MemoryAddressSource::Immediate16),
+            0xBEEF,
+        );
+
+        cpu.write_register16(Register16::HL, 0xC123);
+        cpu.instruction_kind = Some(CpuInstructionKind::CbPrefixed);
+        cpu.cb_instruction_kind = Some(CbInstructionKind::BitTest {
+            bit: 0,
+            target: Register8Operand::IndirectHl,
+        });
+        cpu.complete_execute_machine_cycle(0xCB, 1, &mut |_| Some(0x00));
+        assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+        assert!(std::panic::catch_unwind(|| decode_register16(4)).is_err());
+        assert!(std::panic::catch_unwind(|| decode_register8_operand(8)).is_err());
+        assert!(std::panic::catch_unwind(|| decode_stack_register16(4)).is_err());
+        assert!(std::panic::catch_unwind(|| decode_alu_operation(8)).is_err());
+        assert!(std::panic::catch_unwind(|| decode_relative_jump_condition(0x00)).is_err());
+        assert!(std::panic::catch_unwind(|| decode_absolute_jump_condition(0x00)).is_err());
+        assert!(std::panic::catch_unwind(|| decode_call_condition(0x00)).is_err());
+        assert!(std::panic::catch_unwind(|| decode_return_condition(0x00)).is_err());
+        assert!(std::panic::catch_unwind(|| decode_hl_update_direction(0x00)).is_err());
+    }
+
+    #[test]
+    fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
+        let cases = [
+            (
+                0x06,
+                CpuInstructionKind::LoadRegisterImmediate {
+                    target: Register8::B,
+                },
+                1,
+            ),
+            (
+                0x01,
+                CpuInstructionKind::LoadRegisterPairImmediate {
+                    target: Register16::BC,
+                },
+                2,
+            ),
+            (
+                0x46,
+                CpuInstructionKind::LoadRegisterFromHl {
+                    target: Register8::B,
+                },
+                1,
+            ),
+            (
+                0x70,
+                CpuInstructionKind::StoreRegisterToHl {
+                    source: Register8::B,
+                },
+                1,
+            ),
+            (0x36, CpuInstructionKind::StoreImmediateToHl, 2),
+            (
+                0x2A,
+                CpuInstructionKind::LoadAFromHlWithUpdate {
+                    direction: CpuAddressUpdateDirection::Increment,
+                },
+                1,
+            ),
+            (
+                0x32,
+                CpuInstructionKind::StoreAToHlWithUpdate {
+                    direction: CpuAddressUpdateDirection::Decrement,
+                },
+                1,
+            ),
+            (
+                0xFA,
+                CpuInstructionKind::LoadAFromAddress {
+                    source: MemoryAddressSource::Immediate16,
+                },
+                3,
+            ),
+            (
+                0xEA,
+                CpuInstructionKind::StoreAToAddress {
+                    destination: MemoryAddressSource::Immediate16,
+                },
+                3,
+            ),
+            (0x08, CpuInstructionKind::StoreSpToImmediate16, 4),
+            (0xF8, CpuInstructionKind::LoadHlFromSpPlusImmediate, 2),
+            (0xE8, CpuInstructionKind::AddSpImmediate, 3),
+            (0xF9, CpuInstructionKind::LoadSpFromHl, 1),
+            (
+                0x39,
+                CpuInstructionKind::AddHl {
+                    source: Register16::SP,
+                },
+                1,
+            ),
+            (
+                0x33,
+                CpuInstructionKind::IncrementRegisterPair {
+                    target: Register16::SP,
+                },
+                1,
+            ),
+            (
+                0x3B,
+                CpuInstructionKind::DecrementRegisterPair {
+                    target: Register16::SP,
+                },
+                1,
+            ),
+            (0x34, CpuInstructionKind::IncrementHlMemory, 2),
+            (
+                0xFE,
+                CpuInstructionKind::AluImmediate {
+                    operation: AluOperation::Compare,
+                },
+                1,
+            ),
+            (
+                0xB6,
+                CpuInstructionKind::AluFromHl {
+                    operation: AluOperation::Or,
+                },
+                1,
+            ),
+            (
+                0x38,
+                CpuInstructionKind::RelativeJump {
+                    condition: Some(ConditionCode::C),
+                },
+                2,
+            ),
+            (
+                0xDA,
+                CpuInstructionKind::AbsoluteJump {
+                    condition: Some(ConditionCode::C),
+                },
+                3,
+            ),
+            (
+                0xDC,
+                CpuInstructionKind::Call {
+                    condition: Some(ConditionCode::C),
+                },
+                5,
+            ),
+            (
+                0xD8,
+                CpuInstructionKind::Return {
+                    condition: Some(ConditionCode::C),
+                },
+                4,
+            ),
+            (0xD9, CpuInstructionKind::ReturnFromInterrupt, 3),
+            (0x10, CpuInstructionKind::Stop, 1),
+            (0xDF, CpuInstructionKind::Restart { vector: 0x0018 }, 3),
+            (
+                0xF5,
+                CpuInstructionKind::PushRegisterPair {
+                    source: StackRegister16::AF,
+                },
+                3,
+            ),
+            (
+                0xF1,
+                CpuInstructionKind::PopRegisterPair {
+                    target: StackRegister16::AF,
+                },
+                2,
+            ),
+            (0xCB, CpuInstructionKind::CbPrefixed, 3),
+        ];
+
+        for (opcode, kind, step) in cases {
+            let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+            cpu.instruction_kind = Some(kind);
+            cpu.execution_state = CpuExecutionState::Execute {
+                opcode,
+                step,
+                t_cycle: 0,
+            };
+
+            cpu.complete_execute_machine_cycle(opcode, step, &mut |_| Some(0xFF));
+
+            assert_eq!(
+                cpu.execution_state,
+                CpuExecutionState::Execute {
+                    opcode,
+                    step,
+                    t_cycle: LAST_MACHINE_CYCLE_T,
+                },
+            );
+        }
+
+        for step in [1_u8, 2, 3] {
+            let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+            cpu.instruction_kind = Some(CpuInstructionKind::CbPrefixed);
+            cpu.execution_state = CpuExecutionState::Execute {
+                opcode: 0xCB,
+                step,
+                t_cycle: 0,
+            };
+            cpu.cb_instruction_kind = None;
+
+            cpu.complete_execute_machine_cycle(0xCB, step, &mut |_| Some(0xFF));
+
+            assert_eq!(
+                cpu.execution_state,
+                CpuExecutionState::Execute {
+                    opcode: 0xCB,
+                    step,
+                    t_cycle: LAST_MACHINE_CYCLE_T,
+                },
+            );
+        }
+
+        let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+        let acknowledged =
+            cpu.complete_interrupt_service_machine_cycle(InterruptSource::Serial, 5, &mut |_| None);
+        assert_eq!(acknowledged, None);
+        assert_eq!(
+            cpu.execution_state,
+            CpuExecutionState::ServiceInterrupt {
+                source: InterruptSource::Serial,
+                step: 5,
+                t_cycle: 0,
+            },
+        );
+    }
+
+    #[test]
     fn startup_state_resets_live_registers_and_fetch_state() {
         let mut cpu = CpuCore::new(ConsoleModel::Dmg);
         let startup_state = CpuStartupState {
