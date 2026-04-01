@@ -59,28 +59,28 @@ fetch-test-roms:
 
 run-acid:
 	$(MAKE) fetch-test-roms FAMILIES=acid
-	cargo test --release -p gb-test-runner --test external acid_curated_suite_passes_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact acid_curated_suite_passes_from_repo_store --no-capture
 
 run-blargg:
 	$(MAKE) fetch-test-roms FAMILIES=blargg
-	cargo test --release -p gb-test-runner --test external blargg_curated_suite_passes_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact blargg_curated_suite_passes_from_repo_store --no-capture
 
 run-daid:
 	$(MAKE) fetch-test-roms FAMILIES=daid
-	cargo test --release -p gb-test-runner --test external daid_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact daid_curated_suite_updates_report_from_repo_store --no-capture
 
 run-mooneye:
 	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo test --release -p gb-test-runner --test external mooneye_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_curated_suite_updates_report_from_repo_store --no-capture
 
 run-hacktix:
 	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo test --release -p gb-test-runner --test external hacktix_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact hacktix_curated_suite_updates_report_from_repo_store --no-capture
 
 run-cpp:
 	$(MAKE) fetch-test-roms FAMILIES=cpp
-	cargo test --release -p gb-test-runner --test external cpp_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact cpp_curated_suite_updates_report_from_repo_store --no-capture
 
 run-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
-	cargo test --release -p gb-test-runner --test external mealybug_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mealybug_curated_suite_updates_report_from_repo_store --no-capture
