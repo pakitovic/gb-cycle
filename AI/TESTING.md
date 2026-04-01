@@ -130,6 +130,11 @@ This checklist should move only when one of the following becomes true:
   gitignored layer: the curated runnable store under `/.roms/test/`. Any raw
   upstream checkout used to materialize that store should be temporary and cleaned
   up after the fetch command completes.
+- The external-ROM fetch workflow must run all git commands from inside its
+  temporary checkout or fixture repository and must not rewrite the invoking
+  repo's local git config while doing so. Test-only commit identity should be
+  supplied through per-command environment variables rather than persisted
+  `user.name` / `user.email` entries.
 - The curated fetch command should support both full-store materialization and
   explicit family subsets so repo-gated and exploratory `make test-*` targets
   can remain autosufficient without forcing unrelated families to be fetched

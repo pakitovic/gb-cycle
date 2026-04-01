@@ -10,17 +10,17 @@ help:
 	@echo "  make hooks                Configure repository git hooks"
 	@echo "  make tools                Install local cargo tools used by this repository"
 	@echo "  make ci                   Run the local pre-push gate (fmt, clippy, test, typos, deny, coverage check)"
-	@echo "  make coverage             Run the repository coverage gate and emit lcov output"
-	@echo "  make test-roms            Fetch ROMs if needed and run all external DMG blocks"
+	@echo "  make coverage             Run complete workspace coverage and emit HTML output"
+	@echo "  make test-roms            Run all DMG ROMs tests"
 	@echo "  make fetch-test-roms      Materialize .roms/test from the pinned GBEmulatorShootout source using a temporary checkout"
 	@echo "                           Set FAMILIES=all or FAMILIES=\"blargg acid\" to limit the fetch"
-	@echo "  make run-acid             Fetch and run the curated supported Acid DMG family"
-	@echo "  make run-blargg           Fetch and run the repo-gated Blargg DMG family, including dmg_sound"
-	@echo "  make run-daid             Fetch and run the exploratory Daid DMG family and update the report"
-	@echo "  make run-mooneye          Fetch and run the exploratory Mooneye DMG family and update the report"
-	@echo "  make run-hacktix          Fetch and run the exploratory Hacktix DMG family and update the report"
-	@echo "  make run-cpp              Fetch and run the exploratory cpp MBC3 family and update the report"
-	@echo "  make run-mealybug         Fetch and run the exploratory Mealybug DMG family and update the report"
+	@echo "  make run-acid             Fetch and run Acid DMG ROMs tests"
+	@echo "  make run-blargg           Fetch and run Blargg DMG ROMs tests"
+	@echo "  make run-daid             Fetch and run Daid DMG ROMs tests"
+	@echo "  make run-mooneye          Fetch and run Mooneye DMG ROMs tests"
+	@echo "  make run-hacktix          Fetch and run Hacktix DMG ROMs tests"
+	@echo "  make run-cpp              Fetch and run cpp MBC3 ROMs tests"
+	@echo "  make run-mealybug         Fetch and run Mealybug DMG ROMs tests"
 
 setup: hooks tools
 
@@ -43,7 +43,7 @@ ci:
 	cargo cov-check
 
 coverage:
-	cargo cov-lcov
+	cargo cov-html
 
 test-roms:
 	$(MAKE) run-acid
@@ -59,28 +59,28 @@ fetch-test-roms:
 
 run-acid:
 	$(MAKE) fetch-test-roms FAMILIES=acid
-	cargo test --release -p gb-test-runner --test external acid_curated_suite_passes_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact acid_curated_suite_passes_from_repo_store --no-capture
 
 run-blargg:
 	$(MAKE) fetch-test-roms FAMILIES=blargg
-	cargo test --release -p gb-test-runner --test external blargg_curated_suite_passes_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact blargg_curated_suite_passes_from_repo_store --no-capture
 
 run-daid:
 	$(MAKE) fetch-test-roms FAMILIES=daid
-	cargo test --release -p gb-test-runner --test external daid_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact daid_curated_suite_updates_report_from_repo_store --no-capture
 
 run-mooneye:
 	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo test --release -p gb-test-runner --test external mooneye_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_curated_suite_updates_report_from_repo_store --no-capture
 
 run-hacktix:
 	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo test --release -p gb-test-runner --test external hacktix_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact hacktix_curated_suite_updates_report_from_repo_store --no-capture
 
 run-cpp:
 	$(MAKE) fetch-test-roms FAMILIES=cpp
-	cargo test --release -p gb-test-runner --test external cpp_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact cpp_curated_suite_updates_report_from_repo_store --no-capture
 
 run-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
-	cargo test --release -p gb-test-runner --test external mealybug_curated_suite_updates_report_from_repo_store -- --ignored --exact --nocapture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mealybug_curated_suite_updates_report_from_repo_store --no-capture

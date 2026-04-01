@@ -7,7 +7,7 @@ version = 1
 [[source]]
 id = "gbemu-shootout"
 git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
-git_rev = "5fca2efde856f3929b72f40b0901c85b011665ee"
+git_rev = "0cee7097d4187aea134be72bcd356533ae683c84"
 local_dir = "gbemu-shootout"
 root_env_var = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT"
 

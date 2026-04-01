@@ -277,27 +277,23 @@ fn remove_directory_if_present(path: &Path, label: &str) -> Result<(), String> {
     Ok(())
 }
 fn checkout_source_into_temp(temp_root: &Path, source: &ExternalRomSource) -> Result<(), String> {
+    fs::create_dir_all(temp_root).map_err(|error| {
+        format!(
+            "failed to create temporary fetch directory {} for source {}: {error}",
+            temp_root.display(),
+            source.id
+        )
+    })?;
+    run_git(temp_root, ["init"], source)?;
     run_git(
-        None,
-        [
-            "init",
-            temp_root.to_str().expect("temp path should be utf-8"),
-        ],
-        source,
-    )?;
-    run_git(
-        Some(temp_root),
+        temp_root,
         ["remote", "add", "origin", &source.git_url],
         source,
     )?;
 
     let sparse_checkout_paths = source_sparse_checkout_paths(source);
     if !sparse_checkout_paths.is_empty() {
-        run_git(
-            Some(temp_root),
-            ["sparse-checkout", "init", "--cone"],
-            source,
-        )?;
+        run_git(temp_root, ["sparse-checkout", "init", "--cone"], source)?;
 
         let mut command = Command::new("git");
         command.current_dir(temp_root);
@@ -309,15 +305,11 @@ fn checkout_source_into_temp(temp_root: &Path, source: &ExternalRomSource) -> Re
     }
 
     run_git(
-        Some(temp_root),
+        temp_root,
         ["fetch", "--depth", "1", "origin", &source.git_rev],
         source,
     )?;
-    run_git(
-        Some(temp_root),
-        ["checkout", "--detach", "FETCH_HEAD"],
-        source,
-    )?;
+    run_git(temp_root, ["checkout", "--detach", "FETCH_HEAD"], source)?;
 
     let git_dir = temp_root.join(".git");
     if git_dir.exists() {
@@ -412,14 +404,12 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn run_git<const N: usize>(
-    current_dir: Option<&Path>,
+    current_dir: &Path,
     args: [&str; N],
     source: &ExternalRomSource,
 ) -> Result<(), String> {
     let mut command = Command::new("git");
-    if let Some(current_dir) = current_dir {
-        command.current_dir(current_dir);
-    }
+    command.current_dir(current_dir);
     command.args(args);
     run_git_command(command, source, "git command")
 }
@@ -484,10 +474,17 @@ mod tests {
 
     fn commit_upstream_repo(root: &Path) -> String {
         git(&["init"], root);
-        git(&["config", "user.email", "gb-cycle@example.invalid"], root);
-        git(&["config", "user.name", "gb-cycle tests"], root);
         git(&["add", "."], root);
-        git(&["commit", "-m", "fixture"], root);
+        git_with_env(
+            &["commit", "-m", "fixture"],
+            root,
+            &[
+                ("GIT_AUTHOR_EMAIL", "gb-cycle@example.invalid"),
+                ("GIT_AUTHOR_NAME", "gb-cycle tests"),
+                ("GIT_COMMITTER_EMAIL", "gb-cycle@example.invalid"),
+                ("GIT_COMMITTER_NAME", "gb-cycle tests"),
+            ],
+        );
 
         let output = Command::new("git")
             .current_dir(root)
@@ -547,8 +544,13 @@ mod tests {
     }
 
     fn git(args: &[&str], current_dir: &Path) {
+        git_with_env(args, current_dir, &[]);
+    }
+
+    fn git_with_env(args: &[&str], current_dir: &Path, envs: &[(&str, &str)]) {
         let output = Command::new("git")
             .current_dir(current_dir)
+            .envs(envs.iter().copied())
             .args(args)
             .output()
             .expect("git command should spawn");
@@ -801,6 +803,27 @@ mod tests {
             String::from_utf8(output).expect("command output should be utf-8"),
             fetch_external_roms_help_text()
         );
+    }
+
+    #[test]
+    fn commit_upstream_repo_keeps_fixture_identity_out_of_local_git_config() {
+        let root = unique_temp_dir("fixture-identity");
+        fs::create_dir_all(&root).expect("fixture root should be creatable");
+        fs::write(root.join("fixture.txt"), b"fixture").expect("fixture file should be writable");
+
+        let _ = commit_upstream_repo(&root);
+
+        let output = Command::new("git")
+            .current_dir(&root)
+            .args(["config", "--local", "--list"])
+            .output()
+            .expect("git config should spawn");
+        assert!(output.status.success(), "git config should succeed");
+        let config = String::from_utf8(output.stdout).expect("git config output should be utf-8");
+        assert!(!config.contains("user.name=gb-cycle tests"));
+        assert!(!config.contains("user.email=gb-cycle@example.invalid"));
+
+        fs::remove_dir_all(root).expect("fixture root should be removable");
     }
 
     #[test]
