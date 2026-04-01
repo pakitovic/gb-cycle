@@ -1,0 +1,366 @@
+use gb_core::{
+    CartridgeLoadError, CartridgePersistentStateError, CartridgeSlot, Machine, PersistentCartState,
+    TraceSummaryBuffer,
+};
+use gb_desktop::{DEFAULT_SAVE_FLUSH_DEBOUNCE, DesktopSaveFlushPolicy};
+use gb_persistence::{
+    CartridgeSaveBackend, CartridgeSaveKey, FilesystemCartridgeSaveBackend,
+    uses_battery_backed_hardware_persistence,
+};
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+pub struct DesktopSaveSession {
+    backend: FilesystemCartridgeSaveBackend,
+    key: CartridgeSaveKey,
+    flush_policy: DesktopSaveFlushPolicy,
+    last_saved_state: PersistentCartState,
+    pending_debounced_flush_deadline: Option<Instant>,
+}
+
+impl DesktopSaveSession {
+    pub fn open(
+        save_root: Option<&Path>,
+        flush_policy: DesktopSaveFlushPolicy,
+        key: Option<CartridgeSaveKey>,
+        machine: &mut Machine<TraceSummaryBuffer>,
+    ) -> Result<Option<Self>, String> {
+        let Some(save_root) = save_root else {
+            return Ok(None);
+        };
+
+        let metadata = machine.cartridge().persistence_metadata();
+        if !uses_battery_backed_hardware_persistence(metadata) {
+            return Ok(None);
+        }
+
+        let Some(key) = key else {
+            return Ok(None);
+        };
+
+        let backend = FilesystemCartridgeSaveBackend::new(save_root);
+        if let Some(envelope) = backend.load(&key).map_err(|error| {
+            format!(
+                "failed to load save {}: {error}",
+                backend.path_for_key(&key).display()
+            )
+        })? {
+            let elapsed_seconds = backend
+                .current_unix_seconds()
+                .saturating_sub(envelope.backend_metadata.saved_at_unix_seconds);
+            let mut restored_state = envelope.persistent_state;
+            apply_elapsed_off_session_seconds(&mut restored_state, elapsed_seconds);
+            machine
+                .restore_cartridge_persistent_state(&restored_state)
+                .map_err(format_restore_error)?;
+        }
+
+        let last_saved_state = machine.cartridge().persistent_state();
+        Ok(Some(Self {
+            backend,
+            key,
+            flush_policy,
+            last_saved_state,
+            pending_debounced_flush_deadline: None,
+        }))
+    }
+
+    pub fn save_path(&self) -> PathBuf {
+        self.backend.path_for_key(&self.key)
+    }
+
+    pub fn flush_policy(&self) -> DesktopSaveFlushPolicy {
+        self.flush_policy
+    }
+
+    pub fn maybe_flush_at_frame_boundary(
+        &mut self,
+        machine: &Machine<TraceSummaryBuffer>,
+        now: Instant,
+    ) -> Result<bool, String> {
+        match self.flush_policy {
+            DesktopSaveFlushPolicy::Manual | DesktopSaveFlushPolicy::OnClose => Ok(false),
+            DesktopSaveFlushPolicy::OnWrite => self.flush_if_changed(machine, "frame-boundary"),
+            DesktopSaveFlushPolicy::Debounced => self.flush_if_debounced(machine, now),
+        }
+    }
+
+    pub fn flush_if_changed(
+        &mut self,
+        machine: &Machine<TraceSummaryBuffer>,
+        reason: &str,
+    ) -> Result<bool, String> {
+        let current_state = machine.cartridge().persistent_state();
+        self.flush_current_state_if_changed(machine, current_state, reason)
+    }
+
+    pub fn close(&mut self, machine: &Machine<TraceSummaryBuffer>) -> Result<(), String> {
+        if self.flush_policy.flush_on_close() {
+            self.flush_if_changed(machine, "close").map(|_| ())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn flush_if_debounced(
+        &mut self,
+        machine: &Machine<TraceSummaryBuffer>,
+        now: Instant,
+    ) -> Result<bool, String> {
+        let current_state = machine.cartridge().persistent_state();
+        if current_state == self.last_saved_state {
+            self.pending_debounced_flush_deadline = None;
+            return Ok(false);
+        }
+
+        let deadline = self
+            .pending_debounced_flush_deadline
+            .get_or_insert(now + DEFAULT_SAVE_FLUSH_DEBOUNCE);
+        if now < *deadline {
+            return Ok(false);
+        }
+
+        self.flush_current_state_if_changed(machine, current_state, "debounced-frame-boundary")
+    }
+
+    fn flush_current_state_if_changed(
+        &mut self,
+        machine: &Machine<TraceSummaryBuffer>,
+        current_state: PersistentCartState,
+        reason: &str,
+    ) -> Result<bool, String> {
+        if current_state == self.last_saved_state {
+            self.pending_debounced_flush_deadline = None;
+            return Ok(false);
+        }
+
+        self.backend
+            .save(
+                &self.key,
+                machine.cartridge().persistence_metadata(),
+                &current_state,
+            )
+            .map_err(|error| {
+                format!(
+                    "failed to save cartridge persistence ({reason}) to {}: {error}",
+                    self.save_path().display()
+                )
+            })?;
+        self.last_saved_state = current_state;
+        self.pending_debounced_flush_deadline = None;
+        Ok(true)
+    }
+}
+
+fn apply_elapsed_off_session_seconds(state: &mut PersistentCartState, elapsed_seconds: u64) {
+    match state {
+        PersistentCartState::Mbc3Rtc { rtc } | PersistentCartState::Mbc3RamRtc { rtc, .. } => {
+            rtc.apply_elapsed_seconds(elapsed_seconds);
+        }
+        _ => {}
+    }
+}
+
+fn format_restore_error(error: CartridgePersistentStateError) -> String {
+    format!("failed to restore cartridge persistence: {error:?}")
+}
+
+#[allow(dead_code)]
+fn format_load_error(error: CartridgeLoadError) -> String {
+    format!("{error:?}")
+}
+
+#[allow(dead_code)]
+fn _cartridge(_slot: &CartridgeSlot) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gb_core::{ConsoleModel, MachineConfig};
+    use std::env;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
+
+    const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+    const ENTRY_POINT_START: usize = 0x0100;
+    const LOGO_START: usize = 0x0104;
+    const TITLE_START: usize = 0x0134;
+    const CGB_FLAG_ADDRESS: usize = 0x0143;
+    const SGB_FLAG_ADDRESS: usize = 0x0146;
+    const CARTRIDGE_TYPE_ADDRESS: usize = 0x0147;
+    const ROM_SIZE_ADDRESS: usize = 0x0148;
+    const RAM_SIZE_ADDRESS: usize = 0x0149;
+    const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
+    static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn debounced_policy_waits_for_the_configured_interval_before_flushing() {
+        let root = temp_save_root();
+        let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let mut session = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::Debounced,
+            Some(CartridgeSaveKey::new("debounced").expect("key should be valid")),
+            &mut machine,
+        )
+        .expect("debounced save session should open")
+        .expect("battery-backed cartridge should create a session");
+        mutate_mbc2_persistent_state(&mut machine, 0x07);
+
+        let start = Instant::now();
+        assert!(
+            !session
+                .maybe_flush_at_frame_boundary(&machine, start)
+                .expect("first frame-boundary check should succeed")
+        );
+        assert!(!session.save_path().exists());
+
+        let before_deadline = (start + DEFAULT_SAVE_FLUSH_DEBOUNCE)
+            .checked_sub(Duration::from_millis(1))
+            .expect("deadline should exceed the pre-flush probe");
+        assert!(
+            !session
+                .maybe_flush_at_frame_boundary(&machine, before_deadline)
+                .expect("pre-deadline debounce probe should succeed")
+        );
+        assert!(!session.save_path().exists());
+
+        assert!(
+            session
+                .maybe_flush_at_frame_boundary(&machine, start + DEFAULT_SAVE_FLUSH_DEBOUNCE)
+                .expect("deadline debounce probe should succeed")
+        );
+        assert!(session.save_path().is_file());
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn debounced_policy_still_flushes_on_close_before_the_interval_elapses() {
+        let root = temp_save_root();
+        let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let mut session = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::Debounced,
+            Some(CartridgeSaveKey::new("debounced-close").expect("key should be valid")),
+            &mut machine,
+        )
+        .expect("debounced save session should open")
+        .expect("battery-backed cartridge should create a session");
+        mutate_mbc2_persistent_state(&mut machine, 0x03);
+
+        assert!(
+            !session
+                .maybe_flush_at_frame_boundary(&machine, Instant::now())
+                .expect("initial debounce probe should succeed")
+        );
+        assert!(!session.save_path().exists());
+
+        session
+            .close(&machine)
+            .expect("close should flush even when debounce is still pending");
+        assert!(session.save_path().is_file());
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn on_write_policy_flushes_at_the_next_frame_boundary_without_waiting() {
+        let root = temp_save_root();
+        let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let mut session = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::OnWrite,
+            Some(CartridgeSaveKey::new("on-write").expect("key should be valid")),
+            &mut machine,
+        )
+        .expect("on-write save session should open")
+        .expect("battery-backed cartridge should create a session");
+        mutate_mbc2_persistent_state(&mut machine, 0x0E);
+
+        assert!(
+            session
+                .maybe_flush_at_frame_boundary(&machine, Instant::now())
+                .expect("on-write frame-boundary check should succeed")
+        );
+        assert!(session.save_path().is_file());
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    fn load_machine(rom: Vec<u8>) -> Machine<TraceSummaryBuffer> {
+        let mut machine = Machine::new_summary(MachineConfig::new(ConsoleModel::Dmg));
+        machine
+            .load_cartridge(rom)
+            .expect("test cartridge should load");
+        machine
+    }
+
+    fn mutate_mbc2_persistent_state(machine: &mut Machine<TraceSummaryBuffer>, value: u8) {
+        let mut state = machine.cartridge().persistent_state();
+        match &mut state {
+            PersistentCartState::Mbc2Ram { ram_nibbles } => {
+                ram_nibbles[0] = value & 0x0F;
+            }
+            other => panic!("expected MBC2 RAM persistence, got {other:?}"),
+        }
+        machine
+            .restore_cartridge_persistent_state(&state)
+            .expect("restoring test persistent state should succeed");
+    }
+
+    fn temp_save_root() -> PathBuf {
+        let id = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = env::temp_dir().join(format!(
+            "gb-cycle-desktop-save-session-tests-{}-{id}",
+            std::process::id()
+        ));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale temp save root should be removable");
+        }
+        fs::create_dir_all(&root).expect("temp save root should be creatable");
+        root
+    }
+
+    fn build_test_rom(
+        len: usize,
+        cartridge_type: u8,
+        rom_size_code: u8,
+        ram_size_code: u8,
+    ) -> Vec<u8> {
+        let mut rom = vec![0xFF; len.max(HEADER_MINIMUM_ROM_LEN)];
+        rom[0x0000] = 0x12;
+        rom[ENTRY_POINT_START..ENTRY_POINT_START + 4].copy_from_slice(&[0x31, 0xFE, 0xFF, 0xAF]);
+        rom[LOGO_START..LOGO_START + 48].copy_from_slice(&[0xCE; 48]);
+        rom[TITLE_START..TITLE_START + 8].copy_from_slice(b"DESKTOP!");
+        rom[CGB_FLAG_ADDRESS] = 0x80;
+        rom[SGB_FLAG_ADDRESS] = 0x03;
+        rom[CARTRIDGE_TYPE_ADDRESS] = cartridge_type;
+        rom[ROM_SIZE_ADDRESS] = rom_size_code;
+        rom[RAM_SIZE_ADDRESS] = ram_size_code;
+        rom[HEADER_CHECKSUM_ADDRESS] = 0x7F;
+        rom
+    }
+
+    fn build_banked_mbc2_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+        let rom_size = match rom_size_code {
+            0x00 => 32 * 1024,
+            0x01 => 64 * 1024,
+            0x02 => 128 * 1024,
+            0x03 => 256 * 1024,
+            0x04 => 512 * 1024,
+            _ => panic!("unsupported MBC2 ROM size code for test"),
+        };
+        let bank_count = rom_size / 0x4000;
+        let mut rom = build_test_rom(rom_size, cartridge_type, rom_size_code, ram_size_code);
+
+        for bank in 0..bank_count {
+            let start = bank * 0x4000;
+            rom[start] = bank as u8;
+            rom[start + 0x0100] = bank as u8;
+        }
+
+        rom
+    }
+}

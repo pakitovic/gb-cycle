@@ -14,7 +14,10 @@ pub mod scheduler;
 pub mod serial;
 pub mod timer;
 
-pub use apu::{Apu, ApuSnapshot, ApuStartupState, ApuStatus, WaveRamStartupPolicy};
+pub use apu::{
+    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuSampleCapture, ApuSampleCaptureError,
+    ApuSnapshot, ApuStartupState, ApuStatus, DMG_FAMILY_APU_CAPTURE_CLOCK_HZ, WaveRamStartupPolicy,
+};
 pub use boot::{
     BootAudioSnapshot, BootController, BootDirectBootState, BootIoSnapshot, BootRomAssetError,
     BootRomAssets, BootRomKind, BootSnapshot, BootStatus, StartupMemoryPolicy,

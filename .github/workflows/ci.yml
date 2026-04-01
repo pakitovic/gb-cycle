@@ -8,10 +8,41 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    env:
+      LINUX_DESKTOP_FEATURES: gb-desktop/sdl3-build-from-source
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Install SDL3 build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libdbus-1-dev \
+            libdecor-0-dev \
+            libdrm-dev \
+            libegl1-mesa-dev \
+            libgbm-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libibus-1.0-dev \
+            libpipewire-0.3-dev \
+            libpulse-dev \
+            libudev-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxkbcommon-dev \
+            libxrandr-dev \
+            libxss-dev \
+            libxtst-dev \
+            liburing-dev \
+            wayland-protocols
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -40,10 +71,10 @@ jobs:
         run: cargo fmt-check
 
       - name: Lint
-        run: cargo lint
+        run: cargo clippy --workspace --all-targets --features "${LINUX_DESKTOP_FEATURES}" -- -D warnings
 
       - name: Tests
-        run: cargo tests
+        run: cargo test --workspace --features "${LINUX_DESKTOP_FEATURES}"
 
       - name: Typos
         run: typos
