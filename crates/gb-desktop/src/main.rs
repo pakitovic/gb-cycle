@@ -110,6 +110,7 @@ struct FrontendActionContext<'state, 'config> {
     machine: &'state mut Machine<TraceSummaryBuffer>,
     runtime: &'state mut FrontendRuntime,
     performance_counter: &'state mut PerformanceCounter,
+    frame_pacer: &'state mut FramePacer,
     settings_store: &'state mut DesktopSettingsStore,
 }
 
@@ -228,6 +229,11 @@ impl FramePacer {
             self.next_frame_start = now;
             Duration::ZERO
         }
+    }
+
+    fn set_vsync_enabled(&mut self, vsync_enabled: bool) {
+        self.enabled = !vsync_enabled;
+        self.next_frame_start = Instant::now();
     }
 }
 
@@ -498,6 +504,7 @@ fn run_desktop(
         .build()
         .map_err(|error| format!("failed to create SDL3 window: {error}"))?;
     let mut canvas = window.into_canvas();
+    apply_renderer_vsync(&mut canvas, &mut frame_pacer, options.config.video.vsync)?;
     let texture_creator = canvas.texture_creator();
     let mut texture = texture_creator
         .create_texture_streaming(PixelFormat::RGB24, FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT)
@@ -543,25 +550,29 @@ fn run_desktop(
     )?;
 
     'running: loop {
-        process_pending_open_rom_dialog(
-            &event_pump,
-            canvas.window_mut(),
-            &mut performance_counter,
-            &mut session,
-            &mut machine,
-            &mut runtime,
-            &mut settings_store,
-        )?;
+        {
+            let mut context = FrontendActionContext {
+                session: &mut session,
+                machine: &mut machine,
+                runtime: &mut runtime,
+                performance_counter: &mut performance_counter,
+                frame_pacer: &mut frame_pacer,
+                settings_store: &mut settings_store,
+            };
+            process_pending_open_rom_dialog(&event_pump, &mut canvas, &mut context)?;
+        }
 
-        match process_events(
-            &mut event_pump,
-            canvas.window_mut(),
-            &mut session,
-            &mut machine,
-            &mut runtime,
-            &mut performance_counter,
-            &mut settings_store,
-        )? {
+        match {
+            let mut context = FrontendActionContext {
+                session: &mut session,
+                machine: &mut machine,
+                runtime: &mut runtime,
+                performance_counter: &mut performance_counter,
+                frame_pacer: &mut frame_pacer,
+                settings_store: &mut settings_store,
+            };
+            process_events(&mut event_pump, &mut canvas, &mut context)
+        }? {
             LoopSignal::Continue => {}
             LoopSignal::Quit => break 'running,
         }
@@ -587,15 +598,17 @@ fn run_desktop(
         }
 
         let emulation_started_at = Instant::now();
-        match step_until_next_frame(
-            &mut event_pump,
-            canvas.window_mut(),
-            &mut session,
-            &mut machine,
-            &mut runtime,
-            &mut performance_counter,
-            &mut settings_store,
-        )? {
+        match {
+            let mut context = FrontendActionContext {
+                session: &mut session,
+                machine: &mut machine,
+                runtime: &mut runtime,
+                performance_counter: &mut performance_counter,
+                frame_pacer: &mut frame_pacer,
+                settings_store: &mut settings_store,
+            };
+            step_until_next_frame(&mut event_pump, &mut canvas, &mut context)
+        }? {
             LoopSignal::Continue => {}
             LoopSignal::Quit => break 'running,
         }
@@ -779,13 +792,15 @@ fn target_frame_rate_hz() -> f64 {
 
 fn process_events(
     event_pump: &mut sdl3::EventPump,
-    window: &mut Window,
-    session: &mut DesktopSession<'_>,
-    machine: &mut Machine<TraceSummaryBuffer>,
-    runtime: &mut FrontendRuntime,
-    performance_counter: &mut PerformanceCounter,
-    settings_store: &mut DesktopSettingsStore,
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_, '_>,
 ) -> Result<LoopSignal, String> {
+    let session = &mut *context.session;
+    let machine = &mut *context.machine;
+    let runtime = &mut *context.runtime;
+    let performance_counter = &mut *context.performance_counter;
+    let frame_pacer = &mut *context.frame_pacer;
+    let settings_store = &mut *context.settings_store;
     let events = event_pump.poll_iter().collect::<Vec<_>>();
     for event in events {
         if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
@@ -826,9 +841,10 @@ fn process_events(
                                 machine,
                                 runtime,
                                 performance_counter,
+                                frame_pacer,
                                 settings_store,
                             };
-                            let _ = execute_menu_action(action, event_pump, window, &mut context)?;
+                            let _ = execute_menu_action(action, event_pump, canvas, &mut context)?;
                         }
                     } else if let Some(target) =
                         runtime.menu_state.pending_keyboard_menu_binding_target()
@@ -842,9 +858,10 @@ fn process_events(
                             machine,
                             runtime,
                             performance_counter,
+                            frame_pacer,
                             settings_store,
                         };
-                        let _ = execute_menu_action(action, event_pump, window, &mut context)?;
+                        let _ = execute_menu_action(action, event_pump, canvas, &mut context)?;
                     }
                     continue;
                 }
@@ -866,9 +883,10 @@ fn process_events(
                             machine,
                             runtime,
                             performance_counter,
+                            frame_pacer,
                             settings_store,
                         };
-                        let _ = execute_menu_action(action, event_pump, window, &mut context)?;
+                        let _ = execute_menu_action(action, event_pump, canvas, &mut context)?;
                     }
                     continue;
                 }
@@ -883,7 +901,7 @@ fn process_events(
                 repeat: false,
                 ..
             } if !runtime.menu_state.is_open() => {
-                toggle_menu(event_pump, window, session, machine, runtime)?;
+                toggle_menu(event_pump, canvas.window(), session, machine, runtime)?;
                 continue;
             }
             Event::ControllerButtonDown { which, button, .. }
@@ -892,14 +910,15 @@ fn process_events(
                         manager.is_active_gamepad(gamepad_event_joystick_id(*which))
                     }) =>
             {
-                toggle_menu(event_pump, window, session, machine, runtime)?;
+                toggle_menu(event_pump, canvas.window(), session, machine, runtime)?;
                 continue;
             }
             _ => {}
         }
 
         if runtime.menu_state.is_open() {
-            let presentation = current_menu_presentation(window, runtime, machine, session);
+            let presentation =
+                current_menu_presentation(canvas.window(), runtime, machine, session);
             let menu_action = match &event {
                 Event::KeyDown {
                     keycode: Some(keycode),
@@ -929,9 +948,10 @@ fn process_events(
                     machine,
                     runtime,
                     performance_counter,
+                    frame_pacer,
                     settings_store,
                 };
-                if let Some(signal) = execute_menu_action(action, event_pump, window, &mut context)?
+                if let Some(signal) = execute_menu_action(action, event_pump, canvas, &mut context)?
                 {
                     return Ok(signal);
                 }
@@ -959,9 +979,10 @@ fn process_events(
                             sync_live_input_state(event_pump, &keyboard_bindings, machine, runtime);
                         }
                         HotkeyAction::ToggleFullscreen => {
-                            toggle_fullscreen(window)?;
-                            settings_store
-                                .set_fullscreen(window.fullscreen_state() != FullscreenType::Off)?;
+                            toggle_fullscreen(canvas.window_mut())?;
+                            runtime.video_options.fullscreen =
+                                canvas.window().fullscreen_state() != FullscreenType::Off;
+                            settings_store.set_fullscreen(runtime.video_options.fullscreen)?;
                         }
                         HotkeyAction::TogglePerformanceHud => {
                             runtime.video_options.show_performance_hud =
@@ -1018,44 +1039,35 @@ fn process_events(
 
 fn step_until_next_frame(
     event_pump: &mut sdl3::EventPump,
-    window: &mut Window,
-    session: &mut DesktopSession<'_>,
-    machine: &mut Machine<TraceSummaryBuffer>,
-    runtime: &mut FrontendRuntime,
-    performance_counter: &mut PerformanceCounter,
-    settings_store: &mut DesktopSettingsStore,
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_, '_>,
 ) -> Result<LoopSignal, String> {
-    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+    let mut at_frame_origin =
+        context.machine.ppu().ly() == 0 && context.machine.ppu().line_dot() == 0;
 
     loop {
-        match process_events(
-            event_pump,
-            window,
-            session,
-            machine,
-            runtime,
-            performance_counter,
-            settings_store,
-        )? {
+        match process_events(event_pump, canvas, context)? {
             LoopSignal::Continue => {}
             LoopSignal::Quit => return Ok(LoopSignal::Quit),
         }
-        if emulation_paused(machine, runtime) {
+        if emulation_paused(context.machine, context.runtime) {
             return Ok(LoopSignal::Continue);
         }
 
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
-            machine.step_t_cycle();
-            if let Some(audio_output) = &mut runtime.audio_output {
-                audio_output.capture_t_cycle(machine.apu());
+            context.machine.step_t_cycle();
+            if let Some(audio_output) = &mut context.runtime.audio_output {
+                audio_output.capture_t_cycle(context.machine.apu());
             }
-            let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+            let now_at_frame_origin =
+                context.machine.ppu().ly() == 0 && context.machine.ppu().line_dot() == 0;
             if now_at_frame_origin && !at_frame_origin {
-                if let Some(audio_output) = &mut runtime.audio_output {
+                if let Some(audio_output) = &mut context.runtime.audio_output {
                     audio_output.submit_captured_samples()?;
                 }
-                if let Some(save_session) = &mut runtime.save_session {
-                    let _ = save_session.maybe_flush_at_frame_boundary(machine, Instant::now())?;
+                if let Some(save_session) = &mut context.runtime.save_session {
+                    let _ = save_session
+                        .maybe_flush_at_frame_boundary(context.machine, Instant::now())?;
                 }
                 return Ok(LoopSignal::Continue);
             }
@@ -1080,35 +1092,24 @@ fn toggle_menu(
 
 fn process_pending_open_rom_dialog(
     event_pump: &sdl3::EventPump,
-    window: &mut Window,
-    performance_counter: &mut PerformanceCounter,
-    session: &mut DesktopSession<'_>,
-    machine: &mut Machine<TraceSummaryBuffer>,
-    runtime: &mut FrontendRuntime,
-    settings_store: &mut DesktopSettingsStore,
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_, '_>,
 ) -> Result<(), String> {
-    let Some(result) = runtime.open_rom_dialog.take_result() else {
+    let Some(result) = context.runtime.open_rom_dialog.take_result() else {
         return Ok(());
     };
 
     match result {
         OpenRomDialogResult::Selected(path) => {
-            let mut context = FrontendActionContext {
-                session,
-                machine,
-                runtime,
-                performance_counter,
-                settings_store,
-            };
-            if let Err(error) = open_selected_rom(event_pump, window, path, &mut context) {
-                show_error_message(Some(window), "Open ROM failed", &error);
+            if let Err(error) = open_selected_rom(event_pump, canvas, path, context) {
+                show_error_message(Some(canvas.window()), "Open ROM failed", &error);
                 eprintln!("warning: {error}");
             }
         }
         OpenRomDialogResult::Canceled => {}
         OpenRomDialogResult::Failed(error) => {
             show_error_message(
-                Some(window),
+                Some(canvas.window()),
                 "Open ROM failed",
                 &format!("failed to complete SDL3 open ROM dialog: {error}"),
             );
@@ -1121,7 +1122,7 @@ fn process_pending_open_rom_dialog(
 
 fn open_selected_rom(
     event_pump: &sdl3::EventPump,
-    window: &mut Window,
+    canvas: &mut Canvas<Window>,
     selected_path: PathBuf,
     context: &mut FrontendActionContext<'_, '_>,
 ) -> Result<(), String> {
@@ -1173,7 +1174,7 @@ fn open_selected_rom(
     *context.machine = next_machine;
     context.runtime.save_session = next_save_session;
     context.performance_counter.reset_base_title(
-        window,
+        canvas.window_mut(),
         window_title(context.session, context.session.config),
     )?;
     if !had_loaded_rom {
@@ -1214,7 +1215,7 @@ fn close_menu(
 fn execute_menu_action(
     action: MenuAction,
     event_pump: &sdl3::EventPump,
-    window: &mut Window,
+    canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_, '_>,
 ) -> Result<Option<LoopSignal>, String> {
     match action {
@@ -1227,9 +1228,9 @@ fn execute_menu_action(
             if let Err(error) = context
                 .runtime
                 .open_rom_dialog
-                .show(window, default_location)
+                .show(canvas.window(), default_location)
             {
-                show_warning_message(Some(window), "Open ROM", &error);
+                show_warning_message(Some(canvas.window()), "Open ROM", &error);
                 eprintln!("warning: {error}");
             }
             Ok(None)
@@ -1242,13 +1243,13 @@ fn execute_menu_action(
                 context.settings_store.remove_recent_rom(&rom_path)?;
                 context.session.recent_roms = context.settings_store.recent_roms().to_vec();
                 let error = format!("recent ROM no longer exists: {}", rom_path.display());
-                show_warning_message(Some(window), "Open Recent", &error);
+                show_warning_message(Some(canvas.window()), "Open Recent", &error);
                 eprintln!("warning: {error}");
                 return Ok(None);
             }
 
-            if let Err(error) = open_selected_rom(event_pump, window, rom_path, context) {
-                show_warning_message(Some(window), "Open Recent", &error);
+            if let Err(error) = open_selected_rom(event_pump, canvas, rom_path, context) {
+                show_warning_message(Some(canvas.window()), "Open Recent", &error);
                 eprintln!("warning: {error}");
             }
             Ok(None)
@@ -1260,20 +1261,40 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::ToggleFullscreen => {
-            toggle_fullscreen(window)?;
-            if window.fullscreen_state() == FullscreenType::Off {
-                apply_window_scale(window, context.runtime.video_options.window_scale)?;
+            toggle_fullscreen(canvas.window_mut())?;
+            context.runtime.video_options.fullscreen =
+                canvas.window().fullscreen_state() != FullscreenType::Off;
+            if canvas.window().fullscreen_state() == FullscreenType::Off {
+                apply_window_scale(
+                    canvas.window_mut(),
+                    context.runtime.video_options.window_scale,
+                )?;
             }
             context
                 .settings_store
-                .set_fullscreen(window.fullscreen_state() != FullscreenType::Off)?;
+                .set_fullscreen(context.runtime.video_options.fullscreen)?;
+            Ok(None)
+        }
+        MenuAction::ToggleVsync => {
+            context.runtime.video_options.vsync = !context.runtime.video_options.vsync;
+            apply_renderer_vsync(
+                canvas,
+                context.frame_pacer,
+                context.runtime.video_options.vsync,
+            )?;
+            context
+                .settings_store
+                .set_vsync(context.runtime.video_options.vsync)?;
             Ok(None)
         }
         MenuAction::CycleWindowScale => {
             context.runtime.video_options.window_scale =
                 next_window_scale(context.runtime.video_options.window_scale);
-            if window.fullscreen_state() == FullscreenType::Off {
-                apply_window_scale(window, context.runtime.video_options.window_scale)?;
+            if canvas.window().fullscreen_state() == FullscreenType::Off {
+                apply_window_scale(
+                    canvas.window_mut(),
+                    context.runtime.video_options.window_scale,
+                )?;
             }
             context
                 .settings_store
@@ -1296,6 +1317,17 @@ fn execute_menu_action(
                 .set_show_performance_hud(context.runtime.video_options.show_performance_hud)?;
             Ok(None)
         }
+        MenuAction::ResetVideoDefaults => {
+            let defaults = VideoOptions::default();
+            context.runtime.video_options = defaults.clone();
+            apply_renderer_vsync(canvas, context.frame_pacer, defaults.vsync)?;
+            set_fullscreen_state(canvas.window_mut(), defaults.fullscreen)?;
+            if canvas.window().fullscreen_state() == FullscreenType::Off {
+                apply_window_scale(canvas.window_mut(), defaults.window_scale)?;
+            }
+            context.settings_store.reset_video_defaults()?;
+            Ok(None)
+        }
         MenuAction::ToggleMute => {
             if let Some(audio_output) = &mut context.runtime.audio_output {
                 audio_output.set_muted(!audio_output.is_muted())?;
@@ -1314,6 +1346,16 @@ fn execute_menu_action(
             context
                 .settings_store
                 .set_audio_volume_percent(context.runtime.audio_volume_percent)?;
+            Ok(None)
+        }
+        MenuAction::ResetAudioDefaults => {
+            let defaults = gb_desktop::AudioOptions::default();
+            context.runtime.audio_volume_percent = defaults.volume_percent;
+            if let Some(audio_output) = &mut context.runtime.audio_output {
+                audio_output.set_muted(false)?;
+                audio_output.set_volume_percent(defaults.volume_percent)?;
+            }
+            context.settings_store.reset_audio_defaults()?;
             Ok(None)
         }
         MenuAction::CycleGamepadDirectionalSource => {
@@ -1371,6 +1413,30 @@ fn execute_menu_action(
                         .set_keyboard_hotkey_bindings(context.runtime.keyboard_bindings.hotkeys)?;
                 }
             }
+            Ok(None)
+        }
+        MenuAction::ResetInputDefaults => {
+            let defaults = gb_desktop::InputOptions::default();
+            context.runtime.keyboard_bindings = defaults.keyboard;
+            if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
+                gamepad_manager.set_button_bindings(
+                    defaults.gamepad.bindings,
+                    &mut context.runtime.input_state,
+                    context.machine,
+                );
+                gamepad_manager.set_menu_bindings(defaults.gamepad.menu);
+                gamepad_manager.set_directional_source(
+                    defaults.gamepad.directional_source,
+                    &mut context.runtime.input_state,
+                    context.machine,
+                );
+                gamepad_manager.set_preferred_device(
+                    defaults.gamepad.preferred_device,
+                    &mut context.runtime.input_state,
+                    context.machine,
+                );
+            }
+            context.settings_store.reset_input_defaults()?;
             Ok(None)
         }
         MenuAction::SetKeyboardMenuBinding(target, key) => {
@@ -1455,6 +1521,7 @@ fn current_menu_presentation(
         recent_rom_count: session.recent_roms().len().min(RECENT_ROM_MENU_CAPACITY) as u8,
         recent_rom_labels,
         fullscreen: window.fullscreen_state() != FullscreenType::Off,
+        vsync: runtime.video_options.vsync,
         window_scale: runtime.video_options.window_scale.max(1),
         integer_scale: runtime.video_options.integer_scale,
         show_performance_hud: runtime.video_options.show_performance_hud,
@@ -2013,6 +2080,39 @@ fn toggle_fullscreen(window: &mut Window) -> Result<(), String> {
     window
         .set_fullscreen(target_state)
         .map_err(|error| format!("failed to toggle SDL3 fullscreen state: {error}"))
+}
+
+fn set_fullscreen_state(window: &mut Window, enabled: bool) -> Result<(), String> {
+    if (window.fullscreen_state() != FullscreenType::Off) == enabled {
+        return Ok(());
+    }
+
+    window
+        .set_fullscreen(enabled)
+        .map_err(|error| format!("failed to set SDL3 fullscreen state: {error}"))
+}
+
+fn apply_renderer_vsync(
+    canvas: &mut Canvas<Window>,
+    frame_pacer: &mut FramePacer,
+    vsync_enabled: bool,
+) -> Result<(), String> {
+    let interval = if vsync_enabled {
+        1
+    } else {
+        sys::render::SDL_RENDERER_VSYNC_DISABLED
+    };
+    // SDL3 exposes render-vsync control on the renderer, not on the window.
+    let success = unsafe { sys::render::SDL_SetRenderVSync(canvas.raw(), interval) };
+    if !success {
+        return Err(format!(
+            "failed to configure SDL3 renderer vsync: {}",
+            sdl3::get_error()
+        ));
+    }
+
+    frame_pacer.set_vsync_enabled(vsync_enabled);
+    Ok(())
 }
 
 fn apply_window_scale(window: &mut Window, scale: u8) -> Result<(), String> {

@@ -69,25 +69,29 @@ const RECENT_MENU_ITEMS: [MenuItem; RECENT_ROM_MENU_CAPACITY + 1] = [
     MenuItem::RecentRom8,
     MenuItem::Return,
 ];
-const VIDEO_MENU_ITEMS: [MenuItem; 5] = [
+const VIDEO_MENU_ITEMS: [MenuItem; 7] = [
     MenuItem::Fullscreen,
+    MenuItem::Vsync,
     MenuItem::WindowScale,
     MenuItem::IntegerScale,
     MenuItem::PerformanceHud,
+    MenuItem::VideoDefaults,
     MenuItem::Return,
 ];
-const AUDIO_MENU_ITEMS: [MenuItem; 3] = [
+const AUDIO_MENU_ITEMS: [MenuItem; 4] = [
     MenuItem::ToggleMute,
     MenuItem::AudioVolume,
+    MenuItem::AudioDefaults,
     MenuItem::Return,
 ];
-const INPUT_MENU_ITEMS: [MenuItem; 7] = [
+const INPUT_MENU_ITEMS: [MenuItem; 8] = [
     MenuItem::KeyboardMenu,
     MenuItem::KeyboardMenuControls,
     MenuItem::HotkeysMenu,
     MenuItem::GamepadMenu,
     MenuItem::GamepadMenuControls,
     MenuItem::GamepadDirection,
+    MenuItem::InputDefaults,
     MenuItem::Return,
 ];
 const KEYBOARD_MENU_ITEMS: [MenuItem; 9] = [
@@ -153,6 +157,7 @@ pub enum MenuAction {
     OpenRecentRom(usize),
     SaveBattery,
     ToggleFullscreen,
+    ToggleVsync,
     CycleWindowScale,
     ToggleIntegerScale,
     TogglePerformanceHud,
@@ -160,6 +165,9 @@ pub enum MenuAction {
     CycleAudioVolume,
     CycleGamepadDirectionalSource,
     TogglePreferredGamepad,
+    ResetVideoDefaults,
+    ResetAudioDefaults,
+    ResetInputDefaults,
     SetKeyboardBinding(KeyboardBindingTarget, DesktopKey),
     SetKeyboardMenuBinding(KeyboardMenuBindingTarget, DesktopKey),
     SetGamepadBinding(GamepadBindingTarget, GamepadButtonBinding),
@@ -309,6 +317,7 @@ pub struct MenuPresentation {
     pub recent_rom_count: u8,
     pub recent_rom_labels: [CompactRecentRomLabel; RECENT_ROM_MENU_CAPACITY],
     pub fullscreen: bool,
+    pub vsync: bool,
     pub window_scale: u8,
     pub integer_scale: bool,
     pub show_performance_hud: bool,
@@ -408,9 +417,13 @@ impl MenuPresentation {
             | MenuItem::VideoMenu
             | MenuItem::SystemMenu
             | MenuItem::Fullscreen
+            | MenuItem::Vsync
             | MenuItem::WindowScale
             | MenuItem::IntegerScale
             | MenuItem::PerformanceHud
+            | MenuItem::VideoDefaults
+            | MenuItem::AudioDefaults
+            | MenuItem::InputDefaults
             | MenuItem::Quit
             | MenuItem::Return => true,
         }
@@ -446,6 +459,13 @@ impl MenuPresentation {
                     "FULLSCREEN OFF".to_string()
                 }
             }
+            MenuItem::Vsync => {
+                if self.vsync {
+                    "VSYNC ON".to_string()
+                } else {
+                    "VSYNC OFF".to_string()
+                }
+            }
             MenuItem::WindowScale => format!("SCALE {}X", self.window_scale.max(1)),
             MenuItem::IntegerScale => {
                 if self.integer_scale {
@@ -461,6 +481,7 @@ impl MenuPresentation {
                     "STATS OFF".to_string()
                 }
             }
+            MenuItem::VideoDefaults => "DEFAULTS".to_string(),
             MenuItem::ToggleMute => {
                 if self.muted {
                     "MUTE ON".to_string()
@@ -469,11 +490,13 @@ impl MenuPresentation {
                 }
             }
             MenuItem::AudioVolume => format!("VOL {}%", self.audio_volume_percent.min(100)),
+            MenuItem::AudioDefaults => "DEFAULTS".to_string(),
             MenuItem::GamepadDirection => match self.gamepad_directional_source {
                 GamepadDirectionalSource::DpadOnly => "DIR DPAD".to_string(),
                 GamepadDirectionalSource::LeftStickOnly => "DIR LEFT".to_string(),
                 GamepadDirectionalSource::DpadAndLeftStick => "DIR ALL".to_string(),
             },
+            MenuItem::InputDefaults => "DEFAULTS".to_string(),
             MenuItem::GamepadActive => {
                 if self.active_gamepad_connected {
                     format!("ACTIVE {}", self.active_gamepad_label.as_str())
@@ -681,12 +704,16 @@ enum MenuItem {
     GamepadMenuControls,
     SystemMenu,
     Fullscreen,
+    Vsync,
     WindowScale,
     IntegerScale,
     PerformanceHud,
+    VideoDefaults,
     ToggleMute,
     AudioVolume,
+    AudioDefaults,
     GamepadDirection,
+    InputDefaults,
     GamepadActive,
     GamepadPreferred,
     GamepadUp,
@@ -1231,12 +1258,16 @@ impl OverlayMenuState {
                 None
             }
             MenuItem::Fullscreen => Some(MenuAction::ToggleFullscreen),
+            MenuItem::Vsync => Some(MenuAction::ToggleVsync),
             MenuItem::WindowScale => Some(MenuAction::CycleWindowScale),
             MenuItem::IntegerScale => Some(MenuAction::ToggleIntegerScale),
             MenuItem::PerformanceHud => Some(MenuAction::TogglePerformanceHud),
+            MenuItem::VideoDefaults => Some(MenuAction::ResetVideoDefaults),
             MenuItem::ToggleMute => Some(MenuAction::ToggleMute),
             MenuItem::AudioVolume => Some(MenuAction::CycleAudioVolume),
+            MenuItem::AudioDefaults => Some(MenuAction::ResetAudioDefaults),
             MenuItem::GamepadDirection => Some(MenuAction::CycleGamepadDirectionalSource),
+            MenuItem::InputDefaults => Some(MenuAction::ResetInputDefaults),
             MenuItem::GamepadActive => None,
             MenuItem::GamepadPreferred => Some(MenuAction::TogglePreferredGamepad),
             MenuItem::KeyboardUp => {
@@ -1903,6 +1934,7 @@ mod tests {
             recent_rom_count: 0,
             recent_rom_labels: [CompactRecentRomLabel::default(); RECENT_ROM_MENU_CAPACITY],
             fullscreen: false,
+            vsync: true,
             window_scale: 4,
             integer_scale: true,
             show_performance_hud: true,
@@ -2008,6 +2040,7 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleWindowScale)
@@ -2031,9 +2064,67 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::TogglePerformanceHud)
+        );
+    }
+
+    #[test]
+    fn video_submenu_toggles_vsync_before_scale() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ToggleVsync)
+        );
+    }
+
+    #[test]
+    fn video_submenu_resets_defaults_after_the_host_toggles() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ResetVideoDefaults)
+        );
+    }
+
+    #[test]
+    fn audio_submenu_resets_defaults_after_volume() {
+        let presentation = MenuPresentation {
+            audio_available: true,
+            ..test_presentation()
+        };
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ResetAudioDefaults)
         );
     }
 
@@ -2060,6 +2151,33 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleGamepadDirectionalSource)
+        );
+    }
+
+    #[test]
+    fn input_submenu_resets_defaults_after_directional_source() {
+        let presentation = MenuPresentation {
+            audio_available: true,
+            gamepad_available: true,
+            ..test_presentation()
+        };
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ResetInputDefaults)
         );
     }
 

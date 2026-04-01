@@ -87,6 +87,25 @@ impl DesktopSettingsStore {
         self.save()
     }
 
+    pub fn set_vsync(&mut self, vsync: bool) -> Result<(), String> {
+        if self.settings.video.vsync == vsync {
+            return Ok(());
+        }
+
+        self.settings.video.vsync = vsync;
+        self.save()
+    }
+
+    pub fn reset_video_defaults(&mut self) -> Result<(), String> {
+        let defaults = VideoOptions::default();
+        if self.settings.video == defaults {
+            return Ok(());
+        }
+
+        self.settings.video = defaults;
+        self.save()
+    }
+
     pub fn set_audio_muted(&mut self, muted: bool) -> Result<(), String> {
         if self.settings.audio.muted == muted {
             return Ok(());
@@ -102,6 +121,16 @@ impl DesktopSettingsStore {
         }
 
         self.settings.audio.volume_percent = volume_percent;
+        self.save()
+    }
+
+    pub fn reset_audio_defaults(&mut self) -> Result<(), String> {
+        let defaults = PersistedAudioSettings::default();
+        if self.settings.audio == defaults {
+            return Ok(());
+        }
+
+        self.settings.audio = defaults;
         self.save()
     }
 
@@ -220,6 +249,16 @@ impl DesktopSettingsStore {
         }
 
         self.settings.input.keyboard.hotkeys = bindings;
+        self.save()
+    }
+
+    pub fn reset_input_defaults(&mut self) -> Result<(), String> {
+        let defaults = InputOptions::default();
+        if self.settings.input == defaults {
+            return Ok(());
+        }
+
+        self.settings.input = defaults;
         self.save()
     }
 
@@ -406,12 +445,13 @@ fn resolve_desktop_settings_path_from_locations(
 mod tests {
     use super::{
         DESKTOP_SETTINGS_PATH_ENV_VAR, DESKTOP_SETTINGS_VERSION, DesktopSettingsStore,
-        PersistedDesktopSettings, resolve_desktop_settings_path_from_locations,
+        PersistedAudioSettings, PersistedDesktopSettings,
+        resolve_desktop_settings_path_from_locations,
     };
     use gb_desktop::{
         DesktopConfig, DesktopKey, GamepadButtonBinding, GamepadDirectionalSource,
-        GamepadMenuBindings, HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
-        PreferredGamepadIdentity,
+        GamepadMenuBindings, HotkeyBindings, InputOptions, JoypadKeyboardBindings,
+        MenuKeyboardBindings, PreferredGamepadIdentity, VideoOptions,
     };
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -498,6 +538,7 @@ mod tests {
         settings.video.integer_scale = false;
         settings.video.fullscreen = true;
         settings.video.show_performance_hud = false;
+        settings.video.vsync = false;
         settings.audio.volume_percent = 75;
         settings.audio.muted = true;
         settings.input.keyboard.joypad.a = DesktopKey::Space;
@@ -524,6 +565,7 @@ mod tests {
         assert!(!config.video.integer_scale);
         assert!(config.video.fullscreen);
         assert!(!config.video.show_performance_hud);
+        assert!(!config.video.vsync);
         assert_eq!(config.audio.volume_percent, 75);
         assert!(store.audio_muted());
         assert_eq!(config.input.keyboard.joypad.a, DesktopKey::Space);
@@ -565,6 +607,7 @@ mod tests {
         store
             .set_show_performance_hud(false)
             .expect("performance HUD visibility should persist");
+        store.set_vsync(false).expect("vsync toggle should persist");
         store
             .set_audio_muted(true)
             .expect("audio mute toggle should persist");
@@ -614,6 +657,7 @@ mod tests {
         assert_eq!(reloaded.video.window_scale, 6);
         assert!(!reloaded.video.integer_scale);
         assert!(!reloaded.video.show_performance_hud);
+        assert!(!reloaded.video.vsync);
         assert_eq!(reloaded.audio.volume_percent, 75);
         assert!(reloaded.audio.muted);
         assert_eq!(
@@ -642,6 +686,69 @@ mod tests {
             reloaded.recent_roms,
             vec![PathBuf::from("/tmp/roms/Tetris.gb")]
         );
+    }
+
+    #[test]
+    fn reset_helpers_restore_default_video_audio_and_input_preferences() {
+        let path = unique_test_path("reset-defaults");
+        let mut store = DesktopSettingsStore {
+            path: Some(path.clone()),
+            settings: PersistedDesktopSettings::default(),
+        };
+
+        store
+            .set_fullscreen(true)
+            .expect("fullscreen toggle should persist");
+        store
+            .set_window_scale(6)
+            .expect("window scale should persist");
+        store
+            .set_integer_scale(false)
+            .expect("integer scale should persist");
+        store
+            .set_show_performance_hud(false)
+            .expect("HUD visibility should persist");
+        store.set_vsync(false).expect("vsync should persist");
+        store
+            .set_audio_muted(true)
+            .expect("audio mute toggle should persist");
+        store
+            .set_audio_volume_percent(75)
+            .expect("audio volume should persist");
+        store
+            .set_keyboard_joypad_bindings(JoypadKeyboardBindings {
+                a: DesktopKey::Space,
+                ..JoypadKeyboardBindings::default()
+            })
+            .expect("keyboard joypad bindings should persist");
+        store
+            .set_keyboard_menu_bindings(MenuKeyboardBindings {
+                confirm: DesktopKey::X,
+                ..MenuKeyboardBindings::default()
+            })
+            .expect("keyboard menu bindings should persist");
+        store
+            .set_keyboard_hotkey_bindings(HotkeyBindings {
+                pause: DesktopKey::X,
+                ..HotkeyBindings::default()
+            })
+            .expect("keyboard hotkey bindings should persist");
+
+        store
+            .reset_video_defaults()
+            .expect("video defaults should persist");
+        store
+            .reset_audio_defaults()
+            .expect("audio defaults should persist");
+        store
+            .reset_input_defaults()
+            .expect("input defaults should persist");
+
+        let reloaded =
+            PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+        assert_eq!(reloaded.video, VideoOptions::default());
+        assert_eq!(reloaded.audio, PersistedAudioSettings::default());
+        assert_eq!(reloaded.input, InputOptions::default());
     }
 
     #[test]
