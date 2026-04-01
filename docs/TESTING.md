@@ -329,6 +329,7 @@ This checklist should move only when one of the following becomes true:
 - Before opening or updating a pull request, run at least `make ci` locally so formatting, clippy, workspace tests, typos, and `cargo deny` do not first surface in CI.
 - When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make test-roms` and `make coverage` locally as well before the PR is updated.
 - The GitHub `ci` workflow is intentionally limited to formatting, linting, tests, typos, dependency policy, and the coverage gate. Keep external ROM execution out of that workflow.
+- In that workflow, prefer one instrumented workspace `cargo llvm-cov --workspace --no-report` run plus per-crate `cargo llvm-cov report -p <crate> --fail-under-*` gates instead of a separate `cargo test --workspace` pass followed by coverage; the workspace tests should be paid for once.
 - The GitHub `test-roms` workflow currently runs the workflow-managed non-CGB
   DMG suites sourced from `GBEmulatorShootout`: the curated Acid framebuffer
   oracle family, the full Blargg DMG family (`cpu_instrs 01..11`, `halt_bug`,
