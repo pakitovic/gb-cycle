@@ -14,7 +14,10 @@ pub struct DesktopAudioOutput {
     captured_samples: Vec<ApuHostSample>,
     stream: AudioStreamOwner,
     interleaved_buffer: Vec<f32>,
+    output_sample_rate_hz: u32,
+    volume_percent: u8,
     volume_scale: f32,
+    muted: bool,
     max_queued_bytes: i32,
 }
 
@@ -39,7 +42,10 @@ impl DesktopAudioOutput {
             captured_samples: Vec::new(),
             stream,
             interleaved_buffer: Vec::new(),
+            output_sample_rate_hz: options.output_sample_rate_hz,
+            volume_percent: options.volume_percent,
             volume_scale: f32::from(options.volume_percent) / 100.0,
+            muted: false,
             max_queued_bytes: i32::from(options.buffer_frames)
                 * AUDIO_CHANNEL_COUNT
                 * BYTES_PER_F32_SAMPLE
@@ -67,14 +73,15 @@ impl DesktopAudioOutput {
                 .map_err(|error| format!("failed to clear queued SDL3 audio bytes: {error}"))?;
         }
 
+        let sample_scale = if self.muted { 0.0 } else { self.volume_scale };
         self.interleaved_buffer.clear();
         self.interleaved_buffer
             .reserve(self.captured_samples.len() * 2);
         for sample in self.captured_samples.iter().copied() {
             self.interleaved_buffer
-                .push(normalize_sample(sample.left) * self.volume_scale);
+                .push(normalize_sample(sample.left) * sample_scale);
             self.interleaved_buffer
-                .push(normalize_sample(sample.right) * self.volume_scale);
+                .push(normalize_sample(sample.right) * sample_scale);
         }
 
         self.stream
@@ -94,10 +101,60 @@ impl DesktopAudioOutput {
             .map_err(|error| format!("failed to resume SDL3 audio stream: {error}"))
     }
 
+    pub fn is_muted(&self) -> bool {
+        self.muted
+    }
+
+    pub fn set_muted(&mut self, muted: bool) -> Result<(), String> {
+        if self.muted == muted {
+            return Ok(());
+        }
+
+        self.muted = muted;
+        self.stream
+            .clear()
+            .map_err(|error| format!("failed to clear queued SDL3 audio bytes: {error}"))
+    }
+
+    pub fn set_volume_percent(&mut self, volume_percent: u8) -> Result<(), String> {
+        let volume_percent = volume_percent.min(100);
+        if self.volume_percent == volume_percent {
+            return Ok(());
+        }
+
+        self.volume_percent = volume_percent;
+        self.volume_scale = f32::from(volume_percent) / 100.0;
+        self.stream
+            .clear()
+            .map_err(|error| format!("failed to clear queued SDL3 audio bytes: {error}"))
+    }
+
+    pub fn clear_buffer(&mut self) -> Result<(), String> {
+        self.capture =
+            ApuSampleCapture::new(self.output_sample_rate_hz).map_err(format_capture_error)?;
+        self.captured_samples.clear();
+        self.interleaved_buffer.clear();
+        self.stream
+            .clear()
+            .map_err(|error| format!("failed to clear queued SDL3 audio bytes: {error}"))
+    }
+
     pub fn flush(&self) -> Result<(), String> {
         self.stream
             .flush()
             .map_err(|error| format!("failed to flush SDL3 audio stream: {error}"))
+    }
+
+    pub fn queued_duration_ms(&self) -> Option<f64> {
+        let queued_bytes = self.stream.queued_bytes().ok()?;
+        let bytes_per_second = f64::from(self.output_sample_rate_hz)
+            * f64::from(AUDIO_CHANNEL_COUNT)
+            * f64::from(BYTES_PER_F32_SAMPLE);
+        if bytes_per_second == 0.0 {
+            return None;
+        }
+
+        Some(f64::from(queued_bytes) * 1_000.0 / bytes_per_second)
     }
 }
 

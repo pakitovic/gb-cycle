@@ -2,14 +2,17 @@ use gb_core::{
     BootRomAssetError, BootRomAssets, BootRomKind, CompatibilityPolicy, ConsoleModel,
     ExecutionMode, MachineConfig, StartupMode,
 };
-use gb_persistence::{CartridgeSaveKey, CartridgeSaveKeyError, HardwarePersistenceFlushPolicy};
+use gb_persistence::{CartridgeSaveKey, CartridgeSaveKeyError};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 pub const DEFAULT_BOOT_ROM_DIR: &str = ".roms/bootrom";
 pub const DEFAULT_WINDOW_SCALE: u8 = 4;
 pub const DEFAULT_AUDIO_SAMPLE_RATE_HZ: u32 = 48_000;
 pub const DEFAULT_AUDIO_BUFFER_FRAMES: u16 = 512;
+pub const DEFAULT_SAVE_FLUSH_DEBOUNCE: Duration = Duration::from_secs(2);
 const DEFAULT_SAVE_SUBDIRECTORY: &str = "saves";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -186,7 +189,7 @@ pub struct SaveOptions {
     pub enabled: bool,
     pub directory_policy: SaveDirectoryPolicy,
     pub key_policy: SaveKeyPolicy,
-    pub flush_policy: HardwarePersistenceFlushPolicy,
+    pub flush_policy: DesktopSaveFlushPolicy,
 }
 
 impl SaveOptions {
@@ -216,8 +219,35 @@ impl Default for SaveOptions {
             enabled: true,
             directory_policy: SaveDirectoryPolicy::default(),
             key_policy: SaveKeyPolicy::default(),
-            flush_policy: HardwarePersistenceFlushPolicy::SaveOnClose,
+            flush_policy: DesktopSaveFlushPolicy::default(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum DesktopSaveFlushPolicy {
+    #[serde(rename = "manual")]
+    Manual,
+    #[serde(rename = "on-close")]
+    OnClose,
+    #[serde(rename = "on-write")]
+    OnWrite,
+    #[default]
+    #[serde(rename = "debounced")]
+    Debounced,
+}
+
+impl DesktopSaveFlushPolicy {
+    pub fn flush_on_close(self) -> bool {
+        !matches!(self, Self::Manual)
+    }
+
+    pub fn flush_each_frame_boundary(self) -> bool {
+        matches!(self, Self::OnWrite | Self::Debounced)
+    }
+
+    pub fn debounce_window(self) -> Option<Duration> {
+        matches!(self, Self::Debounced).then_some(DEFAULT_SAVE_FLUSH_DEBOUNCE)
     }
 }
 
@@ -256,12 +286,14 @@ impl SaveKeyPolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct VideoOptions {
     pub window_scale: u8,
     pub integer_scale: bool,
     pub vsync: bool,
     pub fullscreen: bool,
+    pub show_performance_hud: bool,
 }
 
 impl Default for VideoOptions {
@@ -271,11 +303,13 @@ impl Default for VideoOptions {
             integer_scale: true,
             vsync: true,
             fullscreen: false,
+            show_performance_hud: true,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AudioOptions {
     pub enabled: bool,
     pub volume_percent: u8,
@@ -294,19 +328,23 @@ impl Default for AudioOptions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct InputOptions {
     pub keyboard: KeyboardBindings,
     pub gamepad: GamepadOptions,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct KeyboardBindings {
     pub joypad: JoypadKeyboardBindings,
+    pub menu: MenuKeyboardBindings,
     pub hotkeys: HotkeyBindings,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct JoypadKeyboardBindings {
     pub up: DesktopKey,
     pub down: DesktopKey,
@@ -333,11 +371,33 @@ impl Default for JoypadKeyboardBindings {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MenuKeyboardBindings {
+    pub up: DesktopKey,
+    pub down: DesktopKey,
+    pub confirm: DesktopKey,
+    pub cancel: DesktopKey,
+}
+
+impl Default for MenuKeyboardBindings {
+    fn default() -> Self {
+        Self {
+            up: DesktopKey::ArrowUp,
+            down: DesktopKey::ArrowDown,
+            confirm: DesktopKey::Return,
+            cancel: DesktopKey::Escape,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HotkeyBindings {
     pub pause: DesktopKey,
     pub reset: DesktopKey,
     pub toggle_fullscreen: DesktopKey,
+    pub toggle_performance_hud: DesktopKey,
     pub save_battery: DesktopKey,
 }
 
@@ -347,16 +407,19 @@ impl Default for HotkeyBindings {
             pause: DesktopKey::Space,
             reset: DesktopKey::R,
             toggle_fullscreen: DesktopKey::F11,
+            toggle_performance_hud: DesktopKey::F10,
             save_battery: DesktopKey::F5,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GamepadOptions {
     pub enabled: bool,
     pub directional_source: GamepadDirectionalSource,
     pub bindings: GamepadButtonBindings,
+    pub menu: GamepadMenuBindings,
     pub preferred_device: PreferredGamepadIdentity,
 }
 
@@ -366,12 +429,14 @@ impl Default for GamepadOptions {
             enabled: true,
             directional_source: GamepadDirectionalSource::default(),
             bindings: GamepadButtonBindings::default(),
+            menu: GamepadMenuBindings::default(),
             preferred_device: PreferredGamepadIdentity::default(),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GamepadButtonBindings {
     pub up: GamepadButtonBinding,
     pub down: GamepadButtonBinding,
@@ -406,27 +471,64 @@ impl Default for GamepadButtonBindings {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GamepadMenuBindings {
+    pub up: GamepadButtonBinding,
+    pub down: GamepadButtonBinding,
+    pub confirm: GamepadButtonBinding,
+    pub cancel: GamepadButtonBinding,
+}
+
+impl Default for GamepadMenuBindings {
+    fn default() -> Self {
+        Self {
+            up: GamepadButtonBinding::DPadUp,
+            down: GamepadButtonBinding::DPadDown,
+            confirm: GamepadButtonBinding::South,
+            cancel: GamepadButtonBinding::East,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GamepadButtonBinding {
+    #[serde(rename = "south")]
     South,
+    #[serde(rename = "east")]
     East,
+    #[serde(rename = "west")]
     West,
+    #[serde(rename = "north")]
     North,
+    #[serde(rename = "back")]
     Back,
+    #[serde(rename = "start")]
     Start,
+    #[serde(rename = "guide")]
     Guide,
+    #[serde(rename = "left-shoulder")]
     LeftShoulder,
+    #[serde(rename = "right-shoulder")]
     RightShoulder,
+    #[serde(rename = "left-stick-click")]
     LeftStickClick,
+    #[serde(rename = "right-stick-click")]
     RightStickClick,
+    #[serde(rename = "dpad-up")]
     DPadUp,
+    #[serde(rename = "dpad-down")]
     DPadDown,
+    #[serde(rename = "dpad-left")]
     DPadLeft,
+    #[serde(rename = "dpad-right")]
     DPadRight,
+    #[serde(rename = "misc1")]
     Misc1,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PreferredGamepadIdentity {
     pub path: Option<String>,
     pub name: Option<String>,
@@ -438,11 +540,14 @@ impl PreferredGamepadIdentity {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum GamepadDirectionalSource {
+    #[serde(rename = "dpad-only")]
     DpadOnly,
+    #[serde(rename = "left-stick")]
     LeftStickOnly,
     #[default]
+    #[serde(rename = "both")]
     DpadAndLeftStick,
 }
 
@@ -472,8 +577,10 @@ impl GamepadFaceLayout {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum DesktopKey {
+    Escape,
     ArrowUp,
     ArrowDown,
     ArrowLeft,
@@ -485,6 +592,7 @@ pub enum DesktopKey {
     X,
     Z,
     F5,
+    F10,
     F11,
 }
 
@@ -531,13 +639,11 @@ mod tests {
         assert_eq!(config.launch.startup_mode, StartupMode::SkipBoot);
         assert_eq!(config.launch.execution_mode, ExecutionMode::Strict);
         assert!(config.saves.enabled);
-        assert_eq!(
-            config.saves.flush_policy,
-            HardwarePersistenceFlushPolicy::SaveOnClose
-        );
+        assert_eq!(config.saves.flush_policy, DesktopSaveFlushPolicy::Debounced);
         assert_eq!(config.video.window_scale, DEFAULT_WINDOW_SCALE);
         assert!(config.video.integer_scale);
         assert!(config.video.vsync);
+        assert!(config.video.show_performance_hud);
         assert!(config.audio.enabled);
         assert_eq!(
             config.audio.output_sample_rate_hz,
@@ -552,6 +658,7 @@ mod tests {
             config.input.gamepad.bindings,
             GamepadButtonBindings::default()
         );
+        assert_eq!(config.input.gamepad.menu, GamepadMenuBindings::default());
         assert_eq!(
             config.input.gamepad.preferred_device,
             PreferredGamepadIdentity::default()
@@ -613,9 +720,14 @@ mod tests {
         assert_eq!(keyboard.joypad.b, DesktopKey::Z);
         assert_eq!(keyboard.joypad.select, DesktopKey::Backspace);
         assert_eq!(keyboard.joypad.start, DesktopKey::Return);
+        assert_eq!(keyboard.menu.up, DesktopKey::ArrowUp);
+        assert_eq!(keyboard.menu.down, DesktopKey::ArrowDown);
+        assert_eq!(keyboard.menu.confirm, DesktopKey::Return);
+        assert_eq!(keyboard.menu.cancel, DesktopKey::Escape);
         assert_eq!(keyboard.hotkeys.pause, DesktopKey::Space);
         assert_eq!(keyboard.hotkeys.reset, DesktopKey::R);
         assert_eq!(keyboard.hotkeys.toggle_fullscreen, DesktopKey::F11);
+        assert_eq!(keyboard.hotkeys.toggle_performance_hud, DesktopKey::F10);
         assert_eq!(keyboard.hotkeys.save_battery, DesktopKey::F5);
     }
 }

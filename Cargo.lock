@@ -113,7 +113,9 @@ dependencies = [
  "gb-core",
  "gb-persistence",
  "sdl3",
+ "serde",
  "sha2",
+ "toml",
 ]
 
 [[package]]

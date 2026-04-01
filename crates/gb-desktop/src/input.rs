@@ -1,5 +1,8 @@
 use gb_core::{JoypadButton, Machine, TraceSummaryBuffer};
-use gb_desktop::{GamepadButtonBinding, GamepadOptions};
+use gb_desktop::{
+    GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
+    GamepadOptions, PreferredGamepadIdentity,
+};
 use sdl3::GamepadSubsystem;
 use sdl3::event::Event;
 use sdl3::gamepad::{Axis, Button, Gamepad};
@@ -98,6 +101,17 @@ impl FrontendInputState {
         }
     }
 
+    pub fn clear_keyboard(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
+        for button in JOYPAD_BUTTONS {
+            self.set_keyboard_button(machine, button, false);
+        }
+    }
+
+    pub fn clear_all(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
+        self.clear_keyboard(machine);
+        self.clear_gamepad(machine);
+    }
+
     fn set_source_button(
         &mut self,
         source: InputSource,
@@ -140,6 +154,15 @@ struct OpenGamepad {
     gamepad: Gamepad,
     name: String,
     path: Option<String>,
+}
+
+impl OpenGamepad {
+    fn identity(&self) -> PreferredGamepadIdentity {
+        PreferredGamepadIdentity {
+            path: self.path.clone(),
+            name: Some(self.name.clone()),
+        }
+    }
 }
 
 impl GamepadManager {
@@ -345,7 +368,123 @@ impl GamepadManager {
         self.apply_polled_directional_inputs(left_x, left_y, input_state, machine);
     }
 
-    fn sync_active_gamepad_state(
+    pub fn is_active_gamepad(&self, joystick_id: JoystickId) -> bool {
+        self.active == Some(joystick_id)
+    }
+
+    pub fn has_connected_gamepad(&self) -> bool {
+        self.active.is_some()
+    }
+
+    pub fn active_gamepad_name(&self) -> Option<&str> {
+        self.active_gamepad().map(|gamepad| gamepad.name.as_str())
+    }
+
+    pub fn active_gamepad_identity(&self) -> Option<PreferredGamepadIdentity> {
+        self.active_gamepad().map(OpenGamepad::identity)
+    }
+
+    pub fn preferred_device(&self) -> &PreferredGamepadIdentity {
+        &self.options.preferred_device
+    }
+
+    pub fn preferred_device_name(&self) -> Option<&str> {
+        if self.active_matches_preferred() {
+            return self.active_gamepad_name();
+        }
+
+        self.options.preferred_device.name.as_deref()
+    }
+
+    pub fn active_matches_preferred(&self) -> bool {
+        self.active_gamepad()
+            .is_some_and(|gamepad| self.matches_preferred_device(gamepad))
+    }
+
+    pub fn directional_source(&self) -> GamepadDirectionalSource {
+        self.options.directional_source
+    }
+
+    pub fn button_bindings(&self) -> GamepadButtonBindings {
+        self.options.bindings
+    }
+
+    pub fn menu_bindings(&self) -> GamepadMenuBindings {
+        self.options.menu
+    }
+
+    pub fn set_directional_source(
+        &mut self,
+        directional_source: GamepadDirectionalSource,
+        input_state: &mut FrontendInputState,
+        machine: &mut Machine<TraceSummaryBuffer>,
+    ) {
+        if self.options.directional_source == directional_source {
+            return;
+        }
+
+        self.options.directional_source = directional_source;
+        self.sync_active_gamepad_state(input_state, machine);
+    }
+
+    pub fn set_button_bindings(
+        &mut self,
+        bindings: GamepadButtonBindings,
+        input_state: &mut FrontendInputState,
+        machine: &mut Machine<TraceSummaryBuffer>,
+    ) {
+        if self.options.bindings == bindings {
+            return;
+        }
+
+        self.options.bindings = bindings;
+        self.sync_active_gamepad_state(input_state, machine);
+    }
+
+    pub fn set_menu_bindings(&mut self, bindings: GamepadMenuBindings) {
+        self.options.menu = bindings;
+    }
+
+    pub fn set_preferred_device(
+        &mut self,
+        preferred_device: PreferredGamepadIdentity,
+        input_state: &mut FrontendInputState,
+        machine: &mut Machine<TraceSummaryBuffer>,
+    ) {
+        if self.options.preferred_device == preferred_device {
+            return;
+        }
+
+        self.options.preferred_device = preferred_device;
+        let previous_active = self.active;
+        self.active = self.select_active_gamepad();
+        if previous_active != self.active {
+            self.log_active_gamepad();
+        }
+        self.sync_active_gamepad_state(input_state, machine);
+    }
+
+    pub fn activate_gamepad_from_input(
+        &mut self,
+        joystick_id: JoystickId,
+        input_state: &mut FrontendInputState,
+        machine: &mut Machine<TraceSummaryBuffer>,
+    ) -> bool {
+        if self.active == Some(joystick_id) || !self.opened.contains_key(&joystick_id) {
+            return false;
+        }
+
+        if self.options.preferred_device.is_configured() && self.active_matches_preferred() {
+            return false;
+        }
+
+        self.active = Some(joystick_id);
+        self.log_active_gamepad();
+        self.sync_active_gamepad_state(input_state, machine);
+        true
+    }
+
+    pub fn sync_active_gamepad_state(
         &mut self,
         input_state: &mut FrontendInputState,
         machine: &mut Machine<TraceSummaryBuffer>,
@@ -353,6 +492,17 @@ impl GamepadManager {
         self.left_stick_state = LeftStickDigitalState::default();
         input_state.clear_gamepad(machine);
         self.poll_active_gamepad_state(input_state, machine);
+    }
+
+    fn active_gamepad(&self) -> Option<&OpenGamepad> {
+        self.active
+            .and_then(|joystick_id| self.opened.get(&joystick_id))
+    }
+
+    fn log_active_gamepad(&self) {
+        if let Some(gamepad) = self.active_gamepad() {
+            eprintln!("info: active SDL gamepad: {}", gamepad.name);
+        }
     }
 
     fn apply_polled_bound_buttons(
@@ -421,7 +571,7 @@ fn gamepad_button_binding_state(gamepad: &OpenGamepad, binding: GamepadButtonBin
     gamepad.gamepad.button(sdl_button_for_binding(binding))
 }
 
-fn sdl_button_for_binding(binding: GamepadButtonBinding) -> Button {
+pub fn sdl_button_for_binding(binding: GamepadButtonBinding) -> Button {
     match binding {
         GamepadButtonBinding::South => Button::South,
         GamepadButtonBinding::East => Button::East,
@@ -439,6 +589,28 @@ fn sdl_button_for_binding(binding: GamepadButtonBinding) -> Button {
         GamepadButtonBinding::DPadLeft => Button::DPadLeft,
         GamepadButtonBinding::DPadRight => Button::DPadRight,
         GamepadButtonBinding::Misc1 => Button::Misc1,
+    }
+}
+
+pub fn gamepad_button_binding_from_sdl_button(button: Button) -> Option<GamepadButtonBinding> {
+    match button {
+        Button::South => Some(GamepadButtonBinding::South),
+        Button::East => Some(GamepadButtonBinding::East),
+        Button::West => Some(GamepadButtonBinding::West),
+        Button::North => Some(GamepadButtonBinding::North),
+        Button::Back => Some(GamepadButtonBinding::Back),
+        Button::Start => Some(GamepadButtonBinding::Start),
+        Button::Guide => Some(GamepadButtonBinding::Guide),
+        Button::LeftShoulder => Some(GamepadButtonBinding::LeftShoulder),
+        Button::RightShoulder => Some(GamepadButtonBinding::RightShoulder),
+        Button::LeftStick => Some(GamepadButtonBinding::LeftStickClick),
+        Button::RightStick => Some(GamepadButtonBinding::RightStickClick),
+        Button::DPadUp => Some(GamepadButtonBinding::DPadUp),
+        Button::DPadDown => Some(GamepadButtonBinding::DPadDown),
+        Button::DPadLeft => Some(GamepadButtonBinding::DPadLeft),
+        Button::DPadRight => Some(GamepadButtonBinding::DPadRight),
+        Button::Misc1 => Some(GamepadButtonBinding::Misc1),
+        _ => None,
     }
 }
 

@@ -1,10 +1,10 @@
 use gb_core::{ExecutionMode, StartupMode};
 use gb_desktop::{
     AudioOptions, BootRomVerificationMode, DesktopConfig, DesktopConsoleModel,
-    GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadFaceLayout,
-    SaveDirectoryPolicy, SaveKeyPolicy,
+    DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
+    GamepadFaceLayout, SaveDirectoryPolicy, SaveKeyPolicy,
 };
-use gb_persistence::{CartridgeSaveKey, HardwarePersistenceFlushPolicy};
+use gb_persistence::CartridgeSaveKey;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,18 +15,29 @@ pub enum CliAction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopRunOptions {
-    pub rom_path: PathBuf,
+    pub rom_path: Option<PathBuf>,
     pub config: DesktopConfig,
 }
 
+#[cfg(test)]
 pub fn parse_cli_arguments<I, S>(arguments: I) -> Result<CliAction, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    parse_cli_arguments_with_base_config(arguments, DesktopConfig::default())
+}
+
+pub fn parse_cli_arguments_with_base_config<I, S>(
+    arguments: I,
+    mut config: DesktopConfig,
+) -> Result<CliAction, String>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
     let mut arguments = arguments.into_iter();
     let mut rom_path = None;
-    let mut config = DesktopConfig::default();
 
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -166,10 +177,6 @@ where
         }
     }
 
-    let Some(rom_path) = rom_path else {
-        return Ok(CliAction::ShowHelp);
-    };
-
     Ok(CliAction::Run(Box::new(DesktopRunOptions {
         rom_path,
         config,
@@ -179,7 +186,7 @@ where
 pub fn help_text() -> &'static str {
     concat!(
         "Usage:\n",
-        "  gb-desktop <rom> [options]\n",
+        "  gb-desktop [rom] [options]\n",
         "\n",
         "Options:\n",
         "  --model <dmg0|dmg|mgb>                 Select the DMG-family startup model (default: dmg)\n",
@@ -189,8 +196,8 @@ pub fn help_text() -> &'static str {
         "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
         "  --save-dir <dir>                       Override the battery-save directory\n",
         "  --save-key <key>                       Override the derived save key (ASCII alnum, '_' or '-')\n",
-        "  --save-policy <manual|on-close|on-write>\n",
-        "                                         Select battery-save flushing (default: on-close)\n",
+        "  --save-policy <manual|on-close|on-write|debounced>\n",
+        "                                         Select battery-save flushing (default: debounced)\n",
         "  --no-saves                             Disable battery-save load/save\n",
         "  --scale <n>                            Set the initial window scale (default: 4)\n",
         "  --fullscreen                           Start in fullscreen mode\n",
@@ -210,6 +217,11 @@ pub fn help_text() -> &'static str {
         "                                         Prefer a gamepad with the exact SDL device name when choosing the active pad\n",
         "  --gamepad-preferred-path <path>\n",
         "                                         Prefer a gamepad with the exact SDL device path; falls back to name if both are set\n",
+        "\n",
+        "Environment:\n",
+        "  GB_CYCLE_DESKTOP_SETTINGS_PATH         Override the persisted desktop settings file location\n",
+        "\n",
+        "If no ROM is provided, gb-desktop opens without a cartridge and starts in the in-window menu.\n",
     )
 }
 
@@ -256,13 +268,14 @@ fn parse_boot_rom_verification_mode(value: &str) -> Result<BootRomVerificationMo
     }
 }
 
-fn parse_save_policy(value: &str) -> Result<HardwarePersistenceFlushPolicy, String> {
+fn parse_save_policy(value: &str) -> Result<DesktopSaveFlushPolicy, String> {
     match value {
-        "manual" => Ok(HardwarePersistenceFlushPolicy::Manual),
-        "on-close" => Ok(HardwarePersistenceFlushPolicy::SaveOnClose),
-        "on-write" => Ok(HardwarePersistenceFlushPolicy::AutoFlushAfterPersistibleWrite),
+        "manual" => Ok(DesktopSaveFlushPolicy::Manual),
+        "on-close" => Ok(DesktopSaveFlushPolicy::OnClose),
+        "on-write" => Ok(DesktopSaveFlushPolicy::OnWrite),
+        "debounced" => Ok(DesktopSaveFlushPolicy::Debounced),
         _ => Err(format!(
-            "unsupported --save-policy value {value:?}; expected manual, on-close, or on-write"
+            "unsupported --save-policy value {value:?}; expected manual, on-close, on-write, or debounced"
         )),
     }
 }
@@ -371,7 +384,7 @@ mod tests {
         let CliAction::Run(options) = action else {
             panic!("expected run action");
         };
-        assert_eq!(options.rom_path, PathBuf::from("roms/tetris.gb"));
+        assert_eq!(options.rom_path, Some(PathBuf::from("roms/tetris.gb")));
         assert_eq!(
             options.config.launch.console_model,
             DesktopConsoleModel::Dmg
@@ -380,9 +393,25 @@ mod tests {
         assert_eq!(options.config.launch.execution_mode, ExecutionMode::Strict);
         assert!(options.config.saves.enabled);
         assert_eq!(
+            options.config.saves.flush_policy,
+            DesktopSaveFlushPolicy::Debounced
+        );
+        assert_eq!(
             options.config.video.window_scale,
             DesktopConfig::default().video.window_scale
         );
+    }
+
+    #[test]
+    fn parse_supports_running_without_a_rom_path() {
+        let action =
+            parse_cli_arguments(["--startup", "real-boot"]).expect("CLI should allow no ROM");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected run action");
+        };
+        assert_eq!(options.rom_path, None);
+        assert_eq!(options.config.launch.startup_mode, StartupMode::RealBoot);
     }
 
     #[test]
@@ -395,6 +424,30 @@ mod tests {
         };
         assert!(!options.config.saves.enabled);
         assert_eq!(options.config.video.window_scale, 6);
+    }
+
+    #[test]
+    fn parse_supports_debounced_save_policy_overrides() {
+        let action = parse_cli_arguments(["demo.gb", "--save-policy", "on-close"])
+            .expect("save policy CLI overrides should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected run action");
+        };
+        assert_eq!(
+            options.config.saves.flush_policy,
+            DesktopSaveFlushPolicy::OnClose
+        );
+
+        let action = parse_cli_arguments(["demo.gb", "--save-policy", "debounced"])
+            .expect("debounced save policy should parse");
+        let CliAction::Run(options) = action else {
+            panic!("expected run action");
+        };
+        assert_eq!(
+            options.config.saves.flush_policy,
+            DesktopSaveFlushPolicy::Debounced
+        );
     }
 
     #[test]
@@ -485,5 +538,37 @@ mod tests {
                 path: Some("bluetooth:vendor=057e,product=2009".to_string()),
             }
         );
+    }
+
+    #[test]
+    fn parse_uses_the_provided_base_config_before_cli_overrides() {
+        let mut base_config = DesktopConfig::default();
+        base_config.video.window_scale = 6;
+        base_config.input.gamepad.enabled = false;
+
+        let action = parse_cli_arguments_with_base_config(["demo.gb"], base_config)
+            .expect("base-config parsing should succeed");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+
+        assert_eq!(options.config.video.window_scale, 6);
+        assert!(!options.config.input.gamepad.enabled);
+    }
+
+    #[test]
+    fn parse_cli_overrides_still_win_over_the_base_config() {
+        let mut base_config = DesktopConfig::default();
+        base_config.video.window_scale = 6;
+
+        let action = parse_cli_arguments_with_base_config(["demo.gb", "--scale", "3"], base_config)
+            .expect("CLI override over base config should succeed");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+
+        assert_eq!(options.config.video.window_scale, 3);
     }
 }
