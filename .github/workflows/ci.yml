@@ -73,8 +73,8 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --features "${LINUX_DESKTOP_FEATURES}" -- -D warnings
 
-      - name: Tests
-        run: cargo test --workspace --features "${LINUX_DESKTOP_FEATURES}"
+      - name: Coverage run
+        run: cargo cov-run --features "${LINUX_DESKTOP_FEATURES}"
 
       - name: Typos
         run: typos
@@ -82,5 +82,10 @@ jobs:
       - name: Deny
         run: cargo deny-check
 
-      - name: Coverage
-        run: cargo cov-check
+      - name: Coverage gate
+        run: |
+          cargo cov-check-core
+          cargo cov-check-test-runner
+          cargo cov-check-persistence
+          cargo cov-check-cli
+          cargo cov-check-desktop
