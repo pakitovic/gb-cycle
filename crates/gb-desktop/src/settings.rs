@@ -1,7 +1,9 @@
+use gb_core::{ExecutionMode, StartupMode};
 use gb_desktop::{
-    AudioOptions, DesktopConfig, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, HotkeyBindings, InputOptions, JoypadKeyboardBindings,
-    MenuKeyboardBindings, PreferredGamepadIdentity, VideoOptions,
+    AudioOptions, DesktopConfig, DesktopSaveFlushPolicy, GamepadButtonBindings,
+    GamepadDirectionalSource, GamepadMenuBindings, HotkeyBindings, InputOptions,
+    JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy,
+    VideoOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -41,6 +43,23 @@ impl DesktopSettingsStore {
 
     pub fn audio_muted(&self) -> bool {
         self.settings.audio.muted
+    }
+
+    pub fn persist_machine_preferences(&mut self, config: &DesktopConfig) -> Result<(), String> {
+        let launch = PersistedLaunchSettings::from_config(config);
+        let boot_rom = PersistedBootRomSettings::from_config(config);
+        let saves = PersistedSaveSettings::from_config(config);
+        if self.settings.launch == launch
+            && self.settings.boot_rom == boot_rom
+            && self.settings.saves == saves
+        {
+            return Ok(());
+        }
+
+        self.settings.launch = launch;
+        self.settings.boot_rom = boot_rom;
+        self.settings.saves = saves;
+        self.save()
     }
 
     pub fn last_open_directory(&self) -> Option<&Path> {
@@ -275,6 +294,9 @@ impl DesktopSettingsStore {
 #[serde(default)]
 struct PersistedDesktopSettings {
     version: u32,
+    launch: PersistedLaunchSettings,
+    boot_rom: PersistedBootRomSettings,
+    saves: PersistedSaveSettings,
     video: VideoOptions,
     audio: PersistedAudioSettings,
     input: InputOptions,
@@ -337,6 +359,9 @@ impl PersistedDesktopSettings {
     }
 
     fn apply_to_config(&self, config: &mut DesktopConfig) {
+        self.launch.apply_to_config(config);
+        self.boot_rom.apply_to_config(config);
+        self.saves.apply_to_config(config);
         config.video = self.video.clone();
         config.audio = self.audio.audio_options();
         config.input = self.input.clone();
@@ -347,11 +372,235 @@ impl Default for PersistedDesktopSettings {
     fn default() -> Self {
         Self {
             version: DESKTOP_SETTINGS_VERSION,
+            launch: PersistedLaunchSettings::default(),
+            boot_rom: PersistedBootRomSettings::default(),
+            saves: PersistedSaveSettings::default(),
             video: VideoOptions::default(),
             audio: PersistedAudioSettings::default(),
             input: InputOptions::default(),
             last_open_directory: None,
             recent_roms: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct PersistedLaunchSettings {
+    console_model: PersistedDesktopConsoleModel,
+    startup_mode: PersistedStartupMode,
+    execution_mode: PersistedExecutionMode,
+}
+
+impl PersistedLaunchSettings {
+    fn from_config(config: &DesktopConfig) -> Self {
+        Self {
+            console_model: PersistedDesktopConsoleModel::from_external(config.launch.console_model),
+            startup_mode: PersistedStartupMode::from_external(config.launch.startup_mode),
+            execution_mode: PersistedExecutionMode::from_external(config.launch.execution_mode),
+        }
+    }
+
+    fn apply_to_config(&self, config: &mut DesktopConfig) {
+        config.launch.console_model = self.console_model.to_external();
+        config.launch.startup_mode = self.startup_mode.to_external();
+        config.launch.execution_mode = self.execution_mode.to_external();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct PersistedBootRomSettings {
+    search_path: Option<PathBuf>,
+    verification: PersistedBootRomVerificationMode,
+}
+
+impl PersistedBootRomSettings {
+    fn from_config(config: &DesktopConfig) -> Self {
+        Self {
+            search_path: config.boot_rom.search_path.clone(),
+            verification: PersistedBootRomVerificationMode::from_external(
+                config.boot_rom.verification,
+            ),
+        }
+    }
+
+    fn apply_to_config(&self, config: &mut DesktopConfig) {
+        config.boot_rom.search_path = self.search_path.clone();
+        config.boot_rom.verification = self.verification.to_external();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+struct PersistedSaveSettings {
+    enabled: bool,
+    directory_policy: PersistedSaveDirectoryPolicy,
+    flush_policy: DesktopSaveFlushPolicy,
+}
+
+impl PersistedSaveSettings {
+    fn from_config(config: &DesktopConfig) -> Self {
+        Self {
+            enabled: config.saves.enabled,
+            directory_policy: PersistedSaveDirectoryPolicy::from_external(
+                &config.saves.directory_policy,
+            ),
+            flush_policy: config.saves.flush_policy,
+        }
+    }
+
+    fn apply_to_config(&self, config: &mut DesktopConfig) {
+        config.saves.enabled = self.enabled;
+        config.saves.directory_policy = self.directory_policy.to_external();
+        config.saves.flush_policy = self.flush_policy;
+    }
+}
+
+impl Default for PersistedSaveSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            directory_policy: PersistedSaveDirectoryPolicy::default(),
+            flush_policy: DesktopSaveFlushPolicy::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "kind", content = "path")]
+enum PersistedSaveDirectoryPolicy {
+    #[default]
+    #[serde(rename = "rom-folder-saves-subdir")]
+    RomFolderSavesSubdir,
+    #[serde(rename = "custom")]
+    Custom(PathBuf),
+}
+
+impl PersistedSaveDirectoryPolicy {
+    fn from_external(value: &SaveDirectoryPolicy) -> Self {
+        match value {
+            SaveDirectoryPolicy::RomFolderSavesSubdir => Self::RomFolderSavesSubdir,
+            SaveDirectoryPolicy::Custom(path) => Self::Custom(path.clone()),
+        }
+    }
+
+    fn to_external(&self) -> SaveDirectoryPolicy {
+        match self {
+            Self::RomFolderSavesSubdir => SaveDirectoryPolicy::RomFolderSavesSubdir,
+            Self::Custom(path) => SaveDirectoryPolicy::Custom(path.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+enum PersistedDesktopConsoleModel {
+    #[serde(rename = "dmg0")]
+    Dmg0,
+    #[default]
+    #[serde(rename = "dmg")]
+    Dmg,
+    #[serde(rename = "mgb")]
+    Mgb,
+}
+
+impl PersistedDesktopConsoleModel {
+    fn from_external(value: gb_desktop::DesktopConsoleModel) -> Self {
+        match value {
+            gb_desktop::DesktopConsoleModel::Dmg0 => Self::Dmg0,
+            gb_desktop::DesktopConsoleModel::Dmg => Self::Dmg,
+            gb_desktop::DesktopConsoleModel::Mgb => Self::Mgb,
+        }
+    }
+
+    fn to_external(self) -> gb_desktop::DesktopConsoleModel {
+        match self {
+            Self::Dmg0 => gb_desktop::DesktopConsoleModel::Dmg0,
+            Self::Dmg => gb_desktop::DesktopConsoleModel::Dmg,
+            Self::Mgb => gb_desktop::DesktopConsoleModel::Mgb,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+enum PersistedStartupMode {
+    #[default]
+    #[serde(rename = "skip-boot")]
+    SkipBoot,
+    #[serde(rename = "real-boot")]
+    RealBoot,
+}
+
+impl PersistedStartupMode {
+    fn from_external(value: StartupMode) -> Self {
+        match value {
+            StartupMode::SkipBoot => Self::SkipBoot,
+            StartupMode::RealBoot => Self::RealBoot,
+        }
+    }
+
+    fn to_external(self) -> StartupMode {
+        match self {
+            Self::SkipBoot => StartupMode::SkipBoot,
+            Self::RealBoot => StartupMode::RealBoot,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+enum PersistedExecutionMode {
+    #[default]
+    #[serde(rename = "strict")]
+    Strict,
+    #[serde(rename = "permissive")]
+    Permissive,
+    #[serde(rename = "experimental")]
+    Experimental,
+}
+
+impl PersistedExecutionMode {
+    fn from_external(value: ExecutionMode) -> Self {
+        match value {
+            ExecutionMode::Strict => Self::Strict,
+            ExecutionMode::Permissive => Self::Permissive,
+            ExecutionMode::Experimental => Self::Experimental,
+        }
+    }
+
+    fn to_external(self) -> ExecutionMode {
+        match self {
+            Self::Strict => ExecutionMode::Strict,
+            Self::Permissive => ExecutionMode::Permissive,
+            Self::Experimental => ExecutionMode::Experimental,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+enum PersistedBootRomVerificationMode {
+    #[serde(rename = "off")]
+    Off,
+    #[serde(rename = "warn")]
+    Warn,
+    #[default]
+    #[serde(rename = "strict")]
+    Strict,
+}
+
+impl PersistedBootRomVerificationMode {
+    fn from_external(value: gb_desktop::BootRomVerificationMode) -> Self {
+        match value {
+            gb_desktop::BootRomVerificationMode::Off => Self::Off,
+            gb_desktop::BootRomVerificationMode::Warn => Self::Warn,
+            gb_desktop::BootRomVerificationMode::Strict => Self::Strict,
+        }
+    }
+
+    fn to_external(self) -> gb_desktop::BootRomVerificationMode {
+        match self {
+            Self::Off => gb_desktop::BootRomVerificationMode::Off,
+            Self::Warn => gb_desktop::BootRomVerificationMode::Warn,
+            Self::Strict => gb_desktop::BootRomVerificationMode::Strict,
         }
     }
 }
@@ -445,13 +694,16 @@ fn resolve_desktop_settings_path_from_locations(
 mod tests {
     use super::{
         DESKTOP_SETTINGS_PATH_ENV_VAR, DESKTOP_SETTINGS_VERSION, DesktopSettingsStore,
-        PersistedAudioSettings, PersistedDesktopSettings,
-        resolve_desktop_settings_path_from_locations,
+        PersistedAudioSettings, PersistedBootRomVerificationMode, PersistedDesktopConsoleModel,
+        PersistedDesktopSettings, PersistedExecutionMode, PersistedSaveDirectoryPolicy,
+        PersistedStartupMode, resolve_desktop_settings_path_from_locations,
     };
+    use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
-        DesktopConfig, DesktopKey, GamepadButtonBinding, GamepadDirectionalSource,
-        GamepadMenuBindings, HotkeyBindings, InputOptions, JoypadKeyboardBindings,
-        MenuKeyboardBindings, PreferredGamepadIdentity, VideoOptions,
+        DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
+        GamepadDirectionalSource, GamepadMenuBindings, HotkeyBindings, InputOptions,
+        JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
+        SaveDirectoryPolicy, VideoOptions,
     };
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -534,6 +786,15 @@ mod tests {
     fn settings_store_base_config_applies_persisted_host_preferences() {
         let path = unique_test_path("applies-settings");
         let mut settings = PersistedDesktopSettings::default();
+        settings.launch.console_model = PersistedDesktopConsoleModel::Mgb;
+        settings.launch.startup_mode = PersistedStartupMode::RealBoot;
+        settings.launch.execution_mode = PersistedExecutionMode::Permissive;
+        settings.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/mgb_boot.bin"));
+        settings.boot_rom.verification = PersistedBootRomVerificationMode::Warn;
+        settings.saves.enabled = false;
+        settings.saves.directory_policy =
+            PersistedSaveDirectoryPolicy::Custom(PathBuf::from("/tmp/saves"));
+        settings.saves.flush_policy = DesktopSaveFlushPolicy::OnClose;
         settings.video.window_scale = 6;
         settings.video.integer_scale = false;
         settings.video.fullscreen = true;
@@ -561,6 +822,26 @@ mod tests {
         };
         let config = store.base_config();
 
+        assert_eq!(
+            config.launch.console_model,
+            gb_desktop::DesktopConsoleModel::Mgb
+        );
+        assert_eq!(config.launch.startup_mode, StartupMode::RealBoot);
+        assert_eq!(config.launch.execution_mode, ExecutionMode::Permissive);
+        assert_eq!(
+            config.boot_rom.search_path,
+            Some(PathBuf::from("/tmp/firmware/mgb_boot.bin"))
+        );
+        assert_eq!(
+            config.boot_rom.verification,
+            gb_desktop::BootRomVerificationMode::Warn
+        );
+        assert!(!config.saves.enabled);
+        assert_eq!(
+            config.saves.directory_policy,
+            SaveDirectoryPolicy::Custom(PathBuf::from("/tmp/saves"))
+        );
+        assert_eq!(config.saves.flush_policy, DesktopSaveFlushPolicy::OnClose);
         assert_eq!(config.video.window_scale, 6);
         assert!(!config.video.integer_scale);
         assert!(config.video.fullscreen);
@@ -585,6 +866,54 @@ mod tests {
             }
         );
         assert!(store.recent_roms().is_empty());
+    }
+
+    #[test]
+    fn persisting_machine_preferences_updates_the_saved_settings() {
+        let path = unique_test_path("persist-launch-boot");
+        let mut store = DesktopSettingsStore {
+            path: Some(path.clone()),
+            settings: PersistedDesktopSettings::default(),
+        };
+        let mut config = DesktopConfig::default();
+        config.launch.console_model = gb_desktop::DesktopConsoleModel::Dmg0;
+        config.launch.startup_mode = StartupMode::RealBoot;
+        config.launch.execution_mode = ExecutionMode::Experimental;
+        config.boot_rom.search_path = Some(PathBuf::from("/tmp/firmware/dmg0_boot.bin"));
+        config.boot_rom.verification = gb_desktop::BootRomVerificationMode::Off;
+        config.saves.enabled = false;
+        config.saves.directory_policy = SaveDirectoryPolicy::Custom(PathBuf::from("/tmp/gb-saves"));
+        config.saves.flush_policy = DesktopSaveFlushPolicy::OnWrite;
+
+        store
+            .persist_machine_preferences(&config)
+            .expect("machine settings should persist");
+
+        let reloaded =
+            PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+        assert_eq!(
+            reloaded.launch.console_model,
+            PersistedDesktopConsoleModel::Dmg0
+        );
+        assert_eq!(reloaded.launch.startup_mode, PersistedStartupMode::RealBoot);
+        assert_eq!(
+            reloaded.launch.execution_mode,
+            PersistedExecutionMode::Experimental
+        );
+        assert_eq!(
+            reloaded.boot_rom.search_path,
+            Some(PathBuf::from("/tmp/firmware/dmg0_boot.bin"))
+        );
+        assert_eq!(
+            reloaded.boot_rom.verification,
+            PersistedBootRomVerificationMode::Off
+        );
+        assert!(!reloaded.saves.enabled);
+        assert_eq!(
+            reloaded.saves.directory_policy,
+            PersistedSaveDirectoryPolicy::Custom(PathBuf::from("/tmp/gb-saves"))
+        );
+        assert_eq!(reloaded.saves.flush_policy, DesktopSaveFlushPolicy::OnWrite);
     }
 
     #[test]

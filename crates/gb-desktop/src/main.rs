@@ -14,9 +14,10 @@ use gb_core::{
     MachineConfig, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
-    DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings,
-    GamepadDirectionalSource, GamepadMenuBindings, HotkeyBindings, JoypadKeyboardBindings,
-    KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, VideoOptions,
+    BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel, DesktopKey,
+    DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
+    GamepadMenuBindings, HotkeyBindings, JoypadKeyboardBindings, KeyboardBindings,
+    MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy, VideoOptions,
 };
 use gb_persistence::uses_battery_backed_hardware_persistence;
 use input::{
@@ -29,7 +30,7 @@ use menu::{
     OverlayMenuState, PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, render_performance_hud,
 };
 use save_session::DesktopSaveSession;
-use sdl3::dialog::{DialogError, DialogFileFilter, show_open_file_dialog};
+use sdl3::dialog::{DialogError, DialogFileFilter, show_open_file_dialog, show_open_folder_dialog};
 use sdl3::event::Event;
 use sdl3::gamepad::Button;
 use sdl3::hint;
@@ -65,6 +66,16 @@ const ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
         pattern: "*",
     },
 ];
+const BOOT_ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
+    DialogFileFilter {
+        name: "Boot ROM dumps",
+        pattern: "bin;rom",
+    },
+    DialogFileFilter {
+        name: "All files",
+        pattern: "*",
+    },
+];
 
 enum LoopSignal {
     Continue,
@@ -89,24 +100,28 @@ struct FrontendRuntime {
     audio_output: Option<DesktopAudioOutput>,
     gamepad_manager: Option<GamepadManager>,
     save_session: Option<DesktopSaveSession>,
-    open_rom_dialog: OpenRomDialog,
+    open_rom_dialog: PathSelectionDialog,
+    boot_rom_file_dialog: PathSelectionDialog,
+    boot_rom_directory_dialog: PathSelectionDialog,
+    save_directory_dialog: PathSelectionDialog,
 }
 
-struct DesktopSession<'a> {
-    config: &'a DesktopConfig,
+struct DesktopSession {
+    config: DesktopConfig,
     current_dir: PathBuf,
     loaded_rom: Option<LoadedRom>,
     last_open_directory: Option<PathBuf>,
     recent_roms: Vec<PathBuf>,
 }
 
+#[derive(Clone)]
 struct LoadedRom {
     path: PathBuf,
     bytes: Vec<u8>,
 }
 
-struct FrontendActionContext<'state, 'config> {
-    session: &'state mut DesktopSession<'config>,
+struct FrontendActionContext<'state> {
+    session: &'state mut DesktopSession,
     machine: &'state mut Machine<TraceSummaryBuffer>,
     runtime: &'state mut FrontendRuntime,
     performance_counter: &'state mut PerformanceCounter,
@@ -114,7 +129,7 @@ struct FrontendActionContext<'state, 'config> {
     settings_store: &'state mut DesktopSettingsStore,
 }
 
-impl DesktopSession<'_> {
+impl DesktopSession {
     fn has_loaded_rom(&self) -> bool {
         self.loaded_rom.is_some()
     }
@@ -139,20 +154,20 @@ impl DesktopSession<'_> {
     }
 }
 
-struct OpenRomDialog {
+struct PathSelectionDialog {
     pending: bool,
-    sender: Sender<OpenRomDialogResult>,
-    receiver: Receiver<OpenRomDialogResult>,
+    sender: Sender<PathDialogResult>,
+    receiver: Receiver<PathDialogResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum OpenRomDialogResult {
+enum PathDialogResult {
     Selected(PathBuf),
     Canceled,
     Failed(String),
 }
 
-impl OpenRomDialog {
+impl PathSelectionDialog {
     fn new() -> Self {
         let (sender, receiver) = mpsc::channel();
         Self {
@@ -166,27 +181,49 @@ impl OpenRomDialog {
         self.pending
     }
 
-    fn show(&mut self, window: &Window, default_location: &Path) -> Result<(), String> {
+    fn show_file(
+        &mut self,
+        filters: &[DialogFileFilter<'static>],
+        window: &Window,
+        default_location: &Path,
+    ) -> Result<(), String> {
         if self.pending {
             return Ok(());
         }
 
         let sender = self.sender.clone();
         show_open_file_dialog(
-            &ROM_FILE_DIALOG_FILTERS,
+            filters,
             Some(default_location),
             false,
             window,
             Box::new(move |result, _| {
-                let _ = sender.send(map_open_rom_dialog_result(result));
+                let _ = sender.send(map_path_dialog_result(result));
             }),
         )
-        .map_err(|error| format!("failed to show SDL3 open ROM dialog: {error}"))?;
+        .map_err(|error| format!("failed to show SDL3 open file dialog: {error}"))?;
         self.pending = true;
         Ok(())
     }
 
-    fn take_result(&mut self) -> Option<OpenRomDialogResult> {
+    fn show_folder(&mut self, window: &Window, default_location: &Path) {
+        if self.pending {
+            return;
+        }
+
+        let sender = self.sender.clone();
+        show_open_folder_dialog(
+            Some(default_location),
+            false,
+            window,
+            Box::new(move |result, _| {
+                let _ = sender.send(map_path_dialog_result(result));
+            }),
+        );
+        self.pending = true;
+    }
+
+    fn take_result(&mut self) -> Option<PathDialogResult> {
         match self.receiver.try_recv() {
             Ok(result) => {
                 self.pending = false;
@@ -198,6 +235,15 @@ impl OpenRomDialog {
                 None
             }
         }
+    }
+}
+
+impl FrontendRuntime {
+    fn any_dialog_pending(&self) -> bool {
+        self.open_rom_dialog.is_pending()
+            || self.boot_rom_file_dialog.is_pending()
+            || self.boot_rom_directory_dialog.is_pending()
+            || self.save_directory_dialog.is_pending()
     }
 }
 
@@ -347,15 +393,15 @@ impl PerformanceCounter {
     }
 }
 
-fn map_open_rom_dialog_result(result: Result<Vec<PathBuf>, DialogError>) -> OpenRomDialogResult {
+fn map_path_dialog_result(result: Result<Vec<PathBuf>, DialogError>) -> PathDialogResult {
     match result {
         Ok(paths) => paths
             .into_iter()
             .next()
-            .map(OpenRomDialogResult::Selected)
-            .unwrap_or(OpenRomDialogResult::Canceled),
-        Err(DialogError::Canceled) => OpenRomDialogResult::Canceled,
-        Err(error) => OpenRomDialogResult::Failed(error.to_string()),
+            .map(PathDialogResult::Selected)
+            .unwrap_or(PathDialogResult::Canceled),
+        Err(DialogError::Canceled) => PathDialogResult::Canceled,
+        Err(error) => PathDialogResult::Failed(error.to_string()),
     }
 }
 
@@ -428,7 +474,7 @@ fn run_desktop(
         .and_then(|rom| rom.path.parent().map(Path::to_path_buf))
         .or_else(|| settings_store.last_open_directory().map(Path::to_path_buf));
     let mut session = DesktopSession {
-        config: &options.config,
+        config: options.config,
         current_dir,
         loaded_rom,
         last_open_directory,
@@ -436,9 +482,9 @@ fn run_desktop(
     };
 
     let (mut machine, diagnostics) = match session.rom_bytes() {
-        Some(rom_bytes) => load_machine_for_rom(session.config, &session.current_dir, rom_bytes)?,
+        Some(rom_bytes) => load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?,
         None => (
-            Machine::new_summary(build_machine_config(session.config, &session.current_dir)?),
+            Machine::new_summary(build_machine_config(&session.config, &session.current_dir)?),
             Vec::new(),
         ),
     };
@@ -449,7 +495,7 @@ fn run_desktop(
     }
     let save_session = open_save_session_for_session(&session, &mut machine)?;
 
-    if options.config.video.vsync {
+    if session.config.video.vsync {
         let _ = hint::set_with_priority(hint::names::RENDER_VSYNC, "1", &hint::Hint::Default);
     } else {
         let _ = hint::set_with_priority(hint::names::RENDER_VSYNC, "0", &hint::Hint::Default);
@@ -457,11 +503,11 @@ fn run_desktop(
 
     let sdl = sdl3::init().map_err(|error| format!("failed to initialize SDL3: {error}"))?;
     let mut input_state = FrontendInputState::new();
-    let audio_output = if options.config.audio.enabled {
+    let audio_output = if session.config.audio.enabled {
         let mut audio_output = DesktopAudioOutput::new(
             &sdl.audio()
                 .map_err(|error| format!("failed to initialize SDL3 audio subsystem: {error}"))?,
-            &options.config.audio,
+            &session.config.audio,
         )?;
         if settings_store.audio_muted() {
             audio_output.set_muted(true)?;
@@ -470,11 +516,11 @@ fn run_desktop(
     } else {
         None
     };
-    let gamepad_manager = if options.config.input.gamepad.enabled {
+    let gamepad_manager = if session.config.input.gamepad.enabled {
         Some(GamepadManager::new(
             &sdl.gamepad()
                 .map_err(|error| format!("failed to initialize SDL3 gamepad subsystem: {error}"))?,
-            options.config.input.gamepad.clone(),
+            session.config.input.gamepad.clone(),
             &mut input_state,
             &mut machine,
         )?)
@@ -486,13 +532,13 @@ fn run_desktop(
         .map_err(|error| format!("failed to initialize SDL3 video subsystem: {error}"))?;
 
     let window_width = FRAMEBUFFER_WIDTH
-        .checked_mul(u32::from(options.config.video.window_scale))
+        .checked_mul(u32::from(session.config.video.window_scale))
         .ok_or_else(|| "window width overflowed".to_string())?;
     let window_height = FRAMEBUFFER_HEIGHT
-        .checked_mul(u32::from(options.config.video.window_scale))
+        .checked_mul(u32::from(session.config.video.window_scale))
         .ok_or_else(|| "window height overflowed".to_string())?;
 
-    let base_window_title = window_title(&session, session.config);
+    let base_window_title = window_title(&session, &session.config);
     let mut frame_pacer = FramePacer::new(session.config.video.vsync);
     let mut performance_counter = PerformanceCounter::new(base_window_title.clone());
     let mut window_builder = video.window(&base_window_title, window_width, window_height);
@@ -504,7 +550,7 @@ fn run_desktop(
         .build()
         .map_err(|error| format!("failed to create SDL3 window: {error}"))?;
     let mut canvas = window.into_canvas();
-    apply_renderer_vsync(&mut canvas, &mut frame_pacer, options.config.video.vsync)?;
+    apply_renderer_vsync(&mut canvas, &mut frame_pacer, session.config.video.vsync)?;
     let texture_creator = canvas.texture_creator();
     let mut texture = texture_creator
         .create_texture_streaming(PixelFormat::RGB24, FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT)
@@ -517,13 +563,16 @@ fn run_desktop(
         paused: !session.has_loaded_rom(),
         menu_state: OverlayMenuState::default(),
         input_state,
-        keyboard_bindings: options.config.input.keyboard,
-        video_options: options.config.video.clone(),
-        audio_volume_percent: options.config.audio.volume_percent,
+        keyboard_bindings: session.config.input.keyboard,
+        video_options: session.config.video.clone(),
+        audio_volume_percent: session.config.audio.volume_percent,
         audio_output,
         gamepad_manager,
         save_session,
-        open_rom_dialog: OpenRomDialog::new(),
+        open_rom_dialog: PathSelectionDialog::new(),
+        boot_rom_file_dialog: PathSelectionDialog::new(),
+        boot_rom_directory_dialog: PathSelectionDialog::new(),
+        save_directory_dialog: PathSelectionDialog::new(),
     };
     apply_canvas_video_options(&mut canvas, &runtime.video_options)?;
     if !session.has_loaded_rom() {
@@ -560,6 +609,9 @@ fn run_desktop(
                 settings_store: &mut settings_store,
             };
             process_pending_open_rom_dialog(&event_pump, &mut canvas, &mut context)?;
+            process_pending_boot_rom_file_dialog(&mut canvas, &mut context)?;
+            process_pending_boot_rom_directory_dialog(&mut canvas, &mut context)?;
+            process_pending_save_directory_dialog(&mut canvas, &mut context)?;
         }
 
         match {
@@ -725,7 +777,7 @@ fn load_initial_rom(
 }
 
 fn open_save_session_for_session(
-    session: &DesktopSession<'_>,
+    session: &DesktopSession,
     machine: &mut Machine<TraceSummaryBuffer>,
 ) -> Result<Option<DesktopSaveSession>, String> {
     let Some(rom_path) = session.rom_path() else {
@@ -750,7 +802,7 @@ fn open_save_session_for_session(
     )
 }
 
-fn window_title(session: &DesktopSession<'_>, config: &DesktopConfig) -> String {
+fn window_title(session: &DesktopSession, config: &DesktopConfig) -> String {
     let rom_name = session
         .rom_path()
         .map(|rom_path| {
@@ -793,7 +845,7 @@ fn target_frame_rate_hz() -> f64 {
 fn process_events(
     event_pump: &mut sdl3::EventPump,
     canvas: &mut Canvas<Window>,
-    context: &mut FrontendActionContext<'_, '_>,
+    context: &mut FrontendActionContext<'_>,
 ) -> Result<LoopSignal, String> {
     let session = &mut *context.session;
     let machine = &mut *context.machine;
@@ -1040,7 +1092,7 @@ fn process_events(
 fn step_until_next_frame(
     event_pump: &mut sdl3::EventPump,
     canvas: &mut Canvas<Window>,
-    context: &mut FrontendActionContext<'_, '_>,
+    context: &mut FrontendActionContext<'_>,
 ) -> Result<LoopSignal, String> {
     let mut at_frame_origin =
         context.machine.ppu().ly() == 0 && context.machine.ppu().line_dot() == 0;
@@ -1079,7 +1131,7 @@ fn step_until_next_frame(
 fn toggle_menu(
     event_pump: &sdl3::EventPump,
     window: &Window,
-    session: &DesktopSession<'_>,
+    session: &DesktopSession,
     machine: &mut Machine<TraceSummaryBuffer>,
     runtime: &mut FrontendRuntime,
 ) -> Result<(), String> {
@@ -1093,21 +1145,21 @@ fn toggle_menu(
 fn process_pending_open_rom_dialog(
     event_pump: &sdl3::EventPump,
     canvas: &mut Canvas<Window>,
-    context: &mut FrontendActionContext<'_, '_>,
+    context: &mut FrontendActionContext<'_>,
 ) -> Result<(), String> {
     let Some(result) = context.runtime.open_rom_dialog.take_result() else {
         return Ok(());
     };
 
     match result {
-        OpenRomDialogResult::Selected(path) => {
+        PathDialogResult::Selected(path) => {
             if let Err(error) = open_selected_rom(event_pump, canvas, path, context) {
                 show_error_message(Some(canvas.window()), "Open ROM failed", &error);
                 eprintln!("warning: {error}");
             }
         }
-        OpenRomDialogResult::Canceled => {}
-        OpenRomDialogResult::Failed(error) => {
+        PathDialogResult::Canceled => {}
+        PathDialogResult::Failed(error) => {
             show_error_message(
                 Some(canvas.window()),
                 "Open ROM failed",
@@ -1120,11 +1172,231 @@ fn process_pending_open_rom_dialog(
     Ok(())
 }
 
+fn process_pending_boot_rom_file_dialog(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    let Some(result) = context.runtime.boot_rom_file_dialog.take_result() else {
+        return Ok(());
+    };
+
+    match result {
+        PathDialogResult::Selected(path) => {
+            apply_machine_settings_change(canvas, context, "Boot ROM file", |config| {
+                config.boot_rom.search_path = Some(path);
+            })?;
+        }
+        PathDialogResult::Canceled => {}
+        PathDialogResult::Failed(error) => {
+            show_error_message(
+                Some(canvas.window()),
+                "Boot ROM file",
+                &format!("failed to complete SDL3 boot ROM file dialog: {error}"),
+            );
+            eprintln!("warning: failed to complete SDL3 boot ROM file dialog: {error}");
+        }
+    }
+
+    Ok(())
+}
+
+fn process_pending_boot_rom_directory_dialog(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    let Some(result) = context.runtime.boot_rom_directory_dialog.take_result() else {
+        return Ok(());
+    };
+
+    match result {
+        PathDialogResult::Selected(path) => {
+            apply_machine_settings_change(canvas, context, "Boot ROM directory", |config| {
+                config.boot_rom.search_path = Some(path);
+            })?;
+        }
+        PathDialogResult::Canceled => {}
+        PathDialogResult::Failed(error) => {
+            show_error_message(
+                Some(canvas.window()),
+                "Boot ROM directory",
+                &format!("failed to complete SDL3 boot ROM directory dialog: {error}"),
+            );
+            eprintln!("warning: failed to complete SDL3 boot ROM directory dialog: {error}");
+        }
+    }
+
+    Ok(())
+}
+
+fn process_pending_save_directory_dialog(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    let Some(result) = context.runtime.save_directory_dialog.take_result() else {
+        return Ok(());
+    };
+
+    match result {
+        PathDialogResult::Selected(path) => {
+            apply_machine_settings_change(canvas, context, "Save directory", |config| {
+                config.saves.directory_policy = SaveDirectoryPolicy::Custom(path);
+            })?;
+        }
+        PathDialogResult::Canceled => {}
+        PathDialogResult::Failed(error) => {
+            show_error_message(
+                Some(canvas.window()),
+                "Save directory",
+                &format!("failed to complete SDL3 save directory dialog: {error}"),
+            );
+            eprintln!("warning: failed to complete SDL3 save directory dialog: {error}");
+        }
+    }
+
+    Ok(())
+}
+
+fn apply_machine_settings_change(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+    title: &str,
+    update: impl FnOnce(&mut DesktopConfig),
+) -> Result<(), String> {
+    let previous_config = context.session.config.clone();
+    let mut next_config = previous_config.clone();
+    update(&mut next_config);
+    if next_config == previous_config {
+        return Ok(());
+    }
+
+    if let Err(error) = rebuild_machine_for_config(canvas, context, &next_config) {
+        show_warning_message(Some(canvas.window()), title, &error);
+        eprintln!("warning: {error}");
+        return Ok(());
+    }
+
+    context.session.config = next_config;
+    context
+        .settings_store
+        .persist_machine_preferences(&context.session.config)?;
+    Ok(())
+}
+
+fn rebuild_machine_for_config(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+    next_config: &DesktopConfig,
+) -> Result<(), String> {
+    let battery_backed_state = uses_battery_backed_hardware_persistence(
+        context.machine.cartridge().persistence_metadata(),
+    )
+    .then(|| context.machine.cartridge().persistent_state());
+
+    let mut previous_save_session = context.runtime.save_session.take();
+    if let Some(save_session) = previous_save_session.as_mut()
+        && let Err(error) = save_session.close(context.machine)
+    {
+        context.runtime.save_session = previous_save_session;
+        return Err(error);
+    }
+
+    let rebuild_result: Result<(Machine<TraceSummaryBuffer>, Option<DesktopSaveSession>), String> =
+        (|| {
+            let (mut next_machine, diagnostics) = match context.session.rom_bytes() {
+                Some(rom_bytes) => {
+                    load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?
+                }
+                None => (
+                    Machine::new_summary(build_machine_config(
+                        next_config,
+                        &context.session.current_dir,
+                    )?),
+                    Vec::new(),
+                ),
+            };
+            write_cartridge_diagnostics(&diagnostics);
+            if let Some(persistent_state) = battery_backed_state {
+                next_machine
+                    .restore_cartridge_persistent_state(&persistent_state)
+                    .map_err(|error| {
+                        format!(
+                            "failed to restore battery-backed persistence after reconfigure: {error:?}"
+                        )
+                    })?;
+            }
+
+            let next_session = DesktopSession {
+                config: next_config.clone(),
+                current_dir: context.session.current_dir.clone(),
+                loaded_rom: context.session.loaded_rom.clone(),
+                last_open_directory: context.session.last_open_directory.clone(),
+                recent_roms: context.session.recent_roms.clone(),
+            };
+            let next_save_session =
+                open_save_session_for_session(&next_session, &mut next_machine)?;
+            Ok((next_machine, next_save_session))
+        })();
+
+    let (next_machine, next_save_session) = match rebuild_result {
+        Ok(value) => value,
+        Err(error) => {
+            context.runtime.save_session = previous_save_session;
+            return Err(error);
+        }
+    };
+
+    if let Some(audio_output) = &mut context.runtime.audio_output {
+        audio_output.clear_buffer()?;
+    }
+
+    context.runtime.input_state.clear_all(context.machine);
+    *context.machine = next_machine;
+    context.runtime.save_session = next_save_session;
+    context.performance_counter.reset_base_title(
+        canvas.window_mut(),
+        window_title(context.session, next_config),
+    )?;
+    Ok(())
+}
+
+fn boot_rom_dialog_default_location(session: &DesktopSession) -> PathBuf {
+    let configured_source = session
+        .config
+        .boot_rom
+        .search_path
+        .as_deref()
+        .map(|path| resolve_path(&session.current_dir, path));
+    match configured_source {
+        Some(path) if path.is_dir() => path,
+        Some(path) => path
+            .parent()
+            .unwrap_or(session.current_dir.as_path())
+            .to_path_buf(),
+        None => session.current_dir.join(DEFAULT_BOOT_ROM_DIR),
+    }
+}
+
+fn save_directory_dialog_default_location(session: &DesktopSession) -> PathBuf {
+    match &session.config.saves.directory_policy {
+        SaveDirectoryPolicy::Custom(path) => {
+            let path = resolve_path(&session.current_dir, path);
+            if path.is_dir() {
+                path
+            } else {
+                path.parent()
+                    .unwrap_or(session.current_dir.as_path())
+                    .to_path_buf()
+            }
+        }
+        SaveDirectoryPolicy::RomFolderSavesSubdir => session.rom_directory_hint().to_path_buf(),
+    }
+}
+
 fn open_selected_rom(
     event_pump: &sdl3::EventPump,
     canvas: &mut Canvas<Window>,
     selected_path: PathBuf,
-    context: &mut FrontendActionContext<'_, '_>,
+    context: &mut FrontendActionContext<'_>,
 ) -> Result<(), String> {
     let had_loaded_rom = context.session.has_loaded_rom();
     let rom_path = if selected_path.is_absolute() {
@@ -1135,7 +1407,7 @@ fn open_selected_rom(
     let rom_bytes = fs::read(&rom_path)
         .map_err(|error| format!("failed to read ROM {}: {error}", rom_path.display()))?;
     let (mut next_machine, diagnostics) = load_machine_for_rom(
-        context.session.config,
+        &context.session.config,
         &context.session.current_dir,
         &rom_bytes,
     )?;
@@ -1145,7 +1417,7 @@ fn open_selected_rom(
         bytes: rom_bytes,
     };
     let next_session = DesktopSession {
-        config: context.session.config,
+        config: context.session.config.clone(),
         current_dir: context.session.current_dir.clone(),
         loaded_rom: Some(next_loaded_rom),
         last_open_directory: context.session.last_open_directory.clone(),
@@ -1175,7 +1447,7 @@ fn open_selected_rom(
     context.runtime.save_session = next_save_session;
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
-        window_title(context.session, context.session.config),
+        window_title(context.session, &context.session.config),
     )?;
     if !had_loaded_rom {
         context.runtime.paused = false;
@@ -1191,7 +1463,7 @@ fn open_selected_rom(
 fn open_menu(
     window: &Window,
     machine: &mut Machine<TraceSummaryBuffer>,
-    session: &DesktopSession<'_>,
+    session: &DesktopSession,
     runtime: &mut FrontendRuntime,
 ) -> Result<(), String> {
     runtime
@@ -1216,7 +1488,7 @@ fn execute_menu_action(
     action: MenuAction,
     event_pump: &sdl3::EventPump,
     canvas: &mut Canvas<Window>,
-    context: &mut FrontendActionContext<'_, '_>,
+    context: &mut FrontendActionContext<'_>,
 ) -> Result<Option<LoopSignal>, String> {
     match action {
         MenuAction::Close => {
@@ -1225,14 +1497,91 @@ fn execute_menu_action(
         }
         MenuAction::OpenRom => {
             let default_location = context.session.rom_directory_hint();
-            if let Err(error) = context
-                .runtime
-                .open_rom_dialog
-                .show(canvas.window(), default_location)
-            {
+            if let Err(error) = context.runtime.open_rom_dialog.show_file(
+                &ROM_FILE_DIALOG_FILTERS,
+                canvas.window(),
+                default_location,
+            ) {
                 show_warning_message(Some(canvas.window()), "Open ROM", &error);
                 eprintln!("warning: {error}");
             }
+            Ok(None)
+        }
+        MenuAction::CycleConsoleModel => {
+            apply_machine_settings_change(canvas, context, "Console model", |config| {
+                config.launch.console_model = next_console_model(config.launch.console_model);
+            })?;
+            Ok(None)
+        }
+        MenuAction::CycleStartupMode => {
+            apply_machine_settings_change(canvas, context, "Startup mode", |config| {
+                config.launch.startup_mode = next_startup_mode(config.launch.startup_mode);
+            })?;
+            Ok(None)
+        }
+        MenuAction::CycleExecutionMode => {
+            apply_machine_settings_change(canvas, context, "Execution mode", |config| {
+                config.launch.execution_mode = next_execution_mode(config.launch.execution_mode);
+            })?;
+            Ok(None)
+        }
+        MenuAction::ClearBootRomPath => {
+            apply_machine_settings_change(canvas, context, "Boot ROM path", |config| {
+                config.boot_rom.search_path = None;
+            })?;
+            Ok(None)
+        }
+        MenuAction::SelectBootRomFilePath => {
+            let default_location = boot_rom_dialog_default_location(context.session);
+            if let Err(error) = context.runtime.boot_rom_file_dialog.show_file(
+                &BOOT_ROM_FILE_DIALOG_FILTERS,
+                canvas.window(),
+                &default_location,
+            ) {
+                show_warning_message(Some(canvas.window()), "Boot ROM file", &error);
+                eprintln!("warning: {error}");
+            }
+            Ok(None)
+        }
+        MenuAction::SelectBootRomDirectoryPath => {
+            let default_location = boot_rom_dialog_default_location(context.session);
+            context
+                .runtime
+                .boot_rom_directory_dialog
+                .show_folder(canvas.window(), &default_location);
+            Ok(None)
+        }
+        MenuAction::CycleBootRomVerify => {
+            apply_machine_settings_change(canvas, context, "Boot ROM verification", |config| {
+                config.boot_rom.verification =
+                    next_boot_rom_verification_mode(config.boot_rom.verification);
+            })?;
+            Ok(None)
+        }
+        MenuAction::ToggleSavesEnabled => {
+            apply_machine_settings_change(canvas, context, "Save support", |config| {
+                config.saves.enabled = !config.saves.enabled;
+            })?;
+            Ok(None)
+        }
+        MenuAction::CycleSavePolicy => {
+            apply_machine_settings_change(canvas, context, "Save policy", |config| {
+                config.saves.flush_policy = next_save_flush_policy(config.saves.flush_policy);
+            })?;
+            Ok(None)
+        }
+        MenuAction::ClearSaveDirectoryPath => {
+            apply_machine_settings_change(canvas, context, "Save directory", |config| {
+                config.saves.directory_policy = SaveDirectoryPolicy::RomFolderSavesSubdir;
+            })?;
+            Ok(None)
+        }
+        MenuAction::SelectSaveDirectoryPath => {
+            let default_location = save_directory_dialog_default_location(context.session);
+            context
+                .runtime
+                .save_directory_dialog
+                .show_folder(canvas.window(), &default_location);
             Ok(None)
         }
         MenuAction::OpenRecentRom(index) => {
@@ -1481,7 +1830,7 @@ fn current_menu_presentation(
     window: &Window,
     runtime: &FrontendRuntime,
     machine: &Machine<TraceSummaryBuffer>,
-    session: &DesktopSession<'_>,
+    session: &DesktopSession,
 ) -> MenuPresentation {
     let gamepad_available = runtime.gamepad_manager.is_some();
     let active_gamepad_label = runtime
@@ -1520,6 +1869,17 @@ fn current_menu_presentation(
         rom_loaded: !machine.cartridge().is_empty(),
         recent_rom_count: session.recent_roms().len().min(RECENT_ROM_MENU_CAPACITY) as u8,
         recent_rom_labels,
+        console_model: session.config.launch.console_model,
+        startup_mode: session.config.launch.startup_mode,
+        execution_mode: session.config.launch.execution_mode,
+        boot_rom_uses_default_path: session.config.boot_rom.search_path.is_none(),
+        boot_rom_verification: session.config.boot_rom.verification,
+        saves_enabled: session.config.saves.enabled,
+        save_flush_policy: session.config.saves.flush_policy,
+        save_directory_uses_default_path: match &session.config.saves.directory_policy {
+            SaveDirectoryPolicy::RomFolderSavesSubdir => true,
+            SaveDirectoryPolicy::Custom(_) => false,
+        },
         fullscreen: window.fullscreen_state() != FullscreenType::Off,
         vsync: runtime.video_options.vsync,
         window_scale: runtime.video_options.window_scale.max(1),
@@ -1535,7 +1895,7 @@ fn current_menu_presentation(
             .save_session
             .as_ref()
             .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual),
-        rom_dialog_pending: runtime.open_rom_dialog.is_pending(),
+        any_dialog_pending: runtime.any_dialog_pending(),
         gamepad_available,
         gamepad_directional_source: runtime.gamepad_manager.as_ref().map_or(
             GamepadDirectionalSource::default(),
@@ -1559,6 +1919,48 @@ fn current_menu_presentation(
         keyboard_bindings: runtime.keyboard_bindings.joypad,
         keyboard_menu_bindings: runtime.keyboard_bindings.menu,
         hotkey_bindings: runtime.keyboard_bindings.hotkeys,
+    }
+}
+
+fn next_console_model(console_model: DesktopConsoleModel) -> DesktopConsoleModel {
+    match console_model {
+        DesktopConsoleModel::Dmg0 => DesktopConsoleModel::Dmg,
+        DesktopConsoleModel::Dmg => DesktopConsoleModel::Mgb,
+        DesktopConsoleModel::Mgb => DesktopConsoleModel::Dmg0,
+    }
+}
+
+fn next_startup_mode(startup_mode: StartupMode) -> StartupMode {
+    match startup_mode {
+        StartupMode::SkipBoot => StartupMode::RealBoot,
+        StartupMode::RealBoot => StartupMode::SkipBoot,
+    }
+}
+
+fn next_execution_mode(execution_mode: ExecutionMode) -> ExecutionMode {
+    match execution_mode {
+        ExecutionMode::Strict => ExecutionMode::Permissive,
+        ExecutionMode::Permissive => ExecutionMode::Experimental,
+        ExecutionMode::Experimental => ExecutionMode::Strict,
+    }
+}
+
+fn next_boot_rom_verification_mode(
+    verification_mode: BootRomVerificationMode,
+) -> BootRomVerificationMode {
+    match verification_mode {
+        BootRomVerificationMode::Strict => BootRomVerificationMode::Warn,
+        BootRomVerificationMode::Warn => BootRomVerificationMode::Off,
+        BootRomVerificationMode::Off => BootRomVerificationMode::Strict,
+    }
+}
+
+fn next_save_flush_policy(flush_policy: DesktopSaveFlushPolicy) -> DesktopSaveFlushPolicy {
+    match flush_policy {
+        DesktopSaveFlushPolicy::Manual => DesktopSaveFlushPolicy::OnClose,
+        DesktopSaveFlushPolicy::OnClose => DesktopSaveFlushPolicy::OnWrite,
+        DesktopSaveFlushPolicy::OnWrite => DesktopSaveFlushPolicy::Debounced,
+        DesktopSaveFlushPolicy::Debounced => DesktopSaveFlushPolicy::Manual,
     }
 }
 
@@ -2043,7 +2445,7 @@ fn menu_input_for_gamepad_button(
 }
 
 fn reset_machine(
-    session: &DesktopSession<'_>,
+    session: &DesktopSession,
     machine: &mut Machine<TraceSummaryBuffer>,
     runtime: &mut FrontendRuntime,
 ) -> Result<(), String> {
@@ -2055,7 +2457,7 @@ fn reset_machine(
             .then(|| machine.cartridge().persistent_state());
 
     let (mut reset_machine, diagnostics) =
-        load_machine_for_rom(session.config, &session.current_dir, rom_bytes)
+        load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)
             .map_err(|error| format!("failed to reload cartridge during reset: {error}"))?;
     write_cartridge_diagnostics(&diagnostics);
     if let Some(persistent_state) = battery_backed_state {
@@ -2412,20 +2814,24 @@ fn framebuffer_pixel_to_grayscale(pixel: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        GamepadBindingTarget, GamepadMenuBindingTarget, KeyboardBindingTarget,
-        KeyboardMenuBindingTarget, OpenRomDialogResult, PerformanceHudSnapshot,
+        BOOT_ROM_FILE_DIALOG_FILTERS, GamepadBindingTarget, GamepadMenuBindingTarget,
+        KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult, PerformanceHudSnapshot,
         ROM_FILE_DIALOG_FILTERS, assign_gamepad_binding, assign_gamepad_menu_binding,
         assign_keyboard_binding, assign_keyboard_menu_binding,
         assignable_key_for_binding_target_from_keycode,
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
         gamepad_binding_target_for_binding, gamepad_menu_binding_target_for_binding,
         hotkey_binding_target_for_key, joypad_binding_target_for_key,
-        keyboard_menu_binding_target_for_key, map_open_rom_dialog_result,
+        keyboard_menu_binding_target_for_key, map_path_dialog_result,
         menu_input_for_gamepad_button, menu_input_for_key, next_audio_volume_percent,
-        next_gamepad_directional_source, next_window_scale, performance_window_title,
+        next_boot_rom_verification_mode, next_console_model, next_execution_mode,
+        next_gamepad_directional_source, next_save_flush_policy, next_startup_mode,
+        next_window_scale, performance_window_title,
     };
+    use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
-        DesktopConfig, DesktopKey, GamepadButtonBinding, GamepadDirectionalSource,
+        BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopKey,
+        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
         GamepadMenuBindings, MenuKeyboardBindings,
     };
     use sdl3::dialog::DialogError;
@@ -2455,19 +2861,19 @@ mod tests {
     #[test]
     fn open_rom_dialog_result_uses_the_first_selected_path() {
         assert_eq!(
-            map_open_rom_dialog_result(Ok(vec![
+            map_path_dialog_result(Ok(vec![
                 PathBuf::from("/tmp/tetris.gb"),
                 PathBuf::from("/tmp/other.gb"),
             ])),
-            OpenRomDialogResult::Selected(PathBuf::from("/tmp/tetris.gb"))
+            PathDialogResult::Selected(PathBuf::from("/tmp/tetris.gb"))
         );
     }
 
     #[test]
     fn open_rom_dialog_result_preserves_cancel_as_a_non_selection() {
         assert_eq!(
-            map_open_rom_dialog_result(Err(DialogError::Canceled)),
-            OpenRomDialogResult::Canceled
+            map_path_dialog_result(Err(DialogError::Canceled)),
+            PathDialogResult::Canceled
         );
     }
 
@@ -2475,6 +2881,76 @@ mod tests {
     fn open_rom_dialog_filters_include_supported_game_boy_extensions() {
         assert_eq!(ROM_FILE_DIALOG_FILTERS[0].name, "Game Boy ROMs");
         assert_eq!(ROM_FILE_DIALOG_FILTERS[0].pattern, "gb;gbc;bin");
+    }
+
+    #[test]
+    fn boot_rom_file_dialog_filters_include_common_dump_extensions() {
+        assert_eq!(BOOT_ROM_FILE_DIALOG_FILTERS[0].name, "Boot ROM dumps");
+        assert_eq!(BOOT_ROM_FILE_DIALOG_FILTERS[0].pattern, "bin;rom");
+    }
+
+    #[test]
+    fn system_option_cycle_helpers_wrap_in_the_expected_order() {
+        assert_eq!(
+            next_console_model(DesktopConsoleModel::Dmg0),
+            DesktopConsoleModel::Dmg
+        );
+        assert_eq!(
+            next_console_model(DesktopConsoleModel::Dmg),
+            DesktopConsoleModel::Mgb
+        );
+        assert_eq!(
+            next_console_model(DesktopConsoleModel::Mgb),
+            DesktopConsoleModel::Dmg0
+        );
+        assert_eq!(
+            next_startup_mode(StartupMode::SkipBoot),
+            StartupMode::RealBoot
+        );
+        assert_eq!(
+            next_startup_mode(StartupMode::RealBoot),
+            StartupMode::SkipBoot
+        );
+        assert_eq!(
+            next_execution_mode(ExecutionMode::Strict),
+            ExecutionMode::Permissive
+        );
+        assert_eq!(
+            next_execution_mode(ExecutionMode::Permissive),
+            ExecutionMode::Experimental
+        );
+        assert_eq!(
+            next_execution_mode(ExecutionMode::Experimental),
+            ExecutionMode::Strict
+        );
+        assert_eq!(
+            next_boot_rom_verification_mode(BootRomVerificationMode::Strict),
+            BootRomVerificationMode::Warn
+        );
+        assert_eq!(
+            next_boot_rom_verification_mode(BootRomVerificationMode::Warn),
+            BootRomVerificationMode::Off
+        );
+        assert_eq!(
+            next_boot_rom_verification_mode(BootRomVerificationMode::Off),
+            BootRomVerificationMode::Strict
+        );
+        assert_eq!(
+            next_save_flush_policy(DesktopSaveFlushPolicy::Manual),
+            DesktopSaveFlushPolicy::OnClose
+        );
+        assert_eq!(
+            next_save_flush_policy(DesktopSaveFlushPolicy::OnClose),
+            DesktopSaveFlushPolicy::OnWrite
+        );
+        assert_eq!(
+            next_save_flush_policy(DesktopSaveFlushPolicy::OnWrite),
+            DesktopSaveFlushPolicy::Debounced
+        );
+        assert_eq!(
+            next_save_flush_policy(DesktopSaveFlushPolicy::Debounced),
+            DesktopSaveFlushPolicy::Manual
+        );
     }
 
     #[test]

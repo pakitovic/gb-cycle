@@ -5,6 +5,7 @@ use gb_core::{
 use gb_persistence::{CartridgeSaveKey, CartridgeSaveKeyError};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -27,7 +28,10 @@ pub struct DesktopConfig {
 
 impl DesktopConfig {
     pub fn machine_config(&self) -> Result<MachineConfig, DesktopConfigError> {
-        let boot_rom_assets = self.boot_rom.load_assets(self.launch.startup_mode)?;
+        let boot_rom_assets = self.boot_rom.load_assets(
+            self.launch.startup_mode,
+            self.launch.console_model.boot_rom_kind(),
+        )?;
 
         Ok(
             MachineConfig::new(self.launch.console_model.console_model())
@@ -166,12 +170,22 @@ impl BootRomOptions {
     pub fn load_assets(
         &self,
         startup_mode: StartupMode,
+        boot_rom_kind: BootRomKind,
     ) -> Result<BootRomAssets, BootRomAssetError> {
         if !startup_mode.requires_boot_rom() {
             return Ok(BootRomAssets::none());
         }
 
-        BootRomAssets::from_directory(self.resolved_search_path())
+        let path = self.resolved_search_path();
+        if path.is_file() {
+            let bytes = fs::read(&path).map_err(|source| BootRomAssetError::ReadFailed {
+                path: path.clone(),
+                source,
+            })?;
+            return BootRomAssets::none().with_bytes(boot_rom_kind, bytes);
+        }
+
+        BootRomAssets::from_directory(path)
     }
 }
 
