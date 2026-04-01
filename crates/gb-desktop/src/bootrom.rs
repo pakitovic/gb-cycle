@@ -18,35 +18,40 @@ pub fn load_boot_rom_assets(
         return Ok(BootRomAssets::none());
     }
 
-    let root = resolve_boot_rom_root(search_path, current_dir);
-    let image_path = root.join(BootRomAssets::filename(console_model.boot_rom_kind()));
+    let source = resolve_boot_rom_source(search_path, current_dir);
+    let kind = console_model.boot_rom_kind();
+    let image_path = boot_rom_image_path(&source, kind);
     match verification_mode {
         BootRomVerificationMode::Off => {}
         BootRomVerificationMode::Warn => {
-            if let Err(error) = verify_boot_rom_file(&image_path, console_model.boot_rom_kind()) {
+            if let Err(error) = verify_boot_rom_file(&image_path, kind) {
                 eprintln!("warning: {error}");
             }
         }
         BootRomVerificationMode::Strict => {
-            verify_boot_rom_file(&image_path, console_model.boot_rom_kind())?;
+            verify_boot_rom_file(&image_path, kind)?;
         }
     }
 
-    if !root.is_dir() {
+    if source.is_file() {
+        return load_exact_boot_rom_file(&source, kind);
+    }
+
+    if !source.is_dir() {
         return Ok(BootRomAssets::none());
     }
 
-    BootRomAssets::from_directory(&root).map_err(|error| {
+    BootRomAssets::from_directory(&source).map_err(|error| {
         format!(
             "failed to load boot ROM assets from {}: {error}",
-            root.display()
+            source.display()
         )
     })
 }
 
-fn resolve_boot_rom_root(explicit_root: Option<&Path>, current_dir: &Path) -> PathBuf {
-    if let Some(explicit_root) = explicit_root {
-        return resolve_path(current_dir, explicit_root);
+fn resolve_boot_rom_source(explicit_source: Option<&Path>, current_dir: &Path) -> PathBuf {
+    if let Some(explicit_source) = explicit_source {
+        return resolve_path(current_dir, explicit_source);
     }
     if let Some(root) = env::var_os(DEFAULT_BOOT_ROM_ROOT_ENV_VAR) {
         return PathBuf::from(root);
@@ -60,6 +65,34 @@ pub fn resolve_path(current_dir: &Path, path: &Path) -> PathBuf {
     } else {
         current_dir.join(path)
     }
+}
+
+fn boot_rom_image_path(source: &Path, kind: BootRomKind) -> PathBuf {
+    if source.is_file() {
+        return source.to_path_buf();
+    }
+
+    source.join(BootRomAssets::filename(kind))
+}
+
+fn load_exact_boot_rom_file(path: &Path, kind: BootRomKind) -> Result<BootRomAssets, String> {
+    let bytes = fs::read(path).map_err(|error| {
+        format!(
+            "failed to read boot ROM asset {:?} at {}: {}",
+            kind,
+            path.display(),
+            error
+        )
+    })?;
+    BootRomAssets::none()
+        .with_bytes(kind, bytes)
+        .map_err(|error| {
+            format!(
+                "failed to load boot ROM asset {:?} at {}: {error}",
+                kind,
+                path.display()
+            )
+        })
 }
 
 fn verify_boot_rom_file(path: &Path, kind: BootRomKind) -> Result<(), String> {

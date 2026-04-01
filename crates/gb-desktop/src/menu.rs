@@ -1,6 +1,8 @@
+use gb_core::{ExecutionMode, StartupMode};
 use gb_desktop::{
-    DesktopKey, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
+    BootRomVerificationMode, DesktopConsoleModel, DesktopKey, DesktopSaveFlushPolicy,
+    GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
+    HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
 };
 
 const GLYPH_WIDTH: usize = 5;
@@ -140,7 +142,22 @@ const GAMEPAD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::GamepadMenuCancel,
     MenuItem::Return,
 ];
-const SYSTEM_MENU_ITEMS: [MenuItem; 3] = [MenuItem::Reset, MenuItem::Quit, MenuItem::Return];
+const SYSTEM_MENU_ITEMS: [MenuItem; 14] = [
+    MenuItem::ConsoleModel,
+    MenuItem::StartupMode,
+    MenuItem::ExecutionMode,
+    MenuItem::BootRomDefaultPath,
+    MenuItem::BootRomFilePath,
+    MenuItem::BootRomDirectoryPath,
+    MenuItem::BootRomVerify,
+    MenuItem::SavesEnabled,
+    MenuItem::SavePolicy,
+    MenuItem::SaveDefaultPath,
+    MenuItem::SaveDirectoryPath,
+    MenuItem::Reset,
+    MenuItem::Quit,
+    MenuItem::Return,
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuInput {
@@ -156,6 +173,17 @@ pub enum MenuAction {
     OpenRom,
     OpenRecentRom(usize),
     SaveBattery,
+    CycleConsoleModel,
+    CycleStartupMode,
+    CycleExecutionMode,
+    ClearBootRomPath,
+    SelectBootRomFilePath,
+    SelectBootRomDirectoryPath,
+    CycleBootRomVerify,
+    ToggleSavesEnabled,
+    CycleSavePolicy,
+    ClearSaveDirectoryPath,
+    SelectSaveDirectoryPath,
     ToggleFullscreen,
     ToggleVsync,
     CycleWindowScale,
@@ -316,6 +344,14 @@ pub struct MenuPresentation {
     pub rom_loaded: bool,
     pub recent_rom_count: u8,
     pub recent_rom_labels: [CompactRecentRomLabel; RECENT_ROM_MENU_CAPACITY],
+    pub console_model: DesktopConsoleModel,
+    pub startup_mode: StartupMode,
+    pub execution_mode: ExecutionMode,
+    pub boot_rom_uses_default_path: bool,
+    pub boot_rom_verification: BootRomVerificationMode,
+    pub saves_enabled: bool,
+    pub save_flush_policy: DesktopSaveFlushPolicy,
+    pub save_directory_uses_default_path: bool,
     pub fullscreen: bool,
     pub vsync: bool,
     pub window_scale: u8,
@@ -325,7 +361,7 @@ pub struct MenuPresentation {
     pub audio_available: bool,
     pub audio_volume_percent: u8,
     pub manual_save_available: bool,
-    pub rom_dialog_pending: bool,
+    pub any_dialog_pending: bool,
     pub gamepad_available: bool,
     pub gamepad_directional_source: GamepadDirectionalSource,
     pub gamepad_bindings: GamepadButtonBindings,
@@ -368,7 +404,10 @@ impl MenuPresentation {
             | MenuItem::RecentRom5
             | MenuItem::RecentRom6
             | MenuItem::RecentRom7
-            | MenuItem::RecentRom8 => !self.rom_dialog_pending,
+            | MenuItem::RecentRom8
+            | MenuItem::BootRomFilePath
+            | MenuItem::BootRomDirectoryPath
+            | MenuItem::SaveDirectoryPath => !self.any_dialog_pending,
             MenuItem::SaveBattery => self.manual_save_available,
             MenuItem::AudioMenu | MenuItem::ToggleMute | MenuItem::AudioVolume => {
                 self.audio_available
@@ -416,6 +455,14 @@ impl MenuPresentation {
             | MenuItem::InputMenu
             | MenuItem::VideoMenu
             | MenuItem::SystemMenu
+            | MenuItem::ConsoleModel
+            | MenuItem::StartupMode
+            | MenuItem::ExecutionMode
+            | MenuItem::BootRomDefaultPath
+            | MenuItem::BootRomVerify
+            | MenuItem::SavesEnabled
+            | MenuItem::SavePolicy
+            | MenuItem::SaveDefaultPath
             | MenuItem::Fullscreen
             | MenuItem::Vsync
             | MenuItem::WindowScale
@@ -452,6 +499,55 @@ impl MenuPresentation {
             MenuItem::GamepadMenu => "GAMEPAD".to_string(),
             MenuItem::GamepadMenuControls => "PAD MENU".to_string(),
             MenuItem::SystemMenu => "SYSTEM".to_string(),
+            MenuItem::ConsoleModel => match self.console_model {
+                DesktopConsoleModel::Dmg0 => "MODEL DMG0".to_string(),
+                DesktopConsoleModel::Dmg => "MODEL DMG".to_string(),
+                DesktopConsoleModel::Mgb => "MODEL MGB".to_string(),
+            },
+            MenuItem::StartupMode => match self.startup_mode {
+                StartupMode::SkipBoot => "START SKIP".to_string(),
+                StartupMode::RealBoot => "START REAL".to_string(),
+            },
+            MenuItem::ExecutionMode => match self.execution_mode {
+                ExecutionMode::Strict => "MODE STRICT".to_string(),
+                ExecutionMode::Permissive => "MODE PERM".to_string(),
+                ExecutionMode::Experimental => "MODE EXP".to_string(),
+            },
+            MenuItem::BootRomDefaultPath => {
+                if self.boot_rom_uses_default_path {
+                    "BOOT AUTO ON".to_string()
+                } else {
+                    "BOOT AUTO OFF".to_string()
+                }
+            }
+            MenuItem::BootRomFilePath => "BOOT FILE".to_string(),
+            MenuItem::BootRomDirectoryPath => "BOOT DIR".to_string(),
+            MenuItem::BootRomVerify => match self.boot_rom_verification {
+                BootRomVerificationMode::Off => "VERIFY OFF".to_string(),
+                BootRomVerificationMode::Warn => "VERIFY WARN".to_string(),
+                BootRomVerificationMode::Strict => "VERIFY STRICT".to_string(),
+            },
+            MenuItem::SavesEnabled => {
+                if self.saves_enabled {
+                    "SAVES ON".to_string()
+                } else {
+                    "SAVES OFF".to_string()
+                }
+            }
+            MenuItem::SavePolicy => match self.save_flush_policy {
+                DesktopSaveFlushPolicy::Manual => "SAVE MANUAL".to_string(),
+                DesktopSaveFlushPolicy::OnClose => "SAVE CLOSE".to_string(),
+                DesktopSaveFlushPolicy::OnWrite => "SAVE WRITE".to_string(),
+                DesktopSaveFlushPolicy::Debounced => "SAVE DEBNC".to_string(),
+            },
+            MenuItem::SaveDefaultPath => {
+                if self.save_directory_uses_default_path {
+                    "DIR AUTO ON".to_string()
+                } else {
+                    "DIR AUTO OFF".to_string()
+                }
+            }
+            MenuItem::SaveDirectoryPath => "SAVE DIR".to_string(),
             MenuItem::Fullscreen => {
                 if self.fullscreen {
                     "FULLSCREEN ON".to_string()
@@ -703,6 +799,17 @@ enum MenuItem {
     GamepadMenu,
     GamepadMenuControls,
     SystemMenu,
+    ConsoleModel,
+    StartupMode,
+    ExecutionMode,
+    BootRomDefaultPath,
+    BootRomFilePath,
+    BootRomDirectoryPath,
+    BootRomVerify,
+    SavesEnabled,
+    SavePolicy,
+    SaveDefaultPath,
+    SaveDirectoryPath,
     Fullscreen,
     Vsync,
     WindowScale,
@@ -1257,6 +1364,17 @@ impl OverlayMenuState {
                 self.push_screen(MenuScreen::System, presentation);
                 None
             }
+            MenuItem::ConsoleModel => Some(MenuAction::CycleConsoleModel),
+            MenuItem::StartupMode => Some(MenuAction::CycleStartupMode),
+            MenuItem::ExecutionMode => Some(MenuAction::CycleExecutionMode),
+            MenuItem::BootRomDefaultPath => Some(MenuAction::ClearBootRomPath),
+            MenuItem::BootRomFilePath => Some(MenuAction::SelectBootRomFilePath),
+            MenuItem::BootRomDirectoryPath => Some(MenuAction::SelectBootRomDirectoryPath),
+            MenuItem::BootRomVerify => Some(MenuAction::CycleBootRomVerify),
+            MenuItem::SavesEnabled => Some(MenuAction::ToggleSavesEnabled),
+            MenuItem::SavePolicy => Some(MenuAction::CycleSavePolicy),
+            MenuItem::SaveDefaultPath => Some(MenuAction::ClearSaveDirectoryPath),
+            MenuItem::SaveDirectoryPath => Some(MenuAction::SelectSaveDirectoryPath),
             MenuItem::Fullscreen => Some(MenuAction::ToggleFullscreen),
             MenuItem::Vsync => Some(MenuAction::ToggleVsync),
             MenuItem::WindowScale => Some(MenuAction::CycleWindowScale),
@@ -1923,9 +2041,11 @@ mod tests {
         RECENT_ROM_MENU_CAPACITY, ScrollIndicatorDirection, performance_hud_lines,
         scroll_indicator_rows, viewport_start_index,
     };
+    use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
-        DesktopKey, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-        GamepadMenuBindings, HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
+        BootRomVerificationMode, DesktopConsoleModel, DesktopKey, DesktopSaveFlushPolicy,
+        GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
+        HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
     };
 
     fn test_presentation() -> MenuPresentation {
@@ -1933,6 +2053,14 @@ mod tests {
             rom_loaded: true,
             recent_rom_count: 0,
             recent_rom_labels: [CompactRecentRomLabel::default(); RECENT_ROM_MENU_CAPACITY],
+            console_model: DesktopConsoleModel::Dmg,
+            startup_mode: StartupMode::SkipBoot,
+            execution_mode: ExecutionMode::Strict,
+            boot_rom_uses_default_path: true,
+            boot_rom_verification: BootRomVerificationMode::Strict,
+            saves_enabled: true,
+            save_flush_policy: DesktopSaveFlushPolicy::Debounced,
+            save_directory_uses_default_path: true,
             fullscreen: false,
             vsync: true,
             window_scale: 4,
@@ -1942,7 +2070,7 @@ mod tests {
             audio_available: false,
             audio_volume_percent: 100,
             manual_save_available: false,
-            rom_dialog_pending: false,
+            any_dialog_pending: false,
             gamepad_available: false,
             gamepad_directional_source: GamepadDirectionalSource::DpadAndLeftStick,
             gamepad_bindings: GamepadButtonBindings::default(),
@@ -2182,10 +2310,107 @@ mod tests {
     }
 
     #[test]
+    fn system_submenu_cycles_model_startup_and_execution_mode() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleConsoleModel)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleStartupMode)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleExecutionMode)
+        );
+    }
+
+    #[test]
+    fn system_submenu_exposes_boot_path_and_verify_actions() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::SelectBootRomFilePath)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::SelectBootRomDirectoryPath)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleBootRomVerify)
+        );
+    }
+
+    #[test]
+    fn system_submenu_exposes_save_actions() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ToggleSavesEnabled)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleSavePolicy)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ClearSaveDirectoryPath)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::SelectSaveDirectoryPath)
+        );
+    }
+
+    #[test]
     fn opening_rom_is_skipped_while_dialog_is_pending() {
         let blocked_presentation = MenuPresentation {
             rom_loaded: false,
-            rom_dialog_pending: true,
+            any_dialog_pending: true,
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
