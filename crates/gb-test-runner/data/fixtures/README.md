@@ -13,8 +13,9 @@ ROM suites used by `gb-test-runner`.
 then materializes the curated runnable families under `/.roms/test/`. By
 default it fetches `all`, but it also accepts one or more explicit families
 through `FAMILIES=...`.
-`make test` performs that fetch/materialization step automatically before
-running the repo-gated external DMG block.
+`make test-roms` performs that fetch/materialization step automatically before
+running all local curated DMG suites currently wired in the `Makefile`. The
+GitHub `test-roms` workflow runs the workflow-managed subset of those suites.
 
 The upstream source for redistributable suites is `GBEmulatorShootout`. The
 runnable store keeps only the ROMs currently listed in the family manifests
@@ -42,11 +43,11 @@ statuses do not appear in the table.
 
 - `acid-dmg-curated`
   source family: `acid`
-  current repo-gated status: green
+  current status: workflow-managed
   oracle mix: framebuffer fixture plus informational framebuffer capture
 - `blargg-dmg-curated`
   source family: `blargg`
-  current repo-gated status: green
+  current status: workflow-managed
   oracle mix: serial, Blargg BG-map console text, and cartridge RAM text
   supported scope: individual ROMs only
   current green set: `cpu_instrs 01..11`, `halt_bug`,
@@ -54,23 +55,23 @@ statuses do not appear in the table.
   `dmg_sound 01..12`
 - `daid-dmg-curated`
   source family: `daid`
-  current status: exploratory, not repo-gated
+  current status: exploratory local-only
   oracle mix: framebuffer fixture, framebuffer fixture set, and informational framebuffer capture
 - `hacktix-dmg-curated`
   source family: `hacktix`
-  current status: exploratory, not repo-gated
+  current status: workflow-managed
   oracle mix: framebuffer fixture
 - `cpp-dmg-curated`
   source family: `cpp`
-  current status: exploratory, not repo-gated
+  current status: workflow-managed
   oracle mix: framebuffer fixture
 - `mealybug-tearoom-dmg-curated`
   source family: `mealybug-tearoom-tests`
-  current status: exploratory, not repo-gated
+  current status: exploratory local-only
   oracle: framebuffer fixture
 - `mooneye-acceptance-dmg-curated`
   source family: `mooneye`
-  current status: exploratory, not repo-gated
+  current status: exploratory local-only
   oracle: Mooneye breakpoint/register result plus retained serial output
 
 ## Commands
@@ -83,25 +84,27 @@ make fetch-test-roms FAMILIES=blargg
 make fetch-test-roms FAMILIES="blargg acid"
 ```
 
-Run the repo-gated external DMG block:
+Run all local curated DMG suites wired into `make test-roms`:
 
 ```bash
 make test-roms
 ```
 
-Run the exploratory curated families:
+Run one family directly through `make`:
 
 ```bash
 make run-daid
+make run-cpp
+make run-blargg
+make run-acid
 make run-hacktix
 make run-mealybug
 make run-mooneye
-make run-cpp
 ```
 
-Those exploratory targets update `/.roms/test/test-report.md` even
-when the suite still contains failing ROM cases, and each `make run-*` target
-materializes its own family before executing.
+Each `make run-*` target materializes its own family before executing and
+updates `/.roms/test/test-report.md`. The currently exploratory local-only
+families are `daid`, `mealybug-tearoom-tests`, and `mooneye`.
 
 Run one curated family directly and update the report:
 

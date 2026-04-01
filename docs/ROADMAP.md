@@ -46,10 +46,10 @@ If no single phase owns the remainder cleanly, place the TODO under `Cross-phase
 
 This roadmap sequences work, but it is not the behavioral source of truth.
 
-- For crate layout, ownership, and subsystem boundaries, follow `AI/ARCHITECTURE.md`.
-- For subsystem behavior, MMIO semantics, and timing contracts, follow the matching `AI/hardware/*.md` file plus `AI/TIMING-AND-ACCURACY.md`.
-- For project-wide validation policy, follow `AI/TESTING.md`.
-- For the boundary between cartridge persistence and whole-machine save states, follow `AI/ARCHITECTURE.md`; for cartridge-persistence semantics, follow `AI/hardware/CARTRIDGES-MBC.md`; for save/load determinism and oracle usage, follow `AI/TESTING.md`.
+- For crate layout, ownership, and subsystem boundaries, follow `docs/ARCHITECTURE.md`.
+- For subsystem behavior, MMIO semantics, and timing contracts, follow the matching `docs/hardware/*.md` file plus `docs/TIMING-AND-ACCURACY.md`.
+- For project-wide validation policy, follow `docs/TESTING.md`.
+- For the boundary between cartridge persistence and whole-machine save states, follow `docs/ARCHITECTURE.md`; for cartridge-persistence semantics, follow `docs/hardware/CARTRIDGES-MBC.md`; for save/load determinism and oracle usage, follow `docs/TESTING.md`.
 
 If roadmap prose ever drifts from those documents, update the roadmap to match the authoritative source instead of treating the mismatch as two valid policies.
 
@@ -148,7 +148,7 @@ From the very beginning there must be:
 ## Reference architecture
 
 For the authoritative structure and boundaries, see
-[`AI/ARCHITECTURE.md`](./ARCHITECTURE.md), especially:
+[`docs/ARCHITECTURE.md`](./ARCHITECTURE.md), especially:
 
 - `Recommended high-level layout`
 - `Suggested subsystem boundaries`
@@ -195,9 +195,9 @@ persistence from whole-machine save states.
    Goal: use the Phase 8 save-state system as the foundation for replay, save/load determinism, and DMG closure evidence.
    Acceptance criteria: save/load continuation matches uninterrupted execution under the recorded mode and overrides, and Phase 6 cartridge persistence is never treated as a substitute for whole-machine save/load determinism.
 
-Source-of-truth note: `AI/ARCHITECTURE.md` owns the top-level boundary between
-cartridge persistence and whole-machine save states, `AI/hardware/CARTRIDGES-MBC.md`
-owns cartridge-persistence semantics, and `AI/TESTING.md` owns save/load
+Source-of-truth note: `docs/ARCHITECTURE.md` owns the top-level boundary between
+cartridge persistence and whole-machine save states, `docs/hardware/CARTRIDGES-MBC.md`
+owns cartridge-persistence semantics, and `docs/TESTING.md` owns save/load
 determinism and oracle-usage policy.
 
 ---
@@ -494,7 +494,7 @@ Every Phase `1` subphase should end with:
 
 - targeted unit and integration coverage for the newly closed contract
 - updated golden traces or snapshots when observable ordering changes
-- `make check` passing locally
+- `make ci` passing locally
 - a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
 
 #### MMIO contract sequencing
@@ -527,7 +527,7 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
 3. Add the cartridge factory.
    Acceptance criteria: the loader selects `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, `Mbc5`, or a structured special / unsupported classification from `0x0147`, and unsupported types preserve raw `0x0147`, detected name, category, and reason for diagnostics.
 4. Introduce the typed compatibility-policy foundation.
-   Scope: one real `ExecutionMode::{Strict, Permissive, Experimental}` type plus a central `CompatibilityPolicy`-style structure carrying validation, heuristic, override, and diagnostic policy, as defined authoritatively in `AI/ARCHITECTURE.md`.
+   Scope: one real `ExecutionMode::{Strict, Permissive, Experimental}` type plus a central `CompatibilityPolicy`-style structure carrying validation, heuristic, override, and diagnostic policy, as defined authoritatively in `docs/ARCHITECTURE.md`.
    Acceptance criteria: execution modes are not represented as scattered booleans, one shared policy object exists for loader, tooling, and frontends, and the T-cycle core does not need to read ad hoc global compatibility flags.
 5. Close initial validation and diagnostics plumbing against that shared policy.
    Acceptance criteria: ROM-size and RAM-size metadata are checked explicitly, size mismatches produce useful warnings or errors, special ROM-size codes are not ignored silently, documented-but-unsupported cartridge types fail in a controlled way without mapper fallback, and strict / permissive / experimental admission already goes through the shared policy foundation instead of per-call-site booleans.
@@ -550,9 +550,9 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
 #### Compatibility-policy sequencing across cartridge bring-up
 
 This subsection operationalizes the cartridge-specific decision matrix defined
-authoritatively in `AI/hardware/CARTRIDGES-MBC.md` on top of the Phase `1`
-policy foundation above. `AI/ARCHITECTURE.md` remains the source of truth for
-the policy shape and supported-hardware invariant, and `AI/TESTING.md` remains
+authoritatively in `docs/hardware/CARTRIDGES-MBC.md` on top of the Phase `1`
+policy foundation above. `docs/ARCHITECTURE.md` remains the source of truth for
+the policy shape and supported-hardware invariant, and `docs/TESTING.md` remains
 the source of truth for CI/oracle usage of execution modes.
 
 1. Centralize the category-by-mode decision table.
@@ -748,7 +748,7 @@ instruction-level shortcuts or hidden timing.
    first Phase `2` ROM automation targets now exist as typed `gb-test-runner`
    suites for CPU and interrupt timing. Remaining local TODOs stay explicit
    under the Phase `2` section below, and the current SameBoy cross-check is a
-   documented source-level comparison recorded in `AI/research/SAMEBOY.md`;
+   documented source-level comparison recorded in `docs/research/SAMEBOY.md`;
    full automated first-divergence tooling still belongs to Phase `9`.
 
 #### Risks if done late or superficially
@@ -903,7 +903,7 @@ Every Phase `3` subphase should end with:
 
 - targeted unit and integration coverage for the newly closed DMA contract
 - updated traces or snapshots when observable DMA ordering changes
-- `cargo test -q` passing locally at minimum, and `make check` when the
+- `cargo test -q` passing locally at minimum, and `make ci` when the
   subphase changes repo tooling or shared workflow-critical infrastructure
 - a roadmap TODO recorded immediately if the subphase ships with a concrete
   uncovered gap
@@ -1024,7 +1024,7 @@ Every Phase `4` subphase should end with:
 - focused unit tests for the local state machine, pipeline step, or register contract that was introduced
 - integration tests when the behavior only becomes meaningful across `ppu`, `bus`, `dma`, `interrupts`, or `machine`
 - synthetic VRAM/OAM fixtures or retained trace/snapshot coverage when visible pixel order or timing changes
-- `cargo test -q` passing locally at minimum, and `make check` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
+- `cargo test -q` passing locally at minimum, and `make ci` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
 - at least one explicit note about remaining risk when external ROM or oracle validation is still intentionally deferred
 - a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
 
@@ -1363,7 +1363,7 @@ Every Phase `5` subphase should end with:
 - focused unit tests for the local register contract, edge detector, transfer state machine, or peer boundary that was introduced
 - integration tests when the behavior only becomes meaningful across `joypad`, `serial`, `cpu`, `interrupts`, `bus`, or `machine`
 - retained trace or snapshot coverage when timing visibility, `STOP` wake ordering, or serial progress would otherwise be hard to audit after a refactor
-- `cargo test -q` passing locally at minimum, and `make check` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
+- `cargo test -q` passing locally at minimum, and `make ci` whenever the subphase changes shared validation/tooling or other workflow-critical infrastructure
 - at least one explicit note about remaining risk when oracle comparison or external-ROM validation is still intentionally deferred
 - a roadmap TODO recorded immediately if the subphase ships with a concrete uncovered gap
 
@@ -1968,7 +1968,7 @@ It assumes the dedicated save-state and serialization infrastructure from Phase 
 Status note (`2026-03-22`): the repo now starts a narrow early hardening lane
 from this phase before APU work. The current early deliverables are:
 
-- one explicit partial subsystem checklist in `AI/TESTING.md` that distinguishes
+- one explicit partial subsystem checklist in `docs/TESTING.md` that distinguishes
   repo-gated external evidence from internal-only evidence for the already-landed
   DMG subsystems
 - one `gb-test-runner` catalog path,
@@ -1982,7 +1982,7 @@ from this phase before APU work. The current early deliverables are:
 - one repo-gated PPU framebuffer-oracle suite,
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite acid-dmg-curated`,
   sourced from `GBEmulatorShootout` and now part of the supported external DMG
-  block used by `make test` and the `external-roms` workflow
+  block used by `make test-roms` and the GitHub `test-roms` workflow
 - one exploratory PPU framebuffer-oracle suite,
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`,
   which uses a curated DMG subset from `GBEmulatorShootout` and the same
@@ -2142,7 +2142,7 @@ Use this section to capture concrete remaining work when a change lands without
 fully closing its relevant roadmap scope or done criteria.
 
 This section should stay lean in status noise and rich in re-entry context.
-Closed work belongs in the phase prose above, the owning `AI/*` handbook, tests,
+Closed work belongs in the phase prose above, the owning `docs/*` handbook, tests,
 traces, and version history, not in the active TODO ledger.
 
 When an open item is non-trivial, the entry should make four things obvious:

@@ -34,7 +34,7 @@ crates/
   gb-desktop/
   gb-web/
 tests/
-AI/
+docs/
 ```
 
 For an early-stage repo, a simplified equivalent is acceptable as long as these boundaries stay visible.

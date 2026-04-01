@@ -17,8 +17,8 @@ The target graphics foundation is a `dot-by-dot` PPU with `tile fetcher + pixel 
 
 ## Current structure
 
-The canonical structure and ownership boundaries are defined in `AI/ARCHITECTURE.md`.
-If this summary differs from `AI/ARCHITECTURE.md`, `AI/ARCHITECTURE.md` takes precedence.
+The canonical structure and ownership boundaries are defined in `docs/ARCHITECTURE.md`.
+If this summary differs from `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE.md` takes precedence.
 The current workspace already uses the `crates/`-based layout, leaving other components as future extensions.
 
 ```text
@@ -28,7 +28,7 @@ crates/
   gb-cli/     Current CLI frontend
   gb-desktop/ SDL3 desktop frontend
   gb-persistence/  Host-side cartridge save backends and format
-AI/           Architecture, roadmap, and technical documentation
+docs/           Architecture, roadmap, and technical documentation
 Makefile      Local verification pipeline and utilities
 ```
 
@@ -103,14 +103,14 @@ make setup
 
 ```bash
 make coverage
-cargo cov
 cargo cov-check
 cargo cov-html
-cargo cov-lcov
 ```
 
 `cargo cov-check` currently gates aggregate `>=90%` line, region, and function
 coverage across `gb-core`, `gb-test-runner`, and `gb-persistence`.
+`make coverage` runs `cargo cov-html` and writes the workspace HTML report under
+`target/llvm-cov/html/`.
 
 ### Full local pipeline
 
@@ -135,10 +135,10 @@ make fetch-test-roms
 make fetch-test-roms FAMILIES=blargg
 make fetch-test-roms FAMILIES="blargg acid"
 make test-roms
-make test-roms-all
 make run-blargg
 make run-acid
 make run-daid
+make run-cpp
 make run-hacktix
 make run-mealybug
 make run-mooneye
@@ -173,29 +173,32 @@ make run-mooneye
 - `make ci` stays as the fast local pre-push gate and does not fetch or run
   external ROM suites; it includes the Rust checks plus the coverage threshold
   gate through `cargo cov-check`
-- `make test-roms` fetches the curated ROM store if needed and runs the
-  repository-gated green external DMG block
-- `make coverage` emits `lcov.info` through `cargo cov-lcov`
+- `make coverage` runs `cargo cov-html` and emits the workspace HTML coverage
+  report under `target/llvm-cov/html/`
+- `make test-roms` fetches the curated ROM store if needed and runs all local
+  curated DMG suites currently wired in `Makefile`:
+  `acid`, `blargg`, `daid`, `hacktix`, `cpp`, `mealybug-tearoom-tests`, and
+  `mooneye`
 - GitHub uses two workflows:
   `ci` for Rust checks plus coverage
-  `test-roms` for the supported external DMG block
-- `make test-roms` runs the same repository-gated external DMG block explicitly:
-  the repo-gated Blargg DMG family
-  `blargg-dmg-curated`
-  and the curated Acid DMG family
-  `acid-dmg-curated`
+  `test-roms` for the workflow-managed ROM subset currently exercised in CI:
+  `acid`, `blargg`, `hacktix`, and `cpp`
 - the curated Acid DMG family mixes one blocking framebuffer oracle
   `dmg-acid2.gb` with one informational framebuffer capture case `which.gb`,
   matching the upstream `GBEmulatorShootout` classification
-- `make run-blargg` runs the repo-gated Blargg DMG family, including
+- `make run-blargg` runs the curated Blargg DMG family, including
   `dmg_sound 01..12`
 - `make run-acid` runs the curated supported Acid DMG family
 - `make run-daid` runs the current exploratory `daid` DMG subset and updates
   `/.roms/test/test-report.md`
 - each `make run-*` target is autosufficient and materializes its own curated
   family before execution
-- `make run-hacktix` runs the current exploratory `hacktix` DMG subset and
-  updates `/.roms/test/test-report.md`
+- `make run-hacktix` runs the curated `hacktix` DMG subset and updates
+  `/.roms/test/test-report.md`; it is also part of the GitHub `test-roms`
+  workflow
+- `make run-cpp` runs the curated `cpp` MBC3 subset and updates
+  `/.roms/test/test-report.md`; it is also part of the GitHub `test-roms`
+  workflow
 - `make run-mealybug` runs the current exploratory `mealybug-tearoom` DMG
   subset and updates `/.roms/test/test-report.md`
 - `make run-mooneye` runs the current exploratory `mooneye` DMG acceptance
@@ -205,28 +208,31 @@ make run-mooneye
   `cpu_instrs.gb`
 - the full curated Blargg family now includes the DMG `dmg_sound 01..12`
   individual ROMs from `GBEmulatorShootout`, and that audio slice is now
-  intentionally promoted into the repo-gated block used by `make run-blargg`
+  intentionally promoted into the curated local block used by `make run-blargg`
   and `make test-roms`
 - the upstream `oam_bug/7-timing_effect.gb`, CGB-only ROMs, and other still-red
   cases stay outside the default managed block until they are intentionally
   promoted
 - one exploratory `mealybug-tearoom` DMG subset is also integrated as
-  `mealybug-tearoom-dmg-curated`, but it is currently outside the default
-  gate because it still diverges from the upstream framebuffer fixtures under
+  `mealybug-tearoom-dmg-curated`; the local `make test-roms` aggregator runs
+  it for visibility, but it remains outside the GitHub `test-roms` workflow
+  because it still diverges from the upstream framebuffer fixtures under
   `Strict`
 - one exploratory `mooneye` DMG acceptance subset is also integrated as
   `mooneye-acceptance-dmg-curated`; it follows the active
   `GBEmulatorShootout` `testroms/mooneye.py` acceptance list, uses the upstream
   `mooneye` breakpoint/register result protocol instead of framebuffer oracles,
-  and stays outside the default gate while the remaining failures are being
+  and is currently run by the local `make test-roms` aggregator while staying
+  outside the GitHub `test-roms` workflow until the remaining failures are
   triaged
 - one exploratory `daid` DMG subset is also integrated as `daid-dmg-curated`;
   it mixes framebuffer fixtures, one multi-fixture framebuffer oracle for
   `ppu_scanline_bgp.gb`, and one informational framebuffer capture case
   `rom_and_ram.gb`
-- one exploratory `hacktix` DMG subset is also integrated as
+- one workflow-managed `hacktix` DMG subset is also integrated as
   `hacktix-dmg-curated`; it currently tracks `bully.gb` and
-  `strikethrough.gb` from `GBEmulatorShootout` and uses framebuffer fixtures
+  `strikethrough.gb` from `GBEmulatorShootout`, uses framebuffer fixtures, and
+  is now exercised by the GitHub `test-roms` workflow
 - if `GB_CYCLE_TEST_ROM_ROOT` is unset, `gb-test-runner` falls back to the
   default curated store automatically
 - keep private commercial ROMs out of that path; use the separate gitignored
@@ -382,33 +388,33 @@ cargo run -p gb-test-runner --bin run_sameboy_tester -- \
 
 ## Documentation
 
-Before implementing subsystems, read the main handbooks in `AI/` first:
+Before implementing subsystems, read the main handbooks in `docs/` first:
 
-- `AI/index.md`
-- `AI/ARCHITECTURE.md`
-- `AI/CODING-RULES.md`
-- `AI/EXECUTION.md`
-- `AI/REFERENCES.md`
-- `AI/ROADMAP.md`
-- `AI/TESTING.md`
-- `AI/TIMING-AND-ACCURACY.md`
-- `AI/hardware/*.md`
+- `docs/index.md`
+- `docs/ARCHITECTURE.md`
+- `docs/CODING-RULES.md`
+- `docs/EXECUTION.md`
+- `docs/REFERENCES.md`
+- `docs/ROADMAP.md`
+- `docs/TESTING.md`
+- `docs/TIMING-AND-ACCURACY.md`
+- `docs/hardware/*.md`
 
 The documentation hierarchy, in summary, is:
 
-- `AI/index.md` as the entry point for reading order and document authority boundaries
-- `AI/ARCHITECTURE.md` for layout, ownership, and subsystem boundaries
-- `AI/ARCHITECTURE.md` also for the central compatibility-policy structure, execution-mode ownership boundaries, and the top-level separation between cartridge persistence and full emulator save states
-- `AI/TIMING-AND-ACCURACY.md` for shared timing vocabulary and project-wide timing constraints
-- `AI/ARCHITECTURE.md` plus `AI/TIMING-AND-ACCURACY.md` together for the global T-cycle scheduler contract
-- `AI/EXECUTION.md` and `AI/CODING-RULES.md` for workflow and code-change discipline
-- `AI/REFERENCES.md` for source and oracle consultation order
-- `AI/hardware/*.md` for the behavior and contracts of the corresponding subsystem
-- `AI/hardware/CARTRIDGES-MBC.md` specifically for mapper classification, special-cartridge taxonomy, cartridge-side compatibility-category policy, and cartridge persistence rules distinct from full emulator save states
-- `AI/TESTING.md` for the global validation, differential, determinism, DMG-hardening policy, and official `Strict` CI/oracle usage
-- `AI/ROADMAP.md` for recommended implementation order, phase context, and outstanding TODOs
+- `docs/index.md` as the entry point for reading order and document authority boundaries
+- `docs/ARCHITECTURE.md` for layout, ownership, and subsystem boundaries
+- `docs/ARCHITECTURE.md` also for the central compatibility-policy structure, execution-mode ownership boundaries, and the top-level separation between cartridge persistence and full emulator save states
+- `docs/TIMING-AND-ACCURACY.md` for shared timing vocabulary and project-wide timing constraints
+- `docs/ARCHITECTURE.md` plus `docs/TIMING-AND-ACCURACY.md` together for the global T-cycle scheduler contract
+- `docs/EXECUTION.md` and `docs/CODING-RULES.md` for workflow and code-change discipline
+- `docs/REFERENCES.md` for source and oracle consultation order
+- `docs/hardware/*.md` for the behavior and contracts of the corresponding subsystem
+- `docs/hardware/CARTRIDGES-MBC.md` specifically for mapper classification, special-cartridge taxonomy, cartridge-side compatibility-category policy, and cartridge persistence rules distinct from full emulator save states
+- `docs/TESTING.md` for the global validation, differential, determinism, DMG-hardening policy, and official `Strict` CI/oracle usage
+- `docs/ROADMAP.md` for recommended implementation order, phase context, and outstanding TODOs
 
-Use `AI/research/*.md` as secondary comparison material when you need implementation examples, additional validation, or comparison against reference oracles.
+Use `docs/research/*.md` as secondary comparison material when you need implementation examples, additional validation, or comparison against reference oracles.
 
 ## License
 

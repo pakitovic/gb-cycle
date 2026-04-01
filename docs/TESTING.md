@@ -13,9 +13,9 @@ Use multiple layers:
 ## Authority and scope
 
 - This document owns project-wide validation policy and cross-subsystem testing expectations.
-- Detailed subsystem-specific checklists remain owned by the matching `AI/hardware/*.md` handbook.
+- Detailed subsystem-specific checklists remain owned by the matching `docs/hardware/*.md` handbook.
 - When this file repeats subsystem expectations for planning convenience, the subsystem handbook remains the behavioral authority and this file should be updated to match it.
-- `AI/ROADMAP.md` may mention validation goals by phase, but it does not replace this testing policy.
+- `docs/ROADMAP.md` may mention validation goals by phase, but it does not replace this testing policy.
 
 ## Validation priorities
 
@@ -224,19 +224,18 @@ This checklist should move only when one of the following becomes true:
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`.
   This suite uses a curated DMG-only subset sourced from `GBEmulatorShootout`
   and the same committed-PNG oracle contract as `dmg-acid2`, but it is
-  currently red under `Strict` and therefore stays outside `make test`, the
-  `external-roms` workflow, and the repo-gated DMG block until the underlying
-  PPU mismatches are corrected.
-- The current exploratory DMG framebuffer lane also includes one non-gated
+  currently red under `Strict`. The local `make test-roms` aggregator still
+  runs it for visibility, but it remains outside the GitHub `test-roms`
+  workflow until the underlying PPU mismatches are corrected.
+- The current DMG framebuffer lane also includes one workflow-managed
   `hacktix` suite under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite hacktix-dmg-curated [--failure-artifact-root <dir>]`.
   This suite currently tracks the `GBEmulatorShootout` `hacktix` subset
   `bully.gb` plus `strikethrough.gb`, runs those ROMs on the default DMG
   model, and uses the same committed-PNG framebuffer-oracle contract as the
-  other screenshot-based curated families. It remains exploratory and
-  therefore stays outside `make test`, the `external-roms` workflow, and the
-  repo-gated DMG block until its expected green set is explicit and
-  intentionally promoted.
+  other screenshot-based curated families. It is exercised by
+  `make run-hacktix`, the local `make test-roms` aggregator, and the GitHub
+  `test-roms` workflow.
 - The current exploratory DMG `mooneye` lane also includes one non-gated
   suite under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`.
@@ -254,9 +253,9 @@ This checklist should move only when one of the following becomes true:
   shipped by `GBEmulatorShootout`. Because the runner samples once per
   T-cycle, treat the immediate post-breakpoint `nop; jr -3` halt loop as the
   same terminal condition when those registers still match the documented
-  pass/fail signature. It is intentionally exploratory for now and therefore
-  stays outside `make test`, the `external-roms` workflow, and the repo-gated
-  DMG block until its remaining `acceptance/ppu/*` failures are triaged and
+  pass/fail signature. It is intentionally exploratory for now: the local
+  `make test-roms` aggregator runs it, but it stays outside the GitHub
+  `test-roms` workflow until its remaining `acceptance/ppu/*` failures are triaged and
   the experimental `emulator-only/mbc1/multicart_rom_8Mb.gb` heuristic path is
   either retired or promoted under a documented strict-mode contract.
 - The current early `9.3` MVP also includes one imported-oracle end-of-test
@@ -327,14 +326,17 @@ This checklist should move only when one of the following becomes true:
 - New production code should normally introduce automated unit tests or integration tests in the same change.
 - Prefer unit tests for local logic and integration tests when the behavior only becomes meaningful across subsystem boundaries.
 - Treat "code first, tests later" as an exception that must be justified explicitly, not as the default workflow.
-- Before opening or updating a pull request, run at least `make check` locally so formatting, clippy, tests, typos, and `cargo deny` do not first surface in CI.
-- When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make test` and `make coverage` locally as well before the PR is updated.
+- Before opening or updating a pull request, run at least `make ci` locally so formatting, clippy, tests, typos, and `cargo deny` do not first surface in CI.
+- When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make test-roms` and `make coverage` locally as well before the PR is updated.
 - The GitHub `ci` workflow is intentionally limited to formatting, linting, tests, typos, dependency policy, and the coverage gate. Keep external ROM execution out of that workflow.
-- The repository-gated external official ROM block currently includes the green
-  non-CGB DMG suites sourced from `GBEmulatorShootout`: the full repo-gated
-  Blargg DMG family (`cpu_instrs 01..11`, `halt_bug`, `instr_timing`,
-  `mem_timing 01..03`, `mem_timing-2 01..03`, `oam_bug 1..6,8`, and
-  `dmg_sound 01..12`) plus the curated Acid DMG framebuffer oracle family.
+- The GitHub `test-roms` workflow currently runs the workflow-managed non-CGB
+  DMG suites sourced from `GBEmulatorShootout`: the curated Acid framebuffer
+  oracle family, the full Blargg DMG family (`cpu_instrs 01..11`, `halt_bug`,
+  `instr_timing`, `mem_timing 01..03`, `mem_timing-2 01..03`, `oam_bug 1..6,8`,
+  and `dmg_sound 01..12`), plus the curated `hacktix` and `cpp` suites.
+- The local `make test-roms` aggregator intentionally runs a broader set than
+  the GitHub workflow today by also including the current exploratory `daid`,
+  `mealybug-tearoom-tests`, and `mooneye` families.
 - Keep multi-ROM bundles, CGB-only suites, and still-red exploratory ROMs out
   of the default external-ROM workflow until they are green and intentionally
   promoted.

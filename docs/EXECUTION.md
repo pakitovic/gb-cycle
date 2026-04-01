@@ -1,10 +1,10 @@
 # Execution
 
 ## Standard workflow
-1. Identify the subsystem and read its `AI/hardware/*.md` file.
-2. Read `AI/ROADMAP.md` when the task maps to a roadmap phase, resumes prior work, or may leave deferred follow-up work.
-3. Read matching primary references from `AI/REFERENCES.md`.
-4. Read one or more `AI/research/*.md` files only if implementation examples are needed.
+1. Identify the subsystem and read its `docs/hardware/*.md` file.
+2. Read `docs/ROADMAP.md` when the task maps to a roadmap phase, resumes prior work, or may leave deferred follow-up work.
+3. Read matching primary references from `docs/REFERENCES.md`.
+4. Read one or more `docs/research/*.md` files only if implementation examples are needed.
 5. Define invariants before coding.
 6. Implement the smallest correct change.
 7. Validate with unit tests and ROM-based tests.
@@ -24,7 +24,7 @@
 
 ## Roadmap coordination policy
 
-- `AI/ROADMAP.md` is a living document, not a one-time planning artifact.
+- `docs/ROADMAP.md` is a living document, not a one-time planning artifact.
 - Use it to understand recommended implementation order, phase dependencies, and phase-level done criteria.
 - When a task lands with known gaps, deferred fixes, incomplete validation, or partially unmet roadmap done criteria, add a TODO entry to the relevant roadmap section in the same change.
 - If no single phase owns the remaining work cleanly, record the item under the roadmap's `Cross-phase` TODO section.
@@ -39,7 +39,7 @@
 
 ## When touching the global scheduler or cross-subsystem ordering
 
-- Preserve the fixed per-T-cycle phase contract defined by `AI/ARCHITECTURE.md` and `AI/TIMING-AND-ACCURACY.md`.
+- Preserve the fixed per-T-cycle phase contract defined by `docs/ARCHITECTURE.md` and `docs/TIMING-AND-ACCURACY.md`.
 - Update the matching hardware docs together when the observable ordering of DMA, PPU mode visibility, MMIO side effects, interrupt visibility, or CPU acceptance changes.
 - Keep requester arbitration, MMIO commit, and interrupt aggregation explicit; do not replace them with ad hoc subsystem-to-subsystem calls just because one local test passes.
 - Add or update focused cross-subsystem tests such as DMA-vs-CPU, delayed timer `IF`, serial completion plus IRQ, joypad visible-edge IRQ, `HALT` / IRQ priority, and `STAT`-versus-bus coherence.
@@ -51,5 +51,5 @@
 - New code paths are covered by unit tests or integration tests unless a documented limitation makes that temporarily impossible.
 - Unit, integration, and ROM-based validation are updated where applicable.
 - Non-executed validation steps are reported explicitly with the remaining risk.
-- If the change only partially satisfies the relevant roadmap phase or leaves concrete follow-up work, that remainder is recorded in `AI/ROADMAP.md`.
-- Matching `AI/*` docs are updated when scope, limitations, workflow, or assumptions changed.
+- If the change only partially satisfies the relevant roadmap phase or leaves concrete follow-up work, that remainder is recorded in `docs/ROADMAP.md`.
+- Matching `docs/*` docs are updated when scope, limitations, workflow, or assumptions changed.

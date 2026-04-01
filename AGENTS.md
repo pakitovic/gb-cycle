@@ -29,20 +29,20 @@ Never trade an earlier priority for a later one without making the tradeoff expl
 
 ## Primary rule
 
-Consult the `AI/*` handbook files directly. Pick only the files relevant to the task; each file is authoritative for its own scope.
+Consult the `docs/*` handbook files directly. Pick only the files relevant to the task; each file is authoritative for its own scope.
 
 Quick map:
 
-- `AI/index.md`
-- `AI/ARCHITECTURE.md`
-- `AI/EXECUTION.md`
-- `AI/CODING-RULES.md`
-- `AI/REFERENCES.md`
-- `AI/ROADMAP.md`
-- `AI/TESTING.md`
-- `AI/TIMING-AND-ACCURACY.md`
-- `AI/hardware/*`
-- `AI/research/*`
+- `docs/index.md`
+- `docs/ARCHITECTURE.md`
+- `docs/EXECUTION.md`
+- `docs/CODING-RULES.md`
+- `docs/REFERENCES.md`
+- `docs/ROADMAP.md`
+- `docs/TESTING.md`
+- `docs/TIMING-AND-ACCURACY.md`
+- `docs/hardware/*`
+- `docs/research/*`
 
 ## Core rules
 
@@ -59,7 +59,7 @@ Quick map:
 - Design with future CGB support in mind, but do not add premature CGB complexity before it serves a concrete need.
 - Treat T-cycle as the project's fundamental timing unit; M-cycles are descriptive only.
 - Optimize only after preserving correctness and observability.
-- When changing behavior, update the matching `AI/*` file in the same change.
+- When changing behavior, update the matching `docs/*` file in the same change.
 
 ## Expected Rust standard
 
@@ -73,14 +73,14 @@ Quick map:
 ## Workflow checklist
 
 - Identify the owning subsystem.
-- Read the matching `AI/hardware/*.md` file first.
-- Read `AI/ROADMAP.md` when the task affects implementation sequencing, resumes unfinished work, or may leave follow-up work behind.
-- Read the matching primary references from `AI/REFERENCES.md`.
-- Read `AI/research/*.md` only when implementation examples are needed.
+- Read the matching `docs/hardware/*.md` file first.
+- Read `docs/ROADMAP.md` when the task affects implementation sequencing, resumes unfinished work, or may leave follow-up work behind.
+- Read the matching primary references from `docs/REFERENCES.md`.
+- Read `docs/research/*.md` only when implementation examples are needed.
 - Define contracts and invariants before editing code.
 - Add or update tests and ROM-based validation.
 - Compare behavior against at least one trusted oracle when touching timing-sensitive logic.
-- If a change leaves known gaps, deferred validation, or roadmap done criteria partially unmet, record it in `AI/ROADMAP.md`.
+- If a change leaves known gaps, deferred validation, or roadmap done criteria partially unmet, record it in `docs/ROADMAP.md`.
 - Update docs when architecture, rules, timing assumptions, or references change.
 
 ## Final decision rule

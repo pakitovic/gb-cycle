@@ -1,4 +1,4 @@
-# AI Handbook Index
+# Documentation Handbook Index
 
 Read the matching file directly; this index is a routing guide plus a summary of document authority boundaries, but detailed behavioral rules still live in the owning file.
 
