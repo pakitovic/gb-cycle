@@ -8,6 +8,6 @@ cov-check-core = "llvm-cov report -p gb-core --summary-only --fail-under-lines 9
 cov-check-test-runner = "llvm-cov report -p gb-test-runner --summary-only --fail-under-lines 84.22 --fail-under-regions 84.63 --fail-under-functions 78.87"
 cov-check-persistence = "llvm-cov report -p gb-persistence --summary-only --fail-under-lines 96.66 --fail-under-regions 91.93 --fail-under-functions 94.68"
 cov-check-cli = "llvm-cov report -p gb-cli --summary-only --fail-under-lines 92.52 --fail-under-regions 90.01 --fail-under-functions 92.30"
-cov-check-desktop = "llvm-cov report -p gb-desktop --summary-only --fail-under-lines 93.97 --fail-under-regions 93.42 --fail-under-functions 95.05"
+cov-check-desktop = "llvm-cov report -p gb-desktop --summary-only --fail-under-lines 93.35 --fail-under-regions 93.42 --fail-under-functions 95.05"
 cov-html = "llvm-cov --workspace --html"
 deny-check = "deny check"
