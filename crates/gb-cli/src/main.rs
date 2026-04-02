@@ -1,13 +1,13 @@
 use gb_core::{
-    BootRomAssets, BootRomKind, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeHeader,
-    CartridgeHeaderParseError, CartridgeLoadError, CartridgePersistentStateError,
-    CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy, ConsoleModel, ExecutionMode,
-    Machine, MachineConfig, PersistentCartState, SgbFlag, StartupMode, TraceBuffer,
-    TraceSummaryBuffer, UnsupportedCartridgeCategory,
+    BootRomAssetError, BootRomAssets, BootRomKind, CartridgeDiagnostic,
+    CartridgeDiagnosticSeverity, CartridgeHeader, CartridgeHeaderParseError, CartridgeLoadError,
+    CartridgePersistentStateError, CartridgeSelection, CartridgeSlot, CgbFlag, CompatibilityPolicy,
+    ConsoleModel, ExecutionMode, Machine, MachineConfig, PersistentCartState, SgbFlag, StartupMode,
+    TraceBuffer, TraceSummaryBuffer, UnsupportedCartridgeCategory,
 };
 use gb_persistence::{
-    CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveKeyError, FilesystemCartridgeSaveBackend,
-    uses_battery_backed_hardware_persistence,
+    CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveKey, CartridgeSaveKeyError,
+    FilesystemCartridgeSaveBackend, uses_battery_backed_hardware_persistence,
 };
 use sha2::{Digest, Sha256};
 use std::env;
@@ -24,6 +24,37 @@ const DEFAULT_BOOT_ROM_DIR: &str = ".roms/bootrom";
 const FRAMEBUFFER_WIDTH: usize = 160;
 const FRAMEBUFFER_HEIGHT: usize = 144;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
+const RUN_HELP_TEXT: &str = concat!(
+    "Usage:\n",
+    "  gb-cli run <rom> [options]\n",
+    "\n",
+    "Options:\n",
+    "  --model <dmg0|dmg|mgb>                 Select the DMG-family startup model (default: dmg)\n",
+    "  --startup <skip-boot|real-boot>        Choose startup path (default: skip-boot)\n",
+    "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
+    "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
+    "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
+    "  --frames <n>                           Stop after <n> completed frames\n",
+    "  --tcycles <n>                          Stop after <n> T-cycles\n",
+    "                                         If neither limit is provided, skip-boot stops after 120 completed frames\n",
+    "                                         and real-boot stops after boot-ROM handoff plus 120 completed frames\n",
+    "                                         with a 480-frame safety cap if handoff never arrives\n",
+    "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
+    "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
+    "  --framebuffer-out <path>               Save the final 160x144 framebuffer as PGM, or PNG when <path> ends in .png\n",
+    "  --trace-out <path>                     Save the scheduler trace text for the run\n",
+    "  --save-dir <dir>                       Load/save battery-backed cartridge persistence under this directory\n",
+    "  --save-key <key>                       Override the derived save key (ASCII alnum, '_' or '-')\n",
+    "  --save-policy <manual|on-close|on-write>\n",
+    "                                         Select automatic persistence behavior (default: on-close)\n",
+);
+const INSPECT_HELP_TEXT: &str = concat!(
+    "Usage:\n",
+    "  gb-cli inspect-rom <rom> [--mode <strict|permissive|experimental>]\n",
+    "\n",
+    "Options:\n",
+    "  --mode <strict|permissive|experimental> Evaluate loader compatibility under the selected mode\n",
+);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CliAction {
@@ -303,58 +334,19 @@ fn general_help_text() -> &'static str {
     )
 }
 
-fn run_help_text() -> &'static str {
-    concat!(
-        "Usage:\n",
-        "  gb-cli run <rom> [options]\n",
-        "\n",
-        "Options:\n",
-        "  --model <dmg0|dmg|mgb>                 Select the DMG-family startup model (default: dmg)\n",
-        "  --startup <skip-boot|real-boot>        Choose startup path (default: skip-boot)\n",
-        "  --mode <strict|permissive|experimental> Set the compatibility policy (default: strict)\n",
-        "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
-        "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
-        "  --frames <n>                           Stop after <n> completed frames\n",
-        "  --tcycles <n>                          Stop after <n> T-cycles\n",
-        "                                         If neither limit is provided, skip-boot stops after 120 completed frames\n",
-        "                                         and real-boot stops after boot-ROM handoff plus 120 completed frames\n",
-        "                                         with a 480-frame safety cap if handoff never arrives\n",
-        "  --serial-stdout                        Stream completed serial bytes to stdout as they arrive\n",
-        "  --serial-out <path>                    Save completed serial bytes to a file at the end of the run\n",
-        "  --framebuffer-out <path>               Save the final 160x144 framebuffer as PGM, or PNG when <path> ends in .png\n",
-        "  --trace-out <path>                     Save the scheduler trace text for the run\n",
-        "  --save-dir <dir>                       Load/save battery-backed cartridge persistence under this directory\n",
-        "  --save-key <key>                       Override the derived save key (ASCII alnum, '_' or '-')\n",
-        "  --save-policy <manual|on-close|on-write>\n",
-        "                                         Select automatic persistence behavior (default: on-close)\n",
-    )
-}
-
-fn inspect_help_text() -> &'static str {
-    concat!(
-        "Usage:\n",
-        "  gb-cli inspect-rom <rom> [--mode <strict|permissive|experimental>]\n",
-        "\n",
-        "Options:\n",
-        "  --mode <strict|permissive|experimental> Evaluate loader compatibility under the selected mode\n",
-    )
-}
-
-fn run_cli_command<I, S, W1, W2>(
+fn run_cli_command<I, S>(
     arguments: I,
-    stdout: &mut W1,
-    stderr: &mut W2,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
 ) -> Result<(), String>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
-    W1: Write,
-    W2: Write,
 {
     match parse_cli_arguments(arguments)? {
         CliAction::ShowGeneralHelp => write_text(stdout, general_help_text()),
-        CliAction::ShowRunHelp => write_text(stdout, run_help_text()),
-        CliAction::ShowInspectHelp => write_text(stdout, inspect_help_text()),
+        CliAction::ShowRunHelp => write_text(stdout, RUN_HELP_TEXT),
+        CliAction::ShowInspectHelp => write_text(stdout, INSPECT_HELP_TEXT),
         CliAction::Run(options) => run_command(options, stdout, stderr),
         CliAction::InspectRom(options) => inspect_rom_command(options, stdout),
     }
@@ -587,10 +579,10 @@ fn ensure_run_options_initialized(
     Ok(())
 }
 
-fn run_command<W1: Write, W2: Write>(
+fn run_command(
     options: RunOptions,
-    stdout: &mut W1,
-    stderr: &mut W2,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
 ) -> Result<(), String> {
     let current_dir = env::current_dir()
         .map_err(|error| format!("failed to determine current directory: {error}"))?;
@@ -689,12 +681,7 @@ fn run_command<W1: Write, W2: Write>(
     }
     if let Some(framebuffer_out) = &options.framebuffer_out {
         let framebuffer_image = encode_framebuffer_artifact(framebuffer_out, machine.framebuffer())
-            .map_err(|error| {
-                format!(
-                    "failed to encode framebuffer artifact {}: {error}",
-                    framebuffer_out.display()
-                )
-            })?;
+            .map_err(|error| format_framebuffer_artifact_error(framebuffer_out, error))?;
         write_bytes_with_parent(framebuffer_out, &framebuffer_image)?;
     }
     if let Some(trace_out) = &options.trace_out {
@@ -758,7 +745,7 @@ fn run_command<W1: Write, W2: Write>(
     Ok(())
 }
 
-fn inspect_rom_command<W: Write>(options: InspectRomOptions, output: &mut W) -> Result<(), String> {
+fn inspect_rom_command(options: InspectRomOptions, output: &mut dyn Write) -> Result<(), String> {
     let current_dir = env::current_dir()
         .map_err(|error| format!("failed to determine current directory: {error}"))?;
     let rom_path = resolve_path(&current_dir, &options.rom_path);
@@ -880,12 +867,12 @@ fn inspect_rom_command<W: Write>(options: InspectRomOptions, output: &mut W) -> 
     Ok(())
 }
 
-fn open_save_session<W: Write>(
+fn open_save_session(
     save_root: Option<&Path>,
     options: &RunOptions,
     rom_path: &Path,
     machine: &mut CliMachine,
-    stderr: &mut W,
+    stderr: &mut dyn Write,
 ) -> Result<Option<SaveSession>, String> {
     let Some(save_root) = save_root else {
         return Ok(None);
@@ -907,12 +894,10 @@ fn open_save_session<W: Write>(
     let mut loaded_existing_save = false;
     let mut last_saved_state = machine.cartridge().persistent_state();
 
-    if let Some(envelope) = backend.load(&key).map_err(|error| {
-        format!(
-            "failed to load save {}: {error}",
-            backend.path_for_key(&key).display()
-        )
-    })? {
+    if let Some(envelope) = backend
+        .load(&key)
+        .map_err(|error| format_save_load_error(&backend.path_for_key(&key), error))?
+    {
         let elapsed_seconds = backend
             .current_unix_seconds()
             .saturating_sub(envelope.backend_metadata.saved_at_unix_seconds);
@@ -958,21 +943,16 @@ fn flush_save_if_changed(
             machine.cartridge().persistence_metadata(),
             &current_state,
         )
-        .map_err(|error| {
-            format!(
-                "failed to save cartridge persistence ({reason}) to {}: {error}",
-                save_session.save_path().display()
-            )
-        })?;
+        .map_err(|error| format_save_flush_error(&save_session.save_path(), reason, error))?;
     save_session.last_saved_state = current_state;
     save_session.save_writes += 1;
     Ok(true)
 }
 
-fn load_boot_rom_assets<W: Write>(
+fn load_boot_rom_assets(
     options: &RunOptions,
     current_dir: &Path,
-    stderr: &mut W,
+    stderr: &mut dyn Write,
 ) -> Result<BootRomAssets, String> {
     if options.startup_mode != StartupMode::RealBoot {
         return Ok(BootRomAssets::none());
@@ -997,12 +977,10 @@ fn load_boot_rom_assets<W: Write>(
         return Ok(BootRomAssets::none());
     }
 
-    BootRomAssets::from_directory(&root).map_err(|error| {
-        format!(
-            "failed to load boot ROM assets from {}: {error}",
-            root.display()
-        )
-    })
+    match BootRomAssets::from_directory(&root) {
+        Ok(assets) => Ok(assets),
+        Err(error) => Err(format_boot_rom_asset_load_error(&root, error)),
+    }
 }
 
 fn resolve_boot_rom_root(explicit_root: Option<&Path>, current_dir: &Path) -> PathBuf {
@@ -1044,8 +1022,8 @@ fn validate_directory_input(flag: &str, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn write_cartridge_diagnostics<W: Write>(
-    stderr: &mut W,
+fn write_cartridge_diagnostics(
+    stderr: &mut dyn Write,
     diagnostics: &[CartridgeDiagnostic],
 ) -> Result<(), String> {
     for diagnostic in diagnostics {
@@ -1075,17 +1053,21 @@ fn write_text_file_with_parent(path: &Path, text: &str) -> Result<(), String> {
     write_bytes_with_parent(path, text.as_bytes())
 }
 
-fn write_text<W: Write>(writer: &mut W, text: &str) -> Result<(), String> {
-    writer
-        .write_all(text.as_bytes())
-        .map_err(|error| format!("failed to write output: {error}"))
+fn write_text(writer: &mut dyn Write, text: &str) -> Result<(), String> {
+    if let Err(error) = writer.write_all(text.as_bytes()) {
+        return Err(format!("failed to write output: {error}"));
+    }
+    Ok(())
 }
 
-fn writeln_checked<W: Write>(writer: &mut W, line: &str) -> Result<(), String> {
-    writer
-        .write_all(line.as_bytes())
-        .and_then(|()| writer.write_all(b"\n"))
-        .map_err(|error| format!("failed to write output: {error}"))
+fn writeln_checked(writer: &mut dyn Write, line: &str) -> Result<(), String> {
+    if let Err(error) = writer.write_all(line.as_bytes()) {
+        return Err(format!("failed to write output: {error}"));
+    }
+    if let Err(error) = writer.write_all(b"\n") {
+        return Err(format!("failed to write output: {error}"));
+    }
+    Ok(())
 }
 
 fn run_limit_reached(
@@ -1307,6 +1289,31 @@ fn png_encoding_io_error(source: png::EncodingError) -> io::Error {
     io::Error::other(source.to_string())
 }
 
+fn format_framebuffer_artifact_error(path: &Path, error: io::Error) -> String {
+    format!(
+        "failed to encode framebuffer artifact {}: {error}",
+        path.display()
+    )
+}
+
+fn format_save_load_error(path: &Path, error: CartridgeSaveBackendError) -> String {
+    format!("failed to load save {}: {error}", path.display())
+}
+
+fn format_save_flush_error(path: &Path, reason: &str, error: CartridgeSaveBackendError) -> String {
+    format!(
+        "failed to save cartridge persistence ({reason}) to {}: {error}",
+        path.display()
+    )
+}
+
+fn format_boot_rom_asset_load_error(root: &Path, error: BootRomAssetError) -> String {
+    format!(
+        "failed to load boot ROM assets from {}: {error}",
+        root.display()
+    )
+}
+
 fn verify_boot_rom_file(path: &Path, kind: BootRomKind) -> Result<(), String> {
     let bytes = fs::read(path).map_err(|error| {
         format!(
@@ -1458,279 +1465,4 @@ fn optional_usize_name(value: Option<usize>) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use gb_persistence::FilesystemCartridgeSaveBackend;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
-
-    fn unique_temp_dir(label: &str) -> PathBuf {
-        env::temp_dir().join(format!(
-            "gb-cli-{label}-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system clock should be after unix epoch")
-                .as_nanos()
-        ))
-    }
-
-    fn build_test_rom_with_header(
-        program: &[u8],
-        cartridge_type: u8,
-        rom_size: u8,
-        ram_size: u8,
-    ) -> Vec<u8> {
-        let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
-        for (offset, byte) in program.iter().copied().enumerate() {
-            rom[0x0100 + offset] = byte;
-        }
-        rom[0x0147] = cartridge_type;
-        rom[0x0148] = rom_size;
-        rom[0x0149] = ram_size;
-        rom
-    }
-
-    fn build_single_byte_serial_rom(byte: u8) -> Vec<u8> {
-        build_test_rom_with_header(
-            &[
-                0x3E, byte, // LD A,d8
-                0xE0, 0x01, // LDH (SB),A
-                0x3E, 0x81, // LD A,$81
-                0xE0, 0x02, // LDH (SC),A
-                0xC3, 0x08, 0x01, // JP $0108
-            ],
-            0x00,
-            0x00,
-            0x00,
-        )
-    }
-
-    fn build_battery_backed_serial_and_ram_rom(byte: u8, ram_value: u8) -> Vec<u8> {
-        build_test_rom_with_header(
-            &[
-                0x3E, ram_value, // LD A,d8
-                0xEA, 0x00, 0xA0, // LD ($A000),A
-                0x3E, byte, // LD A,d8
-                0xE0, 0x01, // LDH (SB),A
-                0x3E, 0x81, // LD A,$81
-                0xE0, 0x02, // LDH (SC),A
-                0xC3, 0x0D, 0x01, // JP $010D
-            ],
-            0x09,
-            0x00,
-            0x02,
-        )
-    }
-
-    #[test]
-    fn parse_run_arguments_keep_the_dmg_first_defaults() {
-        let action = parse_cli_arguments(["run", "demo.gb"]).expect("run arguments should parse");
-
-        match action {
-            CliAction::Run(options) => {
-                assert_eq!(options.model, RunModel::Dmg);
-                assert_eq!(options.startup_mode, StartupMode::SkipBoot);
-                assert_eq!(options.execution_mode, ExecutionMode::Strict);
-                assert_eq!(
-                    options.default_run_budget,
-                    Some(DefaultRunBudget::SkipBootFrames {
-                        frame_limit: DEFAULT_SKIP_BOOT_FRAME_LIMIT,
-                    })
-                );
-                assert_eq!(options.frame_limit, None);
-                assert_eq!(options.tcycle_limit, None);
-            }
-            other => panic!("expected run action, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_run_arguments_use_the_real_boot_default_budget_profile_when_no_limit_is_provided() {
-        let action = parse_cli_arguments(["run", "demo.gb", "--startup", "real-boot"])
-            .expect("real-boot arguments should parse");
-
-        match action {
-            CliAction::Run(options) => {
-                assert_eq!(options.startup_mode, StartupMode::RealBoot);
-                assert_eq!(
-                    options.default_run_budget,
-                    Some(DefaultRunBudget::RealBootPostHandoff {
-                        post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
-                        safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
-                    })
-                );
-                assert_eq!(options.frame_limit, None);
-                assert_eq!(options.tcycle_limit, None);
-            }
-            other => panic!("expected run action, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn default_run_limit_profiles_cover_skip_boot_post_handoff_and_safety_cap() {
-        assert!(default_run_limit_reached(
-            Some(DefaultRunBudget::SkipBootFrames {
-                frame_limit: DEFAULT_SKIP_BOOT_FRAME_LIMIT,
-            }),
-            DEFAULT_SKIP_BOOT_FRAME_LIMIT,
-            None,
-        ));
-        assert!(!default_run_limit_reached(
-            Some(DefaultRunBudget::RealBootPostHandoff {
-                post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
-                safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
-            }),
-            DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
-            None,
-        ));
-        assert!(default_run_limit_reached(
-            Some(DefaultRunBudget::RealBootPostHandoff {
-                post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
-                safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
-            }),
-            DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
-            None,
-        ));
-        assert!(!default_run_limit_reached(
-            Some(DefaultRunBudget::RealBootPostHandoff {
-                post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
-                safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
-            }),
-            121,
-            Some(2),
-        ));
-        assert!(default_run_limit_reached(
-            Some(DefaultRunBudget::RealBootPostHandoff {
-                post_handoff_frame_limit: DEFAULT_REAL_BOOT_POST_HANDOFF_FRAME_LIMIT,
-                safety_frame_limit: DEFAULT_REAL_BOOT_SAFETY_FRAME_LIMIT,
-            }),
-            122,
-            Some(2),
-        ));
-    }
-
-    #[test]
-    fn inspect_rom_reports_the_supported_nomcb_header_shape() {
-        let temp_dir = unique_temp_dir("inspect-rom");
-        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
-
-        let rom_path = temp_dir.join("inspect.gb");
-        fs::write(&rom_path, build_single_byte_serial_rom(b'O'))
-            .expect("test ROM should be writable");
-
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        run_cli_command(
-            [
-                "inspect-rom",
-                rom_path.to_str().expect("path should be valid UTF-8"),
-            ],
-            &mut stdout,
-            &mut stderr,
-        )
-        .expect("inspect-rom should succeed");
-
-        let output = String::from_utf8(stdout).expect("inspect output should be UTF-8");
-        assert!(output.contains("load_status=ok"));
-        assert!(output.contains("mapper_name=ROM ONLY"));
-        assert!(output.contains("selection=supported"));
-        assert!(stderr.is_empty());
-
-        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
-    }
-
-    #[test]
-    fn run_command_emits_requested_artifacts_and_persists_battery_backed_ram() {
-        let temp_dir = unique_temp_dir("run-artifacts");
-        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
-
-        let rom_path = temp_dir.join("battery_serial.gb");
-        let serial_path = temp_dir.join("artifacts/serial.bin");
-        let framebuffer_path = temp_dir.join("artifacts/framebuffer.png");
-        let trace_path = temp_dir.join("artifacts/trace.txt");
-        let save_root = temp_dir.join("saves");
-        fs::write(
-            &rom_path,
-            build_battery_backed_serial_and_ram_rom(b'R', 0x5A),
-        )
-        .expect("test ROM should be writable");
-
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        run_cli_command(
-            [
-                "run",
-                rom_path.to_str().expect("path should be valid UTF-8"),
-                "--tcycles",
-                "10000",
-                "--serial-out",
-                serial_path.to_str().expect("path should be valid UTF-8"),
-                "--framebuffer-out",
-                framebuffer_path
-                    .to_str()
-                    .expect("path should be valid UTF-8"),
-                "--trace-out",
-                trace_path.to_str().expect("path should be valid UTF-8"),
-                "--save-dir",
-                save_root.to_str().expect("path should be valid UTF-8"),
-            ],
-            &mut stdout,
-            &mut stderr,
-        )
-        .expect("run command should succeed");
-
-        assert!(
-            stdout.is_empty(),
-            "serial was written to a file, not stdout"
-        );
-        assert_eq!(
-            fs::read(&serial_path).expect("serial output should exist"),
-            b"R"
-        );
-        let framebuffer = fs::read(&framebuffer_path).expect("framebuffer should exist");
-        assert!(framebuffer.starts_with(b"\x89PNG\r\n\x1A\n"));
-        let decoder = png::Decoder::new(std::io::Cursor::new(&framebuffer));
-        let mut reader = decoder.read_info().expect("PNG should decode");
-        let mut buffer = vec![
-            0;
-            reader
-                .output_buffer_size()
-                .expect("PNG decoder should expose an output buffer size")
-        ];
-        let info = reader
-            .next_frame(&mut buffer)
-            .expect("PNG frame should decode");
-        assert_eq!(info.width, FRAMEBUFFER_WIDTH as u32);
-        assert_eq!(info.height, FRAMEBUFFER_HEIGHT as u32);
-        assert_eq!(info.color_type, png::ColorType::Grayscale);
-        let trace = fs::read_to_string(&trace_path).expect("trace should exist");
-        assert!(trace.contains("t_cycle="));
-
-        let save_key = derive_save_key(&rom_path).expect("save key should derive");
-        let backend = FilesystemCartridgeSaveBackend::new(&save_root);
-        let envelope = backend
-            .load(&save_key)
-            .expect("save should be readable")
-            .expect("save should exist");
-        match envelope.persistent_state {
-            PersistentCartState::NoMbcRam { ram } => assert_eq!(ram[0], 0x5A),
-            other => panic!("expected NoMbcRam persistence, got {other:?}"),
-        }
-
-        let stderr_output = String::from_utf8(stderr).expect("stderr should be UTF-8");
-        assert!(stderr_output.contains("save_writes=1"));
-        assert!(stderr_output.contains("serial_bytes=1"));
-
-        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
-    }
-
-    #[test]
-    fn framebuffer_artifact_defaults_to_pgm_when_path_is_not_png() {
-        let encoded = encode_framebuffer_artifact(Path::new("framebuffer.pgm"), &[0, 1, 2, 3])
-            .expect("PGM encoding should succeed");
-
-        assert!(encoded.starts_with(b"P5\n160 144\n3\n"));
-    }
-}
+mod tests;
