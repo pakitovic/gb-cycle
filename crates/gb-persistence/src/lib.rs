@@ -1132,6 +1132,13 @@ impl<'a> ByteCursor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn assert_round_trip(envelope: CartridgeSaveEnvelope) {
+        let bytes = encode_cartridge_save_envelope(&envelope).expect("encode should succeed");
+        let decoded = decode_cartridge_save_envelope(&bytes).expect("decode should succeed");
+        assert_eq!(decoded, envelope);
+    }
 
     #[test]
     fn save_key_rejects_invalid_characters_and_empty_values() {
@@ -1173,10 +1180,276 @@ mod tests {
             },
         };
 
-        let bytes = encode_cartridge_save_envelope(&envelope).expect("encode should succeed");
-        let decoded = decode_cartridge_save_envelope(&bytes).expect("decode should succeed");
+        assert_round_trip(envelope);
+    }
 
-        assert_eq!(decoded, envelope);
+    #[test]
+    fn round_trip_covers_remaining_profile_and_state_variants() {
+        let profiles_and_states = [
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 11,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: false,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::None,
+                },
+                persistent_state: PersistentCartState::None,
+            },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 12,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: false,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::NonPersistentRam {
+                        ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+                    },
+                },
+                persistent_state: PersistentCartState::NoMbcRam {
+                    ram: vec![0x11, 0x22],
+                },
+            },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 13,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: true,
+                    has_rtc: true,
+                    profile: CartridgePersistenceProfile::PersistentRtc,
+                },
+                persistent_state: PersistentCartState::Mbc3Rtc {
+                    rtc: Mbc3RtcPersistentState {
+                        seconds: 59,
+                        minutes: 58,
+                        hours: 7,
+                        day_counter: 0x81,
+                        halt: false,
+                        carry: true,
+                    },
+                },
+            },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 14,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: true,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::PersistentRam {
+                        ram: CartridgeRamPayloadKind::Linear { byte_len: 3 },
+                    },
+                },
+                persistent_state: PersistentCartState::Mbc3Ram {
+                    ram: vec![0x33, 0x44, 0x55],
+                },
+            },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 15,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: true,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::PersistentRam {
+                        ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+                    },
+                },
+                persistent_state: PersistentCartState::Mbc5Ram {
+                    ram: vec![0x66, 0x77],
+                },
+            },
+        ];
+
+        for envelope in profiles_and_states {
+            assert_round_trip(envelope);
+        }
+
+        let mut rtc_only_state = PersistentCartState::Mbc3Rtc {
+            rtc: Mbc3RtcPersistentState {
+                seconds: 59,
+                minutes: 59,
+                hours: 23,
+                day_counter: 511,
+                halt: false,
+                carry: false,
+            },
+        };
+        apply_elapsed_off_session_seconds(&mut rtc_only_state, 2);
+        assert_eq!(
+            rtc_only_state,
+            PersistentCartState::Mbc3Rtc {
+                rtc: Mbc3RtcPersistentState {
+                    seconds: 1,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 0,
+                    halt: false,
+                    carry: true,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn default_backends_time_sources_and_battery_policy_are_explicit() {
+        let _ = SystemCartridgeSaveTimeSource.now_unix_seconds();
+
+        let empty_backend = InMemoryCartridgeSaveBackend::new();
+        assert!(empty_backend.is_empty());
+
+        let default_backend = InMemoryCartridgeSaveBackend::default();
+        assert_eq!(default_backend.len(), 0);
+
+        assert_eq!(FixedCartridgeSaveTimeSource::new(42).now_unix_seconds(), 42);
+
+        assert!(uses_battery_backed_hardware_persistence(
+            CartridgePersistenceMetadata {
+                has_battery: true,
+                has_rtc: true,
+                profile: CartridgePersistenceProfile::PersistentRtc,
+            }
+        ));
+        assert!(uses_battery_backed_hardware_persistence(
+            CartridgePersistenceMetadata {
+                has_battery: true,
+                has_rtc: false,
+                profile: CartridgePersistenceProfile::PersistentRam {
+                    ram: CartridgeRamPayloadKind::Linear { byte_len: 8 },
+                },
+            }
+        ));
+        assert!(!uses_battery_backed_hardware_persistence(
+            CartridgePersistenceMetadata {
+                has_battery: false,
+                has_rtc: true,
+                profile: CartridgePersistenceProfile::PersistentRtc,
+            }
+        ));
+        assert!(!uses_battery_backed_hardware_persistence(
+            CartridgePersistenceMetadata {
+                has_battery: true,
+                has_rtc: false,
+                profile: CartridgePersistenceProfile::None,
+            }
+        ));
+    }
+
+    #[test]
+    fn display_and_error_sources_are_human_readable() {
+        assert_eq!(
+            CartridgeSaveKeyError::Empty.to_string(),
+            "save key must not be empty"
+        );
+        assert_eq!(
+            CartridgeSaveKeyError::InvalidCharacter {
+                index: 3,
+                character: '/',
+            }
+            .to_string(),
+            "save key contains invalid character `/` at index 3"
+        );
+
+        let io_error = CartridgeSaveBackendError::Io {
+            operation: "read save file",
+            path: PathBuf::from("slot.gbsav"),
+            source: io::Error::other("disk error"),
+        };
+        assert_eq!(io_error.to_string(), "read save file failed for slot.gbsav");
+        assert!(std::error::Error::source(&io_error).is_some());
+
+        let other_backend_errors = [
+            (
+                CartridgeSaveBackendError::InvalidMagic {
+                    actual: *b"BADSAVE!",
+                },
+                "invalid save magic",
+            ),
+            (
+                CartridgeSaveBackendError::UnexpectedEof {
+                    offset: 3,
+                    needed: 4,
+                    remaining: 1,
+                },
+                "unexpected end of save payload at offset 3: needed 4 bytes but only 1 remain",
+            ),
+            (
+                CartridgeSaveBackendError::UnsupportedFormatVersion { version: 7 },
+                "unsupported save format version 7",
+            ),
+            (
+                CartridgeSaveBackendError::UnsupportedRamPayloadKindTag { tag: 0xAA },
+                "unsupported RAM payload kind tag 0xAA",
+            ),
+            (
+                CartridgeSaveBackendError::UnsupportedPersistenceProfileTag { tag: 0xBB },
+                "unsupported persistence profile tag 0xBB",
+            ),
+            (
+                CartridgeSaveBackendError::UnsupportedPersistentStateTag { tag: 0xCC },
+                "unsupported persistent state tag 0xCC",
+            ),
+            (
+                CartridgeSaveBackendError::InvalidBooleanTag {
+                    field: "rtc.halt",
+                    value: 2,
+                },
+                "invalid boolean tag for rtc.halt: 0x02",
+            ),
+            (
+                CartridgeSaveBackendError::LengthOverflow {
+                    field: "MBC2 RAM cell_count",
+                    value: 1usize << 40,
+                },
+                "MBC2 RAM cell_count length 1099511627776 exceeds format capacity",
+            ),
+            (
+                CartridgeSaveBackendError::InvalidMbc2NibbleValue {
+                    index: 7,
+                    value: 0x1F,
+                },
+                "invalid MBC2 nibble value 0x1F at logical cell 7",
+            ),
+            (
+                CartridgeSaveBackendError::TrailingBytes { remaining: 9 },
+                "save payload has 9 trailing bytes",
+            ),
+        ];
+
+        for (error, expected) in other_backend_errors {
+            assert!(error.to_string().contains(expected));
+            assert!(std::error::Error::source(&error).is_none());
+        }
+
+        let backend_error = HardwarePersistenceError::Backend(CartridgeSaveBackendError::Io {
+            operation: "delete save file",
+            path: PathBuf::from("slot.gbsav"),
+            source: io::Error::other("permission denied"),
+        });
+        assert_eq!(
+            backend_error.to_string(),
+            "delete save file failed for slot.gbsav"
+        );
+        assert!(std::error::Error::source(&backend_error).is_some());
+
+        let restore_error =
+            HardwarePersistenceError::Restore(CartridgePersistentStateError::KindMismatch {
+                expected: "MBC1 RAM",
+                actual: "MBC2 RAM",
+            });
+        assert_eq!(
+            restore_error.to_string(),
+            "cartridge restore failed: KindMismatch { expected: \"MBC1 RAM\", actual: \"MBC2 RAM\" }"
+        );
+        assert!(std::error::Error::source(&restore_error).is_none());
     }
 
     #[test]

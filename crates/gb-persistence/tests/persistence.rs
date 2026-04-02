@@ -3,12 +3,12 @@ use gb_core::{
     ConsoleModel, Machine, MachineConfig, Mbc3RtcPersistentState, PersistentCartState,
 };
 use gb_persistence::{
-    CartridgeSaveBackend, CartridgeSaveKey, FilesystemCartridgeSaveBackend,
-    FixedCartridgeSaveTimeSource, HardwarePersistenceActionResult, HardwarePersistenceFlushPolicy,
-    HardwarePersistenceLoadResult, HardwarePersistenceManager, HardwarePersistenceSaveResult,
-    HardwarePersistenceTrigger, InMemoryCartridgeSaveBackend, SAVE_FILE_EXTENSION,
-    load_hardware_cartridge_persistence, save_hardware_cartridge_persistence,
-    uses_battery_backed_hardware_persistence,
+    CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveKey,
+    FilesystemCartridgeSaveBackend, FixedCartridgeSaveTimeSource, HardwarePersistenceActionResult,
+    HardwarePersistenceError, HardwarePersistenceFlushPolicy, HardwarePersistenceLoadResult,
+    HardwarePersistenceManager, HardwarePersistenceSaveResult, HardwarePersistenceTrigger,
+    InMemoryCartridgeSaveBackend, SAVE_FILE_EXTENSION, load_hardware_cartridge_persistence,
+    save_hardware_cartridge_persistence, uses_battery_backed_hardware_persistence,
 };
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -880,4 +880,129 @@ fn manager_accessors_and_load_into_cover_no_save_and_skip_paths() {
 
     let backend = manager.into_backend();
     assert!(backend.is_empty());
+}
+
+#[test]
+fn filesystem_backend_surfaces_targeted_io_failures() {
+    let root = temp_save_root();
+    let key = CartridgeSaveKey::new("io_failures").expect("key should be valid");
+    let occupied_root = root.join("occupied");
+    fs::write(&occupied_root, b"not a directory").expect("occupied file should be creatable");
+
+    let mut occupied_backend = FilesystemCartridgeSaveBackend::new(occupied_root.as_path());
+    let _ = occupied_backend.current_unix_seconds();
+
+    let load_error = occupied_backend
+        .load(&key)
+        .expect_err("load should surface path errors");
+    assert!(matches!(
+        load_error,
+        CartridgeSaveBackendError::Io {
+            operation: "read save file",
+            ..
+        }
+    ));
+
+    let delete_error = occupied_backend
+        .delete(&key)
+        .expect_err("delete should surface path errors");
+    assert!(matches!(
+        delete_error,
+        CartridgeSaveBackendError::Io {
+            operation: "delete save file",
+            ..
+        }
+    ));
+
+    let source = load_cartridge(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+    let stale_key = CartridgeSaveKey::new("stale_backup_cleanup").expect("key should be valid");
+    let mut stale_backend = FilesystemCartridgeSaveBackend::with_time_source(
+        root.as_path(),
+        FixedCartridgeSaveTimeSource::new(1_001),
+    );
+    let stale_save_path = stale_backend.path_for_key(&stale_key);
+    let stale_backup_path = PathBuf::from(format!("{}.bak", stale_save_path.display()));
+    fs::create_dir_all(&stale_backup_path).expect("backup directory should be creatable");
+
+    let stale_backup_error = stale_backend
+        .save(
+            &stale_key,
+            source.persistence_metadata(),
+            &source.persistent_state(),
+        )
+        .expect_err("save should reject stale backup paths that are not files");
+    assert!(matches!(
+        stale_backup_error,
+        CartridgeSaveBackendError::Io {
+            operation: "remove stale backup save file",
+            ..
+        }
+    ));
+    fs::remove_dir_all(&stale_backup_path).expect("backup directory should be removable");
+
+    let temp_key = CartridgeSaveKey::new("temp_create_failure").expect("key should be valid");
+    let mut temp_backend = FilesystemCartridgeSaveBackend::with_time_source(
+        root.as_path(),
+        FixedCartridgeSaveTimeSource::new(1_002),
+    );
+    let temp_save_path = temp_backend.path_for_key(&temp_key);
+    let temp_path = PathBuf::from(format!("{}.tmp", temp_save_path.display()));
+    fs::create_dir_all(&temp_path).expect("temporary directory should be creatable");
+
+    let create_temp_error = temp_backend
+        .save(
+            &temp_key,
+            source.persistence_metadata(),
+            &source.persistent_state(),
+        )
+        .expect_err("save should fail when the temporary path is already a directory");
+    assert!(matches!(
+        create_temp_error,
+        CartridgeSaveBackendError::Io {
+            operation: "create temporary save file",
+            ..
+        }
+    ));
+
+    fs::remove_dir_all(root).expect("temp save root should be removable");
+}
+
+#[test]
+fn manager_backend_mut_can_seed_saves_and_surface_restore_failures() {
+    let key = CartridgeSaveKey::new("restore_failure").expect("key should be valid");
+    let backend =
+        InMemoryCartridgeSaveBackend::with_time_source(FixedCartridgeSaveTimeSource::new(1_200));
+    let mut manager = HardwarePersistenceManager::new(
+        backend,
+        key.clone(),
+        HardwarePersistenceFlushPolicy::Manual,
+    );
+
+    let mut source = load_cartridge(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+    source.write_rom(0x0000, 0x0A);
+    source.write_ram(0xA000, 0x0D);
+    source.write_rom(0x0000, 0x00);
+
+    manager
+        .backend_mut()
+        .save(
+            &key,
+            source.persistence_metadata(),
+            &source.persistent_state(),
+        )
+        .expect("manual backend seeding should succeed");
+    assert_eq!(manager.backend().len(), 1);
+
+    let mut incompatible_target = load_cartridge(build_banked_mbc1_rom(0x03, 0x03, 0x03));
+    let error = manager
+        .load_into(&mut incompatible_target)
+        .expect_err("restore should reject a mismatched persistent state kind");
+    assert!(matches!(
+        error,
+        HardwarePersistenceError::Restore(
+            gb_core::CartridgePersistentStateError::KindMismatch { .. }
+        )
+    ));
+    assert!(format!("{error}").contains("cartridge restore failed"));
+    assert!(std::error::Error::source(&error).is_none());
 }
