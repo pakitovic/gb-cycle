@@ -644,6 +644,12 @@ fn derive_save_key(rom_path: &Path) -> Result<CartridgeSaveKey, DesktopConfigErr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+    use std::error::Error as _;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     #[test]
     fn default_desktop_config_matches_the_dmg_interactive_baseline() {
@@ -743,5 +749,203 @@ mod tests {
         assert_eq!(keyboard.hotkeys.toggle_fullscreen, DesktopKey::F11);
         assert_eq!(keyboard.hotkeys.toggle_performance_hud, DesktopKey::F10);
         assert_eq!(keyboard.hotkeys.save_battery, DesktopKey::F5);
+    }
+
+    #[test]
+    fn console_model_helpers_cover_all_supported_dmg_family_variants() {
+        assert_eq!(
+            DesktopConsoleModel::Dmg0.console_model(),
+            ConsoleModel::Dmg0
+        );
+        assert_eq!(DesktopConsoleModel::Dmg.console_model(), ConsoleModel::Dmg);
+        assert_eq!(DesktopConsoleModel::Mgb.console_model(), ConsoleModel::Mgb);
+        assert_eq!(DesktopConsoleModel::Dmg0.boot_rom_kind(), BootRomKind::Dmg0);
+        assert_eq!(DesktopConsoleModel::Dmg.boot_rom_kind(), BootRomKind::Dmg);
+        assert_eq!(DesktopConsoleModel::Mgb.boot_rom_kind(), BootRomKind::Mgb);
+        assert_eq!(DesktopConsoleModel::Dmg0.name(), "dmg0");
+        assert_eq!(DesktopConsoleModel::Dmg.name(), "dmg");
+        assert_eq!(DesktopConsoleModel::Mgb.name(), "mgb");
+    }
+
+    #[test]
+    fn save_flush_policy_helpers_match_runtime_expectations() {
+        assert!(!DesktopSaveFlushPolicy::Manual.flush_on_close());
+        assert!(!DesktopSaveFlushPolicy::Manual.flush_each_frame_boundary());
+        assert_eq!(DesktopSaveFlushPolicy::Manual.debounce_window(), None);
+
+        assert!(DesktopSaveFlushPolicy::OnClose.flush_on_close());
+        assert!(!DesktopSaveFlushPolicy::OnClose.flush_each_frame_boundary());
+
+        assert!(DesktopSaveFlushPolicy::OnWrite.flush_on_close());
+        assert!(DesktopSaveFlushPolicy::OnWrite.flush_each_frame_boundary());
+        assert_eq!(DesktopSaveFlushPolicy::OnWrite.debounce_window(), None);
+
+        assert!(DesktopSaveFlushPolicy::Debounced.flush_on_close());
+        assert!(DesktopSaveFlushPolicy::Debounced.flush_each_frame_boundary());
+        assert_eq!(
+            DesktopSaveFlushPolicy::Debounced.debounce_window(),
+            Some(DEFAULT_SAVE_FLUSH_DEBOUNCE)
+        );
+    }
+
+    #[test]
+    fn save_options_cover_disabled_custom_and_explicit_key_paths() {
+        let rom_path = Path::new("/tmp/roms/Tetris.gb");
+        let disabled = SaveOptions {
+            enabled: false,
+            ..SaveOptions::default()
+        };
+        assert_eq!(disabled.resolve_directory(rom_path), None);
+        assert_eq!(
+            disabled
+                .resolve_key(rom_path)
+                .expect("disabled saves should not error"),
+            None
+        );
+
+        let explicit_key = CartridgeSaveKey::new("tetris".to_string())
+            .expect("explicit save keys in tests should be valid");
+        let custom = SaveOptions {
+            directory_policy: SaveDirectoryPolicy::Custom(PathBuf::from("/tmp/custom-saves")),
+            key_policy: SaveKeyPolicy::Explicit(explicit_key.clone()),
+            ..SaveOptions::default()
+        };
+        assert_eq!(
+            custom.resolve_directory(rom_path),
+            Some(PathBuf::from("/tmp/custom-saves"))
+        );
+        assert_eq!(
+            custom
+                .resolve_key(rom_path)
+                .expect("explicit save keys should resolve")
+                .expect("saves are enabled"),
+            explicit_key
+        );
+    }
+
+    #[test]
+    fn input_helpers_cover_face_layout_preferred_gamepads_and_direction_sources() {
+        let mut bindings = GamepadButtonBindings::default();
+        bindings.apply_face_layout(GamepadFaceLayout::SouthAEastB);
+        assert_eq!(bindings.a, GamepadButtonBinding::South);
+        assert_eq!(bindings.b, GamepadButtonBinding::East);
+
+        assert!(!PreferredGamepadIdentity::default().is_configured());
+        assert!(
+            PreferredGamepadIdentity {
+                path: Some("/dev/input/js0".to_string()),
+                name: None,
+            }
+            .is_configured()
+        );
+
+        assert!(GamepadDirectionalSource::DpadOnly.uses_dpad());
+        assert!(!GamepadDirectionalSource::DpadOnly.uses_left_stick());
+        assert!(!GamepadDirectionalSource::LeftStickOnly.uses_dpad());
+        assert!(GamepadDirectionalSource::LeftStickOnly.uses_left_stick());
+        assert!(GamepadDirectionalSource::DpadAndLeftStick.uses_dpad());
+        assert!(GamepadDirectionalSource::DpadAndLeftStick.uses_left_stick());
+    }
+
+    #[test]
+    fn boot_rom_options_cover_default_custom_and_skip_boot_loading() {
+        let mut options = BootRomOptions::default();
+        assert_eq!(
+            options.resolved_search_path(),
+            PathBuf::from(DEFAULT_BOOT_ROM_DIR)
+        );
+
+        options.search_path = Some(PathBuf::from("/tmp/firmware"));
+        assert_eq!(
+            options.resolved_search_path(),
+            PathBuf::from("/tmp/firmware")
+        );
+
+        assert!(
+            options
+                .load_assets(StartupMode::SkipBoot, BootRomKind::Dmg)
+                .expect("skip-boot should not attempt to read firmware")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn boot_rom_options_can_load_a_single_exact_image_file() {
+        let root = temp_root("boot-options");
+        let image_path = root.join("dmg_boot.bin");
+        fs::write(&image_path, vec![0x11; 0x100]).expect("test boot ROM image should be writable");
+
+        let options = BootRomOptions {
+            search_path: Some(image_path.clone()),
+            verification: BootRomVerificationMode::Off,
+        };
+        let assets = options
+            .load_assets(StartupMode::RealBoot, BootRomKind::Dmg)
+            .expect("exact boot ROM file should load");
+        assert_eq!(assets.read_byte(BootRomKind::Dmg, 0), Some(0x11));
+
+        fs::remove_dir_all(root).expect("temp boot ROM root should be removable");
+    }
+
+    #[test]
+    fn derive_save_key_rejects_paths_without_any_usable_key_material() {
+        let error = derive_save_key(Path::new("/tmp/roms/..."))
+            .expect_err("all-punctuation stems should be rejected");
+        assert!(matches!(
+            error,
+            DesktopConfigError::SaveKeyDerivationEmpty { .. }
+        ));
+    }
+
+    #[test]
+    fn desktop_config_error_helpers_cover_conversion_display_and_sources() {
+        let boot_error = DesktopConfigError::from(BootRomAssetError::DirectoryNotFound {
+            path: PathBuf::from("/tmp/missing-bootrom"),
+        });
+        assert!(boot_error.to_string().contains("/tmp/missing-bootrom"));
+        assert!(boot_error.source().is_some());
+
+        let save_key_error = CartridgeSaveKey::new("contains spaces".to_string())
+            .expect_err("invalid save keys should fail validation");
+        let save_error = DesktopConfigError::from(save_key_error);
+        assert!(save_error.source().is_some());
+        assert!(!save_error.to_string().is_empty());
+
+        let derived = DesktopConfigError::SaveKeyDerivationEmpty {
+            rom_path: PathBuf::from("/tmp/roms/..."),
+        };
+        assert!(derived.to_string().contains("explicit save key"));
+        assert!(derived.source().is_none());
+    }
+
+    #[test]
+    fn launch_option_helpers_cover_strict_and_experimental_compatibility_modes() {
+        let strict = LaunchOptions {
+            execution_mode: ExecutionMode::Strict,
+            ..LaunchOptions::default()
+        };
+        assert_eq!(strict.compatibility_policy(), CompatibilityPolicy::strict());
+
+        let experimental = LaunchOptions {
+            execution_mode: ExecutionMode::Experimental,
+            ..LaunchOptions::default()
+        };
+        assert_eq!(
+            experimental.compatibility_policy(),
+            CompatibilityPolicy::experimental()
+        );
+    }
+
+    fn temp_root(label: &str) -> PathBuf {
+        let id = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = env::temp_dir().join(format!(
+            "gb-cycle-config-tests-{label}-{}-{id}",
+            std::process::id()
+        ));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale config temp root should be removable");
+        }
+        fs::create_dir_all(&root).expect("config temp root should be creatable");
+        root
     }
 }

@@ -571,4 +571,383 @@ mod tests {
 
         assert_eq!(options.config.video.window_scale, 3);
     }
+
+    #[test]
+    fn help_text_lists_host_boot_audio_and_input_overrides() {
+        let text = help_text();
+
+        assert!(text.contains("Usage:"));
+        assert!(text.contains("--boot-rom-dir <dir>"));
+        assert!(text.contains("--save-key <key>"));
+        assert!(text.contains("--fullscreen"));
+        assert!(text.contains("--mute"));
+        assert!(text.contains("--gamepad-preferred-path <path>"));
+        assert!(text.contains("GB_CYCLE_DESKTOP_SETTINGS_PATH"));
+    }
+
+    #[test]
+    fn parse_supports_model_boot_save_and_video_overrides() {
+        let action = parse_cli_arguments([
+            "demo.gb",
+            "--model",
+            "dmg0",
+            "--mode",
+            "experimental",
+            "--boot-rom-dir",
+            "firmware",
+            "--boot-rom-verify",
+            "warn",
+            "--save-dir",
+            "saves",
+            "--save-key",
+            "slot_1",
+            "--fullscreen",
+            "--no-vsync",
+            "--mute",
+        ])
+        .expect("host overrides should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+
+        assert_eq!(options.rom_path, Some(PathBuf::from("demo.gb")));
+        assert_eq!(
+            options.config.launch.console_model,
+            DesktopConsoleModel::Dmg0
+        );
+        assert_eq!(
+            options.config.launch.execution_mode,
+            ExecutionMode::Experimental
+        );
+        assert_eq!(
+            options.config.boot_rom.search_path,
+            Some(PathBuf::from("firmware"))
+        );
+        assert_eq!(
+            options.config.boot_rom.verification,
+            BootRomVerificationMode::Warn
+        );
+        assert_eq!(
+            options.config.saves.directory_policy,
+            SaveDirectoryPolicy::Custom(PathBuf::from("saves"))
+        );
+        let SaveKeyPolicy::Explicit(save_key) = &options.config.saves.key_policy else {
+            panic!("expected an explicit save key override");
+        };
+        assert_eq!(save_key.as_str(), "slot_1");
+        assert!(options.config.video.fullscreen);
+        assert!(!options.config.video.vsync);
+        assert_eq!(
+            options.config.audio,
+            AudioOptions {
+                enabled: false,
+                ..DesktopConfig::default().audio
+            }
+        );
+    }
+
+    #[test]
+    fn parse_supports_help_and_remaining_directional_gamepad_bindings() {
+        assert_eq!(parse_cli_arguments(["--help"]), Ok(CliAction::ShowHelp));
+        assert_eq!(parse_cli_arguments(["-h"]), Ok(CliAction::ShowHelp));
+
+        let action = parse_cli_arguments([
+            "demo.gb",
+            "--gamepad-bind-up",
+            "south",
+            "--gamepad-bind-down",
+            "dpad-down",
+            "--gamepad-bind-left",
+            "dpad-left",
+            "--gamepad-bind-right",
+            "back",
+        ])
+        .expect("remaining directional bindings should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+
+        assert_eq!(
+            options.config.input.gamepad.bindings.up,
+            GamepadButtonBinding::South
+        );
+        assert_eq!(
+            options.config.input.gamepad.bindings.down,
+            GamepadButtonBinding::DPadDown
+        );
+        assert_eq!(
+            options.config.input.gamepad.bindings.left,
+            GamepadButtonBinding::DPadLeft
+        );
+        assert_eq!(
+            options.config.input.gamepad.bindings.right,
+            GamepadButtonBinding::Back
+        );
+    }
+
+    #[test]
+    fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
+        assert_eq!(parse_console_model("dmg0"), Ok(DesktopConsoleModel::Dmg0));
+        assert_eq!(parse_console_model("dmg"), Ok(DesktopConsoleModel::Dmg));
+        assert_eq!(parse_console_model("mgb"), Ok(DesktopConsoleModel::Mgb));
+        assert!(parse_console_model("cgb").is_err());
+
+        assert_eq!(parse_startup_mode("skip-boot"), Ok(StartupMode::SkipBoot));
+        assert_eq!(parse_startup_mode("real-boot"), Ok(StartupMode::RealBoot));
+        assert!(parse_startup_mode("warm-boot").is_err());
+
+        assert_eq!(parse_execution_mode("strict"), Ok(ExecutionMode::Strict));
+        assert_eq!(
+            parse_execution_mode("permissive"),
+            Ok(ExecutionMode::Permissive)
+        );
+        assert_eq!(
+            parse_execution_mode("experimental"),
+            Ok(ExecutionMode::Experimental)
+        );
+        assert!(parse_execution_mode("fast").is_err());
+
+        assert_eq!(
+            parse_boot_rom_verification_mode("off"),
+            Ok(BootRomVerificationMode::Off)
+        );
+        assert_eq!(
+            parse_boot_rom_verification_mode("warn"),
+            Ok(BootRomVerificationMode::Warn)
+        );
+        assert_eq!(
+            parse_boot_rom_verification_mode("strict"),
+            Ok(BootRomVerificationMode::Strict)
+        );
+        assert!(parse_boot_rom_verification_mode("lenient").is_err());
+    }
+
+    #[test]
+    fn cli_value_parsers_cover_save_policy_direction_source_and_face_layout() {
+        assert_eq!(
+            parse_save_policy("manual"),
+            Ok(DesktopSaveFlushPolicy::Manual)
+        );
+        assert_eq!(
+            parse_save_policy("on-close"),
+            Ok(DesktopSaveFlushPolicy::OnClose)
+        );
+        assert_eq!(
+            parse_save_policy("on-write"),
+            Ok(DesktopSaveFlushPolicy::OnWrite)
+        );
+        assert_eq!(
+            parse_save_policy("debounced"),
+            Ok(DesktopSaveFlushPolicy::Debounced)
+        );
+        assert!(parse_save_policy("later").is_err());
+
+        assert_eq!(
+            parse_gamepad_directional_source("dpad-only"),
+            Ok(GamepadDirectionalSource::DpadOnly)
+        );
+        assert_eq!(
+            parse_gamepad_directional_source("left-stick"),
+            Ok(GamepadDirectionalSource::LeftStickOnly)
+        );
+        assert_eq!(
+            parse_gamepad_directional_source("both"),
+            Ok(GamepadDirectionalSource::DpadAndLeftStick)
+        );
+        assert!(parse_gamepad_directional_source("stick-only").is_err());
+
+        assert_eq!(
+            parse_gamepad_face_layout("east-a"),
+            Ok(GamepadFaceLayout::EastASouthB)
+        );
+        assert_eq!(
+            parse_gamepad_face_layout("south-a"),
+            Ok(GamepadFaceLayout::SouthAEastB)
+        );
+        assert!(parse_gamepad_face_layout("north-a").is_err());
+    }
+
+    #[test]
+    fn gamepad_binding_parsers_cover_supported_buttons_and_slots() {
+        assert_eq!(
+            parse_gamepad_button_binding("south"),
+            Ok(GamepadButtonBinding::South)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("east"),
+            Ok(GamepadButtonBinding::East)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("back"),
+            Ok(GamepadButtonBinding::Back)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("start"),
+            Ok(GamepadButtonBinding::Start)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("guide"),
+            Ok(GamepadButtonBinding::Guide)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("dpad-up"),
+            Ok(GamepadButtonBinding::DPadUp)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("dpad-down"),
+            Ok(GamepadButtonBinding::DPadDown)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("dpad-left"),
+            Ok(GamepadButtonBinding::DPadLeft)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("left-stick-click"),
+            Ok(GamepadButtonBinding::LeftStickClick)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("right-stick-click"),
+            Ok(GamepadButtonBinding::RightStickClick)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("dpad-right"),
+            Ok(GamepadButtonBinding::DPadRight)
+        );
+        assert_eq!(
+            parse_gamepad_button_binding("misc1"),
+            Ok(GamepadButtonBinding::Misc1)
+        );
+        assert!(parse_gamepad_button_binding("touchpad").is_err());
+
+        let mut bindings = GamepadButtonBindings::default();
+        apply_gamepad_binding_override(&mut bindings, "up", GamepadButtonBinding::North)
+            .expect("known slots should update");
+        apply_gamepad_binding_override(&mut bindings, "down", GamepadButtonBinding::South)
+            .expect("known slots should update");
+        apply_gamepad_binding_override(&mut bindings, "left", GamepadButtonBinding::Back)
+            .expect("known slots should update");
+        apply_gamepad_binding_override(&mut bindings, "right", GamepadButtonBinding::Guide)
+            .expect("known slots should update");
+        apply_gamepad_binding_override(&mut bindings, "start", GamepadButtonBinding::Guide)
+            .expect("known slots should update");
+        assert_eq!(bindings.up, GamepadButtonBinding::North);
+        assert_eq!(bindings.down, GamepadButtonBinding::South);
+        assert_eq!(bindings.left, GamepadButtonBinding::Back);
+        assert_eq!(bindings.right, GamepadButtonBinding::Guide);
+        assert_eq!(bindings.start, GamepadButtonBinding::Guide);
+        assert!(
+            apply_gamepad_binding_override(&mut bindings, "shoulder", GamepadButtonBinding::West)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn text_and_numeric_parsers_trim_and_validate_user_input() {
+        assert_eq!(
+            parse_non_empty_text("--gamepad-preferred-name", "  Switch Pro  "),
+            Ok("Switch Pro".to_string())
+        );
+        assert!(parse_non_empty_text("--save-key", "   ").is_err());
+
+        assert_eq!(parse_positive_u8("--scale", "6"), Ok(6));
+        assert!(parse_positive_u8("--scale", "0").is_err());
+        assert!(parse_positive_u8("--scale", "wide").is_err());
+
+        assert_eq!(
+            parse_save_key("SAVE_SLOT_1")
+                .expect("valid cartridge save keys should parse")
+                .as_str(),
+            "SAVE_SLOT_1"
+        );
+        assert!(parse_save_key("contains spaces").is_err());
+    }
+
+    #[test]
+    fn cli_reports_missing_values_unknown_options_and_extra_positional_arguments() {
+        assert_eq!(
+            parse_cli_arguments(["--model"]).expect_err("missing values should fail"),
+            "--model requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--mode"]).expect_err("missing mode values should fail"),
+            "--mode requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--boot-rom-dir"])
+                .expect_err("missing boot ROM directory values should fail"),
+            "--boot-rom-dir requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--save-key"]).expect_err("missing save-key values should fail"),
+            "--save-key requires a value"
+        );
+        assert!(parse_cli_arguments(["--mystery"]).is_err());
+        assert!(parse_cli_arguments(["first.gb", "second.gb"]).is_err());
+    }
+
+    #[test]
+    fn cli_reports_remaining_missing_values_and_invalid_flag_inputs() {
+        assert_eq!(
+            parse_cli_arguments(["--startup"]).expect_err("missing startup values should fail"),
+            "--startup requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--boot-rom-verify"])
+                .expect_err("missing boot ROM verification values should fail"),
+            "--boot-rom-verify requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--save-dir"]).expect_err("missing save-dir values should fail"),
+            "--save-dir requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--save-policy"])
+                .expect_err("missing save-policy values should fail"),
+            "--save-policy requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--scale"]).expect_err("missing scale values should fail"),
+            "--scale requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--gamepad-direction"])
+                .expect_err("missing gamepad direction values should fail"),
+            "--gamepad-direction requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--gamepad-face-layout"])
+                .expect_err("missing face-layout values should fail"),
+            "--gamepad-face-layout requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--gamepad-preferred-name"])
+                .expect_err("missing preferred-name values should fail"),
+            "--gamepad-preferred-name requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--gamepad-preferred-path"])
+                .expect_err("missing preferred-path values should fail"),
+            "--gamepad-preferred-path requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--gamepad-bind-a"])
+                .expect_err("missing gamepad binding values should fail"),
+            "--gamepad-bind-a requires a value"
+        );
+
+        assert!(parse_cli_arguments(["--model", "cgb"]).is_err());
+        assert!(parse_cli_arguments(["--startup", "warm-boot"]).is_err());
+        assert!(parse_cli_arguments(["--mode", "fast"]).is_err());
+        assert!(parse_cli_arguments(["--boot-rom-verify", "lenient"]).is_err());
+        assert!(parse_cli_arguments(["--save-key", "contains spaces"]).is_err());
+        assert!(parse_cli_arguments(["--save-policy", "later"]).is_err());
+        assert!(parse_cli_arguments(["--scale", "0"]).is_err());
+        assert!(parse_cli_arguments(["--gamepad-direction", "stick-only"]).is_err());
+        assert!(parse_cli_arguments(["--gamepad-face-layout", "north-a"]).is_err());
+        assert!(parse_cli_arguments(["--gamepad-preferred-name", "   "]).is_err());
+        assert!(parse_cli_arguments(["--gamepad-preferred-path", "   "]).is_err());
+        assert!(parse_cli_arguments(["--gamepad-bind-a", "touchpad"]).is_err());
+    }
 }

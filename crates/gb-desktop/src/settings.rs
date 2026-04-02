@@ -290,6 +290,16 @@ impl DesktopSettingsStore {
     }
 }
 
+#[cfg(test)]
+impl DesktopSettingsStore {
+    pub(crate) fn new_for_tests(path: PathBuf) -> Self {
+        Self {
+            path: Some(path),
+            settings: PersistedDesktopSettings::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 struct PersistedDesktopSettings {
@@ -706,7 +716,10 @@ mod tests {
         SaveDirectoryPolicy, VideoOptions,
     };
     use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn explicit_settings_path_override_wins_over_platform_defaults() {
@@ -866,6 +879,40 @@ mod tests {
             }
         );
         assert!(store.recent_roms().is_empty());
+    }
+
+    #[test]
+    fn settings_store_load_uses_the_env_override_and_defaults_missing_files() {
+        let _lock = ENV_LOCK.lock().expect("env lock should not be poisoned");
+        let path = unique_test_path("load-env-override");
+        let settings = PersistedDesktopSettings {
+            recent_roms: vec![PathBuf::from("/tmp/roms/Kirby.gb")],
+            last_open_directory: Some(PathBuf::from("/tmp/roms")),
+            ..PersistedDesktopSettings::default()
+        };
+        settings
+            .save(&path)
+            .expect("settings file should be writable through the env override");
+
+        unsafe {
+            std::env::set_var(DESKTOP_SETTINGS_PATH_ENV_VAR, &path);
+        }
+        let loaded = DesktopSettingsStore::load().expect("settings store should load from env");
+        assert_eq!(loaded.last_open_directory(), Some(Path::new("/tmp/roms")));
+        assert_eq!(loaded.recent_roms(), &[PathBuf::from("/tmp/roms/Kirby.gb")]);
+
+        let missing_path = unique_test_path("load-missing-env-override");
+        unsafe {
+            std::env::set_var(DESKTOP_SETTINGS_PATH_ENV_VAR, &missing_path);
+        }
+        let missing =
+            DesktopSettingsStore::load().expect("missing env-backed settings should default");
+        assert_eq!(missing.last_open_directory(), None);
+        assert!(missing.recent_roms().is_empty());
+
+        unsafe {
+            std::env::remove_var(DESKTOP_SETTINGS_PATH_ENV_VAR);
+        }
     }
 
     #[test]
@@ -1140,6 +1187,88 @@ mod tests {
         assert_eq!(
             DESKTOP_SETTINGS_PATH_ENV_VAR,
             "GB_CYCLE_DESKTOP_SETTINGS_PATH"
+        );
+    }
+
+    #[test]
+    fn persisted_conversion_helpers_round_trip_external_values() {
+        assert_eq!(
+            PersistedSaveDirectoryPolicy::from_external(&SaveDirectoryPolicy::Custom(
+                PathBuf::from("/tmp/saves")
+            ))
+            .to_external(),
+            SaveDirectoryPolicy::Custom(PathBuf::from("/tmp/saves"))
+        );
+        assert_eq!(
+            PersistedDesktopConsoleModel::from_external(gb_desktop::DesktopConsoleModel::Mgb)
+                .to_external(),
+            gb_desktop::DesktopConsoleModel::Mgb
+        );
+        assert_eq!(
+            PersistedStartupMode::from_external(StartupMode::RealBoot).to_external(),
+            StartupMode::RealBoot
+        );
+        assert_eq!(
+            PersistedExecutionMode::from_external(ExecutionMode::Experimental).to_external(),
+            ExecutionMode::Experimental
+        );
+        assert_eq!(
+            PersistedBootRomVerificationMode::from_external(
+                gb_desktop::BootRomVerificationMode::Warn
+            )
+            .to_external(),
+            gb_desktop::BootRomVerificationMode::Warn
+        );
+    }
+
+    #[test]
+    fn persisted_audio_settings_rebuild_audio_options() {
+        let audio = PersistedAudioSettings {
+            enabled: false,
+            volume_percent: 75,
+            output_sample_rate_hz: 44_100,
+            buffer_frames: 256,
+            muted: true,
+        };
+
+        assert_eq!(
+            audio.audio_options(),
+            gb_desktop::AudioOptions {
+                enabled: false,
+                volume_percent: 75,
+                output_sample_rate_hz: 44_100,
+                buffer_frames: 256,
+            }
+        );
+    }
+
+    #[test]
+    fn store_exposes_last_open_directory_and_gamepad_binding_updates() {
+        let path = unique_test_path("gamepad-bindings");
+        let mut store = DesktopSettingsStore {
+            path: Some(path.clone()),
+            settings: PersistedDesktopSettings::default(),
+        };
+        let bindings = gb_desktop::GamepadButtonBindings {
+            a: GamepadButtonBinding::North,
+            ..gb_desktop::GamepadButtonBindings::default()
+        };
+
+        store
+            .set_gamepad_bindings(bindings)
+            .expect("gamepad bindings should persist");
+        store
+            .remember_loaded_rom(Path::new("/tmp/roms/Alleyway.gb"))
+            .expect("loaded ROM should update the last open directory");
+
+        assert_eq!(store.last_open_directory(), Some(Path::new("/tmp/roms")));
+
+        let reloaded =
+            PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+        assert_eq!(reloaded.input.gamepad.bindings, bindings);
+        assert_eq!(
+            reloaded.last_open_directory,
+            Some(PathBuf::from("/tmp/roms"))
         );
     }
 

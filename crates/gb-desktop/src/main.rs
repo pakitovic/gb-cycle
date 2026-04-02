@@ -42,10 +42,13 @@ use sdl3::sys;
 use sdl3::video::{FullscreenType, Window};
 use settings::DesktopSettingsStore;
 use std::env;
+use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -76,6 +79,32 @@ const BOOT_ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
         pattern: "*",
     },
 ];
+
+#[cfg(test)]
+fn sdl_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[cfg(test)]
+fn lock_sdl_test() -> std::sync::MutexGuard<'static, ()> {
+    match sdl_test_lock().lock() {
+        Ok(guard) => guard,
+        Err(poison) => poison.into_inner(),
+    }
+}
+
+#[cfg(test)]
+fn configure_headless_sdl() {
+    // SAFETY: SDL tests in this binary serialize environment mutation through `sdl_test_lock`.
+    unsafe {
+        env::set_var("SDL_VIDEODRIVER", "dummy");
+        env::set_var("SDL_AUDIODRIVER", "dummy");
+    }
+    let _ = hint::set("SDL_VIDEO_DRIVER", "dummy");
+    let _ = hint::set("SDL_AUDIO_DRIVER", "dummy");
+    let _ = hint::set("SDL_AUDIO_DUMMY_TIMESCALE", "0");
+}
 
 enum LoopSignal {
     Continue,
@@ -135,18 +164,29 @@ impl DesktopSession {
     }
 
     fn rom_path(&self) -> Option<&Path> {
-        self.loaded_rom.as_ref().map(|rom| rom.path.as_path())
+        match self.loaded_rom.as_ref() {
+            Some(rom) => Some(rom.path.as_path()),
+            None => None,
+        }
     }
 
     fn rom_bytes(&self) -> Option<&[u8]> {
-        self.loaded_rom.as_ref().map(|rom| rom.bytes.as_slice())
+        match self.loaded_rom.as_ref() {
+            Some(rom) => Some(rom.bytes.as_slice()),
+            None => None,
+        }
     }
 
     fn rom_directory_hint(&self) -> &Path {
-        self.rom_path()
-            .and_then(Path::parent)
-            .or(self.last_open_directory.as_deref())
-            .unwrap_or(self.current_dir.as_path())
+        if let Some(rom_path) = self.rom_path()
+            && let Some(parent) = rom_path.parent()
+        {
+            return parent;
+        }
+        if let Some(last_open_directory) = self.last_open_directory.as_deref() {
+            return last_open_directory;
+        }
+        self.current_dir.as_path()
     }
 
     fn recent_roms(&self) -> &[PathBuf] {
@@ -192,16 +232,18 @@ impl PathSelectionDialog {
         }
 
         let sender = self.sender.clone();
-        show_open_file_dialog(
-            filters,
-            Some(default_location),
-            false,
-            window,
-            Box::new(move |result, _| {
-                let _ = sender.send(map_path_dialog_result(result));
-            }),
-        )
-        .map_err(|error| format!("failed to show SDL3 open file dialog: {error}"))?;
+        map_display_result(
+            show_open_file_dialog(
+                filters,
+                Some(default_location),
+                false,
+                window,
+                Box::new(move |result, _| {
+                    let _ = sender.send(map_path_dialog_result(result));
+                }),
+            ),
+            "failed to show SDL3 open file dialog",
+        )?;
         self.pending = true;
         Ok(())
     }
@@ -341,9 +383,10 @@ impl PerformanceCounter {
         let snapshot = self
             .hud_snapshot
             .expect("performance HUD snapshot should exist after at least one frame");
-        window
-            .set_title(&performance_window_title(&self.base_title, snapshot))
-            .map_err(|error| format!("failed to update SDL3 window title: {error}"))?;
+        map_display_result(
+            window.set_title(&performance_window_title(&self.base_title, snapshot)),
+            "failed to update SDL3 window title",
+        )?;
 
         self.reset_sample();
 
@@ -354,9 +397,10 @@ impl PerformanceCounter {
         self.base_title = base_title;
         self.hud_snapshot = None;
         self.reset_sample();
-        window
-            .set_title(&self.base_title)
-            .map_err(|error| format!("failed to update SDL3 window title: {error}"))
+        map_display_result(
+            window.set_title(&self.base_title),
+            "failed to update SDL3 window title",
+        )
     }
 
     fn hud_snapshot(&self) -> Option<PerformanceHudSnapshot> {
@@ -419,6 +463,32 @@ fn show_message_box(window: Option<&Window>, flags: MessageBoxFlag, title: &str,
     }
 }
 
+fn map_display_result<T, E>(result: Result<T, E>, context: &str) -> Result<T, String>
+where
+    E: Display,
+{
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => Err(format_display_error(context, &error.to_string())),
+    }
+}
+
+fn format_display_error(context: &str, error: &str) -> String {
+    format!("{context}: {error}")
+}
+
+fn format_debug_error(context: &str, error: &str) -> String {
+    format!("{context}: {error}")
+}
+
+fn format_path_error(context: &str, path: &Path, error: &str) -> String {
+    format!("{context} {}: {error}", path.display())
+}
+
+fn overflow_error(message: &str) -> String {
+    message.to_string()
+}
+
 fn emulation_paused(machine: &Machine<TraceSummaryBuffer>, runtime: &FrontendRuntime) -> bool {
     machine.cartridge().is_empty() || runtime.paused || runtime.menu_state.is_open()
 }
@@ -466,13 +536,13 @@ fn run_desktop(
     options: DesktopRunOptions,
     mut settings_store: DesktopSettingsStore,
 ) -> Result<(), String> {
-    let current_dir = env::current_dir()
-        .map_err(|error| format!("failed to determine current directory: {error}"))?;
+    let current_dir =
+        map_display_result(env::current_dir(), "failed to determine current directory")?;
     let loaded_rom = load_initial_rom(&options, &current_dir)?;
-    let last_open_directory = loaded_rom
-        .as_ref()
-        .and_then(|rom| rom.path.parent().map(Path::to_path_buf))
-        .or_else(|| settings_store.last_open_directory().map(Path::to_path_buf));
+    let last_open_directory = match loaded_rom.as_ref() {
+        Some(rom) => rom.path.parent().map(Path::to_path_buf),
+        None => settings_store.last_open_directory().map(Path::to_path_buf),
+    };
     let mut session = DesktopSession {
         config: options.config,
         current_dir,
@@ -501,12 +571,11 @@ fn run_desktop(
         let _ = hint::set_with_priority(hint::names::RENDER_VSYNC, "0", &hint::Hint::Default);
     }
 
-    let sdl = sdl3::init().map_err(|error| format!("failed to initialize SDL3: {error}"))?;
+    let sdl = map_display_result(sdl3::init(), "failed to initialize SDL3")?;
     let mut input_state = FrontendInputState::new();
     let audio_output = if session.config.audio.enabled {
         let mut audio_output = DesktopAudioOutput::new(
-            &sdl.audio()
-                .map_err(|error| format!("failed to initialize SDL3 audio subsystem: {error}"))?,
+            &map_display_result(sdl.audio(), "failed to initialize SDL3 audio subsystem")?,
             &session.config.audio,
         )?;
         if settings_store.audio_muted() {
@@ -518,8 +587,7 @@ fn run_desktop(
     };
     let gamepad_manager = if session.config.input.gamepad.enabled {
         Some(GamepadManager::new(
-            &sdl.gamepad()
-                .map_err(|error| format!("failed to initialize SDL3 gamepad subsystem: {error}"))?,
+            &map_display_result(sdl.gamepad(), "failed to initialize SDL3 gamepad subsystem")?,
             session.config.input.gamepad.clone(),
             &mut input_state,
             &mut machine,
@@ -527,16 +595,14 @@ fn run_desktop(
     } else {
         None
     };
-    let video = sdl
-        .video()
-        .map_err(|error| format!("failed to initialize SDL3 video subsystem: {error}"))?;
+    let video = map_display_result(sdl.video(), "failed to initialize SDL3 video subsystem")?;
 
     let window_width = FRAMEBUFFER_WIDTH
         .checked_mul(u32::from(session.config.video.window_scale))
-        .ok_or_else(|| "window width overflowed".to_string())?;
+        .ok_or_else(|| overflow_error("window width overflowed"))?;
     let window_height = FRAMEBUFFER_HEIGHT
         .checked_mul(u32::from(session.config.video.window_scale))
-        .ok_or_else(|| "window height overflowed".to_string())?;
+        .ok_or_else(|| overflow_error("window height overflowed"))?;
 
     let base_window_title = window_title(&session, &session.config);
     let mut frame_pacer = FramePacer::new(session.config.video.vsync);
@@ -546,18 +612,19 @@ fn run_desktop(
     if session.config.video.fullscreen {
         window_builder.fullscreen();
     }
-    let window = window_builder
-        .build()
-        .map_err(|error| format!("failed to create SDL3 window: {error}"))?;
+    let window = map_display_result(window_builder.build(), "failed to create SDL3 window")?;
     let mut canvas = window.into_canvas();
     apply_renderer_vsync(&mut canvas, &mut frame_pacer, session.config.video.vsync)?;
     let texture_creator = canvas.texture_creator();
-    let mut texture = texture_creator
-        .create_texture_streaming(PixelFormat::RGB24, FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT)
-        .map_err(|error| format!("failed to create framebuffer texture: {error}"))?;
-    let mut event_pump = sdl
-        .event_pump()
-        .map_err(|error| format!("failed to create SDL3 event pump: {error}"))?;
+    let mut texture = map_display_result(
+        texture_creator.create_texture_streaming(
+            PixelFormat::RGB24,
+            FRAMEBUFFER_WIDTH,
+            FRAMEBUFFER_HEIGHT,
+        ),
+        "failed to create framebuffer texture",
+    )?;
+    let mut event_pump = map_display_result(sdl.event_pump(), "failed to create SDL3 event pump")?;
     let mut rgb_frame = vec![0_u8; FRAMEBUFFER_HEIGHT as usize * FRAMEBUFFER_PITCH_BYTES];
     let mut runtime = FrontendRuntime {
         paused: !session.has_loaded_rom(),
@@ -754,9 +821,15 @@ fn load_machine_for_rom(
 ) -> Result<(Machine<TraceSummaryBuffer>, Vec<CartridgeDiagnostic>), String> {
     let machine_config = build_machine_config(config, current_dir)?;
     let mut machine = Machine::new_summary(machine_config);
-    let diagnostics = machine
-        .load_cartridge(rom_bytes.to_vec())
-        .map_err(|error| format!("failed to load cartridge: {error:?}"))?;
+    let diagnostics = match machine.load_cartridge(rom_bytes.to_vec()) {
+        Ok(diagnostics) => diagnostics,
+        Err(error) => {
+            return Err(format_debug_error(
+                "failed to load cartridge",
+                &format!("{error:?}"),
+            ));
+        }
+    };
     Ok((machine, diagnostics))
 }
 
@@ -768,8 +841,16 @@ fn load_initial_rom(
         return Ok(None);
     };
     let rom_path = resolve_path(current_dir, rom_path);
-    let rom_bytes = fs::read(&rom_path)
-        .map_err(|error| format!("failed to read ROM {}: {error}", rom_path.display()))?;
+    let rom_bytes = match fs::read(&rom_path) {
+        Ok(rom_bytes) => rom_bytes,
+        Err(error) => {
+            return Err(format_path_error(
+                "failed to read ROM",
+                &rom_path,
+                &error.to_string(),
+            ));
+        }
+    };
     Ok(Some(LoadedRom {
         path: rom_path,
         bytes: rom_bytes,
@@ -789,11 +870,11 @@ fn open_save_session_for_session(
         .saves
         .resolve_directory(rom_path)
         .map(|path| resolve_path(&session.current_dir, &path));
-    let save_key = session
-        .config
-        .saves
-        .resolve_key(rom_path)
-        .map_err(|error| error.to_string())?;
+    let save_key = session.config.saves.resolve_key(rom_path);
+    let save_key = match save_key {
+        Ok(save_key) => save_key,
+        Err(error) => return Err(error.to_string()),
+    };
     DesktopSaveSession::open(
         save_root.as_deref(),
         session.config.saves.flush_policy,
@@ -803,16 +884,14 @@ fn open_save_session_for_session(
 }
 
 fn window_title(session: &DesktopSession, config: &DesktopConfig) -> String {
-    let rom_name = session
-        .rom_path()
-        .map(|rom_path| {
-            rom_path
-                .file_name()
-                .unwrap_or(rom_path.as_os_str())
-                .to_string_lossy()
-                .into_owned()
-        })
-        .unwrap_or_else(|| "no ROM loaded".to_string());
+    let rom_name = match session.rom_path() {
+        Some(rom_path) => rom_path
+            .file_name()
+            .unwrap_or(rom_path.as_os_str())
+            .to_string_lossy()
+            .into_owned(),
+        None => "no ROM loaded".to_string(),
+    };
     format!(
         "gb-desktop | {} | {} | {} | {}",
         rom_name,
@@ -823,10 +902,10 @@ fn window_title(session: &DesktopSession, config: &DesktopConfig) -> String {
 }
 
 fn performance_window_title(base_title: &str, snapshot: PerformanceHudSnapshot) -> String {
-    let audio = snapshot
-        .audio_queue_ms
-        .map(|audio_queue_ms| format!("{audio_queue_ms:.1} ms"))
-        .unwrap_or_else(|| "off".to_string());
+    let audio = match snapshot.audio_queue_ms {
+        Some(audio_queue_ms) => format!("{audio_queue_ms:.1} ms"),
+        None => "off".to_string(),
+    };
     format!(
         "{base_title} | {:.1} FPS | {:.2} ms | {:.0}% speed | emu {:.2} | render {:.2} | pacing {:.2} | audio {audio}",
         snapshot.fps,
@@ -1315,14 +1394,13 @@ fn rebuild_machine_for_config(
                 ),
             };
             write_cartridge_diagnostics(&diagnostics);
-            if let Some(persistent_state) = battery_backed_state {
-                next_machine
-                    .restore_cartridge_persistent_state(&persistent_state)
-                    .map_err(|error| {
-                        format!(
-                            "failed to restore battery-backed persistence after reconfigure: {error:?}"
-                        )
-                    })?;
+            if let Some(persistent_state) = battery_backed_state
+                && let Err(error) =
+                    next_machine.restore_cartridge_persistent_state(&persistent_state)
+            {
+                return Err(format!(
+                    "failed to restore battery-backed persistence after reconfigure: {error:?}"
+                ));
             }
 
             let next_session = DesktopSession {
@@ -1404,8 +1482,16 @@ fn open_selected_rom(
     } else {
         resolve_path(&context.session.current_dir, &selected_path)
     };
-    let rom_bytes = fs::read(&rom_path)
-        .map_err(|error| format!("failed to read ROM {}: {error}", rom_path.display()))?;
+    let rom_bytes = match fs::read(&rom_path) {
+        Ok(rom_bytes) => rom_bytes,
+        Err(error) => {
+            return Err(format_path_error(
+                "failed to read ROM",
+                &rom_path,
+                &error.to_string(),
+            ));
+        }
+    };
     let (mut next_machine, diagnostics) = load_machine_for_rom(
         &context.session.config,
         &context.session.current_dir,
@@ -1848,12 +1934,10 @@ fn current_menu_presentation(
         .as_ref()
         .and_then(GamepadManager::preferred_device_name)
         .map(CompactMenuLabel::from_gamepad_name)
-        .unwrap_or_else(|| {
-            if preferred_gamepad_configured {
-                CompactMenuLabel::from_text("SAVED")
-            } else {
-                CompactMenuLabel::default()
-            }
+        .unwrap_or(if preferred_gamepad_configured {
+            CompactMenuLabel::from_text("SAVED")
+        } else {
+            CompactMenuLabel::default()
         });
     let mut recent_rom_labels = [CompactRecentRomLabel::default(); RECENT_ROM_MENU_CAPACITY];
     for (slot, rom_path) in session
@@ -2457,15 +2541,22 @@ fn reset_machine(
             .then(|| machine.cartridge().persistent_state());
 
     let (mut reset_machine, diagnostics) =
-        load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)
-            .map_err(|error| format!("failed to reload cartridge during reset: {error}"))?;
+        match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
+            Ok(result) => result,
+            Err(error) => {
+                return Err(format_display_error(
+                    "failed to reload cartridge during reset",
+                    &error,
+                ));
+            }
+        };
     write_cartridge_diagnostics(&diagnostics);
-    if let Some(persistent_state) = battery_backed_state {
-        reset_machine
-            .restore_cartridge_persistent_state(&persistent_state)
-            .map_err(|error| {
-                format!("failed to restore battery-backed persistence after reset: {error:?}")
-            })?;
+    if let Some(persistent_state) = battery_backed_state
+        && let Err(error) = reset_machine.restore_cartridge_persistent_state(&persistent_state)
+    {
+        return Err(format!(
+            "failed to restore battery-backed persistence after reset: {error:?}"
+        ));
     }
 
     if let Some(audio_output) = &mut runtime.audio_output {
@@ -2479,9 +2570,10 @@ fn reset_machine(
 
 fn toggle_fullscreen(window: &mut Window) -> Result<(), String> {
     let target_state = window.fullscreen_state() == FullscreenType::Off;
-    window
-        .set_fullscreen(target_state)
-        .map_err(|error| format!("failed to toggle SDL3 fullscreen state: {error}"))
+    map_display_result(
+        window.set_fullscreen(target_state),
+        "failed to toggle SDL3 fullscreen state",
+    )
 }
 
 fn set_fullscreen_state(window: &mut Window, enabled: bool) -> Result<(), String> {
@@ -2489,9 +2581,10 @@ fn set_fullscreen_state(window: &mut Window, enabled: bool) -> Result<(), String
         return Ok(());
     }
 
-    window
-        .set_fullscreen(enabled)
-        .map_err(|error| format!("failed to set SDL3 fullscreen state: {error}"))
+    map_display_result(
+        window.set_fullscreen(enabled),
+        "failed to set SDL3 fullscreen state",
+    )
 }
 
 fn apply_renderer_vsync(
@@ -2521,13 +2614,14 @@ fn apply_window_scale(window: &mut Window, scale: u8) -> Result<(), String> {
     let scale = u32::from(scale.max(1));
     let width = FRAMEBUFFER_WIDTH
         .checked_mul(scale)
-        .ok_or_else(|| "window width overflowed while applying window scale".to_string())?;
+        .ok_or_else(|| overflow_error("window width overflowed while applying window scale"))?;
     let height = FRAMEBUFFER_HEIGHT
         .checked_mul(scale)
-        .ok_or_else(|| "window height overflowed while applying window scale".to_string())?;
-    window
-        .set_size(width, height)
-        .map_err(|error| format!("failed to resize SDL3 window: {error}"))
+        .ok_or_else(|| overflow_error("window height overflowed while applying window scale"))?;
+    map_display_result(
+        window.set_size(width, height),
+        "failed to resize SDL3 window",
+    )
 }
 
 fn apply_canvas_video_options(
@@ -2539,9 +2633,10 @@ fn apply_canvas_video_options(
     } else {
         sys::render::SDL_LOGICAL_PRESENTATION_LETTERBOX
     };
-    canvas
-        .set_logical_size(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, presentation_mode)
-        .map_err(|error| format!("failed to configure SDL3 logical presentation: {error}"))
+    map_display_result(
+        canvas.set_logical_size(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, presentation_mode),
+        "failed to configure SDL3 logical presentation",
+    )
 }
 
 fn sync_audio_playback_state(
@@ -2595,14 +2690,16 @@ fn render_frame(
         );
     }
 
-    texture
-        .update(None, rgb_frame, FRAMEBUFFER_PITCH_BYTES)
-        .map_err(|error| format!("failed to update framebuffer texture: {error}"))?;
+    map_display_result(
+        texture.update(None, rgb_frame, FRAMEBUFFER_PITCH_BYTES),
+        "failed to update framebuffer texture",
+    )?;
     canvas.set_draw_color(Color::RGB(0, 0, 0));
     canvas.clear();
-    canvas
-        .copy(texture, None, None)
-        .map_err(|error| format!("failed to present framebuffer texture: {error}"))?;
+    map_display_result(
+        canvas.copy(texture, None, None),
+        "failed to present framebuffer texture",
+    )?;
     canvas.present();
     Ok(())
 }
@@ -2814,30 +2911,434 @@ fn framebuffer_pixel_to_grayscale(pixel: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BOOT_ROM_FILE_DIALOG_FILTERS, GamepadBindingTarget, GamepadMenuBindingTarget,
+        BOOT_ROM_FILE_DIALOG_FILTERS, DEFAULT_BOOT_ROM_DIR, DesktopRunOptions,
+        DesktopSettingsStore, GamepadBindingTarget, GamepadMenuBindingTarget,
         KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult, PerformanceHudSnapshot,
         ROM_FILE_DIALOG_FILTERS, assign_gamepad_binding, assign_gamepad_menu_binding,
         assign_keyboard_binding, assign_keyboard_menu_binding,
         assignable_key_for_binding_target_from_keycode,
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
-        gamepad_binding_target_for_binding, gamepad_menu_binding_target_for_binding,
-        hotkey_binding_target_for_key, joypad_binding_target_for_key,
-        keyboard_menu_binding_target_for_key, map_path_dialog_result,
-        menu_input_for_gamepad_button, menu_input_for_key, next_audio_volume_percent,
-        next_boot_rom_verification_mode, next_console_model, next_execution_mode,
-        next_gamepad_directional_source, next_save_flush_policy, next_startup_mode,
-        next_window_scale, performance_window_title,
+        desktop_key_from_keycode, desktop_key_scancode, gamepad_binding_target_for_binding,
+        gamepad_menu_binding_target_for_binding, hotkey_binding_target_for_key,
+        joypad_binding_target_for_key, keyboard_menu_binding_target_for_key,
+        map_path_dialog_result, menu_input_for_gamepad_button, menu_input_for_key,
+        next_audio_volume_percent, next_boot_rom_verification_mode, next_console_model,
+        next_execution_mode, next_gamepad_directional_source, next_save_flush_policy,
+        next_startup_mode, next_window_scale, performance_window_title, run_desktop,
     };
-    use gb_core::{ExecutionMode, StartupMode};
+    use gb_core::{
+        CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, ExecutionMode, Machine,
+        MachineConfig, StartupMode, TraceSummaryBuffer,
+    };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopKey,
         DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
         GamepadMenuBindings, MenuKeyboardBindings,
     };
     use sdl3::dialog::DialogError;
+    use sdl3::event::Event;
     use sdl3::gamepad::Button;
-    use sdl3::keyboard::Keycode;
+    use sdl3::joystick::JoystickId;
+    use sdl3::keyboard::{Keycode, Mod};
+    use sdl3::render::Canvas;
+    use sdl3::video::Window;
+    use std::ffi::CString;
+    use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+    const ENTRY_POINT_START: usize = 0x0100;
+    const LOGO_START: usize = 0x0104;
+    const TITLE_START: usize = 0x0134;
+    const CGB_FLAG_ADDRESS: usize = 0x0143;
+    const SGB_FLAG_ADDRESS: usize = 0x0146;
+    const CARTRIDGE_TYPE_ADDRESS: usize = 0x0147;
+    const ROM_SIZE_ADDRESS: usize = 0x0148;
+    const RAM_SIZE_ADDRESS: usize = 0x0149;
+    const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
+
+    fn temp_test_root(prefix: &str) -> PathBuf {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "gb-cycle-desktop-main-tests-{prefix}-{}-{id}",
+            std::process::id()
+        ));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale temp root should be removable");
+        }
+        fs::create_dir_all(&root).expect("temp root should be creatable");
+        root
+    }
+
+    fn build_test_rom(
+        len: usize,
+        cartridge_type: u8,
+        rom_size_code: u8,
+        ram_size_code: u8,
+    ) -> Vec<u8> {
+        let mut rom = vec![0xFF; len.max(HEADER_MINIMUM_ROM_LEN)];
+        rom[0x0000] = 0x12;
+        rom[ENTRY_POINT_START..ENTRY_POINT_START + 4].copy_from_slice(&[0x31, 0xFE, 0xFF, 0xAF]);
+        rom[LOGO_START..LOGO_START + 48].copy_from_slice(&[0xCE; 48]);
+        rom[TITLE_START..TITLE_START + 8].copy_from_slice(b"DESKTOP!");
+        rom[CGB_FLAG_ADDRESS] = 0x80;
+        rom[SGB_FLAG_ADDRESS] = 0x03;
+        rom[CARTRIDGE_TYPE_ADDRESS] = cartridge_type;
+        rom[ROM_SIZE_ADDRESS] = rom_size_code;
+        rom[RAM_SIZE_ADDRESS] = ram_size_code;
+        rom[HEADER_CHECKSUM_ADDRESS] = 0x7F;
+        rom
+    }
+
+    fn write_test_rom(root: &Path, name: &str) -> PathBuf {
+        let rom_path = root.join(name);
+        fs::write(&rom_path, build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
+            .expect("test ROM should be writable");
+        rom_path
+    }
+
+    fn schedule_quit_event() -> thread::JoinHandle<()> {
+        thread::spawn(|| {
+            thread::sleep(Duration::from_millis(75));
+            crate::configure_headless_sdl();
+            let sdl = sdl3::init().expect("SDL should initialize for quit-event helper");
+            let events = sdl
+                .event()
+                .expect("SDL event subsystem should initialize for quit-event helper");
+            events
+                .push_event(Event::Quit { timestamp: 0 })
+                .expect("quit event should be pushable");
+        })
+    }
+
+    fn push_key_event(events: &sdl3::EventSubsystem, keycode: Keycode, down: bool) {
+        let desktop_key =
+            desktop_key_from_keycode(keycode).expect("test keycode should map to a desktop key");
+        let scancode = desktop_key_scancode(desktop_key);
+        let event = if down {
+            Event::KeyDown {
+                timestamp: 0,
+                window_id: 0,
+                keycode: Some(keycode),
+                scancode: Some(scancode),
+                keymod: Mod::NOMOD,
+                repeat: false,
+                which: 0,
+                raw: 0,
+            }
+        } else {
+            Event::KeyUp {
+                timestamp: 0,
+                window_id: 0,
+                keycode: Some(keycode),
+                scancode: Some(scancode),
+                keymod: Mod::NOMOD,
+                repeat: false,
+                which: 0,
+                raw: 0,
+            }
+        };
+
+        events
+            .push_event(event)
+            .expect("keyboard event should be pushable");
+    }
+
+    fn schedule_key_sequence(sequence: Vec<(Keycode, bool)>) -> thread::JoinHandle<()> {
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(75));
+            crate::configure_headless_sdl();
+            let sdl = sdl3::init().expect("SDL should initialize for key-sequence helper");
+            let events = sdl
+                .event()
+                .expect("SDL event subsystem should initialize for key-sequence helper");
+            for (keycode, down) in sequence {
+                push_key_event(&events, keycode, down);
+                thread::sleep(Duration::from_millis(8));
+            }
+            events
+                .push_event(Event::Quit { timestamp: 0 })
+                .expect("quit event should be pushable");
+        })
+    }
+
+    struct VirtualGamepad {
+        joystick_id: JoystickId,
+        raw: *mut sdl3::sys::joystick::SDL_Joystick,
+        _name: CString,
+    }
+
+    impl VirtualGamepad {
+        fn attach(name: &str) -> Self {
+            let name = CString::new(name).expect("virtual gamepad name");
+            let mut descriptor = sdl3::sys::joystick::SDL_VirtualJoystickDesc::new();
+            descriptor.r#type = sdl3::sys::joystick::SDL_JOYSTICK_TYPE_GAMEPAD.0 as u16;
+            descriptor.naxes = 0;
+            descriptor.nbuttons = 16;
+            descriptor.button_mask = (1 << Button::Guide as u32)
+                | (1 << Button::East as u32)
+                | (1 << Button::North as u32);
+            descriptor.name = name.as_ptr();
+
+            let joystick_id =
+                unsafe { sdl3::sys::joystick::SDL_AttachVirtualJoystick(&descriptor) };
+            assert_ne!(joystick_id.0, 0, "failed to attach a virtual SDL gamepad");
+            let raw = unsafe { sdl3::sys::joystick::SDL_OpenJoystick(joystick_id) };
+            assert!(!raw.is_null(), "failed to open the virtual SDL gamepad");
+
+            Self {
+                joystick_id,
+                raw,
+                _name: name,
+            }
+        }
+    }
+
+    impl Drop for VirtualGamepad {
+        fn drop(&mut self) {
+            unsafe {
+                sdl3::sys::joystick::SDL_CloseJoystick(self.raw);
+                let _ = sdl3::sys::joystick::SDL_DetachVirtualJoystick(self.joystick_id);
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    struct FrontendHarness {
+        root: PathBuf,
+        settings_path: PathBuf,
+        sdl: sdl3::Sdl,
+        canvas: Canvas<Window>,
+        event_pump: sdl3::EventPump,
+        session: super::DesktopSession,
+        machine: Machine<TraceSummaryBuffer>,
+        runtime: super::FrontendRuntime,
+        settings_store: DesktopSettingsStore,
+        performance_counter: super::PerformanceCounter,
+        frame_pacer: super::FramePacer,
+        _gamepad_subsystem: Option<sdl3::GamepadSubsystem>,
+    }
+
+    #[allow(dead_code)]
+    impl FrontendHarness {
+        fn new(name: &str, with_rom: bool, with_audio: bool, with_gamepad: bool) -> Self {
+            crate::configure_headless_sdl();
+            let root = temp_test_root(name);
+            let settings_path = root.join("desktop-settings.toml");
+            let mut config = DesktopConfig::default();
+            config.boot_rom.verification = BootRomVerificationMode::Off;
+            config.audio.enabled = with_audio;
+            config.input.gamepad.enabled = with_gamepad;
+            if with_gamepad {
+                config.input.gamepad.preferred_device.name = Some("Saved Pad".to_string());
+            }
+            let boot_rom_root = root.join(DEFAULT_BOOT_ROM_DIR);
+            fs::create_dir_all(&boot_rom_root).expect("frontend harness boot ROM root");
+            for file_name in ["dmg0_boot.bin", "dmg_boot.bin", "mgb_boot.bin"] {
+                fs::write(boot_rom_root.join(file_name), vec![0_u8; 0x0100])
+                    .expect("frontend harness boot ROM image");
+            }
+
+            let rom_path = root.join(format!("{name}.gb"));
+            let rom_bytes = build_test_rom(32 * 1024, 0x00, 0x00, 0x00);
+            fs::write(&rom_path, &rom_bytes).expect("frontend harness ROM should be writable");
+            let loaded_rom = with_rom.then_some(super::LoadedRom {
+                path: rom_path,
+                bytes: rom_bytes.clone(),
+            });
+            let current_dir = root.clone();
+            let mut machine = if with_rom {
+                super::load_machine_for_rom(&config, &current_dir, &rom_bytes)
+                    .expect("frontend harness machine should load")
+                    .0
+            } else {
+                Machine::new_summary(
+                    MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+                )
+            };
+
+            let session = super::DesktopSession {
+                config: config.clone(),
+                current_dir,
+                loaded_rom,
+                last_open_directory: Some(root.clone()),
+                recent_roms: Vec::new(),
+            };
+
+            let sdl = sdl3::init().expect("frontend harness SDL should initialize");
+            let mut input_state = super::FrontendInputState::new();
+            let audio_output = if with_audio {
+                Some(
+                    super::DesktopAudioOutput::new(
+                        &sdl.audio().expect("frontend harness audio subsystem"),
+                        &config.audio,
+                    )
+                    .expect("frontend harness audio output"),
+                )
+            } else {
+                None
+            };
+            let gamepad_subsystem = if with_gamepad {
+                Some(sdl.gamepad().expect("frontend harness gamepad subsystem"))
+            } else {
+                None
+            };
+            let gamepad_manager = gamepad_subsystem.as_ref().map(|subsystem| {
+                super::GamepadManager::new(
+                    subsystem,
+                    config.input.gamepad.clone(),
+                    &mut input_state,
+                    &mut machine,
+                )
+                .expect("frontend harness gamepad manager")
+            });
+
+            let video = sdl.video().expect("frontend harness video subsystem");
+            let window = video
+                .window("frontend-harness", 160 * 4, 144 * 4)
+                .build()
+                .expect("frontend harness window");
+            let mut canvas = window.into_canvas();
+            let mut frame_pacer = super::FramePacer::new(config.video.vsync);
+            super::apply_renderer_vsync(&mut canvas, &mut frame_pacer, config.video.vsync)
+                .expect("frontend harness vsync");
+            let event_pump = sdl.event_pump().expect("frontend harness event pump");
+            let settings_store = DesktopSettingsStore::new_for_tests(settings_path.clone());
+            let performance_counter =
+                super::PerformanceCounter::new(super::window_title(&session, &config));
+            let save_session = super::open_save_session_for_session(&session, &mut machine)
+                .expect("frontend harness save session");
+            let runtime = super::FrontendRuntime {
+                paused: !with_rom,
+                menu_state: super::OverlayMenuState::default(),
+                input_state,
+                keyboard_bindings: config.input.keyboard,
+                video_options: config.video.clone(),
+                audio_volume_percent: config.audio.volume_percent,
+                audio_output,
+                gamepad_manager,
+                save_session,
+                open_rom_dialog: super::PathSelectionDialog::new(),
+                boot_rom_file_dialog: super::PathSelectionDialog::new(),
+                boot_rom_directory_dialog: super::PathSelectionDialog::new(),
+                save_directory_dialog: super::PathSelectionDialog::new(),
+            };
+
+            Self {
+                root,
+                settings_path,
+                sdl,
+                canvas,
+                event_pump,
+                session,
+                machine,
+                runtime,
+                settings_store,
+                performance_counter,
+                frame_pacer,
+                _gamepad_subsystem: gamepad_subsystem,
+            }
+        }
+
+        fn execute_action(
+            &mut self,
+            action: super::MenuAction,
+        ) -> Result<Option<super::LoopSignal>, String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::execute_menu_action(action, &self.event_pump, &mut self.canvas, &mut context)
+        }
+
+        fn push_key(&self, keycode: Keycode, down: bool) {
+            let events = self
+                .sdl
+                .event()
+                .expect("frontend harness event subsystem should initialize");
+            push_key_event(&events, keycode, down);
+        }
+
+        fn process_events(&mut self) -> Result<super::LoopSignal, String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_events(&mut self.event_pump, &mut self.canvas, &mut context)
+        }
+
+        fn step_until_next_frame(&mut self) -> Result<super::LoopSignal, String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::step_until_next_frame(&mut self.event_pump, &mut self.canvas, &mut context)
+        }
+
+        fn process_pending_open_rom_dialog(&mut self) -> Result<(), String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_pending_open_rom_dialog(&self.event_pump, &mut self.canvas, &mut context)
+        }
+
+        fn process_pending_boot_rom_file_dialog(&mut self) -> Result<(), String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_pending_boot_rom_file_dialog(&mut self.canvas, &mut context)
+        }
+
+        fn process_pending_boot_rom_directory_dialog(&mut self) -> Result<(), String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_pending_boot_rom_directory_dialog(&mut self.canvas, &mut context)
+        }
+
+        fn process_pending_save_directory_dialog(&mut self) -> Result<(), String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_pending_save_directory_dialog(&mut self.canvas, &mut context)
+        }
+    }
 
     #[test]
     fn performance_window_title_formats_the_runtime_metrics() {
@@ -3227,5 +3728,1425 @@ mod tests {
         assert_eq!(next_audio_volume_percent(50), 75);
         assert_eq!(next_audio_volume_percent(75), 100);
         assert_eq!(next_audio_volume_percent(100), 25);
+    }
+
+    #[test]
+    fn binding_value_helpers_cover_all_frontend_targets() {
+        let mut keyboard = gb_desktop::KeyboardBindings::default();
+        let keyboard_targets = [
+            (KeyboardBindingTarget::Up, DesktopKey::Escape),
+            (KeyboardBindingTarget::Down, DesktopKey::ArrowUp),
+            (KeyboardBindingTarget::Left, DesktopKey::ArrowDown),
+            (KeyboardBindingTarget::Right, DesktopKey::ArrowLeft),
+            (KeyboardBindingTarget::A, DesktopKey::ArrowRight),
+            (KeyboardBindingTarget::B, DesktopKey::Backspace),
+            (KeyboardBindingTarget::Select, DesktopKey::Return),
+            (KeyboardBindingTarget::Start, DesktopKey::Space),
+            (KeyboardBindingTarget::Pause, DesktopKey::R),
+            (KeyboardBindingTarget::Reset, DesktopKey::X),
+            (KeyboardBindingTarget::ToggleFullscreen, DesktopKey::Z),
+            (KeyboardBindingTarget::TogglePerformanceHud, DesktopKey::F5),
+            (KeyboardBindingTarget::SaveBattery, DesktopKey::F10),
+        ];
+        for (target, key) in keyboard_targets {
+            super::set_keyboard_binding_value(&mut keyboard, target, key);
+            assert_eq!(super::keyboard_binding_value(keyboard, target), key);
+        }
+        let keyboard_before = keyboard;
+        assign_keyboard_binding(
+            &mut keyboard,
+            KeyboardBindingTarget::SaveBattery,
+            keyboard_before.hotkeys.save_battery,
+        );
+        assert_eq!(keyboard, keyboard_before);
+
+        let mut keyboard_menu = MenuKeyboardBindings::default();
+        let keyboard_menu_targets = [
+            (KeyboardMenuBindingTarget::Up, DesktopKey::Backspace),
+            (KeyboardMenuBindingTarget::Down, DesktopKey::Return),
+            (KeyboardMenuBindingTarget::Confirm, DesktopKey::Space),
+            (KeyboardMenuBindingTarget::Cancel, DesktopKey::Escape),
+        ];
+        for (target, key) in keyboard_menu_targets {
+            super::set_keyboard_menu_binding_value(&mut keyboard_menu, target, key);
+            assert_eq!(
+                super::keyboard_menu_binding_value(keyboard_menu, target),
+                key
+            );
+        }
+        let keyboard_menu_before = keyboard_menu;
+        assign_keyboard_menu_binding(
+            &mut keyboard_menu,
+            KeyboardMenuBindingTarget::Cancel,
+            keyboard_menu_before.cancel,
+        );
+        assert_eq!(keyboard_menu, keyboard_menu_before);
+
+        let mut gamepad = gb_desktop::GamepadButtonBindings::default();
+        let gamepad_targets = [
+            (GamepadBindingTarget::Up, GamepadButtonBinding::South),
+            (GamepadBindingTarget::Down, GamepadButtonBinding::East),
+            (GamepadBindingTarget::Left, GamepadButtonBinding::West),
+            (GamepadBindingTarget::Right, GamepadButtonBinding::North),
+            (GamepadBindingTarget::A, GamepadButtonBinding::Back),
+            (GamepadBindingTarget::B, GamepadButtonBinding::Start),
+            (GamepadBindingTarget::Select, GamepadButtonBinding::Guide),
+            (
+                GamepadBindingTarget::Start,
+                GamepadButtonBinding::LeftShoulder,
+            ),
+        ];
+        for (target, binding) in gamepad_targets {
+            super::set_gamepad_binding_value(&mut gamepad, target, binding);
+            assert_eq!(super::gamepad_binding_value(gamepad, target), binding);
+            assert_eq!(
+                gamepad_binding_target_for_binding(gamepad, binding),
+                Some(target)
+            );
+        }
+        let gamepad_before = gamepad;
+        assign_gamepad_binding(
+            &mut gamepad,
+            GamepadBindingTarget::Start,
+            gamepad_before.start,
+        );
+        assert_eq!(gamepad, gamepad_before);
+
+        let mut gamepad_menu = GamepadMenuBindings::default();
+        let gamepad_menu_targets = [
+            (GamepadMenuBindingTarget::Up, GamepadButtonBinding::DPadUp),
+            (
+                GamepadMenuBindingTarget::Down,
+                GamepadButtonBinding::DPadDown,
+            ),
+            (
+                GamepadMenuBindingTarget::Confirm,
+                GamepadButtonBinding::DPadLeft,
+            ),
+            (
+                GamepadMenuBindingTarget::Cancel,
+                GamepadButtonBinding::DPadRight,
+            ),
+        ];
+        for (target, binding) in gamepad_menu_targets {
+            super::set_gamepad_menu_binding_value(&mut gamepad_menu, target, binding);
+            assert_eq!(
+                super::gamepad_menu_binding_value(gamepad_menu, target),
+                binding
+            );
+            assert_eq!(
+                gamepad_menu_binding_target_for_binding(gamepad_menu, binding),
+                Some(target)
+            );
+        }
+        let gamepad_menu_before = gamepad_menu;
+        assign_gamepad_menu_binding(
+            &mut gamepad_menu,
+            GamepadMenuBindingTarget::Cancel,
+            gamepad_menu_before.cancel,
+        );
+        assert_eq!(gamepad_menu, gamepad_menu_before);
+    }
+
+    #[test]
+    fn key_and_button_mapping_helpers_cover_all_variants_and_fallbacks() {
+        let key_pairs = [
+            (
+                DesktopKey::Escape,
+                Keycode::Escape,
+                sdl3::keyboard::Scancode::Escape,
+            ),
+            (
+                DesktopKey::ArrowUp,
+                Keycode::Up,
+                sdl3::keyboard::Scancode::Up,
+            ),
+            (
+                DesktopKey::ArrowDown,
+                Keycode::Down,
+                sdl3::keyboard::Scancode::Down,
+            ),
+            (
+                DesktopKey::ArrowLeft,
+                Keycode::Left,
+                sdl3::keyboard::Scancode::Left,
+            ),
+            (
+                DesktopKey::ArrowRight,
+                Keycode::Right,
+                sdl3::keyboard::Scancode::Right,
+            ),
+            (
+                DesktopKey::Backspace,
+                Keycode::Backspace,
+                sdl3::keyboard::Scancode::Backspace,
+            ),
+            (
+                DesktopKey::Return,
+                Keycode::Return,
+                sdl3::keyboard::Scancode::Return,
+            ),
+            (
+                DesktopKey::Space,
+                Keycode::Space,
+                sdl3::keyboard::Scancode::Space,
+            ),
+            (DesktopKey::R, Keycode::R, sdl3::keyboard::Scancode::R),
+            (DesktopKey::X, Keycode::X, sdl3::keyboard::Scancode::X),
+            (DesktopKey::Z, Keycode::Z, sdl3::keyboard::Scancode::Z),
+            (DesktopKey::F5, Keycode::F5, sdl3::keyboard::Scancode::F5),
+            (DesktopKey::F10, Keycode::F10, sdl3::keyboard::Scancode::F10),
+            (DesktopKey::F11, Keycode::F11, sdl3::keyboard::Scancode::F11),
+        ];
+        for (desktop_key, keycode, scancode) in key_pairs {
+            assert_eq!(desktop_key_scancode(desktop_key), scancode);
+            assert_eq!(desktop_key_from_keycode(keycode), Some(desktop_key));
+            assert!(super::key_matches(desktop_key, keycode));
+        }
+        assert_eq!(desktop_key_from_keycode(Keycode::A), None);
+
+        let joypad = gb_desktop::JoypadKeyboardBindings::default();
+        assert_eq!(
+            super::joypad_button_for_key(joypad, Keycode::Up),
+            Some(gb_core::JoypadButton::Up)
+        );
+        assert_eq!(
+            super::joypad_button_for_key(joypad, Keycode::Down),
+            Some(gb_core::JoypadButton::Down)
+        );
+        assert_eq!(
+            super::joypad_button_for_key(joypad, Keycode::Left),
+            Some(gb_core::JoypadButton::Left)
+        );
+        assert_eq!(
+            super::joypad_button_for_key(joypad, Keycode::Right),
+            Some(gb_core::JoypadButton::Right)
+        );
+        assert_eq!(
+            super::joypad_button_for_key(joypad, Keycode::Z),
+            Some(gb_core::JoypadButton::B)
+        );
+        assert_eq!(
+            super::joypad_button_for_key(joypad, Keycode::X),
+            Some(gb_core::JoypadButton::A)
+        );
+        assert_eq!(
+            super::joypad_button_for_key(joypad, Keycode::Backspace),
+            Some(gb_core::JoypadButton::Select)
+        );
+        assert_eq!(
+            super::joypad_button_for_key(joypad, Keycode::Return),
+            Some(gb_core::JoypadButton::Start)
+        );
+        assert_eq!(super::joypad_button_for_key(joypad, Keycode::F5), None);
+
+        let keyboard_bindings = gb_desktop::KeyboardBindings::default();
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::F5),
+            super::HotkeyAction::ManualSave
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::R),
+            super::HotkeyAction::Reset
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::F11),
+            super::HotkeyAction::ToggleFullscreen
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::F10),
+            super::HotkeyAction::TogglePerformanceHud
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::Space),
+            super::HotkeyAction::None
+        ));
+
+        let menu_bindings = GamepadMenuBindings::default();
+        assert_eq!(
+            menu_input_for_gamepad_button(menu_bindings, Button::DPadUp),
+            Some(super::MenuInput::Up)
+        );
+        assert_eq!(
+            menu_input_for_gamepad_button(menu_bindings, Button::DPadDown),
+            Some(super::MenuInput::Down)
+        );
+
+        assert_eq!(
+            super::compact_recent_rom_label(Path::new("/tmp/(([])).gb")).as_str(),
+            "ROM"
+        );
+        assert_eq!(
+            map_path_dialog_result(Ok(Vec::new())),
+            PathDialogResult::Canceled
+        );
+        assert!(matches!(
+            map_path_dialog_result(Err(DialogError::SdlError(sdl3::get_error()))),
+            PathDialogResult::Failed(_)
+        ));
+        assert_eq!(
+            super::diagnostic_severity_name(CartridgeDiagnosticSeverity::Error),
+            "error"
+        );
+        assert_eq!(
+            super::execution_mode_name(ExecutionMode::Experimental),
+            "experimental"
+        );
+        assert_eq!(
+            super::framebuffer_pixel_to_grayscale(7),
+            super::DMG_GRAYSCALE_SHADES[3]
+        );
+    }
+
+    #[test]
+    fn run_desktop_supports_headless_startup_with_and_without_an_initial_rom() {
+        let _guard = crate::lock_sdl_test();
+        crate::configure_headless_sdl();
+
+        let launcher_root = temp_test_root("headless-launcher");
+        let mut launcher_config = DesktopConfig::default();
+        launcher_config.input.gamepad.enabled = false;
+        let launcher_store =
+            DesktopSettingsStore::new_for_tests(launcher_root.join("desktop-settings.toml"));
+        let launcher_quit = schedule_quit_event();
+        run_desktop(
+            DesktopRunOptions {
+                rom_path: None,
+                config: launcher_config,
+            },
+            launcher_store,
+        )
+        .expect("launcher should start and stop cleanly under headless SDL");
+        launcher_quit
+            .join()
+            .expect("launcher quit-event helper should finish");
+
+        let rom_root = temp_test_root("headless-rom");
+        let rom_path = write_test_rom(&rom_root, "headless.gb");
+        crate::configure_headless_sdl();
+        let mut rom_config = DesktopConfig::default();
+        rom_config.input.gamepad.enabled = false;
+        let rom_store = DesktopSettingsStore::new_for_tests(rom_root.join("desktop-settings.toml"));
+        let rom_quit = schedule_quit_event();
+        run_desktop(
+            DesktopRunOptions {
+                rom_path: Some(rom_path),
+                config: rom_config,
+            },
+            rom_store,
+        )
+        .expect("ROM startup should run and stop cleanly under headless SDL");
+        rom_quit
+            .join()
+            .expect("ROM quit-event helper should finish");
+    }
+
+    #[test]
+    fn run_desktop_processes_hotkeys_plus_video_and_audio_menu_actions() {
+        let _guard = crate::lock_sdl_test();
+        crate::configure_headless_sdl();
+
+        let root = temp_test_root("video-audio-actions");
+        let rom_path = write_test_rom(&root, "video-audio.gb");
+        let settings_path = root.join("desktop-settings.toml");
+        let mut config = DesktopConfig::default();
+        config.input.gamepad.enabled = false;
+        let settings_store = DesktopSettingsStore::new_for_tests(settings_path.clone());
+        let sequence = schedule_key_sequence(vec![
+            (Keycode::F11, true),
+            (Keycode::Z, true),
+            (Keycode::Z, false),
+            (Keycode::Escape, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Escape, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Return, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+        ]);
+
+        run_desktop(
+            DesktopRunOptions {
+                rom_path: Some(rom_path.clone()),
+                config,
+            },
+            settings_store,
+        )
+        .expect("desktop frontend should process hotkeys and video/audio menu actions");
+        sequence
+            .join()
+            .expect("video/audio key sequence helper should finish");
+
+        let persisted = fs::read_to_string(&settings_path)
+            .expect("desktop settings should persist after menu-driven changes");
+        assert!(persisted.contains("fullscreen = true"));
+        assert!(persisted.contains(&rom_path.display().to_string()));
+    }
+
+    #[test]
+    fn run_desktop_processes_input_and_system_menu_actions() {
+        let _guard = crate::lock_sdl_test();
+        crate::configure_headless_sdl();
+
+        let root = temp_test_root("input-system-actions");
+        let rom_path = write_test_rom(&root, "input-system.gb");
+        let settings_path = root.join("desktop-settings.toml");
+        let mut config = DesktopConfig::default();
+        config.input.gamepad.enabled = false;
+        let settings_store = DesktopSettingsStore::new_for_tests(settings_path.clone());
+        let sequence = schedule_key_sequence(vec![
+            (Keycode::Escape, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Escape, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Return, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+            (Keycode::Down, true),
+            (Keycode::Return, true),
+        ]);
+
+        run_desktop(
+            DesktopRunOptions {
+                rom_path: Some(rom_path.clone()),
+                config,
+            },
+            settings_store,
+        )
+        .expect("desktop frontend should process input and system menu actions");
+        sequence
+            .join()
+            .expect("input/system key sequence helper should finish");
+
+        let persisted = fs::read_to_string(&settings_path)
+            .expect("desktop settings should persist after input/system changes");
+        assert!(persisted.contains("version = 1"));
+        assert!(persisted.contains(&rom_path.display().to_string()));
+    }
+
+    #[test]
+    fn frontend_helpers_cover_runtime_dialog_and_title_utilities() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("helpers", true, false, false);
+
+        assert!(harness.session.has_loaded_rom());
+        assert!(harness.session.rom_path().is_some());
+        assert!(harness.session.rom_bytes().is_some());
+        assert_eq!(harness.session.rom_directory_hint(), harness.root.as_path());
+        assert!(harness.session.recent_roms().is_empty());
+        assert!(!harness.runtime.any_dialog_pending());
+
+        let mut dialog = super::PathSelectionDialog::new();
+        assert!(!dialog.is_pending());
+        dialog.pending = true;
+        dialog
+            .show_file(
+                &ROM_FILE_DIALOG_FILTERS,
+                harness.canvas.window(),
+                harness.root.as_path(),
+            )
+            .expect("pending file dialogs should be a no-op");
+        dialog.show_folder(harness.canvas.window(), harness.root.as_path());
+        dialog.pending = false;
+        dialog
+            .sender
+            .send(super::PathDialogResult::Selected(
+                harness.root.join("picked.gb"),
+            ))
+            .expect("dialog result should send");
+        assert!(matches!(
+            dialog.take_result(),
+            Some(super::PathDialogResult::Selected(_))
+        ));
+
+        harness.performance_counter.sample_started_at = Instant::now() - Duration::from_secs(2);
+        harness
+            .performance_counter
+            .record_presented_frame(
+                harness.canvas.window_mut(),
+                super::FramePerformanceSample {
+                    emulation_duration: Duration::from_millis(10),
+                    render_duration: Duration::from_millis(2),
+                    pacing_duration: Duration::from_millis(4),
+                    audio_queue_ms: Some(18.0),
+                },
+            )
+            .expect("performance counter should record a frame");
+        assert!(harness.performance_counter.hud_snapshot().is_some());
+        harness
+            .performance_counter
+            .reset_base_title(
+                harness.canvas.window_mut(),
+                "gb-desktop | reset".to_string(),
+            )
+            .expect("resetting the window title should succeed");
+
+        super::show_message_box(
+            None,
+            sdl3::messagebox::MessageBoxFlag::WARNING,
+            "warn",
+            "msg",
+        );
+        super::show_warning_message(None, "warn", "msg");
+        super::show_error_message(None, "error", "msg");
+        assert_eq!(
+            super::diagnostic_severity_name(CartridgeDiagnosticSeverity::Warning),
+            "warning"
+        );
+        super::write_cartridge_diagnostics(&[CartridgeDiagnostic {
+            severity: CartridgeDiagnosticSeverity::Warning,
+            message: "test warning".to_string(),
+        }]);
+        assert!(super::target_frame_rate_hz() > 0.0);
+        assert_eq!(super::gamepad_event_joystick_id(7).0, 7);
+        assert_eq!(
+            super::boot_rom_dialog_default_location(&harness.session),
+            harness.root.join(DEFAULT_BOOT_ROM_DIR)
+        );
+        harness.session.config.boot_rom.search_path = Some(PathBuf::from("custom/boot.bin"));
+        assert_eq!(
+            super::boot_rom_dialog_default_location(&harness.session),
+            harness.root.join("custom")
+        );
+        assert_eq!(
+            super::save_directory_dialog_default_location(&harness.session),
+            harness.root
+        );
+        harness.session.config.saves.directory_policy =
+            gb_desktop::SaveDirectoryPolicy::Custom(PathBuf::from("custom/saves/state.sav"));
+        assert_eq!(
+            super::save_directory_dialog_default_location(&harness.session),
+            harness.root.join("custom/saves")
+        );
+
+        let (replacement_sender, _) = std::sync::mpsc::channel();
+        let (disconnected_sender, disconnected_receiver) = std::sync::mpsc::channel();
+        drop(disconnected_sender);
+        dialog.sender = replacement_sender;
+        dialog.receiver = disconnected_receiver;
+        dialog.pending = true;
+        assert_eq!(dialog.take_result(), None);
+        assert!(!dialog.pending);
+    }
+
+    #[test]
+    fn frontend_harness_processes_dialog_results_and_recent_rom_paths() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("dialogs", false, false, false);
+        let relative_rom_name = "picked.gb";
+        let relative_rom_path = harness.root.join(relative_rom_name);
+        fs::write(
+            &relative_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("dialog test ROM should be writable");
+        let boot_file = harness.root.join("custom-boot.bin");
+        let boot_dir = harness.root.join("boot-assets");
+        let save_dir = harness.root.join("save-root");
+        fs::write(&boot_file, vec![0_u8; 0x0100]).expect("boot file should be writable");
+        fs::create_dir_all(&boot_dir).expect("boot directory should be creatable");
+        fs::create_dir_all(&save_dir).expect("save directory should be creatable");
+
+        assert!(!harness.session.has_loaded_rom());
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                &harness.machine,
+                &harness.session,
+            ));
+        assert!(harness.runtime.menu_state.is_open());
+
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(relative_rom_name)))
+            .expect("open ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("selected ROM should load");
+        assert_eq!(
+            harness.session.rom_path(),
+            Some(relative_rom_path.as_path())
+        );
+        assert_eq!(
+            harness.session.last_open_directory.as_deref(),
+            Some(harness.root.as_path())
+        );
+        assert!(!harness.runtime.paused);
+        assert!(!harness.runtime.menu_state.is_open());
+        assert_eq!(
+            harness.session.recent_roms().first(),
+            Some(&relative_rom_path)
+        );
+
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Canceled)
+            .expect("open ROM cancel should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("canceled ROM dialog should be ignored");
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Failed("open failed".to_string()))
+            .expect("open ROM failure should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("failed ROM dialog should be reported");
+
+        harness
+            .runtime
+            .boot_rom_file_dialog
+            .sender
+            .send(PathDialogResult::Selected(boot_file.clone()))
+            .expect("boot ROM file selection should send");
+        harness
+            .process_pending_boot_rom_file_dialog()
+            .expect("selected boot ROM file should update the config");
+        assert_eq!(
+            harness.session.config.boot_rom.search_path.as_deref(),
+            Some(boot_file.as_path())
+        );
+
+        harness
+            .runtime
+            .boot_rom_file_dialog
+            .sender
+            .send(PathDialogResult::Failed("boot file failed".to_string()))
+            .expect("boot ROM file failure should send");
+        harness
+            .process_pending_boot_rom_file_dialog()
+            .expect("failed boot ROM file dialog should be reported");
+        harness
+            .runtime
+            .boot_rom_file_dialog
+            .sender
+            .send(PathDialogResult::Canceled)
+            .expect("boot ROM file cancel should send");
+        harness
+            .process_pending_boot_rom_file_dialog()
+            .expect("canceled boot ROM file dialog should be ignored");
+
+        harness
+            .runtime
+            .boot_rom_directory_dialog
+            .sender
+            .send(PathDialogResult::Selected(boot_dir.clone()))
+            .expect("boot ROM directory selection should send");
+        harness
+            .process_pending_boot_rom_directory_dialog()
+            .expect("selected boot ROM directory should update the config");
+        assert_eq!(
+            harness.session.config.boot_rom.search_path.as_deref(),
+            Some(boot_dir.as_path())
+        );
+
+        harness
+            .runtime
+            .boot_rom_directory_dialog
+            .sender
+            .send(PathDialogResult::Failed("boot dir failed".to_string()))
+            .expect("boot ROM directory failure should send");
+        harness
+            .process_pending_boot_rom_directory_dialog()
+            .expect("failed boot ROM directory dialog should be reported");
+        harness
+            .runtime
+            .boot_rom_directory_dialog
+            .sender
+            .send(PathDialogResult::Canceled)
+            .expect("boot ROM directory cancel should send");
+        harness
+            .process_pending_boot_rom_directory_dialog()
+            .expect("canceled boot ROM directory dialog should be ignored");
+
+        harness
+            .runtime
+            .save_directory_dialog
+            .sender
+            .send(PathDialogResult::Selected(save_dir.clone()))
+            .expect("save directory selection should send");
+        harness
+            .process_pending_save_directory_dialog()
+            .expect("selected save directory should update the config");
+        assert_eq!(
+            harness.session.config.saves.directory_policy,
+            gb_desktop::SaveDirectoryPolicy::Custom(save_dir.clone())
+        );
+
+        harness
+            .runtime
+            .save_directory_dialog
+            .sender
+            .send(PathDialogResult::Failed("save dir failed".to_string()))
+            .expect("save directory failure should send");
+        harness
+            .process_pending_save_directory_dialog()
+            .expect("failed save directory dialog should be reported");
+        harness
+            .runtime
+            .save_directory_dialog
+            .sender
+            .send(PathDialogResult::Canceled)
+            .expect("save directory cancel should send");
+        harness
+            .process_pending_save_directory_dialog()
+            .expect("canceled save directory dialog should be ignored");
+
+        let missing_recent = harness.root.join("missing.gb");
+        harness.session.recent_roms = vec![missing_recent.clone()];
+        assert!(
+            harness
+                .execute_action(super::MenuAction::OpenRecentRom(0))
+                .expect("missing recent ROM should be handled")
+                .is_none()
+        );
+        assert!(!harness.session.recent_roms().contains(&missing_recent));
+
+        let persisted = fs::read_to_string(&harness.settings_path)
+            .expect("dialog actions should persist settings");
+        assert!(persisted.contains(&boot_dir.display().to_string()));
+        assert!(persisted.contains(&save_dir.display().to_string()));
+    }
+
+    #[test]
+    fn frontend_harness_covers_event_loop_frame_and_render_helpers() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("runtime", true, true, true);
+        let relative_rom = PathBuf::from("runtime.gb");
+        let relative_rom_path = harness.root.join(&relative_rom);
+        fs::write(
+            &relative_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("runtime ROM should be writable");
+
+        let loaded = super::load_initial_rom(
+            &DesktopRunOptions {
+                rom_path: Some(relative_rom.clone()),
+                config: DesktopConfig::default(),
+            },
+            &harness.root,
+        )
+        .expect("relative ROM path should load")
+        .expect("relative ROM should exist");
+        assert_eq!(loaded.path, relative_rom_path);
+        assert!(
+            super::load_initial_rom(
+                &DesktopRunOptions {
+                    rom_path: None,
+                    config: DesktopConfig::default(),
+                },
+                &harness.root,
+            )
+            .expect("missing ROM path should be allowed")
+            .is_none()
+        );
+
+        let (mut reloaded_machine, _diagnostics) = super::load_machine_for_rom(
+            &harness.session.config,
+            &harness.session.current_dir,
+            harness.session.rom_bytes().expect("loaded ROM bytes"),
+        )
+        .expect("machine should reload from ROM bytes");
+        assert!(
+            super::open_save_session_for_session(&harness.session, &mut reloaded_machine)
+                .expect("save session should open for the loaded ROM")
+                .is_none()
+        );
+
+        super::run_from_cli(["--help"]).expect("help path should succeed");
+        assert_eq!(
+            super::toggled_preferred_gamepad_device(
+                harness
+                    .runtime
+                    .gamepad_manager
+                    .as_ref()
+                    .expect("runtime test should have a gamepad manager")
+            ),
+            gb_desktop::PreferredGamepadIdentity::default()
+        );
+
+        harness.push_key(Keycode::Z, true);
+        assert!(matches!(
+            harness
+                .process_events()
+                .expect("keyboard press should process"),
+            super::LoopSignal::Continue
+        ));
+        assert_ne!(harness.machine.joypad().snapshot().pressed_mask, 0);
+        harness.push_key(Keycode::Z, false);
+        harness
+            .process_events()
+            .expect("keyboard release should process");
+        assert_eq!(harness.machine.joypad().snapshot().pressed_mask, 0);
+
+        harness.push_key(Keycode::Escape, true);
+        harness.process_events().expect("menu open should process");
+        assert!(harness.runtime.menu_state.is_open());
+        harness.push_key(Keycode::Escape, true);
+        harness.process_events().expect("menu close should process");
+        assert!(!harness.runtime.menu_state.is_open());
+
+        assert!(matches!(
+            harness
+                .step_until_next_frame()
+                .expect("frame stepping should complete"),
+            super::LoopSignal::Continue
+        ));
+
+        super::apply_window_scale(harness.canvas.window_mut(), 3)
+            .expect("window scale should apply");
+        super::set_fullscreen_state(harness.canvas.window_mut(), false)
+            .expect("setting the existing fullscreen state should be a no-op");
+        super::reset_machine(&harness.session, &mut harness.machine, &mut harness.runtime)
+            .expect("machine reset should succeed");
+
+        let texture_creator = harness.canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl3::pixels::PixelFormat::RGB24,
+                super::FRAMEBUFFER_WIDTH,
+                super::FRAMEBUFFER_HEIGHT,
+            )
+            .expect("runtime texture should be creatable");
+        let mut rgb_frame =
+            vec![0_u8; super::FRAMEBUFFER_HEIGHT as usize * super::FRAMEBUFFER_PITCH_BYTES];
+        let menu_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        harness.runtime.menu_state.open(menu_presentation);
+        let open_menu_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut rgb_frame,
+            harness.machine.ppu().framebuffer(),
+            &harness.runtime.video_options,
+            Some((&harness.runtime.menu_state, open_menu_presentation)),
+            None,
+        )
+        .expect("overlay frame should render");
+        assert!(rgb_frame.iter().any(|byte| *byte != 0));
+
+        harness.runtime.menu_state.close();
+        harness.runtime.video_options.show_performance_hud = true;
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut rgb_frame,
+            harness.machine.ppu().framebuffer(),
+            &harness.runtime.video_options,
+            None,
+            Some(PerformanceHudSnapshot {
+                fps: 59.7,
+                speed_percent: 100.0,
+                frame_time_ms: 16.7,
+                emulation_time_ms: 10.0,
+                render_time_ms: 2.0,
+                pacing_time_ms: 4.0,
+                audio_queue_ms: Some(12.5),
+            }),
+        )
+        .expect("HUD frame should render");
+        assert!(rgb_frame.iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn frontend_harness_covers_gamepad_event_paths() {
+        let _guard = crate::lock_sdl_test();
+        let virtual_gamepad = VirtualGamepad::attach("Runtime Pad");
+        let mut harness = FrontendHarness::new("gamepad-events", true, false, true);
+        harness
+            ._gamepad_subsystem
+            .as_ref()
+            .expect("gamepad subsystem")
+            .update();
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .and_then(super::GamepadManager::active_gamepad_name),
+            Some("Runtime Pad")
+        );
+
+        let events = harness
+            .sdl
+            .event()
+            .expect("event subsystem should initialize for controller events");
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                &harness.machine,
+                &harness.session,
+            ));
+        harness
+            .runtime
+            .menu_state
+            .begin_gamepad_binding_capture_for_tests(GamepadBindingTarget::A);
+        events
+            .push_event(Event::ControllerButtonDown {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                button: Button::North,
+            })
+            .expect("gamepad binding event should be pushable");
+        harness
+            .process_events()
+            .expect("gamepad binding capture should process");
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .expect("gamepad manager")
+                .button_bindings()
+                .a,
+            GamepadButtonBinding::North
+        );
+
+        events
+            .push_event(Event::ControllerButtonDown {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                button: Button::Guide,
+            })
+            .expect("guide event should be pushable");
+        harness
+            .process_events()
+            .expect("guide button should close the menu");
+        assert!(!harness.runtime.menu_state.is_open());
+
+        events
+            .push_event(Event::ControllerButtonDown {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                button: Button::Guide,
+            })
+            .expect("second guide event should be pushable");
+        harness
+            .process_events()
+            .expect("guide button should open the menu");
+        assert!(harness.runtime.menu_state.is_open());
+
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                &harness.machine,
+                &harness.session,
+            ));
+        events
+            .push_event(Event::ControllerButtonDown {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                button: Button::South,
+            })
+            .expect("menu confirm event should be pushable");
+        harness
+            .process_events()
+            .expect("gamepad menu navigation should process");
+        assert!(!harness.runtime.menu_state.is_open());
+    }
+
+    #[test]
+    fn frontend_harness_covers_keyboard_binding_capture_paths() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("keyboard-capture", true, false, false);
+        let events = harness
+            .sdl
+            .event()
+            .expect("event subsystem should initialize for keyboard capture");
+
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                &harness.machine,
+                &harness.session,
+            ));
+        harness
+            .runtime
+            .menu_state
+            .begin_keyboard_binding_capture_for_tests(KeyboardBindingTarget::A);
+        push_key_event(&events, Keycode::Space, true);
+        harness
+            .process_events()
+            .expect("joypad keyboard capture should process");
+        assert_eq!(
+            harness.runtime.keyboard_bindings.joypad.a,
+            DesktopKey::Space
+        );
+
+        harness
+            .runtime
+            .menu_state
+            .begin_keyboard_menu_binding_capture_for_tests(KeyboardMenuBindingTarget::Confirm);
+        push_key_event(&events, Keycode::F5, true);
+        harness
+            .process_events()
+            .expect("menu keyboard capture should process");
+        assert_eq!(
+            harness.runtime.keyboard_bindings.menu.confirm,
+            DesktopKey::F5
+        );
+
+        harness
+            .runtime
+            .menu_state
+            .begin_keyboard_binding_capture_for_tests(KeyboardBindingTarget::B);
+        push_key_event(&events, Keycode::Escape, true);
+        harness
+            .process_events()
+            .expect("escape should cancel the active keyboard capture");
+        assert!(!harness.runtime.menu_state.is_capturing_binding());
+        assert_eq!(harness.runtime.keyboard_bindings.joypad.b, DesktopKey::Z);
+
+        harness
+            .runtime
+            .menu_state
+            .begin_keyboard_binding_capture_for_tests(KeyboardBindingTarget::Start);
+        events
+            .push_event(Event::Quit { timestamp: 0 })
+            .expect("quit event should be pushable during binding capture");
+        assert!(matches!(
+            harness
+                .process_events()
+                .expect("quit should short-circuit the binding capture loop"),
+            super::LoopSignal::Quit
+        ));
+    }
+
+    #[test]
+    fn frontend_harness_covers_presentation_fallbacks_and_missing_subsystems() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("fallbacks", false, false, false);
+        harness.session.config.saves.directory_policy =
+            gb_desktop::SaveDirectoryPolicy::Custom(harness.root.join("custom-saves"));
+        let presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(!presentation.rom_loaded);
+        assert_eq!(presentation.recent_rom_count, 0);
+        assert!(!presentation.save_directory_uses_default_path);
+        assert!(!presentation.audio_available);
+        assert!(!presentation.manual_save_available);
+        assert!(!presentation.gamepad_available);
+        assert!(!presentation.active_gamepad_connected);
+        assert!(presentation.active_gamepad_label.is_empty());
+        assert!(!presentation.preferred_gamepad_configured);
+        assert!(presentation.preferred_gamepad_label.is_empty());
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SaveBattery)
+                .expect("save action should no-op without a session")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleMute)
+                .expect("mute should no-op without audio")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleAudioVolume)
+                .expect("volume cycling should still update the runtime setting")
+                .is_none()
+        );
+        assert_eq!(harness.runtime.audio_volume_percent, 25);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ResetAudioDefaults)
+                .expect("audio reset should no-op without audio")
+                .is_none()
+        );
+        assert_eq!(harness.runtime.audio_volume_percent, 100);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleGamepadDirectionalSource)
+                .expect("directional source should no-op without a gamepad manager")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::TogglePreferredGamepad)
+                .expect("preferred gamepad should no-op without a gamepad manager")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetGamepadBinding(
+                    GamepadBindingTarget::A,
+                    GamepadButtonBinding::South,
+                ))
+                .expect("gamepad bindings should no-op without a gamepad manager")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetGamepadMenuBinding(
+                    GamepadMenuBindingTarget::Confirm,
+                    GamepadButtonBinding::North,
+                ))
+                .expect("gamepad menu bindings should no-op without a gamepad manager")
+                .is_none()
+        );
+        harness.runtime.menu_state.open(presentation);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::Reset)
+                .expect("reset should close the menu even without a loaded ROM")
+                .is_none()
+        );
+        assert!(!harness.runtime.menu_state.is_open());
+
+        drop(harness);
+
+        let mut gamepad_harness = FrontendHarness::new("saved-preferred", true, false, true);
+        let preferred_device = gb_desktop::PreferredGamepadIdentity {
+            path: Some("saved-path".to_string()),
+            name: None,
+        };
+        gamepad_harness
+            .runtime
+            .gamepad_manager
+            .as_mut()
+            .expect("gamepad harness should have a manager")
+            .set_preferred_device(
+                preferred_device,
+                &mut gamepad_harness.runtime.input_state,
+                &mut gamepad_harness.machine,
+            );
+        let gamepad_presentation = super::current_menu_presentation(
+            gamepad_harness.canvas.window(),
+            &gamepad_harness.runtime,
+            &gamepad_harness.machine,
+            &gamepad_harness.session,
+        );
+        assert!(gamepad_presentation.gamepad_available);
+        assert!(gamepad_presentation.preferred_gamepad_configured);
+        assert_eq!(
+            gamepad_presentation.preferred_gamepad_label.as_str(),
+            "SAVED"
+        );
+        assert!(!gamepad_presentation.active_gamepad_connected);
+    }
+
+    #[test]
+    fn execute_menu_actions_update_runtime_machine_and_persisted_settings() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("actions", true, true, true);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleConsoleModel)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.config.launch.console_model,
+            DesktopConsoleModel::Mgb
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleStartupMode)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.config.launch.startup_mode,
+            StartupMode::RealBoot
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleExecutionMode)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.config.launch.execution_mode,
+            ExecutionMode::Permissive
+        );
+        harness.session.config.boot_rom.search_path = Some(harness.root.join("boot.bin"));
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ClearBootRomPath)
+                .unwrap()
+                .is_none()
+        );
+        assert!(harness.session.config.boot_rom.search_path.is_none());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleBootRomVerify)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.config.boot_rom.verification,
+            BootRomVerificationMode::Off
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleSavesEnabled)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.session.config.saves.enabled);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleSavePolicy)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.config.saves.flush_policy,
+            DesktopSaveFlushPolicy::Manual
+        );
+        harness.session.config.saves.directory_policy =
+            gb_desktop::SaveDirectoryPolicy::Custom(harness.root.join("manual-saves"));
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ClearSaveDirectoryPath)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.config.saves.directory_policy,
+            gb_desktop::SaveDirectoryPolicy::RomFolderSavesSubdir
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleVsync)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.runtime.video_options.vsync);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleWindowScale)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.runtime.video_options.window_scale, 5);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleIntegerScale)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.runtime.video_options.integer_scale);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::TogglePerformanceHud)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.runtime.video_options.show_performance_hud);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleMute)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            harness
+                .runtime
+                .audio_output
+                .as_ref()
+                .is_some_and(|audio| audio.is_muted())
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleAudioVolume)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.runtime.audio_volume_percent, 25);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleGamepadDirectionalSource)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .expect("gamepad manager")
+                .directional_source(),
+            GamepadDirectionalSource::DpadOnly
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::OpenRecentRom(99))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetKeyboardBinding(
+                    KeyboardBindingTarget::A,
+                    DesktopKey::Space,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.keyboard_bindings.joypad.a,
+            DesktopKey::Space
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetKeyboardMenuBinding(
+                    KeyboardMenuBindingTarget::Confirm,
+                    DesktopKey::X,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.keyboard_bindings.menu.confirm,
+            DesktopKey::X
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetGamepadBinding(
+                    GamepadBindingTarget::A,
+                    GamepadButtonBinding::South,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .expect("gamepad manager")
+                .button_bindings()
+                .a,
+            GamepadButtonBinding::South
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetGamepadMenuBinding(
+                    GamepadMenuBindingTarget::Confirm,
+                    GamepadButtonBinding::North,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .expect("gamepad manager")
+                .menu_bindings()
+                .confirm,
+            GamepadButtonBinding::North
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ResetAudioDefaults)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(harness.runtime.audio_volume_percent, 100);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ResetVideoDefaults)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.video_options,
+            gb_desktop::VideoOptions::default()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ResetInputDefaults)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.keyboard_bindings,
+            gb_desktop::InputOptions::default().keyboard
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::Reset)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.machine.cartridge().is_empty());
+        assert!(matches!(
+            harness.execute_action(super::MenuAction::Quit).unwrap(),
+            Some(super::LoopSignal::Quit)
+        ));
+
+        let persisted = fs::read_to_string(&harness.settings_path)
+            .expect("actions test should persist settings");
+        assert!(persisted.contains("console_model = \"mgb\""));
+        assert!(persisted.contains("startup_mode = \"real-boot\""));
     }
 }

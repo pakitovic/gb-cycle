@@ -183,7 +183,7 @@ impl GamepadManager {
         let mut gamepads = manager
             .subsystem
             .gamepads()
-            .map_err(|error| format!("failed to enumerate SDL3 gamepads: {error}"))?;
+            .map_err(format_gamepad_enumeration_error)?;
         gamepads.sort_unstable();
         for joystick_id in gamepads {
             manager.open_gamepad(joystick_id)?;
@@ -229,12 +229,13 @@ impl GamepadManager {
         let gamepad = self
             .subsystem
             .open(joystick_id)
-            .map_err(|error| format!("failed to open SDL3 gamepad {}: {error}", joystick_id.0))?;
+            .map_err(|error| format_open_gamepad_error(joystick_id, error))?;
         let opened_gamepad = OpenGamepad {
             path: gamepad.path(),
-            name: gamepad
-                .name()
-                .unwrap_or_else(|| format!("SDL gamepad {}", joystick_id.0)),
+            name: match gamepad.name() {
+                Some(name) => name,
+                None => default_gamepad_name(joystick_id),
+            },
             gamepad,
         };
 
@@ -290,11 +291,11 @@ impl GamepadManager {
         input_state: &mut FrontendInputState,
         machine: &mut Machine<TraceSummaryBuffer>,
     ) {
-        let removed_name = self
-            .opened
-            .remove(&joystick_id)
-            .map(|gamepad| gamepad.name)
-            .unwrap_or_else(|| format!("SDL gamepad {}", joystick_id.0));
+        let removed_name = self.opened.remove(&joystick_id).map(|gamepad| gamepad.name);
+        let removed_name = match removed_name {
+            Some(name) => name,
+            None => default_gamepad_name(joystick_id),
+        };
         eprintln!("info: SDL gamepad disconnected: {removed_name}");
 
         let previous_active = self.active;
@@ -664,12 +665,129 @@ fn joypad_button_index(button: JoypadButton) -> usize {
     }
 }
 
+fn default_gamepad_name(joystick_id: JoystickId) -> String {
+    format!("SDL gamepad {}", joystick_id.0)
+}
+
+fn format_gamepad_enumeration_error(error: sdl3::Error) -> String {
+    format!("failed to enumerate SDL3 gamepads: {error}")
+}
+
+fn format_open_gamepad_error(joystick_id: JoystickId, error: sdl3::Error) -> String {
+    format!("failed to open SDL3 gamepad {}: {error}", joystick_id.0)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{axis_direction_state, sdl_button_for_binding};
-    use gb_core::JoypadButton;
-    use gb_desktop::{GamepadButtonBinding, GamepadFaceLayout};
-    use sdl3::gamepad::Button;
+    use super::{
+        FrontendInputState, GamepadManager, axis_direction_state,
+        gamepad_button_binding_from_sdl_button, joystick_id_from_event, sdl_button_for_binding,
+    };
+    use gb_core::{
+        ConsoleModel, JoypadButton, Machine, MachineConfig, StartupMode, TraceSummaryBuffer,
+    };
+    use gb_desktop::{
+        GamepadButtonBinding, GamepadFaceLayout, GamepadOptions, PreferredGamepadIdentity,
+    };
+    use sdl3::event::Event;
+    use sdl3::gamepad::{Axis, Button};
+    use sdl3::joystick::JoystickId;
+    use sdl3::{GamepadSubsystem, hint};
+    use std::ffi::CString;
+
+    fn init_gamepad_subsystem() -> (sdl3::Sdl, GamepadSubsystem) {
+        crate::configure_headless_sdl();
+        assert!(hint::set("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1"));
+        let sdl = sdl3::init().expect("failed to initialize SDL");
+        let gamepad = sdl
+            .gamepad()
+            .expect("failed to initialize SDL gamepad subsystem");
+        (sdl, gamepad)
+    }
+
+    fn test_machine() -> Machine<TraceSummaryBuffer> {
+        Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        )
+    }
+
+    fn pressed_mask(machine: &Machine<TraceSummaryBuffer>) -> u8 {
+        machine.joypad().snapshot().pressed_mask
+    }
+
+    fn joypad_mask(button: JoypadButton) -> u8 {
+        match button {
+            JoypadButton::Right => 0x01,
+            JoypadButton::Left => 0x02,
+            JoypadButton::Up => 0x04,
+            JoypadButton::Down => 0x08,
+            JoypadButton::A => 0x10,
+            JoypadButton::B => 0x20,
+            JoypadButton::Select => 0x40,
+            JoypadButton::Start => 0x80,
+        }
+    }
+
+    struct VirtualGamepad {
+        joystick_id: JoystickId,
+        raw: *mut sdl3::sys::joystick::SDL_Joystick,
+        _name: CString,
+    }
+
+    impl VirtualGamepad {
+        fn attach(name: &str) -> Self {
+            let name = CString::new(name).expect("virtual gamepad name");
+            let mut descriptor = sdl3::sys::joystick::SDL_VirtualJoystickDesc::new();
+            descriptor.r#type = sdl3::sys::joystick::SDL_JOYSTICK_TYPE_GAMEPAD.0 as u16;
+            descriptor.naxes = 2;
+            descriptor.nbuttons = 16;
+            descriptor.button_mask = (1 << Button::South as u32)
+                | (1 << Button::East as u32)
+                | (1 << Button::Back as u32)
+                | (1 << Button::Start as u32)
+                | (1 << Button::DPadUp as u32)
+                | (1 << Button::DPadDown as u32)
+                | (1 << Button::DPadLeft as u32)
+                | (1 << Button::DPadRight as u32);
+            descriptor.axis_mask = (1 << Axis::LeftX as u32) | (1 << Axis::LeftY as u32);
+            descriptor.name = name.as_ptr();
+
+            let joystick_id =
+                unsafe { sdl3::sys::joystick::SDL_AttachVirtualJoystick(&descriptor) };
+            assert_ne!(joystick_id.0, 0, "failed to attach a virtual SDL gamepad");
+            let raw = unsafe { sdl3::sys::joystick::SDL_OpenJoystick(joystick_id) };
+            assert!(!raw.is_null(), "failed to open the virtual SDL gamepad");
+
+            Self {
+                joystick_id,
+                raw,
+                _name: name,
+            }
+        }
+
+        fn set_button(&self, button: Button, pressed: bool) {
+            assert!(unsafe {
+                sdl3::sys::joystick::SDL_SetJoystickVirtualButton(self.raw, button as i32, pressed)
+            });
+        }
+
+        fn set_axis(&self, axis: Axis, value: i16) {
+            assert!(unsafe {
+                sdl3::sys::joystick::SDL_SetJoystickVirtualAxis(self.raw, axis as i32, value)
+            });
+        }
+    }
+
+    impl Drop for VirtualGamepad {
+        fn drop(&mut self) {
+            unsafe {
+                sdl3::sys::joystick::SDL_CloseJoystick(self.raw);
+                assert!(sdl3::sys::joystick::SDL_DetachVirtualJoystick(
+                    self.joystick_id
+                ));
+            }
+        }
+    }
 
     #[test]
     fn east_a_face_layout_uses_east_for_a_and_south_for_b() {
@@ -727,5 +845,243 @@ mod tests {
             .gamepad_left_stick
             .set_pressed(JoypadButton::Left, false);
         assert!(!input_state.is_effectively_pressed(JoypadButton::Left));
+    }
+
+    #[test]
+    fn frontend_input_state_updates_machine_state_and_clears_each_source() {
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+
+        input_state.set_keyboard_button(&mut machine, JoypadButton::A, true);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::A));
+
+        input_state.set_gamepad_button(&mut machine, JoypadButton::A, true);
+        input_state.set_keyboard_button(&mut machine, JoypadButton::A, false);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::A));
+
+        input_state.set_gamepad_left_stick_button(&mut machine, JoypadButton::Left, true);
+        assert_eq!(
+            pressed_mask(&machine),
+            joypad_mask(JoypadButton::A) | joypad_mask(JoypadButton::Left)
+        );
+
+        input_state.clear_keyboard(&mut machine);
+        assert_eq!(
+            pressed_mask(&machine),
+            joypad_mask(JoypadButton::A) | joypad_mask(JoypadButton::Left)
+        );
+
+        input_state.clear_gamepad(&mut machine);
+        assert_eq!(pressed_mask(&machine), 0);
+
+        input_state.set_keyboard_button(&mut machine, JoypadButton::Start, true);
+        input_state.set_gamepad_button(&mut machine, JoypadButton::B, true);
+        input_state.clear_all(&mut machine);
+        assert_eq!(pressed_mask(&machine), 0);
+    }
+
+    #[test]
+    fn gamepad_button_helpers_round_trip_supported_buttons() {
+        assert_eq!(
+            gamepad_button_binding_from_sdl_button(Button::South),
+            Some(GamepadButtonBinding::South)
+        );
+        assert_eq!(
+            gamepad_button_binding_from_sdl_button(Button::RightShoulder),
+            Some(GamepadButtonBinding::RightShoulder)
+        );
+        assert_eq!(
+            gamepad_button_binding_from_sdl_button(Button::Touchpad),
+            None
+        );
+        assert_eq!(
+            sdl_button_for_binding(GamepadButtonBinding::Misc1),
+            Button::Misc1
+        );
+        assert_eq!(joystick_id_from_event(77).0, 77);
+    }
+
+    #[test]
+    fn gamepad_manager_polls_virtual_gamepad_buttons_and_left_stick() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let virtual_gamepad = VirtualGamepad::attach("Player One");
+        subsystem.update();
+
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+        let mut manager = GamepadManager::new(
+            &subsystem,
+            GamepadOptions::default(),
+            &mut input_state,
+            &mut machine,
+        )
+        .expect("gamepad manager");
+
+        assert!(manager.has_connected_gamepad());
+        assert_eq!(manager.active_gamepad_name(), Some("Player One"));
+        assert_eq!(
+            manager.active_gamepad_identity(),
+            Some(PreferredGamepadIdentity {
+                path: None,
+                name: Some("Player One".to_string()),
+            })
+        );
+
+        virtual_gamepad.set_button(Button::East, true);
+        virtual_gamepad.set_button(Button::DPadLeft, true);
+        virtual_gamepad.set_button(Button::Start, true);
+        virtual_gamepad.set_axis(Axis::LeftY, -20_000);
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+
+        assert_eq!(
+            pressed_mask(&machine),
+            joypad_mask(JoypadButton::A)
+                | joypad_mask(JoypadButton::Left)
+                | joypad_mask(JoypadButton::Up)
+        );
+
+        manager.set_directional_source(
+            gb_desktop::GamepadDirectionalSource::DpadOnly,
+            &mut input_state,
+            &mut machine,
+        );
+        assert_eq!(
+            manager.directional_source(),
+            gb_desktop::GamepadDirectionalSource::DpadOnly
+        );
+        assert_eq!(
+            pressed_mask(&machine),
+            joypad_mask(JoypadButton::A) | joypad_mask(JoypadButton::Left)
+        );
+
+        let mut bindings = manager.button_bindings();
+        bindings.a = GamepadButtonBinding::South;
+        manager.set_button_bindings(bindings, &mut input_state, &mut machine);
+        virtual_gamepad.set_button(Button::South, true);
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        assert!(pressed_mask(&machine) & joypad_mask(JoypadButton::A) != 0);
+
+        manager.set_menu_bindings(gb_desktop::GamepadMenuBindings {
+            confirm: GamepadButtonBinding::North,
+            ..manager.menu_bindings()
+        });
+        assert_eq!(manager.menu_bindings().confirm, GamepadButtonBinding::North);
+    }
+
+    #[test]
+    fn gamepad_manager_respects_preferred_devices_and_handle_event_transitions() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let first = VirtualGamepad::attach("First Pad");
+        let second = VirtualGamepad::attach("Second Pad");
+        subsystem.update();
+
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+        let options = GamepadOptions {
+            preferred_device: PreferredGamepadIdentity {
+                path: None,
+                name: Some("Second Pad".to_string()),
+            },
+            ..GamepadOptions::default()
+        };
+        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
+            .expect("manager");
+
+        assert_eq!(manager.active_gamepad_name(), Some("Second Pad"));
+        assert_eq!(
+            manager.preferred_device().name.as_deref(),
+            Some("Second Pad")
+        );
+        assert!(manager.active_matches_preferred());
+        assert_eq!(manager.preferred_device_name(), Some("Second Pad"));
+        assert!(!manager.activate_gamepad_from_input(
+            first.joystick_id,
+            &mut input_state,
+            &mut machine
+        ));
+
+        manager.set_preferred_device(
+            PreferredGamepadIdentity::default(),
+            &mut input_state,
+            &mut machine,
+        );
+        assert!(!manager.active_matches_preferred());
+        assert!(manager.is_active_gamepad(first.joystick_id));
+        assert!(!manager.activate_gamepad_from_input(
+            first.joystick_id,
+            &mut input_state,
+            &mut machine
+        ));
+        assert!(manager.activate_gamepad_from_input(
+            second.joystick_id,
+            &mut input_state,
+            &mut machine
+        ));
+        assert!(manager.is_active_gamepad(second.joystick_id));
+
+        second.set_button(Button::East, true);
+        subsystem.update();
+        manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        assert!(pressed_mask(&machine) & joypad_mask(JoypadButton::A) != 0);
+
+        manager
+            .handle_event(
+                &Event::ControllerDeviceRemapped {
+                    timestamp: 0,
+                    which: second.joystick_id.0,
+                },
+                &mut input_state,
+                &mut machine,
+            )
+            .expect("remap event");
+
+        manager
+            .handle_event(
+                &Event::ControllerDeviceRemoved {
+                    timestamp: 0,
+                    which: second.joystick_id.0,
+                },
+                &mut input_state,
+                &mut machine,
+            )
+            .expect("remove event");
+        assert_eq!(manager.active_gamepad_name(), Some("First Pad"));
+        assert_eq!(pressed_mask(&machine), 0);
+    }
+
+    #[test]
+    fn gamepad_manager_can_open_new_virtual_devices_from_added_events() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+        let mut manager = GamepadManager::new(
+            &subsystem,
+            GamepadOptions::default(),
+            &mut input_state,
+            &mut machine,
+        )
+        .expect("gamepad manager");
+        assert!(!manager.has_connected_gamepad());
+
+        let added = VirtualGamepad::attach("Hot Plugged");
+        subsystem.update();
+        manager
+            .handle_event(
+                &Event::ControllerDeviceAdded {
+                    timestamp: 0,
+                    which: added.joystick_id.0,
+                },
+                &mut input_state,
+                &mut machine,
+            )
+            .expect("added event");
+
+        assert!(manager.has_connected_gamepad());
+        assert_eq!(manager.active_gamepad_name(), Some("Hot Plugged"));
     }
 }
