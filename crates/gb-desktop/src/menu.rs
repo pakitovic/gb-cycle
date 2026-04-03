@@ -1691,6 +1691,27 @@ impl OverlayMenuState {
     }
 }
 
+#[cfg(test)]
+impl OverlayMenuState {
+    pub(crate) fn begin_keyboard_binding_capture_for_tests(
+        &mut self,
+        target: KeyboardBindingTarget,
+    ) {
+        self.pending_binding_capture = Some(PendingBindingCapture::Keyboard(target));
+    }
+
+    pub(crate) fn begin_keyboard_menu_binding_capture_for_tests(
+        &mut self,
+        target: KeyboardMenuBindingTarget,
+    ) {
+        self.pending_binding_capture = Some(PendingBindingCapture::KeyboardMenu(target));
+    }
+
+    pub(crate) fn begin_gamepad_binding_capture_for_tests(&mut self, target: GamepadBindingTarget) {
+        self.pending_binding_capture = Some(PendingBindingCapture::Gamepad(target));
+    }
+}
+
 fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
     match screen {
         MenuScreen::Root => &ROOT_MENU_ITEMS,
@@ -1756,20 +1777,25 @@ fn recent_rom_item_label(index: usize, label: CompactRecentRomLabel) -> String {
 }
 
 fn compact_gamepad_name(name: &str) -> String {
-    let mut tokens = name
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .filter(|token| !token.is_empty())
-        .map(|token| token.to_ascii_uppercase())
-        .filter(|token| !matches!(token.as_str(), "CONTROLLER" | "WIRELESS" | "GAMEPAD"))
-        .collect::<Vec<_>>();
+    let mut all_tokens = Vec::new();
+    let mut filtered_tokens = Vec::new();
+    for token in name.split(|character: char| !character.is_ascii_alphanumeric()) {
+        if token.is_empty() {
+            continue;
+        }
 
-    if tokens.is_empty() {
-        tokens = name
-            .split(|character: char| !character.is_ascii_alphanumeric())
-            .filter(|token| !token.is_empty())
-            .map(|token| token.to_ascii_uppercase())
-            .collect::<Vec<_>>();
+        let token = token.to_ascii_uppercase();
+        if !matches!(token.as_str(), "CONTROLLER" | "WIRELESS" | "GAMEPAD") {
+            filtered_tokens.push(token.clone());
+        }
+        all_tokens.push(token);
     }
+
+    let mut tokens = if filtered_tokens.is_empty() {
+        all_tokens
+    } else {
+        filtered_tokens
+    };
 
     let Some(last_token) = tokens.pop() else {
         return "PAD".to_string();
@@ -2037,9 +2063,10 @@ mod tests {
     use super::{
         CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
         KeyboardBindingTarget, KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction,
-        MenuInput, MenuPresentation, MenuScreen, OverlayMenuState, PerformanceHudSnapshot,
-        RECENT_ROM_MENU_CAPACITY, ScrollIndicatorDirection, performance_hud_lines,
-        scroll_indicator_rows, viewport_start_index,
+        MenuInput, MenuItem, MenuPresentation, MenuScreen, OverlayMenuState,
+        PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, ScrollIndicatorDirection,
+        gamepad_binding_label, performance_hud_lines, previous_enabled_index,
+        render_performance_hud, scroll_indicator_rows, viewport_start_index,
     };
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
@@ -2797,6 +2824,424 @@ mod tests {
         assert_eq!(
             scroll_indicator_rows(ScrollIndicatorDirection::Down),
             [(0, 5), (1, 3), (2, 1)]
+        );
+    }
+
+    #[test]
+    fn compact_labels_binding_labels_and_previous_navigation_cover_overlay_helpers() {
+        assert!(CompactMenuLabel::default().is_empty());
+        assert!(!CompactMenuLabel::from_text("PAD").is_empty());
+        assert_eq!(CompactMenuLabel::from_text("PAD!? 12").as_str(), "PAD 12");
+        assert_eq!(
+            CompactRecentRomLabel::from_text("ROM!? 7").as_str(),
+            "ROM 7"
+        );
+        assert_eq!(
+            gamepad_binding_label(GamepadButtonBinding::RightShoulder),
+            "R1"
+        );
+        assert_eq!(
+            previous_enabled_index(MenuScreen::Root, 0, test_presentation()),
+            5
+        );
+
+        let mut presentation = test_presentation();
+        presentation.recent_rom_count = 2;
+        presentation.recent_rom_labels[0] = CompactRecentRomLabel::from_text("TETRIS");
+        presentation.recent_rom_labels[1] = CompactRecentRomLabel::from_text("MARIO");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom2), "2 MARIO");
+    }
+
+    #[test]
+    fn menu_item_labels_cover_runtime_variants_and_binding_summaries() {
+        let mut presentation = test_presentation();
+        presentation.recent_rom_count = 8;
+        for (index, label) in [
+            "TETRIS", "MARIO", "DRMARIO", "KIRBY", "ZELDA", "WARIO", "METROID", "TENNIS",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            presentation.recent_rom_labels[index] = CompactRecentRomLabel::from_text(label);
+        }
+        assert_eq!(presentation.item_label(MenuItem::RecentRom1), "1 TETRIS");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom8), "8 TENNIS");
+
+        presentation.console_model = DesktopConsoleModel::Dmg0;
+        assert_eq!(
+            presentation.item_label(MenuItem::ConsoleModel),
+            "MODEL DMG0"
+        );
+        presentation.console_model = DesktopConsoleModel::Mgb;
+        assert_eq!(presentation.item_label(MenuItem::ConsoleModel), "MODEL MGB");
+
+        presentation.startup_mode = StartupMode::RealBoot;
+        assert_eq!(presentation.item_label(MenuItem::StartupMode), "START REAL");
+        presentation.execution_mode = ExecutionMode::Permissive;
+        assert_eq!(
+            presentation.item_label(MenuItem::ExecutionMode),
+            "MODE PERM"
+        );
+        presentation.execution_mode = ExecutionMode::Experimental;
+        assert_eq!(presentation.item_label(MenuItem::ExecutionMode), "MODE EXP");
+
+        presentation.boot_rom_uses_default_path = false;
+        assert_eq!(
+            presentation.item_label(MenuItem::BootRomDefaultPath),
+            "BOOT AUTO OFF"
+        );
+        presentation.boot_rom_verification = BootRomVerificationMode::Warn;
+        assert_eq!(
+            presentation.item_label(MenuItem::BootRomVerify),
+            "VERIFY WARN"
+        );
+        presentation.boot_rom_verification = BootRomVerificationMode::Off;
+        assert_eq!(
+            presentation.item_label(MenuItem::BootRomVerify),
+            "VERIFY OFF"
+        );
+
+        presentation.saves_enabled = false;
+        assert_eq!(presentation.item_label(MenuItem::SavesEnabled), "SAVES OFF");
+        presentation.save_flush_policy = DesktopSaveFlushPolicy::Manual;
+        assert_eq!(presentation.item_label(MenuItem::SavePolicy), "SAVE MANUAL");
+        presentation.save_flush_policy = DesktopSaveFlushPolicy::OnClose;
+        assert_eq!(presentation.item_label(MenuItem::SavePolicy), "SAVE CLOSE");
+        presentation.save_flush_policy = DesktopSaveFlushPolicy::OnWrite;
+        assert_eq!(presentation.item_label(MenuItem::SavePolicy), "SAVE WRITE");
+        presentation.save_directory_uses_default_path = false;
+        assert_eq!(
+            presentation.item_label(MenuItem::SaveDefaultPath),
+            "DIR AUTO OFF"
+        );
+
+        presentation.fullscreen = true;
+        assert_eq!(
+            presentation.item_label(MenuItem::Fullscreen),
+            "FULLSCREEN ON"
+        );
+        presentation.vsync = false;
+        assert_eq!(presentation.item_label(MenuItem::Vsync), "VSYNC OFF");
+        presentation.integer_scale = false;
+        assert_eq!(
+            presentation.item_label(MenuItem::IntegerScale),
+            "INTEGER OFF"
+        );
+        presentation.show_performance_hud = false;
+        assert_eq!(
+            presentation.item_label(MenuItem::PerformanceHud),
+            "STATS OFF"
+        );
+        presentation.muted = true;
+        assert_eq!(presentation.item_label(MenuItem::ToggleMute), "MUTE ON");
+        presentation.audio_volume_percent = 250;
+        assert_eq!(presentation.item_label(MenuItem::AudioVolume), "VOL 100%");
+
+        presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadDirection),
+            "DIR DPAD"
+        );
+        presentation.gamepad_directional_source = GamepadDirectionalSource::LeftStickOnly;
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadDirection),
+            "DIR LEFT"
+        );
+
+        presentation.active_gamepad_connected = true;
+        presentation.active_gamepad_label = CompactMenuLabel::from_text("SWITCH");
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadActive),
+            "ACTIVE SWITCH"
+        );
+        presentation.preferred_gamepad_configured = true;
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadPreferred),
+            "PREF SAVED"
+        );
+        presentation.preferred_gamepad_label = CompactMenuLabel::from_text("ARCADE");
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadPreferred),
+            "PREF ARCADE"
+        );
+
+        presentation.gamepad_bindings = GamepadButtonBindings {
+            up: GamepadButtonBinding::DPadUp,
+            down: GamepadButtonBinding::DPadDown,
+            left: GamepadButtonBinding::DPadLeft,
+            right: GamepadButtonBinding::DPadRight,
+            a: GamepadButtonBinding::North,
+            b: GamepadButtonBinding::West,
+            select: GamepadButtonBinding::Back,
+            start: GamepadButtonBinding::Guide,
+        };
+        assert_eq!(presentation.item_label(MenuItem::GamepadUp), "UP D UP");
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadDown),
+            "DOWN D DOWN"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadLeft),
+            "LEFT D LEFT"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRight),
+            "RIGHT D RIGHT"
+        );
+        assert_eq!(presentation.item_label(MenuItem::GamepadA), "A NORTH");
+        assert_eq!(presentation.item_label(MenuItem::GamepadB), "B WEST");
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadSelect),
+            "SELECT BACK"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadStart),
+            "START GUIDE"
+        );
+
+        presentation.gamepad_menu_bindings = GamepadMenuBindings {
+            up: GamepadButtonBinding::LeftShoulder,
+            down: GamepadButtonBinding::RightShoulder,
+            confirm: GamepadButtonBinding::LeftStickClick,
+            cancel: GamepadButtonBinding::RightStickClick,
+        };
+        assert_eq!(presentation.item_label(MenuItem::GamepadMenuUp), "UP L1");
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadMenuDown),
+            "DOWN R1"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadMenuConfirm),
+            "OK LSTICK"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadMenuCancel),
+            "BACK RSTICK"
+        );
+
+        presentation.keyboard_bindings = JoypadKeyboardBindings {
+            up: DesktopKey::ArrowUp,
+            down: DesktopKey::ArrowDown,
+            left: DesktopKey::ArrowLeft,
+            right: DesktopKey::ArrowRight,
+            a: DesktopKey::Z,
+            b: DesktopKey::X,
+            select: DesktopKey::Backspace,
+            start: DesktopKey::Space,
+        };
+        assert_eq!(presentation.item_label(MenuItem::KeyboardUp), "UP UP");
+        assert_eq!(presentation.item_label(MenuItem::KeyboardDown), "DOWN DOWN");
+        assert_eq!(presentation.item_label(MenuItem::KeyboardLeft), "LEFT LEFT");
+        assert_eq!(
+            presentation.item_label(MenuItem::KeyboardRight),
+            "RIGHT RIGHT"
+        );
+        assert_eq!(presentation.item_label(MenuItem::KeyboardA), "A Z");
+        assert_eq!(presentation.item_label(MenuItem::KeyboardB), "B X");
+        assert_eq!(
+            presentation.item_label(MenuItem::KeyboardSelect),
+            "SELECT BACK"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::KeyboardStart),
+            "START SPACE"
+        );
+
+        presentation.keyboard_menu_bindings = MenuKeyboardBindings {
+            up: DesktopKey::ArrowUp,
+            down: DesktopKey::ArrowDown,
+            confirm: DesktopKey::Return,
+            cancel: DesktopKey::Escape,
+        };
+        assert_eq!(presentation.item_label(MenuItem::KeyboardMenuUp), "UP UP");
+        assert_eq!(
+            presentation.item_label(MenuItem::KeyboardMenuDown),
+            "DOWN DOWN"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::KeyboardMenuConfirm),
+            "OK ENTER"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::KeyboardMenuCancel),
+            "BACK ESC"
+        );
+
+        presentation.hotkey_bindings = HotkeyBindings {
+            pause: DesktopKey::R,
+            reset: DesktopKey::Space,
+            toggle_fullscreen: DesktopKey::F11,
+            toggle_performance_hud: DesktopKey::F10,
+            save_battery: DesktopKey::F5,
+        };
+        assert_eq!(presentation.item_label(MenuItem::HotkeyPause), "PAUSE R");
+        assert_eq!(
+            presentation.item_label(MenuItem::HotkeyReset),
+            "RESET SPACE"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HotkeyFullscreen),
+            "FULLSCREEN F11"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HotkeyPerformanceHud),
+            "STATS F10"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::HotkeySaveBattery),
+            "SAVE BATTERY F5"
+        );
+    }
+
+    #[test]
+    fn overlay_actions_cover_binding_capture_targets_and_screen_titles() {
+        let mut presentation = MenuPresentation {
+            recent_rom_count: 1,
+            audio_available: true,
+            manual_save_available: true,
+            gamepad_available: true,
+            ..test_presentation()
+        };
+        presentation.recent_rom_labels[0] = CompactRecentRomLabel::from_text("TETRIS");
+
+        assert_eq!(MenuScreen::Root.title(test_presentation()), "MENU");
+        assert_eq!(
+            MenuScreen::Root.title(MenuPresentation {
+                rom_loaded: false,
+                ..test_presentation()
+            }),
+            "NO ROM"
+        );
+        assert_eq!(MenuScreen::Recent.title(presentation), "RECENT");
+        assert_eq!(MenuScreen::Video.title(presentation), "VIDEO");
+        assert_eq!(MenuScreen::Audio.title(presentation), "AUDIO");
+        assert_eq!(MenuScreen::Input.title(presentation), "INPUT");
+        assert_eq!(MenuScreen::Gamepad.title(presentation), "GAMEPAD");
+        assert_eq!(
+            MenuScreen::GamepadMenuControls.title(presentation),
+            "PAD MENU"
+        );
+        assert_eq!(MenuScreen::Keyboard.title(presentation), "KEYBOARD");
+        assert_eq!(
+            MenuScreen::KeyboardMenuControls.title(presentation),
+            "KB MENU"
+        );
+        assert_eq!(MenuScreen::Hotkeys.title(presentation), "HOTKEYS");
+        assert_eq!(MenuScreen::System.title(presentation), "SYSTEM");
+
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::OpenRom, presentation),
+            Some(MenuAction::OpenRom)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::RecentMenu, presentation),
+            None
+        );
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::OpenRecentRom(0))
+        );
+        menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::VideoMenu, presentation),
+            None
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::AudioMenu, presentation),
+            None
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::InputMenu, presentation),
+            None
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::SystemMenu, presentation),
+            None
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::SaveBattery, presentation),
+            Some(MenuAction::SaveBattery)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::GamepadActive, presentation),
+            None
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::GamepadPreferred, presentation),
+            Some(MenuAction::TogglePreferredGamepad)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::Reset, presentation),
+            Some(MenuAction::Reset)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::Quit, presentation),
+            Some(MenuAction::Quit)
+        );
+
+        for (item, expected) in [
+            (MenuItem::KeyboardUp, MenuItem::KeyboardUp),
+            (MenuItem::KeyboardDown, MenuItem::KeyboardDown),
+            (MenuItem::KeyboardLeft, MenuItem::KeyboardLeft),
+            (MenuItem::KeyboardRight, MenuItem::KeyboardRight),
+            (MenuItem::KeyboardA, MenuItem::KeyboardA),
+            (MenuItem::KeyboardB, MenuItem::KeyboardB),
+            (MenuItem::KeyboardSelect, MenuItem::KeyboardSelect),
+            (MenuItem::KeyboardStart, MenuItem::KeyboardStart),
+            (MenuItem::KeyboardMenuUp, MenuItem::KeyboardMenuUp),
+            (MenuItem::KeyboardMenuDown, MenuItem::KeyboardMenuDown),
+            (MenuItem::KeyboardMenuConfirm, MenuItem::KeyboardMenuConfirm),
+            (MenuItem::KeyboardMenuCancel, MenuItem::KeyboardMenuCancel),
+            (MenuItem::HotkeyPause, MenuItem::HotkeyPause),
+            (MenuItem::HotkeyReset, MenuItem::HotkeyReset),
+            (MenuItem::HotkeyFullscreen, MenuItem::HotkeyFullscreen),
+            (
+                MenuItem::HotkeyPerformanceHud,
+                MenuItem::HotkeyPerformanceHud,
+            ),
+            (MenuItem::HotkeySaveBattery, MenuItem::HotkeySaveBattery),
+            (MenuItem::GamepadUp, MenuItem::GamepadUp),
+            (MenuItem::GamepadDown, MenuItem::GamepadDown),
+            (MenuItem::GamepadLeft, MenuItem::GamepadLeft),
+            (MenuItem::GamepadRight, MenuItem::GamepadRight),
+            (MenuItem::GamepadA, MenuItem::GamepadA),
+            (MenuItem::GamepadB, MenuItem::GamepadB),
+            (MenuItem::GamepadSelect, MenuItem::GamepadSelect),
+            (MenuItem::GamepadStart, MenuItem::GamepadStart),
+            (MenuItem::GamepadMenuUp, MenuItem::GamepadMenuUp),
+            (MenuItem::GamepadMenuDown, MenuItem::GamepadMenuDown),
+            (MenuItem::GamepadMenuConfirm, MenuItem::GamepadMenuConfirm),
+            (MenuItem::GamepadMenuCancel, MenuItem::GamepadMenuCancel),
+        ] {
+            menu.pending_binding_capture = None;
+            assert_eq!(menu.apply_item_action(item, presentation), None);
+            assert_eq!(menu.pending_binding_item(), Some(expected));
+        }
+    }
+
+    #[test]
+    fn performance_hud_renderer_draws_into_the_framebuffer() {
+        let mut frame = vec![255_u8; 160 * 144 * 3];
+        render_performance_hud(
+            &mut frame,
+            160,
+            144,
+            PerformanceHudSnapshot {
+                fps: 59.8,
+                speed_percent: 100.0,
+                frame_time_ms: 16.7,
+                emulation_time_ms: 11.0,
+                render_time_ms: 2.0,
+                pacing_time_ms: 3.0,
+                audio_queue_ms: Some(18.0),
+            },
+        );
+
+        assert!(
+            frame.iter().any(|component| *component != 255),
+            "HUD rendering should modify the destination framebuffer"
         );
     }
 }

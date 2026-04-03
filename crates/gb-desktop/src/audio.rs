@@ -4,6 +4,7 @@ use gb_core::{
 use gb_desktop::AudioOptions;
 use sdl3::AudioSubsystem;
 use sdl3::audio::{AudioFormat, AudioSpec, AudioStreamOwner};
+use std::fmt::Display;
 use std::mem::size_of;
 
 const AUDIO_CHANNEL_COUNT: i32 = 2;
@@ -28,13 +29,16 @@ impl DesktopAudioOutput {
             Some(AUDIO_CHANNEL_COUNT),
             Some(AudioFormat::f32_sys()),
         );
-        let stream = audio
-            .default_playback_device()
-            .open_device_stream(Some(&app_spec))
-            .map_err(|error| format!("failed to open SDL3 audio playback stream: {error}"))?;
-        stream
-            .resume()
-            .map_err(|error| format!("failed to start SDL3 audio playback stream: {error}"))?;
+        let stream = map_audio_result(
+            audio
+                .default_playback_device()
+                .open_device_stream(Some(&app_spec)),
+            "failed to open SDL3 audio playback stream",
+        )?;
+        map_audio_result(
+            stream.resume(),
+            "failed to start SDL3 audio playback stream",
+        )?;
 
         Ok(Self {
             capture: ApuSampleCapture::new(options.output_sample_rate_hz)
@@ -63,14 +67,15 @@ impl DesktopAudioOutput {
             return Ok(());
         }
 
-        let queued_bytes = self
-            .stream
-            .queued_bytes()
-            .map_err(|error| format!("failed to query queued SDL3 audio bytes: {error}"))?;
+        let queued_bytes = map_audio_result(
+            self.stream.queued_bytes(),
+            "failed to query queued SDL3 audio bytes",
+        )?;
         if queued_bytes > self.max_queued_bytes {
-            self.stream
-                .clear()
-                .map_err(|error| format!("failed to clear queued SDL3 audio bytes: {error}"))?;
+            map_audio_result(
+                self.stream.clear(),
+                "failed to clear queued SDL3 audio bytes",
+            )?;
         }
 
         let sample_scale = if self.muted { 0.0 } else { self.volume_scale };
@@ -84,21 +89,18 @@ impl DesktopAudioOutput {
                 .push(normalize_sample(sample.right) * sample_scale);
         }
 
-        self.stream
-            .put_data_f32(&self.interleaved_buffer)
-            .map_err(|error| format!("failed to queue SDL3 audio samples: {error}"))
+        map_audio_result(
+            self.stream.put_data_f32(&self.interleaved_buffer),
+            "failed to queue SDL3 audio samples",
+        )
     }
 
     pub fn pause(&self) -> Result<(), String> {
-        self.stream
-            .pause()
-            .map_err(|error| format!("failed to pause SDL3 audio stream: {error}"))
+        map_audio_result(self.stream.pause(), "failed to pause SDL3 audio stream")
     }
 
     pub fn resume(&self) -> Result<(), String> {
-        self.stream
-            .resume()
-            .map_err(|error| format!("failed to resume SDL3 audio stream: {error}"))
+        map_audio_result(self.stream.resume(), "failed to resume SDL3 audio stream")
     }
 
     pub fn is_muted(&self) -> bool {
@@ -111,9 +113,10 @@ impl DesktopAudioOutput {
         }
 
         self.muted = muted;
-        self.stream
-            .clear()
-            .map_err(|error| format!("failed to clear queued SDL3 audio bytes: {error}"))
+        map_audio_result(
+            self.stream.clear(),
+            "failed to clear queued SDL3 audio bytes",
+        )
     }
 
     pub fn set_volume_percent(&mut self, volume_percent: u8) -> Result<(), String> {
@@ -124,9 +127,10 @@ impl DesktopAudioOutput {
 
         self.volume_percent = volume_percent;
         self.volume_scale = f32::from(volume_percent) / 100.0;
-        self.stream
-            .clear()
-            .map_err(|error| format!("failed to clear queued SDL3 audio bytes: {error}"))
+        map_audio_result(
+            self.stream.clear(),
+            "failed to clear queued SDL3 audio bytes",
+        )
     }
 
     pub fn clear_buffer(&mut self) -> Result<(), String> {
@@ -134,15 +138,14 @@ impl DesktopAudioOutput {
             ApuSampleCapture::new(self.output_sample_rate_hz).map_err(format_capture_error)?;
         self.captured_samples.clear();
         self.interleaved_buffer.clear();
-        self.stream
-            .clear()
-            .map_err(|error| format!("failed to clear queued SDL3 audio bytes: {error}"))
+        map_audio_result(
+            self.stream.clear(),
+            "failed to clear queued SDL3 audio bytes",
+        )
     }
 
     pub fn flush(&self) -> Result<(), String> {
-        self.stream
-            .flush()
-            .map_err(|error| format!("failed to flush SDL3 audio stream: {error}"))
+        map_audio_result(self.stream.flush(), "failed to flush SDL3 audio stream")
     }
 
     pub fn queued_duration_ms(&self) -> Option<f64> {
@@ -162,10 +165,224 @@ fn normalize_sample(sample: i32) -> f32 {
     (sample as f32 / APU_HOST_MAX_ABS_SAMPLE as f32).clamp(-1.0, 1.0)
 }
 
+fn map_audio_result<T, E>(result: Result<T, E>, context: &str) -> Result<T, String>
+where
+    E: Display,
+{
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => Err(format_audio_error(context, &error.to_string())),
+    }
+}
+
+fn format_audio_error(context: &str, error: &str) -> String {
+    format!("{context}: {error}")
+}
+
 fn format_capture_error(error: ApuSampleCaptureError) -> String {
     match error {
         ApuSampleCaptureError::OutputSampleRateZero => {
             "audio output sample rate must be greater than zero".to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        AUDIO_CHANNEL_COUNT, BYTES_PER_F32_SAMPLE, DesktopAudioOutput, format_audio_error,
+        format_capture_error, map_audio_result, normalize_sample,
+    };
+    use gb_core::{
+        APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuSampleCaptureError, ConsoleModel,
+    };
+    use gb_desktop::AudioOptions;
+    use sdl3::{AudioSubsystem, hint};
+
+    fn init_audio_subsystem() -> AudioSubsystem {
+        crate::configure_headless_sdl();
+        let _ = hint::set("SDL_AUDIO_DRIVER", "dummy");
+        let _ = hint::set("SDL_AUDIO_DUMMY_TIMESCALE", "0");
+        let sdl = sdl3::init().expect("failed to initialize SDL");
+        sdl.audio()
+            .expect("failed to initialize the SDL audio subsystem")
+    }
+
+    fn test_audio_options() -> AudioOptions {
+        AudioOptions {
+            output_sample_rate_hz: 48_000,
+            buffer_frames: 16,
+            ..AudioOptions::default()
+        }
+    }
+
+    fn push_captured_sample(output: &mut DesktopAudioOutput, sample: ApuHostSample) {
+        let pending_before = output.capture.pending_sample_count();
+        while output.capture.pending_sample_count() == pending_before {
+            output.capture.record_output_t_cycle(sample);
+        }
+    }
+
+    #[test]
+    fn desktop_audio_output_scales_queues_and_clears_captured_samples() {
+        let _guard = crate::lock_sdl_test();
+        let audio = init_audio_subsystem();
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options()).expect("audio output");
+        output.pause().expect("pause");
+
+        push_captured_sample(
+            &mut output,
+            ApuHostSample {
+                left: APU_HOST_MAX_ABS_SAMPLE / 2,
+                right: -APU_HOST_MAX_ABS_SAMPLE,
+            },
+        );
+        push_captured_sample(
+            &mut output,
+            ApuHostSample {
+                left: APU_HOST_MAX_ABS_SAMPLE,
+                right: 0,
+            },
+        );
+        output
+            .submit_captured_samples()
+            .expect("submit_captured_samples");
+
+        assert_eq!(output.captured_samples.len(), 2);
+        assert_eq!(output.interleaved_buffer, vec![0.5, -1.0, 1.0, 0.0]);
+        assert!(
+            output
+                .queued_duration_ms()
+                .expect("queued duration should exist")
+                >= 0.0
+        );
+
+        output.max_queued_bytes = -1;
+        push_captured_sample(
+            &mut output,
+            ApuHostSample {
+                left: APU_HOST_MAX_ABS_SAMPLE,
+                right: APU_HOST_MAX_ABS_SAMPLE,
+            },
+        );
+        output
+            .submit_captured_samples()
+            .expect("submit_captured_samples should clear oversized queues");
+        assert_eq!(output.captured_samples.len(), 1);
+        assert_eq!(output.interleaved_buffer, vec![1.0, 1.0]);
+
+        output.set_muted(true).expect("set_muted");
+        push_captured_sample(
+            &mut output,
+            ApuHostSample {
+                left: APU_HOST_MAX_ABS_SAMPLE,
+                right: -APU_HOST_MAX_ABS_SAMPLE,
+            },
+        );
+        output
+            .submit_captured_samples()
+            .expect("muted submit_captured_samples");
+        assert_eq!(output.interleaved_buffer, vec![0.0, -0.0]);
+    }
+
+    #[test]
+    fn desktop_audio_output_controls_pause_volume_and_buffer_reset() {
+        let _guard = crate::lock_sdl_test();
+        let audio = init_audio_subsystem();
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options()).expect("audio output");
+
+        assert!(!output.is_muted());
+        assert!(
+            !output.stream.device_paused().expect("device_paused"),
+            "new streams resume playback during initialization"
+        );
+
+        output.pause().expect("pause");
+        assert!(output.stream.device_paused().expect("device_paused"));
+        output.resume().expect("resume");
+        assert!(!output.stream.device_paused().expect("device_paused"));
+        output.pause().expect("pause");
+
+        output.capture_t_cycle(&Apu::new(ConsoleModel::Dmg));
+        output
+            .submit_captured_samples()
+            .expect("empty submit_captured_samples");
+        assert!(output.captured_samples.is_empty());
+
+        push_captured_sample(
+            &mut output,
+            ApuHostSample {
+                left: APU_HOST_MAX_ABS_SAMPLE,
+                right: 0,
+            },
+        );
+        output
+            .submit_captured_samples()
+            .expect("submit_captured_samples");
+        assert!(!output.interleaved_buffer.is_empty());
+
+        output.set_muted(true).expect("set_muted");
+        assert!(output.is_muted());
+        output
+            .set_muted(true)
+            .expect("setting the same mute state is a no-op");
+
+        output.set_volume_percent(250).expect("set_volume_percent");
+        assert_eq!(output.volume_percent, 100);
+        assert_eq!(output.volume_scale, 1.0);
+        output
+            .set_volume_percent(100)
+            .expect("setting the same volume is a no-op");
+
+        push_captured_sample(&mut output, ApuHostSample { left: 7, right: -7 });
+        output
+            .submit_captured_samples()
+            .expect("submit_captured_samples");
+        assert!(!output.captured_samples.is_empty());
+        assert!(!output.interleaved_buffer.is_empty());
+
+        output.clear_buffer().expect("clear_buffer");
+        assert!(output.captured_samples.is_empty());
+        assert!(output.interleaved_buffer.is_empty());
+
+        output.flush().expect("flush");
+    }
+
+    #[test]
+    fn audio_helpers_cover_normalization_duration_and_capture_errors() {
+        assert_eq!(normalize_sample(APU_HOST_MAX_ABS_SAMPLE / 4), 0.25);
+        assert_eq!(normalize_sample(APU_HOST_MAX_ABS_SAMPLE * 2), 1.0);
+        assert_eq!(normalize_sample(-APU_HOST_MAX_ABS_SAMPLE * 2), -1.0);
+        assert_eq!(
+            format_audio_error("failed to pause SDL3 audio stream", "paused"),
+            "failed to pause SDL3 audio stream: paused"
+        );
+        assert_eq!(
+            map_audio_result::<(), _>(Err("stream"), "stream op")
+                .expect_err("error mapping should preserve context"),
+            "stream op: stream"
+        );
+        assert_eq!(
+            format_capture_error(ApuSampleCaptureError::OutputSampleRateZero),
+            "audio output sample rate must be greater than zero"
+        );
+
+        let _guard = crate::lock_sdl_test();
+        let audio = init_audio_subsystem();
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options()).expect("audio output");
+        output.output_sample_rate_hz = 0;
+        assert_eq!(output.queued_duration_ms(), None);
+        assert_eq!(
+            output
+                .clear_buffer()
+                .expect_err("clear_buffer should reject zero Hz"),
+            "audio output sample rate must be greater than zero"
+        );
+
+        assert_eq!(AUDIO_CHANNEL_COUNT, 2);
+        assert_eq!(BYTES_PER_F32_SAMPLE, std::mem::size_of::<f32>() as i32);
     }
 }
