@@ -403,6 +403,22 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex
 }
 
+fn scrub_inherited_git_repository_context(command: &mut Command) {
+    // Git hooks export repository-scoped variables such as `GIT_DIR` and `GIT_PREFIX`.
+    // Fixture repositories and temporary sparse checkouts must not inherit that context.
+    for key in [
+        "GIT_COMMON_DIR",
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_NAMESPACE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_PREFIX",
+        "GIT_WORK_TREE",
+    ] {
+        command.env_remove(key);
+    }
+}
+
 fn run_git<const N: usize>(
     current_dir: &Path,
     args: [&str; N],
@@ -419,6 +435,7 @@ fn run_git_command(
     source: &ExternalRomSource,
     label: &str,
 ) -> Result<(), String> {
+    scrub_inherited_git_repository_context(&mut command);
     let output = command
         .output()
         .map_err(|error| format!("failed to spawn {label} for source {}: {error}", source.id))?;
@@ -473,7 +490,7 @@ mod tests {
     }
 
     fn commit_upstream_repo(root: &Path) -> String {
-        git(&["init"], root);
+        git(&["init", "--no-bare"], root);
         git(&["add", "."], root);
         git_with_env(
             &["commit", "-m", "fixture"],
@@ -486,11 +503,11 @@ mod tests {
             ],
         );
 
-        let output = Command::new("git")
-            .current_dir(root)
-            .args(["rev-parse", "HEAD"])
-            .output()
-            .expect("git rev-parse should spawn");
+        let mut command = Command::new("git");
+        command.current_dir(root);
+        command.args(["rev-parse", "HEAD"]);
+        super::scrub_inherited_git_repository_context(&mut command);
+        let output = command.output().expect("git rev-parse should spawn");
         assert!(output.status.success(), "git rev-parse should succeed");
         String::from_utf8(output.stdout)
             .expect("git hash should be utf-8")
@@ -548,12 +565,12 @@ mod tests {
     }
 
     fn git_with_env(args: &[&str], current_dir: &Path, envs: &[(&str, &str)]) {
-        let output = Command::new("git")
-            .current_dir(current_dir)
-            .envs(envs.iter().copied())
-            .args(args)
-            .output()
-            .expect("git command should spawn");
+        let mut command = Command::new("git");
+        command.current_dir(current_dir);
+        command.envs(envs.iter().copied());
+        command.args(args);
+        super::scrub_inherited_git_repository_context(&mut command);
+        let output = command.output().expect("git command should spawn");
         assert!(
             output.status.success(),
             "git {:?} failed: {}",
@@ -813,11 +830,11 @@ mod tests {
 
         let _ = commit_upstream_repo(&root);
 
-        let output = Command::new("git")
-            .current_dir(&root)
-            .args(["config", "--local", "--list"])
-            .output()
-            .expect("git config should spawn");
+        let mut command = Command::new("git");
+        command.current_dir(&root);
+        command.args(["config", "--local", "--list"]);
+        super::scrub_inherited_git_repository_context(&mut command);
+        let output = command.output().expect("git config should spawn");
         assert!(output.status.success(), "git config should succeed");
         let config = String::from_utf8(output.stdout).expect("git config output should be utf-8");
         assert!(!config.contains("user.name=gb-cycle tests"));
