@@ -16,6 +16,12 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 - `TESTING.md`: unit, integration, ROM-based, differential, determinism, and DMG-closure validation strategy.
 - `TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
 
+## Frontend and tooling docs
+
+- `CLI.md`: full usage guide for the headless `gb-cli` runner.
+- `DESKTOP.md`: full usage guide for the SDL3 `gb-desktop` frontend.
+- `ROM-SUITES.md`: external ROM suite workflow — fetching, running, differential oracles, and commercial ROM testing.
+
 ## Authority map
 
 - `ARCHITECTURE.md` owns crate/module layout, subsystem boundaries, and ownership rules.
