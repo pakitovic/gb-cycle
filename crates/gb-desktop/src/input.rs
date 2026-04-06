@@ -811,20 +811,24 @@ fn format_open_gamepad_error(joystick_id: JoystickId, error: sdl3::Error) -> Str
 #[cfg(test)]
 mod tests {
     use super::{
-        FrontendInputState, GamepadManager, axis_direction_state,
-        gamepad_button_binding_from_sdl_button, joystick_id_from_event, sdl_button_for_binding,
+        AppliedGamepadRumble, FrontendInputState, GAMEPAD_RUMBLE_REFRESH_INTERVAL, GamepadManager,
+        STRONG_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY, axis_direction_state,
+        gamepad_button_binding_from_sdl_button, joystick_id_from_event, rumble_intensity,
+        sdl_button_for_binding,
     };
     use gb_core::{
         ConsoleModel, JoypadButton, Machine, MachineConfig, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
-        GamepadButtonBinding, GamepadFaceLayout, GamepadOptions, PreferredGamepadIdentity,
+        GamepadButtonBinding, GamepadFaceLayout, GamepadOptions, GamepadRumbleMode,
+        PreferredGamepadIdentity,
     };
     use sdl3::event::Event;
     use sdl3::gamepad::{Axis, Button};
     use sdl3::joystick::JoystickId;
     use sdl3::{GamepadSubsystem, hint};
     use std::ffi::CString;
+    use std::time::{Duration, Instant};
 
     fn init_gamepad_subsystem() -> (sdl3::Sdl, GamepadSubsystem) {
         crate::configure_headless_sdl();
@@ -1013,23 +1017,141 @@ mod tests {
 
     #[test]
     fn gamepad_button_helpers_round_trip_supported_buttons() {
-        assert_eq!(
-            gamepad_button_binding_from_sdl_button(Button::South),
-            Some(GamepadButtonBinding::South)
-        );
-        assert_eq!(
-            gamepad_button_binding_from_sdl_button(Button::RightShoulder),
-            Some(GamepadButtonBinding::RightShoulder)
-        );
+        for (binding, button) in [
+            (GamepadButtonBinding::South, Button::South),
+            (GamepadButtonBinding::East, Button::East),
+            (GamepadButtonBinding::West, Button::West),
+            (GamepadButtonBinding::North, Button::North),
+            (GamepadButtonBinding::Back, Button::Back),
+            (GamepadButtonBinding::Start, Button::Start),
+            (GamepadButtonBinding::Guide, Button::Guide),
+            (GamepadButtonBinding::LeftShoulder, Button::LeftShoulder),
+            (GamepadButtonBinding::RightShoulder, Button::RightShoulder),
+            (GamepadButtonBinding::LeftStickClick, Button::LeftStick),
+            (GamepadButtonBinding::RightStickClick, Button::RightStick),
+            (GamepadButtonBinding::DPadUp, Button::DPadUp),
+            (GamepadButtonBinding::DPadDown, Button::DPadDown),
+            (GamepadButtonBinding::DPadLeft, Button::DPadLeft),
+            (GamepadButtonBinding::DPadRight, Button::DPadRight),
+            (GamepadButtonBinding::Misc1, Button::Misc1),
+        ] {
+            assert_eq!(sdl_button_for_binding(binding), button);
+            assert_eq!(
+                gamepad_button_binding_from_sdl_button(button),
+                Some(binding)
+            );
+        }
         assert_eq!(
             gamepad_button_binding_from_sdl_button(Button::Touchpad),
             None
         );
-        assert_eq!(
-            sdl_button_for_binding(GamepadButtonBinding::Misc1),
-            Button::Misc1
-        );
         assert_eq!(joystick_id_from_event(77).0, 77);
+        assert_eq!(rumble_intensity(GamepadRumbleMode::Off), None);
+        assert_eq!(
+            rumble_intensity(GamepadRumbleMode::Strong),
+            Some((
+                STRONG_GAMEPAD_RUMBLE_INTENSITY,
+                STRONG_GAMEPAD_RUMBLE_INTENSITY,
+            ))
+        );
+        assert_eq!(
+            rumble_intensity(GamepadRumbleMode::Weak),
+            Some((WEAK_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY))
+        );
+    }
+
+    #[test]
+    fn gamepad_manager_rumble_helpers_cover_state_transitions() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let virtual_gamepad = VirtualGamepad::attach("Rumble Pad");
+        subsystem.update();
+
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+        let options = GamepadOptions {
+            preferred_device: PreferredGamepadIdentity {
+                path: None,
+                name: Some("Rumble Pad".to_string()),
+            },
+            ..GamepadOptions::default()
+        };
+        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
+            .expect("gamepad manager");
+
+        assert_eq!(manager.rumble_mode(), GamepadRumbleMode::Strong);
+        assert!(!manager.active_gamepad_has_rumble());
+
+        manager.set_rumble_mode(GamepadRumbleMode::Weak);
+        assert_eq!(manager.rumble_mode(), GamepadRumbleMode::Weak);
+        manager
+            .opened
+            .get_mut(&virtual_gamepad.joystick_id)
+            .expect("virtual gamepad should be opened")
+            .supports_rumble = true;
+        assert!(manager.active_gamepad_has_rumble());
+
+        let desired = manager
+            .desired_rumble_effect()
+            .expect("active rumble effect should be derived");
+        assert_eq!(desired.joystick_id.0, virtual_gamepad.joystick_id.0);
+        assert_eq!(
+            (desired.low_frequency, desired.high_frequency),
+            (WEAK_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY)
+        );
+
+        let now = Instant::now();
+        let future_refresh = now + Duration::from_secs(1);
+        manager.rumble.applied = Some(desired);
+        manager.rumble.next_refresh_at = Some(future_refresh);
+        manager
+            .update_rumble(true, now)
+            .expect("matching rumble state should be a no-op");
+        let applied = manager
+            .rumble
+            .applied
+            .expect("rumble state should remain applied");
+        assert_eq!(applied.joystick_id.0, desired.joystick_id.0);
+        assert_eq!(applied.low_frequency, desired.low_frequency);
+        assert_eq!(applied.high_frequency, desired.high_frequency);
+        assert_eq!(manager.rumble.next_refresh_at, Some(future_refresh));
+
+        manager.rumble.applied = Some(AppliedGamepadRumble {
+            joystick_id: joystick_id_from_event(9_999),
+            low_frequency: 1,
+            high_frequency: 2,
+        });
+        manager.rumble.next_refresh_at = Some(now);
+        manager
+            .update_rumble(false, now)
+            .expect("clearing stale rumble should not require a live SDL gamepad");
+        assert!(manager.rumble.applied.is_none());
+        assert!(manager.rumble.next_refresh_at.is_none());
+
+        manager.set_rumble_mode(GamepadRumbleMode::Strong);
+        let strong_effect = manager
+            .desired_rumble_effect()
+            .expect("strong rumble effect should be derived");
+        assert_eq!(
+            (strong_effect.low_frequency, strong_effect.high_frequency),
+            (
+                STRONG_GAMEPAD_RUMBLE_INTENSITY,
+                STRONG_GAMEPAD_RUMBLE_INTENSITY
+            )
+        );
+        let refresh_result =
+            manager.update_rumble(true, future_refresh + GAMEPAD_RUMBLE_REFRESH_INTERVAL);
+        if let Err(error) = refresh_result {
+            assert!(error.contains("failed to set SDL3 gamepad rumble"));
+        }
+
+        manager
+            .opened
+            .get_mut(&virtual_gamepad.joystick_id)
+            .expect("virtual gamepad should remain opened")
+            .supports_rumble = false;
+        assert!(!manager.active_gamepad_has_rumble());
+        assert!(manager.desired_rumble_effect().is_none());
     }
 
     #[test]

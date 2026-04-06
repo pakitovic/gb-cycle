@@ -1011,6 +1011,9 @@ mod tests {
             .set_gamepad_directional_source(GamepadDirectionalSource::LeftStickOnly)
             .expect("gamepad direction should persist");
         store
+            .set_gamepad_rumble_mode(GamepadRumbleMode::Weak)
+            .expect("gamepad rumble mode should persist");
+        store
             .set_keyboard_joypad_bindings(JoypadKeyboardBindings {
                 a: DesktopKey::Space,
                 ..JoypadKeyboardBindings::default()
@@ -1054,6 +1057,7 @@ mod tests {
             reloaded.input.gamepad.directional_source,
             GamepadDirectionalSource::LeftStickOnly
         );
+        assert_eq!(reloaded.input.gamepad.rumble_mode, GamepadRumbleMode::Weak);
         assert_eq!(
             reloaded.input.gamepad.menu.cancel,
             GamepadButtonBinding::West
@@ -1272,6 +1276,12 @@ mod tests {
             .set_gamepad_bindings(bindings)
             .expect("gamepad bindings should persist");
         store
+            .set_gamepad_rumble_mode(GamepadRumbleMode::Weak)
+            .expect("gamepad rumble mode should persist");
+        store
+            .set_gamepad_rumble_mode(GamepadRumbleMode::Weak)
+            .expect("reapplying the same rumble mode should be a no-op");
+        store
             .remember_loaded_rom(Path::new("/tmp/roms/Alleyway.gb"))
             .expect("loaded ROM should update the last open directory");
 
@@ -1280,6 +1290,7 @@ mod tests {
         let reloaded =
             PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
         assert_eq!(reloaded.input.gamepad.bindings, bindings);
+        assert_eq!(reloaded.input.gamepad.rumble_mode, GamepadRumbleMode::Weak);
         assert_eq!(
             reloaded.last_open_directory,
             Some(PathBuf::from("/tmp/roms"))

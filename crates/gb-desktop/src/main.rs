@@ -3034,8 +3034,9 @@ mod tests {
         joypad_binding_target_for_key, keyboard_menu_binding_target_for_key,
         map_path_dialog_result, menu_input_for_gamepad_button, menu_input_for_key,
         next_audio_volume_percent, next_boot_rom_verification_mode, next_console_model,
-        next_execution_mode, next_gamepad_directional_source, next_save_flush_policy,
-        next_startup_mode, next_window_scale, performance_window_title, run_desktop,
+        next_execution_mode, next_gamepad_directional_source, next_gamepad_rumble_mode,
+        next_save_flush_policy, next_startup_mode, next_window_scale, performance_window_title,
+        run_desktop,
     };
     use gb_core::{
         CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, ExecutionMode, Machine,
@@ -3044,7 +3045,7 @@ mod tests {
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopKey,
         DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
-        GamepadMenuBindings, MenuKeyboardBindings,
+        GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings,
     };
     use sdl3::dialog::DialogError;
     use sdl3::event::Event;
@@ -3618,6 +3619,18 @@ mod tests {
         assert_eq!(
             next_save_flush_policy(DesktopSaveFlushPolicy::Debounced),
             DesktopSaveFlushPolicy::Manual
+        );
+        assert_eq!(
+            next_gamepad_rumble_mode(GamepadRumbleMode::Off),
+            GamepadRumbleMode::Strong
+        );
+        assert_eq!(
+            next_gamepad_rumble_mode(GamepadRumbleMode::Strong),
+            GamepadRumbleMode::Weak
+        );
+        assert_eq!(
+            next_gamepad_rumble_mode(GamepadRumbleMode::Weak),
+            GamepadRumbleMode::Off
         );
     }
 
@@ -5048,6 +5061,12 @@ mod tests {
         );
         assert!(
             harness
+                .execute_action(super::MenuAction::CycleGamepadRumbleMode)
+                .expect("rumble mode should no-op without a gamepad manager")
+                .is_none()
+        );
+        assert!(
+            harness
                 .execute_action(super::MenuAction::TogglePreferredGamepad)
                 .expect("preferred gamepad should no-op without a gamepad manager")
                 .is_none()
@@ -5104,6 +5123,10 @@ mod tests {
         );
         assert!(gamepad_presentation.gamepad_available);
         assert!(gamepad_presentation.preferred_gamepad_configured);
+        assert_eq!(
+            gamepad_presentation.gamepad_rumble_mode,
+            GamepadRumbleMode::Strong
+        );
         assert_eq!(
             gamepad_presentation.preferred_gamepad_label.as_str(),
             "SAVED"
@@ -5271,6 +5294,30 @@ mod tests {
         );
         assert!(
             harness
+                .execute_action(super::MenuAction::CycleGamepadRumbleMode)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .expect("gamepad manager")
+                .rumble_mode(),
+            GamepadRumbleMode::Weak
+        );
+        assert_eq!(
+            harness
+                .settings_store
+                .base_config()
+                .input
+                .gamepad
+                .rumble_mode,
+            GamepadRumbleMode::Weak
+        );
+        assert!(
+            harness
                 .execute_action(super::MenuAction::OpenRecentRom(99))
                 .unwrap()
                 .is_none()
@@ -5365,6 +5412,15 @@ mod tests {
         assert_eq!(
             harness.runtime.keyboard_bindings,
             gb_desktop::InputOptions::default().keyboard
+        );
+        assert_eq!(
+            harness
+                .runtime
+                .gamepad_manager
+                .as_ref()
+                .expect("gamepad manager")
+                .rumble_mode(),
+            GamepadRumbleMode::Strong
         );
         assert!(
             harness

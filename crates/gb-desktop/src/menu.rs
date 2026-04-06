@@ -2334,6 +2334,35 @@ mod tests {
     }
 
     #[test]
+    fn input_submenu_cycles_the_gamepad_rumble_mode_when_supported() {
+        let presentation = MenuPresentation {
+            audio_available: true,
+            gamepad_available: true,
+            cartridge_rumble_supported: true,
+            active_gamepad_rumble_supported: true,
+            ..test_presentation()
+        };
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleGamepadRumbleMode)
+        );
+    }
+
+    #[test]
     fn input_submenu_resets_defaults_after_directional_source() {
         let presentation = MenuPresentation {
             audio_available: true,
@@ -2971,6 +3000,28 @@ mod tests {
             presentation.item_label(MenuItem::GamepadDirection),
             "DIR LEFT"
         );
+        assert!(!presentation.item_enabled(MenuItem::GamepadRumble));
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRumble),
+            "RUMBLE N/A"
+        );
+        presentation.cartridge_rumble_supported = true;
+        presentation.active_gamepad_rumble_supported = true;
+        assert!(presentation.item_enabled(MenuItem::GamepadRumble));
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRumble),
+            "RUMBLE HIGH"
+        );
+        presentation.gamepad_rumble_mode = GamepadRumbleMode::Weak;
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRumble),
+            "RUMBLE LOW"
+        );
+        presentation.gamepad_rumble_mode = GamepadRumbleMode::Off;
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRumble),
+            "RUMBLE OFF"
+        );
 
         presentation.active_gamepad_connected = true;
         presentation.active_gamepad_label = CompactMenuLabel::from_text("SWITCH");
@@ -3195,6 +3246,10 @@ mod tests {
         assert_eq!(
             menu.apply_item_action(MenuItem::GamepadPreferred, presentation),
             Some(MenuAction::TogglePreferredGamepad)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::GamepadRumble, presentation),
+            Some(MenuAction::CycleGamepadRumbleMode)
         );
         assert_eq!(
             menu.apply_item_action(MenuItem::Reset, presentation),
