@@ -9,13 +9,28 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn executable_name(name: &str) -> String {
+    format!("{name}{}", std::env::consts::EXE_SUFFIX)
+}
+
+fn binary_candidate(dir: &Path, name: &str) -> Option<PathBuf> {
+    let candidate = dir.join(executable_name(name));
+    candidate.is_file().then_some(candidate)
+}
+
+fn active_target_debug_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().and_then(Path::parent).map(Path::to_path_buf))
+}
+
 fn binary_path(name: &str) -> PathBuf {
     std::env::var_os(format!("CARGO_BIN_EXE_{name}"))
         .map(PathBuf::from)
-        .or_else(|| {
-            let candidate = workspace_root().join("target/debug").join(name);
-            candidate.is_file().then_some(candidate)
-        })
+        // Coverage runs can build sibling binaries under a target-dir-specific
+        // debug root without exporting runtime CARGO_BIN_EXE_* variables.
+        .or_else(|| active_target_debug_dir().and_then(|dir| binary_candidate(&dir, name)))
+        .or_else(|| binary_candidate(&workspace_root().join("target/debug"), name))
         .unwrap_or_else(|| panic!("Cargo did not expose or build binary path for {name}"))
 }
 
