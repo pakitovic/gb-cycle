@@ -13,9 +13,17 @@ mod slot;
 mod validate;
 
 #[cfg(test)]
-use classify::{classify_loaded_cartridge, is_mbc1m_multicart_signature, is_wisdom_tree_signature};
+use classify::{
+    classify_loaded_cartridge, is_mbc1m_multicart_signature, is_wisdom_tree_signature,
+    matches_padded_title, supported,
+};
 #[cfg(test)]
-use validate::{validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5, validate_no_mbc};
+use header::{decode_cgb_flag, decode_sgb_flag};
+#[cfg(test)]
+use validate::{
+    expected_ram_code_decompressed, record_degradable_issue, validate_mbc1, validate_mbc2,
+    validate_mbc3, validate_mbc5, validate_no_mbc,
+};
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const ENTRY_POINT_LEN: usize = 4;

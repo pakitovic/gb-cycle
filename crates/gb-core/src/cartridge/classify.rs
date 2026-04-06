@@ -305,7 +305,7 @@ pub(in crate::cartridge) fn is_wisdom_tree_signature(
         || (raw_type == 0xC0 && destination_code == 0xD1)
 }
 
-fn matches_padded_title(title_bytes: &[u8], expected: &[u8]) -> bool {
+pub(in crate::cartridge) fn matches_padded_title(title_bytes: &[u8], expected: &[u8]) -> bool {
     if title_bytes.len() < expected.len() {
         return false;
     }
