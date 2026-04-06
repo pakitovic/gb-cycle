@@ -12,7 +12,8 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 - `EXECUTION.md`: implementation workflow and change policy.
 - `CODING-RULES.md`: Rust design rules, API style, and optimization discipline.
 - `REFERENCES.md`: primary documentation, hardware research, and open-source consultation order.
-- `ROADMAP.md`: living implementation order, phase goals, done criteria, and open TODO tracking for deferred work.
+- `ROADMAP.md`: index linking to per-phase documents under `roadmap/`.
+- `TODO.md`: active TODO ledger for concrete remaining work across roadmap phases.
 - `TESTING.md`: unit, integration, ROM-based, differential, determinism, and DMG-closure validation strategy.
 - `TIMING-AND-ACCURACY.md`: accuracy terminology, confidence levels, and timing expectations.
 
@@ -31,7 +32,8 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 - `REFERENCES.md` owns the generic source-consultation order and open-source reference tier unless a subsystem handbook overrides it explicitly.
 - `TIMING-AND-ACCURACY.md` owns shared timing vocabulary and project-wide temporal constraints.
 - `TESTING.md` owns project-wide validation policy and cross-subsystem testing expectations.
-- `ROADMAP.md` owns implementation sequencing, phase context, and carried TODOs; it does not redefine subsystem behavior.
+- `ROADMAP.md` plus `roadmap/*.md` own implementation sequencing and phase context; they do not redefine subsystem behavior.
+- `TODO.md` owns the active TODO ledger for concrete remaining work across phases.
 - `hardware/*.md` own subsystem-specific behavior, MMIO semantics, timing expectations, and subsystem-specific validation detail.
 - `hardware/BOOT-ROM.md` owns startup-path semantics such as real boot, skip boot, `FF50` handoff, and post-boot snapshot policy.
 
