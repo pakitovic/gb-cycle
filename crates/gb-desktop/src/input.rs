@@ -1,16 +1,21 @@
 use gb_core::{JoypadButton, Machine, TraceSummaryBuffer};
 use gb_desktop::{
     GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
-    GamepadOptions, PreferredGamepadIdentity,
+    GamepadOptions, GamepadRumbleMode, PreferredGamepadIdentity,
 };
 use sdl3::GamepadSubsystem;
 use sdl3::event::Event;
 use sdl3::gamepad::{Axis, Button, Gamepad};
 use sdl3::joystick::JoystickId;
 use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
 
 const LEFT_STICK_PRESS_THRESHOLD: i16 = 16_384;
 const LEFT_STICK_RELEASE_THRESHOLD: i16 = 12_288;
+const GAMEPAD_RUMBLE_DURATION: Duration = Duration::from_millis(250);
+const GAMEPAD_RUMBLE_REFRESH_INTERVAL: Duration = Duration::from_millis(125);
+const STRONG_GAMEPAD_RUMBLE_INTENSITY: u16 = u16::MAX;
+const WEAK_GAMEPAD_RUMBLE_INTENSITY: u16 = 0x6000;
 const JOYPAD_BUTTONS: [JoypadButton; 8] = [
     JoypadButton::Up,
     JoypadButton::Down,
@@ -50,6 +55,19 @@ struct LeftStickDigitalState {
     right: bool,
     up: bool,
     down: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct AppliedGamepadRumble {
+    joystick_id: JoystickId,
+    low_frequency: u16,
+    high_frequency: u16,
+}
+
+#[derive(Clone, Default)]
+struct GamepadRumbleState {
+    applied: Option<AppliedGamepadRumble>,
+    next_refresh_at: Option<Instant>,
 }
 
 pub struct FrontendInputState {
@@ -148,12 +166,14 @@ pub struct GamepadManager {
     opened: BTreeMap<JoystickId, OpenGamepad>,
     active: Option<JoystickId>,
     left_stick_state: LeftStickDigitalState,
+    rumble: GamepadRumbleState,
 }
 
 struct OpenGamepad {
     gamepad: Gamepad,
     name: String,
     path: Option<String>,
+    supports_rumble: bool,
 }
 
 impl OpenGamepad {
@@ -178,6 +198,7 @@ impl GamepadManager {
             opened: BTreeMap::new(),
             active: None,
             left_stick_state: LeftStickDigitalState::default(),
+            rumble: GamepadRumbleState::default(),
         };
 
         let mut gamepads = manager
@@ -236,6 +257,7 @@ impl GamepadManager {
                 Some(name) => name,
                 None => default_gamepad_name(joystick_id),
             },
+            supports_rumble: unsafe { gamepad.has_rumble() },
             gamepad,
         };
 
@@ -406,12 +428,21 @@ impl GamepadManager {
         self.options.directional_source
     }
 
+    pub fn rumble_mode(&self) -> GamepadRumbleMode {
+        self.options.rumble_mode
+    }
+
     pub fn button_bindings(&self) -> GamepadButtonBindings {
         self.options.bindings
     }
 
     pub fn menu_bindings(&self) -> GamepadMenuBindings {
         self.options.menu
+    }
+
+    pub fn active_gamepad_has_rumble(&self) -> bool {
+        self.active_gamepad()
+            .is_some_and(|gamepad| gamepad.supports_rumble)
     }
 
     pub fn set_directional_source(
@@ -444,6 +475,10 @@ impl GamepadManager {
 
     pub fn set_menu_bindings(&mut self, bindings: GamepadMenuBindings) {
         self.options.menu = bindings;
+    }
+
+    pub fn set_rumble_mode(&mut self, rumble_mode: GamepadRumbleMode) {
+        self.options.rumble_mode = rumble_mode;
     }
 
     pub fn set_preferred_device(
@@ -495,6 +530,49 @@ impl GamepadManager {
         self.poll_active_gamepad_state(input_state, machine);
     }
 
+    pub fn update_rumble(&mut self, rumble_requested: bool, now: Instant) -> Result<(), String> {
+        let desired = if rumble_requested {
+            self.desired_rumble_effect()
+        } else {
+            None
+        };
+        let refresh_due = self
+            .rumble
+            .next_refresh_at
+            .is_some_and(|deadline| now >= deadline);
+
+        if desired == self.rumble.applied && !(refresh_due && desired.is_some()) {
+            return Ok(());
+        }
+
+        match desired {
+            Some(effect) => {
+                if let Some(previous) = self.rumble.applied
+                    && previous.joystick_id != effect.joystick_id
+                {
+                    let _ = self.apply_rumble(previous.joystick_id, 0, 0);
+                }
+
+                self.apply_rumble(
+                    effect.joystick_id,
+                    effect.low_frequency,
+                    effect.high_frequency,
+                )?;
+                self.rumble.applied = Some(effect);
+                self.rumble.next_refresh_at = Some(now + GAMEPAD_RUMBLE_REFRESH_INTERVAL);
+            }
+            None => {
+                if let Some(previous) = self.rumble.applied {
+                    let _ = self.apply_rumble(previous.joystick_id, 0, 0);
+                }
+                self.rumble.applied = None;
+                self.rumble.next_refresh_at = None;
+            }
+        }
+
+        Ok(())
+    }
+
     fn active_gamepad(&self) -> Option<&OpenGamepad> {
         self.active
             .and_then(|joystick_id| self.opened.get(&joystick_id))
@@ -504,6 +582,46 @@ impl GamepadManager {
         if let Some(gamepad) = self.active_gamepad() {
             eprintln!("info: active SDL gamepad: {}", gamepad.name);
         }
+    }
+
+    fn desired_rumble_effect(&self) -> Option<AppliedGamepadRumble> {
+        let active_joystick_id = self.active?;
+        let active_gamepad = self.active_gamepad()?;
+        let (low_frequency, high_frequency) = rumble_intensity(self.options.rumble_mode)?;
+        if !active_gamepad.supports_rumble {
+            return None;
+        }
+
+        Some(AppliedGamepadRumble {
+            joystick_id: active_joystick_id,
+            low_frequency,
+            high_frequency,
+        })
+    }
+
+    fn apply_rumble(
+        &mut self,
+        joystick_id: JoystickId,
+        low_frequency: u16,
+        high_frequency: u16,
+    ) -> Result<(), String> {
+        let Some(gamepad) = self.opened.get_mut(&joystick_id) else {
+            return Ok(());
+        };
+
+        gamepad
+            .gamepad
+            .set_rumble(
+                low_frequency,
+                high_frequency,
+                GAMEPAD_RUMBLE_DURATION.as_millis() as u32,
+            )
+            .map_err(|error| {
+                format!(
+                    "failed to set SDL3 gamepad rumble for {}: {error}",
+                    gamepad.name
+                )
+            })
     }
 
     fn apply_polled_bound_buttons(
@@ -570,6 +688,19 @@ impl GamepadManager {
 
 fn gamepad_button_binding_state(gamepad: &OpenGamepad, binding: GamepadButtonBinding) -> bool {
     gamepad.gamepad.button(sdl_button_for_binding(binding))
+}
+
+fn rumble_intensity(mode: GamepadRumbleMode) -> Option<(u16, u16)> {
+    match mode {
+        GamepadRumbleMode::Off => None,
+        GamepadRumbleMode::Strong => Some((
+            STRONG_GAMEPAD_RUMBLE_INTENSITY,
+            STRONG_GAMEPAD_RUMBLE_INTENSITY,
+        )),
+        GamepadRumbleMode::Weak => {
+            Some((WEAK_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY))
+        }
+    }
 }
 
 pub fn sdl_button_for_binding(binding: GamepadButtonBinding) -> Button {

@@ -16,8 +16,9 @@ use gb_core::{
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel, DesktopKey,
     DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, HotkeyBindings, JoypadKeyboardBindings, KeyboardBindings,
-    MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy, VideoOptions,
+    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
+    KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy,
+    VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveTimeSource, SystemCartridgeSaveTimeSource,
@@ -540,6 +541,21 @@ fn emulation_paused(machine: &Machine<TraceSummaryBuffer>, runtime: &FrontendRun
     machine.cartridge().is_empty() || runtime.paused || runtime.menu_state.is_open()
 }
 
+fn sync_gamepad_rumble(
+    runtime: &mut FrontendRuntime,
+    machine: &Machine<TraceSummaryBuffer>,
+    now: Instant,
+) -> Result<(), String> {
+    let rumble_requested = !emulation_paused(machine, runtime)
+        && machine.cartridge().has_rumble()
+        && machine.cartridge().rumble_on();
+    if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
+        gamepad_manager.update_rumble(rumble_requested, now)?;
+    }
+
+    Ok(())
+}
+
 fn main() -> ExitCode {
     match run_from_cli(env::args().skip(1)) {
         Ok(()) => ExitCode::SUCCESS,
@@ -830,6 +846,9 @@ fn run_desktop(
     }
 
     settings_store.set_fullscreen(canvas.window().fullscreen_state() != FullscreenType::Off)?;
+    if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
+        gamepad_manager.update_rumble(false, Instant::now())?;
+    }
 
     if let Some(save_session) = &mut runtime.save_session {
         save_session.close(&machine)?;
@@ -1208,12 +1227,14 @@ fn process_events(
     }
 
     if runtime.menu_state.is_open() {
+        sync_gamepad_rumble(runtime, machine, Instant::now())?;
         return Ok(LoopSignal::Continue);
     }
 
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
         gamepad_manager.poll_active_gamepad_state(&mut runtime.input_state, machine);
     }
+    sync_gamepad_rumble(runtime, machine, Instant::now())?;
 
     Ok(LoopSignal::Continue)
 }
@@ -1240,6 +1261,7 @@ fn step_until_next_frame(
             if let Some(audio_output) = &mut context.runtime.audio_output {
                 audio_output.capture_t_cycle(context.machine.apu());
             }
+            sync_gamepad_rumble(context.runtime, context.machine, Instant::now())?;
             let now_at_frame_origin =
                 context.machine.ppu().ly() == 0 && context.machine.ppu().line_dot() == 0;
             if now_at_frame_origin && !at_frame_origin {
@@ -1865,6 +1887,17 @@ fn execute_menu_action(
             }
             Ok(None)
         }
+        MenuAction::CycleGamepadRumbleMode => {
+            if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
+                let next_rumble_mode = next_gamepad_rumble_mode(gamepad_manager.rumble_mode());
+                gamepad_manager.set_rumble_mode(next_rumble_mode);
+                context
+                    .settings_store
+                    .set_gamepad_rumble_mode(next_rumble_mode)?;
+                sync_gamepad_rumble(context.runtime, context.machine, Instant::now())?;
+            }
+            Ok(None)
+        }
         MenuAction::TogglePreferredGamepad => {
             if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
                 let preferred_device = toggled_preferred_gamepad_device(gamepad_manager);
@@ -1921,6 +1954,7 @@ fn execute_menu_action(
                     &mut context.runtime.input_state,
                     context.machine,
                 );
+                gamepad_manager.set_rumble_mode(defaults.gamepad.rumble_mode);
                 gamepad_manager.set_preferred_device(
                     defaults.gamepad.preferred_device,
                     &mut context.runtime.input_state,
@@ -1928,6 +1962,7 @@ fn execute_menu_action(
                 );
             }
             context.settings_store.reset_input_defaults()?;
+            sync_gamepad_rumble(context.runtime, context.machine, Instant::now())?;
             Ok(None)
         }
         MenuAction::SetKeyboardMenuBinding(target, key) => {
@@ -1981,6 +2016,7 @@ fn current_menu_presentation(
         .and_then(GamepadManager::active_gamepad_name)
         .map(CompactMenuLabel::from_gamepad_name)
         .unwrap_or_default();
+    let cartridge_rumble_supported = machine.cartridge().has_rumble();
     let preferred_gamepad_configured = runtime
         .gamepad_manager
         .as_ref()
@@ -2041,6 +2077,10 @@ fn current_menu_presentation(
             GamepadDirectionalSource::default(),
             GamepadManager::directional_source,
         ),
+        gamepad_rumble_mode: runtime
+            .gamepad_manager
+            .as_ref()
+            .map_or(GamepadRumbleMode::default(), GamepadManager::rumble_mode),
         gamepad_bindings: runtime.gamepad_manager.as_ref().map_or(
             GamepadButtonBindings::default(),
             GamepadManager::button_bindings,
@@ -2053,6 +2093,11 @@ fn current_menu_presentation(
             .gamepad_manager
             .as_ref()
             .is_some_and(GamepadManager::has_connected_gamepad),
+        cartridge_rumble_supported,
+        active_gamepad_rumble_supported: runtime
+            .gamepad_manager
+            .as_ref()
+            .is_some_and(GamepadManager::active_gamepad_has_rumble),
         active_gamepad_label,
         preferred_gamepad_configured,
         preferred_gamepad_label,
@@ -2111,6 +2156,14 @@ fn next_gamepad_directional_source(
         GamepadDirectionalSource::DpadOnly => GamepadDirectionalSource::LeftStickOnly,
         GamepadDirectionalSource::LeftStickOnly => GamepadDirectionalSource::DpadAndLeftStick,
         GamepadDirectionalSource::DpadAndLeftStick => GamepadDirectionalSource::DpadOnly,
+    }
+}
+
+fn next_gamepad_rumble_mode(rumble_mode: GamepadRumbleMode) -> GamepadRumbleMode {
+    match rumble_mode {
+        GamepadRumbleMode::Off => GamepadRumbleMode::Strong,
+        GamepadRumbleMode::Strong => GamepadRumbleMode::Weak,
+        GamepadRumbleMode::Weak => GamepadRumbleMode::Off,
     }
 }
 

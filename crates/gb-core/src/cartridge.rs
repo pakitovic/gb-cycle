@@ -899,6 +899,12 @@ impl CartridgeSlot {
         )
     }
 
+    pub fn has_rumble(&self) -> bool {
+        self.device
+            .as_ref()
+            .is_some_and(CartridgeDevice::has_rumble)
+    }
+
     pub fn persistent_state(&self) -> PersistentCartState {
         self.device
             .as_ref()
@@ -1012,6 +1018,13 @@ impl CartridgeDevice {
     fn rumble_on(&self) -> bool {
         match self {
             Self::Mbc5(cartridge) => cartridge.rumble_on(),
+            Self::NoMbc(_) | Self::Mbc1(_) | Self::Mbc2(_) | Self::Mbc3(_) => false,
+        }
+    }
+
+    fn has_rumble(&self) -> bool {
+        match self {
+            Self::Mbc5(cartridge) => cartridge.has_rumble(),
             Self::NoMbc(_) | Self::Mbc1(_) | Self::Mbc2(_) | Self::Mbc3(_) => false,
         }
     }
@@ -1950,6 +1963,10 @@ impl Mbc5Cartridge {
 
     fn rumble_on(&self) -> bool {
         self.has_rumble && self.rumble_on
+    }
+
+    fn has_rumble(&self) -> bool {
+        self.has_rumble
     }
 
     #[allow(dead_code)]
@@ -4270,6 +4287,7 @@ mod tests {
                 SupportedCartridgeFamily::Mbc5
             )),
         );
+        assert!(mbc5.has_rumble());
         assert!(!mbc5.rumble_on());
         mbc5.advance_rtc_seconds(99);
         assert!(!mbc5.rumble_on());
@@ -4313,6 +4331,9 @@ mod tests {
                 actual: 8,
             }),
         );
+
+        let empty = CartridgeSlot::empty();
+        assert!(!empty.has_rumble());
     }
 
     #[test]
