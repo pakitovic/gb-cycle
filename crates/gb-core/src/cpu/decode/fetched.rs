@@ -1,0 +1,358 @@
+use super::super::{CpuCore, FLAG_C};
+use super::{
+    CpuInstructionKind, DecodedOpcode, MemoryAddressSource, Register8Operand,
+    decode_absolute_jump_condition, decode_alu_operation, decode_call_condition,
+    decode_hl_update_direction, decode_register8_operand, decode_register16,
+    decode_relative_jump_condition, decode_return_condition, decode_stack_register16,
+};
+
+impl CpuCore {
+    pub(in crate::cpu) fn decode_fetched_opcode(&mut self, opcode: u8) -> DecodedOpcode {
+        self.decode_misc_opcode(opcode)
+            .or_else(|| self.decode_load_opcode(opcode))
+            .or_else(|| self.decode_arithmetic_opcode(opcode))
+            .or_else(|| self.decode_control_flow_opcode(opcode))
+            .unwrap_or(DecodedOpcode::Unsupported)
+    }
+
+    fn decode_misc_opcode(&mut self, opcode: u8) -> Option<DecodedOpcode> {
+        match opcode {
+            0x00 => Some(DecodedOpcode::Complete),
+            0xAF => {
+                self.registers.a = 0;
+                self.write_flags(true, false, false, false);
+                Some(DecodedOpcode::Complete)
+            }
+            0x27 => {
+                self.decimal_adjust_a();
+                Some(DecodedOpcode::Complete)
+            }
+            0x2F => {
+                self.complement_a();
+                Some(DecodedOpcode::Complete)
+            }
+            0x37 => {
+                self.set_carry_flag();
+                Some(DecodedOpcode::Complete)
+            }
+            0x3F => {
+                self.complement_carry_flag();
+                Some(DecodedOpcode::Complete)
+            }
+            0x07 => {
+                let result = self.rotate_left_carry(self.registers.a);
+                self.registers.a = result;
+                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+                Some(DecodedOpcode::Complete)
+            }
+            0x17 => {
+                let result = self.rotate_left_through_carry(self.registers.a);
+                self.registers.a = result;
+                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+                Some(DecodedOpcode::Complete)
+            }
+            0x0F => {
+                let result = self.rotate_right_carry(self.registers.a);
+                self.registers.a = result;
+                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+                Some(DecodedOpcode::Complete)
+            }
+            0x1F => {
+                let result = self.rotate_right_through_carry(self.registers.a);
+                self.registers.a = result;
+                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+                Some(DecodedOpcode::Complete)
+            }
+            0x76 => {
+                self.finish_and_request_halt();
+                Some(DecodedOpcode::Complete)
+            }
+            0xF3 => {
+                self.ime = false;
+                self.cancel_delayed_ime_enable();
+                Some(DecodedOpcode::Complete)
+            }
+            0xFB => {
+                self.schedule_delayed_ime_enable();
+                Some(DecodedOpcode::Complete)
+            }
+            0x10 => Some(DecodedOpcode::Execute(CpuInstructionKind::Stop)),
+            _ => None,
+        }
+    }
+
+    fn decode_load_opcode(&mut self, opcode: u8) -> Option<DecodedOpcode> {
+        if matches!(opcode, 0x01 | 0x11 | 0x21 | 0x31) {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::LoadRegisterPairImmediate {
+                    target: decode_register16((opcode >> 4) & 0x03),
+                },
+            ));
+        }
+
+        if opcode & 0b1100_0111 == 0b0000_0110 {
+            return Some(match decode_register8_operand((opcode >> 3) & 0x07) {
+                Register8Operand::Register(target) => {
+                    DecodedOpcode::Execute(CpuInstructionKind::LoadRegisterImmediate { target })
+                }
+                Register8Operand::IndirectHl => {
+                    DecodedOpcode::Execute(CpuInstructionKind::StoreImmediateToHl)
+                }
+            });
+        }
+
+        if (0x40..=0x7F).contains(&opcode) && opcode != 0x76 {
+            let destination = decode_register8_operand((opcode >> 3) & 0x07);
+            let source = decode_register8_operand(opcode & 0x07);
+
+            return Some(match (destination, source) {
+                (Register8Operand::Register(destination), Register8Operand::Register(source)) => {
+                    let value = self.read_register8(source);
+                    self.write_register8(destination, value);
+                    DecodedOpcode::Complete
+                }
+                (Register8Operand::Register(target), Register8Operand::IndirectHl) => {
+                    DecodedOpcode::Execute(CpuInstructionKind::LoadRegisterFromHl { target })
+                }
+                (Register8Operand::IndirectHl, Register8Operand::Register(source)) => {
+                    DecodedOpcode::Execute(CpuInstructionKind::StoreRegisterToHl { source })
+                }
+                (Register8Operand::IndirectHl, Register8Operand::IndirectHl) => {
+                    DecodedOpcode::Unsupported
+                }
+            });
+        }
+
+        if matches!(opcode, 0x02 | 0x12 | 0xEA) {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::StoreAToAddress {
+                    destination: match opcode {
+                        0x02 => MemoryAddressSource::BC,
+                        0x12 => MemoryAddressSource::DE,
+                        0xEA => MemoryAddressSource::Immediate16,
+                        _ => unreachable!("opcode filter already constrained"),
+                    },
+                },
+            ));
+        }
+
+        if matches!(opcode, 0xE0 | 0xE2) {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::StoreAToAddress {
+                    destination: match opcode {
+                        0xE0 => MemoryAddressSource::HighImmediate8,
+                        0xE2 => MemoryAddressSource::HighC,
+                        _ => unreachable!("opcode filter already constrained"),
+                    },
+                },
+            ));
+        }
+
+        if matches!(opcode, 0x22 | 0x32) {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::StoreAToHlWithUpdate {
+                    direction: decode_hl_update_direction(opcode),
+                },
+            ));
+        }
+
+        if matches!(opcode, 0x0A | 0x1A | 0xFA) {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::LoadAFromAddress {
+                    source: match opcode {
+                        0x0A => MemoryAddressSource::BC,
+                        0x1A => MemoryAddressSource::DE,
+                        0xFA => MemoryAddressSource::Immediate16,
+                        _ => unreachable!("opcode filter already constrained"),
+                    },
+                },
+            ));
+        }
+
+        if matches!(opcode, 0xF0 | 0xF2) {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::LoadAFromAddress {
+                    source: match opcode {
+                        0xF0 => MemoryAddressSource::HighImmediate8,
+                        0xF2 => MemoryAddressSource::HighC,
+                        _ => unreachable!("opcode filter already constrained"),
+                    },
+                },
+            ));
+        }
+
+        if opcode == 0x08 {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::StoreSpToImmediate16,
+            ));
+        }
+
+        if opcode == 0xF8 {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::LoadHlFromSpPlusImmediate,
+            ));
+        }
+
+        if opcode == 0xE8 {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::AddSpImmediate));
+        }
+
+        if opcode == 0xF9 {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::LoadSpFromHl));
+        }
+
+        if matches!(opcode, 0x2A | 0x3A) {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::LoadAFromHlWithUpdate {
+                    direction: decode_hl_update_direction(opcode),
+                },
+            ));
+        }
+
+        None
+    }
+
+    fn decode_arithmetic_opcode(&mut self, opcode: u8) -> Option<DecodedOpcode> {
+        if opcode & 0xCF == 0x03 {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::IncrementRegisterPair {
+                    target: decode_register16((opcode >> 4) & 0x03),
+                },
+            ));
+        }
+
+        if opcode & 0xCF == 0x09 {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::AddHl {
+                source: decode_register16((opcode >> 4) & 0x03),
+            }));
+        }
+
+        if opcode & 0xCF == 0x0B {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::DecrementRegisterPair {
+                    target: decode_register16((opcode >> 4) & 0x03),
+                },
+            ));
+        }
+
+        if opcode & 0b1100_0111 == 0b0000_0100 {
+            return Some(match decode_register8_operand((opcode >> 3) & 0x07) {
+                Register8Operand::Register(target) => {
+                    let before = self.read_register8(target);
+                    let result = before.wrapping_add(1);
+                    self.write_register8(target, result);
+                    self.update_inc_flags(before, result);
+                    DecodedOpcode::Complete
+                }
+                Register8Operand::IndirectHl => {
+                    DecodedOpcode::Execute(CpuInstructionKind::IncrementHlMemory)
+                }
+            });
+        }
+
+        if opcode & 0b1100_0111 == 0b0000_0101 {
+            return Some(match decode_register8_operand((opcode >> 3) & 0x07) {
+                Register8Operand::Register(target) => {
+                    let before = self.read_register8(target);
+                    let result = before.wrapping_sub(1);
+                    self.write_register8(target, result);
+                    self.update_dec_flags(before, result);
+                    DecodedOpcode::Complete
+                }
+                Register8Operand::IndirectHl => {
+                    DecodedOpcode::Execute(CpuInstructionKind::DecrementHlMemory)
+                }
+            });
+        }
+
+        if matches!(
+            opcode,
+            0xC6 | 0xCE | 0xD6 | 0xDE | 0xE6 | 0xEE | 0xF6 | 0xFE
+        ) {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::AluImmediate {
+                operation: decode_alu_operation((opcode >> 3) & 0x07),
+            }));
+        }
+
+        if (0x80..=0xBF).contains(&opcode) {
+            let operation = decode_alu_operation((opcode >> 3) & 0x07);
+            return Some(match decode_register8_operand(opcode & 0x07) {
+                Register8Operand::Register(source) => {
+                    let value = self.read_register8(source);
+                    self.apply_alu_operation(operation, value);
+                    DecodedOpcode::Complete
+                }
+                Register8Operand::IndirectHl => {
+                    DecodedOpcode::Execute(CpuInstructionKind::AluFromHl { operation })
+                }
+            });
+        }
+
+        None
+    }
+
+    fn decode_control_flow_opcode(&mut self, opcode: u8) -> Option<DecodedOpcode> {
+        if opcode == 0xE9 {
+            self.registers.pc = self.hl();
+            return Some(DecodedOpcode::Complete);
+        }
+
+        if opcode == 0xCB {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::CbPrefixed));
+        }
+
+        if matches!(opcode, 0x18 | 0x20 | 0x28 | 0x30 | 0x38) {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::RelativeJump {
+                condition: decode_relative_jump_condition(opcode),
+            }));
+        }
+
+        if matches!(opcode, 0xC3 | 0xC2 | 0xCA | 0xD2 | 0xDA) {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::AbsoluteJump {
+                condition: decode_absolute_jump_condition(opcode),
+            }));
+        }
+
+        if matches!(opcode, 0xCD | 0xC4 | 0xCC | 0xD4 | 0xDC) {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::Call {
+                condition: decode_call_condition(opcode),
+            }));
+        }
+
+        if matches!(opcode, 0xC9 | 0xC0 | 0xC8 | 0xD0 | 0xD8) {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::Return {
+                condition: decode_return_condition(opcode),
+            }));
+        }
+
+        if opcode == 0xD9 {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::ReturnFromInterrupt,
+            ));
+        }
+
+        if opcode & 0xC7 == 0xC7 {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::Restart {
+                vector: u16::from(opcode & 0x38),
+            }));
+        }
+
+        if opcode & 0xCF == 0xC5 {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::PushRegisterPair {
+                    source: decode_stack_register16((opcode >> 4) & 0x03),
+                },
+            ));
+        }
+
+        if opcode & 0xCF == 0xC1 {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::PopRegisterPair {
+                    target: decode_stack_register16((opcode >> 4) & 0x03),
+                },
+            ));
+        }
+
+        None
+    }
+}
