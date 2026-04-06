@@ -36,6 +36,7 @@ All rebinding takes immediate runtime effect:
 - `INPUT -> HOTKEYS` — frontend hotkey rebinding.
 - `INPUT -> GAMEPAD` — SDL gamepad rebinding.
 - `INPUT -> PAD MENU` — dedicated SDL gamepad menu rebinding.
+- `INPUT -> RUMBLE` — host rumble mode for the active SDL gamepad with `OFF`, `HIGH`, and `LOW` host-intensity options. This option is only enabled when the loaded cartridge exposes rumble support and the active gamepad reports SDL rumble capability; otherwise it remains visible but disabled.
 
 ## Overlay and menus
 

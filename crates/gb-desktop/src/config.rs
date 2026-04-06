@@ -432,6 +432,7 @@ impl Default for HotkeyBindings {
 pub struct GamepadOptions {
     pub enabled: bool,
     pub directional_source: GamepadDirectionalSource,
+    pub rumble_mode: GamepadRumbleMode,
     pub bindings: GamepadButtonBindings,
     pub menu: GamepadMenuBindings,
     pub preferred_device: PreferredGamepadIdentity,
@@ -442,6 +443,7 @@ impl Default for GamepadOptions {
         Self {
             enabled: true,
             directional_source: GamepadDirectionalSource::default(),
+            rumble_mode: GamepadRumbleMode::default(),
             bindings: GamepadButtonBindings::default(),
             menu: GamepadMenuBindings::default(),
             preferred_device: PreferredGamepadIdentity::default(),
@@ -575,6 +577,17 @@ impl GamepadDirectionalSource {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum GamepadRumbleMode {
+    #[serde(rename = "off")]
+    Off,
+    #[default]
+    #[serde(rename = "strong")]
+    Strong,
+    #[serde(rename = "weak")]
+    Weak,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GamepadFaceLayout {
     #[default]
@@ -674,6 +687,7 @@ mod tests {
             config.input.gamepad.directional_source,
             GamepadDirectionalSource::DpadAndLeftStick
         );
+        assert_eq!(config.input.gamepad.rumble_mode, GamepadRumbleMode::Strong);
         assert_eq!(
             config.input.gamepad.bindings,
             GamepadButtonBindings::default()
@@ -845,6 +859,7 @@ mod tests {
         assert!(GamepadDirectionalSource::LeftStickOnly.uses_left_stick());
         assert!(GamepadDirectionalSource::DpadAndLeftStick.uses_dpad());
         assert!(GamepadDirectionalSource::DpadAndLeftStick.uses_left_stick());
+        assert_eq!(GamepadRumbleMode::default(), GamepadRumbleMode::Strong);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use gb_core::{ExecutionMode, StartupMode};
 use gb_desktop::{
     AudioOptions, DesktopConfig, DesktopSaveFlushPolicy, GamepadButtonBindings,
-    GamepadDirectionalSource, GamepadMenuBindings, HotkeyBindings, InputOptions,
+    GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
     JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy,
     VideoOptions,
 };
@@ -202,6 +202,18 @@ impl DesktopSettingsStore {
         }
 
         self.settings.input.gamepad.directional_source = directional_source;
+        self.save()
+    }
+
+    pub fn set_gamepad_rumble_mode(
+        &mut self,
+        rumble_mode: GamepadRumbleMode,
+    ) -> Result<(), String> {
+        if self.settings.input.gamepad.rumble_mode == rumble_mode {
+            return Ok(());
+        }
+
+        self.settings.input.gamepad.rumble_mode = rumble_mode;
         self.save()
     }
 
@@ -711,8 +723,8 @@ mod tests {
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
         DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
-        GamepadDirectionalSource, GamepadMenuBindings, HotkeyBindings, InputOptions,
-        JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
+        GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
+        InputOptions, JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
         SaveDirectoryPolicy, VideoOptions,
     };
     use std::path::{Path, PathBuf};
@@ -819,6 +831,7 @@ mod tests {
         settings.input.keyboard.menu.confirm = DesktopKey::X;
         settings.input.keyboard.hotkeys.pause = DesktopKey::X;
         settings.input.gamepad.directional_source = GamepadDirectionalSource::LeftStickOnly;
+        settings.input.gamepad.rumble_mode = GamepadRumbleMode::Weak;
         settings.input.gamepad.bindings.a = GamepadButtonBinding::North;
         settings.input.gamepad.menu.cancel = GamepadButtonBinding::West;
         settings.input.gamepad.preferred_device = PreferredGamepadIdentity {
@@ -869,6 +882,7 @@ mod tests {
             config.input.gamepad.directional_source,
             GamepadDirectionalSource::LeftStickOnly
         );
+        assert_eq!(config.input.gamepad.rumble_mode, GamepadRumbleMode::Weak);
         assert_eq!(config.input.gamepad.bindings.a, GamepadButtonBinding::North);
         assert_eq!(config.input.gamepad.menu.cancel, GamepadButtonBinding::West);
         assert_eq!(
@@ -997,6 +1011,9 @@ mod tests {
             .set_gamepad_directional_source(GamepadDirectionalSource::LeftStickOnly)
             .expect("gamepad direction should persist");
         store
+            .set_gamepad_rumble_mode(GamepadRumbleMode::Weak)
+            .expect("gamepad rumble mode should persist");
+        store
             .set_keyboard_joypad_bindings(JoypadKeyboardBindings {
                 a: DesktopKey::Space,
                 ..JoypadKeyboardBindings::default()
@@ -1040,6 +1057,7 @@ mod tests {
             reloaded.input.gamepad.directional_source,
             GamepadDirectionalSource::LeftStickOnly
         );
+        assert_eq!(reloaded.input.gamepad.rumble_mode, GamepadRumbleMode::Weak);
         assert_eq!(
             reloaded.input.gamepad.menu.cancel,
             GamepadButtonBinding::West
@@ -1258,6 +1276,12 @@ mod tests {
             .set_gamepad_bindings(bindings)
             .expect("gamepad bindings should persist");
         store
+            .set_gamepad_rumble_mode(GamepadRumbleMode::Weak)
+            .expect("gamepad rumble mode should persist");
+        store
+            .set_gamepad_rumble_mode(GamepadRumbleMode::Weak)
+            .expect("reapplying the same rumble mode should be a no-op");
+        store
             .remember_loaded_rom(Path::new("/tmp/roms/Alleyway.gb"))
             .expect("loaded ROM should update the last open directory");
 
@@ -1266,6 +1290,7 @@ mod tests {
         let reloaded =
             PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
         assert_eq!(reloaded.input.gamepad.bindings, bindings);
+        assert_eq!(reloaded.input.gamepad.rumble_mode, GamepadRumbleMode::Weak);
         assert_eq!(
             reloaded.last_open_directory,
             Some(PathBuf::from("/tmp/roms"))
