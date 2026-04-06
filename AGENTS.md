@@ -66,6 +66,14 @@ Read only the `docs/` files relevant to the task at hand. Do not preload documen
 - If a change leaves known gaps or deferred work, record it in `docs/ROADMAP.md`.
 - Update docs when architecture, rules, timing assumptions, or references change.
 
+## Commit message rules
+
+- All commit messages must use Conventional Commits.
+- Format: `<type>(<scope>): <subject>`
+- Allowed types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`
+- Prefer a scope matching the touched subsystem, for example `gb-core`, `cpu`, `ppu`, `apu`, `cartridge`, `bus`, `scheduler`
+- Do not create free-form commit messages outside this format.
+
 ## Final decision rule
 
 For doubtful decisions, prefer this sequence:
