@@ -26,10 +26,6 @@ pub enum SameBoyCaseBundleExecutionError {
         case_id: String,
         actual: StartupMode,
     },
-    UnsupportedConsoleModel {
-        case_id: String,
-        console_model: ConsoleModel,
-    },
     ResolveRomPath {
         case_id: String,
         source: Box<RomExecutionError>,
@@ -171,7 +167,7 @@ impl SameBoyCaseBundleRunner {
             });
         }
 
-        let model = model_arg(case)?;
+        let model = model_arg(case);
         let rom_path = self
             .rom_runner
             .resolve_case_rom_path(case)
@@ -355,11 +351,11 @@ fn build_sameboy_case_bundle_runner(
     })
 }
 
-fn model_arg(case: &crate::RomTestCase) -> Result<&'static str, SameBoyCaseBundleExecutionError> {
+fn model_arg(case: &crate::RomTestCase) -> &'static str {
     match case.console_model {
-        ConsoleModel::Dmg | ConsoleModel::Dmg0 => Ok("dmg"),
-        ConsoleModel::Mgb => Ok("mgb"),
-        ConsoleModel::Cgb => Ok("cgb"),
+        ConsoleModel::Dmg | ConsoleModel::Dmg0 => "dmg",
+        ConsoleModel::Mgb => "mgb",
+        ConsoleModel::Cgb => "cgb",
     }
 }
 
@@ -369,7 +365,10 @@ mod tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use gb_core::StartupMode;
 
     use crate::{RomRunner, TEST_ROM_ROOT_ENV_VAR, phase_6_cartridge_oracle_suite};
 
@@ -420,6 +419,59 @@ mod tests {
             .permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(path, permissions).expect("fake runner should be executable");
+    }
+
+    fn write_executable(path: &Path, body: &str) {
+        fs::write(path, body).expect("executable should be writable");
+        let mut permissions = fs::metadata(path)
+            .expect("executable metadata should exist")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("executable should be executable");
+    }
+
+    fn dynamic_lib_name() -> &'static str {
+        if cfg!(target_os = "macos") {
+            "libsameboy.dylib"
+        } else {
+            "libsameboy.so"
+        }
+    }
+
+    fn path_guard() -> &'static Mutex<()> {
+        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+        GUARD.get_or_init(|| Mutex::new(()))
+    }
+
+    fn with_tool_path<T>(tool_root: &Path, action: impl FnOnce() -> T) -> T {
+        let _guard = path_guard()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let previous = env::var_os("PATH");
+        let mut paths = vec![tool_root.to_path_buf()];
+        if let Some(path) = previous.clone() {
+            paths.extend(std::env::split_paths(&path));
+        }
+        let joined = std::env::join_paths(paths).expect("PATH entries should join");
+        unsafe {
+            env::set_var("PATH", &joined);
+        }
+        let result = action();
+        match previous {
+            Some(path) => unsafe {
+                env::set_var("PATH", path);
+            },
+            None => unsafe {
+                env::remove_var("PATH");
+            },
+        }
+        result
+    }
+
+    fn single_phase_6_case_suite() -> crate::RomSuite {
+        let mut suite = phase_6_cartridge_oracle_suite();
+        suite.cases.truncate(1);
+        suite
     }
 
     #[test]
@@ -515,5 +567,231 @@ mod tests {
             SAMEBOY_CASE_BUNDLE_BIN_ENV_VAR,
             "GB_CYCLE_SAMEBOY_CASE_BUNDLE_BIN"
         );
+    }
+
+    #[test]
+    fn ensure_runner_binary_reports_missing_root_and_missing_explicit_binary() {
+        let missing_root = SameBoyCaseBundleRunner::new("/tmp/oracle")
+            .ensure_runner_binary()
+            .expect_err("missing SameBoy root should fail");
+        assert!(matches!(
+            missing_root,
+            SameBoyCaseBundleExecutionError::MissingSameBoyRoot
+        ));
+
+        let explicit_missing = SameBoyCaseBundleRunner::new("/tmp/oracle")
+            .with_runner_binary("/tmp/definitely-missing-runner")
+            .ensure_runner_binary()
+            .expect_err("missing explicit runner should fail");
+        assert!(matches!(
+            explicit_missing,
+            SameBoyCaseBundleExecutionError::MissingRunnerBinary { .. }
+        ));
+    }
+
+    #[test]
+    fn ensure_runner_binary_can_build_default_runner_with_fake_toolchain() {
+        let temp_dir = unique_temp_dir("build-runner");
+        let sameboy_root = temp_dir.join("SameBoy");
+        let tool_root = temp_dir.join("tools");
+        fs::create_dir_all(&sameboy_root).expect("sameboy root should be creatable");
+        fs::create_dir_all(&tool_root).expect("tool root should be creatable");
+
+        write_executable(
+            &tool_root.join("make"),
+            &format!(
+                concat!(
+                    "#!/bin/sh\n",
+                    "set -eu\n",
+                    "mkdir -p \"$PWD/build/lib\"\n",
+                    ": > \"$PWD/build/lib/libsameboy.o\"\n",
+                    ": > \"$PWD/build/lib/{}\"\n",
+                ),
+                dynamic_lib_name(),
+            ),
+        );
+        write_executable(
+            &tool_root.join("cc"),
+            concat!(
+                "#!/bin/sh\n",
+                "set -eu\n",
+                "out=''\n",
+                "while [ \"$#\" -gt 0 ]; do\n",
+                "  if [ \"$1\" = '-o' ]; then\n",
+                "    shift\n",
+                "    out=\"$1\"\n",
+                "  fi\n",
+                "  shift\n",
+                "done\n",
+                "mkdir -p \"$(dirname \"$out\")\"\n",
+                "printf '#!/bin/sh\\nexit 0\\n' > \"$out\"\n",
+                "chmod +x \"$out\"\n",
+            ),
+        );
+
+        let built_runner = with_tool_path(&tool_root, || {
+            SameBoyCaseBundleRunner::new("/tmp/oracle")
+                .with_sameboy_root(&sameboy_root)
+                .with_build_if_missing(true)
+                .ensure_runner_binary()
+                .expect("runner should build with fake toolchain")
+        });
+
+        assert_eq!(
+            built_runner,
+            default_sameboy_case_bundle_runner_path(&sameboy_root)
+        );
+        assert!(built_runner.is_file());
+    }
+
+    #[test]
+    fn ensure_runner_binary_reports_make_and_cc_failures() {
+        let temp_dir = unique_temp_dir("build-failures");
+        let tool_root = temp_dir.join("tools");
+        fs::create_dir_all(&tool_root).expect("tool root should be creatable");
+
+        let make_fail_root = temp_dir.join("sameboy-make-fail");
+        fs::create_dir_all(&make_fail_root).expect("make-fail root should be creatable");
+        write_executable(&tool_root.join("make"), "#!/bin/sh\nset -eu\nexit 3\n");
+        write_executable(&tool_root.join("cc"), "#!/bin/sh\nset -eu\nexit 0\n");
+
+        let make_error = with_tool_path(&tool_root, || {
+            SameBoyCaseBundleRunner::new("/tmp/oracle")
+                .with_sameboy_root(&make_fail_root)
+                .with_build_if_missing(true)
+                .ensure_runner_binary()
+                .expect_err("make failure should surface")
+        });
+        assert!(matches!(
+            make_error,
+            SameBoyCaseBundleExecutionError::BuildLibFailed {
+                status: Some(3),
+                ..
+            }
+        ));
+
+        let cc_fail_root = temp_dir.join("sameboy-cc-fail");
+        let lib_dir = cc_fail_root.join("build/lib");
+        fs::create_dir_all(&lib_dir).expect("cc-fail lib dir should be creatable");
+        fs::write(lib_dir.join(dynamic_lib_name()), b"fake-dylib")
+            .expect("dynamic lib marker should be writable");
+        fs::write(lib_dir.join("libsameboy.o"), b"fake-object")
+            .expect("object marker should be writable");
+        write_executable(
+            &tool_root.join("cc"),
+            "#!/bin/sh\nset -eu\nprintf 'compile failed' >&2\nexit 7\n",
+        );
+
+        let cc_error = with_tool_path(&tool_root, || {
+            SameBoyCaseBundleRunner::new("/tmp/oracle")
+                .with_sameboy_root(&cc_fail_root)
+                .with_build_if_missing(true)
+                .ensure_runner_binary()
+                .expect_err("cc failure should surface")
+        });
+        assert!(matches!(
+            cc_error,
+            SameBoyCaseBundleExecutionError::BuildRunnerFailed {
+                status: Some(7),
+                ..
+            }
+        ));
+        let SameBoyCaseBundleExecutionError::BuildRunnerFailed { stderr, .. } = cc_error else {
+            panic!("expected build-runner failure");
+        };
+        assert!(stderr.contains("compile failed"));
+    }
+
+    #[test]
+    fn sameboy_case_bundle_runner_rejects_invalid_suite_contracts_before_spawning() {
+        let temp_dir = unique_temp_dir("invalid-contracts");
+        let runner_binary = temp_dir.join("fake-runner.sh");
+        let args_output = temp_dir.join("runner-args.txt");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        write_fake_runner(&runner_binary, &args_output);
+
+        let mut non_strict = single_phase_6_case_suite();
+        non_strict.cases[0].execution_mode = gb_core::ExecutionMode::Permissive;
+        let error = SameBoyCaseBundleRunner::new(temp_dir.join("oracle"))
+            .with_runner_binary(&runner_binary)
+            .run_suite(&non_strict)
+            .expect_err("non-strict suite should be rejected");
+        assert!(matches!(
+            error,
+            SameBoyCaseBundleExecutionError::NonStrictCase { .. }
+        ));
+
+        let mut real_boot = single_phase_6_case_suite();
+        real_boot.cases[0].startup_mode = StartupMode::RealBoot;
+        let error = SameBoyCaseBundleRunner::new(temp_dir.join("oracle"))
+            .with_runner_binary(&runner_binary)
+            .run_suite(&real_boot)
+            .expect_err("real-boot suite should be rejected");
+        assert!(matches!(
+            error,
+            SameBoyCaseBundleExecutionError::UnsupportedStartupMode { .. }
+        ));
+    }
+
+    #[test]
+    fn sameboy_case_bundle_runner_surfaces_process_and_artifact_failures() {
+        let temp_dir = unique_temp_dir("runner-failures");
+        let oracle_root = temp_dir.join("oracle");
+        let suite = single_phase_6_case_suite();
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+        let spawn_runner = temp_dir.join("spawn-runner.sh");
+        fs::write(&spawn_runner, b"#!/bin/sh\n").expect("spawn runner should be writable");
+        let spawn_error = SameBoyCaseBundleRunner::new(&oracle_root)
+            .with_runner_binary(&spawn_runner)
+            .run_suite(&suite)
+            .expect_err("non-executable runner should fail to spawn");
+        assert!(matches!(
+            spawn_error,
+            SameBoyCaseBundleExecutionError::SpawnRunner { .. }
+        ));
+
+        let missing_artifact_runner = temp_dir.join("missing-artifact-runner.sh");
+        write_executable(&missing_artifact_runner, "#!/bin/sh\nset -eu\nexit 0\n");
+        let missing_artifact = SameBoyCaseBundleRunner::new(&oracle_root)
+            .with_runner_binary(&missing_artifact_runner)
+            .run_suite(&suite)
+            .expect_err("successful runner without artifact should fail");
+        assert!(matches!(
+            missing_artifact,
+            SameBoyCaseBundleExecutionError::MissingArtifact { .. }
+        ));
+
+        let failing_runner = temp_dir.join("failing-runner.sh");
+        write_executable(
+            &failing_runner,
+            "#!/bin/sh\nset -eu\nprintf 'runner-stdout' ; printf 'runner-stderr' >&2 ; exit 9\n",
+        );
+        let runner_failed = SameBoyCaseBundleRunner::new(&oracle_root)
+            .with_runner_binary(&failing_runner)
+            .run_suite(&suite)
+            .expect_err("runner failure should surface");
+        assert!(matches!(
+            runner_failed,
+            SameBoyCaseBundleExecutionError::RunnerFailed {
+                status: Some(9),
+                ..
+            }
+        ));
+
+        let blocked_root = temp_dir.join("oracle-root-file");
+        fs::write(&blocked_root, b"not-a-directory")
+            .expect("blocked root marker should be writable");
+        let args_output = temp_dir.join("runner-args-create-dir.txt");
+        let working_runner = temp_dir.join("working-runner.sh");
+        write_fake_runner(&working_runner, &args_output);
+        let create_dir_error = SameBoyCaseBundleRunner::new(&blocked_root)
+            .with_runner_binary(&working_runner)
+            .run_suite(&suite)
+            .expect_err("non-directory oracle root should fail");
+        assert!(matches!(
+            create_dir_error,
+            SameBoyCaseBundleExecutionError::CreateDirectory { .. }
+        ));
     }
 }

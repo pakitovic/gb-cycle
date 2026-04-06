@@ -2231,20 +2231,63 @@ fn discard_trace_events_if_needed(trace_buffer: &mut TraceBuffer, executed_t_cyc
 #[cfg(test)]
 mod tests {
     use super::{
-        BootRomAssets, CaptureKind, CapturedMemoryTextOutput, MOONEYE_FAIL_SIGNATURE,
-        MOONEYE_PASS_SIGNATURE, MooneyeTestResult, PassCondition, RomTestCase, RunnerMachine,
-        TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, blargg_dmg_repo_gated_suite,
-        built_in_rom_suite_by_name, detect_mooneye_result, early_phase_9_partial_checklist,
-        hacktix_dmg_curated_suite, memory_text_output_completion_reached,
-        mooneye_result_for_signature,
+        BootRomAssets, BootRomVerificationMode, CaptureKind, CapturedArtifacts,
+        CapturedMemoryTextOutput, CaseEvaluationInputs, FailureArtifactPolicy,
+        MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult,
+        PassCondition, RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase,
+        RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
+        blargg_console_text_complete, blargg_dmg_repo_gated_suite, budget_exhausted,
+        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
+        detect_mooneye_result, early_phase_9_partial_checklist, external_rom_source_manifest_path,
+        external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
+        mooneye_result_completion_candidate, mooneye_result_for_signature,
+        render_memory_text_output,
     };
+    use crate::framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm};
     use gb_core::{
         ConsoleModel, CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
-        ExecutionMode,
+        ExecutionMode, StartupMode,
     };
-    use std::path::PathBuf;
+    use std::env;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     const TEST_ROM_MINIMUM_LEN: usize = 32 * 1024;
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        env::temp_dir().join(format!(
+            "gb-cycle-test-runner-lib-{}-{}-{}",
+            label,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
+        // SAFETY: these tests serialize environment mutation through `env_lock()`
+        // and restore touched variables before dropping the guard.
+        unsafe {
+            env::set_var(key, value);
+        }
+    }
+
+    fn remove_env_var(key: &str) {
+        // SAFETY: these tests serialize environment mutation through `env_lock()`
+        // and restore touched variables before dropping the guard.
+        unsafe {
+            env::remove_var(key);
+        }
+    }
 
     fn build_test_rom(program: &[u8]) -> Vec<u8> {
         let mut rom = vec![0xFF; TEST_ROM_MINIMUM_LEN];
@@ -2290,6 +2333,21 @@ mod tests {
             .load_cartridge(build_mooneye_result_rom(signature))
             .expect("fixture rom should load");
         machine
+    }
+
+    fn evaluation_inputs<'a>(
+        artifacts: &'a CapturedArtifacts,
+        executed_t_cycles: u64,
+        completed_frames: u32,
+    ) -> CaseEvaluationInputs<'a> {
+        CaseEvaluationInputs {
+            artifacts,
+            serial_contains_matched: false,
+            diagnostic_trap: None,
+            mooneye_result: None,
+            executed_t_cycles,
+            completed_frames,
+        }
     }
 
     #[test]
@@ -2690,5 +2748,579 @@ mod tests {
         );
         assert!(ppu.current_evidence.contains(&"acid-dmg-curated"));
         assert!(!ppu.remaining_gaps.contains(&"repo-gated-dmg-acid2"));
+    }
+
+    #[test]
+    fn evaluate_case_covers_serial_text_and_mooneye_outcomes() {
+        let runner = RomRunner::new();
+
+        let serial_case = RomTestCase::new(
+            "serial-contains",
+            "unused.gb",
+            Timeout::TCycles(4),
+            PassCondition::SerialContains("OK".to_string()),
+        );
+        let serial_artifacts = CapturedArtifacts {
+            serial: Some("no".to_string()),
+            ..CapturedArtifacts::default()
+        };
+        let mut serial_matched = evaluation_inputs(&serial_artifacts, 2, 0);
+        serial_matched.serial_contains_matched = true;
+        assert_eq!(
+            runner
+                .evaluate_case(&serial_case, &serial_matched)
+                .expect("matched serial case should evaluate"),
+            RomCaseOutcome::Passed
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(&serial_case, &evaluation_inputs(&serial_artifacts, 4, 0))
+                .expect("exhausted serial case should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::SerialMissingSubstring {
+                expected_substring: "OK".to_string(),
+                actual: "no".to_string(),
+            })
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(&serial_case, &evaluation_inputs(&serial_artifacts, 2, 0))
+                .expect("non-exhausted serial case should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::TimeoutExceeded)
+        );
+
+        let serial_exact_case = RomTestCase::new(
+            "serial-exact",
+            "unused.gb",
+            Timeout::TCycles(4),
+            PassCondition::SerialExact("OK".to_string()),
+        );
+        let serial_exact_artifacts = CapturedArtifacts {
+            serial: Some("OK".to_string()),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &serial_exact_case,
+                    &evaluation_inputs(&serial_exact_artifacts, 4, 0)
+                )
+                .expect("serial exact pass should evaluate"),
+            RomCaseOutcome::Passed
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &serial_exact_case,
+                    &evaluation_inputs(&serial_exact_artifacts, 2, 0)
+                )
+                .expect("serial exact timeout should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::TimeoutExceeded)
+        );
+
+        let serial_hex_case = RomTestCase::new(
+            "serial-hex",
+            "unused.gb",
+            Timeout::TCycles(4),
+            PassCondition::SerialHexExact("4F4B".to_string()),
+        );
+        let serial_hex_pass = CapturedArtifacts {
+            serial_hex: Some("4F4B".to_string()),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(&serial_hex_case, &evaluation_inputs(&serial_hex_pass, 4, 0))
+                .expect("serial hex pass should evaluate"),
+            RomCaseOutcome::Passed
+        );
+        let serial_hex_mismatch = CapturedArtifacts {
+            serial_hex: Some("4F".to_string()),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &serial_hex_case,
+                    &evaluation_inputs(&serial_hex_mismatch, 4, 0)
+                )
+                .expect("serial hex mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::SerialExactMismatch {
+                expected: "4F4B".to_string(),
+                actual: "4F".to_string(),
+            })
+        );
+
+        let memory_spec =
+            MemoryTextOutputSpec::new(0xA000, 0x80, 0x00, 0xA001, [0xDE, 0xB0, 0x61], 0xA004, 64);
+        let memory_case = RomTestCase::new(
+            "memory-text",
+            "unused.gb",
+            Timeout::TCycles(4),
+            PassCondition::MemoryTextOutputContains {
+                spec: memory_spec,
+                expected_substring: "Passed".to_string(),
+            },
+        );
+        let memory_artifacts = CapturedArtifacts {
+            memory_text_output: Some(CapturedMemoryTextOutput {
+                status: 0x03,
+                signature: [0xDE, 0xB0, 0x61],
+                text: "Failed".to_string(),
+            }),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(&memory_case, &evaluation_inputs(&memory_artifacts, 4, 0))
+                .expect("memory mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::MemoryTextOutputMismatch {
+                expected_substring: "Passed".to_string(),
+                pass_status: 0x00,
+                expected_signature: [0xDE, 0xB0, 0x61],
+                actual_status: 0x03,
+                actual_signature: [0xDE, 0xB0, 0x61],
+                actual_text: "Failed".to_string(),
+            })
+        );
+
+        let blargg_case = RomTestCase::new(
+            "blargg-text",
+            "unused.gb",
+            Timeout::TCycles(4),
+            PassCondition::BlarggConsoleTextContains("Passed".to_string()),
+        );
+        let blargg_artifacts = CapturedArtifacts {
+            blargg_console_text: Some("Still running".to_string()),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(&blargg_case, &evaluation_inputs(&blargg_artifacts, 4, 0))
+                .expect("blargg mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::BlarggConsoleTextMissingSubstring {
+                expected_substring: "Passed".to_string(),
+                actual: "Still running".to_string(),
+            })
+        );
+
+        let mooneye_case = RomTestCase::new(
+            "mooneye",
+            "unused.gb",
+            Timeout::TCycles(4),
+            PassCondition::MooneyeResult,
+        );
+        let empty_artifacts = CapturedArtifacts::default();
+        let mut mooneye_pass = evaluation_inputs(&empty_artifacts, 1, 0);
+        mooneye_pass.mooneye_result = Some(MooneyeTestResult::Passed);
+        assert_eq!(
+            runner
+                .evaluate_case(&mooneye_case, &mooneye_pass)
+                .expect("mooneye pass should evaluate"),
+            RomCaseOutcome::Passed
+        );
+        let mut mooneye_fail = evaluation_inputs(&empty_artifacts, 1, 0);
+        mooneye_fail.mooneye_result = Some(MooneyeTestResult::Failed);
+        assert_eq!(
+            runner
+                .evaluate_case(&mooneye_case, &mooneye_fail)
+                .expect("mooneye fail should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::MooneyeFailureSignature)
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(&mooneye_case, &evaluation_inputs(&empty_artifacts, 1, 0))
+                .expect("missing mooneye result should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::MooneyeResultNotReached)
+        );
+    }
+
+    #[test]
+    fn evaluate_case_covers_trace_and_framebuffer_fixture_oracles() {
+        let runner = RomRunner::new();
+        let temp_dir = unique_temp_dir("fixture-oracles");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+        let trace_path = temp_dir.join("expected.trace");
+        fs::write(&trace_path, "trace-ok").expect("trace fixture should be writable");
+        let trace_case = RomTestCase::new(
+            "trace-case",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::TraceFixture(trace_path.clone()),
+        );
+        let trace_artifacts = CapturedArtifacts {
+            trace: Some("trace-ok".to_string()),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(&trace_case, &evaluation_inputs(&trace_artifacts, 1, 0))
+                .expect("trace fixture should match"),
+            RomCaseOutcome::Passed
+        );
+        let trace_mismatch_artifacts = CapturedArtifacts {
+            trace: Some("trace-other".to_string()),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &trace_case,
+                    &evaluation_inputs(&trace_mismatch_artifacts, 1, 0)
+                )
+                .expect("trace mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::TraceFixtureMismatch {
+                fixture_path: trace_path.clone(),
+            })
+        );
+
+        let missing_trace_case = RomTestCase::new(
+            "trace-missing",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::TraceFixture(temp_dir.join("missing.trace")),
+        );
+        let missing_trace = runner
+            .evaluate_case(
+                &missing_trace_case,
+                &evaluation_inputs(&trace_artifacts, 1, 0),
+            )
+            .expect_err("missing trace fixture should fail");
+        assert!(matches!(
+            missing_trace,
+            RomExecutionError::ReadFile {
+                operation: "read trace fixture",
+                ..
+            }
+        ));
+
+        let fixture_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/fixtures/acid/dmg-acid2-dmg.png");
+        let expected = decode_fixture_framebuffer_path(&fixture_path)
+            .expect("fixture framebuffer should decode");
+        let framebuffer_case = RomTestCase::new(
+            "framebuffer-case",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::FramebufferFixture(fixture_path.clone()),
+        );
+        let framebuffer_artifacts = CapturedArtifacts {
+            framebuffer_pgm: Some(encode_framebuffer_pgm(&expected.palette_ranks)),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &framebuffer_case,
+                    &evaluation_inputs(&framebuffer_artifacts, 1, 0)
+                )
+                .expect("framebuffer fixture should match"),
+            RomCaseOutcome::Passed
+        );
+
+        let mut altered_ranks = expected.palette_ranks.clone();
+        altered_ranks[0] = (altered_ranks[0] + 1) % 4;
+        let framebuffer_mismatch_artifacts = CapturedArtifacts {
+            framebuffer_pgm: Some(encode_framebuffer_pgm(&altered_ranks)),
+            ..CapturedArtifacts::default()
+        };
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &framebuffer_case,
+                    &evaluation_inputs(&framebuffer_mismatch_artifacts, 1, 0)
+                )
+                .expect("framebuffer mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureMismatch {
+                fixture_path: fixture_path.clone(),
+            })
+        );
+
+        let missing_local_artifacts = CapturedArtifacts::default();
+        let missing_local = runner
+            .evaluate_case(
+                &framebuffer_case,
+                &evaluation_inputs(&missing_local_artifacts, 1, 0),
+            )
+            .expect_err("missing local framebuffer should fail");
+        assert!(matches!(
+            missing_local,
+            RomExecutionError::ReadFile {
+                operation: "decode local framebuffer artifact",
+                ..
+            }
+        ));
+
+        let framebuffer_set_case = RomTestCase::new(
+            "framebuffer-set",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::FramebufferFixtureSet(vec![fixture_path.clone()]),
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &framebuffer_set_case,
+                    &evaluation_inputs(&framebuffer_artifacts, 1, 0)
+                )
+                .expect("framebuffer set should match"),
+            RomCaseOutcome::Passed
+        );
+        assert_eq!(
+            runner
+                .evaluate_case(
+                    &framebuffer_set_case,
+                    &evaluation_inputs(&framebuffer_mismatch_artifacts, 1, 0)
+                )
+                .expect("framebuffer set mismatch should evaluate"),
+            RomCaseOutcome::Failed(RomCaseFailure::FramebufferFixtureSetMismatch {
+                fixture_paths: vec![fixture_path.clone()],
+            })
+        );
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn persist_failure_artifacts_writes_all_supported_capture_channels() {
+        let artifact_root = unique_temp_dir("persist-artifacts");
+        let runner = RomRunner::new().with_failure_artifact_root(&artifact_root);
+        let case = RomTestCase::new(
+            "artifact-case",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::SerialExact("unused".to_string()),
+        )
+        .with_failure_artifacts(
+            FailureArtifactPolicy::new()
+                .with_artifact(CaptureKind::Serial)
+                .with_artifact(CaptureKind::SerialHex)
+                .with_artifact(CaptureKind::MemoryTextOutput)
+                .with_artifact(CaptureKind::BlarggConsoleText)
+                .with_artifact(CaptureKind::Framebuffer)
+                .with_artifact(CaptureKind::Trace)
+                .with_artifact(CaptureKind::Snapshot),
+        );
+        let artifacts = CapturedArtifacts {
+            serial: Some("serial".to_string()),
+            serial_hex: Some("73657269616C".to_string()),
+            memory_text_output: Some(CapturedMemoryTextOutput {
+                status: 0x00,
+                signature: [0xDE, 0xB0, 0x61],
+                text: "Passed".to_string(),
+            }),
+            blargg_console_text: Some("console".to_string()),
+            framebuffer_pgm: Some(encode_framebuffer_pgm(&vec![0; 160 * 144])),
+            trace: Some("trace".to_string()),
+            snapshot_text: Some("snapshot".to_string()),
+        };
+
+        let without_root = RomRunner::new()
+            .persist_failure_artifacts(&case, &artifacts)
+            .expect("persist without root should succeed");
+        assert!(without_root.is_empty());
+
+        let written = runner
+            .persist_failure_artifacts(&case, &artifacts)
+            .expect("persisting failure artifacts should succeed");
+        assert_eq!(written.len(), 8);
+        for capture in [
+            CaptureKind::Serial,
+            CaptureKind::SerialHex,
+            CaptureKind::MemoryTextOutput,
+            CaptureKind::BlarggConsoleText,
+            CaptureKind::Framebuffer,
+            CaptureKind::Trace,
+            CaptureKind::Snapshot,
+        ] {
+            assert!(
+                written
+                    .iter()
+                    .any(|path| path.ends_with(artifact_file_name(capture))),
+                "missing persisted artifact for {capture:?}"
+            );
+        }
+        assert!(
+            written
+                .iter()
+                .any(|path| path.ends_with(Path::new("framebuffer.pgm"))),
+            "missing legacy framebuffer artifact"
+        );
+
+        let case_dir = artifact_root.join("artifact-case");
+        assert_eq!(
+            fs::read_to_string(case_dir.join("serial_hex.txt"))
+                .expect("serial hex artifact should be readable"),
+            "73657269616C"
+        );
+        assert_eq!(
+            fs::read_to_string(case_dir.join("memory_text_output.txt"))
+                .expect("memory text output artifact should be readable"),
+            render_memory_text_output(
+                artifacts
+                    .memory_text_output
+                    .as_ref()
+                    .expect("memory text output should be present")
+            )
+        );
+        assert!(case_dir.join("framebuffer.png").is_file());
+        assert!(case_dir.join("framebuffer.pgm").is_file());
+
+        fs::remove_dir_all(artifact_root).expect("artifact root should be removable");
+    }
+
+    #[test]
+    fn runner_path_resolution_and_boot_rom_loading_cover_repo_local_fallbacks() {
+        let workspace = unique_temp_dir("path-resolution");
+        fs::create_dir_all(&workspace).expect("workspace dir should be creatable");
+        let runner = RomRunner::new().with_workspace_root(&workspace);
+
+        let absolute = PathBuf::from("/tmp/gb-cycle-absolute-test.gb");
+        assert_eq!(
+            runner
+                .resolve_case_path(&absolute, None)
+                .expect("absolute path should resolve"),
+            absolute
+        );
+
+        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+        let previous_test_root = env::var_os(TEST_ROM_ROOT_ENV_VAR);
+        remove_env_var(TEST_ROM_ROOT_ENV_VAR);
+
+        let missing_default = runner
+            .resolve_case_path(Path::new("acid/dmg-acid2.gb"), Some(TEST_ROM_ROOT_ENV_VAR))
+            .expect_err("missing repo-managed root should fail");
+        assert!(matches!(
+            missing_default,
+            RomExecutionError::MissingExternalRomRoot {
+                key,
+                relative_path,
+            } if key == TEST_ROM_ROOT_ENV_VAR && relative_path == Path::new("acid/dmg-acid2.gb")
+        ));
+
+        let manifest_path = external_rom_source_manifest_path(&workspace);
+        fs::create_dir_all(
+            manifest_path
+                .parent()
+                .expect("manifest path should have a parent"),
+        )
+        .expect("manifest parent should be creatable");
+        fs::write(
+            &manifest_path,
+            r#"
+version = 1
+
+[[source]]
+id = "retrio"
+git_url = "https://example.invalid/retrio.git"
+git_rev = "abc123"
+local_dir = "retrio-gb-test-roms"
+root_env_var = "GB_CYCLE_LIB_TEST_EXTERNAL_ROOT"
+"#,
+        )
+        .expect("external root manifest should be writable");
+        let manifest_root = external_rom_store_root(&workspace).join("retrio-gb-test-roms");
+        fs::create_dir_all(&manifest_root).expect("manifest-backed root should be creatable");
+        assert_eq!(
+            runner
+                .resolve_case_path(
+                    Path::new("retrio/case.gb"),
+                    Some("GB_CYCLE_LIB_TEST_EXTERNAL_ROOT")
+                )
+                .expect("manifest-backed external root should resolve"),
+            manifest_root.join("retrio/case.gb")
+        );
+
+        match previous_test_root {
+            Some(value) => set_env_var(TEST_ROM_ROOT_ENV_VAR, value),
+            None => remove_env_var(TEST_ROM_ROOT_ENV_VAR),
+        }
+
+        let cgb_real_boot_case = RomTestCase::new(
+            "cgb-real-boot",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::Informational(CaptureKind::Snapshot),
+        )
+        .with_console_model(ConsoleModel::Cgb)
+        .with_startup_mode(StartupMode::RealBoot);
+        assert!(
+            runner
+                .load_boot_rom_assets(&cgb_real_boot_case)
+                .expect("cgb real-boot lookup should succeed")
+                .is_empty()
+        );
+
+        let missing_boot_root = workspace.join("missing-bootrom");
+        let dmg_real_boot_case = RomTestCase::new(
+            "dmg-real-boot",
+            "unused.gb",
+            Timeout::TCycles(1),
+            PassCondition::Informational(CaptureKind::Snapshot),
+        )
+        .with_startup_mode(StartupMode::RealBoot);
+        assert!(
+            RomRunner::new()
+                .with_workspace_root(&workspace)
+                .with_boot_rom_root(&missing_boot_root)
+                .with_boot_rom_verification_mode(BootRomVerificationMode::Off)
+                .load_boot_rom_assets(&dmg_real_boot_case)
+                .expect("missing boot root should fall back to no assets")
+                .is_empty()
+        );
+
+        fs::remove_dir_all(workspace).expect("workspace dir should be removable");
+    }
+
+    #[test]
+    fn helper_functions_cover_frame_budget_memory_capture_blargg_and_mooneye_nonmatches() {
+        assert!(budget_exhausted(Timeout::Frames(3), 0, 3));
+        assert!(!budget_exhausted(Timeout::Frames(3), 0, 2));
+
+        let case = RomTestCase::new(
+            "helper-machine",
+            "/dev/null",
+            Timeout::TCycles(8),
+            PassCondition::Informational(CaptureKind::Snapshot),
+        );
+        let mut machine = RunnerMachine::new(&case, BootRomAssets::none());
+        machine
+            .load_cartridge(build_test_rom(&[0x00]))
+            .expect("helper ROM should load");
+
+        machine.write_bus(0xFFFC, 0x00);
+        machine.write_bus(0xFFFD, 0xDE);
+        machine.write_bus(0xFFFE, 0xB0);
+        machine.write_bus(0xFFFF, 0x61);
+        let memory = capture_memory_text_output(
+            &MemoryTextOutputSpec::new(0xFFFC, 0x80, 0x00, 0xFFFD, [0xDE, 0xB0, 0x61], 0xFFFF, 4),
+            &mut machine,
+        );
+        assert_eq!(memory.status, 0x00);
+        assert_eq!(memory.signature, [0xDE, 0xB0, 0x61]);
+        assert_eq!(memory.text, "a");
+
+        assert!(!blargg_console_text_complete(
+            &PassCondition::SerialContains("unused".to_string()),
+            &mut machine
+        ));
+        machine.write_bus(0xFF42, 8);
+        machine.write_bus(0x9800 + 32, b'Q');
+        machine.write_bus(0x9800 + 33, 0x01);
+        assert_eq!(capture_blargg_console_text(&mut machine), "Q");
+        assert!(!blargg_console_text_complete(
+            &PassCondition::BlarggConsoleTextContains("Missing".to_string()),
+            &mut machine
+        ));
+
+        let mut mooneye_machine = mooneye_result_machine(MOONEYE_PASS_SIGNATURE);
+        assert_eq!(detect_mooneye_result(&mut mooneye_machine), None);
+        assert_eq!(
+            mooneye_result_completion_candidate(
+                &PassCondition::SerialContains("unused".to_string()),
+                &mut mooneye_machine
+            ),
+            None
+        );
     }
 }

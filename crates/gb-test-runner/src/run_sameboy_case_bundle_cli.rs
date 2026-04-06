@@ -250,8 +250,12 @@ fn write_all<W: Write>(output: &mut W, text: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+    use std::fs;
     use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::{
         SameBoyCaseBundleSuiteReport, sameboy_case_bundle::SameBoyCaseBundleCaseReport,
@@ -261,7 +265,52 @@ mod tests {
     use super::{
         SameBoyCaseBundleCliAction, SameBoyCaseBundleCliOptions,
         parse_sameboy_case_bundle_arguments, run_sameboy_case_bundle_command,
+        select_suite_for_options,
     };
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        env::temp_dir().join(format!(
+            "gb-cycle-sameboy-case-bundle-cli-{}-{}-{}",
+            label,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn write_fake_runner(path: &std::path::Path, args_output: &std::path::Path) {
+        fs::write(
+            path,
+            format!(
+                concat!(
+                    "#!/bin/sh\n",
+                    "set -eu\n",
+                    "args_file=\"{}\"\n",
+                    "printf '%s\\n' '---' >> \"$args_file\"\n",
+                    "serial_hex_out=''\n",
+                    "while [ \"$#\" -gt 0 ]; do\n",
+                    "  printf '%s\\n' \"$1\" >> \"$args_file\"\n",
+                    "  if [ \"$1\" = '--serial-hex-out' ]; then\n",
+                    "    shift\n",
+                    "    printf '%s\\n' \"$1\" >> \"$args_file\"\n",
+                    "    serial_hex_out=\"$1\"\n",
+                    "  fi\n",
+                    "  shift\n",
+                    "done\n",
+                    "printf 'CLIHEX' > \"$serial_hex_out\"\n",
+                ),
+                args_output.display(),
+            ),
+        )
+        .expect("fake runner should be writable");
+        let mut permissions = fs::metadata(path)
+            .expect("fake runner metadata should exist")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("fake runner should be executable");
+    }
 
     #[test]
     fn parser_applies_case_bundle_defaults() {
@@ -303,6 +352,47 @@ mod tests {
     }
 
     #[test]
+    fn parser_rejects_missing_values_and_unknown_arguments() {
+        let missing_case =
+            parse_sameboy_case_bundle_arguments(["--suite", "phase-6-cartridge-oracle", "--case"])
+                .expect_err("missing --case value should fail");
+        assert!(missing_case.contains("--case requires a value"));
+
+        let invalid_timeout = parse_sameboy_case_bundle_arguments([
+            "--suite",
+            "phase-6-cartridge-oracle",
+            "--timeout-frames",
+            "nope",
+        ])
+        .expect_err("invalid timeout should fail");
+        assert!(invalid_timeout.contains("invalid --timeout-frames value"));
+
+        let unknown_argument =
+            parse_sameboy_case_bundle_arguments(["--suite", "phase-6-cartridge-oracle", "--bogus"])
+                .expect_err("unknown argument should fail");
+        assert!(unknown_argument.contains("unknown argument"));
+    }
+
+    #[test]
+    fn select_suite_can_filter_a_family_backed_built_in_suite_to_one_case() {
+        let suite = select_suite_for_options(&SameBoyCaseBundleCliOptions {
+            oracle_root: PathBuf::from("/tmp/oracle"),
+            sameboy_root: None,
+            runner_binary: None,
+            suite_name: "acid-dmg-curated".to_string(),
+            case_id: Some("dmg-acid2".to_string()),
+            timeout_override: None,
+            build_if_missing: false,
+        })
+        .expect("known curated case should be selectable");
+
+        assert_eq!(suite.name, "acid-dmg-curated");
+        assert_eq!(suite.family.as_deref(), Some("acid"));
+        assert_eq!(suite.cases.len(), 1);
+        assert_eq!(suite.cases[0].id, "dmg-acid2");
+    }
+
+    #[test]
     fn help_and_report_paths_render_expected_labels() {
         assert!(sameboy_case_bundle_cli_help_text().contains("run_sameboy_case_bundle"));
 
@@ -340,5 +430,62 @@ mod tests {
         let error = run_sameboy_case_bundle_command(["--help"], &mut BrokenWriter)
             .expect_err("broken writer should fail");
         assert!(error.contains("failed to write output"));
+    }
+
+    #[test]
+    fn run_command_executes_selected_case_and_renders_report() {
+        let temp_dir = unique_temp_dir("run-command");
+        let oracle_root = temp_dir.join("oracle");
+        let args_output = temp_dir.join("runner-args.txt");
+        let runner_binary = temp_dir.join("fake-sameboy-case-bundle.sh");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        write_fake_runner(&runner_binary, &args_output);
+
+        let mut output = Vec::new();
+        run_sameboy_case_bundle_command(
+            [
+                "--suite",
+                "phase-6-cartridge-oracle",
+                "--case",
+                "phase6-mbc1-standard-banking",
+                "--oracle-root",
+                oracle_root.to_str().expect("oracle root should be utf-8"),
+                "--runner-binary",
+                runner_binary.to_str().expect("runner path should be utf-8"),
+                "--timeout-frames",
+                "12",
+            ],
+            &mut output,
+        )
+        .expect("command should succeed");
+
+        let output = String::from_utf8(output).expect("command output should be utf-8");
+        assert!(output.contains("suite=phase-6-cartridge-oracle"));
+        assert!(output.contains("case=phase6-mbc1-standard-banking"));
+        assert!(output.contains("serial_hex_artifact="));
+
+        let args = fs::read_to_string(args_output).expect("runner args should be readable");
+        assert!(args.contains("--timeout-frames\n12\n"));
+        assert!(!args.contains("--timeout-tcycles"));
+    }
+
+    #[test]
+    fn run_command_reports_unknown_suite_and_case_selection_errors() {
+        let unknown_suite =
+            run_sameboy_case_bundle_command(["--suite", "unknown"], &mut Vec::new())
+                .expect_err("unknown suite should fail");
+        assert!(unknown_suite.contains("unknown suite"));
+
+        let unknown_case = run_sameboy_case_bundle_command(
+            [
+                "--suite",
+                "phase-6-cartridge-oracle",
+                "--case",
+                "missing-case",
+            ],
+            &mut Vec::new(),
+        )
+        .expect_err("unknown case should fail");
+        assert!(unknown_case.contains("does not contain case"));
     }
 }

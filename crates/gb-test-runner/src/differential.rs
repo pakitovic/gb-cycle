@@ -1282,19 +1282,20 @@ mod tests {
         DifferentialCaseMismatch, DifferentialCaseOutcome, DifferentialOracle,
         DifferentialOracleLayout, DifferentialRunner, FramebufferDifferencePoint,
         NormalizedFramebuffer, decode_local_pgm_framebuffer, decode_sameboy_tester_framebuffer,
-        describe_framebuffer_difference, first_framebuffer_difference,
-        parse_memory_text_output_artifact, parse_sameboy_tester_bmp, parse_sameboy_tester_tga,
-        render_differential_summary, write_captured_artifact,
+        describe_framebuffer_difference, describe_memory_text_output_difference,
+        describe_text_difference, first_framebuffer_difference, parse_memory_text_output_artifact,
+        parse_sameboy_tester_bmp, parse_sameboy_tester_tga, render_differential_summary,
+        write_captured_artifact,
     };
     use crate::{
         CaptureKind, CapturedArtifacts, CapturedMemoryTextOutput, PassCondition, RomCaseOutcome,
-        RomCaseReport, RomTestCase, Timeout, acid_dmg_curated_suite,
+        RomCaseReport, RomRunner, RomTestCase, Timeout, acid_dmg_curated_suite,
         framebuffer_oracle::{decode_fixture_framebuffer_path, encode_framebuffer_pgm},
         phase_2_cpu_timing_suite, render_memory_text_output,
     };
     use std::env;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -1952,5 +1953,740 @@ mod tests {
             describe_framebuffer_difference(2, 1, 2, 1, None),
             "dimensions match but no differing pixel was localized"
         );
+    }
+
+    #[test]
+    fn mismatch_names_and_details_cover_remaining_textual_channels() {
+        let missing = DifferentialCaseMismatch::MissingOracleArtifact {
+            path: PathBuf::from("/tmp/missing.txt"),
+            capture: CaptureKind::SerialHex,
+        };
+        assert_eq!(missing.name(), "missing-oracle-artifact");
+        assert!(missing.detail().contains("channel=serial-hex"));
+
+        let serial = DifferentialCaseMismatch::SerialMismatch {
+            oracle_artifact_path: PathBuf::from("/tmp/serial.txt"),
+            oracle: "abc".to_string(),
+            local: "abx".to_string(),
+        };
+        assert_eq!(serial.name(), "serial-mismatch");
+        assert!(serial.detail().contains("first_difference_byte=2"));
+
+        let memory = DifferentialCaseMismatch::MemoryTextOutputMismatch {
+            oracle_artifact_path: PathBuf::from("/tmp/memory.txt"),
+            oracle: sample_memory_text_output(),
+            local: CapturedMemoryTextOutput {
+                text: "later".to_string(),
+                ..sample_memory_text_output()
+            },
+        };
+        assert_eq!(memory.name(), "memory-text-output-mismatch");
+        assert!(memory.detail().contains("field=text"));
+
+        let blargg = DifferentialCaseMismatch::BlarggConsoleTextMismatch {
+            oracle_artifact_path: PathBuf::from("/tmp/console.txt"),
+            oracle: "Passed".to_string(),
+            local: "Failed".to_string(),
+        };
+        assert_eq!(blargg.name(), "blargg-console-text-mismatch");
+        assert!(blargg.detail().contains("local=0x46('F')"));
+
+        let snapshot = DifferentialCaseMismatch::SnapshotMismatch {
+            oracle_artifact_path: PathBuf::from("/tmp/snapshot.txt"),
+            oracle: "pc=0100".to_string(),
+            local: "pc=0101".to_string(),
+        };
+        assert_eq!(snapshot.name(), "snapshot-mismatch");
+        assert!(snapshot.detail().contains("first_difference_byte=6"));
+    }
+
+    #[test]
+    fn sameboy_parsers_report_read_payload_and_memory_text_errors() {
+        let temp_dir = unique_temp_dir("parser-coverage");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+        let missing_error = decode_sameboy_tester_framebuffer(&temp_dir.join("missing.bmp"))
+            .expect_err("missing SameBoy framebuffer should fail");
+        assert!(matches!(
+            missing_error,
+            super::DifferentialExecutionError::ReadOracleArtifact { .. }
+        ));
+
+        let bad_bmp_path = temp_dir.join("bad-format.bmp");
+        let mut bad_bmp = vec![0_u8; 54];
+        bad_bmp[0..2].copy_from_slice(b"BM");
+        bad_bmp[10..14].copy_from_slice(&(54_u32).to_le_bytes());
+        bad_bmp[18..22].copy_from_slice(&(1_i32).to_le_bytes());
+        bad_bmp[22..26].copy_from_slice(&(1_i32).to_le_bytes());
+        bad_bmp[26..28].copy_from_slice(&(1_u16).to_le_bytes());
+        bad_bmp[28..30].copy_from_slice(&(24_u16).to_le_bytes());
+        let bad_bmp_error = parse_sameboy_tester_bmp(&bad_bmp_path, &bad_bmp)
+            .expect_err("unsupported BMP format should fail");
+        assert!(matches!(
+            bad_bmp_error,
+            super::DifferentialExecutionError::ParseOracleArtifact { ref message, .. }
+            if message == "unsupported SameBoy tester BMP format"
+        ));
+
+        let mut short_bmp = bad_bmp.clone();
+        short_bmp[28..30].copy_from_slice(&(32_u16).to_le_bytes());
+        let short_bmp_error = parse_sameboy_tester_bmp(&temp_dir.join("short.bmp"), &short_bmp)
+            .expect_err("short BMP payload should fail");
+        assert!(matches!(
+            short_bmp_error,
+            super::DifferentialExecutionError::ParseOracleArtifact { ref message, .. }
+            if message == "BMP payload is shorter than declared dimensions"
+        ));
+
+        let mut short_tga = vec![0_u8; 18];
+        short_tga[2] = 2;
+        short_tga[12..14].copy_from_slice(&(1_u16).to_le_bytes());
+        short_tga[14..16].copy_from_slice(&(1_u16).to_le_bytes());
+        short_tga[16] = 32;
+        short_tga[17] = 0x20;
+        let short_tga_error = parse_sameboy_tester_tga(&temp_dir.join("short.tga"), &short_tga)
+            .expect_err("short TGA payload should fail");
+        assert!(matches!(
+            short_tga_error,
+            super::DifferentialExecutionError::ParseOracleArtifact { ref message, .. }
+            if message == "TGA payload is shorter than declared dimensions"
+        ));
+
+        let missing_signature_path = temp_dir.join("missing-signature.txt");
+        fs::write(&missing_signature_path, "status=0x00\n")
+            .expect("memory text oracle should be writable");
+        let missing_signature = parse_memory_text_output_artifact(&missing_signature_path)
+            .expect_err("missing signature should fail");
+        assert!(matches!(
+            missing_signature,
+            super::DifferentialExecutionError::ParseOracleArtifact { ref message, .. }
+            if message == "memory text output artifact is missing signature line"
+        ));
+
+        let invalid_text_path = temp_dir.join("invalid-text.txt");
+        fs::write(
+            &invalid_text_path,
+            "status=0x00\nsignature=DE B0 61\ntext=unterminated\n",
+        )
+        .expect("invalid memory text oracle should be writable");
+        let invalid_text = parse_memory_text_output_artifact(&invalid_text_path)
+            .expect_err("invalid quoted text should fail");
+        assert!(matches!(
+            invalid_text,
+            super::DifferentialExecutionError::ParseOracleArtifact { ref message, .. }
+            if message.contains("failed to parse quoted text payload")
+        ));
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn builder_helpers_serial_hex_artifacts_and_matched_summaries_are_exercised() {
+        let runner = DifferentialRunner::new(DifferentialOracle::SameBoy, "/tmp/oracle")
+            .with_rom_runner(RomRunner::new().with_workspace_root("/tmp/workspace"))
+            .with_failure_artifact_root("/tmp/failures");
+        assert_eq!(
+            runner.rom_runner.workspace_root(),
+            Path::new("/tmp/workspace")
+        );
+        assert_eq!(
+            runner.failure_artifact_root,
+            Some(PathBuf::from("/tmp/failures"))
+        );
+
+        let temp_dir = unique_temp_dir("serial-hex");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let artifacts = CapturedArtifacts {
+            serial_hex: Some("4F4B".to_string()),
+            ..CapturedArtifacts::default()
+        };
+        let written_path = write_captured_artifact(&temp_dir, CaptureKind::SerialHex, &artifacts)
+            .expect("serial hex write should succeed")
+            .expect("serial hex artifact should exist");
+        assert_eq!(
+            fs::read_to_string(&written_path).expect("serial hex artifact should be readable"),
+            "4F4B"
+        );
+
+        let summary = render_differential_summary(
+            DifferentialOracle::SameBoy,
+            DifferentialOracleLayout::CaseBundle,
+            CaptureKind::Snapshot,
+            &sample_case_report("snapshot", CapturedArtifacts::default()),
+            &DifferentialCaseOutcome::Matched,
+            Path::new("/tmp/oracle/snapshot.txt"),
+        );
+        assert!(summary.contains("differential_outcome=matched"));
+        assert!(summary.contains("channel=snapshot"));
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn oracle_path_resolution_prefers_existing_fallbacks_before_default_candidates() {
+        let temp_dir = unique_temp_dir("oracle-paths");
+        let case_bundle_root = temp_dir.join("case-bundle");
+        let sameboy_root = temp_dir.join("sameboy");
+        fs::create_dir_all(&case_bundle_root).expect("case bundle root should be creatable");
+        fs::create_dir_all(&sameboy_root).expect("sameboy root should be creatable");
+
+        let case = RomTestCase::new(
+            "framebuffer-case",
+            PathBuf::from("acid/framebuffer-case.gb"),
+            Timeout::TCycles(32),
+            PassCondition::FramebufferFixture(PathBuf::from("unused")),
+        );
+
+        let case_bundle_runner =
+            DifferentialRunner::new(DifferentialOracle::SameBoy, &case_bundle_root);
+        let case_bundle_case_dir = case_bundle_root.join(&case.id);
+        fs::create_dir_all(&case_bundle_case_dir)
+            .expect("case bundle case dir should be creatable");
+        let legacy_pgm = case_bundle_case_dir.join("framebuffer.pgm");
+        fs::write(&legacy_pgm, b"P5\n1 1\n255\n\x00").expect("legacy PGM should be writable");
+        assert_eq!(
+            case_bundle_runner
+                .resolve_oracle_artifact_path(&case, CaptureKind::Framebuffer)
+                .expect("legacy PGM should be selected"),
+            legacy_pgm
+        );
+
+        fs::remove_file(case_bundle_case_dir.join("framebuffer.pgm"))
+            .expect("legacy PGM should be removable");
+        assert_eq!(
+            case_bundle_runner
+                .resolve_oracle_artifact_path(&case, CaptureKind::Framebuffer)
+                .expect("missing case bundle framebuffer should still resolve"),
+            case_bundle_case_dir.join("framebuffer.png")
+        );
+
+        let sameboy_runner = DifferentialRunner::new(DifferentialOracle::SameBoy, &sameboy_root)
+            .with_oracle_layout(DifferentialOracleLayout::SameBoyTester);
+        let sameboy_tga = sameboy_root.join("acid/framebuffer-case.tga");
+        fs::create_dir_all(
+            sameboy_tga
+                .parent()
+                .expect("sameboy oracle path should have a parent"),
+        )
+        .expect("sameboy case dir should be creatable");
+        fs::write(&sameboy_tga, b"tga").expect("sameboy TGA should be writable");
+        assert_eq!(
+            sameboy_runner
+                .resolve_oracle_artifact_path(&case, CaptureKind::Framebuffer)
+                .expect("SameBoy TGA should be selected"),
+            sameboy_tga
+        );
+
+        fs::remove_file(sameboy_root.join("acid/framebuffer-case.tga"))
+            .expect("sameboy TGA should be removable");
+        assert_eq!(
+            sameboy_runner
+                .resolve_oracle_artifact_path(&case, CaptureKind::Framebuffer)
+                .expect("missing SameBoy framebuffer should still resolve"),
+            sameboy_root.join("acid/framebuffer-case.bmp")
+        );
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn compare_required_capture_covers_remaining_text_match_mismatch_and_read_error_paths() {
+        let temp_dir = unique_temp_dir("textual-comparisons");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let runner = DifferentialRunner::new(DifferentialOracle::SameBoy, &temp_dir);
+
+        let serial_path = temp_dir.join("serial.txt");
+        fs::write(&serial_path, "match").expect("serial oracle should be writable");
+        assert_eq!(
+            runner
+                .compare_required_capture(
+                    &sample_case_report(
+                        "serial",
+                        CapturedArtifacts {
+                            serial: Some("match".to_string()),
+                            ..CapturedArtifacts::default()
+                        }
+                    ),
+                    CaptureKind::Serial,
+                    &serial_path,
+                )
+                .expect("serial match should compare"),
+            DifferentialCaseOutcome::Matched
+        );
+
+        let serial_hex_path = temp_dir.join("serial-hex.txt");
+        fs::write(&serial_hex_path, "4F4B").expect("serial hex oracle should be writable");
+        assert_eq!(
+            runner
+                .compare_required_capture(
+                    &sample_case_report(
+                        "serial-hex",
+                        CapturedArtifacts {
+                            serial_hex: Some("4F4B".to_string()),
+                            ..CapturedArtifacts::default()
+                        }
+                    ),
+                    CaptureKind::SerialHex,
+                    &serial_hex_path,
+                )
+                .expect("serial hex match should compare"),
+            DifferentialCaseOutcome::Matched
+        );
+        let serial_hex_mismatch = runner
+            .compare_required_capture(
+                &sample_case_report(
+                    "serial-hex",
+                    CapturedArtifacts {
+                        serial_hex: Some("4F".to_string()),
+                        ..CapturedArtifacts::default()
+                    },
+                ),
+                CaptureKind::SerialHex,
+                &serial_hex_path,
+            )
+            .expect("serial hex mismatch should compare");
+        assert!(matches!(
+            serial_hex_mismatch,
+            DifferentialCaseOutcome::Diverged(DifferentialCaseMismatch::SerialMismatch { .. })
+        ));
+
+        let blargg_path = temp_dir.join("blargg.txt");
+        fs::write(&blargg_path, "Passed").expect("blargg oracle should be writable");
+        let blargg_mismatch = runner
+            .compare_required_capture(
+                &sample_case_report(
+                    "blargg",
+                    CapturedArtifacts {
+                        blargg_console_text: Some("Failed".to_string()),
+                        ..CapturedArtifacts::default()
+                    },
+                ),
+                CaptureKind::BlarggConsoleText,
+                &blargg_path,
+            )
+            .expect("blargg mismatch should compare");
+        assert!(matches!(
+            blargg_mismatch,
+            DifferentialCaseOutcome::Diverged(
+                DifferentialCaseMismatch::BlarggConsoleTextMismatch { .. }
+            )
+        ));
+
+        let trace_path = temp_dir.join("trace.txt");
+        fs::write(&trace_path, "trace\nok\n").expect("trace oracle should be writable");
+        assert_eq!(
+            runner
+                .compare_required_capture(
+                    &sample_case_report(
+                        "trace",
+                        CapturedArtifacts {
+                            trace: Some("trace\nok\n".to_string()),
+                            ..CapturedArtifacts::default()
+                        }
+                    ),
+                    CaptureKind::Trace,
+                    &trace_path,
+                )
+                .expect("trace match should compare"),
+            DifferentialCaseOutcome::Matched
+        );
+
+        let snapshot_path = temp_dir.join("snapshot.txt");
+        fs::write(&snapshot_path, "pc=0100").expect("snapshot oracle should be writable");
+        let snapshot_mismatch = runner
+            .compare_required_capture(
+                &sample_case_report(
+                    "snapshot",
+                    CapturedArtifacts {
+                        snapshot_text: Some("pc=0101".to_string()),
+                        ..CapturedArtifacts::default()
+                    },
+                ),
+                CaptureKind::Snapshot,
+                &snapshot_path,
+            )
+            .expect("snapshot mismatch should compare");
+        assert!(matches!(
+            snapshot_mismatch,
+            DifferentialCaseOutcome::Diverged(DifferentialCaseMismatch::SnapshotMismatch { .. })
+        ));
+
+        for (capture, operation, artifacts) in [
+            (
+                CaptureKind::Serial,
+                "read serial oracle artifact",
+                CapturedArtifacts {
+                    serial: Some("local".to_string()),
+                    ..CapturedArtifacts::default()
+                },
+            ),
+            (
+                CaptureKind::SerialHex,
+                "read serial hex oracle artifact",
+                CapturedArtifacts {
+                    serial_hex: Some("4F4B".to_string()),
+                    ..CapturedArtifacts::default()
+                },
+            ),
+            (
+                CaptureKind::BlarggConsoleText,
+                "read blargg console oracle artifact",
+                CapturedArtifacts {
+                    blargg_console_text: Some("Passed".to_string()),
+                    ..CapturedArtifacts::default()
+                },
+            ),
+            (
+                CaptureKind::Trace,
+                "read trace oracle artifact",
+                CapturedArtifacts {
+                    trace: Some("trace".to_string()),
+                    ..CapturedArtifacts::default()
+                },
+            ),
+            (
+                CaptureKind::Snapshot,
+                "read snapshot oracle artifact",
+                CapturedArtifacts {
+                    snapshot_text: Some("pc=0100".to_string()),
+                    ..CapturedArtifacts::default()
+                },
+            ),
+        ] {
+            let bad_path = temp_dir.join(format!("{capture:?}.txt"));
+            fs::write(&bad_path, [0xFF_u8]).expect("invalid UTF-8 oracle should be writable");
+            let error = runner
+                .compare_required_capture(
+                    &sample_case_report("read-error", artifacts),
+                    capture,
+                    &bad_path,
+                )
+                .expect_err("invalid UTF-8 oracle should fail to read as text");
+            assert!(matches!(
+                error,
+                super::DifferentialExecutionError::ReadOracleArtifact {
+                    operation: actual,
+                    ..
+                } if actual == operation
+            ));
+        }
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn compare_required_capture_covers_missing_local_artifacts_and_framebuffer_parse_failures() {
+        let temp_dir = unique_temp_dir("missing-local-and-framebuffer-errors");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let runner = DifferentialRunner::new(DifferentialOracle::SameBoy, &temp_dir);
+
+        let fixture_png =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/fixtures/acid/dmg-acid2-dmg.png");
+        let existing_text_path = temp_dir.join("existing.txt");
+        fs::write(&existing_text_path, "ok").expect("text oracle should be writable");
+
+        for capture in [
+            CaptureKind::Serial,
+            CaptureKind::SerialHex,
+            CaptureKind::BlarggConsoleText,
+            CaptureKind::Trace,
+            CaptureKind::Snapshot,
+        ] {
+            let error = runner
+                .compare_required_capture(
+                    &sample_case_report("missing-local", CapturedArtifacts::default()),
+                    capture,
+                    &existing_text_path,
+                )
+                .expect_err("missing local textual artifact should fail");
+            assert!(matches!(
+                error,
+                super::DifferentialExecutionError::MissingLocalArtifact {
+                    capture: actual,
+                    ..
+                } if actual == capture
+            ));
+        }
+
+        let framebuffer_missing = runner
+            .compare_required_capture(
+                &sample_case_report("missing-local-fb", CapturedArtifacts::default()),
+                CaptureKind::Framebuffer,
+                &fixture_png,
+            )
+            .expect_err("missing local framebuffer should fail");
+        assert!(matches!(
+            framebuffer_missing,
+            super::DifferentialExecutionError::MissingLocalArtifact {
+                capture: CaptureKind::Framebuffer,
+                ..
+            }
+        ));
+
+        let local_parse_error = runner
+            .compare_required_capture(
+                &sample_case_report(
+                    "bad-local-fb",
+                    CapturedArtifacts {
+                        framebuffer_pgm: Some(b"not-a-pgm".to_vec()),
+                        ..CapturedArtifacts::default()
+                    },
+                ),
+                CaptureKind::Framebuffer,
+                &fixture_png,
+            )
+            .expect_err("invalid local framebuffer should fail");
+        assert!(matches!(
+            local_parse_error,
+            super::DifferentialExecutionError::ParseOracleArtifact { ref path, .. }
+            if path.to_string_lossy().contains("<local framebuffer for bad-local-fb>")
+        ));
+
+        let bad_oracle_png = temp_dir.join("bad-fixture.png");
+        fs::write(&bad_oracle_png, b"not-a-png").expect("bad fixture PNG should be writable");
+        let good_local_pgm = load_fixture_as_local_pgm("data/fixtures/acid/dmg-acid2-dmg.png");
+        let oracle_parse_error = runner
+            .compare_required_capture(
+                &sample_case_report(
+                    "bad-oracle-fb",
+                    CapturedArtifacts {
+                        framebuffer_pgm: Some(good_local_pgm.clone()),
+                        ..CapturedArtifacts::default()
+                    },
+                ),
+                CaptureKind::Framebuffer,
+                &bad_oracle_png,
+            )
+            .expect_err("invalid framebuffer fixture should fail");
+        assert!(matches!(
+            oracle_parse_error,
+            super::DifferentialExecutionError::ParseOracleArtifact { ref path, .. }
+            if path == &bad_oracle_png
+        ));
+
+        let sameboy_runner = DifferentialRunner::new(DifferentialOracle::SameBoy, &temp_dir)
+            .with_oracle_layout(DifferentialOracleLayout::SameBoyTester);
+        let sameboy_bmp = temp_dir.join("sameboy.bmp");
+        fs::write(
+            &sameboy_bmp,
+            build_sameboy_tester_bmp_from_pgm(&good_local_pgm),
+        )
+        .expect("SameBoy BMP should be writable");
+
+        let sameboy_local_parse_error = sameboy_runner
+            .compare_required_capture(
+                &sample_case_report(
+                    "bad-local-sameboy",
+                    CapturedArtifacts {
+                        framebuffer_pgm: Some(b"not-a-pgm".to_vec()),
+                        ..CapturedArtifacts::default()
+                    },
+                ),
+                CaptureKind::Framebuffer,
+                &sameboy_bmp,
+            )
+            .expect_err("invalid local framebuffer should fail before SameBoy decode");
+        assert!(matches!(
+            sameboy_local_parse_error,
+            super::DifferentialExecutionError::ParseOracleArtifact { ref path, .. }
+            if path.to_string_lossy().contains("<local framebuffer for bad-local-sameboy>")
+        ));
+
+        let mut mismatched_local_pgm = good_local_pgm.clone();
+        let last_index = mismatched_local_pgm.len() - 1;
+        mismatched_local_pgm[last_index] ^= 0xFF;
+        let sameboy_mismatch = sameboy_runner
+            .compare_required_capture(
+                &sample_case_report(
+                    "sameboy-mismatch",
+                    CapturedArtifacts {
+                        framebuffer_pgm: Some(mismatched_local_pgm),
+                        ..CapturedArtifacts::default()
+                    },
+                ),
+                CaptureKind::Framebuffer,
+                &sameboy_bmp,
+            )
+            .expect("SameBoy framebuffer mismatch should compare");
+        assert!(matches!(
+            sameboy_mismatch,
+            DifferentialCaseOutcome::Diverged(DifferentialCaseMismatch::FramebufferMismatch { .. })
+        ));
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn persist_context_if_needed_skips_clean_cases_and_surfaces_directory_creation_errors() {
+        let temp_dir = unique_temp_dir("persist-skip-and-error");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let oracle_path = temp_dir.join("trace.txt");
+        fs::write(&oracle_path, "trace").expect("oracle trace should be writable");
+        let case = RomTestCase::new(
+            "persist-case",
+            "synthetic/persist-case.gb",
+            Timeout::TCycles(32),
+            PassCondition::TraceFixture(PathBuf::from("unused")),
+        );
+        let local_report = sample_case_report(
+            &case.id,
+            CapturedArtifacts {
+                trace: Some("trace".to_string()),
+                ..CapturedArtifacts::default()
+            },
+        );
+        let matched_outcome = DifferentialCaseOutcome::Matched;
+
+        let no_root = DifferentialRunner::new(DifferentialOracle::SameBoy, &temp_dir)
+            .persist_context_if_needed(&case, &local_report, &matched_outcome, &oracle_path)
+            .expect("missing artifact root should simply skip archiving");
+        assert!(no_root.is_empty());
+
+        let with_root = DifferentialRunner::new(DifferentialOracle::SameBoy, &temp_dir)
+            .with_failure_artifact_root(temp_dir.join("artifacts"))
+            .persist_context_if_needed(&case, &local_report, &matched_outcome, &oracle_path)
+            .expect("clean matched case should not archive");
+        assert!(with_root.is_empty());
+
+        let blocked_root = temp_dir.join("blocked-root");
+        fs::write(&blocked_root, "not-a-directory").expect("blocked root file should be writable");
+        let error = DifferentialRunner::new(DifferentialOracle::SameBoy, &temp_dir)
+            .with_failure_artifact_root(&blocked_root)
+            .persist_context_if_needed(
+                &case,
+                &local_report,
+                &DifferentialCaseOutcome::Diverged(DifferentialCaseMismatch::TraceMismatch {
+                    oracle_artifact_path: oracle_path.clone(),
+                    oracle: "oracle".to_string(),
+                    local: "local".to_string(),
+                }),
+                &oracle_path,
+            )
+            .expect_err("blocked artifact root should fail directory creation");
+        assert!(matches!(
+            error,
+            super::DifferentialExecutionError::CreateDirectory { ref path, .. }
+            if path.ends_with("persist-case")
+        ));
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn write_captured_artifact_surfaces_write_failures_for_all_text_channels_and_framebuffers() {
+        let temp_dir = unique_temp_dir("write-errors");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let blocked_root = temp_dir.join("blocked-root");
+        fs::write(&blocked_root, "not-a-directory").expect("blocked root file should be writable");
+        let artifacts = CapturedArtifacts {
+            serial: Some("serial".to_string()),
+            serial_hex: Some("4F4B".to_string()),
+            memory_text_output: Some(sample_memory_text_output()),
+            blargg_console_text: Some("console".to_string()),
+            trace: Some("trace".to_string()),
+            snapshot_text: Some("snapshot".to_string()),
+            framebuffer_pgm: Some(load_fixture_as_local_pgm(
+                "data/fixtures/acid/dmg-acid2-dmg.png",
+            )),
+        };
+
+        for (capture, operation) in [
+            (CaptureKind::Serial, "write serial artifact"),
+            (CaptureKind::SerialHex, "write serial hex artifact"),
+            (
+                CaptureKind::MemoryTextOutput,
+                "write memory text output artifact",
+            ),
+            (
+                CaptureKind::BlarggConsoleText,
+                "write blargg console artifact",
+            ),
+            (CaptureKind::Trace, "write trace artifact"),
+            (CaptureKind::Snapshot, "write snapshot artifact"),
+        ] {
+            let error = write_captured_artifact(&blocked_root, capture, &artifacts)
+                .expect_err("writing under a file path should fail");
+            assert!(matches!(
+                error,
+                super::DifferentialExecutionError::WriteArtifact {
+                    operation: actual,
+                    ..
+                } if actual == operation
+            ));
+        }
+
+        let framebuffer_write_error =
+            write_captured_artifact(&blocked_root, CaptureKind::Framebuffer, &artifacts)
+                .expect_err("framebuffer PNG write under a file path should fail");
+        assert!(matches!(
+            framebuffer_write_error,
+            super::DifferentialExecutionError::WriteArtifact {
+                operation: "write framebuffer artifact",
+                ..
+            }
+        ));
+
+        let framebuffer_parse_error = write_captured_artifact(
+            &temp_dir,
+            CaptureKind::Framebuffer,
+            &CapturedArtifacts {
+                framebuffer_pgm: Some(b"not-a-pgm".to_vec()),
+                ..CapturedArtifacts::default()
+            },
+        )
+        .expect_err("invalid framebuffer PGM should fail conversion");
+        assert!(matches!(
+            framebuffer_parse_error,
+            super::DifferentialExecutionError::ParseOracleArtifact { .. }
+        ));
+
+        let legacy_block_root = temp_dir.join("legacy-block");
+        fs::create_dir_all(&legacy_block_root).expect("legacy block root should be creatable");
+        fs::create_dir_all(legacy_block_root.join("framebuffer.pgm"))
+            .expect("legacy framebuffer path should be blocked by a directory");
+        let legacy_error =
+            write_captured_artifact(&legacy_block_root, CaptureKind::Framebuffer, &artifacts)
+                .expect_err("legacy framebuffer write should fail when the path is a directory");
+        assert!(matches!(
+            legacy_error,
+            super::DifferentialExecutionError::WriteArtifact {
+                operation: "write legacy framebuffer artifact",
+                ..
+            }
+        ));
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn difference_helpers_cover_status_signature_eof_and_non_graphic_bytes() {
+        let status_difference = describe_memory_text_output_difference(
+            &CapturedMemoryTextOutput {
+                status: 0x01,
+                ..sample_memory_text_output()
+            },
+            &sample_memory_text_output(),
+        );
+        assert_eq!(status_difference, "field=status local=0x01 oracle=0x80");
+
+        let signature_difference = describe_memory_text_output_difference(
+            &CapturedMemoryTextOutput {
+                signature: [0xDE, 0xAD, 0x61],
+                ..sample_memory_text_output()
+            },
+            &sample_memory_text_output(),
+        );
+        assert_eq!(
+            signature_difference,
+            "field=signature index=1 local=0xAD oracle=0xB0"
+        );
+
+        let eof_difference = describe_text_difference("abc", "abcd");
+        assert!(eof_difference.contains("local=eof"));
+        assert!(eof_difference.contains("oracle=0x64('d')"));
+
+        let nongraphic_difference = describe_text_difference("\x01", "\x02");
+        assert!(nongraphic_difference.contains("local=0x01"));
+        assert!(nongraphic_difference.contains("oracle=0x02"));
     }
 }

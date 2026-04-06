@@ -620,8 +620,8 @@ mod tests {
 
     use super::{
         RomSuiteCliAction, RomSuiteCliOptions, RomSuiteCliTarget, parse_rom_suite_arguments,
-        rom_suite_cli_help_text, run_rom_suite_command_with_runner, select_suite_for_options,
-        write_suite_report,
+        rom_suite_cli_help_text, run_rom_suite_command_with_runner, select_case_for_options,
+        select_suite_for_options, write_suite_report,
     };
     use crate::{
         CapturedArtifacts, RomCaseOutcome, RomCaseReport, RomRunner, RomSuiteReport,
@@ -744,6 +744,34 @@ mod tests {
         })
         .expect_err("unknown case should be rejected");
         assert!(unknown_case.contains("does not contain case"));
+    }
+
+    #[test]
+    fn select_suite_can_filter_a_family_backed_built_in_suite_to_one_case() {
+        let suite = select_suite_for_options(&RomSuiteCliOptions {
+            target: RomSuiteCliTarget::BuiltIn {
+                suite_name: "acid-dmg-curated".to_string(),
+            },
+            case_id: Some("dmg-acid2".to_string()),
+            failure_artifact_root: None,
+            timeout_override: None,
+        })
+        .expect("known curated case should be selectable");
+
+        assert_eq!(suite.name, "acid-dmg-curated");
+        assert_eq!(suite.family.as_deref(), Some("acid"));
+        assert_eq!(suite.cases.len(), 1);
+        assert_eq!(suite.cases[0].id, "dmg-acid2");
+    }
+
+    #[test]
+    fn select_case_for_options_leaves_familyless_suites_unchanged_without_a_case_filter() {
+        let suite = select_case_for_options(crate::phase_6_cartridge_oracle_suite(), None)
+            .expect("no case filter should keep the original suite");
+
+        assert_eq!(suite.name, "phase-6-cartridge-oracle");
+        assert!(suite.family.is_none());
+        assert_eq!(suite.cases.len(), 5);
     }
 
     #[test]

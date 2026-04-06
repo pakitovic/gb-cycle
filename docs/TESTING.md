@@ -330,6 +330,7 @@ This checklist should move only when one of the following becomes true:
 - When a change touches CI, coverage, dependency policy, repo tooling, or other workflow-critical infrastructure, run `make test-roms` and `make coverage` locally as well before the PR is updated.
 - The GitHub `ci` workflow is intentionally limited to formatting, linting, tests, typos, dependency policy, and the coverage gate. Keep external ROM execution out of that workflow.
 - In that workflow, prefer one instrumented workspace `cargo llvm-cov --workspace --no-report` run plus per-crate `cargo llvm-cov report -p <crate> --fail-under-*` gates instead of a separate `cargo test --workspace` pass followed by coverage; the workspace tests should be paid for once.
+- Repo-owned binary integration tests should resolve sibling executables from the active Cargo target directory rather than assuming only `target/debug` or runtime `CARGO_BIN_EXE_*` exports; coverage runs may build those binaries under an alternate root such as `target/llvm-cov-target/debug`.
 - The GitHub `test-roms` workflow currently runs the workflow-managed non-CGB
   DMG suites sourced from `GBEmulatorShootout`: the curated Acid framebuffer
   oracle family, the full Blargg DMG family (`cpu_instrs 01..11`, `halt_bug`,

@@ -429,8 +429,14 @@ fn default_case_id_for_rom_path(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{LocalRomSuiteManifestError, load_local_rom_suite_manifest};
-    use crate::{CaptureKind, ExternalStimulusAction, PassCondition, StimulusTime, TestSubsystem};
+    use super::{
+        LocalRomSuiteManifestError, capture_plan_for_pass_condition,
+        failure_artifacts_for_pass_condition, load_local_rom_suite_manifest,
+    };
+    use crate::{
+        CaptureKind, ExternalStimulusAction, MemoryTextOutputSpec, PassCondition, StimulusTime,
+        TestSubsystem,
+    };
     use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -766,5 +772,466 @@ version = 9
             error,
             LocalRomSuiteManifestError::UnsupportedVersion { version: 9, .. }
         ));
+    }
+
+    #[test]
+    fn local_manifest_supports_informational_oracles_and_absolute_rom_paths() {
+        let workspace = unique_temp_dir("informational-oracles");
+        let absolute_rom = workspace.join("absolute.gb");
+        fs::create_dir_all(&workspace).expect("workspace should be creatable");
+        fs::write(&absolute_rom, [0x00_u8]).expect("absolute rom should be writable");
+
+        let manifest_path = write_manifest(
+            &workspace,
+            "info.toml",
+            &format!(
+                r#"
+version = 1
+
+[[case]]
+id = "serial-info"
+rom = "{absolute_rom}"
+timeout_frames = 1
+oracle = "info-serial"
+
+[[case]]
+id = "serial-hex-info"
+rom = "{absolute_rom}"
+timeout_frames = 1
+oracle = "info-serial-hex"
+
+[[case]]
+id = "trace-info"
+rom = "{absolute_rom}"
+timeout_tcycles = 4
+oracle = "info-trace"
+
+[[case]]
+id = "snapshot-info"
+rom = "{absolute_rom}"
+timeout_tcycles = 8
+oracle = "info-snapshot"
+"#,
+                absolute_rom = absolute_rom.display(),
+            ),
+        );
+
+        let suite =
+            load_local_rom_suite_manifest(&manifest_path).expect("manifest should load cleanly");
+        assert_eq!(suite.cases.len(), 4);
+        assert!(matches!(
+            suite.cases[0].pass_condition,
+            PassCondition::Informational(CaptureKind::Serial)
+        ));
+        assert!(matches!(
+            suite.cases[1].pass_condition,
+            PassCondition::Informational(CaptureKind::SerialHex)
+        ));
+        assert!(matches!(
+            suite.cases[2].pass_condition,
+            PassCondition::Informational(CaptureKind::Trace)
+        ));
+        assert!(matches!(
+            suite.cases[3].pass_condition,
+            PassCondition::Informational(CaptureKind::Snapshot)
+        ));
+        assert!(suite.cases.iter().all(|case| case.rom_path == absolute_rom));
+    }
+
+    #[test]
+    fn local_manifest_reports_read_parse_and_metadata_errors() {
+        let missing =
+            load_local_rom_suite_manifest(Path::new("/definitely/missing/local-suite.toml"))
+                .expect_err("missing manifest should fail");
+        assert!(matches!(missing, LocalRomSuiteManifestError::Read { .. }));
+        assert!(
+            missing
+                .to_string()
+                .contains("failed to read local ROM suite manifest")
+        );
+
+        let workspace = unique_temp_dir("invalid-parse");
+        let invalid_toml = write_manifest(&workspace, "invalid.toml", "version = 1\n[[case]\n");
+        let parse_error =
+            load_local_rom_suite_manifest(&invalid_toml).expect_err("invalid TOML should fail");
+        assert!(matches!(
+            parse_error,
+            LocalRomSuiteManifestError::Parse { .. }
+        ));
+        assert!(
+            parse_error
+                .to_string()
+                .contains("failed to parse local ROM suite manifest")
+        );
+
+        let unsupported_oracle = write_manifest(
+            &workspace,
+            "unsupported-oracle.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "broken.gb"
+timeout_frames = 1
+oracle = "magic"
+"#,
+        );
+        let build_error = load_local_rom_suite_manifest(&unsupported_oracle)
+            .expect_err("unsupported oracle should fail");
+        assert!(matches!(
+            build_error,
+            LocalRomSuiteManifestError::Build { .. }
+        ));
+        assert!(
+            build_error
+                .to_string()
+                .contains("failed to build local ROM suite manifest")
+        );
+    }
+
+    #[test]
+    fn local_manifest_rejects_missing_fixtures_and_unsupported_console_metadata() {
+        let workspace = unique_temp_dir("invalid-metadata");
+
+        let missing_fixture = write_manifest(
+            &workspace,
+            "missing-fixture.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "framebuffer"
+rom = "broken.gb"
+timeout_frames = 1
+oracle = "framebuffer-fixture"
+"#,
+        );
+        let missing_fixture_error = load_local_rom_suite_manifest(&missing_fixture)
+            .expect_err("missing fixture should fail");
+        match missing_fixture_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("missing fixture"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        let bad_console = write_manifest(
+            &workspace,
+            "bad-console.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "broken.gb"
+console = "sgb2"
+timeout_frames = 1
+oracle = "info-framebuffer"
+"#,
+        );
+        let bad_console_error =
+            load_local_rom_suite_manifest(&bad_console).expect_err("bad console should fail");
+        match bad_console_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("unsupported console"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        let bad_stimulus = write_manifest(
+            &workspace,
+            "bad-stimulus.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "broken.gb"
+timeout_frames = 1
+oracle = "info-framebuffer"
+
+[[case.stimulus]]
+frame = 1
+tcycle = 2
+button = "a"
+pressed = true
+"#,
+        );
+        let bad_stimulus_error =
+            load_local_rom_suite_manifest(&bad_stimulus).expect_err("bad stimulus should fail");
+        match bad_stimulus_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("cannot specify both frame and tcycle"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_manifest_supports_serial_contains_and_rejects_missing_serial_contract_data() {
+        let workspace = unique_temp_dir("serial-contracts");
+        let manifest_path = write_manifest(
+            &workspace,
+            "serial-contains.toml",
+            r#"
+version = 1
+
+[[case]]
+rom = "roms/serial-contract.gb"
+timeout_frames = 8
+oracle = "serial-contains"
+expected = "Passed"
+"#,
+        );
+
+        let suite =
+            load_local_rom_suite_manifest(&manifest_path).expect("serial-contains manifest loads");
+        let case = &suite.cases[0];
+        assert_eq!(case.id, "serial-contract");
+        assert_eq!(
+            case.pass_condition,
+            PassCondition::SerialContains("Passed".to_string())
+        );
+        assert!(case.capture_plan.contains(CaptureKind::Serial));
+        assert!(case.capture_plan.contains(CaptureKind::Snapshot));
+        assert!(case.failure_artifacts.contains(CaptureKind::Serial));
+        assert!(case.failure_artifacts.contains(CaptureKind::Snapshot));
+
+        let missing_expected = write_manifest(
+            &workspace,
+            "missing-serial-expected.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "broken.gb"
+timeout_frames = 1
+oracle = "serial-exact"
+"#,
+        );
+        let missing_expected_error = load_local_rom_suite_manifest(&missing_expected)
+            .expect_err("serial-exact without expected should fail");
+        match missing_expected_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("missing expected for serial-exact"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        let missing_fixtures = write_manifest(
+            &workspace,
+            "missing-fixture-set.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "broken.gb"
+timeout_frames = 1
+oracle = "framebuffer-fixture-set"
+"#,
+        );
+        let missing_fixtures_error = load_local_rom_suite_manifest(&missing_fixtures)
+            .expect_err("framebuffer-fixture-set without fixtures should fail");
+        match missing_fixtures_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("missing fixtures for framebuffer-fixture-set"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_manifest_rejects_remaining_contract_and_metadata_errors() {
+        let workspace = unique_temp_dir("remaining-errors");
+
+        let duplicate_ids = write_manifest(
+            &workspace,
+            "duplicate-ids.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "duplicate"
+rom = "first.gb"
+timeout_frames = 1
+oracle = "info-serial"
+
+[[case]]
+id = "duplicate"
+rom = "second.gb"
+timeout_frames = 1
+oracle = "info-snapshot"
+"#,
+        );
+        let duplicate_ids_error = load_local_rom_suite_manifest(&duplicate_ids)
+            .expect_err("duplicate case ids should fail suite validation");
+        match duplicate_ids_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("invalid suite contract"));
+                assert!(message.contains("DuplicateCaseId"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        let blank_case_id = write_manifest(
+            &workspace,
+            "blank-id.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "   "
+rom = "broken.gb"
+timeout_frames = 1
+oracle = "info-framebuffer"
+"#,
+        );
+        let blank_case_id_error =
+            load_local_rom_suite_manifest(&blank_case_id).expect_err("blank case id should fail");
+        match blank_case_id_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("local case id cannot be empty"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        let bad_startup = write_manifest(
+            &workspace,
+            "bad-startup.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "broken.gb"
+startup = "warm-boot"
+timeout_frames = 1
+oracle = "info-framebuffer"
+"#,
+        );
+        let bad_startup_error =
+            load_local_rom_suite_manifest(&bad_startup).expect_err("bad startup should fail");
+        match bad_startup_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("unsupported startup"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        let bad_mode = write_manifest(
+            &workspace,
+            "bad-mode.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "broken.gb"
+mode = "turbo"
+timeout_frames = 1
+oracle = "info-framebuffer"
+"#,
+        );
+        let bad_mode_error =
+            load_local_rom_suite_manifest(&bad_mode).expect_err("bad mode should fail");
+        match bad_mode_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("unsupported mode"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        let bad_button = write_manifest(
+            &workspace,
+            "bad-button.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "broken.gb"
+timeout_frames = 1
+oracle = "info-framebuffer"
+
+[[case.stimulus]]
+frame = 1
+button = "turbo"
+pressed = true
+"#,
+        );
+        let bad_button_error =
+            load_local_rom_suite_manifest(&bad_button).expect_err("bad button should fail");
+        match bad_button_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("unsupported joypad button"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        let missing_stimulus_time = write_manifest(
+            &workspace,
+            "missing-stimulus-time.toml",
+            r#"
+version = 1
+
+[[case]]
+id = "broken"
+rom = "broken.gb"
+timeout_frames = 1
+oracle = "info-framebuffer"
+
+[[case.stimulus]]
+button = "a"
+pressed = true
+"#,
+        );
+        let missing_stimulus_time_error = load_local_rom_suite_manifest(&missing_stimulus_time)
+            .expect_err("stimulus without frame or tcycle should fail");
+        match missing_stimulus_time_error {
+            LocalRomSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("must specify either frame or tcycle"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_manifest_policy_helpers_keep_debugging_minimum_for_shared_oracles() {
+        let memory_text = PassCondition::MemoryTextOutputContains {
+            spec: MemoryTextOutputSpec::new(
+                0xA000,
+                0x80,
+                0x00,
+                0xA001,
+                [0xDE, 0xB0, 0x61],
+                0xA004,
+                64,
+            ),
+            expected_substring: "Passed".to_string(),
+        };
+        let blargg = PassCondition::BlarggConsoleTextContains("Passed".to_string());
+        let mooneye = PassCondition::MooneyeResult;
+
+        let memory_plan = capture_plan_for_pass_condition(&memory_text);
+        assert!(memory_plan.contains(CaptureKind::MemoryTextOutput));
+        assert!(memory_plan.contains(CaptureKind::Trace));
+        assert!(memory_plan.contains(CaptureKind::Snapshot));
+
+        let blargg_plan = capture_plan_for_pass_condition(&blargg);
+        assert!(blargg_plan.contains(CaptureKind::BlarggConsoleText));
+        assert!(blargg_plan.contains(CaptureKind::Trace));
+        assert!(blargg_plan.contains(CaptureKind::Snapshot));
+
+        let mooneye_failures = failure_artifacts_for_pass_condition(&mooneye);
+        assert!(mooneye_failures.contains(CaptureKind::Snapshot));
+        assert!(mooneye_failures.contains(CaptureKind::Trace));
+
+        let blargg_failures = failure_artifacts_for_pass_condition(&blargg);
+        assert!(blargg_failures.contains(CaptureKind::BlarggConsoleText));
+        assert!(blargg_failures.contains(CaptureKind::Trace));
+        assert!(blargg_failures.contains(CaptureKind::Snapshot));
     }
 }
