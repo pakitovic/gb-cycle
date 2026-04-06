@@ -29,20 +29,7 @@ Never trade an earlier priority for a later one without making the tradeoff expl
 
 ## Primary rule
 
-Consult the `docs/*` handbook files directly. Pick only the files relevant to the task; each file is authoritative for its own scope.
-
-Quick map:
-
-- `docs/index.md`
-- `docs/ARCHITECTURE.md`
-- `docs/EXECUTION.md`
-- `docs/CODING-RULES.md`
-- `docs/REFERENCES.md`
-- `docs/ROADMAP.md`
-- `docs/TESTING.md`
-- `docs/TIMING-AND-ACCURACY.md`
-- `docs/hardware/*`
-- `docs/research/*`
+Read only the `docs/` files relevant to the task at hand. Do not preload documentation speculatively. `docs/index.md` has the full map and authority boundaries if you need to locate a specific document.
 
 ## Core rules
 
@@ -73,14 +60,10 @@ Quick map:
 ## Workflow checklist
 
 - Identify the owning subsystem.
-- Read the matching `docs/hardware/*.md` file first.
-- Read `docs/ROADMAP.md` when the task affects implementation sequencing, resumes unfinished work, or may leave follow-up work behind.
-- Read the matching primary references from `docs/REFERENCES.md`.
-- Read `docs/research/*.md` only when implementation examples are needed.
 - Define contracts and invariants before editing code.
 - Add or update tests and ROM-based validation.
 - Compare behavior against at least one trusted oracle when touching timing-sensitive logic.
-- If a change leaves known gaps, deferred validation, or roadmap done criteria partially unmet, record it in `docs/ROADMAP.md`.
+- If a change leaves known gaps or deferred work, record it in `docs/ROADMAP.md`.
 - Update docs when architecture, rules, timing assumptions, or references change.
 
 ## Final decision rule
