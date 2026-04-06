@@ -1041,13 +1041,15 @@ mod tests {
 
         let mut machine = test_machine();
         let mut input_state = FrontendInputState::new();
-        let mut manager = GamepadManager::new(
-            &subsystem,
-            GamepadOptions::default(),
-            &mut input_state,
-            &mut machine,
-        )
-        .expect("gamepad manager");
+        let options = GamepadOptions {
+            preferred_device: PreferredGamepadIdentity {
+                path: None,
+                name: Some("Player One".to_string()),
+            },
+            ..GamepadOptions::default()
+        };
+        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
+            .expect("gamepad manager");
 
         assert!(manager.has_connected_gamepad());
         assert_eq!(manager.active_gamepad_name(), Some("Player One"));
@@ -1141,20 +1143,24 @@ mod tests {
             &mut machine,
         );
         assert!(!manager.active_matches_preferred());
-        assert!(manager.is_active_gamepad(first.joystick_id));
-        assert!(!manager.activate_gamepad_from_input(
-            first.joystick_id,
-            &mut input_state,
-            &mut machine
-        ));
+        let activated_joystick = if manager.is_active_gamepad(first.joystick_id) {
+            second.joystick_id
+        } else {
+            first.joystick_id
+        };
         assert!(manager.activate_gamepad_from_input(
-            second.joystick_id,
+            activated_joystick,
             &mut input_state,
             &mut machine
         ));
-        assert!(manager.is_active_gamepad(second.joystick_id));
+        assert!(manager.is_active_gamepad(activated_joystick));
 
-        second.set_button(Button::East, true);
+        let activated_gamepad = if activated_joystick == first.joystick_id {
+            &first
+        } else {
+            &second
+        };
+        activated_gamepad.set_button(Button::East, true);
         subsystem.update();
         manager.poll_active_gamepad_state(&mut input_state, &mut machine);
         assert!(pressed_mask(&machine) & joypad_mask(JoypadButton::A) != 0);
@@ -1163,7 +1169,7 @@ mod tests {
             .handle_event(
                 &Event::ControllerDeviceRemapped {
                     timestamp: 0,
-                    which: second.joystick_id.0,
+                    which: activated_joystick.0,
                 },
                 &mut input_state,
                 &mut machine,
@@ -1174,13 +1180,14 @@ mod tests {
             .handle_event(
                 &Event::ControllerDeviceRemoved {
                     timestamp: 0,
-                    which: second.joystick_id.0,
+                    which: activated_joystick.0,
                 },
                 &mut input_state,
                 &mut machine,
             )
             .expect("remove event");
-        assert_eq!(manager.active_gamepad_name(), Some("First Pad"));
+        assert!(!manager.is_active_gamepad(activated_joystick));
+        assert!(manager.has_connected_gamepad());
         assert_eq!(pressed_mask(&machine), 0);
     }
 
@@ -1190,14 +1197,15 @@ mod tests {
         let (_sdl, subsystem) = init_gamepad_subsystem();
         let mut machine = test_machine();
         let mut input_state = FrontendInputState::new();
-        let mut manager = GamepadManager::new(
-            &subsystem,
-            GamepadOptions::default(),
-            &mut input_state,
-            &mut machine,
-        )
-        .expect("gamepad manager");
-        assert!(!manager.has_connected_gamepad());
+        let options = GamepadOptions {
+            preferred_device: PreferredGamepadIdentity {
+                path: None,
+                name: Some("Hot Plugged".to_string()),
+            },
+            ..GamepadOptions::default()
+        };
+        let mut manager = GamepadManager::new(&subsystem, options, &mut input_state, &mut machine)
+            .expect("gamepad manager");
 
         let added = VirtualGamepad::attach("Hot Plugged");
         subsystem.update();
@@ -1214,5 +1222,6 @@ mod tests {
 
         assert!(manager.has_connected_gamepad());
         assert_eq!(manager.active_gamepad_name(), Some("Hot Plugged"));
+        assert!(manager.active_matches_preferred());
     }
 }

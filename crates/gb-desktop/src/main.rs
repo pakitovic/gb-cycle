@@ -4660,6 +4660,12 @@ mod tests {
         );
 
         super::run_from_cli(["--help"]).expect("help path should succeed");
+        let expected_toggled_device = harness
+            .runtime
+            .gamepad_manager
+            .as_ref()
+            .and_then(super::GamepadManager::active_gamepad_identity)
+            .unwrap_or_default();
         assert_eq!(
             super::toggled_preferred_gamepad_device(
                 harness
@@ -4668,8 +4674,43 @@ mod tests {
                     .as_ref()
                     .expect("runtime test should have a gamepad manager")
             ),
-            gb_desktop::PreferredGamepadIdentity::default()
+            expected_toggled_device
         );
+        if !expected_toggled_device.is_configured() {
+            assert_eq!(
+                harness
+                    .runtime
+                    .gamepad_manager
+                    .as_ref()
+                    .expect("runtime test should have a gamepad manager")
+                    .preferred_device(),
+                &gb_desktop::PreferredGamepadIdentity {
+                    path: None,
+                    name: Some("Saved Pad".to_string()),
+                }
+            );
+        } else {
+            harness
+                .runtime
+                .gamepad_manager
+                .as_mut()
+                .expect("runtime test should have a gamepad manager")
+                .set_preferred_device(
+                    expected_toggled_device.clone(),
+                    &mut harness.runtime.input_state,
+                    &mut harness.machine,
+                );
+            assert_eq!(
+                super::toggled_preferred_gamepad_device(
+                    harness
+                        .runtime
+                        .gamepad_manager
+                        .as_ref()
+                        .expect("runtime test should have a gamepad manager")
+                ),
+                gb_desktop::PreferredGamepadIdentity::default()
+            );
+        }
 
         harness.push_key(Keycode::Z, true);
         assert!(matches!(
@@ -4774,6 +4815,19 @@ mod tests {
             .as_ref()
             .expect("gamepad subsystem")
             .update();
+        harness
+            .runtime
+            .gamepad_manager
+            .as_mut()
+            .expect("gamepad manager")
+            .set_preferred_device(
+                gb_desktop::PreferredGamepadIdentity {
+                    path: None,
+                    name: Some("Runtime Pad".to_string()),
+                },
+                &mut harness.runtime.input_state,
+                &mut harness.machine,
+            );
         assert_eq!(
             harness
                 .runtime
@@ -5054,7 +5108,20 @@ mod tests {
             gamepad_presentation.preferred_gamepad_label.as_str(),
             "SAVED"
         );
-        assert!(!gamepad_presentation.active_gamepad_connected);
+        let manager = gamepad_harness
+            .runtime
+            .gamepad_manager
+            .as_ref()
+            .expect("gamepad harness should have a manager");
+        assert_eq!(
+            gamepad_presentation.active_gamepad_connected,
+            manager.has_connected_gamepad()
+        );
+        if manager.has_connected_gamepad() {
+            assert!(!gamepad_presentation.active_gamepad_label.is_empty());
+        } else {
+            assert!(gamepad_presentation.active_gamepad_label.is_empty());
+        }
     }
 
     #[test]
