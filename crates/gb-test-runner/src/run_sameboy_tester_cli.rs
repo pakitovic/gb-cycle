@@ -427,6 +427,26 @@ mod tests {
     }
 
     #[test]
+    fn select_suite_can_filter_a_familyless_built_in_suite_to_one_case() {
+        let suite = select_suite_for_options(&SameBoyTesterCliOptions {
+            oracle_root: PathBuf::from("/tmp/oracle"),
+            sameboy_root: None,
+            tester_binary: None,
+            image_format: crate::SameBoyTesterImageFormat::Bmp,
+            suite_name: "phase-6-cartridge-oracle".to_string(),
+            case_id: Some("phase6-mbc1-standard-banking".to_string()),
+            timeout_override: None,
+            build_if_missing: false,
+        })
+        .expect("known case should be selectable");
+
+        assert_eq!(suite.name, "phase-6-cartridge-oracle");
+        assert!(suite.family.is_none());
+        assert_eq!(suite.cases.len(), 1);
+        assert_eq!(suite.cases[0].id, "phase6-mbc1-standard-banking");
+    }
+
+    #[test]
     fn run_command_executes_suite_and_renders_report_lines() {
         let _guard = env_lock().lock().expect("env lock should be lockable");
         let temp_dir = unique_temp_dir("run-command");

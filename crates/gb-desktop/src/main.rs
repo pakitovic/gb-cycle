@@ -19,7 +19,10 @@ use gb_desktop::{
     GamepadMenuBindings, HotkeyBindings, JoypadKeyboardBindings, KeyboardBindings,
     MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy, VideoOptions,
 };
-use gb_persistence::uses_battery_backed_hardware_persistence;
+use gb_persistence::{
+    CartridgeSaveTimeSource, SystemCartridgeSaveTimeSource,
+    uses_battery_backed_hardware_persistence,
+};
 use input::{
     FrontendInputState, GamepadManager, gamepad_button_binding_from_sdl_button,
     sdl_button_for_binding,
@@ -129,6 +132,7 @@ struct FrontendRuntime {
     audio_output: Option<DesktopAudioOutput>,
     gamepad_manager: Option<GamepadManager>,
     save_session: Option<DesktopSaveSession>,
+    rtc_sync: HostRtcSync,
     open_rom_dialog: PathSelectionDialog,
     boot_rom_file_dialog: PathSelectionDialog,
     boot_rom_directory_dialog: PathSelectionDialog,
@@ -292,6 +296,49 @@ impl FrontendRuntime {
 struct FramePacer {
     enabled: bool,
     next_frame_start: Instant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HostRtcSync {
+    last_host_unix_seconds: u64,
+}
+
+impl HostRtcSync {
+    fn new(last_host_unix_seconds: u64) -> Self {
+        Self {
+            last_host_unix_seconds,
+        }
+    }
+
+    fn from_host_clock() -> Self {
+        Self::new(Self::current_unix_seconds())
+    }
+
+    fn resync_to_host_clock(&mut self) {
+        self.last_host_unix_seconds = Self::current_unix_seconds();
+    }
+
+    fn apply_to_machine(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
+        self.apply_with_now(machine, Self::current_unix_seconds());
+    }
+
+    fn apply_with_now(
+        &mut self,
+        machine: &mut Machine<TraceSummaryBuffer>,
+        current_host_unix_seconds: u64,
+    ) {
+        if current_host_unix_seconds <= self.last_host_unix_seconds {
+            return;
+        }
+
+        machine
+            .advance_cartridge_rtc_seconds(current_host_unix_seconds - self.last_host_unix_seconds);
+        self.last_host_unix_seconds = current_host_unix_seconds;
+    }
+
+    fn current_unix_seconds() -> u64 {
+        SystemCartridgeSaveTimeSource.now_unix_seconds()
+    }
 }
 
 impl FramePacer {
@@ -636,6 +683,7 @@ fn run_desktop(
         audio_output,
         gamepad_manager,
         save_session,
+        rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
         boot_rom_file_dialog: PathSelectionDialog::new(),
         boot_rom_directory_dialog: PathSelectionDialog::new(),
@@ -680,6 +728,8 @@ fn run_desktop(
             process_pending_boot_rom_directory_dialog(&mut canvas, &mut context)?;
             process_pending_save_directory_dialog(&mut canvas, &mut context)?;
         }
+
+        runtime.rtc_sync.apply_to_machine(&mut machine);
 
         match {
             let mut context = FrontendActionContext {
@@ -1366,6 +1416,8 @@ fn rebuild_machine_for_config(
     context: &mut FrontendActionContext<'_>,
     next_config: &DesktopConfig,
 ) -> Result<(), String> {
+    context.runtime.rtc_sync.apply_to_machine(context.machine);
+
     let battery_backed_state = uses_battery_backed_hardware_persistence(
         context.machine.cartridge().persistence_metadata(),
     )
@@ -1430,6 +1482,7 @@ fn rebuild_machine_for_config(
     context.runtime.input_state.clear_all(context.machine);
     *context.machine = next_machine;
     context.runtime.save_session = next_save_session;
+    context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
         window_title(context.session, next_config),
@@ -1476,6 +1529,8 @@ fn open_selected_rom(
     selected_path: PathBuf,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<(), String> {
+    context.runtime.rtc_sync.apply_to_machine(context.machine);
+
     let had_loaded_rom = context.session.has_loaded_rom();
     let rom_path = if selected_path.is_absolute() {
         selected_path
@@ -1531,6 +1586,7 @@ fn open_selected_rom(
     context.runtime.input_state.clear_all(context.machine);
     *context.machine = next_machine;
     context.runtime.save_session = next_save_session;
+    context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
         window_title(context.session, &context.session.config),
@@ -2536,6 +2592,7 @@ fn reset_machine(
     let Some(rom_bytes) = session.rom_bytes() else {
         return Ok(());
     };
+    runtime.rtc_sync.apply_to_machine(machine);
     let battery_backed_state =
         uses_battery_backed_hardware_persistence(machine.cartridge().persistence_metadata())
             .then(|| machine.cartridge().persistent_state());
@@ -2565,6 +2622,7 @@ fn reset_machine(
 
     runtime.input_state.clear_all(machine);
     *machine = reset_machine;
+    runtime.rtc_sync.resync_to_host_clock();
     Ok(())
 }
 
@@ -2912,7 +2970,7 @@ fn framebuffer_pixel_to_grayscale(pixel: u8) -> u8 {
 mod tests {
     use super::{
         BOOT_ROM_FILE_DIALOG_FILTERS, DEFAULT_BOOT_ROM_DIR, DesktopRunOptions,
-        DesktopSettingsStore, GamepadBindingTarget, GamepadMenuBindingTarget,
+        DesktopSettingsStore, GamepadBindingTarget, GamepadMenuBindingTarget, HostRtcSync,
         KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult, PerformanceHudSnapshot,
         ROM_FILE_DIALOG_FILTERS, assign_gamepad_binding, assign_gamepad_menu_binding,
         assign_keyboard_binding, assign_keyboard_menu_binding,
@@ -2928,7 +2986,7 @@ mod tests {
     };
     use gb_core::{
         CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, ExecutionMode, Machine,
-        MachineConfig, StartupMode, TraceSummaryBuffer,
+        MachineConfig, PersistentCartState, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopKey,
@@ -3222,6 +3280,7 @@ mod tests {
                 audio_output,
                 gamepad_manager,
                 save_session,
+                rtc_sync: super::HostRtcSync::from_host_clock(),
                 open_rom_dialog: super::PathSelectionDialog::new(),
                 boot_rom_file_dialog: super::PathSelectionDialog::new(),
                 boot_rom_directory_dialog: super::PathSelectionDialog::new(),
@@ -3356,6 +3415,61 @@ mod tests {
                 }
             ),
             "gb-desktop | drmario.gb | dmg | real-boot | strict | 14.8 FPS | 67.50 ms | 25% speed | emu 54.20 | render 4.10 | pacing 9.20 | audio 18.4 ms"
+        );
+    }
+
+    #[test]
+    fn host_rtc_sync_advances_live_mbc3_sessions_from_wall_clock_elapsed_seconds() {
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(32 * 1024, 0x0F, 0x00, 0x00))
+            .expect("MBC3 RTC cartridge should load");
+
+        let mut rtc_sync = HostRtcSync::new(1_000);
+        rtc_sync.apply_with_now(&mut machine, 1_005);
+
+        assert_eq!(
+            machine.cartridge().persistent_state(),
+            PersistentCartState::Mbc3Rtc {
+                rtc: gb_core::Mbc3RtcPersistentState {
+                    seconds: 5,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 0,
+                    halt: false,
+                    carry: false,
+                },
+            },
+        );
+    }
+
+    #[test]
+    fn host_rtc_sync_ignores_backward_host_clock_steps() {
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(32 * 1024, 0x0F, 0x00, 0x00))
+            .expect("MBC3 RTC cartridge should load");
+
+        let mut rtc_sync = HostRtcSync::new(1_000);
+        rtc_sync.apply_with_now(&mut machine, 1_010);
+        rtc_sync.apply_with_now(&mut machine, 1_005);
+
+        assert_eq!(
+            machine.cartridge().persistent_state(),
+            PersistentCartState::Mbc3Rtc {
+                rtc: gb_core::Mbc3RtcPersistentState {
+                    seconds: 10,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 0,
+                    halt: false,
+                    carry: false,
+                },
+            },
         );
     }
 

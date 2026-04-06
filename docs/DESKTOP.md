@@ -51,6 +51,7 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 ## Battery saves
 
 - Default policy: debounced auto-flush — once cartridge persistence changes, the frontend writes a safe replacement save after roughly `2s`, and forces a flush on ROM changes and shutdown.
+- For RTC-backed `MBC3` cartridges, the desktop loop also injects host wall-clock elapsed seconds into the live session, so clock-based games keep advancing while the ROM remains open instead of only catching up on the next save reload.
 - The `SAVE BATTERY` menu action is only exposed when the desktop save policy is explicitly set to `manual`.
 
 ## Error handling

@@ -331,10 +331,33 @@ fn png_encoding_io_error(source: png::EncodingError) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_fixture_framebuffer_bytes, decode_local_pgm_framebuffer, encode_framebuffer_pgm,
-        encode_framebuffer_png,
+        DMG_GRAYSCALE_SHADES, decode_fixture_framebuffer_bytes, decode_fixture_framebuffer_path,
+        decode_local_pgm_framebuffer, encode_framebuffer_pgm, encode_framebuffer_png,
     };
+    use std::fs;
     use std::path::Path;
+
+    fn encode_png(
+        width: u32,
+        height: u32,
+        color_type: png::ColorType,
+        pixels: &[u8],
+        palette: Option<&[u8]>,
+    ) -> Vec<u8> {
+        let mut encoded = Vec::new();
+        let mut encoder = png::Encoder::new(&mut encoded, width, height);
+        encoder.set_color(color_type);
+        encoder.set_depth(png::BitDepth::Eight);
+        if let Some(palette) = palette {
+            encoder.set_palette(palette);
+        }
+        let mut writer = encoder.write_header().expect("PNG header should encode");
+        writer
+            .write_image_data(pixels)
+            .expect("PNG pixels should encode");
+        drop(writer);
+        encoded
+    }
 
     #[test]
     fn png_encoder_round_trips_local_dmg_shades() {
@@ -356,5 +379,162 @@ mod tests {
         let png_decoded = decode_fixture_framebuffer_bytes(Path::new("fixture.png"), &png)
             .expect("PNG should decode");
         assert_eq!(pgm_decoded, png_decoded);
+    }
+
+    #[test]
+    fn decode_fixture_framebuffer_path_and_extension_errors_are_explicit() {
+        let missing =
+            decode_fixture_framebuffer_path(Path::new("/definitely/missing/framebuffer.png"))
+                .expect_err("missing framebuffer should fail");
+        assert!(missing.path.ends_with("framebuffer.png"));
+
+        let unsupported = decode_fixture_framebuffer_bytes(Path::new("fixture.bmp"), b"")
+            .expect_err("unsupported extension should fail");
+        assert!(
+            unsupported
+                .message
+                .contains("unsupported framebuffer fixture extension")
+        );
+    }
+
+    #[test]
+    fn encode_framebuffer_pgm_clamps_unknown_pixels_and_convert_pgm_to_png_round_trips() {
+        let mut framebuffer = vec![0_u8; super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT];
+        framebuffer[0..5].copy_from_slice(&[0, 1, 2, 3, 9]);
+        let pgm = encode_framebuffer_pgm(&framebuffer);
+
+        let header_len = format!(
+            "P5\n{} {}\n255\n",
+            super::FRAMEBUFFER_WIDTH,
+            super::FRAMEBUFFER_HEIGHT
+        )
+        .len();
+        assert_eq!(
+            &pgm[header_len..header_len + 5],
+            &[
+                DMG_GRAYSCALE_SHADES[0],
+                DMG_GRAYSCALE_SHADES[1],
+                DMG_GRAYSCALE_SHADES[2],
+                DMG_GRAYSCALE_SHADES[3],
+                DMG_GRAYSCALE_SHADES[3],
+            ]
+        );
+
+        let png = super::convert_pgm_to_png(&pgm).expect("PGM should convert to PNG");
+        let decoded = decode_fixture_framebuffer_bytes(Path::new("fixture.png"), &png)
+            .expect("converted PNG should decode");
+        assert_eq!(&decoded.palette_ranks[0..5], &[0, 1, 2, 3, 3]);
+    }
+
+    #[test]
+    fn png_decoder_supports_rgb_rgba_and_grayscale_alpha_inputs() {
+        let rgb = encode_png(
+            2,
+            1,
+            png::ColorType::Rgb,
+            &[0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00],
+            None,
+        );
+        let rgba = encode_png(
+            2,
+            1,
+            png::ColorType::Rgba,
+            &[0xAA, 0xAA, 0xAA, 0x10, 0x11, 0x11, 0x11, 0xFF],
+            None,
+        );
+        let gray_alpha = encode_png(
+            2,
+            1,
+            png::ColorType::GrayscaleAlpha,
+            &[0xFF, 0x00, 0x00, 0xFF],
+            None,
+        );
+
+        let rgb = decode_fixture_framebuffer_bytes(Path::new("fixture.png"), &rgb)
+            .expect("RGB PNG should decode");
+        let rgba = decode_fixture_framebuffer_bytes(Path::new("fixture.png"), &rgba)
+            .expect("RGBA PNG should decode");
+        let gray_alpha = decode_fixture_framebuffer_bytes(Path::new("fixture.png"), &gray_alpha)
+            .expect("grayscale-alpha PNG should decode");
+
+        assert_eq!(rgb.width, 2);
+        assert_eq!(rgb.height, 1);
+        assert_eq!(rgb.palette_ranks, vec![0, 1]);
+        assert_eq!(rgba.palette_ranks, vec![0, 1]);
+        assert_eq!(gray_alpha.palette_ranks, vec![0, 1]);
+    }
+
+    #[test]
+    fn png_decoder_accepts_indexed_pngs_after_decoder_expansion() {
+        let indexed = encode_png(
+            1,
+            1,
+            png::ColorType::Indexed,
+            &[0],
+            Some(&[0xFF, 0xFF, 0xFF]),
+        );
+        let decoded = decode_fixture_framebuffer_bytes(Path::new("fixture.png"), &indexed)
+            .expect("indexed PNG should decode after expansion");
+        assert_eq!(decoded.width, 1);
+        assert_eq!(decoded.height, 1);
+        assert_eq!(decoded.palette_ranks, vec![0]);
+    }
+
+    #[test]
+    fn pgm_parser_reports_header_and_payload_errors() {
+        let missing_max = decode_local_pgm_framebuffer("case", b"P5\n1 1\n")
+            .expect_err("missing max token should fail");
+        assert!(missing_max.message.contains("missing PGM max token"));
+
+        let invalid_utf8 = decode_local_pgm_framebuffer("case", b"P5\n\xFF 1\n255\n\x00")
+            .expect_err("invalid UTF-8 width should fail");
+        assert!(
+            invalid_utf8
+                .message
+                .contains("invalid UTF-8 in PGM width token")
+        );
+
+        let invalid_max = decode_local_pgm_framebuffer("case", b"P5\n1 1\n1\n\x00")
+            .expect_err("unsupported max value should fail");
+        assert!(invalid_max.message.contains("unsupported PGM max value"));
+
+        let short_payload = decode_local_pgm_framebuffer("case", b"P5\n2 1\n255\n\x00")
+            .expect_err("short payload should fail");
+        assert!(
+            short_payload
+                .message
+                .contains("shorter than declared dimensions")
+        );
+    }
+
+    #[test]
+    fn convert_pgm_to_png_surfaces_parse_errors_as_invalid_data() {
+        let error = super::convert_pgm_to_png(b"P5\n2 1\n255\n\x00")
+            .expect_err("invalid PGM should fail conversion");
+        let io_error = error.clone().into_invalid_data_error();
+        assert_eq!(io_error.kind(), std::io::ErrorKind::InvalidData);
+        assert!(error.message.contains("shorter than declared dimensions"));
+    }
+
+    #[test]
+    fn decode_fixture_framebuffer_path_reads_written_pngs() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "gb-cycle-framebuffer-oracle-{}-{}",
+            std::process::id(),
+            super::FRAMEBUFFER_WIDTH
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let png_path = temp_dir.join("fixture.png");
+
+        let mut framebuffer = vec![0_u8; super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT];
+        framebuffer[0..2].copy_from_slice(&[0, 3]);
+        let png = encode_framebuffer_png(&framebuffer).expect("PNG should encode");
+        fs::write(&png_path, png).expect("fixture PNG should be writable");
+
+        let decoded =
+            decode_fixture_framebuffer_path(&png_path).expect("fixture path should decode");
+        assert_eq!(&decoded.palette_ranks[0..2], &[0, 1]);
+
+        fs::remove_dir_all(&temp_dir).expect("temp dir should be removable");
     }
 }
