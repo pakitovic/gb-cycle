@@ -1,5 +1,7 @@
 use super::*;
-use crate::model::{CompatibilityPolicy, DiagnosticPolicy, HeuristicPolicy, OverridePolicy};
+use crate::model::{
+    CompatibilityPolicy, DiagnosticPolicy, HeuristicPolicy, OverridePolicy, ValidationPolicy,
+};
 
 fn build_test_rom(len: usize, cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
     let mut rom = vec![0xFF; len.max(HEADER_MINIMUM_ROM_LEN)];
@@ -143,6 +145,15 @@ fn warn_policy() -> CompatibilityPolicy {
     }
 }
 
+fn ignore_policy() -> CompatibilityPolicy {
+    CompatibilityPolicy {
+        execution_mode: ExecutionMode::Permissive,
+        validation_policy: ValidationPolicy::Ignore,
+        heuristic_policy: HeuristicPolicy::Disabled,
+        override_policy: OverridePolicy::default(),
+        diagnostic_policy: DiagnosticPolicy::Standard,
+    }
+}
 #[test]
 fn header_parser_decodes_typed_core_fields() {
     let rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
@@ -348,6 +359,56 @@ fn warn_validation_can_admit_unambiguous_no_mbc_ram_header_mismatches_with_diagn
             .iter()
             .any(|diagnostic| diagnostic.message.contains("unsupported RAM configuration"))
     );
+}
+
+#[test]
+fn validation_helpers_cover_ignore_and_quiet_policy_paths() {
+    let mut diagnostics = Vec::new();
+    let ignore = ignore_policy();
+    let no_mbc_header = CartridgeHeader::parse(&build_test_rom(64 * 1024, 0x00, 0x01, 0x00))
+        .expect("header should parse");
+
+    validate_no_mbc(
+        &no_mbc_header,
+        64 * 1024,
+        &ignore,
+        &CartridgeClassification::classify(0x00),
+        &mut diagnostics,
+    )
+    .expect("ignore policy should admit degradable NoMBC metadata mismatches");
+    assert!(diagnostics.is_empty());
+
+    let mut mbc1m_rom = build_banked_mbc1_rom_with_type(0x01, 0x05, 0x00);
+    mark_mbc1_multicart_subheaders(&mut mbc1m_rom);
+    let mbc1m_header = CartridgeHeader::parse(&mbc1m_rom).expect("header should parse");
+    let quiet_experimental = CompatibilityPolicy {
+        execution_mode: ExecutionMode::Permissive,
+        validation_policy: ValidationPolicy::Warn,
+        heuristic_policy: HeuristicPolicy::AllowExperimental,
+        override_policy: OverridePolicy::default(),
+        diagnostic_policy: DiagnosticPolicy::Quiet,
+    };
+    let classification = classify_loaded_cartridge(&mbc1m_header, &mbc1m_rom, &quiet_experimental);
+
+    diagnostics.clear();
+    let layout = validate_mbc1(
+        &mbc1m_header,
+        mbc1m_rom.len(),
+        &quiet_experimental,
+        &classification,
+        &mut diagnostics,
+    )
+    .expect("quiet policy should admit MBC1M without adding warnings");
+
+    assert_eq!(classification.detected_name(), "MBC1M");
+    assert_eq!(
+        layout,
+        Mbc1Layout {
+            wiring: Mbc1Wiring::LargeRom,
+            variant: Mbc1Variant::Mbc1M,
+        }
+    );
+    assert!(diagnostics.is_empty());
 }
 
 #[test]
@@ -1006,6 +1067,113 @@ fn permissive_validation_can_warn_when_no_ram_mbc3_headers_still_declare_ram() {
 }
 
 #[test]
+fn mbc3_nonpersistent_ram_and_rtc_only_profiles_cover_remaining_runtime_paths() {
+    let ram_only_report = CartridgeSlot::load(
+        build_banked_mbc3_rom(0x12, 0x03, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MBC3+RAM should load");
+    let Some(CartridgeDevice::Mbc3(mut ram_only)) = ram_only_report.cartridge().device.clone()
+    else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    assert_eq!(
+        ram_only.persistence_metadata(),
+        CartridgePersistenceMetadata {
+            has_battery: false,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::NonPersistentRam {
+                ram: CartridgeRamPayloadKind::Linear {
+                    byte_len: 32 * 1024,
+                },
+            },
+        },
+    );
+    assert_eq!(ram_only.persistent_state(), PersistentCartState::None);
+    assert_eq!(
+        ram_only.restore_persistent_state(&PersistentCartState::None),
+        Ok(())
+    );
+    assert_eq!(
+        ram_only.restore_persistent_state(&PersistentCartState::Mbc3Ram {
+            ram: vec![0; 32 * 1024],
+        }),
+        Err(CartridgePersistentStateError::KindMismatch {
+            expected: "None",
+            actual: "Mbc3Ram",
+        }),
+    );
+
+    ram_only.write_rom(0x0000, 0x0A);
+    ram_only.write_rom(0x4000, 0x08);
+    ram_only.write_ram(0xA000, 0x2A);
+    assert_eq!(ram_only.read_ram(0xA000), RAM_ABSENT_READ_VALUE);
+
+    ram_only.rtc_latch_armed = true;
+    ram_only.write_rom(0x6000, 0x01);
+    assert!(!ram_only.rtc_latch_armed);
+    ram_only.write_rom(0x6000, 0x00);
+    assert!(ram_only.rtc_latch_armed);
+
+    let rtc_only_report = CartridgeSlot::load(
+        build_banked_mbc3_rom(0x0F, 0x03, 0x00),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MBC3+TIMER+BATTERY should load");
+    let Some(CartridgeDevice::Mbc3(mut rtc_only)) = rtc_only_report.cartridge().device.clone()
+    else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    assert_eq!(
+        rtc_only.persistence_metadata(),
+        CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRtc,
+        },
+    );
+
+    rtc_only.advance_rtc_seconds(61);
+    assert_eq!(
+        rtc_only.persistent_state(),
+        PersistentCartState::Mbc3Rtc {
+            rtc: Mbc3RtcPersistentState {
+                seconds: 1,
+                minutes: 1,
+                hours: 0,
+                day_counter: 0,
+                halt: false,
+                carry: false,
+            },
+        },
+    );
+
+    let restored_rtc_only = PersistentCartState::Mbc3Rtc {
+        rtc: Mbc3RtcPersistentState {
+            seconds: 9,
+            minutes: 8,
+            hours: 7,
+            day_counter: 6,
+            halt: true,
+            carry: true,
+        },
+    };
+    rtc_only
+        .restore_persistent_state(&restored_rtc_only)
+        .expect("RTC-only persistent state should restore");
+    assert_eq!(rtc_only.persistent_state(), restored_rtc_only);
+    assert_eq!(
+        rtc_only.restore_persistent_state(&PersistentCartState::None),
+        Err(CartridgePersistentStateError::KindMismatch {
+            expected: "Mbc3Rtc",
+            actual: "None",
+        }),
+    );
+}
+
+#[test]
 fn mbc5_power_up_state_starts_the_high_window_on_bank_one_while_keeping_bank_zero_reachable() {
     let rom = build_banked_mbc5_rom(0x1E, 0x08, 0x03);
     let report =
@@ -1157,6 +1325,105 @@ fn persistence_metadata_keeps_ram_shapes_and_battery_policy_explicit() {
             },
         }
     );
+}
+
+#[test]
+fn non_battery_no_mbc_and_mbc5_profiles_stay_nonpersistent() {
+    let no_mbc_report = CartridgeSlot::load(
+        build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x08, 0x00, 0x02),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("NoMBC+RAM should load");
+    let Some(CartridgeDevice::NoMbc(mut no_mbc)) = no_mbc_report.cartridge().device.clone() else {
+        panic!("expected NoMBC cartridge");
+    };
+
+    assert_eq!(
+        no_mbc.persistence_metadata(),
+        CartridgePersistenceMetadata {
+            has_battery: false,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::NonPersistentRam {
+                ram: CartridgeRamPayloadKind::Linear {
+                    byte_len: NO_MBC_SUPPORTED_RAM_BYTES,
+                },
+            },
+        },
+    );
+    assert_eq!(no_mbc.persistent_state(), PersistentCartState::None);
+    assert_eq!(
+        no_mbc.restore_persistent_state(&PersistentCartState::None),
+        Ok(())
+    );
+    assert_eq!(
+        no_mbc.restore_persistent_state(&PersistentCartState::NoMbcRam {
+            ram: vec![0; NO_MBC_SUPPORTED_RAM_BYTES],
+        }),
+        Err(CartridgePersistentStateError::KindMismatch {
+            expected: "None",
+            actual: "NoMbcRam",
+        }),
+    );
+    no_mbc.write_rom(0x1234, 0xAA);
+    assert_eq!(no_mbc.read_rom(0x8000), RAM_ABSENT_READ_VALUE);
+
+    let mbc5_report = CartridgeSlot::load(
+        build_banked_mbc5_rom(0x1A, 0x03, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MBC5+RAM should load");
+    let Some(CartridgeDevice::Mbc5(mut mbc5)) = mbc5_report.cartridge().device.clone() else {
+        panic!("expected MBC5 cartridge");
+    };
+
+    assert_eq!(
+        mbc5.persistence_metadata(),
+        CartridgePersistenceMetadata {
+            has_battery: false,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::NonPersistentRam {
+                ram: CartridgeRamPayloadKind::Linear {
+                    byte_len: 32 * 1024,
+                },
+            },
+        },
+    );
+    assert_eq!(mbc5.persistent_state(), PersistentCartState::None);
+    assert_eq!(
+        mbc5.restore_persistent_state(&PersistentCartState::None),
+        Ok(())
+    );
+    assert_eq!(
+        mbc5.restore_persistent_state(&PersistentCartState::Mbc5Ram {
+            ram: vec![0; 32 * 1024],
+        }),
+        Err(CartridgePersistentStateError::KindMismatch {
+            expected: "None",
+            actual: "Mbc5Ram",
+        }),
+    );
+
+    let no_ram_rumble_report = CartridgeSlot::load(
+        build_banked_mbc5_rom(0x1C, 0x03, 0x00),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MBC5+RUMBLE should load");
+    let Some(CartridgeDevice::Mbc5(no_ram_rumble)) =
+        no_ram_rumble_report.cartridge().device.clone()
+    else {
+        panic!("expected MBC5 cartridge");
+    };
+
+    assert_eq!(
+        no_ram_rumble.persistence_metadata(),
+        CartridgePersistenceMetadata {
+            has_battery: false,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::None,
+        },
+    );
+    assert!(no_ram_rumble.has_rumble());
+    assert_eq!(no_ram_rumble.persistent_state(), PersistentCartState::None);
 }
 
 #[test]
@@ -1442,6 +1709,7 @@ fn slot_accessors_and_restore_paths_cover_mbc3_and_mbc5_rtc_and_rumble_paths() {
             SupportedCartridgeFamily::Mbc5
         )),
     );
+    assert!(mbc5.has_rumble());
     assert!(!mbc5.rumble_on());
     mbc5.advance_rtc_seconds(99);
     assert!(!mbc5.rumble_on());
@@ -1485,6 +1753,8 @@ fn slot_accessors_and_restore_paths_cover_mbc3_and_mbc5_rtc_and_rumble_paths() {
             actual: 8,
         }),
     );
+    let empty = CartridgeSlot::empty();
+    assert!(!empty.has_rumble());
 }
 
 #[test]
