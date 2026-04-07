@@ -71,12 +71,7 @@ impl CartridgeSlot {
                 )?;
 
                 let has_battery = matches!(classification.raw_type(), 0x03);
-                let has_ram = matches!(classification.raw_type(), 0x02 | 0x03);
-                let ram_len = match layout.wiring {
-                    Mbc1Wiring::Standard => header.ram_size.decoded_bytes.unwrap_or(0),
-                    Mbc1Wiring::LargeRom => NO_MBC_SUPPORTED_RAM_BYTES,
-                };
-                let ram = (has_ram && ram_len != 0).then(|| vec![0; ram_len]);
+                let ram = (layout.ram_len != 0).then(|| vec![0; layout.ram_len]);
                 let cartridge = Self {
                     device: Some(CartridgeDevice::Mbc1(Mbc1Cartridge {
                         rom: rom_bytes,

@@ -45,6 +45,8 @@ const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
 const RAM_ABSENT_READ_VALUE: u8 = 0xFF;
 const NO_MBC_SUPPORTED_ROM_BYTES: usize = 32 * 1024;
 const NO_MBC_SUPPORTED_RAM_BYTES: usize = 8 * 1024;
+const MBC1_STANDARD_RAM_BYTES_MAX: usize = 32 * 1024;
+const MBC1_LARGE_ROM_RAM_BYTES: usize = 8 * 1024;
 const M161_BANK_BYTES: usize = 32 * 1024;
 const M161_SUPPORTED_ROM_BYTES_MAX: usize = 8 * M161_BANK_BYTES;
 const MBC2_SUPPORTED_ROM_BYTES_MAX: usize = 256 * 1024;
@@ -223,6 +225,7 @@ enum Mbc1Variant {
 struct Mbc1Layout {
     wiring: Mbc1Wiring,
     variant: Mbc1Variant,
+    ram_len: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

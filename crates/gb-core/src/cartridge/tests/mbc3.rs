@@ -115,6 +115,31 @@ fn mbc3_reserved_selectors_do_not_alias_ram_banks() {
 }
 
 #[test]
+fn mbc3_2kib_sram_wraps_the_full_window_and_selected_bank_into_real_ram() {
+    let rom = build_banked_mbc3_rom(0x13, 0x03, 0x01);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x00);
+    cartridge.write_ram(0xA123, 0x11);
+
+    assert_eq!(cartridge.read_ram(0xA123), 0x11);
+    assert_eq!(cartridge.read_ram(0xA923), 0x11);
+
+    cartridge.write_rom(0x4000, 0x03);
+    assert_eq!(cartridge.read_ram(0xA123), 0x11);
+    cartridge.write_ram(0xA923, 0x22);
+
+    cartridge.write_rom(0x4000, 0x00);
+    assert_eq!(cartridge.read_ram(0xA123), 0x22);
+    assert_eq!(cartridge.read_ram(0xB123), 0x22);
+}
+
+#[test]
 fn mbc3_timed_rtc_accesses_record_the_recommended_ready_t_cycle() {
     let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
     let report =
@@ -517,4 +542,50 @@ fn mbc3_nonpersistent_ram_and_rtc_only_profiles_cover_remaining_runtime_paths() 
             actual: "None",
         }),
     );
+}
+
+#[test]
+fn restoring_mbc3_persistence_clears_runtime_latch_state_before_the_next_snapshot() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.advance_rtc_seconds(93_784);
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_rom(0x6000, 0x00);
+    cartridge.write_rom(0x6000, 0x01);
+    assert_eq!(cartridge.read_ram(0xA000), 0x04);
+
+    cartridge.read_ram_timed(0xA000, TCycle::new(100));
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(116)));
+
+    let restored_state = PersistentCartState::Mbc3RamRtc {
+        ram: vec![0x6D; 32 * 1024],
+        rtc: Mbc3RtcPersistentState {
+            seconds: 0x2A,
+            minutes: 0x03,
+            hours: 0x02,
+            day_counter: 1,
+            halt: false,
+            carry: false,
+        },
+    };
+    cartridge
+        .restore_persistent_state(&restored_state)
+        .expect("MBC3 persistent state should restore");
+
+    assert_eq!(cartridge.rtc_live.seconds, 0x2A);
+    assert_eq!(cartridge.ram.as_ref().map(|ram| ram[0]), Some(0x6D));
+    assert!(!cartridge.rtc_latched_valid);
+    assert!(!cartridge.rtc_latch_armed);
+    assert_eq!(cartridge.rtc_access_ready_at, None);
+    assert_eq!(cartridge.read_ram(0xA000), 0x00);
+
+    cartridge.write_rom(0x6000, 0x00);
+    cartridge.write_rom(0x6000, 0x01);
+    assert_eq!(cartridge.read_ram(0xA000), 0x2A);
 }

@@ -1,6 +1,13 @@
 use super::*;
 
 impl Mbc1Cartridge {
+    fn effective_ram_bank_count(&self) -> usize {
+        self.ram
+            .as_ref()
+            .map(|ram| (ram.len() / 0x2000).max(1))
+            .unwrap_or(1)
+    }
+
     pub(in crate::cartridge) fn read_rom(&self, address: u16) -> u8 {
         let address = address as usize;
         let bank_count = self.header.rom_size.bank_count.unwrap_or(0);
@@ -111,7 +118,7 @@ impl Mbc1Cartridge {
 
     pub(in crate::cartridge) fn effective_ram_offset(&self, address: u16) -> usize {
         let base_offset = (address - 0xA000) as usize;
-        let ram_bank_count = self.header.ram_size.bank_count.unwrap_or(0).max(1);
+        let ram_bank_count = self.effective_ram_bank_count();
 
         if self.variant == Mbc1Variant::Mbc1M {
             return base_offset;

@@ -50,7 +50,8 @@ fn build_banked_mbc1_rom_with_type(
 }
 
 fn build_banked_mbc1_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
-    build_banked_mbc1_rom_with_type(0x03, rom_size_code, ram_size_code)
+    let cartridge_type = if ram_size_code == 0x00 { 0x01 } else { 0x03 };
+    build_banked_mbc1_rom_with_type(cartridge_type, rom_size_code, ram_size_code)
 }
 
 fn build_m161_signature_rom() -> Vec<u8> {

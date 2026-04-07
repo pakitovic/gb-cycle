@@ -1,6 +1,13 @@
 use super::*;
 
 impl Mbc3Cartridge {
+    fn clear_runtime_rtc_snapshot_state(&mut self) {
+        self.rtc_latched = Mbc3RtcState::default();
+        self.rtc_latched_valid = false;
+        self.rtc_latch_armed = false;
+        self.rtc_access_ready_at = None;
+    }
+
     fn note_rtc_access_timing(&mut self, t_cycle: TCycle) {
         self.rtc_access_ready_at = Some(TCycle::new(
             t_cycle.get() + MBC3_RTC_ACCESS_SPACING_T_CYCLES,
@@ -165,9 +172,15 @@ impl Mbc3Cartridge {
 
     pub(in crate::cartridge) fn effective_ram_offset(&self, address: u16, raw_bank: u8) -> usize {
         let base_offset = (address - 0xA000) as usize;
-        let bank_count = self.header.ram_size.bank_count.unwrap_or(0).max(1);
-        let bank = (raw_bank as usize) % bank_count;
-        bank * 0x2000 + base_offset
+        let Some(ram_len) = self.ram.as_ref().map(Vec::len).filter(|&len| len != 0) else {
+            return base_offset;
+        };
+
+        // MBC-visible external RAM still lives behind an 8 KiB aperture even
+        // when the validated backing store is smaller (for example 2 KiB). In
+        // those cases the internal cartridge address wraps within the real RAM
+        // payload instead of exposing holes through the A000-BFFF window.
+        (base_offset + (raw_bank as usize) * 0x2000) % ram_len
     }
 
     pub(in crate::cartridge) fn latch_rtc_if_needed(&mut self, value: u8) {
@@ -266,6 +279,7 @@ impl Mbc3Cartridge {
                 }
                 ram.copy_from_slice(persisted_ram);
                 self.rtc_live = (*rtc).into();
+                self.clear_runtime_rtc_snapshot_state();
                 Ok(())
             }
             (true, false, Some(ram), PersistentCartState::Mbc3Ram { ram: persisted_ram }) => {
@@ -280,6 +294,7 @@ impl Mbc3Cartridge {
             }
             (true, true, None, PersistentCartState::Mbc3Rtc { rtc }) => {
                 self.rtc_live = (*rtc).into();
+                self.clear_runtime_rtc_snapshot_state();
                 Ok(())
             }
             (true, false, None, PersistentCartState::None) => Ok(()),

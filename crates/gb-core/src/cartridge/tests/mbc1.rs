@@ -237,10 +237,104 @@ fn strict_validation_rejects_large_rom_mbc1_with_32kib_ram_declaration() {
 
     match error {
         CartridgeLoadError::Rejected { reason, .. } => {
-            assert!(reason.contains("not valid for the current LargeRom MBC1 wiring baseline"));
+            assert!(reason.contains("contradicts the current MBC1+RAM LargeRom wiring baseline"));
         }
         other => panic!("unexpected error: {other:?}"),
     }
+}
+
+#[test]
+fn strict_validation_rejects_mbc1_without_ram_when_header_declares_external_ram() {
+    let rom = build_banked_mbc1_rom_with_type(0x01, 0x02, 0x02);
+    let error = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect_err("MBC1 without RAM must reject contradictory SRAM metadata");
+
+    match error {
+        CartridgeLoadError::Rejected { reason, .. } => {
+            assert!(
+                reason
+                    .contains("contradicts the current MBC1 without RAM Standard wiring baseline")
+            );
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[test]
+fn strict_validation_rejects_mbc1_plus_ram_when_header_omits_required_ram_shape() {
+    let rom = build_banked_mbc1_rom_with_type(0x03, 0x05, 0x00);
+    let error = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect_err("MBC1+RAM must reject missing RAM metadata");
+
+    match error {
+        CartridgeLoadError::Rejected { reason, .. } => {
+            assert!(reason.contains("contradicts the current MBC1+RAM LargeRom wiring baseline"));
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[test]
+fn warn_policy_uses_type_derived_mbc1_ram_capability_instead_of_header_contradictions() {
+    let no_ram_rom = build_banked_mbc1_rom_with_type(0x01, 0x02, 0x02);
+    let no_ram_report = CartridgeSlot::load(no_ram_rom, &warn_policy())
+        .expect("warn policy should keep contradictory MBC1 no-RAM loads deterministic");
+    let Some(CartridgeDevice::Mbc1(no_ram_cartridge)) = no_ram_report.cartridge().device.as_ref()
+    else {
+        panic!("expected MBC1 cartridge");
+    };
+    assert!(no_ram_cartridge.ram.is_none());
+    assert!(no_ram_report.diagnostics().iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("contradicts the current MBC1 without RAM Standard wiring baseline")
+    }));
+
+    let large_rom_ramless_header = build_banked_mbc1_rom_with_type(0x03, 0x05, 0x00);
+    let large_rom_report = CartridgeSlot::load(large_rom_ramless_header, &warn_policy())
+        .expect("warn policy should keep large-ROM MBC1 RAM on the fixed 8 KiB baseline");
+    let Some(CartridgeDevice::Mbc1(large_rom_cartridge)) =
+        large_rom_report.cartridge().device.as_ref()
+    else {
+        panic!("expected MBC1 cartridge");
+    };
+    assert_eq!(
+        large_rom_cartridge.ram.as_ref().map(Vec::len),
+        Some(MBC1_LARGE_ROM_RAM_BYTES)
+    );
+    assert!(large_rom_report.diagnostics().iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("contradicts the current MBC1+RAM LargeRom wiring baseline")
+    }));
+
+    let standard_rom_missing_ram_header = build_banked_mbc1_rom_with_type(0x02, 0x02, 0x00);
+    let standard_report = CartridgeSlot::load(standard_rom_missing_ram_header, &warn_policy())
+        .expect("warn policy should keep standard MBC1 RAM on the explicit 32 KiB baseline");
+    let Some(CartridgeDevice::Mbc1(mut standard_cartridge)) =
+        standard_report.cartridge().device.clone()
+    else {
+        panic!("expected MBC1 cartridge");
+    };
+    assert_eq!(
+        standard_cartridge.ram.as_ref().map(Vec::len),
+        Some(MBC1_STANDARD_RAM_BYTES_MAX)
+    );
+    assert!(standard_report.diagnostics().iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("contradicts the current MBC1+RAM Standard wiring baseline")
+    }));
+
+    standard_cartridge.write_rom(0x0000, 0x0A);
+    standard_cartridge.write_ram(0xA000, 0x11);
+    standard_cartridge.write_rom(0x6000, 0x01);
+    standard_cartridge.write_rom(0x4000, 0x02);
+    standard_cartridge.write_ram(0xA000, 0x22);
+    standard_cartridge.write_rom(0x4000, 0x00);
+    assert_eq!(standard_cartridge.read_ram(0xA000), 0x11);
+    standard_cartridge.write_rom(0x4000, 0x02);
+    assert_eq!(standard_cartridge.read_ram(0xA000), 0x22);
 }
 
 #[test]

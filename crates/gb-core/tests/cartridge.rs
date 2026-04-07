@@ -48,7 +48,8 @@ fn build_banked_mbc1_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
         _ => panic!("unsupported MBC1 ROM size code for test"),
     };
     let bank_count = rom_size / 0x4000;
-    let mut rom = build_test_rom(rom_size, 0x03, rom_size_code, ram_size_code);
+    let cartridge_type = if ram_size_code == 0x00 { 0x01 } else { 0x03 };
+    let mut rom = build_test_rom(rom_size, cartridge_type, rom_size_code, ram_size_code);
 
     for bank in 0..bank_count {
         let start = bank * 0x4000;
@@ -1212,7 +1213,94 @@ fn rumble_capable_mbc5_keeps_motor_state_distinct_from_the_effective_ram_bank() 
 }
 
 #[test]
-fn strict_validation_rejects_oversized_and_invalid_rumble_mbc5_configurations() {
+fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_through_the_bus() {
+    let rom = build_banked_mbc5_rom(0x1E, 0x03, 0x05);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC5 should load");
+    let (mut cartridge, _) = report.into_parts();
+    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let state = BusArbitrationState::default();
+
+    bus.write_with_cartridge(
+        0x0000,
+        0x0A,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x00,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    bus.write_with_cartridge(
+        0xA000,
+        0x10,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x07,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    bus.write_with_cartridge(
+        0xA000,
+        0x70,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x00,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    assert!(!cartridge.rumble_on());
+    assert_eq!(
+        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        0x10
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x07,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    assert!(!cartridge.rumble_on());
+    assert_eq!(
+        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        0x70
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x0F,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    assert!(cartridge.rumble_on());
+    assert_eq!(
+        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        0x70
+    );
+}
+
+#[test]
+fn strict_validation_rejects_oversized_and_invalid_128kib_rumble_mbc5_configurations() {
     let oversized = build_test_rom(16 * 1024 * 1024, 0x1B, 0x08, 0x04);
     let oversized_error = CartridgeSlot::load(oversized, &CompatibilityPolicy::strict())
         .expect_err("oversized MBC5 should fail validation");
@@ -1232,6 +1320,10 @@ fn strict_validation_rejects_oversized_and_invalid_rumble_mbc5_configurations() 
         other => panic!("unexpected error: {other:?}"),
     };
     assert!(invalid_rumble_reason.contains("rumble-capable MBC5 baseline"));
+
+    let valid_rumble_64k = build_banked_mbc5_rom(0x1E, 0x03, 0x05);
+    CartridgeSlot::load(valid_rumble_64k, &CompatibilityPolicy::strict())
+        .expect("64 KiB rumble MBC5 should load");
 }
 
 #[test]
@@ -1463,6 +1555,14 @@ fn mbc3_persistent_state_serializes_live_rtc_state_not_the_latched_snapshot() {
         }
         other => panic!("unexpected persistent state: {other:?}"),
     }
+
+    machine
+        .restore_cartridge_persistent_state(&state)
+        .expect("hot MBC3 persistence restore should succeed");
+    assert_eq!(machine.read_bus(0xA000), 0x00);
+    machine.write_bus(0x6000, 0x00);
+    machine.write_bus(0x6000, 0x01);
+    assert_eq!(machine.read_bus(0xA000), 0x2A);
 
     let fresh_report = CartridgeSlot::load(
         build_banked_mbc3_rom(0x10, 0x03, 0x03),

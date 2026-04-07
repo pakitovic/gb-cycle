@@ -270,6 +270,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `MBC5` persistence must cover the full validated SRAM backing up to `128 KiB`; rumble state is not part of the ordinary battery-backed save payload.
 - For `MBC3`, the persistible RTC payload must preserve at least seconds, minutes, hours, visible `9`-bit day counter, halt, carry, and enough elapsed-time bookkeeping to reconstruct powered-off advancement on reload.
 - The persistible RTC payload must reflect live RTC state, not the latched snapshot exposed for reads through the `0x00 -> 0x01` latch sequence.
+- Restoring hardware-style `MBC3` persistence into a live cartridge should refresh `rtc_live` while clearing runtime-local latch state (`rtc_latched`, latch-valid flag, edge-arming state, and advisory ready-at timing) so a stale read snapshot does not survive a persistence restore.
 - Hardware-style cartridge saves and full emulator save states are different systems. Cartridge persistence must not serialize CPU, PPU, APU, WRAM, HRAM, or other console-owned state.
 - Cartridges without battery support should not produce automatic hardware-style save files unless the emulator explicitly exposes a non-hardware-faithful opt-in policy.
 - The cartridge side should expose an explicit typed persistence contract such as `PersistentCartState` or `CartridgePersistentPayload` that the storage backend consumes.
@@ -314,6 +315,8 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Treat `32 KiB` external RAM as the standard small-ROM wiring case.
 - Treat `1 MiB` or `2 MiB` ROM as the alternate large-ROM wiring case, not as banked-`32 KiB` RAM cartridges.
 - If declared ROM size, RAM size, real file size, and derived MBC1 wiring disagree, report an explicit diagnostic under the chosen validation policy instead of guessing silently.
+- When degraded validation still admits a contradictory MBC1 header, keep the live RAM capability derived from `0x0147`: `0x01` must remain RAM-less, standard-wiring `0x02/0x03` should fall back to the explicit small-ROM RAM baseline, and large-ROM `0x02/0x03` should keep the fixed `8 KiB` RAM window baseline rather than silently inheriting a different size from the conflicting header code.
+- When degraded validation admits that contradictory MBC1 header, effective RAM banking must follow the validated backing actually allocated by the loader rather than the contradictory `0x0149` bank-count metadata.
 - If the cartridge is too small to observe the secondary register or banking mode, writes may still update the stored register state, but they must not invent visible effects.
 - Power-up state must be deterministic for both `RealBoot` and `SkipBoot`: `ram_enabled = false`, `rom_bank_low5 = 0`, `secondary_bank = 0`, and `banking_mode = 0`.
 - Even though `rom_bank_low5` powers up as `0`, the switchable ROM window at `0x4000-0x7FFF` must initially expose bank `1`, not bank `0`.
@@ -421,6 +424,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The MBC3 RAM / RTC selector should decode from the low nibble of the written value. Upper data bits must not create a different selector namespace.
 - Represent the `0x4000-0x5FFF` selector as an explicit mapping target such as `RamBank(u8)`, `ReservedSelector(u8)`, or `RtcRegister(RtcRegisterId)` instead of as one raw numeric field whose meaning is reconstructed ad hoc during each access.
 - External RAM banking must be masked by the real number of available RAM banks declared by validated cartridge metadata; standard MBC3 should not silently treat a `64 KiB` RAM declaration as ordinary banked SRAM support.
+- When the validated MBC3 SRAM backing is smaller than the visible `8 KiB` aperture, such as the accepted `2 KiB` case, reads and writes through `0xA000-0xBFFF` should wrap within the real SRAM payload instead of exposing out-of-range holes.
 - `0x6000-0x7FFF` is a write-only RTC latch command register. The project keeps the first accepted latch on the logical edge formed by writing `0x00` and then `0x01`, so a first post-reset `0x01` does not latch until software has armed the edge with `0x00`.
 - Keep RTC live state and RTC latched state as separate concepts. RTC register writes should update only the live RTC state; reads must continue to observe the currently latched snapshot until software issues the next latch command accepted by the controller.
 - Before the first accepted latch, the current project policy is explicit: RTC register reads observe a zeroed snapshot rather than live RTC state. That keeps the pre-latch state deterministic and avoids relying on whatever bytes happened to sit in the latched-storage field at reset.
@@ -465,10 +469,11 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Loader-visible variant metadata should distinguish at least no-RAM, RAM, RAM+battery, rumble-only, rumble+RAM, and rumble+RAM+battery shapes rather than flattening them into one generic `Mbc5`.
 - Battery presence changes persistence expectations only. Rumble changes cartridge-local motor state and must not change ROM banking semantics.
 - MBC5 must validate up to `8 MiB` ROM, meaning up to `512` total `16 KiB` ROM banks with bank `0` fixed in `0x0000-0x3FFF` and banks `0x000..=0x1FF` visible in `0x4000-0x7FFF`.
-- MBC5 external RAM support should cover ordinary `8 KiB`, `32 KiB`, and `128 KiB` SRAM configurations, meaning up to `16` visible `8 KiB` RAM banks.
+- Standard non-rumble MBC5 external RAM support should cover ordinary `8 KiB`, `32 KiB`, `64 KiB`, and `128 KiB` SRAM configurations, meaning up to `16` visible `8 KiB` RAM banks.
+- Rumble-capable MBC5 external RAM support should cover `8 KiB`, `32 KiB`, and `64 KiB` SRAM configurations. Because `bit 3` of the RAM-bank control register is wired to the motor rather than the RAM chip, only `3` bank-select bits remain for external RAM on those variants.
 - MBC5 external RAM should be modeled as linear `8 KiB` banks selected directly by the RAM-bank register, with no MBC1-style dual banking mode.
 - If a cartridge declares an MBC5 header type but validated ROM size exceeds `8 MiB`, the loader should emit an explicit diagnostic instead of guessing another mapper.
-- If a cartridge declares an MBC5 header type with impossible RAM metadata, such as RAM omitted by `0x0147` while `0x0149 != 0x00`, or a declared MBC5 RAM size larger than `128 KiB`, the loader should emit an explicit diagnostic under the chosen validation policy.
+- If a cartridge declares an MBC5 header type with impossible RAM metadata, such as RAM omitted by `0x0147` while `0x0149 != 0x00`, a standard non-rumble MBC5 RAM size larger than `128 KiB`, or a rumble-capable MBC5 RAM size larger than `64 KiB`, the loader should emit an explicit diagnostic under the chosen validation policy.
 - The visible MBC5 memory map should be:
   - `0x0000-0x3FFF`: fixed ROM bank `0`
   - `0x4000-0x7FFF`: switchable ROM bank `0x000..=0x1FF`
@@ -486,6 +491,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `0x4000-0x5FFF` is a write-only RAM-bank / rumble control register.
 - On standard non-rumble MBC5, use the low `4` bits as the raw RAM-bank register and then mask by the real RAM-bank count.
 - On rumble-capable MBC5, `bit 3` of that control register should update `rumble_on`, while the remaining RAM-bank-relevant bits should still resolve the effective RAM bank according to the validated cartridge wiring.
+- In practice, that means current rumble-capable MBC5 validation should accept RAM size codes `0x02` (`8 KiB`), `0x03` (`32 KiB`), and `0x05` (`64 KiB`), but reject `0x04` (`128 KiB`) because bank bits `0..=2` can select at most `8` external RAM banks once `bit 3` is reserved for rumble.
 - Keep `ram_bank_raw`, `effective_ram_bank()`, and `effective_rumble_state()` as distinct concepts. Do not collapse rumble-capable MBC5 behavior into one integer whose meaning is reconstructed ad hoc.
 - For the current project scope, rumble modeling should stop at the digital hardware-visible motor state. No physical inertia or analog intensity model is required yet.
 - The cartridge should expose `rumble_on` as observable cartridge-local state. A frontend may translate that state into host vibration, but it must not authoritatively set rumble state without going through cartridge writes.

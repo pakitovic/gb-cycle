@@ -177,6 +177,7 @@ pub(in crate::cartridge) fn validate_mbc1(
         return Ok(Mbc1Layout {
             wiring: Mbc1Wiring::LargeRom,
             variant: Mbc1Variant::Mbc1M,
+            ram_len: 0,
         });
     }
 
@@ -197,27 +198,51 @@ pub(in crate::cartridge) fn validate_mbc1(
         });
     };
 
-    let allowed_ram_codes = match wiring {
-        Mbc1Wiring::Standard => [0x00, 0x02, 0x03].as_slice(),
-        Mbc1Wiring::LargeRom => [0x00, 0x02].as_slice(),
+    let has_ram = matches!(classification.raw_type(), 0x02 | 0x03);
+    let allowed_ram_codes = match (has_ram, wiring) {
+        (false, _) => [0x00].as_slice(),
+        (true, Mbc1Wiring::Standard) => [0x02, 0x03].as_slice(),
+        (true, Mbc1Wiring::LargeRom) => [0x02].as_slice(),
     };
     if !allowed_ram_codes.contains(&header.ram_size.raw_code) {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} declared RAM size code {:#04X}, which is not valid for the current {:?} MBC1 wiring baseline",
+        let capability_label = if has_ram {
+            "MBC1+RAM"
+        } else {
+            "MBC1 without RAM"
+        };
+        record_degradable_issue(
+            diagnostics,
+            compatibility.validation_policy,
+            format!(
+                "{} declared RAM size code {:#04X}, which contradicts the current {} {:?} wiring baseline",
                 classification.detected_name(),
                 header.ram_size.raw_code,
+                capability_label,
                 wiring
             ),
+        )
+        .map_err(|message| CartridgeLoadError::Rejected {
+            classification: *classification,
+            execution_mode: compatibility.execution_mode,
+            reason: message,
             diagnostics: diagnostics.to_vec(),
-        });
+        })?;
     }
+
+    let ram_len = match (has_ram, wiring, header.ram_size.raw_code) {
+        (false, _, _) => 0,
+        (true, Mbc1Wiring::Standard, 0x02 | 0x03) => header
+            .ram_size
+            .decoded_bytes
+            .unwrap_or(MBC1_STANDARD_RAM_BYTES_MAX),
+        (true, Mbc1Wiring::Standard, _) => MBC1_STANDARD_RAM_BYTES_MAX,
+        (true, Mbc1Wiring::LargeRom, _) => MBC1_LARGE_ROM_RAM_BYTES,
+    };
 
     Ok(Mbc1Layout {
         wiring,
         variant: Mbc1Variant::Standard,
+        ram_len,
     })
 }
 
@@ -445,9 +470,9 @@ pub(in crate::cartridge) fn validate_mbc5(
 
     if variant.has_ram() {
         let allowed_ram_codes = if variant.has_rumble() {
-            [0x02, 0x03].as_slice()
+            [0x02, 0x03, 0x05].as_slice()
         } else {
-            [0x02, 0x03, 0x04].as_slice()
+            [0x02, 0x03, 0x04, 0x05].as_slice()
         };
 
         if !allowed_ram_codes.contains(&header.ram_size.raw_code) {

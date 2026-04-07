@@ -75,7 +75,38 @@ fn mbc5_rumble_control_keeps_motor_state_distinct_from_effective_ram_bank() {
 }
 
 #[test]
-fn strict_validation_rejects_oversized_mbc5_images_and_invalid_rumble_ram_sizes() {
+fn rumble_capable_mbc5_supports_64kib_sram_while_keeping_bit_3_for_motor_control() {
+    let rom = build_banked_mbc5_rom(0x1E, 0x03, 0x05);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC5 should load");
+    let Some(CartridgeDevice::Mbc5(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC5 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+
+    cartridge.write_rom(0x4000, 0x00);
+    cartridge.write_ram(0xA000, 0x10);
+
+    cartridge.write_rom(0x4000, 0x07);
+    cartridge.write_ram(0xA000, 0x70);
+
+    cartridge.write_rom(0x4000, 0x00);
+    assert!(!cartridge.rumble_on());
+    assert_eq!(cartridge.read_ram(0xA000), 0x10);
+
+    cartridge.write_rom(0x4000, 0x07);
+    assert!(!cartridge.rumble_on());
+    assert_eq!(cartridge.read_ram(0xA000), 0x70);
+
+    cartridge.write_rom(0x4000, 0x0F);
+    assert!(cartridge.rumble_on());
+    assert_eq!(cartridge.ram_bank_raw, 0x07);
+    assert_eq!(cartridge.read_ram(0xA000), 0x70);
+}
+
+#[test]
+fn strict_validation_rejects_oversized_mbc5_images_and_invalid_128kib_rumble_ram() {
     let oversized = build_test_rom(16 * 1024 * 1024, 0x1B, 0x08, 0x04);
     let oversized_error = CartridgeSlot::load(oversized, &CompatibilityPolicy::strict())
         .expect_err("oversized MBC5 should fail validation");
@@ -98,6 +129,10 @@ fn strict_validation_rejects_oversized_mbc5_images_and_invalid_rumble_ram_sizes(
         }
         other => panic!("unexpected error: {other:?}"),
     }
+
+    let valid_rumble_64k = build_banked_mbc5_rom(0x1E, 0x03, 0x05);
+    CartridgeSlot::load(valid_rumble_64k, &CompatibilityPolicy::strict())
+        .expect("64 KiB rumble MBC5 should load");
 }
 
 #[test]
