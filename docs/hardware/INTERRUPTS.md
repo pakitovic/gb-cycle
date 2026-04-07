@@ -42,6 +42,9 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Prefer helpers such as `request_interrupt(kind)` and `clear_interrupt(kind)` alongside the routed MMIO read/write path.
 - Program writes to `IF` should coexist with hardware requests without bypassing the interrupt controller's source-of-truth state.
 - `IE` writes are immediate even when they come from CPU stack traffic rather than an explicit `LD (a16),A`-style instruction. In particular, if interrupt-service `PC` push writes hit `0xFFFF`, the CPU must observe the updated pending set before vector commit, allowing the dispatch to cancel or retarget after the upper-byte push but not after the lower-byte push.
+- Interrupt selection belongs to acceptance, and the CPU-visible acknowledge of the chosen source happens at that accept point by clearing the corresponding `IF` bit.
+- The accepted source must still stay latched internally until the interrupt-service sequence resolves. If the upper-byte `PC` push into `IE` cancels or retargets the dispatch, the originally accepted but unserved source must be restored in `IF`.
+- In the current DMG-family baseline, a same-source request that reappears after that accept-time acknowledge must set `IF` again and remain pending after the current interrupt service completes.
 
 ## LCD interrupt-producer baseline
 
@@ -71,6 +74,7 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Timer keeps an explicit exception to any naive "request on source edge" simplification: logical TIMA overflow is not the same moment as the timer bit becoming set in `IF`.
 - Serial keeps its own completion point: the request belongs to the T-cycle that completes the eighth shift and clears `SC.7`.
 - Joypad keeps its own visibility rule: the request belongs only to a newly visible `High -> Low` transition in the `P1` low nibble.
+- The interrupt controller still only owns the ordinary joypad `IF` request bit even for the `STOP` wake glitch family. If the CPU is waking from explicit `Stopped` state with `IME = 1`, the special bugged `0x0000` dispatch remains a CPU-owned wake/accept path layered on top of that ordinary joypad request rather than a second interrupt source stored here.
 - Once the CPU accepts an interrupt, servicing it must still consume the documented DMG `20` T-cycles (`5` M-cycles) through the CPU's ordinary temporal model rather than as an immediate vector jump.
 - In the current Phase `2.5` baseline for this repo, step `8` aggregation into `IF` and step `9` CPU acceptance are both wired explicitly even though the concrete producer-side request rules still land later in timer, PPU, serial, and joypad work.
 
@@ -142,8 +146,8 @@ Interrupts are edge- and ordering-sensitive. Keep request, mask, and acceptance 
 - Let the serial subsystem own the transfer-complete detection that decides whether a serial request happened; the interrupt controller should consume the resulting request event, not infer completion from raw `SB` or `SC` bytes.
 - In the current Phase `2.8` baseline for this repo, traces should show the
   interrupt controller after phase `8` aggregation and again after phase `9`
-  CPU wake/accept evaluation, so `IF` / `IE` visibility and any acceptance-side
-  clear become observable as separate ordered events on the same T-cycle
+  CPU wake/accept evaluation, so `IF` / `IE` visibility and later service-side
+  clear remain observable as separate ordered events on the same T-cycle
   timeline.
 
 ## Known pitfalls

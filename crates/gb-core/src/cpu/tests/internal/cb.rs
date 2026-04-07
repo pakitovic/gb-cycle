@@ -4,40 +4,40 @@ use super::*;
 fn cb_decoder_and_apply_helpers_cover_private_paths() {
     let mut cpu = power_on_cpu();
 
-    let rlc = cpu.decode_cb_opcode(0x07).expect("RLC A should decode");
+    let rlc = cpu.decode_cb_opcode(0x07);
     assert_eq!(rlc.target(), Register8Operand::Register(Register8::A));
     assert_eq!(cpu.apply_cb_operation(rlc, 0x80), Some(0x01));
     assert_eq!(cpu.registers.f, FLAG_C);
 
-    let rrc = cpu.decode_cb_opcode(0x08).expect("RRC B should decode");
+    let rrc = cpu.decode_cb_opcode(0x08);
     assert_eq!(cpu.apply_cb_operation(rrc, 0x01), Some(0x80));
     assert_eq!(cpu.registers.f, FLAG_C);
 
-    let sla = cpu.decode_cb_opcode(0x20).expect("SLA B should decode");
+    let sla = cpu.decode_cb_opcode(0x20);
     assert_eq!(cpu.apply_cb_operation(sla, 0x81), Some(0x02));
     assert_eq!(cpu.registers.f, FLAG_C);
 
-    let sra = cpu.decode_cb_opcode(0x28).expect("SRA B should decode");
+    let sra = cpu.decode_cb_opcode(0x28);
     assert_eq!(cpu.apply_cb_operation(sra, 0x81), Some(0xC0));
     assert_eq!(cpu.registers.f, FLAG_C);
 
-    let swap = cpu.decode_cb_opcode(0x30).expect("SWAP B should decode");
+    let swap = cpu.decode_cb_opcode(0x30);
     assert_eq!(cpu.apply_cb_operation(swap, 0xF0), Some(0x0F));
     assert_eq!(cpu.registers.f, 0);
 
-    let srl = cpu.decode_cb_opcode(0x38).expect("SRL B should decode");
+    let srl = cpu.decode_cb_opcode(0x38);
     assert_eq!(cpu.apply_cb_operation(srl, 0x01), Some(0x00));
     assert_eq!(cpu.registers.f, FLAG_Z | FLAG_C);
 
     cpu.registers.f = FLAG_C;
-    let bit = cpu.decode_cb_opcode(0x58).expect("BIT 3,B should decode");
+    let bit = cpu.decode_cb_opcode(0x58);
     assert_eq!(cpu.apply_cb_operation(bit, 0x00), None);
     assert_eq!(cpu.registers.f, FLAG_Z | FLAG_H | FLAG_C);
 
-    let reset = cpu.decode_cb_opcode(0x80).expect("RES 0,B should decode");
+    let reset = cpu.decode_cb_opcode(0x80);
     assert_eq!(cpu.apply_cb_operation(reset, 0xFF), Some(0xFE));
 
-    let set = cpu.decode_cb_opcode(0xFF).expect("SET 7,A should decode");
+    let set = cpu.decode_cb_opcode(0xFF);
     assert_eq!(set.target(), Register8Operand::Register(Register8::A));
     assert_eq!(cpu.apply_cb_operation(set, 0x00), Some(0x80));
 }

@@ -312,6 +312,7 @@ pub struct Ppu {
     stat_state: StatState,
     pending_interrupts: u8,
     blank_frame_active: bool,
+    system_stop_active: bool,
     oam_corruption_controller: OamCorruptionController,
     mode2_scan_state: Mode2ScanState,
     window_state: WindowState,
@@ -457,6 +458,7 @@ impl Ppu {
             stat_state: StatState::default(),
             pending_interrupts: 0,
             blank_frame_active: false,
+            system_stop_active: false,
             oam_corruption_controller: OamCorruptionController,
             mode2_scan_state: Mode2ScanState::default(),
             window_state: WindowState::default(),
@@ -586,6 +588,7 @@ impl Ppu {
         self.bg_pipeline_state.reset();
         self.obj_pipeline_state.reset();
         self.pending_interrupts = 0;
+        self.system_stop_active = false;
         self.current_scanline_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
@@ -762,6 +765,18 @@ impl Ppu {
 
     pub fn framebuffer(&self) -> &[u8] {
         &self.framebuffer
+    }
+
+    pub(crate) fn set_system_stop_active(&mut self, active: bool) {
+        if self.system_stop_active == active {
+            return;
+        }
+
+        self.system_stop_active = active;
+        if active {
+            self.clear_visible_buffers();
+        }
+        self.refresh_visible_output();
     }
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
@@ -2478,11 +2493,12 @@ impl Ppu {
     }
 
     fn refresh_visible_output(&mut self) {
-        self.visible_output = if self.is_lcd_enabled() && !self.blank_frame_active {
-            PpuVisibleOutputState::Driving
-        } else {
-            PpuVisibleOutputState::ForcedBlank
-        };
+        self.visible_output =
+            if self.is_lcd_enabled() && !self.blank_frame_active && !self.system_stop_active {
+                PpuVisibleOutputState::Driving
+            } else {
+                PpuVisibleOutputState::ForcedBlank
+            };
     }
 
     fn advance_lcd_restart_phase(&mut self) {

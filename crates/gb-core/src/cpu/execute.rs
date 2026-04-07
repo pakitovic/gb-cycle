@@ -8,14 +8,12 @@ mod loads;
 mod stack;
 
 impl CpuCore {
-    pub(super) fn complete_execute_machine_cycle<F>(
+    pub(super) fn complete_execute_machine_cycle(
         &mut self,
         opcode: u8,
         step: u8,
-        bus_operation: &mut F,
-    ) where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
         let Some(kind) = self.instruction_kind else {
             self.execution_state = CpuExecutionState::Execute {
                 opcode,

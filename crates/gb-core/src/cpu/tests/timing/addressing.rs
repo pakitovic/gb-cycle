@@ -185,3 +185,49 @@ fn add_sp_signed_immediate_uses_four_machine_cycles_and_sets_flags_from_sp_math(
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
 }
+
+#[test]
+fn add_sp_negative_signed_immediate_uses_four_machine_cycles_and_sets_flags_from_sp_math() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cartridge = build_test_cartridge(&[0xE8, 0xF8]);
+
+    cpu.apply_startup_state(CpuStartupState {
+        sp: 0x0008,
+        pc: 0x0100,
+        ..CpuStartupState::power_on_reset()
+    });
+
+    tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 8);
+
+    assert_eq!(cpu.registers().pc, 0x0102);
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::Execute {
+            opcode: 0xE8,
+            step: 1,
+            t_cycle: 0,
+        }
+    );
+
+    tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+
+    assert_eq!(cpu.registers().sp, 0x0008);
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::Execute {
+            opcode: 0xE8,
+            step: 2,
+            t_cycle: 0,
+        }
+    );
+
+    tick_cpu_n(&mut cpu, &mut bus, &mut cartridge, 4);
+
+    assert_eq!(cpu.registers().sp, 0x0000);
+    assert_eq!(cpu.registers().f, FLAG_H | FLAG_C);
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}

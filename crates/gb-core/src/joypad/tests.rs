@@ -122,15 +122,23 @@ fn both_rows_selected_use_the_same_combined_visible_rule_for_interrupt_edges() {
 }
 
 #[test]
-fn stop_wake_is_selection_independent_across_buttons() {
+fn stop_wake_uses_the_selected_visible_lines() {
     let mut joypad = Joypad::new(ConsoleModel::Dmg);
 
     joypad.write_p1(0x30);
     joypad.set_button_pressed(JoypadButton::A, true);
-    assert!(joypad.consume_stop_wake_event());
+    assert!(!joypad.stop_wake_line_asserted());
+    assert!(!joypad.consume_stop_wake_event());
 
     joypad.write_p1(0x10);
+    assert!(joypad.stop_wake_line_asserted());
+    assert!(joypad.consume_stop_wake_event());
+
     joypad.set_button_pressed(JoypadButton::Left, true);
+    assert!(!joypad.consume_stop_wake_event());
+
+    joypad.write_p1(0x00);
+    assert!(joypad.stop_wake_line_asserted());
     assert!(joypad.consume_stop_wake_event());
 }
 
@@ -138,15 +146,20 @@ fn stop_wake_is_selection_independent_across_buttons() {
 fn stop_wake_requires_a_new_released_to_pressed_transition() {
     let mut joypad = Joypad::new(ConsoleModel::Dmg);
 
+    joypad.write_p1(0x10);
     joypad.set_button_pressed(JoypadButton::Start, true);
     assert!(joypad.consume_stop_wake_event());
+    assert!(joypad.stop_wake_line_asserted());
 
     joypad.set_button_pressed(JoypadButton::Start, true);
     assert!(!joypad.consume_stop_wake_event());
+    assert!(joypad.stop_wake_line_asserted());
 
     joypad.set_button_pressed(JoypadButton::Start, false);
     assert!(!joypad.consume_stop_wake_event());
+    assert!(!joypad.stop_wake_line_asserted());
 
     joypad.set_button_pressed(JoypadButton::Start, true);
     assert!(joypad.consume_stop_wake_event());
+    assert!(joypad.stop_wake_line_asserted());
 }

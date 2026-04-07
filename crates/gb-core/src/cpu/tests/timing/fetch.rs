@@ -35,7 +35,89 @@ fn opcode_fetch_reads_bus_at_pc_on_the_fourth_t_cycle() {
 }
 
 #[test]
-fn unsupported_opcode_enters_an_explicit_diagnostic_trap() {
+fn stop_nop_like_completes_on_the_opcode_fetch_machine_cycle() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut operations = Vec::new();
+
+    cpu.apply_startup_state(CpuStartupState {
+        pc: 0x0100,
+        ..CpuStartupState::power_on_reset()
+    });
+    cpu.ime = false;
+
+    for _ in 0..4 {
+        cpu.tick_t_cycle(|operation| {
+            operations.push(operation);
+            match operation {
+                CpuBusOperation::Read { address } => {
+                    assert_eq!(address, 0x0100);
+                    Some(0x10)
+                }
+                CpuBusOperation::StopWakeLineAsserted => Some(0x01),
+                CpuBusOperation::PendingInterruptMask => Some(0x01),
+                other => panic!("unexpected STOP fetch operation: {other:?}"),
+            }
+        });
+    }
+
+    assert_eq!(
+        operations,
+        vec![
+            CpuBusOperation::Read { address: 0x0100 },
+            CpuBusOperation::StopWakeLineAsserted,
+            CpuBusOperation::PendingInterruptMask,
+        ]
+    );
+    assert_eq!(cpu.registers().pc, 0x0101);
+    assert_eq!(cpu.current_opcode(), None);
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
+fn stop_with_ime_enabled_and_wake_high_also_completes_on_the_opcode_fetch_machine_cycle() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut operations = Vec::new();
+
+    cpu.apply_startup_state(CpuStartupState {
+        pc: 0x0100,
+        ..CpuStartupState::power_on_reset()
+    });
+    cpu.ime = true;
+
+    for _ in 0..4 {
+        cpu.tick_t_cycle(|operation| {
+            operations.push(operation);
+            match operation {
+                CpuBusOperation::Read { address } => {
+                    assert_eq!(address, 0x0100);
+                    Some(0x10)
+                }
+                CpuBusOperation::StopWakeLineAsserted => Some(0x01),
+                other => panic!("unexpected IME=1 STOP fetch operation: {other:?}"),
+            }
+        });
+    }
+
+    assert_eq!(
+        operations,
+        vec![
+            CpuBusOperation::Read { address: 0x0100 },
+            CpuBusOperation::StopWakeLineAsserted,
+        ]
+    );
+    assert_eq!(cpu.registers().pc, 0x0101);
+    assert_eq!(cpu.current_opcode(), None);
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
+fn invalid_opcode_hole_enters_an_explicit_diagnostic_trap() {
     let mut cpu = CpuCore::new(ConsoleModel::Dmg);
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let mut cartridge = build_test_cartridge(&[0xD3]);
@@ -52,7 +134,7 @@ fn unsupported_opcode_enters_an_explicit_diagnostic_trap() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::DiagnosticTrap {
-            trap: CpuDiagnosticTrap::UnsupportedOpcode {
+            trap: CpuDiagnosticTrap::InvalidOpcode {
                 opcode: 0xD3,
                 address: 0x0100,
             },
@@ -74,7 +156,7 @@ fn unsupported_opcode_enters_an_explicit_diagnostic_trap() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::DiagnosticTrap {
-            trap: CpuDiagnosticTrap::UnsupportedOpcode {
+            trap: CpuDiagnosticTrap::InvalidOpcode {
                 opcode: 0xD3,
                 address: 0x0100,
             },
@@ -84,7 +166,7 @@ fn unsupported_opcode_enters_an_explicit_diagnostic_trap() {
 }
 
 #[test]
-fn cb_set_opcode_executes_instead_of_entering_a_diagnostic_trap() {
+fn cb_set_opcode_executes_as_a_normal_prefixed_instruction() {
     let mut cpu = CpuCore::new(ConsoleModel::Dmg);
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let mut cartridge = build_test_cartridge(&[0xCB, 0xFF]);

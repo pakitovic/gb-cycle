@@ -193,9 +193,7 @@ fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
     }
 
     let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-    let acknowledged =
-        cpu.complete_interrupt_service_machine_cycle(InterruptSource::Serial, 5, &mut |_| None);
-    assert_eq!(acknowledged, None);
+    cpu.complete_interrupt_service_machine_cycle(InterruptSource::Serial, 5, &mut |_| None);
     assert_eq!(
         cpu.execution_state,
         CpuExecutionState::ServiceInterrupt {

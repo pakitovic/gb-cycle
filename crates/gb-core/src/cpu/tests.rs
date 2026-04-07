@@ -34,7 +34,7 @@ fn build_test_cartridge(program: &[u8]) -> CartridgeSlot {
 fn tick_cpu(cpu: &mut CpuCore, bus: &mut Bus, cartridge: &mut CartridgeSlot) {
     let arbitration_state = BusArbitrationState::default();
 
-    let _ = cpu.tick_t_cycle(|operation| match operation {
+    cpu.tick_t_cycle(|operation| match operation {
         CpuBusOperation::Read { address } => Some(bus.read_with_context(
             address,
             BusRequester::Cpu,
@@ -54,6 +54,10 @@ fn tick_cpu(cpu: &mut CpuCore, bus: &mut Bus, cartridge: &mut CartridgeSlot) {
             None
         }
         CpuBusOperation::PendingInterruptMask => Some(0),
+        CpuBusOperation::InterruptEnableMask => Some(0),
+        CpuBusOperation::StopWakeLineAsserted => Some(0),
+        CpuBusOperation::AcknowledgeInterrupt { .. } => None,
+        CpuBusOperation::RequestInterrupt { .. } => None,
     });
 }
 
@@ -64,7 +68,7 @@ fn tick_cpu_with_interrupts(
     interrupts: &mut InterruptController,
 ) {
     let arbitration_state = BusArbitrationState::default();
-    let acknowledged_interrupt = cpu.tick_t_cycle(|operation| match operation {
+    cpu.tick_t_cycle(|operation| match operation {
         CpuBusOperation::Read { address } => Some(bus.read_with_context(
             address,
             BusRequester::Cpu,
@@ -90,11 +94,17 @@ fn tick_cpu_with_interrupts(
             None
         }
         CpuBusOperation::PendingInterruptMask => Some(interrupts.pending_mask()),
+        CpuBusOperation::InterruptEnableMask => Some(interrupts.read_ie()),
+        CpuBusOperation::StopWakeLineAsserted => Some(0),
+        CpuBusOperation::AcknowledgeInterrupt { source } => {
+            interrupts.clear(source);
+            None
+        }
+        CpuBusOperation::RequestInterrupt { source } => {
+            interrupts.request(source);
+            None
+        }
     });
-
-    if let Some(source) = acknowledged_interrupt {
-        interrupts.clear(source);
-    }
 }
 
 fn tick_cpu_n(cpu: &mut CpuCore, bus: &mut Bus, cartridge: &mut CartridgeSlot, steps: usize) {

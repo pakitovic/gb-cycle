@@ -2,15 +2,13 @@ use super::super::decode::CpuInstructionKind;
 use super::super::*;
 
 impl CpuCore {
-    pub(super) fn execute_stack_machine_cycle<F>(
+    pub(super) fn execute_stack_machine_cycle(
         &mut self,
         kind: CpuInstructionKind,
         opcode: u8,
         step: u8,
-        bus_operation: &mut F,
-    ) where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
         match kind {
             CpuInstructionKind::PushRegisterPair { source } => match step {
                 0 => {

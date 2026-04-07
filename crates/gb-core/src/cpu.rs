@@ -36,7 +36,13 @@ pub(crate) enum CpuBusOperation {
     Read { address: u16 },
     Write { address: u16, value: u8 },
     PendingInterruptMask,
+    InterruptEnableMask,
+    StopWakeLineAsserted,
+    AcknowledgeInterrupt { source: InterruptSource },
+    RequestInterrupt { source: InterruptSource },
 }
+
+type CpuBusCallback<'a> = dyn FnMut(CpuBusOperation) -> Option<u8> + 'a;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CpuStatus {
@@ -109,17 +115,21 @@ pub enum CpuExecutionState {
         step: u8,
         t_cycle: u8,
     },
+    ServiceStopWakeBuggedInterrupt {
+        step: u8,
+        t_cycle: u8,
+    },
     DiagnosticTrap {
         trap: CpuDiagnosticTrap,
     },
     Halted,
+    ZombieStopped,
     Stopped,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CpuDiagnosticTrap {
-    UnsupportedOpcode { opcode: u8, address: u16 },
-    UnsupportedCbOpcode { opcode: u8, address: u16 },
+    InvalidOpcode { opcode: u8, address: u16 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

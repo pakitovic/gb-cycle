@@ -206,7 +206,7 @@ fn halted_cpu_services_timer_irq_only_after_the_reload_delay() {
 
     step_machine_t_cycles(&mut machine, 1);
 
-    assert_eq!(machine.read_bus(0xFF0F), 0xE4);
+    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::ServiceInterrupt {

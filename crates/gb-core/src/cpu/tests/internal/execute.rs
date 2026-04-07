@@ -327,9 +327,106 @@ fn execute_arithmetic_and_control_flow_variants_cover_remaining_private_paths() 
     assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
 
     let mut cpu = power_on_cpu();
+    cpu.registers.pc = 0x0101;
     cpu.instruction_kind = Some(CpuInstructionKind::Stop);
-    cpu.complete_execute_machine_cycle(0x10, 0, &mut |_| Some(0x00));
+    let mut operations = Vec::new();
+    cpu.complete_execute_machine_cycle(0x10, 0, &mut |operation| {
+        operations.push(operation);
+        match operation {
+            CpuBusOperation::StopWakeLineAsserted => Some(0x00),
+            CpuBusOperation::PendingInterruptMask => Some(0x00),
+            CpuBusOperation::Read { address } => {
+                assert_eq!(address, 0x0101);
+                Some(0x00)
+            }
+            other => panic!("unexpected STOP bus operation: {other:?}"),
+        }
+    });
+    assert_eq!(
+        operations,
+        vec![
+            CpuBusOperation::StopWakeLineAsserted,
+            CpuBusOperation::PendingInterruptMask,
+            CpuBusOperation::Read { address: 0x0101 },
+        ]
+    );
+    assert_eq!(cpu.registers.pc, 0x0102);
     assert_eq!(cpu.execution_state, CpuExecutionState::Stopped);
+
+    let mut cpu = power_on_cpu();
+    cpu.registers.pc = 0x0101;
+    cpu.ime = false;
+    cpu.instruction_kind = Some(CpuInstructionKind::Stop);
+    let mut operations = Vec::new();
+    cpu.complete_execute_machine_cycle(0x10, 0, &mut |operation| {
+        operations.push(operation);
+        match operation {
+            CpuBusOperation::StopWakeLineAsserted => Some(0x00),
+            CpuBusOperation::PendingInterruptMask => Some(0x01),
+            other => panic!("unexpected STOP zombie bus operation: {other:?}"),
+        }
+    });
+    assert_eq!(
+        operations,
+        vec![
+            CpuBusOperation::StopWakeLineAsserted,
+            CpuBusOperation::PendingInterruptMask,
+        ]
+    );
+    assert_eq!(cpu.registers.pc, 0x0101);
+    assert_eq!(cpu.execution_state, CpuExecutionState::ZombieStopped);
+
+    let mut cpu = power_on_cpu();
+    cpu.registers.pc = 0x0101;
+    cpu.ime = false;
+    cpu.instruction_kind = Some(CpuInstructionKind::Stop);
+    let mut operations = Vec::new();
+    cpu.complete_execute_machine_cycle(0x10, 0, &mut |operation| {
+        operations.push(operation);
+        match operation {
+            CpuBusOperation::StopWakeLineAsserted => Some(0x01),
+            CpuBusOperation::PendingInterruptMask => Some(0x00),
+            CpuBusOperation::Read { address } => {
+                assert_eq!(address, 0x0101);
+                Some(0x00)
+            }
+            other => panic!("unexpected STOP halt-like bus operation: {other:?}"),
+        }
+    });
+    assert_eq!(
+        operations,
+        vec![
+            CpuBusOperation::StopWakeLineAsserted,
+            CpuBusOperation::PendingInterruptMask,
+            CpuBusOperation::Read { address: 0x0101 },
+        ]
+    );
+    assert_eq!(cpu.registers.pc, 0x0102);
+    assert!(cpu.halt_request_pending);
+    assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
+
+    let mut cpu = power_on_cpu();
+    cpu.registers.pc = 0x0101;
+    cpu.ime = false;
+    cpu.instruction_kind = Some(CpuInstructionKind::Stop);
+    let mut operations = Vec::new();
+    cpu.complete_execute_machine_cycle(0x10, 0, &mut |operation| {
+        operations.push(operation);
+        match operation {
+            CpuBusOperation::StopWakeLineAsserted => Some(0x01),
+            CpuBusOperation::PendingInterruptMask => Some(0x01),
+            other => panic!("unexpected STOP nop-like bus operation: {other:?}"),
+        }
+    });
+    assert_eq!(
+        operations,
+        vec![
+            CpuBusOperation::StopWakeLineAsserted,
+            CpuBusOperation::PendingInterruptMask,
+        ]
+    );
+    assert_eq!(cpu.registers.pc, 0x0101);
+    assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
 
     let mut cpu = power_on_cpu();
     cpu.registers.pc = 0x4567;

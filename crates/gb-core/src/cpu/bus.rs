@@ -33,24 +33,19 @@ impl CpuCore {
         self.last_address_event = Some(event);
     }
 
-    pub(super) fn read_opcode_u8<F>(&mut self, bus_operation: &mut F) -> u8
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+    pub(super) fn read_opcode_u8(&mut self, bus_operation: &mut CpuBusCallback<'_>) -> u8 {
         self.read_pc_u8_with_kind(bus_operation, CpuTraceBusAccessKind::OpcodeFetch)
     }
 
-    pub(super) fn read_pc_u8<F>(&mut self, bus_operation: &mut F) -> u8
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+    pub(super) fn read_pc_u8(&mut self, bus_operation: &mut CpuBusCallback<'_>) -> u8 {
         self.read_pc_u8_with_kind(bus_operation, CpuTraceBusAccessKind::OperandRead)
     }
 
-    fn read_pc_u8_with_kind<F>(&mut self, bus_operation: &mut F, kind: CpuTraceBusAccessKind) -> u8
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+    fn read_pc_u8_with_kind(
+        &mut self,
+        bus_operation: &mut CpuBusCallback<'_>,
+        kind: CpuTraceBusAccessKind,
+    ) -> u8 {
         let address = self.registers.pc;
         let value = self.read_byte_with_kind(address, bus_operation, kind);
 
@@ -68,35 +63,38 @@ impl CpuCore {
         value
     }
 
-    pub(super) fn read_byte<F>(&mut self, address: u16, bus_operation: &mut F) -> u8
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+    pub(super) fn read_byte(&mut self, address: u16, bus_operation: &mut CpuBusCallback<'_>) -> u8 {
         let value =
             self.read_byte_with_kind(address, bus_operation, CpuTraceBusAccessKind::DataRead);
         self.record_address_event(CpuAddressEvent::read(address));
         value
     }
 
-    fn read_byte_with_kind<F>(
+    fn read_byte_with_kind(
         &mut self,
         address: u16,
-        bus_operation: &mut F,
+        bus_operation: &mut CpuBusCallback<'_>,
         kind: CpuTraceBusAccessKind,
-    ) -> u8
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+    ) -> u8 {
         let value = bus_operation(CpuBusOperation::Read { address })
             .expect("CPU bus read must produce a byte result");
         self.record_bus_activity(kind, address, value);
         value
     }
 
-    pub(super) fn write_byte<F>(&mut self, address: u16, value: u8, bus_operation: &mut F)
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+    pub(super) fn stop_wake_line_asserted(
+        &mut self,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) -> bool {
+        bus_operation(CpuBusOperation::StopWakeLineAsserted).unwrap_or(0) != 0
+    }
+
+    pub(super) fn write_byte(
+        &mut self,
+        address: u16,
+        value: u8,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
         let _ = bus_operation(CpuBusOperation::Write { address, value });
         self.record_bus_activity(CpuTraceBusAccessKind::DataWrite, address, value);
         self.record_address_event(CpuAddressEvent::write(address));
@@ -112,14 +110,11 @@ impl CpuCore {
         }
     }
 
-    pub(super) fn read_hl_with_update<F>(
+    pub(super) fn read_hl_with_update(
         &mut self,
         direction: CpuAddressUpdateDirection,
-        bus_operation: &mut F,
-    ) -> u8
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) -> u8 {
         let address = self.hl();
         let value = self.read_byte(address, bus_operation);
         let updated = self.increment_or_decrement_register16(Register16::HL, direction);
@@ -129,14 +124,12 @@ impl CpuCore {
         value
     }
 
-    pub(super) fn write_hl_with_update<F>(
+    pub(super) fn write_hl_with_update(
         &mut self,
         value: u8,
         direction: CpuAddressUpdateDirection,
-        bus_operation: &mut F,
-    ) where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
         let address = self.hl();
         self.write_byte(address, value, bus_operation);
         let updated = self.increment_or_decrement_register16(Register16::HL, direction);
@@ -145,10 +138,10 @@ impl CpuCore {
         ));
     }
 
-    pub(super) fn read_byte_and_increment_sp<F>(&mut self, bus_operation: &mut F) -> u8
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+    pub(super) fn read_byte_and_increment_sp(
+        &mut self,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) -> u8 {
         let address = self.registers.sp;
         let value = self.read_byte(address, bus_operation);
         self.registers.sp = self.registers.sp.wrapping_add(1);
@@ -168,17 +161,15 @@ impl CpuCore {
         ));
     }
 
-    pub(super) fn write_byte_at_sp<F>(&mut self, value: u8, bus_operation: &mut F)
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+    pub(super) fn write_byte_at_sp(&mut self, value: u8, bus_operation: &mut CpuBusCallback<'_>) {
         self.write_byte(self.registers.sp, value, bus_operation);
     }
 
-    pub(super) fn write_byte_with_decremented_sp<F>(&mut self, value: u8, bus_operation: &mut F)
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+    pub(super) fn write_byte_with_decremented_sp(
+        &mut self,
+        value: u8,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
         self.registers.sp = self.registers.sp.wrapping_sub(1);
         let address = self.registers.sp;
         self.write_byte(address, value, bus_operation);

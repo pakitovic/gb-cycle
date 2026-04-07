@@ -5,11 +5,32 @@ use super::state::{highest_pending_interrupt_from_mask, interrupt_vector};
 use super::*;
 
 impl CpuCore {
+    fn is_stop_sleep_state(&self) -> bool {
+        matches!(
+            self.execution_state,
+            CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+        )
+    }
+
+    const fn interrupt_source_mask(source: InterruptSource) -> u8 {
+        match source {
+            InterruptSource::VBlank => 0x01,
+            InterruptSource::LcdStat => 0x02,
+            InterruptSource::Timer => 0x04,
+            InterruptSource::Serial => 0x08,
+            InterruptSource::Joypad => 0x10,
+        }
+    }
+
     pub(crate) fn evaluate_wake_and_interrupts(
         &mut self,
         interrupts: &mut InterruptController,
         joypad: &mut Joypad,
     ) {
+        if !self.is_stop_sleep_state() {
+            let _ = joypad.consume_stop_wake_event();
+        }
+
         if matches!(
             self.execution_state,
             CpuExecutionState::DiagnosticTrap { .. }
@@ -17,9 +38,19 @@ impl CpuCore {
             return;
         }
 
-        if matches!(self.execution_state, CpuExecutionState::Stopped) {
+        if self.is_stop_sleep_state() {
             if joypad.consume_stop_wake_event() {
-                self.execution_state = CpuExecutionState::fetch_opcode();
+                if matches!(self.execution_state, CpuExecutionState::Stopped)
+                    && self.ime
+                    && interrupts.pending_mask()
+                        & Self::interrupt_source_mask(InterruptSource::Joypad)
+                        != 0
+                {
+                    interrupts.clear(InterruptSource::Joypad);
+                    self.begin_stop_wake_bugged_interrupt_service();
+                } else {
+                    self.execution_state = CpuExecutionState::fetch_opcode();
+                }
             }
             return;
         }
@@ -105,6 +136,27 @@ impl CpuCore {
         };
     }
 
+    fn begin_stop_wake_bugged_interrupt_service(&mut self) {
+        self.ime = false;
+        self.cancel_delayed_ime_enable();
+        self.current_opcode = None;
+        self.instruction_kind = None;
+        self.cb_instruction_kind = None;
+        self.operand8_latch = 0;
+        self.operand16_latch = 0;
+        self.execution_state = CpuExecutionState::ServiceStopWakeBuggedInterrupt {
+            step: 0,
+            t_cycle: 0,
+        };
+    }
+
+    fn advance_stop_wake_bugged_interrupt_service(&mut self, next_step: u8) {
+        self.execution_state = CpuExecutionState::ServiceStopWakeBuggedInterrupt {
+            step: next_step,
+            t_cycle: 0,
+        };
+    }
+
     fn finish_interrupt_service(&mut self) {
         self.current_opcode = None;
         self.instruction_kind = None;
@@ -114,55 +166,94 @@ impl CpuCore {
         self.execution_state = CpuExecutionState::fetch_opcode();
     }
 
-    pub(super) fn complete_interrupt_service_machine_cycle<F>(
+    pub(super) fn complete_interrupt_service_machine_cycle(
         &mut self,
         source: InterruptSource,
         step: u8,
-        bus_operation: &mut F,
-    ) -> Option<InterruptSource>
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
         match step {
             0 | 1 => {
                 self.advance_interrupt_service(source, step + 1);
-                None
             }
             2 => {
                 let [low, _high] = self.registers.pc.to_le_bytes();
                 self.operand8_latch = low;
                 self.decrement_sp_and_record_idu_event();
                 self.advance_interrupt_service(source, 3);
-                None
             }
             3 => {
                 let [_low, high] = self.registers.pc.to_le_bytes();
                 let upper_pc_push_targets_ie = self.registers.sp == 0xFFFF;
                 self.write_byte_at_sp(high, bus_operation);
-                // IE can be the target of the upper-byte push at 0xFFFF, so the
-                // dispatch source must stay live until after this write commits.
                 if upper_pc_push_targets_ie {
-                    if let Some(next_source) = self.current_highest_pending_interrupt(bus_operation)
-                    {
+                    let pending_mask = self.current_pending_interrupt_mask(bus_operation);
+                    let current_ie = self.current_interrupt_enable_mask(bus_operation);
+                    // The accepted source was already acknowledged in IF when
+                    // service began, but it remains latched internally until
+                    // the upper-byte IE write has a chance to cancel or
+                    // retarget the dispatch.
+                    let candidate_mask =
+                        pending_mask | (current_ie & Self::interrupt_source_mask(source));
+
+                    if let Some(next_source) = highest_pending_interrupt_from_mask(candidate_mask) {
+                        if next_source != source {
+                            self.request_interrupt(source, bus_operation);
+                            self.acknowledge_interrupt(next_source, bus_operation);
+                        }
                         self.advance_interrupt_service(next_source, 4);
                     } else {
+                        self.request_interrupt(source, bus_operation);
                         self.registers.pc = 0x0000;
                         self.finish_interrupt_service();
                     }
                 } else {
                     self.advance_interrupt_service(source, 4);
                 }
-                None
             }
             4 => {
                 self.write_byte_with_decremented_sp(self.operand8_latch, bus_operation);
                 self.registers.pc = interrupt_vector(source);
                 self.finish_interrupt_service();
-                Some(source)
             }
             _ => {
                 self.advance_interrupt_service(source, step);
-                None
+            }
+        }
+    }
+
+    pub(super) fn complete_stop_wake_bugged_interrupt_service_machine_cycle(
+        &mut self,
+        step: u8,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
+        match step {
+            0 | 1 => {
+                self.advance_stop_wake_bugged_interrupt_service(step + 1);
+            }
+            2 => {
+                let [low, _high] = self.registers.pc.to_le_bytes();
+                self.operand8_latch = low;
+                self.decrement_sp_and_record_idu_event();
+                self.advance_stop_wake_bugged_interrupt_service(3);
+            }
+            3 => {
+                let [_low, high] = self.registers.pc.to_le_bytes();
+                self.write_byte_at_sp(high, bus_operation);
+                self.advance_stop_wake_bugged_interrupt_service(4);
+            }
+            4 => {
+                // Hardware research describes STOP wake with IME=1 as a bugged
+                // interrupt that vectors to 0x0000 and often corrupts the stack.
+                // The current repo baseline makes that corruption deterministic
+                // by dropping the final push-side SP decrement, so the low byte
+                // overwrites the previously written high-byte slot.
+                self.write_byte_at_sp(self.operand8_latch, bus_operation);
+                self.registers.pc = 0x0000;
+                self.finish_interrupt_service();
+            }
+            _ => {
+                self.advance_stop_wake_bugged_interrupt_service(step);
             }
         }
     }
@@ -177,18 +268,48 @@ impl CpuCore {
             return;
         };
 
+        // Pan Docs documents the IF acknowledge at interrupt acceptance. The
+        // accepted source stays latched in ServiceInterrupt so IE@FFFF can
+        // still cancel or retarget later in the push sequence.
+        interrupts.clear(source);
         self.begin_interrupt_service(source);
     }
 
-    pub(super) fn current_highest_pending_interrupt<F>(
+    fn request_interrupt(
         &mut self,
-        bus_operation: &mut F,
-    ) -> Option<InterruptSource>
-    where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
-        let pending_mask = bus_operation(CpuBusOperation::PendingInterruptMask).unwrap_or(0);
-        highest_pending_interrupt_from_mask(pending_mask)
+        source: InterruptSource,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
+        let _ = bus_operation(CpuBusOperation::RequestInterrupt { source });
+    }
+
+    fn acknowledge_interrupt(
+        &mut self,
+        source: InterruptSource,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
+        let _ = bus_operation(CpuBusOperation::AcknowledgeInterrupt { source });
+    }
+
+    pub(super) fn current_pending_interrupt_mask(
+        &mut self,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) -> u8 {
+        bus_operation(CpuBusOperation::PendingInterruptMask).unwrap_or(0)
+    }
+
+    pub(super) fn current_highest_pending_interrupt(
+        &mut self,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) -> Option<InterruptSource> {
+        highest_pending_interrupt_from_mask(self.current_pending_interrupt_mask(bus_operation))
+    }
+
+    pub(super) fn current_interrupt_enable_mask(
+        &mut self,
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) -> u8 {
+        bus_operation(CpuBusOperation::InterruptEnableMask).unwrap_or(0)
     }
 
     pub(super) fn schedule_delayed_ime_enable(&mut self) {

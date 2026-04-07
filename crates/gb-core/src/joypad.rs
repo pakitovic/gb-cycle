@@ -77,16 +77,11 @@ impl Joypad {
 
     pub fn set_button_pressed(&mut self, button: JoypadButton, pressed: bool) {
         let bit = button_mask(button);
-        let was_pressed = self.pressed_mask & bit != 0;
 
         if pressed {
             self.pressed_mask |= bit;
         } else {
             self.pressed_mask &= !bit;
-        }
-
-        if pressed && !was_pressed {
-            self.stop_wake_pending = true;
         }
 
         self.update_visible_edge_state();
@@ -113,6 +108,10 @@ impl Joypad {
         let was_pending = self.stop_wake_pending;
         self.stop_wake_pending = false;
         was_pending
+    }
+
+    pub(crate) fn stop_wake_line_asserted(&self) -> bool {
+        self.visible_low_nibble() != 0x0F
     }
 
     pub(crate) fn consume_interrupt_request(&mut self) -> bool {
@@ -167,6 +166,7 @@ impl Joypad {
 
         if gained_visible_low_bit(self.previous_visible_low_nibble, visible_low_nibble) {
             self.interrupt_request_pending = true;
+            self.stop_wake_pending = true;
         }
 
         self.previous_visible_low_nibble = visible_low_nibble;

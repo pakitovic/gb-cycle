@@ -2,15 +2,13 @@ use super::super::decode::CpuInstructionKind;
 use super::super::*;
 
 impl CpuCore {
-    pub(super) fn execute_control_flow_machine_cycle<F>(
+    pub(super) fn execute_control_flow_machine_cycle(
         &mut self,
         kind: CpuInstructionKind,
         opcode: u8,
         step: u8,
-        bus_operation: &mut F,
-    ) where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
         match kind {
             CpuInstructionKind::RelativeJump { condition } => match step {
                 0 => {
@@ -143,8 +141,39 @@ impl CpuCore {
             },
             CpuInstructionKind::Stop => match step {
                 0 => {
-                    let _ = self.read_pc_u8(bus_operation);
-                    self.enter_stopped_state();
+                    let wake_line_asserted = self.stop_wake_line_asserted(bus_operation);
+
+                    if !self.ime {
+                        let pending_interrupt = self
+                            .current_highest_pending_interrupt(bus_operation)
+                            .is_some();
+
+                        match (wake_line_asserted, pending_interrupt) {
+                            (false, false) => {
+                                let _ = self.read_pc_u8(bus_operation);
+                                self.enter_stopped_state();
+                            }
+                            (false, true) => {
+                                self.enter_zombie_stopped_state();
+                            }
+                            (true, false) => {
+                                let _ = self.read_pc_u8(bus_operation);
+                                self.finish_and_request_halt();
+                            }
+                            (true, true) => {
+                                self.finish_instruction();
+                            }
+                        }
+                    } else if wake_line_asserted {
+                        // The real fetch path finishes this branch on the opcode
+                        // fetch M-cycle so STOP behaves like a one-byte NOP.
+                        // Keep the execute-stage fallback aligned for direct unit
+                        // tests and any future non-fetch entry paths.
+                        self.finish_instruction();
+                    } else {
+                        let _ = self.read_pc_u8(bus_operation);
+                        self.enter_stopped_state();
+                    }
                 }
                 _ => self.stall_instruction(opcode, step),
             },

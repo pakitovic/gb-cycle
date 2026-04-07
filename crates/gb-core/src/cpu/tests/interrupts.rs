@@ -1,4 +1,5 @@
 use super::*;
+use crate::joypad::JoypadButton;
 
 #[test]
 fn interrupt_service_uses_a_five_machine_cycle_sequence_and_pushes_pc_bytewise() {
@@ -20,7 +21,7 @@ fn interrupt_service_uses_a_five_machine_cycle_sequence_and_pushes_pc_bytewise()
     cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
 
     assert!(!cpu.ime());
-    assert_eq!(interrupts.read_if(), 0xE1);
+    assert_eq!(interrupts.read_if(), 0xE0);
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -158,6 +159,7 @@ fn interrupt_service_keeps_the_accepted_source_latched_until_vector_commit() {
 
     cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
 
+    assert_eq!(interrupts.read_if(), 0xE0);
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -196,7 +198,7 @@ fn halt_with_a_pending_interrupt_and_ime_enabled_enters_service_without_staying_
 
     cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
 
-    assert_eq!(interrupts.read_if(), 0xE1);
+    assert_eq!(interrupts.read_if(), 0xE0);
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::ServiceInterrupt {
@@ -226,7 +228,7 @@ fn ei_halt_with_a_pending_interrupt_services_and_preserves_the_halt_return_addre
     cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
 
     assert!(!cpu.ime());
-    assert_eq!(interrupts.read_if(), 0xE1);
+    assert_eq!(interrupts.read_if(), 0xE0);
     assert_eq!(cpu.registers().pc, 0x0150);
     assert_eq!(
         cpu.execution_state(),
@@ -235,5 +237,142 @@ fn ei_halt_with_a_pending_interrupt_services_and_preserves_the_halt_return_addre
             step: 0,
             t_cycle: 0,
         }
+    );
+}
+
+#[test]
+fn interrupt_rerequest_from_the_same_source_remains_pending_after_service() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cartridge = build_test_cartridge(&[]);
+    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+
+    cpu.apply_startup_state(CpuStartupState {
+        pc: 0x0150,
+        sp: 0xFFFE,
+        ..CpuStartupState::power_on_reset()
+    });
+    cpu.ime = true;
+    interrupts.write_ie(0x04);
+    interrupts.write_if(0x04);
+
+    cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
+
+    assert_eq!(interrupts.read_if(), 0xE0);
+    tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 12);
+    interrupts.request(InterruptSource::Timer);
+    tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 8);
+
+    assert_eq!(cpu.registers().pc, 0x0050);
+    assert_eq!(interrupts.read_if(), 0xE4);
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
+fn upper_pc_push_into_ie_can_cancel_service_and_restore_the_accepted_if_bit() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cartridge = build_test_cartridge(&[]);
+    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+
+    cpu.apply_startup_state(CpuStartupState {
+        pc: 0x0200,
+        sp: 0x0000,
+        ..CpuStartupState::power_on_reset()
+    });
+    cpu.ime = true;
+    interrupts.write_ie(0x04);
+    interrupts.write_if(0x04);
+
+    cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
+
+    assert_eq!(interrupts.read_if(), 0xE0);
+    tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 16);
+
+    assert_eq!(cpu.registers().pc, 0x0000);
+    assert_eq!(interrupts.read_if(), 0xE4);
+    assert!(!cpu.ime());
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
+fn upper_pc_push_into_ie_can_retarget_service_and_restore_the_unserved_if_bit() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cartridge = build_test_cartridge(&[]);
+    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+
+    cpu.apply_startup_state(CpuStartupState {
+        pc: 0x0200,
+        sp: 0x0000,
+        ..CpuStartupState::power_on_reset()
+    });
+    cpu.ime = true;
+    interrupts.write_ie(0x03);
+    interrupts.write_if(0x03);
+
+    cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
+
+    assert_eq!(interrupts.read_if(), 0xE2);
+    tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 20);
+
+    assert_eq!(cpu.registers().pc, 0x0048);
+    assert_eq!(interrupts.read_if(), 0xE1);
+    assert!(!cpu.ime());
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+}
+
+#[test]
+fn stop_wake_with_ime_enabled_and_a_pending_joypad_irq_enters_bugged_interrupt_service() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut cartridge = build_test_cartridge(&[]);
+    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+
+    cpu.apply_startup_state(CpuStartupState {
+        pc: 0x0104,
+        sp: 0xFFFE,
+        ..CpuStartupState::power_on_reset()
+    });
+    cpu.ime = true;
+    cpu.execution_state = CpuExecutionState::Stopped;
+    interrupts.write_ie(0x10);
+    interrupts.write_if(0x10);
+    joypad.write_p1(0x10);
+    joypad.set_button_pressed(JoypadButton::A, true);
+
+    cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
+
+    assert!(!cpu.ime());
+    assert_eq!(interrupts.read_if(), 0xE0);
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::ServiceStopWakeBuggedInterrupt {
+            step: 0,
+            t_cycle: 0,
+        }
+    );
+
+    tick_cpu_n_with_interrupts(&mut cpu, &mut bus, &mut cartridge, &mut interrupts, 20);
+
+    assert_eq!(cpu.registers().pc, 0x0000);
+    assert_eq!(cpu.registers().sp, 0xFFFD);
+    assert_eq!(bus.read(0xFFFD), 0x04);
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
 }

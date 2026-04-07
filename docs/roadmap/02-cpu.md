@@ -142,11 +142,23 @@ instruction-level shortcuts or hidden timing.
    through the joypad-owned hardware path rather than a frontend-only resume.
    Validation gate: focused tests cover `HALT` with `IME = 1`, `HALT` with
    `IME = 0`, already-pending IRQ plus `HALT`, `HALT` bug fetch behavior,
-   selection-independent DMG `STOP` wake, and the ordering between wake and
-   later interrupt acceptance.
+   row-selected DMG `STOP` wake, and the ordering between wake and later
+   interrupt acceptance.
    Closure note: this phase closes the baseline control-state model for
    `HALT`, `STOP`, wake from joypad-owned input transitions, and a next-fetch
-   `HALT` bug implementation on the shared scheduler timeline.
+   `HALT` bug implementation on the shared scheduler timeline, including the
+   explicit DMG `STOP` entry matrix for real-stop, zombie-stop, HALT-like, and
+   NOP-like behavior under `IME = 0`, plus the simpler `IME = 1` entry rule
+   where `WAKE = 1` collapses to a one-byte NOP-like path and `WAKE = 0`
+   enters the ordinary two-byte-visible stop. The same baseline now also
+   includes one explicit deterministic model for the documented `IME = 1`
+   wakeup-time joypad IRQ glitch family: a bugged interrupt-service window to
+   `0x0000` plus a corrupted push caused by losing the final stack-side
+   decrement during that service. The `IME = 0`, `WAKE = 0`, pending-IRQ
+   zombie-stop branch is also explicit now: it appears as a 1-byte `STOP`
+   sleep state that resumes CPU fetch from `PC + 1` on a later joypad-owned
+   wake event, while the repo still treats the reported "high power" aspect as
+   non-software-visible and therefore not as a separate shared-clock mode.
 7. `Phase 2.7` - Timer edge model, overflow pipeline, and delayed timer IRQ.
    Acceptance criteria: timer state is driven by the shared internal divider on
    the global T-cycle timeline, `DIV` stays a derived view of the internal
@@ -188,4 +200,3 @@ instruction-level shortcuts or hidden timing.
 - incorrect interrupt acceptance
 - timer that appears correct but is temporally false
 - the need to rework much of the core when integrating PPU, DMA, or demanding test ROMs
-

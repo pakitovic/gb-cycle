@@ -2,40 +2,30 @@ use super::super::decode::{CbInstructionKind, Register8Operand};
 use super::super::*;
 
 impl CpuCore {
-    pub(super) fn execute_cb_prefixed_machine_cycle<F>(
+    pub(super) fn execute_cb_prefixed_machine_cycle(
         &mut self,
         opcode: u8,
         step: u8,
-        bus_operation: &mut F,
-    ) where
-        F: FnMut(CpuBusOperation) -> Option<u8>,
-    {
+        bus_operation: &mut CpuBusCallback<'_>,
+    ) {
         match step {
             0 => {
                 let cb_opcode = self.read_pc_u8(bus_operation);
                 self.operand8_latch = cb_opcode;
 
-                match self.decode_cb_opcode(cb_opcode) {
-                    Some(kind) => match kind.target() {
-                        Register8Operand::Register(target) => {
-                            let value = self.read_register8(target);
-                            if let Some(result) = self.apply_cb_operation(kind, value) {
-                                self.write_register8(target, result);
-                            }
-                            self.finish_instruction();
+                let kind = self.decode_cb_opcode(cb_opcode);
+
+                match kind.target() {
+                    Register8Operand::Register(target) => {
+                        let value = self.read_register8(target);
+                        if let Some(result) = self.apply_cb_operation(kind, value) {
+                            self.write_register8(target, result);
                         }
-                        Register8Operand::IndirectHl => {
-                            self.cb_instruction_kind = Some(kind);
-                            self.advance_instruction(opcode, 1);
-                        }
-                    },
-                    None => {
-                        self.execution_state = CpuExecutionState::DiagnosticTrap {
-                            trap: CpuDiagnosticTrap::UnsupportedCbOpcode {
-                                opcode: cb_opcode,
-                                address: self.registers.pc.wrapping_sub(1),
-                            },
-                        };
+                        self.finish_instruction();
+                    }
+                    Register8Operand::IndirectHl => {
+                        self.cb_instruction_kind = Some(kind);
+                        self.advance_instruction(opcode, 1);
                     }
                 }
             }

@@ -8,7 +8,9 @@ use crate::cartridge::{
     CartridgeDiagnostic, CartridgeLoadError, CartridgePersistentStateError, CartridgeSlot,
     PersistentCartState,
 };
-use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuBusOperation, CpuCore};
+use crate::cpu::{
+    CpuAddressEvent, CpuAddressEventKind, CpuBusOperation, CpuCore, CpuExecutionState,
+};
 use crate::debugger::{
     DebugControl, MachineSnapshot, TraceBuffer, TraceLevel, TraceSink, TraceSnapshotProvider,
     TraceSubsystem, TraceSummaryBuffer, Tracer,
@@ -355,62 +357,73 @@ impl<S: TraceSink> Machine<S> {
         self.scheduler
             .step_with_trace(&mut self.tracer, |context, tracer| match context.phase() {
                 SchedulerPhase::DerivedEdgeResolution => {
-                    timer.tick_t_cycle(context);
+                    if !matches!(
+                        cpu.execution_state(),
+                        CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+                    ) {
+                        timer.tick_t_cycle(context);
+                    }
                     tracer.emit_with(TraceSubsystem::Timer, TraceLevel::Trace, || {
                         timer.scheduler_trace_message(context)
                     });
                 }
                 SchedulerPhase::AutonomousPeripheralTicks => {
-                    apu.tick_t_cycle(context);
-                    let dma_transfer_work = dma.tick_t_cycle(context);
-                    let dma_oam_conflict_address = dma_transfer_work.and_then(|transfer_work| {
-                        let destination_address = transfer_work.destination_address();
-                        (0xFE00..=0xFE9F)
-                            .contains(&destination_address)
-                            .then_some(destination_address)
-                    });
-                    let dma_oam_active = dma.bus_state().active_region().is_some();
-                    bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
-                    let (oam_view, vram_view) = bus.video_views(BusMaster::Ppu);
-                    ppu.tick_t_cycle(
-                        context,
-                        oam_view,
-                        vram_view,
-                        dma_oam_active,
-                        dma_oam_conflict_address,
-                    );
-                    bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
-                    serial.tick_t_cycle(context);
-                    if let Some(transfer_work) = dma_transfer_work {
-                        let arbitration_state = BusArbitrationState::default()
-                            .with_boot_rom(boot.bus_state())
-                            .with_ppu(ppu.bus_state())
-                            .with_dma(dma.bus_state());
-                        let value = bus.read_with_context(
-                            transfer_work.source_address(),
-                            BusRequester::Dma,
-                            &arbitration_state,
-                            Some(&*cartridge),
-                            BusIoReadView {
-                                apu: Some(&*apu),
-                                timer: Some(&*timer),
-                                serial: Some(&*serial),
-                                dma: Some(&*dma),
-                                boot: Some(&*boot),
-                                interrupts: Some(&*interrupts),
-                                interrupt_flag_pending_mask: 0,
-                                joypad: Some(&*joypad),
-                                ppu: Some(&*ppu),
-                            },
+                    if !matches!(
+                        cpu.execution_state(),
+                        CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+                    ) {
+                        apu.tick_t_cycle(context);
+                        let dma_transfer_work = dma.tick_t_cycle(context);
+                        let dma_oam_conflict_address =
+                            dma_transfer_work.and_then(|transfer_work| {
+                                let destination_address = transfer_work.destination_address();
+                                (0xFE00..=0xFE9F)
+                                    .contains(&destination_address)
+                                    .then_some(destination_address)
+                            });
+                        let dma_oam_active = dma.bus_state().active_region().is_some();
+                        bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
+                        let (oam_view, vram_view) = bus.video_views(BusMaster::Ppu);
+                        ppu.tick_t_cycle(
+                            context,
+                            oam_view,
+                            vram_view,
+                            dma_oam_active,
+                            dma_oam_conflict_address,
                         );
-                        bus.write_with_context(
-                            transfer_work.destination_address(),
-                            value,
-                            BusRequester::Dma,
-                            &arbitration_state,
-                            None,
-                            BusIoWriteView::default(),
-                        );
+                        bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
+                        serial.tick_t_cycle(context);
+                        if let Some(transfer_work) = dma_transfer_work {
+                            let arbitration_state = BusArbitrationState::default()
+                                .with_boot_rom(boot.bus_state())
+                                .with_ppu(ppu.bus_state())
+                                .with_dma(dma.bus_state());
+                            let value = bus.read_with_context(
+                                transfer_work.source_address(),
+                                BusRequester::Dma,
+                                &arbitration_state,
+                                Some(&*cartridge),
+                                BusIoReadView {
+                                    apu: Some(&*apu),
+                                    timer: Some(&*timer),
+                                    serial: Some(&*serial),
+                                    dma: Some(&*dma),
+                                    boot: Some(&*boot),
+                                    interrupts: Some(&*interrupts),
+                                    interrupt_flag_pending_mask: 0,
+                                    joypad: Some(&*joypad),
+                                    ppu: Some(&*ppu),
+                                },
+                            );
+                            bus.write_with_context(
+                                transfer_work.destination_address(),
+                                value,
+                                BusRequester::Dma,
+                                &arbitration_state,
+                                None,
+                                BusIoWriteView::default(),
+                            );
+                        }
                     }
                     tracer.emit_with(TraceSubsystem::Dma, TraceLevel::Trace, || {
                         dma.scheduler_trace_message(context)
@@ -441,7 +454,7 @@ impl<S: TraceSink> Machine<S> {
                         .with_dma(dma.bus_state());
                     let interrupt_flag_pending_mask =
                         current_cycle_interrupt_read_mask(context, ppu, joypad);
-                    let acknowledged_interrupt = cpu.tick_t_cycle(|operation| match operation {
+                    cpu.tick_t_cycle(|operation| match operation {
                         CpuBusOperation::Read { address } => Some(bus.read_with_context(
                             address,
                             BusRequester::Cpu,
@@ -486,10 +499,23 @@ impl<S: TraceSink> Machine<S> {
                             None
                         }
                         CpuBusOperation::PendingInterruptMask => Some(interrupts.pending_mask()),
+                        CpuBusOperation::InterruptEnableMask => Some(interrupts.read_ie()),
+                        CpuBusOperation::StopWakeLineAsserted => {
+                            Some(u8::from(joypad.stop_wake_line_asserted()))
+                        }
+                        CpuBusOperation::AcknowledgeInterrupt { source } => {
+                            interrupts.clear(source);
+                            None
+                        }
+                        CpuBusOperation::RequestInterrupt { source } => {
+                            interrupts.request(source);
+                            None
+                        }
                     });
-                    if let Some(source) = acknowledged_interrupt {
-                        interrupts.clear(source);
-                    }
+                    ppu.set_system_stop_active(matches!(
+                        cpu.execution_state(),
+                        CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+                    ));
                     if let Some(event) = cpu.last_address_event() {
                         bus.route_cpu_address_event(event, &arbitration_state, ppu);
                     }
@@ -524,6 +550,10 @@ impl<S: TraceSink> Machine<S> {
                 }
                 SchedulerPhase::CpuWakeInterruptEvaluation => {
                     cpu.evaluate_wake_and_interrupts(interrupts, joypad);
+                    ppu.set_system_stop_active(matches!(
+                        cpu.execution_state(),
+                        CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+                    ));
                     if joypad.should_emit_scheduler_trace() {
                         tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
                             joypad.scheduler_trace_message(context)

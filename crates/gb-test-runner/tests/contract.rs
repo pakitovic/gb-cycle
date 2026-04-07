@@ -452,14 +452,24 @@ fn phase_2_rom_automation_targets_validate_for_cpu_and_interrupt_timing() {
         .iter()
         .find(|case| case.id == "phase2-halt-stop-and-halt-bug")
         .expect("halt/stop case should exist");
-    assert_eq!(halt_stop_case.external_stimuli.stimuli().len(), 1);
+    assert_eq!(halt_stop_case.external_stimuli.stimuli().len(), 2);
     assert_eq!(
         halt_stop_case.external_stimuli.stimuli()[0],
         ExternalStimulus::at_t_cycle(
-            372,
+            356,
             ExternalStimulusAction::JoypadSetButton {
                 button: JoypadButton::A,
                 pressed: true,
+            }
+        )
+    );
+    assert_eq!(
+        halt_stop_case.external_stimuli.stimuli()[1],
+        ExternalStimulus::at_t_cycle(
+            357,
+            ExternalStimulusAction::WriteMemory {
+                address: 0xFF0F,
+                value: 0x01,
             }
         )
     );
