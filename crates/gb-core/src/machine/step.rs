@@ -11,7 +11,7 @@ use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
-use crate::ppu::Ppu;
+use crate::ppu::{Ppu, PpuDmaOamConflict};
 use crate::scheduler::{
     CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
 };
@@ -178,35 +178,15 @@ impl MachinePhaseRunner<'_> {
 
             apu.tick_t_cycle(context);
             let dma_transfer_work = dma.tick_t_cycle(context);
-            let dma_oam_conflict_address = dma_transfer_work.and_then(|transfer_work| {
-                let destination_address = transfer_work.destination_address();
-                (0xFE00..=0xFE9F)
-                    .contains(&destination_address)
-                    .then_some(destination_address)
-            });
-            let dma_oam_active = dma.bus_state().active_region().is_some();
-
-            bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
-            let (oam_view, vram_view) = bus.video_views(BusMaster::Ppu);
-            ppu.tick_t_cycle(
-                context,
-                oam_view,
-                vram_view,
-                dma_oam_active,
-                dma_oam_conflict_address,
-            );
-            bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
-            serial.tick_t_cycle(context);
-
-            if let Some(transfer_work) = dma_transfer_work {
-                let arbitration_state = BusArbitrationState::default()
-                    .with_boot_rom(boot.bus_state())
-                    .with_ppu(ppu.bus_state())
-                    .with_dma(dma.bus_state());
-                let value = bus.read_with_t_cycle_context(
+            let dma_arbitration_state = BusArbitrationState::default()
+                .with_boot_rom(boot.bus_state())
+                .with_ppu(ppu.bus_state())
+                .with_dma(dma.bus_state());
+            let dma_transfer_byte = dma_transfer_work.map(|transfer_work| {
+                bus.read_with_t_cycle_context(
                     transfer_work.source_address(),
                     BusRequester::Dma,
-                    &arbitration_state,
+                    &dma_arbitration_state,
                     context.t_cycle(),
                     Some(cartridge),
                     BusIoReadView {
@@ -220,12 +200,37 @@ impl MachinePhaseRunner<'_> {
                         joypad: Some(*joypad),
                         ppu: Some(*ppu),
                     },
-                );
+                )
+            });
+            let dma_oam_conflict =
+                dma_transfer_work
+                    .zip(dma_transfer_byte)
+                    .and_then(|(transfer_work, value)| {
+                        let destination_address = transfer_work.destination_address();
+                        (0xFE00..=0xFE9F)
+                            .contains(&destination_address)
+                            .then_some(PpuDmaOamConflict::new(destination_address, value))
+                    });
+            let dma_oam_active = dma.bus_state().active_region().is_some();
+
+            bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
+            let (oam_view, vram_view) = bus.video_views(BusMaster::Ppu);
+            ppu.tick_t_cycle(
+                context,
+                oam_view,
+                vram_view,
+                dma_oam_active,
+                dma_oam_conflict,
+            );
+            bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
+            serial.tick_t_cycle(context);
+
+            if let Some((transfer_work, value)) = dma_transfer_work.zip(dma_transfer_byte) {
                 bus.write_with_context(
                     transfer_work.destination_address(),
                     value,
                     BusRequester::Dma,
-                    &arbitration_state,
+                    &dma_arbitration_state,
                     None,
                     BusIoWriteView::default(),
                 );

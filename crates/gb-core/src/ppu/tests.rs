@@ -43,7 +43,7 @@ fn tick_ppu_with_vram_and_dma(
     oam_bytes: &[u8],
     vram_bytes: &[u8],
     dma_oam_active: bool,
-    dma_oam_conflict_address: Option<u16>,
+    dma_oam_conflict: Option<PpuDmaOamConflict>,
 ) -> CycleContext {
     let mut context = CycleContext::for_cycle(TCycle::new(t_cycle));
     let mut oam = crate::bus::OamDomain::from_bytes(oam_bytes);
@@ -54,7 +54,7 @@ fn tick_ppu_with_vram_and_dma(
         OamBusView::new(BusMaster::Ppu, &mut oam),
         VramBusView::new(BusMaster::Ppu, &mut vram),
         dma_oam_active,
-        dma_oam_conflict_address,
+        dma_oam_conflict,
     );
     context
 }
@@ -943,7 +943,7 @@ fn mode2_scans_oam_in_order_and_caps_the_selected_list_at_ten_entries() {
 }
 
 #[test]
-fn dmg_mode2_oam_dma_reuses_the_last_latched_oam_word_for_selection() {
+fn dmg_mode2_oam_dma_reuses_the_last_latched_mode2_yx_word_for_selection() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let mut oam_bytes = [0; 160];
 
@@ -977,7 +977,7 @@ fn dmg_mode2_oam_dma_reuses_the_last_latched_oam_word_for_selection() {
 }
 
 #[test]
-fn mode2_scanline_reset_preserves_the_latched_oam_word_for_dma_blocked_reads() {
+fn mode2_scanline_reset_preserves_the_latched_mode2_yx_word_for_dma_blocked_reads() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let mut oam_bytes = [0; 160];
 
@@ -995,7 +995,7 @@ fn mode2_scanline_reset_preserves_the_latched_oam_word_for_dma_blocked_reads() {
         wx: 0x00,
         obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
     });
-    ppu.mode2_scan_state.latch_oam_word(16, 79);
+    ppu.mode2_scan_state.latch_mode2_yx_word(16, 79);
     ppu.mode2_scan_state.reset_scanline();
 
     tick_ppu_with_vram_and_dma(&mut ppu, 0, &oam_bytes, &[0; TEST_VRAM_BYTES], true, None);
@@ -1007,6 +1007,70 @@ fn mode2_scanline_reset_preserves_the_latched_oam_word_for_dma_blocked_reads() {
     assert_eq!(snapshot.selected_sprites[0].oam_index, 0);
     assert_eq!(snapshot.selected_sprites[0].y, 16);
     assert_eq!(snapshot.selected_sprites[0].x, 79);
+}
+
+#[test]
+fn late_obj_metadata_fetch_does_not_poison_the_mode2_dma_yx_latch() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut oam_bytes = [0; 160];
+
+    write_oam_entry_with_attributes(&mut oam_bytes, 0, 0, 0, 0xA5, 0x5A);
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x80,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.mode2_scan_state.latch_mode2_yx_word(16, 79);
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let resolved = ppu.resolve_obj_fetch_sprite(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        PpuSelectedSprite {
+            oam_index: 0,
+            y: 0,
+            x: 0,
+            tile_index: 0,
+            attributes: 0,
+        },
+        None,
+    );
+
+    assert_eq!(resolved.tile_index, 0xA5);
+    assert_eq!(resolved.attributes, 0x5A);
+    assert_eq!(ppu.mode2_scan_state.latched_mode2_yx_word(), Some((16, 79)));
+    assert_eq!(
+        ppu.obj_pipeline_state.late_metadata_word,
+        Some((0xA5, 0x5A))
+    );
+
+    tick_ppu_with_vram_and_dma(&mut ppu, 0, &oam_bytes, &[0; TEST_VRAM_BYTES], true, None);
+    tick_ppu_with_vram_and_dma(&mut ppu, 1, &oam_bytes, &[0; TEST_VRAM_BYTES], true, None);
+
+    let snapshot = ppu.snapshot();
+    assert_eq!(snapshot.mode2_scanned_entries, 1);
+    assert_eq!(snapshot.selected_sprites.len(), 1);
+    assert_eq!(snapshot.selected_sprites[0].oam_index, 0);
+    assert_eq!(snapshot.selected_sprites[0].y, 16);
+    assert_eq!(snapshot.selected_sprites[0].x, 79);
+}
+
+#[test]
+fn resetting_the_obj_pipeline_clears_the_separate_late_metadata_word() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.obj_pipeline_state.late_metadata_word = Some((0x12, 0x34));
+
+    ppu.obj_pipeline_state.reset();
+
+    assert_eq!(ppu.obj_pipeline_state.late_metadata_word, None);
 }
 
 #[test]
@@ -3320,9 +3384,40 @@ fn object_fetch_uses_the_dma_conflict_word_address_for_late_oam_metadata_reads()
     let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
     let oam = OamBusView::new(BusMaster::Ppu, &mut oam);
 
-    let (tile_index, attributes) = read_obj_fetch_sprite_metadata(&oam, sprite, Some(0xFE17));
+    let (tile_index, attributes) =
+        read_obj_fetch_sprite_metadata(&oam, sprite, Some(PpuDmaOamConflict::new(0xFE17, 0x77)));
 
     assert_eq!(tile_index, 0x99);
+    assert_eq!(attributes, 0x77);
+}
+
+#[test]
+fn object_fetch_uses_the_current_dma_byte_for_even_conflict_word_reads() {
+    let sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 24,
+        tile_index: 0x11,
+        attributes: 0x22,
+    };
+    let mut oam_bytes = [0; 160];
+    write_oam_entry_with_attributes(
+        &mut oam_bytes,
+        sprite.oam_index,
+        sprite.y,
+        sprite.x,
+        0x44,
+        0xA0,
+    );
+    write_oam_entry_with_attributes(&mut oam_bytes, 5, 32, 40, 0x99, 0x10);
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+    let oam = OamBusView::new(BusMaster::Ppu, &mut oam);
+
+    let (tile_index, attributes) =
+        read_obj_fetch_sprite_metadata(&oam, sprite, Some(PpuDmaOamConflict::new(0xFE16, 0x66)));
+
+    assert_eq!(tile_index, 0x66);
     assert_eq!(attributes, 0x10);
 }
 

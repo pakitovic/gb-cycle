@@ -49,6 +49,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - The DMA subsystem should publish a common current-cycle memory-region impact such as `Oam`, `Vram`, or no special region, and the PPU should consume that signal when concurrent transfer activity affects PPU-visible behavior.
 - OAM DMA active state and duration belong to DMA; the PPU keeps ownership of the visible consequences such as OAM read failure, Mode `2/3` interaction, and DMG-family OAM corruption behavior.
 - For DMG OAM DMA, keep the coarse "DMA is currently blocking OAM" signal separate from the finer same-cycle destination-word hint used by late Mode `3` sprite-metadata conflicts; the PPU needs both views.
+- Keep the retained Mode `2` DMA-blocked `Y/X` fallback separate from any late `Mode 3` OBJ metadata word captured for conflict handling; late tile/attribute reads must not overwrite the coarse scan-time `Y/X` state.
 - Future HBlank-conditioned transfers should use the PPU's live mode or HBlank-visible state as an input to DMA advance conditions without moving HDMA scheduling logic into the PPU or the bus.
 
 ## LCD MMIO contract baseline
@@ -254,6 +255,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - BG/window/object fetch helpers should consume `VramBusView` / `OamBusView`-style domain clients rather than unrelated `&[u8]` slices so future bus-ownership, storage, and CGB-bank changes do not force another PPU boundary rewrite.
 - Late Mode `3` sprite metadata reads should come from live OAM rather than from a frozen Mode `2` metadata snapshot.
 - During DMG OAM DMA, that late metadata path should be able to read the DMA destination word being written on the current cycle instead of the nominal sprite metadata address, because tests such as `hacktix/strikethrough` depend on that conflict window.
+- In the current baseline, that conflict should be modeled as one current DMA destination address plus the current DMA byte value for the cycle. The late metadata path should align that address to the destination word, substitute the in-flight byte into the matching half, and read the sibling half from live OAM instead of relying on an address-only hint.
 
 ## Mid-frame toggle and size-change baseline
 
