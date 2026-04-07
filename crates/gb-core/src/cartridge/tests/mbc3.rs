@@ -86,6 +86,34 @@ fn mbc3_selector_ignores_upper_data_bits_and_decodes_from_the_low_nibble() {
 }
 
 #[test]
+fn mbc3_reserved_selectors_do_not_alias_ram_banks() {
+    let rom = build_banked_mbc3_rom(0x13, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+
+    for bank in 0x00..=0x03 {
+        cartridge.write_rom(0x4000, bank);
+        cartridge.write_ram(0xA000, 0xA0 | bank);
+    }
+
+    for selector in 0x04..=0x07 {
+        cartridge.write_rom(0x4000, selector);
+        cartridge.write_ram(0xA000, selector);
+        assert_eq!(cartridge.read_ram(0xA000), RAM_ABSENT_READ_VALUE);
+    }
+
+    for bank in 0x00..=0x03 {
+        cartridge.write_rom(0x4000, bank);
+        assert_eq!(cartridge.read_ram(0xA000), 0xA0 | bank);
+    }
+}
+
+#[test]
 fn strict_validation_admits_mbc3_headers_with_2kib_ram_metadata() {
     let rom = build_banked_mbc3_rom(0x13, 0x00, 0x01);
     let report =
