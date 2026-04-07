@@ -123,6 +123,7 @@ pub struct Apu {
     channel_2: Channel2State,
     channel_3: Channel3State,
     channel_4: Channel4State,
+    last_register_write: Option<ApuRegisterWriteObservation>,
     wave_ram_startup_policy: WaveRamStartupPolicy,
 }
 
@@ -138,6 +139,26 @@ pub struct ApuSnapshot {
     pub div_apu: u8,
     pub wave_ram: [u8; WAVE_RAM_LEN],
     pub wave_ram_startup_policy: WaveRamStartupPolicy,
+    pub output: ApuOutputSnapshot,
+    pub last_register_write: Option<ApuRegisterWriteObservation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApuRegisterWriteObservation {
+    pub address: u16,
+    pub value: u8,
+    pub before: ApuRegisterWriteState,
+    pub after: ApuRegisterWriteState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApuRegisterWriteState {
+    pub powered: bool,
+    pub nr50: u8,
+    pub nr51: u8,
+    pub nr52: u8,
+    pub channel_active_mask: u8,
+    pub channel_dac_mask: u8,
     pub output: ApuOutputSnapshot,
 }
 
@@ -1652,6 +1673,7 @@ impl Apu {
             channel_2: Channel2State::default(),
             channel_3: Channel3State::default(),
             channel_4: Channel4State::default(),
+            last_register_write: None,
             wave_ram_startup_policy,
         }
     }
@@ -1665,6 +1687,7 @@ impl Apu {
     }
 
     pub(crate) fn tick_t_cycle(&mut self, context: &CycleContext) {
+        self.last_register_write = None;
         self.channel_3.begin_t_cycle();
 
         if self.master.powered {
@@ -1730,6 +1753,7 @@ impl Apu {
         value: u8,
         div_apu_source_high: bool,
     ) {
+        self.last_register_write = None;
         if let Some(index) = self.wave_ram_index(address) {
             self.channel_3
                 .write_wave_ram(self.console_model, index, value);
@@ -1737,8 +1761,13 @@ impl Apu {
             return;
         }
 
+        let before_register_write =
+            Self::should_observe_register_write(address).then(|| self.register_write_state());
+
         if address == 0xFF26 {
             self.write_nr52(value, div_apu_source_high);
+            self.preview_output_path();
+            self.record_register_write_observation(address, value, before_register_write);
             return;
         }
 
@@ -1753,6 +1782,7 @@ impl Apu {
                 }
             }
             self.preview_output_path();
+            self.record_register_write_observation(address, value, before_register_write);
             return;
         }
 
@@ -1787,9 +1817,11 @@ impl Apu {
         }
 
         self.preview_output_path();
+        self.record_register_write_observation(address, value, before_register_write);
     }
 
     pub fn apply_startup_state(&mut self, startup_state: ApuStartupState) {
+        self.last_register_write = None;
         self.wave_ram_startup_policy = startup_state.wave_ram_startup_policy;
         self.channel_3
             .initialize_wave_ram(startup_state.wave_ram_startup_policy.initial_bytes());
@@ -1852,6 +1884,7 @@ impl Apu {
             wave_ram: self.channel_3.wave_ram,
             wave_ram_startup_policy: self.wave_ram_startup_policy,
             output: self.output_snapshot(),
+            last_register_write: self.last_register_write.clone(),
         }
     }
 
@@ -1860,12 +1893,25 @@ impl Apu {
     }
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
+        let output = self.output_snapshot();
         format!(
-            "t_cycle={} phase={} console_model={:?} status={:?}",
+            "t_cycle={} phase={} console_model={:?} status={:?} powered={} nr50={:#04X} nr51={:#04X} nr52={:#04X} div_apu={} active_mask={:#04X} dac_mask={:#04X} channel_digital_outputs={:?} mixer=({}, {}) hpf=({}, {})",
             context.t_cycle().get(),
             context.phase(),
             self.console_model,
             self.status,
+            self.master.powered,
+            self.master.nr50,
+            self.master.nr51,
+            self.read_nr52(),
+            self.frame_sequencer.step,
+            self.channel_active_mask(),
+            self.channel_dac_mask(),
+            output.channel_digital_outputs,
+            output.mixer_output.left,
+            output.mixer_output.right,
+            output.hpf_output.left,
+            output.hpf_output.right,
         )
     }
 
@@ -1893,8 +1939,6 @@ impl Apu {
             }
             _ => {}
         }
-
-        self.preview_output_path();
     }
 
     fn power_off(&mut self) {
@@ -1969,6 +2013,40 @@ impl Apu {
                 0
             },
         ]
+    }
+
+    fn should_observe_register_write(address: u16) -> bool {
+        (0xFF10..=0xFF26).contains(&address)
+    }
+
+    fn register_write_state(&self) -> ApuRegisterWriteState {
+        ApuRegisterWriteState {
+            powered: self.master.powered,
+            nr50: self.master.nr50,
+            nr51: self.master.nr51,
+            nr52: self.read_nr52(),
+            channel_active_mask: self.channel_active_mask(),
+            channel_dac_mask: self.channel_dac_mask(),
+            output: self.output_snapshot(),
+        }
+    }
+
+    fn record_register_write_observation(
+        &mut self,
+        address: u16,
+        value: u8,
+        before: Option<ApuRegisterWriteState>,
+    ) {
+        let Some(before) = before else {
+            return;
+        };
+
+        self.last_register_write = Some(ApuRegisterWriteObservation {
+            address,
+            value,
+            before,
+            after: self.register_write_state(),
+        });
     }
 
     fn mixer_output(&self, channel_dac_outputs: [i32; 4]) -> ApuStereoOutputSnapshot {

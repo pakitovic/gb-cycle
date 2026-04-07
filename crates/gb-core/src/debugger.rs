@@ -16,11 +16,12 @@ use crate::timer::TimerSnapshot;
 
 pub const TRACE_FORMAT_VERSION: u16 = 2;
 
-const SUPPORTED_TRACE_SUBSYSTEMS: [TraceSubsystem; 13] = [
+const SUPPORTED_TRACE_SUBSYSTEMS: [TraceSubsystem; 14] = [
     TraceSubsystem::Core,
     TraceSubsystem::Scheduler,
     TraceSubsystem::Cpu,
     TraceSubsystem::Bus,
+    TraceSubsystem::Apu,
     TraceSubsystem::Ppu,
     TraceSubsystem::Dma,
     TraceSubsystem::Serial,
@@ -38,6 +39,7 @@ pub enum TraceSubsystem {
     Scheduler,
     Cpu,
     Bus,
+    Apu,
     Ppu,
     Dma,
     Serial,
@@ -56,6 +58,7 @@ impl fmt::Display for TraceSubsystem {
             Self::Scheduler => "scheduler",
             Self::Cpu => "cpu",
             Self::Bus => "bus",
+            Self::Apu => "apu",
             Self::Ppu => "ppu",
             Self::Dma => "dma",
             Self::Serial => "serial",

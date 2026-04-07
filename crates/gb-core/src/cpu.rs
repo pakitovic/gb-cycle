@@ -65,6 +65,21 @@ pub enum CpuAddressUpdateDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CpuBusAccessKind {
+    OpcodeFetch,
+    OperandRead,
+    DataRead,
+    DataWrite,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CpuBusActivitySnapshot {
+    pub kind: CpuBusAccessKind,
+    pub address: u16,
+    pub value: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CpuAddressEvent {
     pub kind: CpuAddressEventKind,
     pub access_address: Option<u16>,
@@ -165,6 +180,8 @@ pub struct CpuSnapshot {
     pub current_opcode: Option<u8>,
     pub ime: bool,
     pub delayed_ime_enable: bool,
+    pub last_bus_activity: Option<CpuBusActivitySnapshot>,
+    pub last_address_event: Option<CpuAddressEvent>,
 }
 
 #[cfg(test)]

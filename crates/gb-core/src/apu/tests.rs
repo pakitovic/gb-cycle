@@ -1296,6 +1296,55 @@ fn cgb_channel_3_wave_ram_remains_addressable_while_active() {
     assert_eq!(apu.channel_3.wave_ram[1], 0x34);
 }
 
+#[test]
+fn observed_register_write_captures_channel_3_dac_disable_before_and_after_state() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF1A, NR30_DAC_POWER_BIT);
+    apu.write_register(0xFF1C, 0x20);
+    apu.write_register(0xFF1D, 0x00);
+    apu.write_register(0xFF1E, CHANNEL_TRIGGER_BIT);
+
+    let before_disable = apu.snapshot();
+    assert_eq!(
+        before_disable.channel_active_mask & CHANNEL_ACTIVE_CH3,
+        CHANNEL_ACTIVE_CH3
+    );
+    assert_eq!(
+        before_disable.channel_dac_mask & CHANNEL_ACTIVE_CH3,
+        CHANNEL_ACTIVE_CH3
+    );
+
+    apu.write_register(0xFF1A, 0x00);
+
+    let observation = apu
+        .snapshot()
+        .last_register_write
+        .expect("FF1A write should be observed");
+    assert_eq!(observation.address, 0xFF1A);
+    assert_eq!(observation.value, 0x00);
+    assert_eq!(
+        observation.before.channel_active_mask & CHANNEL_ACTIVE_CH3,
+        CHANNEL_ACTIVE_CH3
+    );
+    assert_eq!(
+        observation.before.channel_dac_mask & CHANNEL_ACTIVE_CH3,
+        CHANNEL_ACTIVE_CH3
+    );
+    assert_eq!(
+        observation.after.channel_active_mask & CHANNEL_ACTIVE_CH3,
+        0x00
+    );
+    assert_eq!(
+        observation.after.channel_dac_mask & CHANNEL_ACTIVE_CH3,
+        0x00
+    );
+    assert_ne!(observation.before.nr52, observation.after.nr52);
+
+    tick_apu_with_edges(&mut apu, 0, &[]);
+    assert!(apu.snapshot().last_register_write.is_none());
+}
+
 fn active_channel_3_test_state() -> Channel3State {
     Channel3State {
         nr30: NR30_DAC_POWER_BIT,
@@ -1754,7 +1803,7 @@ fn powered_off_startup_state_matches_the_nr52_power_off_contract() {
     let trace = apu.scheduler_trace_message(&context);
     assert_eq!(
         trace,
-        "t_cycle=0 phase=external_event_ingress console_model=Dmg status=Ready"
+        "t_cycle=0 phase=external_event_ingress console_model=Dmg status=Ready powered=false nr50=0x00 nr51=0x00 nr52=0x70 div_apu=0 active_mask=0x00 dac_mask=0x00 channel_digital_outputs=[0, 0, 0, 0] mixer=(0, 0) hpf=(0, 0)"
     );
 }
 

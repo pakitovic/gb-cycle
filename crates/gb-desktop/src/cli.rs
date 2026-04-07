@@ -220,6 +220,10 @@ pub fn help_text() -> &'static str {
         "\n",
         "Environment:\n",
         "  GB_CYCLE_DESKTOP_SETTINGS_PATH         Override the persisted desktop settings file location\n",
+        "  GB_CYCLE_DESKTOP_AUDIO_LOG             Emit opt-in SDL audio telemetry to stderr (use 1 for events, verbose for per-submit logs)\n",
+        "  GB_CYCLE_DESKTOP_AUDIO_DISABLE_AUTO_CLEAR Disable automatic oversized SDL audio queue clears for investigation\n",
+        "  GB_CYCLE_DESKTOP_TRACE_PATH            Write a rolling per-T-cycle CPU/APU debug trace to this path on exit\n",
+        "  GB_CYCLE_DESKTOP_TRACE_T_CYCLES        Override the rolling trace window length in T-cycles (default: 8192)\n",
         "\n",
         "If no ROM is provided, gb-desktop opens without a cartridge and starts in the in-window menu.\n",
     )
@@ -583,6 +587,10 @@ mod tests {
         assert!(text.contains("--mute"));
         assert!(text.contains("--gamepad-preferred-path <path>"));
         assert!(text.contains("GB_CYCLE_DESKTOP_SETTINGS_PATH"));
+        assert!(text.contains("GB_CYCLE_DESKTOP_AUDIO_LOG"));
+        assert!(text.contains("GB_CYCLE_DESKTOP_AUDIO_DISABLE_AUTO_CLEAR"));
+        assert!(text.contains("GB_CYCLE_DESKTOP_TRACE_PATH"));
+        assert!(text.contains("GB_CYCLE_DESKTOP_TRACE_T_CYCLES"));
     }
 
     #[test]

@@ -47,8 +47,8 @@ cargo run -p gb-cli -- inspect-rom path/to/rom.gb
 # CLI: headless run with serial capture
 cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts/serial.bin
 
-# Desktop: launch the SDL3 frontend
-cargo run -p gb-desktop -- [path/to/rom.gb]
+# Desktop: launch the SDL3 frontend in release for real-time speed
+cargo run --release -p gb-desktop -- [path/to/rom.gb]
 ```
 
 See [docs/CLI.md](docs/CLI.md) and [docs/DESKTOP.md](docs/DESKTOP.md) for full usage details.
