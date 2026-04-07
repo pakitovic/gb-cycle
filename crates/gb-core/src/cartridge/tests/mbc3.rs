@@ -146,6 +146,35 @@ fn mbc3_timed_rtc_accesses_record_the_recommended_ready_t_cycle() {
 }
 
 #[test]
+fn mbc3_timed_rtc_access_spacing_state_remains_advisory() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_ram_timed(0xA000, 0x12, TCycle::new(100));
+    assert_eq!(cartridge.rtc_live.seconds, 0x12);
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(116)));
+
+    cartridge.write_rom(0x4000, 0x09);
+    cartridge.write_ram_timed(0xA000, 0x34, TCycle::new(108));
+    assert_eq!(cartridge.rtc_live.minutes, 0x34);
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(124)));
+
+    cartridge.write_rom(0x6000, 0x00);
+    cartridge.write_rom(0x6000, 0x01);
+
+    cartridge.write_rom(0x4000, 0x08);
+    assert_eq!(cartridge.read_ram_timed(0xA000, TCycle::new(112)), 0x12);
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(128)));
+}
+
+#[test]
 fn strict_validation_admits_mbc3_headers_with_2kib_ram_metadata() {
     let rom = build_banked_mbc3_rom(0x13, 0x00, 0x01);
     let report =
