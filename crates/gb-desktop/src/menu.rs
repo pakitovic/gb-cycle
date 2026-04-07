@@ -2,7 +2,7 @@ use gb_core::{ExecutionMode, StartupMode};
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopKey, DesktopSaveFlushPolicy,
     GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
-    HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
+    GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
 };
 
 const GLYPH_WIDTH: usize = 5;
@@ -86,13 +86,14 @@ const AUDIO_MENU_ITEMS: [MenuItem; 4] = [
     MenuItem::AudioDefaults,
     MenuItem::Return,
 ];
-const INPUT_MENU_ITEMS: [MenuItem; 8] = [
+const INPUT_MENU_ITEMS: [MenuItem; 9] = [
     MenuItem::KeyboardMenu,
     MenuItem::KeyboardMenuControls,
     MenuItem::HotkeysMenu,
     MenuItem::GamepadMenu,
     MenuItem::GamepadMenuControls,
     MenuItem::GamepadDirection,
+    MenuItem::GamepadRumble,
     MenuItem::InputDefaults,
     MenuItem::Return,
 ];
@@ -192,6 +193,7 @@ pub enum MenuAction {
     ToggleMute,
     CycleAudioVolume,
     CycleGamepadDirectionalSource,
+    CycleGamepadRumbleMode,
     TogglePreferredGamepad,
     ResetVideoDefaults,
     ResetAudioDefaults,
@@ -364,9 +366,12 @@ pub struct MenuPresentation {
     pub any_dialog_pending: bool,
     pub gamepad_available: bool,
     pub gamepad_directional_source: GamepadDirectionalSource,
+    pub gamepad_rumble_mode: GamepadRumbleMode,
     pub gamepad_bindings: GamepadButtonBindings,
     pub gamepad_menu_bindings: GamepadMenuBindings,
     pub active_gamepad_connected: bool,
+    pub cartridge_rumble_supported: bool,
+    pub active_gamepad_rumble_supported: bool,
     pub active_gamepad_label: CompactMenuLabel,
     pub preferred_gamepad_configured: bool,
     pub preferred_gamepad_label: CompactMenuLabel,
@@ -416,6 +421,9 @@ impl MenuPresentation {
             MenuItem::GamepadPreferred => {
                 self.gamepad_available
                     && (self.active_gamepad_connected || self.preferred_gamepad_configured)
+            }
+            MenuItem::GamepadRumble => {
+                self.cartridge_rumble_supported && self.active_gamepad_rumble_supported
             }
             MenuItem::GamepadMenu
             | MenuItem::GamepadMenuControls
@@ -592,6 +600,17 @@ impl MenuPresentation {
                 GamepadDirectionalSource::LeftStickOnly => "DIR LEFT".to_string(),
                 GamepadDirectionalSource::DpadAndLeftStick => "DIR ALL".to_string(),
             },
+            MenuItem::GamepadRumble => {
+                if !(self.cartridge_rumble_supported && self.active_gamepad_rumble_supported) {
+                    "RUMBLE N/A".to_string()
+                } else {
+                    match self.gamepad_rumble_mode {
+                        GamepadRumbleMode::Off => "RUMBLE OFF".to_string(),
+                        GamepadRumbleMode::Strong => "RUMBLE HIGH".to_string(),
+                        GamepadRumbleMode::Weak => "RUMBLE LOW".to_string(),
+                    }
+                }
+            }
             MenuItem::InputDefaults => "DEFAULTS".to_string(),
             MenuItem::GamepadActive => {
                 if self.active_gamepad_connected {
@@ -820,6 +839,7 @@ enum MenuItem {
     AudioVolume,
     AudioDefaults,
     GamepadDirection,
+    GamepadRumble,
     InputDefaults,
     GamepadActive,
     GamepadPreferred,
@@ -1385,6 +1405,7 @@ impl OverlayMenuState {
             MenuItem::AudioVolume => Some(MenuAction::CycleAudioVolume),
             MenuItem::AudioDefaults => Some(MenuAction::ResetAudioDefaults),
             MenuItem::GamepadDirection => Some(MenuAction::CycleGamepadDirectionalSource),
+            MenuItem::GamepadRumble => Some(MenuAction::CycleGamepadRumbleMode),
             MenuItem::InputDefaults => Some(MenuAction::ResetInputDefaults),
             MenuItem::GamepadActive => None,
             MenuItem::GamepadPreferred => Some(MenuAction::TogglePreferredGamepad),
@@ -2072,7 +2093,7 @@ mod tests {
     use gb_desktop::{
         BootRomVerificationMode, DesktopConsoleModel, DesktopKey, DesktopSaveFlushPolicy,
         GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
-        HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
+        GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
     };
 
     fn test_presentation() -> MenuPresentation {
@@ -2100,9 +2121,12 @@ mod tests {
             any_dialog_pending: false,
             gamepad_available: false,
             gamepad_directional_source: GamepadDirectionalSource::DpadAndLeftStick,
+            gamepad_rumble_mode: GamepadRumbleMode::Strong,
             gamepad_bindings: GamepadButtonBindings::default(),
             gamepad_menu_bindings: GamepadMenuBindings::default(),
             active_gamepad_connected: false,
+            cartridge_rumble_supported: false,
+            active_gamepad_rumble_supported: false,
             active_gamepad_label: CompactMenuLabel::default(),
             preferred_gamepad_configured: false,
             preferred_gamepad_label: CompactMenuLabel::default(),
@@ -2306,6 +2330,35 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleGamepadDirectionalSource)
+        );
+    }
+
+    #[test]
+    fn input_submenu_cycles_the_gamepad_rumble_mode_when_supported() {
+        let presentation = MenuPresentation {
+            audio_available: true,
+            gamepad_available: true,
+            cartridge_rumble_supported: true,
+            active_gamepad_rumble_supported: true,
+            ..test_presentation()
+        };
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleGamepadRumbleMode)
         );
     }
 
@@ -2947,6 +3000,28 @@ mod tests {
             presentation.item_label(MenuItem::GamepadDirection),
             "DIR LEFT"
         );
+        assert!(!presentation.item_enabled(MenuItem::GamepadRumble));
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRumble),
+            "RUMBLE N/A"
+        );
+        presentation.cartridge_rumble_supported = true;
+        presentation.active_gamepad_rumble_supported = true;
+        assert!(presentation.item_enabled(MenuItem::GamepadRumble));
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRumble),
+            "RUMBLE HIGH"
+        );
+        presentation.gamepad_rumble_mode = GamepadRumbleMode::Weak;
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRumble),
+            "RUMBLE LOW"
+        );
+        presentation.gamepad_rumble_mode = GamepadRumbleMode::Off;
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadRumble),
+            "RUMBLE OFF"
+        );
 
         presentation.active_gamepad_connected = true;
         presentation.active_gamepad_label = CompactMenuLabel::from_text("SWITCH");
@@ -3171,6 +3246,10 @@ mod tests {
         assert_eq!(
             menu.apply_item_action(MenuItem::GamepadPreferred, presentation),
             Some(MenuAction::TogglePreferredGamepad)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::GamepadRumble, presentation),
+            Some(MenuAction::CycleGamepadRumbleMode)
         );
         assert_eq!(
             menu.apply_item_action(MenuItem::Reset, presentation),
