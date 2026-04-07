@@ -139,6 +139,8 @@ pub trait TraceSink {
     fn records_events(&self) -> bool {
         true
     }
+
+    fn reset(&mut self) {}
 }
 
 pub trait TraceSnapshotProvider {
@@ -182,6 +184,10 @@ impl TraceBuffer {
 impl TraceSink for TraceBuffer {
     fn push(&mut self, event: TraceEvent) {
         self.events.push(event);
+    }
+
+    fn reset(&mut self) {
+        self.clear();
     }
 }
 
@@ -701,6 +707,11 @@ impl<S: TraceSink> Tracer<S> {
 
     pub fn into_sink(self) -> S {
         self.sink
+    }
+
+    pub fn reset(&mut self) {
+        self.next_sequence = 0;
+        self.sink.reset();
     }
 }
 

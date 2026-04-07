@@ -39,6 +39,11 @@ impl PendingExternalEvents {
         *self = Self::new(joypad_pressed_mask);
     }
 
+    fn reset_for_startup(&mut self, host_joypad_pressed_mask: u8, hardware_pressed_mask: u8) {
+        self.reset(host_joypad_pressed_mask);
+        self.joypad_state_dirty = host_joypad_pressed_mask != hardware_pressed_mask;
+    }
+
     fn set_joypad_button_pressed(&mut self, button: JoypadButton, pressed: bool) {
         let bit = button_mask(button);
         let previous_mask = self.joypad_pressed_mask;
@@ -186,7 +191,7 @@ impl<S: TraceSink> Machine<S> {
             pending_external_events: PendingExternalEvents::default(),
         };
 
-        machine.apply_startup_configuration();
+        machine.apply_startup_configuration(0);
         machine
     }
 

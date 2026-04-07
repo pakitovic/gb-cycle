@@ -1,10 +1,12 @@
 use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write};
 use super::*;
 use crate::cartridge::PersistentCartState;
+use crate::debugger::BreakpointCondition;
 use crate::joypad::JoypadButton;
 use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
 use crate::ppu::PpuLcdState;
 use crate::scheduler::{ExternalEvent, SchedulerSideEffect, TCycle};
+use crate::serial::SerialPeer;
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 
@@ -217,4 +219,80 @@ fn external_serial_clock_is_ingested_during_external_event_ingress() {
         &[ExternalEvent::ExternalSerialClock]
     );
     assert_eq!(machine.read_bus(0xFF01), 0x03);
+}
+
+#[test]
+fn load_cartridge_restarts_skip_boot_runtime_from_cycle_zero() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    let mut first_rom = build_test_rom(&[0x00]);
+    let mut second_rom = build_test_rom(&[0x00]);
+    first_rom[0x014D] = 0x7F;
+    second_rom[0x014D] = 0x00;
+
+    machine
+        .load_cartridge(first_rom)
+        .expect("supported NoMBC image should load");
+    machine
+        .debug_controls_mut()
+        .add_breakpoint(BreakpointCondition::ProgramCounter(0x0100));
+    machine.set_serial_peer(SerialPeer::Loopback);
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+    machine.step_t_cycle();
+    machine.step_t_cycle();
+
+    assert_eq!(machine.next_t_cycle(), TCycle::new(2));
+    assert_eq!(machine.joypad().pressed_mask(), 0x10);
+    assert!(machine.tracer().snapshot().buffered_event_count > 0);
+
+    machine
+        .load_cartridge(second_rom)
+        .expect("reloading a supported NoMBC image should succeed");
+
+    assert_eq!(machine.next_t_cycle(), TCycle::ZERO);
+    assert_eq!(machine.cpu().startup_state().pc, 0x0100);
+    assert_eq!(machine.cpu().startup_state().f, 0x80);
+    assert_eq!(machine.joypad().pressed_mask(), 0x00);
+    assert_eq!(machine.serial().peer(), SerialPeer::Loopback);
+    assert_eq!(machine.tracer().next_sequence(), 0);
+    assert_eq!(machine.tracer().snapshot().buffered_event_count, 0);
+    assert_eq!(machine.debug_controls().breakpoints().len(), 1);
+
+    let context = machine.step_t_cycle();
+
+    assert_eq!(
+        context.external_events(),
+        &[ExternalEvent::HostInputChanged]
+    );
+    assert_eq!(machine.joypad().pressed_mask(), 0x10);
+}
+
+#[test]
+fn load_cartridge_restarts_real_boot_from_power_on_state() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::RealBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0x00]))
+        .expect("supported NoMBC image should load");
+
+    for _ in 0..16 {
+        machine.step_t_cycle();
+    }
+    machine.write_bus(0xFF50, 0x01);
+
+    assert_ne!(machine.next_t_cycle(), TCycle::ZERO);
+    assert_ne!(machine.cpu().registers().pc, 0x0000);
+    assert!(!machine.boot().is_boot_rom_mapped());
+
+    machine
+        .load_cartridge(build_test_rom(&[0x00]))
+        .expect("reloading a supported NoMBC image should succeed");
+
+    assert_eq!(machine.next_t_cycle(), TCycle::ZERO);
+    assert_eq!(machine.cpu().startup_state().pc, 0x0000);
+    assert_eq!(machine.cpu().registers().pc, 0x0000);
+    assert!(machine.boot().is_boot_rom_mapped());
 }
