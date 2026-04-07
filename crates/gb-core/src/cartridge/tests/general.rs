@@ -60,6 +60,20 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
         CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::PlannedVariant)
     );
 
+    let no_ram_mbc3_rom = build_test_rom(256 * 1024, 0x11, 0x03, 0x05);
+    let no_ram_mbc3_header = CartridgeHeader::parse(&no_ram_mbc3_rom).expect("header should parse");
+    let no_ram_mbc3_classification = classify_loaded_cartridge(
+        &no_ram_mbc3_header,
+        &no_ram_mbc3_rom,
+        &CompatibilityPolicy::strict(),
+    );
+
+    assert_eq!(no_ram_mbc3_classification.detected_name(), "MBC3");
+    assert_eq!(
+        no_ram_mbc3_classification.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc3)
+    );
+
     let mut ems_rom = build_test_rom(256 * 1024, 0x1B, 0x03, 0x03);
     ems_rom[TITLE_START..TITLE_START + 7].copy_from_slice(b"EMSMENU");
     ems_rom[TITLE_START + 7..=TITLE_END_INCLUSIVE].fill(0x00);

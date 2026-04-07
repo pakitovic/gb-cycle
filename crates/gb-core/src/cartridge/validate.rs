@@ -364,7 +364,7 @@ pub(in crate::cartridge) fn validate_mbc3(
     }
 
     let has_ram = matches!(classification.raw_type(), 0x10 | 0x12 | 0x13);
-    if header.ram_size.raw_code == 0x05 {
+    if has_ram && header.ram_size.raw_code == 0x05 {
         return Err(CartridgeLoadError::Rejected {
             classification: *classification,
             execution_mode: compatibility.execution_mode,

@@ -164,6 +164,24 @@ fn private_validation_helpers_cover_remaining_policy_and_mapper_branches() {
     ));
 
     diagnostics.clear();
+    let no_ram_mbc3_with_mbc30_code_header =
+        CartridgeHeader::parse(&build_test_rom(256 * 1024, 0x11, 0x03, 0x05))
+            .expect("header should parse");
+    let no_ram_mbc3_with_mbc30_code_error = validate_mbc3(
+        &no_ram_mbc3_with_mbc30_code_header,
+        256 * 1024,
+        &strict,
+        &CartridgeClassification::classify(0x11),
+        &mut diagnostics,
+    )
+    .expect_err("RAM-less MBC3 should reject 64 KiB code as a header contradiction");
+    assert!(matches!(
+        no_ram_mbc3_with_mbc30_code_error,
+        CartridgeLoadError::Rejected { reason, .. }
+            if reason.contains("does not provide external RAM")
+    ));
+
+    diagnostics.clear();
     let mbc3_invalid_ram_header =
         CartridgeHeader::parse(&build_test_rom(256 * 1024, 0x13, 0x03, 0x04))
             .expect("header should parse");

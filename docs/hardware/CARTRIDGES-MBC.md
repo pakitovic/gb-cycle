@@ -169,7 +169,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Treat `MBC30` as a real `MBC3`-family variant, not as an informal alias for ordinary `MBC3`.
 - `MBC30` should classify as `PlannedVariant`.
 - Pan Docs identifies "MBC3 with `64 KiB` of SRAM" as `MBC30`; for this repo that should map to an explicit typed entry such as `Mbc30Cartridge` or `Mbc3Variant::Mbc30`.
-- Detection should trigger when the validated cartridge is in the `MBC3` family and header metadata implies the `64 KiB` SRAM configuration associated with `MBC30`.
+- Detection should trigger only when the validated cartridge is in one of the RAM-bearing `MBC3` header shapes (`0x10`, `0x12`, or `0x13`) and header metadata implies the `64 KiB` SRAM configuration associated with `MBC30`.
 - The factory must not silently construct ordinary standard `MBC3` with oversized SRAM when this case is detected.
 - `Strict` and `Permissive` should reject `MBC30` clearly as a known reserved variant rather than as an invalid or unknown header.
 - `Experimental` may admit `MBC30` only when an explicit partial or complete implementation path exists behind a visible policy gate.

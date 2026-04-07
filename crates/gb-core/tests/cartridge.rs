@@ -870,6 +870,28 @@ fn permissive_validation_can_warn_on_no_ram_mbc3_headers_with_nonzero_ram_metada
 }
 
 #[test]
+fn strict_validation_treats_no_ram_mbc3_with_64kib_code_as_a_header_mismatch_not_mbc30() {
+    let rom = build_banked_mbc3_rom(0x11, 0x03, 0x05);
+    let error = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect_err("no-RAM MBC3 with 64 KiB code should be rejected");
+
+    let (classification, reason) = match error {
+        gb_core::CartridgeLoadError::Rejected {
+            classification,
+            reason,
+            ..
+        } => (classification, reason),
+        other => panic!("unexpected error: {other:?}"),
+    };
+    assert_eq!(classification.detected_name(), "MBC3");
+    assert_eq!(
+        classification.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc3)
+    );
+    assert!(reason.contains("does not provide external RAM"));
+}
+
+#[test]
 fn documented_special_headers_keep_explicit_categories_and_do_not_fall_back_silently() {
     let cases = [
         (

@@ -138,7 +138,7 @@ pub(in crate::cartridge) fn classify_loaded_cartridge(
 
 fn classify_planned_variant(header: &CartridgeHeader) -> Option<CartridgeClassification> {
     match header.cartridge_type {
-        0x0F..=0x13 if header.ram_size.raw_code == 0x05 => Some(unsupported(
+        0x10 | 0x12 | 0x13 if header.ram_size.raw_code == 0x05 => Some(unsupported(
             header.cartridge_type,
             "MBC30",
             UnsupportedCartridgeCategory::PlannedVariant,
