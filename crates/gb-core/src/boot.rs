@@ -685,10 +685,8 @@ fn build_verified_boot_entry_apu_state(
     console_model: ConsoleModel,
     io: BootIoSnapshot,
 ) -> ApuStartupState {
-    let mut startup_state = build_skip_boot_apu_state(
-        verified_boot_entry_system_counter(console_model),
-        io,
-    );
+    let mut startup_state =
+        build_skip_boot_apu_state(verified_boot_entry_system_counter(console_model), io);
     startup_state.div_apu = verified_boot_entry_div_apu(console_model);
     startup_state
 }
@@ -729,9 +727,9 @@ const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
 const VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0xBD04;
 const VERIFIED_DMG0_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0x1748;
-const SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
-    ((synthetic_skip_boot_io_snapshot().div as u16) << 8)
-        | (DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
+const SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 = ((synthetic_skip_boot_io_snapshot().div as u16)
+    << 8)
+    | (DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
 
 const fn verified_boot_entry_system_counter(console_model: ConsoleModel) -> u16 {
     match console_model {
