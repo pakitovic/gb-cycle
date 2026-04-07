@@ -2,8 +2,8 @@ config.console_model=Dmg
 config.startup_mode=SkipBoot
 config.execution_mode=Strict
 scheduler.next_t_cycle=2
-trace.buffered_event_count=44
-trace.last_event=seq=43 subsystem=cpu level=trace message="t_cycle=1 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready pc=0x0100 execution_state=FetchOpcode { t_cycle: 2 } current_opcode=None ime=false delayed_ime_enable=false last_bus_activity=none last_address_event=none"
+trace.buffered_event_count=40
+trace.last_event=seq=39 subsystem=cpu level=trace message="t_cycle=1 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready pc=0x0100 execution_state=FetchOpcode { t_cycle: 2 } current_opcode=None ime=false delayed_ime_enable=false last_bus_activity=none last_address_event=none"
 debug.breakpoint_count=0 debug.enabled_breakpoint_count=0
 debug.watchpoint_count=0 debug.enabled_watchpoint_count=0
 cpu.console_model=Dmg cpu.status=Ready cpu.startup_pc=0x0100 cpu.pc=0x0100 cpu.execution_state=FetchOpcode { t_cycle: 2 } cpu.current_opcode=None

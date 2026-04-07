@@ -78,7 +78,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 ## DMG-family direct-start snapshot baseline
 
 - Keep DMG-family direct-start I/O snapshots centralized and model-aware rather than scattering startup literals across subsystems.
-- The deterministic `Machine::SkipBoot` continuity snapshot currently uses `P1=0xFF`, `SB=0x00`, `SC=0x7E`, `DIV=0xAB`, `TIMA=0x00`, `TMA=0x00`, `TAC=0xF8`, `IF=0xE1`, `LCDC=0x91`, `STAT=0x85`, `SCY=0x00`, `SCX=0x00`, `LY=0x00`, `LYC=0x00`, `DMA=0xFF`, `BGP=0xFC`, `WY=0x00`, `WX=0x00`, and `IE=0x00`.
+- The deterministic `Machine::SkipBoot` continuity snapshot currently uses `P1=0xCF`, `SB=0x00`, `SC=0x7E`, `DIV=0xAB`, `TIMA=0x00`, `TMA=0x00`, `TAC=0xF8`, `IF=0xE1`, `LCDC=0x91`, `STAT=0x85`, `SCY=0x00`, `SCX=0x00`, `LY=0x00`, `LYC=0x00`, `DMA=0xFF`, `BGP=0xFC`, `WY=0x00`, `WX=0x00`, and `IE=0x00`.
 - The verified DMG-family cartridge-entry snapshot owned by `BootController::direct_boot_state()` now tracks the real-handoff-visible fields used by the repo-local regression matrix: `P1=0xFF` on all DMG-family models; `DIV=0xBD`, `STAT=0x81`, and `LY=153` for `DMG` / `MGB`; and `DIV=0x17`, `STAT=0x81`, and `LY=144` for `DMG0`.
 - The direct post-boot snapshot should also include the published DMG-family audio-register values rather than leaving the APU block in a made-up default state.
 - If direct boot does not have verified firmware-derived wave RAM contents, it should keep wave RAM under an explicit startup policy rather than presenting a fake published constant.
