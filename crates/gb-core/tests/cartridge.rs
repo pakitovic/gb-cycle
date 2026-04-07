@@ -2,9 +2,9 @@ use gb_core::{
     BootRomBusState, Bus, BusAccessKind, BusArbitrationState, BusRequester,
     CartridgeClassification, CartridgeHeader, CartridgePersistenceProfile,
     CartridgePersistentStateError, CartridgeRamPayloadKind, CartridgeSelection, CartridgeSlot,
-    CartridgeSlotState, CompatibilityPolicy, ConsoleModel, Machine, MachineConfig,
-    Mbc3RtcPersistentState, PersistentCartState, SupportedCartridgeFamily,
-    UnsupportedCartridgeCategory,
+    CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy, HeuristicPolicy,
+    Machine, MachineConfig, Mbc3RtcPersistentState, OverridePolicy, PersistentCartState,
+    SupportedCartridgeFamily, UnsupportedCartridgeCategory, ValidationPolicy,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -132,6 +132,16 @@ fn build_banked_mbc5_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u
     }
 
     rom
+}
+
+fn ignore_policy() -> CompatibilityPolicy {
+    CompatibilityPolicy {
+        execution_mode: gb_core::ExecutionMode::Permissive,
+        validation_policy: ValidationPolicy::Ignore,
+        heuristic_policy: HeuristicPolicy::Disabled,
+        override_policy: OverridePolicy::default(),
+        diagnostic_policy: DiagnosticPolicy::Standard,
+    }
 }
 
 #[test]
@@ -1389,6 +1399,21 @@ fn permissive_validation_can_warn_on_no_ram_mbc5_headers_with_nonzero_ram_metada
             .iter()
             .any(|diagnostic| diagnostic.message.contains("does not provide external RAM"))
     );
+}
+
+#[test]
+fn ignore_validation_keeps_degradable_mbc3_and_mbc5_loader_paths_warning_free() {
+    let mbc3_rom = build_banked_mbc3_rom(0x11, 0x03, 0x02);
+    let mbc3_report = CartridgeSlot::load(mbc3_rom, &ignore_policy())
+        .expect("ignore policy should admit no-RAM MBC3 metadata mismatches");
+    assert_eq!(mbc3_report.cartridge().state(), CartridgeSlotState::Mbc3);
+    assert!(mbc3_report.diagnostics().is_empty());
+
+    let mbc5_rom = build_banked_mbc5_rom(0x19, 0x03, 0x02);
+    let mbc5_report = CartridgeSlot::load(mbc5_rom, &ignore_policy())
+        .expect("ignore policy should admit no-RAM MBC5 metadata mismatches");
+    assert_eq!(mbc5_report.cartridge().state(), CartridgeSlotState::Mbc5);
+    assert!(mbc5_report.diagnostics().is_empty());
 }
 
 #[test]

@@ -87,6 +87,35 @@ fn mbc3_selector_ignores_upper_data_bits_and_decodes_from_the_low_nibble() {
 }
 
 #[test]
+fn mbc3_high_selector_variants_0x14_through_0x27_still_follow_low_nibble_semantics() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    for value in 0x14..=0x27 {
+        cartridge.write_rom(0x4000, value);
+
+        let expected = match value & 0x0F {
+            0x00..=0x03 => Mbc3RamRtcSelect::RamBank(value & 0x0F),
+            0x08 => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::Seconds),
+            0x09 => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::Minutes),
+            0x0A => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::Hours),
+            0x0B => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::DayLow),
+            0x0C => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::DayHigh),
+            other => Mbc3RamRtcSelect::ReservedSelector(other),
+        };
+
+        assert_eq!(
+            cartridge.ram_or_rtc_select, expected,
+            "selector {value:#04X}"
+        );
+    }
+}
+
+#[test]
 fn mbc3_reserved_selectors_do_not_alias_ram_banks() {
     let rom = build_banked_mbc3_rom(0x13, 0x03, 0x03);
     let report =
