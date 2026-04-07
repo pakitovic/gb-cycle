@@ -40,7 +40,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - `RealBoot` must execute the selected boot ROM on the real CPU core, through the real bus, and on the shared T-cycle scheduler.
 - `SkipBoot` must initialize a model-specific post-boot state directly, start execution at `0x0100`, and leave boot ROM mapping disabled from the beginning.
 - The rest of the system should not care whether execution reached cartridge code through real boot or skip boot; only the configured startup path should differ.
-- `SkipBoot` should represent the observable machine state at the logical handoff point `PC = 0x0100`, not a vague "power-on but boot skipped" approximation.
+- In the current repo baseline, keep two centralized direct-start contracts explicit instead of conflating them: `Machine::SkipBoot` applies the deterministic synthetic startup state used by core/fixture continuity tests, while `BootController::direct_boot_state()` owns the verified DMG-family cartridge-entry snapshot used to validate real `FF50` handoff behavior.
 - Treat the post-boot snapshot as a mix of fixed-per-model values, cartridge-header-derived values, explicitly unreliable or uninitialized values, and hidden temporal state that must be synthesized coherently.
 
 ## DMG-family boot baseline
@@ -75,10 +75,11 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - DMG0 `F` should start cleared in the direct post-boot snapshot.
 - Cartridge-header-dependent post-boot CPU state should be derived from the loaded cartridge data rather than duplicated as disconnected literals.
 
-## DMG-family skip-boot I/O snapshot baseline
+## DMG-family direct-start snapshot baseline
 
-- `SkipBoot` should initialize a centralized model-aware post-boot I/O snapshot rather than scattering startup literals across subsystems.
-- For DMG and MGB, the visible post-boot snapshot should include at least `P1=0xCF`, `SB=0x00`, `SC=0x7E`, `DIV=0xAB`, `TIMA=0x00`, `TMA=0x00`, `TAC=0xF8`, `IF=0xE1`, `LCDC=0x91`, `STAT=0x85`, `SCY=0x00`, `SCX=0x00`, `LY=0x00`, `LYC=0x00`, `DMA=0xFF`, `BGP=0xFC`, `WY=0x00`, `WX=0x00`, and `IE=0x00`.
+- Keep DMG-family direct-start I/O snapshots centralized and model-aware rather than scattering startup literals across subsystems.
+- The deterministic `Machine::SkipBoot` continuity snapshot currently uses `P1=0xCF`, `SB=0x00`, `SC=0x7E`, `DIV=0xAB`, `TIMA=0x00`, `TMA=0x00`, `TAC=0xF8`, `IF=0xE1`, `LCDC=0x91`, `STAT=0x85`, `SCY=0x00`, `SCX=0x00`, `LY=0x00`, `LYC=0x00`, `DMA=0xFF`, `BGP=0xFC`, `WY=0x00`, `WX=0x00`, and `IE=0x00`.
+- The verified DMG-family cartridge-entry snapshot owned by `BootController::direct_boot_state()` now tracks the real-handoff-visible fields used by the repo-local regression matrix: `P1=0xFF` on all DMG-family models; `DIV=0xBD`, `STAT=0x81`, and `LY=153` for `DMG` / `MGB`; and `DIV=0x17`, `STAT=0x81`, and `LY=144` for `DMG0`.
 - The direct post-boot snapshot should also include the published DMG-family audio-register values rather than leaving the APU block in a made-up default state.
 - If direct boot does not have verified firmware-derived wave RAM contents, it should keep wave RAM under an explicit startup policy rather than presenting a fake published constant.
 - Mixed-register snapshots such as `P1`, `SC`, `TAC`, `IF`, `STAT`, `DIV`, and `NR52` should be realized through subsystem-owned latched/live or forced-bit state synthesis rather than through blind raw-byte stores that would contradict their MMIO contract.
@@ -88,16 +89,17 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 
 ## Hidden-state synthesis baseline
 
-- A T-cycle-accurate `SkipBoot` path must synthesize internal subsystem state, not only visible registers.
+- Both the deterministic `Machine::SkipBoot` path and the verified direct-boot snapshot used for real-boot validation must synthesize internal subsystem state, not only visible registers.
 - Joypad state should be initialized coherently with the visible `P1` snapshot, including row-selection lines and released-button state, rather than by treating `P1` as a flat stored byte.
 - The timer's internal counter and overflow-related state should be initialized coherently with the visible `DIV`, `TIMA`, `TMA`, and `TAC` snapshot at `PC = 0x0100`.
-- For the current DMG / MGB direct-boot baseline, that coherence includes one explicit hidden divider phase instead of only the visible `DIV` byte. The current model seeds the shared timer system counter to `0xABC8` so Mooneye's DMG-family `boot_div` cadence lines up with the expected first post-boot `DIV` edges.
+- For the current deterministic `Machine::SkipBoot` continuity baseline, that coherence includes one explicit hidden divider phase instead of only the visible `DIV` byte. The current model seeds the shared timer system counter to `0xABC8` so Mooneye's DMG-family `boot_div` cadence lines up with the expected first post-boot `DIV` edges.
+- The verified DMG-family cartridge-entry snapshot used by the real-boot regression should keep its own hidden timer / PPU / APU continuation coherent with the observed handoff values instead of reusing the synthetic `0xABC8` phase. The current repo-local baseline seeds `0xBD04` for `DMG` / `MGB` and `0x1748` for `DMG0`.
 - Serial state should be initialized coherently with visible `SB` and `SC`, including idle transfer state, clock mode, no in-flight shift progress, and its own hidden free-running master-clock phase rather than by treating serial as two disconnected plain bytes.
-- For the current DMG / MGB direct-boot baseline in this repo, that serial hidden phase is seeded independently to `0xABCC` at `PC = 0x0100`; it must not be synthesized by reusing the timer's `0xABC8` divider phase because Mooneye's `boot_sclk_align` timing depends on that separation.
+- For the current deterministic `Machine::SkipBoot` continuity baseline in this repo, that serial hidden phase is seeded independently to `0xABCC` at `PC = 0x0100`; it must not be synthesized by reusing the timer's `0xABC8` divider phase because Mooneye's `boot_sclk_align` timing depends on that separation.
 - The PPU's internal mode, dot position, and related pipeline state should be initialized coherently with the visible `LCDC`, `STAT`, `LY`, `LYC`, and other LCD-facing registers at `PC = 0x0100`.
 - The APU's internal `DIV-APU` / frame-sequencer phase, channel/DAC state, and other timing-visible audio state should be initialized coherently with the visible post-boot `NRxx` snapshot at `PC = 0x0100`.
 - Even before full APU timing exists, direct-boot APU hidden state should be seeded from the same visible startup choices, such as deriving the initial `DIV-APU` seed from the chosen divider preset instead of leaving audio on an unrelated reset phase.
-- `SkipBoot` must not leave visible registers claiming `DIV=0xAB`, `STAT=0x85`, or published post-boot `NRxx` values while the hidden timer, PPU, or APU state still corresponds to a zeroed or impossible phase.
+- The deterministic `Machine::SkipBoot` path must not leave visible registers claiming `DIV=0xAB`, `STAT=0x85`, or published post-boot `NRxx` values while the hidden timer, PPU, or APU state still corresponds to a zeroed or impossible phase, and the verified direct-boot snapshot must obey the same rule for its real-handoff-visible values.
 - The first T-cycles after `SkipBoot` should behave as a plausible temporal continuation of a real boot handoff rather than showing artificial discontinuities caused by inconsistent hidden state.
 
 ## Uninitialized and cartridge-dependent startup state
@@ -127,7 +129,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - Boot ROM reads from the cartridge header and boot-ROM writes to VRAM/LCD/MMIO should use the same bus and arbitration rules as ordinary execution.
 - The duration of the boot process should emerge from executed instructions and subsystem timing, not from an external startup timer.
 - Skip-boot must remain a distinct initialization path; do not partially execute the boot ROM and cut it short.
-- `SkipBoot` should restore the observable machine state at `PC = 0x0100`, including any documented timing-sensitive register values.
+- The repo should keep the deterministic synthetic `Machine::SkipBoot` startup state and the verified direct-boot cartridge-entry snapshot explicit and separately documented instead of letting one silently stand in for the other.
 - A direct-boot preset must not stop at visible MMIO values alone; it should also establish hidden timer, PPU, and APU state consistent with those values.
 - Direct-boot initialization of indeterminate memory and unreliable registers should remain explicit and configurable rather than pretending the hardware guarantees a single power-up value.
 
@@ -189,7 +191,7 @@ Priority order:
 - DMG-family observable differences should initially be assumed to come from firmware and startup state unless a proven hardware-level difference matters to the emulator.
 - `FF50` should integrate with system or bus mapping control, not as a CPU-local shortcut.
 - Real-boot header validation should emerge from executed boot-ROM code reading cartridge bytes, not from a parallel emulator-side validator.
-- The first closed `Phase 2.4` real-boot baseline may be a synthetic DMG boot ROM that validates representative header bytes and reaches cartridge entry through an executed `FF50` write on the real CPU, bus, and scheduler path; keep the remaining production-DMG opcode gap tracked separately instead of conflating that baseline with full firmware coverage.
+- The synthetic DMG boot ROM from Phase `2.4` remains a useful narrow integration target inside `gb-core`, but production DMG-family boot closure in this repo is defined by repo-local ignored regressions that run verified `dmg0` / `dmg` / `mgb` boot ROM assets through the real CPU, bus, scheduler, and `FF50` handoff path while keeping invalid DMG logo/checksum/header cases on the non-handoff side.
 - Boot should consume cartridge-derived metadata such as checksum-dependent post-boot flags, `cgb_flag`, or `sgb_flag` through the cartridge subsystem's canonical parsed header view rather than by reparsing header bytes in multiple places.
 - A central routine such as `initialize_post_boot_state(model, cartridge)` is the preferred shape for `SkipBoot`, with one source of truth for model-specific CPU state, visible I/O state, and hidden-state synthesis inputs.
 - Keep direct-boot snapshot data centralized in typed structures rather than copying startup literals into CPU, timer, PPU, APU, or bus modules independently.

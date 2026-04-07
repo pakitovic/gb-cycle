@@ -127,7 +127,7 @@ fn step_machine_until(
 }
 
 #[test]
-fn skip_boot_uses_the_centralized_post_boot_entry_state() {
+fn skip_boot_uses_the_centralized_synthetic_startup_state() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );

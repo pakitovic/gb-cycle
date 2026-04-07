@@ -49,6 +49,30 @@ pub fn load_boot_rom_assets(
     })
 }
 
+pub fn missing_boot_rom_asset_path(
+    search_path: Option<&Path>,
+    console_model: DesktopConsoleModel,
+    current_dir: &Path,
+) -> Result<Option<PathBuf>, String> {
+    let source = resolve_boot_rom_source(search_path, current_dir);
+    let kind = console_model.boot_rom_kind();
+
+    if !path_exists(&source)? {
+        return Ok(Some(source));
+    }
+    if source.is_file() {
+        return Ok(None);
+    }
+    if source.is_dir() {
+        let image_path = boot_rom_image_path(&source, kind);
+        if !path_exists(&image_path)? {
+            return Ok(Some(image_path));
+        }
+    }
+
+    Ok(None)
+}
+
 fn resolve_boot_rom_source(explicit_source: Option<&Path>, current_dir: &Path) -> PathBuf {
     if let Some(explicit_source) = explicit_source {
         return resolve_path(current_dir, explicit_source);
@@ -65,6 +89,16 @@ pub fn resolve_path(current_dir: &Path, path: &Path) -> PathBuf {
     } else {
         current_dir.join(path)
     }
+}
+
+fn path_exists(path: &Path) -> Result<bool, String> {
+    path.try_exists().map_err(|error| {
+        format!(
+            "failed to inspect boot ROM path {}: {}",
+            path.display(),
+            error
+        )
+    })
 }
 
 fn boot_rom_image_path(source: &Path, kind: BootRomKind) -> PathBuf {
@@ -136,8 +170,8 @@ fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::{
         DEFAULT_BOOT_ROM_ROOT_ENV_VAR, boot_rom_image_path, expected_boot_rom_sha256,
-        load_boot_rom_assets, load_exact_boot_rom_file, resolve_boot_rom_source, resolve_path,
-        sha256_hex, verify_boot_rom_file,
+        load_boot_rom_assets, load_exact_boot_rom_file, missing_boot_rom_asset_path, path_exists,
+        resolve_boot_rom_source, resolve_path, sha256_hex, verify_boot_rom_file,
     };
     use gb_core::{BootRomAssets, BootRomKind, StartupMode};
     use gb_desktop::{BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConsoleModel};
@@ -295,6 +329,41 @@ mod tests {
     }
 
     #[test]
+    fn load_boot_rom_assets_reports_directory_loading_failures() {
+        let root = temp_root("directory-error");
+        let directory = root.join("bootrom");
+        fs::create_dir_all(&directory).expect("boot ROM directory should be creatable");
+        fs::write(
+            directory.join(BootRomAssets::filename(BootRomKind::Dmg)),
+            vec![0x42; 0x40],
+        )
+        .expect("invalid boot ROM image should be writable");
+
+        let error = load_boot_rom_assets(
+            Some(&directory),
+            BootRomVerificationMode::Off,
+            DesktopConsoleModel::Dmg,
+            StartupMode::RealBoot,
+            Path::new("/unused"),
+        )
+        .expect_err("invalid directory-backed assets should fail");
+        assert!(error.contains("failed to load boot ROM assets from"));
+
+        fs::remove_dir_all(root).expect("temp bootrom root should be removable");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_exists_reports_invalid_paths() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let invalid_path = PathBuf::from(OsString::from_vec(vec![b'i', 0, b'n', b'v']));
+        let error = path_exists(&invalid_path).expect_err("invalid paths should report errors");
+        assert!(error.contains("failed to inspect boot ROM path"));
+    }
+
+    #[test]
     fn load_boot_rom_assets_respects_startup_mode_and_verification_policy() {
         let root = temp_root("load-assets");
         let image_path = root.join("dmg_boot.bin");
@@ -355,6 +424,82 @@ mod tests {
         .expect("missing firmware directory should degrade to no assets");
 
         assert!(assets.is_empty());
+    }
+
+    #[test]
+    fn missing_boot_rom_asset_path_detects_missing_exact_files() {
+        let root = temp_root("missing-exact");
+        let exact_file = root.join("mgb_boot.bin");
+
+        assert_eq!(
+            missing_boot_rom_asset_path(
+                Some(&exact_file),
+                DesktopConsoleModel::Mgb,
+                Path::new("/unused"),
+            )
+            .expect("missing exact files should resolve cleanly"),
+            Some(exact_file.clone())
+        );
+
+        write_boot_rom_image(&exact_file, 0x33);
+        assert_eq!(
+            missing_boot_rom_asset_path(
+                Some(&exact_file),
+                DesktopConsoleModel::Mgb,
+                Path::new("/unused"),
+            )
+            .expect("existing exact files should not trigger fallback"),
+            None
+        );
+
+        fs::remove_dir_all(root).expect("temp bootrom root should be removable");
+    }
+
+    #[test]
+    fn missing_boot_rom_asset_path_detects_missing_active_model_images_in_directories() {
+        let root = temp_root("missing-directory-image");
+        let directory = root.join("bootrom");
+        fs::create_dir_all(&directory).expect("boot ROM directory should be creatable");
+        write_boot_rom_image(
+            &directory.join(BootRomAssets::filename(BootRomKind::Dmg)),
+            0x44,
+        );
+
+        assert_eq!(
+            missing_boot_rom_asset_path(
+                Some(&directory),
+                DesktopConsoleModel::Dmg,
+                Path::new("/unused"),
+            )
+            .expect("present active-model image should not trigger fallback"),
+            None
+        );
+        assert_eq!(
+            missing_boot_rom_asset_path(
+                Some(&directory),
+                DesktopConsoleModel::Mgb,
+                Path::new("/unused"),
+            )
+            .expect("missing active-model image should surface the expected path"),
+            Some(directory.join(BootRomAssets::filename(BootRomKind::Mgb)))
+        );
+
+        fs::remove_dir_all(root).expect("temp bootrom root should be removable");
+    }
+
+    #[test]
+    fn missing_boot_rom_asset_path_returns_the_missing_directory_when_the_source_root_is_gone() {
+        let missing_directory = PathBuf::from("/definitely/missing/desktop-bootrom-root");
+
+        assert_eq!(
+            missing_boot_rom_asset_path(
+                Some(&missing_directory),
+                DesktopConsoleModel::Dmg0,
+                Path::new("/unused"),
+            )
+            .expect("missing directory roots should resolve cleanly"),
+            Some(missing_directory)
+        );
     }
 
     fn temp_root(label: &str) -> PathBuf {

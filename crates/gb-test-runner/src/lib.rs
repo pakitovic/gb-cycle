@@ -2607,6 +2607,8 @@ mod tests {
             current_opcode: Some(0x40),
             ime: false,
             delayed_ime_enable: false,
+            last_bus_activity: None,
+            last_address_event: None,
         };
 
         assert_eq!(

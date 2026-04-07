@@ -77,7 +77,7 @@ fn boot_rom_reads_come_from_the_configured_selected_model_image() {
 }
 
 #[test]
-fn skip_boot_state_uses_model_specific_cpu_and_io_presets() {
+fn direct_boot_state_uses_model_specific_verified_entry_presets() {
     let boot = BootController::new(ConsoleModel::Dmg, StartupMode::SkipBoot, empty_assets());
     let direct_boot = boot
         .direct_boot_state(None)
@@ -86,8 +86,8 @@ fn skip_boot_state_uses_model_specific_cpu_and_io_presets() {
     assert_eq!(direct_boot.cpu.pc, 0x0100);
     assert_eq!(direct_boot.cpu.a, 0x01);
     assert_eq!(direct_boot.cpu.f, 0xB0);
-    assert_eq!(direct_boot.io.p1, 0xCF);
-    assert_eq!(direct_boot.io.div, 0xAB);
+    assert_eq!(direct_boot.io.p1, 0xFF);
+    assert_eq!(direct_boot.io.div, 0xBD);
     assert_eq!(direct_boot.serial.sb, 0x00);
     assert_eq!(
         direct_boot.serial.clock_mode,
@@ -95,7 +95,8 @@ fn skip_boot_state_uses_model_specific_cpu_and_io_presets() {
     );
     assert_eq!(direct_boot.serial.clock_counter, 0xABCC);
     assert_eq!(direct_boot.ppu.lcdc, 0x91);
-    assert_eq!(direct_boot.ppu.stat, 0x85);
+    assert_eq!(direct_boot.ppu.stat, 0x81);
+    assert_eq!(direct_boot.ppu.ly, 153);
     assert_eq!(direct_boot.io.dma, 0xFF);
     assert_eq!(direct_boot.io.interrupt_flag, 0xE1);
     assert_eq!(

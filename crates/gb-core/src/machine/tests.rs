@@ -1,8 +1,10 @@
+use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write};
 use super::*;
 use crate::cartridge::PersistentCartState;
 use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
 use crate::ppu::PpuLcdState;
 use crate::scheduler::SchedulerSideEffect;
+use crate::scheduler::TCycle;
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 
@@ -112,7 +114,7 @@ fn machine_snapshot_exposes_scheduler_trace_and_live_phase_1_subsystems() {
 
     assert_eq!(snapshot.config.console_model, ConsoleModel::Dmg);
     assert_eq!(snapshot.scheduler.next_t_cycle, TCycle::new(2));
-    assert_eq!(snapshot.trace.buffered_event_count, 40);
+    assert_eq!(snapshot.trace.buffered_event_count, 42);
     assert_eq!(snapshot.debug_controls.breakpoint_count, 0);
     assert_eq!(snapshot.debug_controls.watchpoint_count, 0);
     assert_eq!(snapshot.cpu.console_model, ConsoleModel::Dmg);

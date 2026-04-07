@@ -184,13 +184,14 @@ This checklist should move only when one of the following becomes true:
   budget blindly: the CLI should treat boot-ROM handoff as the semantic start
   of the post-boot run window, while still retaining a finite safety cap when
   `FF50` never unmapped.
-- Keep one repo-local ignored real-boot regression for those verified DMG-family
-  assets so `dmg0`, `dmg`, and `mgb` can be exercised one by one against the
-  real core, real bus, and real `FF50` handoff path without baking machine-local
-  paths into `gb-core`. The current coverage lives in
-  `crates/gb-test-runner/tests/external.rs` and uses a minimal valid `NoMBC`
-  cartridge header whose first post-handoff opcode deliberately traps, making
-  the next-fetch cartridge entry point observable after the boot ROM unmaps.
+- Keep the canonical repo-local ignored DMG-family real-boot regression matrix
+  in `crates/gb-test-runner/tests/external.rs`, with verified `dmg0`, `dmg`,
+  and `mgb` valid-handoff cases plus DMG invalid-logo, invalid-checksum, and
+  FF-filled-header no-handoff cases. The valid path should assert the real
+  `FF50` handoff, compare the resulting cartridge-entry state against the
+  centralized direct-boot snapshot (`BootController::direct_boot_state()`) for
+  the same model, and emit one exact serial fingerprint artifact so failures
+  leave a legible entry-state record without requiring firmware dumps in CI.
 - Keep imported differential oracle artifacts under the repo-managed gitignored
   `/.oracles/<oracle>/<layout>/` tree instead of scattering them under `/tmp`,
   so repeated validation runs have one visible workspace-local location.

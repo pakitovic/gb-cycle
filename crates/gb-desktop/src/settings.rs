@@ -727,6 +727,7 @@ mod tests {
         InputOptions, JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity,
         SaveDirectoryPolicy, VideoOptions,
     };
+    use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -896,6 +897,48 @@ mod tests {
     }
 
     #[test]
+    fn persisted_settings_load_reports_read_and_parse_failures() {
+        let unreadable_path = unique_test_path("load-read-error");
+        fs::create_dir_all(&unreadable_path).expect("directory-backed settings path should exist");
+        let read_error = PersistedDesktopSettings::load(&unreadable_path)
+            .expect_err("reading a directory as settings should fail");
+        assert!(read_error.contains("failed to read desktop settings"));
+        fs::remove_dir_all(&unreadable_path).expect("temp settings directory should be removable");
+
+        let invalid_toml_path = unique_test_path("load-parse-error");
+        if let Some(parent) = invalid_toml_path.parent() {
+            fs::create_dir_all(parent).expect("invalid toml parent should be creatable");
+        }
+        fs::write(&invalid_toml_path, "version = 1\nrecent_roms = [")
+            .expect("invalid desktop settings should be writable");
+        let parse_error = PersistedDesktopSettings::load(&invalid_toml_path)
+            .expect_err("invalid TOML should fail to parse");
+        assert!(parse_error.contains("failed to parse desktop settings"));
+    }
+
+    #[test]
+    fn persisted_settings_save_reports_directory_and_write_failures() {
+        let blocked_parent_file = unique_test_path("save-parent-error");
+        if let Some(parent) = blocked_parent_file.parent() {
+            fs::create_dir_all(parent).expect("blocked parent parent should be creatable");
+        }
+        fs::write(&blocked_parent_file, "not-a-directory")
+            .expect("blocking file should be writable");
+        let create_dir_error = PersistedDesktopSettings::default()
+            .save(&blocked_parent_file.join("desktop-settings.toml"))
+            .expect_err("create_dir_all should fail when the parent is a file");
+        assert!(create_dir_error.contains("failed to create desktop settings directory"));
+
+        let unwritable_path = unique_test_path("save-write-error");
+        fs::create_dir_all(&unwritable_path).expect("directory-backed settings path should exist");
+        let write_error = PersistedDesktopSettings::default()
+            .save(&unwritable_path)
+            .expect_err("writing directly to a directory should fail");
+        assert!(write_error.contains("failed to write desktop settings"));
+        fs::remove_dir_all(&unwritable_path).expect("temp settings directory should be removable");
+    }
+
+    #[test]
     fn settings_store_load_uses_the_env_override_and_defaults_missing_files() {
         let _lock = ENV_LOCK.lock().expect("env lock should not be poisoned");
         let path = unique_test_path("load-env-override");
@@ -927,6 +970,24 @@ mod tests {
         unsafe {
             std::env::remove_var(DESKTOP_SETTINGS_PATH_ENV_VAR);
         }
+    }
+
+    #[test]
+    fn settings_store_load_uses_in_memory_defaults_when_no_path_can_be_resolved() {
+        let _lock = ENV_LOCK.lock().expect("env lock should not be poisoned");
+        unsafe {
+            std::env::remove_var(DESKTOP_SETTINGS_PATH_ENV_VAR);
+            std::env::remove_var("HOME");
+            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var("APPDATA");
+        }
+
+        let store =
+            DesktopSettingsStore::load().expect("settings store should fall back to defaults");
+        assert_eq!(store.base_config(), DesktopConfig::default());
+        assert!(!store.audio_muted());
+        assert_eq!(store.last_open_directory(), None);
+        assert!(store.recent_roms().is_empty());
     }
 
     #[test]
