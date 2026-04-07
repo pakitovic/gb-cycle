@@ -37,6 +37,7 @@ Two workstreams span multiple phases:
 - [Open TODOs](TODO.md) — active TODO ledger and PPU checkpoint.
 - Phase `6` follow-up: MBC3 currently keeps a deliberate compatibility deviation for `cpp/latch-rtc-test.gb`: the first RTC latch still requires `0x00 -> 0x01`, but follow-up non-zero writes are also accepted once a valid snapshot exists because instrumentation of that ROM showed repeated non-zero relatch commands without re-arming zeros. Revisit that legacy relatch rule if the curated oracle policy moves back toward the stricter `Pan Docs` model.
 - Phase `6` follow-up: MBC3 also keeps `0x04..=0x07` as explicit reserved selectors instead of widening standard SRAM banking to `$00-$07`. Current `Pan Docs` wording says `$00-$07` are RAM-bank selectors, but the retained curated `cpp/rtc-invalid-banks-test.gb` oracle writes and re-reads through `0x04..=0x07` and only stays green when those selector states remain invalid. Revisit the policy if hardware evidence or a stronger oracle closes that source conflict.
+- Phase `6` follow-up: MBC3 now records the recommended RTC access-spacing state as `rtc_access_ready_at` on timed RTC-register reads and writes, but the emulator still treats that state as advisory only. Revisit whether accesses that arrive before the recorded `16`-T-cycle ready point should become observable failures, delays, or remain documentation-only once a stronger oracle exists.
 
 ## Final notes
 

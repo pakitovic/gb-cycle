@@ -263,11 +263,12 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn read_bus(&mut self, address: u16) -> u8 {
         let state = self.current_bus_arbitration_state();
-        let value = self.bus.read_with_context(
+        let value = self.bus.read_with_t_cycle_context(
             address,
             BusRequester::Cpu,
             &state,
-            Some(&self.cartridge),
+            self.next_t_cycle(),
+            Some(&mut self.cartridge),
             crate::bus::BusIoReadView {
                 apu: Some(&self.apu),
                 timer: Some(&self.timer),
@@ -296,11 +297,12 @@ impl<S: TraceSink> Machine<S> {
     pub fn write_bus(&mut self, address: u16, value: u8) {
         let state = self.current_bus_arbitration_state();
 
-        self.bus.write_with_context(
+        self.bus.write_with_t_cycle_context(
             address,
             value,
             BusRequester::Cpu,
             &state,
+            self.next_t_cycle(),
             Some(&mut self.cartridge),
             crate::bus::BusIoWriteView {
                 apu: Some(&mut self.apu),
@@ -398,11 +400,12 @@ impl<S: TraceSink> Machine<S> {
                                 .with_boot_rom(boot.bus_state())
                                 .with_ppu(ppu.bus_state())
                                 .with_dma(dma.bus_state());
-                            let value = bus.read_with_context(
+                            let value = bus.read_with_t_cycle_context(
                                 transfer_work.source_address(),
                                 BusRequester::Dma,
                                 &arbitration_state,
-                                Some(&*cartridge),
+                                context.t_cycle(),
+                                Some(cartridge),
                                 BusIoReadView {
                                     apu: Some(&*apu),
                                     timer: Some(&*timer),
@@ -455,11 +458,12 @@ impl<S: TraceSink> Machine<S> {
                     let interrupt_flag_pending_mask =
                         current_cycle_interrupt_read_mask(context, ppu, joypad);
                     cpu.tick_t_cycle(|operation| match operation {
-                        CpuBusOperation::Read { address } => Some(bus.read_with_context(
+                        CpuBusOperation::Read { address } => Some(bus.read_with_t_cycle_context(
                             address,
                             BusRequester::Cpu,
                             &arbitration_state,
-                            Some(&*cartridge),
+                            context.t_cycle(),
+                            Some(cartridge),
                             BusIoReadView {
                                 apu: Some(apu),
                                 timer: Some(timer),
@@ -478,11 +482,12 @@ impl<S: TraceSink> Machine<S> {
                                     Some(PendingPpuMmioWrite { address, value });
                                 context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
                             } else {
-                                bus.write_with_context(
+                                bus.write_with_t_cycle_context(
                                     address,
                                     value,
                                     BusRequester::Cpu,
                                     &arbitration_state,
+                                    context.t_cycle(),
                                     Some(cartridge),
                                     BusIoWriteView {
                                         apu: Some(apu),

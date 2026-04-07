@@ -1,4 +1,5 @@
 use crate::model::ExecutionMode;
+use crate::scheduler::TCycle;
 
 mod classify;
 mod device;
@@ -51,6 +52,7 @@ const MBC2_RAM_CELL_COUNT: usize = 512;
 const MBC2_RAM_ADDRESS_MASK: usize = MBC2_RAM_CELL_COUNT - 1;
 const MBC2_RAM_READ_HIGH_NIBBLE: u8 = 0xF0;
 const MBC3_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
+const MBC3_RTC_ACCESS_SPACING_T_CYCLES: u64 = 16;
 const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
 const MBC1_STANDARD_ROM_SIZES: [usize; 5] =
     [32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024];
@@ -298,6 +300,7 @@ struct Mbc3Cartridge {
     rtc_latched: Mbc3RtcState,
     rtc_latched_valid: bool,
     rtc_latch_armed: bool,
+    rtc_access_ready_at: Option<TCycle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

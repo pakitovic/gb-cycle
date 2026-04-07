@@ -1,4 +1,5 @@
 use super::*;
+use crate::scheduler::TCycle;
 
 #[test]
 fn mbc3_power_up_state_is_explicit_and_starts_the_high_window_on_bank_one() {
@@ -111,6 +112,37 @@ fn mbc3_reserved_selectors_do_not_alias_ram_banks() {
         cartridge.write_rom(0x4000, bank);
         assert_eq!(cartridge.read_ram(0xA000), 0xA0 | bank);
     }
+}
+
+#[test]
+fn mbc3_timed_rtc_accesses_record_the_recommended_ready_t_cycle() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    assert_eq!(cartridge.rtc_access_ready_at, None);
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_ram_timed(0xA000, 0x12, TCycle::new(100));
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(116)));
+
+    assert_eq!(cartridge.read_ram_timed(0xA000, TCycle::new(140)), 0x00);
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(156)));
+
+    cartridge.write_rom(0x4000, 0x02);
+    cartridge.write_ram_timed(0xA000, 0x44, TCycle::new(200));
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(156)));
+
+    cartridge.write_rom(0x4000, 0x05);
+    assert_eq!(
+        cartridge.read_ram_timed(0xA000, TCycle::new(220)),
+        RAM_ABSENT_READ_VALUE
+    );
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(156)));
 }
 
 #[test]

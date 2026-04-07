@@ -1,5 +1,6 @@
 use crate::boot::StartupMemoryPolicy;
 use crate::cartridge::CartridgeSlot;
+use crate::scheduler::TCycle;
 
 use super::{
     BLOCKED_READ_VALUE, Bus, BusAddressInfo, BusIoReadView, BusIoWriteView, BusRegion,
@@ -20,6 +21,36 @@ impl Bus {
             | BusRegion::CartridgeExternal => {
                 self.read_cartridge_target(target.address(), target.region(), cartridge)
             }
+            BusRegion::Vram => self.vram.read(target.region_offset() as usize),
+            BusRegion::WramBank0 | BusRegion::WramBankN | BusRegion::EchoRam => {
+                self.wram.read(target.address())
+            }
+            BusRegion::Oam => self.oam.read(target.region_offset() as usize),
+            BusRegion::Unusable => self.read_unusable_placeholder(),
+            BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
+                self.iohram
+                    .read(&self.router, self.console_model, target, io)
+            }
+        }
+    }
+
+    pub(super) fn perform_allowed_read_timed(
+        &self,
+        target: BusAddressInfo,
+        t_cycle: TCycle,
+        cartridge: Option<&mut CartridgeSlot>,
+        io: BusIoReadView<'_>,
+    ) -> u8 {
+        match target.region() {
+            BusRegion::BootRom => self.read_boot_rom_placeholder(target.address(), io),
+            BusRegion::CartridgeRomBank0
+            | BusRegion::CartridgeRomBankN
+            | BusRegion::CartridgeExternal => self.read_cartridge_target_timed(
+                target.address(),
+                target.region(),
+                t_cycle,
+                cartridge,
+            ),
             BusRegion::Vram => self.vram.read(target.region_offset() as usize),
             BusRegion::WramBank0 | BusRegion::WramBankN | BusRegion::EchoRam => {
                 self.wram.read(target.address())
@@ -88,6 +119,25 @@ impl Bus {
         }
     }
 
+    fn read_cartridge_target_timed(
+        &self,
+        address: u16,
+        region: BusRegion,
+        t_cycle: TCycle,
+        cartridge: Option<&mut CartridgeSlot>,
+    ) -> u8 {
+        match cartridge {
+            Some(cartridge) => match region {
+                BusRegion::CartridgeRomBank0 | BusRegion::CartridgeRomBankN => {
+                    cartridge.read_rom(address)
+                }
+                BusRegion::CartridgeExternal => cartridge.read_ram_timed(address, t_cycle),
+                _ => unreachable!("non-cartridge region routed to cartridge target"),
+            },
+            None => BLOCKED_READ_VALUE,
+        }
+    }
+
     fn write_cartridge_target(
         &mut self,
         address: u16,
@@ -102,6 +152,57 @@ impl Bus {
                 }
                 BusRegion::CartridgeExternal => cartridge.write_ram(address, value),
                 _ => unreachable!("non-cartridge region routed to cartridge target"),
+            }
+        }
+    }
+
+    fn write_cartridge_target_timed(
+        &mut self,
+        address: u16,
+        region: BusRegion,
+        value: u8,
+        t_cycle: TCycle,
+        cartridge: Option<&mut CartridgeSlot>,
+    ) {
+        if let Some(cartridge) = cartridge {
+            match region {
+                BusRegion::CartridgeRomBank0 | BusRegion::CartridgeRomBankN => {
+                    cartridge.write_rom(address, value)
+                }
+                BusRegion::CartridgeExternal => cartridge.write_ram_timed(address, value, t_cycle),
+                _ => unreachable!("non-cartridge region routed to cartridge target"),
+            }
+        }
+    }
+
+    pub(super) fn perform_allowed_write_timed(
+        &mut self,
+        target: BusAddressInfo,
+        value: u8,
+        t_cycle: TCycle,
+        cartridge: Option<&mut CartridgeSlot>,
+        io: BusIoWriteView<'_>,
+    ) {
+        match target.region() {
+            BusRegion::BootRom => unreachable!("boot ROM overlay must not own writes"),
+            BusRegion::CartridgeRomBank0
+            | BusRegion::CartridgeRomBankN
+            | BusRegion::CartridgeExternal => self.write_cartridge_target_timed(
+                target.address(),
+                target.region(),
+                value,
+                t_cycle,
+                cartridge,
+            ),
+            BusRegion::Vram => self.vram.write(target.region_offset() as usize, value),
+            BusRegion::WramBank0 | BusRegion::WramBankN | BusRegion::EchoRam => {
+                self.wram.write(target.address(), value);
+            }
+            BusRegion::Oam => self.oam.write(target.region_offset() as usize, value),
+            BusRegion::Unusable => {}
+            BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
+                self.iohram
+                    .write(&self.router, self.console_model, target, value, io)
             }
         }
     }

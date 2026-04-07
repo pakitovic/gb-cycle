@@ -155,6 +155,7 @@ impl CartridgeSlot {
                         rtc_latched: Mbc3RtcState::default(),
                         rtc_latched_valid: false,
                         rtc_latch_armed: false,
+                        rtc_access_ready_at: None,
                     })),
                 };
 
@@ -251,9 +252,23 @@ impl CartridgeSlot {
             .map_or(RAM_ABSENT_READ_VALUE, |device| device.read_ram(address))
     }
 
+    pub(crate) fn read_ram_timed(&mut self, address: u16, t_cycle: TCycle) -> u8 {
+        self.device
+            .as_mut()
+            .map_or(RAM_ABSENT_READ_VALUE, |device| {
+                device.read_ram_timed(address, t_cycle)
+            })
+    }
+
     pub fn write_ram(&mut self, address: u16, value: u8) {
         if let Some(device) = &mut self.device {
             device.write_ram(address, value);
+        }
+    }
+
+    pub(crate) fn write_ram_timed(&mut self, address: u16, value: u8, t_cycle: TCycle) {
+        if let Some(device) = &mut self.device {
+            device.write_ram_timed(address, value, t_cycle);
         }
     }
 

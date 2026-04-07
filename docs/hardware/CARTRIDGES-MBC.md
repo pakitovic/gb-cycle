@@ -433,6 +433,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `halt = 1` must stop progression of the live RTC state.
 - Pan Docs' recommendation to set `halt` before writing RTC registers should be documented as a hardware-usage rule, but the emulator does not need to reject out-of-flow writes unless later hardware evidence demands that restriction.
 - When the selector targets `0x08..=0x0C`, writes to `0xA000-0xBFFF` must update the live RTC register state, not the latched snapshot.
+- The current implementation records the next recommended RTC-ready point as explicit cartridge state on timed `0x08..=0x0C` accesses: each RTC-register read or write updates `rtc_access_ready_at = current_t_cycle + 16`. This keeps the `4 us` / `16`-T-cycle spacing recommendation observable and testable without yet enforcing an early-access penalty.
 - Preserve the architecturally visible bits of each written RTC register for later readback through the latched register file: seconds and minutes keep their low `6` bits, hours keeps its low `5` bits, day low keeps all `8` bits, and day high keeps bit `0` plus halt/carry. Only normalize those visible values into valid running-clock ranges when advancing elapsed time in the live RTC model.
 - After one valid snapshot exists, the current curated-compatibility model also accepts follow-up non-zero `0x6000-0x7FFF` writes as relatch commands. This is an intentional compatibility deviation from the stricter `Pan Docs` reading, kept to match the retained `cpp/latch-rtc-test.gb` oracle after instrumenting that ROM and observing an initial `0x00 -> 0x01` latch followed by repeated non-zero relatch writes without re-arming zeros. Record this explicitly so it can be revisited later.
 - MBC3 control writes are ordinary cartridge commands on the shared T-cycle timeline. Changes to ROM bank, RAM bank, RTC selector, RAM / RTC enable, and latch state must become visible on the access T-cycle for all later cartridge accesses; do not defer them to instruction or frame boundaries.
@@ -806,6 +807,6 @@ Priority order:
 - enum-based versus trait-based mapper organization for this codebase
 - what public API surface should expose the optional experimental-heuristic loader policy so tests and tools can enable it without contaminating strict default behavior
 - which explicit default policy should govern MBC3 RAM / RTC-disabled reads and writes at `0xA000-0xBFFF`
-- whether the Pan Docs RTC access-spacing recommendation should remain documented-only or later become an enforced `16`-T-cycle timing rule
+- whether the now-observable MBC3 RTC access-spacing state should remain advisory-only or later become an enforced `16`-T-cycle timing rule
 - what persisted RTC serialization shape best separates visible RTC state, elapsed-time bookkeeping, and frontend-specific storage adapters
 - which default flush policy should be enabled for hardware-style saves: close-only, manual plus close, or optional auto-flush after persistible writes

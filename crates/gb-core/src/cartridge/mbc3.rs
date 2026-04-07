@@ -1,6 +1,12 @@
 use super::*;
 
 impl Mbc3Cartridge {
+    fn note_rtc_access_timing(&mut self, t_cycle: TCycle) {
+        self.rtc_access_ready_at = Some(TCycle::new(
+            t_cycle.get() + MBC3_RTC_ACCESS_SPACING_T_CYCLES,
+        ));
+    }
+
     fn visible_rtc_state(&self) -> Mbc3RtcState {
         if self.rtc_latched_valid {
             self.rtc_latched
@@ -70,6 +76,30 @@ impl Mbc3Cartridge {
         }
     }
 
+    pub(in crate::cartridge) fn read_ram_timed(&mut self, address: u16, t_cycle: TCycle) -> u8 {
+        if !self.ram_rtc_enabled {
+            return RAM_ABSENT_READ_VALUE;
+        }
+
+        match self.ram_or_rtc_select {
+            Mbc3RamRtcSelect::RamBank(raw_bank) => {
+                self.ram.as_ref().map_or(RAM_ABSENT_READ_VALUE, |ram| {
+                    let offset = self.effective_ram_offset(address, raw_bank);
+                    ram.get(offset).copied().unwrap_or(RAM_ABSENT_READ_VALUE)
+                })
+            }
+            Mbc3RamRtcSelect::ReservedSelector(_) => RAM_ABSENT_READ_VALUE,
+            Mbc3RamRtcSelect::RtcRegister(register) => {
+                if self.has_rtc {
+                    self.note_rtc_access_timing(t_cycle);
+                    self.visible_rtc_state().read(register)
+                } else {
+                    RAM_ABSENT_READ_VALUE
+                }
+            }
+        }
+    }
+
     pub(in crate::cartridge) fn write_ram(&mut self, address: u16, value: u8) {
         if !self.ram_rtc_enabled {
             return;
@@ -87,6 +117,35 @@ impl Mbc3Cartridge {
             Mbc3RamRtcSelect::ReservedSelector(_) => {}
             Mbc3RamRtcSelect::RtcRegister(register) => {
                 if self.has_rtc {
+                    self.rtc_live.write(register, value);
+                }
+            }
+        }
+    }
+
+    pub(in crate::cartridge) fn write_ram_timed(
+        &mut self,
+        address: u16,
+        value: u8,
+        t_cycle: TCycle,
+    ) {
+        if !self.ram_rtc_enabled {
+            return;
+        }
+
+        match self.ram_or_rtc_select {
+            Mbc3RamRtcSelect::RamBank(raw_bank) => {
+                let offset = self.effective_ram_offset(address, raw_bank);
+                if let Some(ram) = &mut self.ram
+                    && let Some(byte) = ram.get_mut(offset)
+                {
+                    *byte = value;
+                }
+            }
+            Mbc3RamRtcSelect::ReservedSelector(_) => {}
+            Mbc3RamRtcSelect::RtcRegister(register) => {
+                if self.has_rtc {
+                    self.note_rtc_access_timing(t_cycle);
                     self.rtc_live.write(register, value);
                 }
             }

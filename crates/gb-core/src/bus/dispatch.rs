@@ -1,4 +1,5 @@
 use crate::cartridge::CartridgeSlot;
+use crate::scheduler::TCycle;
 
 use super::{
     Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution, BusAddressInfo,
@@ -78,6 +79,36 @@ impl Bus {
         }
     }
 
+    pub(crate) fn read_with_t_cycle_context(
+        &mut self,
+        address: u16,
+        requester: BusRequester,
+        state: &BusArbitrationState,
+        t_cycle: TCycle,
+        cartridge: Option<&mut CartridgeSlot>,
+        io: BusIoReadView<'_>,
+    ) -> u8 {
+        if let Some(conflict_source_address) =
+            self.cpu_dma_conflict_source_address(requester, address, state)
+        {
+            let target =
+                self.resolve_nominal_target(BusAccessKind::Read, conflict_source_address, state);
+            return self.perform_allowed_read_timed(target, t_cycle, cartridge, io);
+        }
+
+        let resolution = self.resolve_access(requester, BusAccessKind::Read, address, state);
+
+        match resolution.disposition() {
+            BusAccessDisposition::Allowed => {
+                self.perform_allowed_read_timed(resolution.target(), t_cycle, cartridge, io)
+            }
+            BusAccessDisposition::BlockedRead { value, .. } => value,
+            BusAccessDisposition::IgnoredWrite { .. } => {
+                panic!("read path received write-only access disposition")
+            }
+        }
+    }
+
     pub fn write(&mut self, address: u16, value: u8) {
         self.write_with(
             address,
@@ -145,6 +176,39 @@ impl Bus {
         match resolution.disposition() {
             BusAccessDisposition::Allowed => {
                 self.perform_allowed_write(resolution.target(), value, cartridge, io)
+            }
+            BusAccessDisposition::IgnoredWrite { .. } => {}
+            BusAccessDisposition::BlockedRead { .. } => {
+                panic!("write path received read-only access disposition")
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn write_with_t_cycle_context(
+        &mut self,
+        address: u16,
+        value: u8,
+        requester: BusRequester,
+        state: &BusArbitrationState,
+        t_cycle: TCycle,
+        cartridge: Option<&mut CartridgeSlot>,
+        io: BusIoWriteView<'_>,
+    ) {
+        if let Some(conflict_source_address) =
+            self.cpu_dma_conflict_source_address(requester, address, state)
+        {
+            let target =
+                self.resolve_nominal_target(BusAccessKind::Write, conflict_source_address, state);
+            self.perform_allowed_write_timed(target, value, t_cycle, cartridge, io);
+            return;
+        }
+
+        let resolution = self.resolve_access(requester, BusAccessKind::Write, address, state);
+
+        match resolution.disposition() {
+            BusAccessDisposition::Allowed => {
+                self.perform_allowed_write_timed(resolution.target(), value, t_cycle, cartridge, io)
             }
             BusAccessDisposition::IgnoredWrite { .. } => {}
             BusAccessDisposition::BlockedRead { .. } => {
