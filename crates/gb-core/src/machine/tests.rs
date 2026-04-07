@@ -1,10 +1,10 @@
 use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write};
 use super::*;
 use crate::cartridge::PersistentCartState;
+use crate::joypad::JoypadButton;
 use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
 use crate::ppu::PpuLcdState;
-use crate::scheduler::SchedulerSideEffect;
-use crate::scheduler::TCycle;
+use crate::scheduler::{ExternalEvent, SchedulerSideEffect, TCycle};
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 
@@ -173,4 +173,48 @@ fn cpu_ppu_mmio_writes_commit_during_phase_7_of_the_same_t_cycle() {
             .contains(&SchedulerSideEffect::CommitMmioWrite)
     );
     assert_eq!(machine.ppu().snapshot().lcd_state, PpuLcdState::Disabled);
+}
+
+#[test]
+fn joypad_host_input_is_ingested_during_external_event_ingress() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF00, 0x10);
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+
+    assert_eq!(machine.read_bus(0xFF00), 0xDE);
+    assert_eq!(machine.joypad().pressed_mask(), 0x00);
+
+    let context = machine.step_t_cycle();
+
+    assert_eq!(
+        context.phase(),
+        crate::scheduler::SchedulerPhase::CpuWakeInterruptEvaluation
+    );
+    assert_eq!(
+        context.external_events(),
+        &[ExternalEvent::HostInputChanged]
+    );
+    assert_eq!(machine.joypad().pressed_mask(), 0x10);
+}
+
+#[test]
+fn external_serial_clock_is_ingested_during_external_event_ingress() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF01, 0x81);
+    machine.write_bus(0xFF02, 0x80);
+    machine.queue_external_serial_clock();
+
+    let context = machine.step_t_cycle();
+
+    assert_eq!(
+        context.external_events(),
+        &[ExternalEvent::ExternalSerialClock]
+    );
+    assert_eq!(machine.read_bus(0xFF01), 0x03);
 }

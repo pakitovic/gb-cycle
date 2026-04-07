@@ -175,8 +175,10 @@ impl Serial {
         self.peer = peer;
     }
 
-    pub fn queue_external_clock_pulse(&mut self) {
+    pub fn queue_external_clock_pulse(&mut self) -> bool {
+        let previous_pending = self.external_clock_pulses_pending;
         self.external_clock_pulses_pending = self.external_clock_pulses_pending.saturating_add(1);
+        self.external_clock_pulses_pending != previous_pending
     }
 
     pub fn take_completed_output_bytes(&mut self) -> Vec<u8> {
@@ -221,6 +223,14 @@ impl Serial {
             self.clock_mode,
             self.transfer_state,
             self.peer,
+        )
+    }
+
+    pub(crate) fn external_event_ingress_trace_message(&self, context: &CycleContext) -> String {
+        format!(
+            "{} external_clock_pulses_pending={}",
+            self.scheduler_trace_message(context),
+            self.external_clock_pulses_pending,
         )
     }
 

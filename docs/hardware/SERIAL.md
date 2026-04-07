@@ -89,6 +89,7 @@ Keep these concerns distinct:
 ## Scheduler integration baseline
 
 - External serial clock pulses, peer-provided input bits, and other link-endpoint events should enter the core as timestamped events for a specific T-cycle before serial hardware advances for that cycle.
+- In the current `Machine` host API, externally queued slave-clock pulses may be buffered between T-cycles, but they must cross into serial hardware only during scheduler phase `1` (`ExternalEventIngress`) so the retained trace chronology matches the shared timeline.
 - After that ingress point, serial shift work should happen as part of the shared autonomous-peripheral phase on the same T-cycle timeline.
 - On the T-cycle that completes the eighth shift, the serial subsystem should update live `SB`, clear `SC.7`, and emit its completion request so the interrupt controller can aggregate it into `IF` in that same cycle.
 - The scheduler must not defer serial-completion visibility to the end of an instruction, scanline, or video frame.

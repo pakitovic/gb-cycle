@@ -8,23 +8,28 @@ use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 impl<S: TraceSink> Machine<S> {
     pub fn read_bus(&mut self, address: u16) -> u8 {
         let state = self.current_bus_arbitration_state();
-        let value = self.bus.read_with_context(
-            address,
-            BusRequester::Cpu,
-            &state,
-            Some(&self.cartridge),
-            BusIoReadView {
-                apu: Some(&self.apu),
-                timer: Some(&self.timer),
-                serial: Some(&self.serial),
-                dma: Some(&self.dma),
-                boot: Some(&self.boot),
-                interrupts: Some(&self.interrupts),
-                interrupt_flag_pending_mask: 0,
-                joypad: Some(&self.joypad),
-                ppu: Some(&self.ppu),
-            },
-        );
+        let value = if address == 0xFF00 {
+            self.joypad
+                .read_p1_with_pressed_mask(self.pending_external_events.joypad_pressed_mask())
+        } else {
+            self.bus.read_with_context(
+                address,
+                BusRequester::Cpu,
+                &state,
+                Some(&self.cartridge),
+                BusIoReadView {
+                    apu: Some(&self.apu),
+                    timer: Some(&self.timer),
+                    serial: Some(&self.serial),
+                    dma: Some(&self.dma),
+                    boot: Some(&self.boot),
+                    interrupts: Some(&self.interrupts),
+                    interrupt_flag_pending_mask: 0,
+                    joypad: Some(&self.joypad),
+                    ppu: Some(&self.ppu),
+                },
+            )
+        };
         self.bus.route_cpu_address_event(
             CpuAddressEvent {
                 kind: CpuAddressEventKind::Read,
@@ -123,5 +128,8 @@ impl<S: TraceSink> Machine<S> {
             self.bus
                 .apply_startup_memory_policy(startup_state.startup_memory_policy);
         }
+
+        self.pending_external_events
+            .reset(self.joypad.pressed_mask());
     }
 }

@@ -65,6 +65,7 @@ Keep these layers distinct:
 ## Scheduler integration baseline
 
 - Host or tool input changes should enter the core as timestamped hardware-facing button transitions for a specific T-cycle before joypad logic runs for that cycle.
+- In the current `Machine` host API, button presses and releases may be latched between T-cycles, but the hardware-facing joypad matrix must only update during scheduler phase `1` (`ExternalEventIngress`) so interrupt and `STOP` wake ordering stay on the shared timeline.
 - Joypad should recompute the visible low nibble from the current selection bits plus the current button matrix state on the shared timeline rather than from a frontend frame callback.
 - A write to `FF00` can itself change which low bits are visible, so selection writes must participate in the same ordered visible-edge detection path as physical button changes.
 - Joypad should expose separate outputs for visible low-nibble change, joypad interrupt request, current `STOP` `WAKE` line level, and the wake event latch for an already-stopped CPU; the CPU decides later whether to enter `STOP`, wake, service an interrupt, or some combination ordered on the shared timeline.

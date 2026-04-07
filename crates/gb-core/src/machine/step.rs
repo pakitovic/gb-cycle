@@ -1,4 +1,4 @@
-use super::Machine;
+use super::{Machine, PendingExternalEvents};
 use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{
@@ -12,7 +12,9 @@ use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
 use crate::ppu::Ppu;
-use crate::scheduler::{CycleContext, InterruptSource, SchedulerPhase, SchedulerSideEffect};
+use crate::scheduler::{
+    CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
+};
 use crate::serial::Serial;
 use crate::timer::Timer;
 
@@ -80,12 +82,16 @@ struct MachinePhaseRunner<'a> {
     interrupts: &'a mut InterruptController,
     joypad: &'a mut Joypad,
     cartridge: &'a mut CartridgeSlot,
+    pending_external_events: &'a mut PendingExternalEvents,
     pending_ppu_mmio_write: Option<PendingPpuMmioWrite>,
 }
 
 impl MachinePhaseRunner<'_> {
     fn step_phase<S: TraceSink>(&mut self, context: &mut CycleContext, tracer: &mut Tracer<S>) {
         match context.phase() {
+            SchedulerPhase::ExternalEventIngress => {
+                self.step_external_event_ingress(context, tracer);
+            }
             SchedulerPhase::DerivedEdgeResolution => {
                 self.step_derived_edge_resolution(context, tracer);
             }
@@ -108,6 +114,34 @@ impl MachinePhaseRunner<'_> {
                 self.step_cpu_wake_interrupt_evaluation(context, tracer);
             }
             _ => {}
+        }
+    }
+
+    fn step_external_event_ingress<S: TraceSink>(
+        &mut self,
+        context: &mut CycleContext,
+        tracer: &mut Tracer<S>,
+    ) {
+        if let Some(pressed_mask) = self
+            .pending_external_events
+            .take_pending_joypad_pressed_mask()
+            && self.joypad.apply_pressed_mask(pressed_mask)
+        {
+            context.push_external_event(ExternalEvent::HostInputChanged);
+            tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
+                self.joypad.scheduler_trace_message(context)
+            });
+        }
+
+        if self
+            .pending_external_events
+            .take_external_serial_clock_pulse()
+            && self.serial.queue_external_clock_pulse()
+        {
+            context.push_external_event(ExternalEvent::ExternalSerialClock);
+            tracer.emit_with(TraceSubsystem::Serial, TraceLevel::Trace, || {
+                self.serial.external_event_ingress_trace_message(context)
+            });
         }
     }
 
@@ -434,6 +468,7 @@ impl<S: TraceSink> Machine<S> {
             interrupts: &mut self.interrupts,
             joypad: &mut self.joypad,
             cartridge: &mut self.cartridge,
+            pending_external_events: &mut self.pending_external_events,
             pending_ppu_mmio_write: None,
         };
 

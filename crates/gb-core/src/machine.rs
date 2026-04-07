@@ -12,12 +12,81 @@ use crate::debugger::{
 };
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
-use crate::joypad::{Joypad, JoypadButton};
+use crate::joypad::{Joypad, JoypadButton, button_mask};
 use crate::model::MachineConfig;
 use crate::ppu::Ppu;
 use crate::scheduler::GlobalScheduler;
 use crate::serial::{Serial, SerialPeer};
 use crate::timer::Timer;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PendingExternalEvents {
+    joypad_pressed_mask: u8,
+    joypad_state_dirty: bool,
+    external_serial_clock_pulses_pending: u8,
+}
+
+impl PendingExternalEvents {
+    const fn new(joypad_pressed_mask: u8) -> Self {
+        Self {
+            joypad_pressed_mask,
+            joypad_state_dirty: false,
+            external_serial_clock_pulses_pending: 0,
+        }
+    }
+
+    fn reset(&mut self, joypad_pressed_mask: u8) {
+        *self = Self::new(joypad_pressed_mask);
+    }
+
+    fn set_joypad_button_pressed(&mut self, button: JoypadButton, pressed: bool) {
+        let bit = button_mask(button);
+        let previous_mask = self.joypad_pressed_mask;
+
+        if pressed {
+            self.joypad_pressed_mask |= bit;
+        } else {
+            self.joypad_pressed_mask &= !bit;
+        }
+
+        if self.joypad_pressed_mask != previous_mask {
+            self.joypad_state_dirty = true;
+        }
+    }
+
+    fn take_pending_joypad_pressed_mask(&mut self) -> Option<u8> {
+        if !self.joypad_state_dirty {
+            return None;
+        }
+
+        self.joypad_state_dirty = false;
+        Some(self.joypad_pressed_mask)
+    }
+
+    fn queue_external_serial_clock(&mut self) {
+        self.external_serial_clock_pulses_pending =
+            self.external_serial_clock_pulses_pending.saturating_add(1);
+    }
+
+    fn take_external_serial_clock_pulse(&mut self) -> bool {
+        if self.external_serial_clock_pulses_pending == 0 {
+            return false;
+        }
+
+        self.external_serial_clock_pulses_pending -= 1;
+        true
+    }
+
+    fn joypad_pressed_mask(&self) -> u8 {
+        self.joypad_pressed_mask
+    }
+}
+
+impl Default for PendingExternalEvents {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Machine<S = TraceBuffer> {
@@ -36,6 +105,7 @@ pub struct Machine<S = TraceBuffer> {
     interrupts: InterruptController,
     joypad: Joypad,
     cartridge: CartridgeSlot,
+    pending_external_events: PendingExternalEvents,
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +183,7 @@ impl<S: TraceSink> Machine<S> {
             interrupts: InterruptController::new(console_model),
             joypad: Joypad::new(console_model),
             cartridge: CartridgeSlot::empty(),
+            pending_external_events: PendingExternalEvents::default(),
         };
 
         machine.apply_startup_configuration();
@@ -176,7 +247,7 @@ impl<S: TraceSink> Machine<S> {
     }
 
     pub fn queue_external_serial_clock(&mut self) {
-        self.serial.queue_external_clock_pulse();
+        self.pending_external_events.queue_external_serial_clock();
     }
 
     pub fn take_serial_output_bytes(&mut self) -> Vec<u8> {
@@ -196,7 +267,8 @@ impl<S: TraceSink> Machine<S> {
     }
 
     pub fn set_joypad_button_pressed(&mut self, button: JoypadButton, pressed: bool) {
-        self.joypad.set_button_pressed(button, pressed);
+        self.pending_external_events
+            .set_joypad_button_pressed(button, pressed);
     }
 
     pub fn cartridge(&self) -> &CartridgeSlot {
