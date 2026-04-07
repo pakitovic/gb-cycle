@@ -3331,9 +3331,13 @@ mod tests {
         next_save_flush_policy, next_startup_mode, next_window_scale, parse_trace_capture_t_cycles,
         performance_window_title, render_desktop_trace_record, run_desktop,
     };
+    use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
     use gb_core::{
-        Apu, CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, ExecutionMode,
-        Machine, MachineConfig, PersistentCartState, StartupMode, TraceSummaryBuffer,
+        Apu, ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
+        CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
+        CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
+        JoypadSnapshot, JoypadStatus, Machine, MachineConfig, PersistentCartState, StartupMode,
+        TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopKey,
@@ -3830,6 +3834,251 @@ mod tests {
         assert!(rendered.contains("apu.last_write=write@0xFF1A=0x00"));
         assert!(rendered.contains("before("));
         assert!(rendered.contains("after("));
+    }
+
+    #[test]
+    fn desktop_trace_capture_from_env_keeps_a_ring_buffer_and_writes_the_artifact() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("trace-capture");
+        let output_path = root.join("artifacts").join("desktop-trace.txt");
+        unsafe {
+            std::env::set_var(super::DESKTOP_TRACE_PATH_ENV_VAR, &output_path);
+            std::env::set_var(super::DESKTOP_TRACE_T_CYCLES_ENV_VAR, "2");
+        }
+        let mut capture = super::DesktopTraceCapture::from_env().expect("trace capture from env");
+        unsafe {
+            std::env::remove_var(super::DESKTOP_TRACE_PATH_ENV_VAR);
+            std::env::remove_var(super::DESKTOP_TRACE_T_CYCLES_ENV_VAR);
+        }
+
+        assert_eq!(capture.output_path.as_deref(), Some(output_path.as_path()));
+        assert_eq!(capture.max_t_cycles, 2);
+
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        for _ in 0..3 {
+            machine.step_t_cycle();
+            capture.record_t_cycle(&machine);
+        }
+
+        assert_eq!(capture.records.len(), 2);
+        capture
+            .write_artifact()
+            .expect("trace artifact should be writable");
+        let rendered = fs::read_to_string(&output_path).expect("trace artifact should exist");
+        assert_eq!(rendered.lines().count(), 2);
+        assert!(rendered.contains("cpu.pc=0x0100"));
+        assert!(rendered.contains("apu.nr50=0x77"));
+
+        super::DesktopTraceCapture {
+            output_path: None,
+            max_t_cycles: 2,
+            records: std::collections::VecDeque::new(),
+        }
+        .write_artifact()
+        .expect("disabled trace capture should be a no-op");
+    }
+
+    #[test]
+    fn desktop_trace_helpers_cover_bus_address_joypad_and_apu_formatting() {
+        assert_eq!(super::format_cpu_bus_activity(None), "none");
+        assert_eq!(
+            super::format_cpu_bus_activity(Some(CpuBusActivitySnapshot {
+                kind: CpuBusAccessKind::OpcodeFetch,
+                address: 0x0100,
+                value: 0x31,
+            })),
+            "opcode_fetch@0x0100=0x31"
+        );
+        assert_eq!(
+            super::format_cpu_bus_activity(Some(CpuBusActivitySnapshot {
+                kind: CpuBusAccessKind::OperandRead,
+                address: 0x0101,
+                value: 0xFE,
+            })),
+            "operand_read@0x0101=0xFE"
+        );
+        assert_eq!(
+            super::format_cpu_bus_activity(Some(CpuBusActivitySnapshot {
+                kind: CpuBusAccessKind::DataRead,
+                address: 0xC123,
+                value: 0x45,
+            })),
+            "data_read@0xC123=0x45"
+        );
+        assert_eq!(
+            super::format_cpu_bus_activity(Some(CpuBusActivitySnapshot {
+                kind: CpuBusAccessKind::DataWrite,
+                address: 0xFF40,
+                value: 0x91,
+            })),
+            "data_write@0xFF40=0x91"
+        );
+
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::Read,
+                access_address: Some(0xC000),
+                idu_address: None,
+                update_direction: None,
+            })),
+            "read@0xC000"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::Read,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "read@missing"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::Write,
+                access_address: Some(0xC001),
+                idu_address: None,
+                update_direction: None,
+            })),
+            "write@0xC001"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::Write,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "write@missing"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::IncDec,
+                access_address: None,
+                idu_address: Some(0xC002),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })),
+            "inc@0xC002"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::IncDec,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "incdec@missing"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: Some(0xC003),
+                idu_address: Some(0xC004),
+                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+            })),
+            "read+dec@0xC003->0xC004"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "combined@missing"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: Some(0xC005),
+                idu_address: Some(0xC006),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })),
+            "write+inc@0xC005->0xC006"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "combined@missing"
+        );
+        assert_eq!(
+            super::format_update_direction(CpuAddressUpdateDirection::Increment),
+            "inc"
+        );
+        assert_eq!(
+            super::format_update_direction(CpuAddressUpdateDirection::Decrement),
+            "dec"
+        );
+        assert_eq!(super::visible_nr52(true, 0x0B), 0xFB);
+        assert_eq!(super::visible_nr52(false, 0x0B), 0x70);
+        assert_eq!(
+            super::visible_joypad_low_nibble(&JoypadSnapshot {
+                console_model: ConsoleModel::Dmg,
+                status: JoypadStatus::Ready,
+                selection_bits: 0x00,
+                pressed_mask: 0xFF,
+            }),
+            0x00
+        );
+        assert_eq!(
+            super::visible_joypad_low_nibble(&JoypadSnapshot {
+                console_model: ConsoleModel::Dmg,
+                status: JoypadStatus::Ready,
+                selection_bits: 0x30,
+                pressed_mask: 0xFF,
+            }),
+            0x0F
+        );
+
+        let base_state = ApuRegisterWriteState {
+            powered: true,
+            nr50: 0x77,
+            nr51: 0xFF,
+            nr52: 0xFB,
+            channel_active_mask: 0x0B,
+            channel_dac_mask: 0x0F,
+            output: ApuOutputSnapshot {
+                channel_digital_outputs: [0x01, 0x02, 0x03, 0x04],
+                channel_dac_outputs: [0; 4],
+                mixer_output: ApuStereoOutputSnapshot { left: 5, right: 6 },
+                master_output: ApuStereoOutputSnapshot::default(),
+                hpf_output: ApuStereoOutputSnapshot { left: 7, right: 8 },
+                hpf_capacitor: Default::default(),
+            },
+        };
+        assert_eq!(super::format_apu_last_register_write(None), "");
+        let rendered = super::format_apu_last_register_write(Some(&ApuRegisterWriteObservation {
+            address: 0xFF1A,
+            value: 0x00,
+            before: base_state,
+            after: ApuRegisterWriteState {
+                nr52: 0xF7,
+                channel_active_mask: 0x07,
+                ..base_state
+            },
+        }));
+        assert!(rendered.contains("apu.last_write=write@0xFF1A=0x00"));
+        assert!(rendered.contains("before("));
+        assert!(rendered.contains("after("));
+    }
+
+    #[test]
+    fn frame_pacer_and_performance_counter_cover_idle_paths() {
+        let mut frame_pacer = super::FramePacer::new(true);
+        frame_pacer.next_frame_start = Instant::now() - Duration::from_secs(1);
+        assert_eq!(frame_pacer.wait_until_next_frame(None), Duration::ZERO);
+        frame_pacer.set_vsync_enabled(true);
+        assert!(frame_pacer.next_frame_start <= Instant::now());
+
+        let counter = super::PerformanceCounter::new("gb-desktop | no rom".to_string());
+        let snapshot = counter.snapshot_from_elapsed(Duration::ZERO);
+        assert!(snapshot.fps.is_finite());
+        assert_eq!(snapshot.audio_queue_ms, None);
     }
 
     #[test]
