@@ -2569,7 +2569,6 @@ impl Ppu {
         self.current_scanline_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
-        self.pending_interrupts = 0;
     }
 
     fn clear_visible_buffers(&mut self) {

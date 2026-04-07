@@ -839,6 +839,64 @@ fn lcd_reenable_requests_lcd_stat_only_when_the_retained_lyc_result_rises() {
 }
 
 #[test]
+fn lcd_disable_preserves_pending_vblank_from_the_same_t_cycle() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let oam_bytes = [0; 160];
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x80,
+        stat: 0x80,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 143,
+        lyc: 0x00,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = DOTS_PER_SCANLINE - 1;
+
+    tick_ppu(&mut ppu, 0, &oam_bytes);
+    assert_eq!(ppu.snapshot().ly, 144);
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::VBlank);
+
+    ppu.write_register(0xFF40, 0x00);
+
+    assert_eq!(ppu.snapshot().lcd_state, PpuLcdState::Disabled);
+    assert_eq!(
+        drain_ppu_interrupts(&mut ppu),
+        vec![InterruptSource::VBlank]
+    );
+}
+
+#[test]
+fn lcd_disable_preserves_pending_lcd_stat_requests() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x80,
+        stat: 0x80,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.queue_interrupt_request(InterruptSource::LcdStat);
+    ppu.write_register(0xFF40, 0x00);
+
+    assert_eq!(ppu.snapshot().lcd_state, PpuLcdState::Disabled);
+    assert_eq!(
+        drain_ppu_interrupts(&mut ppu),
+        vec![InterruptSource::LcdStat]
+    );
+}
+
+#[test]
 fn first_frame_after_lcd_reenable_stays_visibly_blank_while_the_raster_runs() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let oam_bytes = [0; 160];

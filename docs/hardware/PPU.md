@@ -159,6 +159,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - With LCD disabled, `STAT` mode should report `0`, VRAM should become ordinarily accessible again, and OAM should follow the same LCD-off policy already used by the bus while still remaining compatible with separate DMA-side blocking rules.
 - The internal STAT interrupt line should stop following the ordinary active-LCD mode/coincidence-source schedule while LCD is disabled.
 - The disabled-state transition should also clear or recompute any previous `stat_irq_line` edge-detection state so LCD re-enable does not inherit a stale-high STAT source.
+- Resetting the LCD pipeline on `LCDC.7` transitions must not discard interrupt requests that were already raised earlier in the same shared T-cycle; those requests belong to the later scheduler interrupt-aggregation step, not to the in-flight raster pipeline state.
 - Re-enabling LCD should restart the PPU timing state through the real scheduler path and remain compatible with the separate rule that the first full frame after re-enable stays blank.
 
 ## LCD re-enable and raster restart baseline
