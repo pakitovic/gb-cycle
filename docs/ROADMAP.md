@@ -35,6 +35,7 @@ Two workstreams span multiple phases:
 ## Open work
 
 - [Open TODOs](TODO.md) — active TODO ledger and PPU checkpoint.
+- Phase `6` follow-up: MBC3 currently keeps a deliberate compatibility deviation for `cpp/latch-rtc-test.gb`: the first RTC latch still requires `0x00 -> 0x01`, but follow-up non-zero writes are also accepted once a valid snapshot exists because instrumentation of that ROM showed repeated non-zero relatch commands without re-arming zeros. Revisit that legacy relatch rule if the curated oracle policy moves back toward the stricter `Pan Docs` model.
 
 ## Final notes
 

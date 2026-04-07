@@ -185,7 +185,7 @@ fn size_decoders_cover_extended_and_unknown_header_codes() {
 }
 
 #[test]
-fn header_parser_rejects_small_images_and_keeps_full_titles_without_terminators() {
+fn header_parser_rejects_small_images_and_keeps_legacy_full_titles_without_terminators() {
     let error = CartridgeHeader::parse(&vec![0x00; HEADER_MINIMUM_ROM_LEN - 1])
         .expect_err("undersized images must be rejected");
     assert_eq!(
@@ -200,5 +200,18 @@ fn header_parser_rejects_small_images_and_keeps_full_titles_without_terminators(
     rom[TITLE_START..=TITLE_END_INCLUSIVE].copy_from_slice(b"FULLTITLE1234567");
 
     let header = CartridgeHeader::parse(&rom).expect("header should parse");
-    assert_eq!(header.title, "FULLTITLE123456");
+    assert_eq!(header.title, "FULLTITLE1234567");
+    assert_eq!(header.cgb_flag, CgbFlag::Unknown(b'7'));
+}
+
+#[test]
+fn header_parser_keeps_cgb_flag_out_of_the_visible_title_when_0x0143_is_a_real_flag() {
+    let mut rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
+    rom[TITLE_START..CGB_FLAG_ADDRESS].copy_from_slice(b"CGBTITLE1234567");
+    rom[CGB_FLAG_ADDRESS] = 0x80;
+
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
+
+    assert_eq!(header.title, "CGBTITLE1234567");
+    assert_eq!(header.cgb_flag, CgbFlag::Supported);
 }

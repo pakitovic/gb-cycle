@@ -154,7 +154,7 @@ impl CartridgeSlot {
                         rtc_live: Mbc3RtcState::default(),
                         rtc_latched: Mbc3RtcState::default(),
                         rtc_latched_valid: false,
-                        rtc_latch_armed: true,
+                        rtc_latch_armed: false,
                     })),
                 };
 

@@ -33,6 +33,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The bus must not infer mapper behavior from ROM size, RAM size, filename, or frontend heuristics when the header already declares the cartridge type.
 - A central cartridge-header parser should own decoding of at least:
   - `entry_point`
+  - visible `title` bytes from `0x0134-0x0143`, with the documented split that legacy cartridges may use all `16` bytes while cartridges with a real CGB flag in `0x0143` must keep that byte out of the visible title
   - `cgb_flag` from `0x0143`
   - `sgb_flag` from `0x0146`
   - `cartridge_type` from `0x0147`
@@ -419,8 +420,9 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The MBC3 RAM / RTC selector should decode from the low nibble of the written value. Upper data bits must not create a different selector namespace.
 - Represent the `0x4000-0x5FFF` selector as an explicit mapping target such as `RamBank(u8)`, `ReservedSelector(u8)`, or `RtcRegister(RtcRegisterId)` instead of as one raw numeric field whose meaning is reconstructed ad hoc during each access.
 - External RAM banking must be masked by the real number of available RAM banks declared by validated cartridge metadata; standard MBC3 should not silently treat a `64 KiB` RAM declaration as ordinary banked SRAM support.
-- `0x6000-0x7FFF` is a write-only RTC latch command register. Latch only on the logical edge formed by writing `0x00` and then `0x01`; model the power-up command-register baseline explicitly so a first post-reset `0x01` behaves consistently with that reset state instead of being treated as an impossible edge.
+- `0x6000-0x7FFF` is a write-only RTC latch command register. The project keeps the first accepted latch on the logical edge formed by writing `0x00` and then `0x01`, so a first post-reset `0x01` does not latch until software has armed the edge with `0x00`.
 - Keep RTC live state and RTC latched state as separate concepts. RTC register writes should update only the live RTC state; reads must continue to observe the currently latched snapshot until software issues the next latch command accepted by the controller.
+- Before the first accepted latch, the current project policy is explicit: RTC register reads observe a zeroed snapshot rather than live RTC state. That keeps the pre-latch state deterministic and avoids relying on whatever bytes happened to sit in the latched-storage field at reset.
 - The visible RTC register file must include seconds, minutes, hours, day low, and day high / flags.
 - Seconds and minutes should stay within `0..=59`, hours within `0..=23`, and the visible day counter within `0..=511`.
 - Day-counter state should be modeled as a `9`-bit value split across `DL` and `DH.bit0`.
@@ -431,7 +433,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Pan Docs' recommendation to set `halt` before writing RTC registers should be documented as a hardware-usage rule, but the emulator does not need to reject out-of-flow writes unless later hardware evidence demands that restriction.
 - When the selector targets `0x08..=0x0C`, writes to `0xA000-0xBFFF` must update the live RTC register state, not the latched snapshot.
 - Preserve the architecturally visible bits of each written RTC register for later readback through the latched register file: seconds and minutes keep their low `6` bits, hours keeps its low `5` bits, day low keeps all `8` bits, and day high keeps bit `0` plus halt/carry. Only normalize those visible values into valid running-clock ranges when advancing elapsed time in the live RTC model.
-- The practical latch model used by current shootout coverage must accept the documented `0x00 -> 0x01` sequence and keep subsequent non-zero `0x6000-0x7FFF` writes able to refresh the latched snapshot until software writes `0x00` again.
+- After one valid snapshot exists, the current curated-compatibility model also accepts follow-up non-zero `0x6000-0x7FFF` writes as relatch commands. This is an intentional compatibility deviation from the stricter `Pan Docs` reading, kept to match the retained `cpp/latch-rtc-test.gb` oracle after instrumenting that ROM and observing an initial `0x00 -> 0x01` latch followed by repeated non-zero relatch writes without re-arming zeros. Record this explicitly so it can be revisited later.
 - MBC3 control writes are ordinary cartridge commands on the shared T-cycle timeline. Changes to ROM bank, RAM bank, RTC selector, RAM / RTC enable, and latch state must become visible on the access T-cycle for all later cartridge accesses; do not defer them to instruction or frame boundaries.
 - Treat MBC3 bus-visible ordering as T-cycle based even though the RTC itself is driven by a `32.768 kHz` external oscillator in hardware. The long-term RTC progression should come from an injected time / persistence source, not from blindly counting executed CPU T-cycles as if the RTC were just another divider.
 - Frontends or tools that run a live real-time session must keep feeding elapsed wall-clock seconds into the cartridge RTC while the session stays open; applying elapsed time only when loading a save is not sufficient for games that expect the clock to tick during play.
@@ -524,7 +526,7 @@ Priority order:
 
 ## Tests
 
-- header parser tests for `entry_point`, `0x0143`, `0x0146`, `0x0147`, `0x0148`, and `0x0149`
+- header parser tests for `entry_point`, visible title handling across the `0x0143` legacy/CGB split, `0x0143`, `0x0146`, `0x0147`, `0x0148`, and `0x0149`
 - tests for standard `0x0148` ROM-size decoding and explicit handling of `0x52`, `0x53`, and `0x54`
 - tests for `0x0149` RAM-size decoding, including the `MBC2` special case where internal RAM is not described by the ordinary RAM-size table
 - tests for explicit diagnostics on unknown cartridge types and size mismatches

@@ -1,6 +1,17 @@
 use super::*;
 
 impl Mbc3Cartridge {
+    fn visible_rtc_state(&self) -> Mbc3RtcState {
+        if self.rtc_latched_valid {
+            self.rtc_latched
+        } else {
+            // Before the first accepted latch, keep reads on an explicit
+            // zeroed snapshot policy instead of accidentally reusing the
+            // zero-initialized storage as an implicit behavior.
+            Mbc3RtcState::default()
+        }
+    }
+
     pub(in crate::cartridge) fn read_rom(&self, address: u16) -> u8 {
         let address = address as usize;
         let bank_count = self.header.rom_size.bank_count.unwrap_or(0);
@@ -51,7 +62,7 @@ impl Mbc3Cartridge {
             Mbc3RamRtcSelect::ReservedSelector(_) => RAM_ABSENT_READ_VALUE,
             Mbc3RamRtcSelect::RtcRegister(register) => {
                 if self.has_rtc {
-                    self.rtc_latched.read(register)
+                    self.visible_rtc_state().read(register)
                 } else {
                     RAM_ABSENT_READ_VALUE
                 }
@@ -111,12 +122,15 @@ impl Mbc3Cartridge {
             return;
         }
 
-        if self.rtc_latch_armed {
+        // Keep the first accepted latch on the documented 0x00 -> 0x01 edge, but
+        // continue to accept follow-up non-zero relatches once a valid snapshot
+        // exists so the curated cpp RTC oracle stays stable.
+        if (self.rtc_latch_armed && value == 0x01) || self.rtc_latched_valid {
             self.rtc_latched = self.rtc_live;
             self.rtc_latched_valid = true;
         }
 
-        self.rtc_latch_armed = true;
+        self.rtc_latch_armed = false;
     }
 
     pub(in crate::cartridge) fn advance_rtc_seconds(&mut self, seconds: u64) {

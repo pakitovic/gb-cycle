@@ -95,7 +95,11 @@ impl CartridgeHeader {
             &rom_bytes[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN],
         );
 
-        let title_bytes = &rom_bytes[TITLE_START..TITLE_END_INCLUSIVE];
+        let cgb_flag = decode_cgb_flag(rom_bytes[CGB_FLAG_ADDRESS]);
+        let title_bytes = match cgb_flag {
+            CgbFlag::Supported | CgbFlag::Only => &rom_bytes[TITLE_START..CGB_FLAG_ADDRESS],
+            CgbFlag::None | CgbFlag::Unknown(_) => &rom_bytes[TITLE_START..=TITLE_END_INCLUSIVE],
+        };
         let title_len = title_bytes
             .iter()
             .position(|&byte| byte == 0 || byte == 0xFF)
@@ -106,7 +110,7 @@ impl CartridgeHeader {
             entry_point,
             nintendo_logo,
             title,
-            cgb_flag: decode_cgb_flag(rom_bytes[CGB_FLAG_ADDRESS]),
+            cgb_flag,
             sgb_flag: decode_sgb_flag(rom_bytes[SGB_FLAG_ADDRESS]),
             cartridge_type: rom_bytes[CARTRIDGE_TYPE_ADDRESS],
             rom_size: RomSizeInfo::decode(rom_bytes[ROM_SIZE_ADDRESS]),
