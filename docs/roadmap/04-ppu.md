@@ -94,7 +94,7 @@ Build a truly dot-by-dot PPU, where the visible image emerges from an explicit p
 #### Phase 4 interleave policy with earlier open TODOs
 
 - Phase `3` leaves no open TODOs, so DMA is not a sequencing blocker for entering Phase `4`.
-- The Phase `2` CPU diagnostic TODO that previously turned unsupported opcodes into a silent non-retiring loop is now closed through one explicit unsupported-opcode diagnostic trap, so deeper Phase `4` ROM or trace debugging no longer fails silently on unknown opcodes.
+- The Phase `2` CPU diagnostic TODO that previously turned invalid opcode holes into a silent non-retiring loop is now closed through one explicit diagnostic trap, so deeper Phase `4` ROM or trace debugging no longer fails silently when the CPU fetches a non-ISA opcode such as `$D3`.
 - The shared Phase `2` CPU subset that Phase `4.8` depends on is now landed ahead of OAM-corruption closure: `[hli]` / `[hld]`, fetch-time `PC` increments, observable `inc rr` / `dec rr`, and the common address-bearing event model reused by stack/control-flow and interrupt-service paths. The remaining boot-facing MMIO transfer shapes stay deferred because they do not block `4.8`.
 - The remaining Phase `2` HALT-edge verification and exact same-cycle `TIMA` / `TMA` reload-write arbitration stay deferred. They should not block early Phase `4` bring-up unless a concrete failing test proves a direct dependency.
 - If a Phase `4` subphase lands with a deliberately isolated gap, record the remainder in `Open TODOs` immediately instead of carrying it informally into the next graphics task.
@@ -230,4 +230,3 @@ Every Phase `4` subphase should end with:
 - inability to support real glitches and edge cases
 - the need to completely rebuild Mode 3
 - incompatibility with tests that depend on FIFO, window, or LCD timings
-

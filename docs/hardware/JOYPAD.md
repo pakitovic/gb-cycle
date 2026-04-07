@@ -55,7 +55,8 @@ Keep these layers distinct:
 
 - The joypad subsystem should be the hardware-facing origin of input-driven CPU wake signaling relevant to `STOP`, rather than letting the frontend or UI wake the CPU by bypassing emulated hardware state.
 - The wake path should derive from the same joypad-owned hardware-facing button state and be documented here as the repo's DMG-family `STOP` wake policy, rather than being inferred from a frontend callback or redefined inside the CPU.
-- For the current repo DMG-family baseline, `STOP` wake should occur on a hardware-facing `released -> pressed` transition of any of the `8` buttons, independent of the current `JOYP` row-selection bits.
+- For the current repo DMG-family baseline, the joypad should expose a `STOP` `WAKE` line derived from the same currently visible `P10..P13` levels as `JOYP` readback after row selection has been applied.
+- Separately, the joypad should expose a visible `High -> Low` wake event for an already-stopped CPU, using that same row-selected `P10..P13` view rather than raw physical button state.
 - That current wake policy is a repo-level behavioral choice for now, not a claim that every remaining electrical detail of DMG-family `STOP` wake has already been proven.
 - `STOP` wake handling and joypad interrupt generation are related but not identical concerns; keep them explicitly connected through shared joypad state without merging them into one opaque shortcut.
 - Joypad interrupt generation must still follow the stricter visible-`JOYP` `High -> Low` rule after row selection has been applied; `STOP` wake must not be silently treated as equivalent to "joypad interrupt requested".
@@ -66,7 +67,7 @@ Keep these layers distinct:
 - Host or tool input changes should enter the core as timestamped hardware-facing button transitions for a specific T-cycle before joypad logic runs for that cycle.
 - Joypad should recompute the visible low nibble from the current selection bits plus the current button matrix state on the shared timeline rather than from a frontend frame callback.
 - A write to `FF00` can itself change which low bits are visible, so selection writes must participate in the same ordered visible-edge detection path as physical button changes.
-- Joypad should expose separate outputs for visible low-nibble change, joypad interrupt request, and `STOP` wake eligibility; the CPU decides later whether to wake, service an interrupt, or both.
+- Joypad should expose separate outputs for visible low-nibble change, joypad interrupt request, current `STOP` `WAKE` line level, and the wake event latch for an already-stopped CPU; the CPU decides later whether to enter `STOP`, wake, service an interrupt, or some combination ordered on the shared timeline.
 - For retained timing visibility in this repo baseline, scheduler traces should
   make the joypad-owned selection bits, hardware-facing pressed-mask state,
   visible low nibble, interrupt-request latch, and `STOP`-wake latch observable
@@ -116,7 +117,7 @@ Keep these layers distinct:
 - tests that interrupt generation is driven from the same underlying input-state transitions observed through `JOYP`
 - tests that `JOYP` bits `7-6` read back high in the current DMG-family baseline instead of mirroring arbitrary storage
 - tests that an `FF00` selection write can create the relevant visible `High -> Low` edge without requiring a second physical input change
-- tests that the current repo `STOP` wake policy is selection-independent across the `8` hardware-facing buttons while still remaining separate from joypad-interrupt visibility rules
+- tests that the current repo `STOP` wake policy exposes both the current row-selected `WAKE` line level and the later row-selected wake event while still remaining separate from joypad-interrupt visibility rules
 - tests that the documented repo `STOP` wake policy uses the joypad subsystem path rather than a frontend-only shortcut
 
 ## Implementation notes for this repo

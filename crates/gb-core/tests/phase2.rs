@@ -379,13 +379,11 @@ fn build_halt_stop_and_halt_bug_program() -> (Vec<u8>, u16) {
     program.xor_a();
     program.ldh_a8_from_a(0x0F);
     program.ld_a16_from_a(0xFFFF);
-    program.ld_a_imm(0x30);
+    program.ld_a_imm(0x10);
     program.ld_c_imm(0x00);
     program.ld_ff00_plus_c_from_a();
     program.ld_a_imm(0x01);
     program.ld_a16_from_a(0xFFFF);
-    program.ld_c_imm(0x0F);
-    program.ld_ff00_plus_c_from_a();
     program.stop();
     program.ei();
     program.nop();
@@ -542,6 +540,7 @@ fn phase_2_halt_stop_and_halt_bug_rom_fixture_matches_expected_trace_and_state()
         ConsoleModel::Dmg,
     );
     let mut stop_wake_injected = false;
+    let mut stop_irq_injected = false;
 
     step_until_wram_sentinel_with_driver(
         &mut machine,
@@ -554,11 +553,18 @@ fn phase_2_halt_stop_and_halt_bug_rom_fixture_matches_expected_trace_and_state()
             {
                 machine.set_joypad_button_pressed(JoypadButton::A, true);
                 stop_wake_injected = true;
+            } else if stop_wake_injected
+                && !stop_irq_injected
+                && !matches!(machine.cpu().execution_state(), CpuExecutionState::Stopped)
+            {
+                machine.write_bus(0xFF0F, 0x01);
+                stop_irq_injected = true;
             }
         },
     );
 
     assert!(stop_wake_injected);
+    assert!(stop_irq_injected);
     assert_eq!(machine.read_bus(0xC011), 0x03);
     assert_eq!(machine.read_bus(0xC012), 0xE0);
     assert_trace_fixture(
@@ -619,7 +625,7 @@ fn phase_2_trace_shows_fetch_operand_if_visibility_and_interrupt_acceptance() {
             "subsystem=cpu level=trace message=\"t_cycle=7 phase=cpu_micro_operation",
             "last_bus_activity=operand_read@0x0101=0x12",
             "subsystem=interrupts level=trace message=\"t_cycle=15 phase=interrupt_aggregation console_model=Dmg status=Ready if=0xE1 ie=0x01\"",
-            "subsystem=interrupts level=trace message=\"t_cycle=15 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready if=0xE1 ie=0x01\"",
+            "subsystem=interrupts level=trace message=\"t_cycle=15 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready if=0xE0 ie=0x01\"",
             "subsystem=cpu level=trace message=\"t_cycle=15 phase=cpu_wake_interrupt_evaluation",
             "execution_state=ServiceInterrupt { source: VBlank, step: 0, t_cycle: 0 }",
         ],

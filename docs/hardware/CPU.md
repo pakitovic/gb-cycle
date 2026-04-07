@@ -34,8 +34,10 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - The fixed interrupt priority order is `VBlank > LCD STAT > Timer > Serial > Joypad`.
 - The corresponding vectors are `0x40`, `0x48`, `0x50`, `0x58`, and `0x60`.
 - The CPU should only accept maskable interrupts at defined points in the instruction-flow pipeline, effectively at instruction boundaries or an equivalent explicitly modeled acceptance point.
-- When an interrupt is accepted, the CPU should clear `IME`, clear the selected bit in `IF`, push `PC`, and jump to the matching vector as part of one explicit service sequence.
+- When an interrupt is accepted, the CPU should clear `IME`, acknowledge the selected source in `IF`, latch that accepted source internally, and enter one explicit service sequence that pushes `PC` and resolves the final vector.
 - That service sequence must still leave room for one DMG-visible `IE` edge case: if the upper-byte `PC` push lands on `0xFFFF` and changes the pending set, the dispatch may cancel entirely or retarget to a newly highest pending interrupt before the low-byte push and vector commit happen.
+- If that upper-byte `IE` write cancels or retargets the dispatch away from the originally accepted source, the CPU must restore the unserved source's `IF` bit even though the visible acknowledge already happened at acceptance.
+- In the current DMG-family baseline, a same-source re-request raised after acceptance should set `IF` again and remain pending after the in-flight service completes; it must not be erased by a second late acknowledge at vector commit.
 - In the current DMG-family baseline, an `IE` change caused only by the lower-byte `PC` push is too late to cancel or retarget the already in-flight dispatch.
 - The CPU should make that accept-or-not decision only after current-cycle MMIO side effects and interrupt aggregation are already visible; interrupt producers do not bypass that CPU-owned decision point.
 - Once accepted, interrupt servicing must consume the documented DMG `20` T-cycles (`5` M-cycles) through the same ordered CPU execution model used for normal stack and control-flow work.
@@ -53,7 +55,20 @@ The source of truth should not be "execute opcode, mutate registers, then report
 - `STOP` should be represented distinctly from `HALT`; even before full DMG/CGB STOP behavior is implemented, the architecture must leave it as a separate CPU control state.
 - The architecture must allow `STOP` to be released by an explicit hardware-originated wake path owned by the relevant subsystem, with joypad as the current DMG-family baseline owner, rather than by a frontend-only shortcut.
 - The CPU must consume that documented subsystem-owned `STOP` wake policy; it must not define a second local wake rule in parallel.
-- For the current repo baseline, the CPU should treat `STOP` wake as the joypad-defined selection-independent button-press wake event, while keeping that wake distinct from any later joypad interrupt service.
+- For the current repo baseline, the CPU should consume two distinct joypad-owned `STOP` signals derived from the live `JOYP` matrix after row selection has been applied: the current `WAKE` line level sampled while executing `STOP`, and a later visible `High -> Low` wake event used only when the CPU is already in the explicit `Stopped` state.
+- For the current DMG-family baseline in this repo, a `STOP` path with `IME = 0` must follow the documented four-way entry matrix instead of one blanket `10 00` rule:
+  `WAKE = 0` and no pending maskable interrupt enters a real 2-byte `STOP`,
+  `WAKE = 0` with a pending maskable interrupt enters a 1-byte zombie `STOP`,
+  `WAKE = 1` with no pending maskable interrupt behaves HALT-like while still appearing as 2 bytes,
+  and `WAKE = 1` with a pending maskable interrupt behaves NOP-like and appears as 1 byte.
+- In the current repo baseline, that 1-byte zombie branch is an explicit CPU sleep state distinct from ordinary `Stopped`: it keeps `PC` at the post-opcode position with no padding-byte fetch and waits for the same joypad-owned wake event as real `STOP`.
+- The hardware literature also calls that branch "high power usage", but the current repo baseline treats that as an electrical/power distinction rather than a separate software-visible scheduler mode. In practice the emulator keeps the same shared stop gate as ordinary `Stopped` unless a future hardware-backed oracle demonstrates a different externally visible clocking contract.
+- For the current DMG-family baseline in this repo, the simpler `IME = 1` entry rule follows the base STOP description used by Pan Docs and SonoSooS: if the current joypad-owned `WAKE` line is already asserted when opcode `0x10` is fetched, `STOP` behaves as a 1-byte NOP-like path and must complete on that fetch M-cycle; otherwise it enters the ordinary 2-byte visible stopped path.
+- In that NOP-like branch, the CPU should complete `STOP` on the fetch M-cycle that read opcode `0x10`; it must not spend an extra execute M-cycle before the next opcode fetch or interrupt-acceptance checkpoint.
+- For the current DMG-family baseline, the two-byte-visible `STOP` paths still fetch and ignore the post-opcode padding byte before either entering `Stopped` or taking the HALT-like branch, so later execution resumes from `PC + 2`.
+- For the current DMG-family baseline in this repo, entering the explicit `Stopped` state is also a stopped-system-clock condition for the shared scheduler: timer, PPU, APU, serial, and DMA stop advancing until a later joypad-owned wake event releases the CPU again.
+- For the current DMG-family baseline in this repo, a joypad-owned wake event that releases the explicit `Stopped` state while `IME = 1` and a joypad interrupt is pending must take the documented bugged-IRQ path instead of the ordinary `0x60` handler.
+- Hardware research describes that wakeup-time path as unstable; the current repo baseline makes it deterministic: it still consumes one explicit `20` T-cycle interrupt-service window, clears `IME`, vectors to `0x0000`, and models the accompanying stack corruption by dropping the final push-side `SP` decrement so the low return-address byte overwrites the previously written high-byte slot.
 - The `HALT` bug must be represented explicitly as a pending effect on the next opcode fetch rather than flattened into a generic "PC did not increment" shortcut.
 - In the current Phase `2.6` baseline for this repo, `HALT` entry is resolved during scheduler phase `9`, `HALT` wake and later interrupt service remain separate ordered decisions, and `STOP` resumes only through a joypad-owned wake event instead of a CPU-local or frontend-local shortcut.
 
@@ -139,12 +154,13 @@ Priority order:
 - tests for instructions with internal-only steps while timer, PPU, or DMA activity continues externally
 - focused tests for `HALT`, `HALT` bug, `STOP`, `EI`, `DI`, `RETI`, and interrupt timing
 - interrupt-priority tests with multiple simultaneous pending requests
-- tests for correct push of `PC`, clearing of `IF`, and `IME -> 0` on interrupt service
+- tests for correct push of `PC`, accept-time `IF` acknowledge with later restore/retarget edge cases, and `IME -> 0`
 - tests for `EI ; NOP`, `EI ; DI`, `DI ; EI ; NOP`, and pending-IRQ visibility around delayed `EI`
 - tests for chained `EI` sequences such as `EI ; EI` with a pending interrupt already latched
 - tests for `HALT` wake-up with `IME = 1`, `IME = 0`, and `IME = 0` plus already-pending interrupt
 - tests that interrupt acceptance starts a real `20` T-cycle (`5` M-cycle) service sequence instead of an immediate vector jump
 - tests for `STOP` wake-up driven through the relevant hardware source path rather than by directly poking CPU state
+- tests for the current repo `STOP` entry matrix: 2-byte real stop, 1-byte zombie stop, 2-byte HALT-like stop, and 1-byte NOP-like stop
 - tests for `RETI` re-enabling interrupts and allowing later pending requests to be serviced
 - tests that `inc rr` / `dec rr` with `BC`, `DE`, or `HL` in `FE00-FEFF` expose the IDU event needed by the OAM-corruption path
 - tests that `[hli]` / `[hld]`, `push` / `pop`, `call` / `ret` / `rst`, interrupt service, and opcode fetch from OAM expose the same micro-event model instead of requiring opcode-specific hacks
@@ -183,11 +199,17 @@ Priority order:
   least opcode fetches from operand and data accesses. Phase `9` should also
   emit a post-wake/post-accept CPU trace so interrupt acceptance is visible on
   the same timeline as the already-visible `IF` state.
-- In the current diagnostic baseline for this repo, an unsupported decoded
-  opcode enters one explicit `DiagnosticTrap::UnsupportedOpcode { opcode,
-  address }` state immediately after the real opcode-fetch bus read retires.
-  That trap leaves `PC` at the post-fetch position, keeps the fetched opcode
-  visible, and avoids the previous silent non-retiring execute-loop placeholder.
+- In the current diagnostic baseline for this repo, any invalid non-ISA opcode
+  hole (the Pan Docs / RGBDS set `$D3`, `$DB`, `$DD`, `$E3`, `$E4`, `$EB`,
+  `$EC`, `$ED`, `$F4`, `$FC`, `$FD`) enters one explicit
+  `DiagnosticTrap::InvalidOpcode { opcode, address }` state immediately
+  after the real opcode-fetch bus read retires. That trap leaves `PC` at the
+  post-fetch position, keeps the fetched opcode visible, and avoids the
+  previous silent non-retiring execute-loop placeholder. All documented legal
+  base opcodes and all `$CB`-prefixed opcodes are otherwise implemented, so
+  there is no parallel CB-diagnostic fallback path. This diagnostic name is a
+  statement about invalid opcode holes in the ISA, not about missing support
+  for documented instructions.
 - In the current pre-`4.8` interleave baseline for this repo, the CPU also
   exposes one address-bearing event for the current T-cycle when relevant:
   opcode and operand fetch publish `read + inc` with the post-fetch `PC`,

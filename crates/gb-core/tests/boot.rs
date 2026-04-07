@@ -239,7 +239,7 @@ fn real_boot_executes_a_boot_rom_handoff_and_fetches_the_cartridge_entry_next() 
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::DiagnosticTrap {
-            trap: CpuDiagnosticTrap::UnsupportedOpcode {
+            trap: CpuDiagnosticTrap::InvalidOpcode {
                 opcode: PHASE_2_ENTRY_OPCODE,
                 address: 0x0100,
             },

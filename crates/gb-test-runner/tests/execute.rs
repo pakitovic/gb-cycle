@@ -646,7 +646,7 @@ fn runner_reports_cpu_diagnostic_trap_before_timeout() {
     assert_eq!(
         report.outcome,
         RomCaseOutcome::Failed(RomCaseFailure::CpuDiagnosticTrap {
-            trap: gb_core::CpuDiagnosticTrap::UnsupportedOpcode {
+            trap: gb_core::CpuDiagnosticTrap::InvalidOpcode {
                 opcode: 0xD3,
                 address: 0x0100,
             },

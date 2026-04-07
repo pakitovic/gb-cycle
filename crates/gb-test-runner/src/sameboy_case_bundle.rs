@@ -771,13 +771,18 @@ mod tests {
             .with_runner_binary(&failing_runner)
             .run_suite(&suite)
             .expect_err("runner failure should surface");
-        assert!(matches!(
-            runner_failed,
-            SameBoyCaseBundleExecutionError::RunnerFailed {
-                status: Some(9),
-                ..
-            }
-        ));
+        let SameBoyCaseBundleExecutionError::RunnerFailed {
+            path,
+            status: _,
+            stdout,
+            stderr,
+        } = runner_failed
+        else {
+            panic!("expected runner failure, got {runner_failed:?}");
+        };
+        assert_eq!(path, failing_runner);
+        assert_eq!(stdout, "runner-stdout");
+        assert_eq!(stderr, "runner-stderr");
 
         let blocked_root = temp_dir.join("oracle-root-file");
         fs::write(&blocked_root, b"not-a-directory")

@@ -116,6 +116,7 @@ pub enum CaptureKind {
 }
 
 pub const GBEMU_SHOOTOUT_ROOT_ENV_VAR: &str = "GB_CYCLE_GBEMU_SHOOTOUT_ROOT";
+const DMG_FAMILY_FRAME_T_CYCLES: u64 = 70_224;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Timeout {
@@ -141,6 +142,7 @@ pub enum StimulusTime {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExternalStimulusAction {
     JoypadSetButton { button: JoypadButton, pressed: bool },
+    WriteMemory { address: u16, value: u8 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -633,7 +635,8 @@ pub fn phase_2_cpu_timing_suite() -> RomSuite {
 }
 
 pub fn phase_2_interrupt_timing_suite() -> RomSuite {
-    const PHASE_2_HALT_STOP_WAKE_T_CYCLE: u64 = 372;
+    const PHASE_2_HALT_STOP_WAKE_T_CYCLE: u64 = 356;
+    const PHASE_2_HALT_STOP_IF_INJECT_T_CYCLE: u64 = 357;
 
     RomSuite::new("phase-2-interrupt-timing", TestSubsystem::Interrupts)
         .with_case(
@@ -676,6 +679,13 @@ pub fn phase_2_interrupt_timing_suite() -> RomSuite {
                 ExternalStimulusAction::JoypadSetButton {
                     button: JoypadButton::A,
                     pressed: true,
+                },
+            ))
+            .with_external_stimulus(ExternalStimulus::at_t_cycle(
+                PHASE_2_HALT_STOP_IF_INJECT_T_CYCLE,
+                ExternalStimulusAction::WriteMemory {
+                    address: 0xFF0F,
+                    value: 0x01,
                 },
             ))
             .with_stop_condition(ExecutionStopCondition::MemoryEquals {
@@ -1591,6 +1601,9 @@ impl RomRunner {
                 ExternalStimulusAction::JoypadSetButton { button, pressed } => {
                     machine.set_joypad_button_pressed(button, pressed);
                 }
+                ExternalStimulusAction::WriteMemory { address, value } => {
+                    machine.write_bus(address, value);
+                }
             }
 
             applied_stimuli[index] = true;
@@ -2006,7 +2019,11 @@ pub fn default_workspace_root() -> PathBuf {
 fn budget_exhausted(timeout: Timeout, executed_t_cycles: u64, completed_frames: u32) -> bool {
     match timeout {
         Timeout::TCycles(limit) => executed_t_cycles >= limit,
-        Timeout::Frames(limit) => completed_frames >= limit,
+        Timeout::Frames(limit) => {
+            let fallback_t_cycle_budget =
+                u64::from(limit).saturating_mul(DMG_FAMILY_FRAME_T_CYCLES);
+            completed_frames >= limit || executed_t_cycles >= fallback_t_cycle_budget
+        }
     }
 }
 
@@ -2232,13 +2249,14 @@ fn discard_trace_events_if_needed(trace_buffer: &mut TraceBuffer, executed_t_cyc
 mod tests {
     use super::{
         BootRomAssets, BootRomVerificationMode, CaptureKind, CapturedArtifacts,
-        CapturedMemoryTextOutput, CaseEvaluationInputs, FailureArtifactPolicy,
-        MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE, MemoryTextOutputSpec, MooneyeTestResult,
-        PassCondition, RomCaseFailure, RomCaseOutcome, RomExecutionError, RomRunner, RomTestCase,
-        RunnerMachine, TEST_ROM_ROOT_ENV_VAR, TestSubsystem, Timeout, artifact_file_name,
-        blargg_console_text_complete, blargg_dmg_repo_gated_suite, budget_exhausted,
-        built_in_rom_suite_by_name, capture_blargg_console_text, capture_memory_text_output,
-        detect_mooneye_result, early_phase_9_partial_checklist, external_rom_source_manifest_path,
+        CapturedMemoryTextOutput, CaseEvaluationInputs, DMG_FAMILY_FRAME_T_CYCLES,
+        FailureArtifactPolicy, MOONEYE_FAIL_SIGNATURE, MOONEYE_PASS_SIGNATURE,
+        MemoryTextOutputSpec, MooneyeTestResult, PassCondition, RomCaseFailure, RomCaseOutcome,
+        RomExecutionError, RomRunner, RomTestCase, RunnerMachine, TEST_ROM_ROOT_ENV_VAR,
+        TestSubsystem, Timeout, artifact_file_name, blargg_console_text_complete,
+        blargg_dmg_repo_gated_suite, budget_exhausted, built_in_rom_suite_by_name,
+        capture_blargg_console_text, capture_memory_text_output, detect_mooneye_result,
+        early_phase_9_partial_checklist, external_rom_source_manifest_path,
         external_rom_store_root, hacktix_dmg_curated_suite, memory_text_output_completion_reached,
         mooneye_result_completion_candidate, mooneye_result_for_signature,
         render_memory_text_output,
@@ -3276,6 +3294,11 @@ root_env_var = "GB_CYCLE_LIB_TEST_EXTERNAL_ROOT"
     fn helper_functions_cover_frame_budget_memory_capture_blargg_and_mooneye_nonmatches() {
         assert!(budget_exhausted(Timeout::Frames(3), 0, 3));
         assert!(!budget_exhausted(Timeout::Frames(3), 0, 2));
+        assert!(budget_exhausted(
+            Timeout::Frames(3),
+            3 * DMG_FAMILY_FRAME_T_CYCLES,
+            0,
+        ));
 
         let case = RomTestCase::new(
             "helper-machine",

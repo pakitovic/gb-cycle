@@ -1,0 +1,165 @@
+use super::*;
+use crate::model::{
+    CompatibilityPolicy, DiagnosticPolicy, HeuristicPolicy, OverridePolicy, ValidationPolicy,
+};
+
+mod general;
+mod internal;
+mod mbc1;
+mod mbc2;
+mod mbc3;
+mod mbc5;
+mod no_mbc;
+mod persistence;
+
+fn build_test_rom(len: usize, cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+    let mut rom = vec![0xFF; len.max(HEADER_MINIMUM_ROM_LEN)];
+    rom[ENTRY_POINT_START..ENTRY_POINT_START + ENTRY_POINT_LEN]
+        .copy_from_slice(&[0x00, 0xC3, 0x50, 0x01]);
+    rom[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN]
+        .copy_from_slice(&[0xCE; NINTENDO_LOGO_LEN]);
+    rom[TITLE_START..TITLE_START + 7].copy_from_slice(b"GBTEST1");
+    rom[CGB_FLAG_ADDRESS] = 0x80;
+    rom[SGB_FLAG_ADDRESS] = 0x03;
+    rom[CARTRIDGE_TYPE_ADDRESS] = cartridge_type;
+    rom[ROM_SIZE_ADDRESS] = rom_size_code;
+    rom[RAM_SIZE_ADDRESS] = ram_size_code;
+    rom
+}
+
+fn build_banked_mbc1_rom_with_type(
+    cartridge_type: u8,
+    rom_size_code: u8,
+    ram_size_code: u8,
+) -> Vec<u8> {
+    let rom_size = RomSizeInfo::decode(rom_size_code)
+        .decoded_bytes
+        .expect("test ROM size should decode");
+    let bank_count = RomSizeInfo::decode(rom_size_code)
+        .bank_count
+        .expect("test ROM bank count should decode");
+    let mut rom = build_test_rom(rom_size, cartridge_type, rom_size_code, ram_size_code);
+
+    for bank in 0..bank_count {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
+
+    rom
+}
+
+fn build_banked_mbc1_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+    build_banked_mbc1_rom_with_type(0x03, rom_size_code, ram_size_code)
+}
+
+fn build_m161_signature_rom() -> Vec<u8> {
+    let mut rom = vec![0xFF; 5 * M161_BANK_BYTES];
+    let titles = [
+        b"MANI 4 IN 1".as_slice(),
+        b"TETRIS".as_slice(),
+        b"TENNIS".as_slice(),
+        b"ALLEY WAY".as_slice(),
+        b"YAKUMAN".as_slice(),
+    ];
+
+    for (bank, title) in titles.into_iter().enumerate() {
+        let start = bank * M161_BANK_BYTES;
+        let bank_rom = &mut rom[start..start + M161_BANK_BYTES];
+        bank_rom[ENTRY_POINT_START..ENTRY_POINT_START + ENTRY_POINT_LEN]
+            .copy_from_slice(&[0x00, 0xC3, 0x50, 0x01]);
+        bank_rom[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN]
+            .copy_from_slice(&[0xCE; NINTENDO_LOGO_LEN]);
+        bank_rom[TITLE_START..=TITLE_END_INCLUSIVE].fill(0x00);
+        bank_rom[TITLE_START..TITLE_START + title.len()].copy_from_slice(title);
+        bank_rom[CARTRIDGE_TYPE_ADDRESS] = 0x00;
+        bank_rom[ROM_SIZE_ADDRESS] = 0x00;
+        bank_rom[RAM_SIZE_ADDRESS] = 0x00;
+    }
+
+    rom
+}
+
+fn mark_mbc1_multicart_subheaders(rom: &mut [u8]) {
+    let logo = rom[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN].to_vec();
+
+    for bank in [0x10usize, 0x20, 0x30] {
+        let start = bank * 0x4000 + NINTENDO_LOGO_START;
+        rom[start..start + NINTENDO_LOGO_LEN].copy_from_slice(&logo);
+    }
+}
+
+fn build_banked_mbc2_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+    let rom_size = RomSizeInfo::decode(rom_size_code)
+        .decoded_bytes
+        .expect("test ROM size should decode");
+    let bank_count = RomSizeInfo::decode(rom_size_code)
+        .bank_count
+        .expect("test ROM bank count should decode");
+    let mut rom = build_test_rom(rom_size, cartridge_type, rom_size_code, ram_size_code);
+
+    for bank in 0..bank_count {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
+
+    rom
+}
+
+fn build_banked_mbc3_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+    let rom_size = RomSizeInfo::decode(rom_size_code)
+        .decoded_bytes
+        .expect("test ROM size should decode");
+    let bank_count = RomSizeInfo::decode(rom_size_code)
+        .bank_count
+        .expect("test ROM bank count should decode");
+    let mut rom = build_test_rom(rom_size, cartridge_type, rom_size_code, ram_size_code);
+
+    for bank in 0..bank_count {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
+
+    rom
+}
+
+fn build_banked_mbc5_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+    let rom_size = RomSizeInfo::decode(rom_size_code)
+        .decoded_bytes
+        .expect("test ROM size should decode");
+    let bank_count = RomSizeInfo::decode(rom_size_code)
+        .bank_count
+        .expect("test ROM bank count should decode");
+    let mut rom = build_test_rom(rom_size, cartridge_type, rom_size_code, ram_size_code);
+
+    for bank in 0..bank_count {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 1] = ((bank >> 8) & 0x01) as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
+
+    rom
+}
+
+fn warn_policy() -> CompatibilityPolicy {
+    CompatibilityPolicy {
+        execution_mode: ExecutionMode::Permissive,
+        validation_policy: ValidationPolicy::Warn,
+        heuristic_policy: HeuristicPolicy::Disabled,
+        override_policy: OverridePolicy::default(),
+        diagnostic_policy: DiagnosticPolicy::Standard,
+    }
+}
+
+fn ignore_policy() -> CompatibilityPolicy {
+    CompatibilityPolicy {
+        execution_mode: ExecutionMode::Permissive,
+        validation_policy: ValidationPolicy::Ignore,
+        heuristic_policy: HeuristicPolicy::Disabled,
+        override_policy: OverridePolicy::default(),
+        diagnostic_policy: DiagnosticPolicy::Standard,
+    }
+}

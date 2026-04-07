@@ -100,67 +100,171 @@ fn decode_address_covers_each_dmg_region_boundary() {
         (
             0x0000,
             BusRegion::CartridgeRomBank0,
+            BusDomain::Cartridge,
             BusRegionOwner::Cartridge,
             0x0000,
         ),
         (
             0x3FFF,
             BusRegion::CartridgeRomBank0,
+            BusDomain::Cartridge,
             BusRegionOwner::Cartridge,
             0x3FFF,
         ),
         (
             0x4000,
             BusRegion::CartridgeRomBankN,
+            BusDomain::Cartridge,
             BusRegionOwner::Cartridge,
             0x0000,
         ),
         (
             0x7FFF,
             BusRegion::CartridgeRomBankN,
+            BusDomain::Cartridge,
             BusRegionOwner::Cartridge,
             0x3FFF,
         ),
-        (0x8000, BusRegion::Vram, BusRegionOwner::Ppu, 0x0000),
-        (0x9FFF, BusRegion::Vram, BusRegionOwner::Ppu, 0x1FFF),
+        (
+            0x8000,
+            BusRegion::Vram,
+            BusDomain::Vram,
+            BusRegionOwner::Ppu,
+            0x0000,
+        ),
+        (
+            0x9FFF,
+            BusRegion::Vram,
+            BusDomain::Vram,
+            BusRegionOwner::Ppu,
+            0x1FFF,
+        ),
         (
             0xA000,
             BusRegion::CartridgeExternal,
+            BusDomain::Cartridge,
             BusRegionOwner::Cartridge,
             0x0000,
         ),
         (
             0xBFFF,
             BusRegion::CartridgeExternal,
+            BusDomain::Cartridge,
             BusRegionOwner::Cartridge,
             0x1FFF,
         ),
-        (0xC000, BusRegion::WramBank0, BusRegionOwner::Bus, 0x0000),
-        (0xCFFF, BusRegion::WramBank0, BusRegionOwner::Bus, 0x0FFF),
-        (0xD000, BusRegion::WramBankN, BusRegionOwner::Bus, 0x0000),
-        (0xDFFF, BusRegion::WramBankN, BusRegionOwner::Bus, 0x0FFF),
-        (0xE000, BusRegion::EchoRam, BusRegionOwner::Bus, 0x0000),
-        (0xFDFF, BusRegion::EchoRam, BusRegionOwner::Bus, 0x1DFF),
-        (0xFE00, BusRegion::Oam, BusRegionOwner::Ppu, 0x0000),
-        (0xFE9F, BusRegion::Oam, BusRegionOwner::Ppu, 0x009F),
-        (0xFEA0, BusRegion::Unusable, BusRegionOwner::Bus, 0x0000),
-        (0xFEFF, BusRegion::Unusable, BusRegionOwner::Bus, 0x005F),
-        (0xFF00, BusRegion::Mmio, BusRegionOwner::Mmio, 0x0000),
-        (0xFF7F, BusRegion::Mmio, BusRegionOwner::Mmio, 0x007F),
-        (0xFF80, BusRegion::Hram, BusRegionOwner::Bus, 0x0000),
-        (0xFFFE, BusRegion::Hram, BusRegionOwner::Bus, 0x007E),
+        (
+            0xC000,
+            BusRegion::WramBank0,
+            BusDomain::Wram,
+            BusRegionOwner::Bus,
+            0x0000,
+        ),
+        (
+            0xCFFF,
+            BusRegion::WramBank0,
+            BusDomain::Wram,
+            BusRegionOwner::Bus,
+            0x0FFF,
+        ),
+        (
+            0xD000,
+            BusRegion::WramBankN,
+            BusDomain::Wram,
+            BusRegionOwner::Bus,
+            0x0000,
+        ),
+        (
+            0xDFFF,
+            BusRegion::WramBankN,
+            BusDomain::Wram,
+            BusRegionOwner::Bus,
+            0x0FFF,
+        ),
+        (
+            0xE000,
+            BusRegion::EchoRam,
+            BusDomain::Wram,
+            BusRegionOwner::Bus,
+            0x0000,
+        ),
+        (
+            0xFDFF,
+            BusRegion::EchoRam,
+            BusDomain::Wram,
+            BusRegionOwner::Bus,
+            0x1DFF,
+        ),
+        (
+            0xFE00,
+            BusRegion::Oam,
+            BusDomain::Oam,
+            BusRegionOwner::Ppu,
+            0x0000,
+        ),
+        (
+            0xFE9F,
+            BusRegion::Oam,
+            BusDomain::Oam,
+            BusRegionOwner::Ppu,
+            0x009F,
+        ),
+        (
+            0xFEA0,
+            BusRegion::Unusable,
+            BusDomain::Unusable,
+            BusRegionOwner::Bus,
+            0x0000,
+        ),
+        (
+            0xFEFF,
+            BusRegion::Unusable,
+            BusDomain::Unusable,
+            BusRegionOwner::Bus,
+            0x005F,
+        ),
+        (
+            0xFF00,
+            BusRegion::Mmio,
+            BusDomain::IoHram,
+            BusRegionOwner::Mmio,
+            0x0000,
+        ),
+        (
+            0xFF7F,
+            BusRegion::Mmio,
+            BusDomain::IoHram,
+            BusRegionOwner::Mmio,
+            0x007F,
+        ),
+        (
+            0xFF80,
+            BusRegion::Hram,
+            BusDomain::IoHram,
+            BusRegionOwner::Bus,
+            0x0000,
+        ),
+        (
+            0xFFFE,
+            BusRegion::Hram,
+            BusDomain::IoHram,
+            BusRegionOwner::Bus,
+            0x007E,
+        ),
         (
             0xFFFF,
             BusRegion::InterruptEnable,
+            BusDomain::IoHram,
             BusRegionOwner::InterruptController,
             0x0000,
         ),
     ];
 
-    for (address, region, owner, region_offset) in cases {
+    for (address, region, domain, owner, region_offset) in cases {
         let decoded = bus.decode_address(address);
         assert_eq!(decoded.address(), address);
         assert_eq!(decoded.region(), region);
+        assert_eq!(decoded.domain(), domain);
         assert_eq!(decoded.owner(), owner);
         assert_eq!(decoded.region_offset(), region_offset);
     }
@@ -180,6 +284,16 @@ fn resolve_access_uses_boot_overlay_for_reads_but_not_for_writes() {
     assert_eq!(write.target().region(), BusRegion::CartridgeRomBank0);
     assert_eq!(write.target().owner(), BusRegionOwner::Cartridge);
     assert!(write.disposition().is_allowed());
+}
+
+#[test]
+fn boot_overlay_reads_report_the_boot_domain() {
+    let bus = Bus::new(ConsoleModel::Dmg);
+    let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_dmg_low_bytes());
+
+    let read = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x0000, &state);
+
+    assert_eq!(read.target().domain(), BusDomain::BootRom);
 }
 
 #[test]

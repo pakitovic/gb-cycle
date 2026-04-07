@@ -181,7 +181,7 @@ fn run_real_boot_validation(console_model: ConsoleModel) {
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::DiagnosticTrap {
-            trap: CpuDiagnosticTrap::UnsupportedOpcode {
+            trap: CpuDiagnosticTrap::InvalidOpcode {
                 opcode: CARTRIDGE_ENTRY_OPCODE,
                 address: 0x0100,
             },

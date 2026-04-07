@@ -8,7 +8,9 @@ use crate::cartridge::{
     CartridgeDiagnostic, CartridgeLoadError, CartridgePersistentStateError, CartridgeSlot,
     PersistentCartState,
 };
-use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuBusOperation, CpuCore};
+use crate::cpu::{
+    CpuAddressEvent, CpuAddressEventKind, CpuBusOperation, CpuCore, CpuExecutionState,
+};
 use crate::debugger::{
     DebugControl, MachineSnapshot, TraceBuffer, TraceLevel, TraceSink, TraceSnapshotProvider,
     TraceSubsystem, TraceSummaryBuffer, Tracer,
@@ -355,62 +357,73 @@ impl<S: TraceSink> Machine<S> {
         self.scheduler
             .step_with_trace(&mut self.tracer, |context, tracer| match context.phase() {
                 SchedulerPhase::DerivedEdgeResolution => {
-                    timer.tick_t_cycle(context);
+                    if !matches!(
+                        cpu.execution_state(),
+                        CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+                    ) {
+                        timer.tick_t_cycle(context);
+                    }
                     tracer.emit_with(TraceSubsystem::Timer, TraceLevel::Trace, || {
                         timer.scheduler_trace_message(context)
                     });
                 }
                 SchedulerPhase::AutonomousPeripheralTicks => {
-                    apu.tick_t_cycle(context);
-                    let dma_transfer_work = dma.tick_t_cycle(context);
-                    let dma_oam_conflict_address = dma_transfer_work.and_then(|transfer_work| {
-                        let destination_address = transfer_work.destination_address();
-                        (0xFE00..=0xFE9F)
-                            .contains(&destination_address)
-                            .then_some(destination_address)
-                    });
-                    let dma_oam_active = dma.bus_state().active_region().is_some();
-                    bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
-                    let (oam_view, vram_view) = bus.video_views(BusMaster::Ppu);
-                    ppu.tick_t_cycle(
-                        context,
-                        oam_view,
-                        vram_view,
-                        dma_oam_active,
-                        dma_oam_conflict_address,
-                    );
-                    bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
-                    serial.tick_t_cycle(context);
-                    if let Some(transfer_work) = dma_transfer_work {
-                        let arbitration_state = BusArbitrationState::default()
-                            .with_boot_rom(boot.bus_state())
-                            .with_ppu(ppu.bus_state())
-                            .with_dma(dma.bus_state());
-                        let value = bus.read_with_context(
-                            transfer_work.source_address(),
-                            BusRequester::Dma,
-                            &arbitration_state,
-                            Some(&*cartridge),
-                            BusIoReadView {
-                                apu: Some(&*apu),
-                                timer: Some(&*timer),
-                                serial: Some(&*serial),
-                                dma: Some(&*dma),
-                                boot: Some(&*boot),
-                                interrupts: Some(&*interrupts),
-                                interrupt_flag_pending_mask: 0,
-                                joypad: Some(&*joypad),
-                                ppu: Some(&*ppu),
-                            },
+                    if !matches!(
+                        cpu.execution_state(),
+                        CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+                    ) {
+                        apu.tick_t_cycle(context);
+                        let dma_transfer_work = dma.tick_t_cycle(context);
+                        let dma_oam_conflict_address =
+                            dma_transfer_work.and_then(|transfer_work| {
+                                let destination_address = transfer_work.destination_address();
+                                (0xFE00..=0xFE9F)
+                                    .contains(&destination_address)
+                                    .then_some(destination_address)
+                            });
+                        let dma_oam_active = dma.bus_state().active_region().is_some();
+                        bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
+                        let (oam_view, vram_view) = bus.video_views(BusMaster::Ppu);
+                        ppu.tick_t_cycle(
+                            context,
+                            oam_view,
+                            vram_view,
+                            dma_oam_active,
+                            dma_oam_conflict_address,
                         );
-                        bus.write_with_context(
-                            transfer_work.destination_address(),
-                            value,
-                            BusRequester::Dma,
-                            &arbitration_state,
-                            None,
-                            BusIoWriteView::default(),
-                        );
+                        bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
+                        serial.tick_t_cycle(context);
+                        if let Some(transfer_work) = dma_transfer_work {
+                            let arbitration_state = BusArbitrationState::default()
+                                .with_boot_rom(boot.bus_state())
+                                .with_ppu(ppu.bus_state())
+                                .with_dma(dma.bus_state());
+                            let value = bus.read_with_context(
+                                transfer_work.source_address(),
+                                BusRequester::Dma,
+                                &arbitration_state,
+                                Some(&*cartridge),
+                                BusIoReadView {
+                                    apu: Some(&*apu),
+                                    timer: Some(&*timer),
+                                    serial: Some(&*serial),
+                                    dma: Some(&*dma),
+                                    boot: Some(&*boot),
+                                    interrupts: Some(&*interrupts),
+                                    interrupt_flag_pending_mask: 0,
+                                    joypad: Some(&*joypad),
+                                    ppu: Some(&*ppu),
+                                },
+                            );
+                            bus.write_with_context(
+                                transfer_work.destination_address(),
+                                value,
+                                BusRequester::Dma,
+                                &arbitration_state,
+                                None,
+                                BusIoWriteView::default(),
+                            );
+                        }
                     }
                     tracer.emit_with(TraceSubsystem::Dma, TraceLevel::Trace, || {
                         dma.scheduler_trace_message(context)
@@ -441,7 +454,7 @@ impl<S: TraceSink> Machine<S> {
                         .with_dma(dma.bus_state());
                     let interrupt_flag_pending_mask =
                         current_cycle_interrupt_read_mask(context, ppu, joypad);
-                    let acknowledged_interrupt = cpu.tick_t_cycle(|operation| match operation {
+                    cpu.tick_t_cycle(|operation| match operation {
                         CpuBusOperation::Read { address } => Some(bus.read_with_context(
                             address,
                             BusRequester::Cpu,
@@ -486,10 +499,23 @@ impl<S: TraceSink> Machine<S> {
                             None
                         }
                         CpuBusOperation::PendingInterruptMask => Some(interrupts.pending_mask()),
+                        CpuBusOperation::InterruptEnableMask => Some(interrupts.read_ie()),
+                        CpuBusOperation::StopWakeLineAsserted => {
+                            Some(u8::from(joypad.stop_wake_line_asserted()))
+                        }
+                        CpuBusOperation::AcknowledgeInterrupt { source } => {
+                            interrupts.clear(source);
+                            None
+                        }
+                        CpuBusOperation::RequestInterrupt { source } => {
+                            interrupts.request(source);
+                            None
+                        }
                     });
-                    if let Some(source) = acknowledged_interrupt {
-                        interrupts.clear(source);
-                    }
+                    ppu.set_system_stop_active(matches!(
+                        cpu.execution_state(),
+                        CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+                    ));
                     if let Some(event) = cpu.last_address_event() {
                         bus.route_cpu_address_event(event, &arbitration_state, ppu);
                     }
@@ -524,6 +550,10 @@ impl<S: TraceSink> Machine<S> {
                 }
                 SchedulerPhase::CpuWakeInterruptEvaluation => {
                     cpu.evaluate_wake_and_interrupts(interrupts, joypad);
+                    ppu.set_system_stop_active(matches!(
+                        cpu.execution_state(),
+                        CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+                    ));
                     if joypad.should_emit_scheduler_trace() {
                         tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
                             joypad.scheduler_trace_message(context)
@@ -585,179 +615,4 @@ impl<S: TraceSink> Machine<S> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::cartridge::PersistentCartState;
-    use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
-    use crate::ppu::PpuLcdState;
-    use crate::scheduler::SchedulerSideEffect;
-
-    const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
-
-    fn build_test_rom(program: &[u8]) -> Vec<u8> {
-        let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
-        for (offset, byte) in program.iter().copied().enumerate() {
-            rom[0x0100 + offset] = byte;
-        }
-        rom[0x0147] = 0x00;
-        rom[0x0148] = 0x00;
-        rom[0x0149] = 0x00;
-        rom
-    }
-
-    fn build_test_rom_with_header(
-        program: &[u8],
-        cartridge_type: u8,
-        rom_size: u8,
-        ram_size: u8,
-    ) -> Vec<u8> {
-        let mut rom = build_test_rom(program);
-        rom[0x0147] = cartridge_type;
-        rom[0x0148] = rom_size;
-        rom[0x0149] = ram_size;
-        rom
-    }
-
-    #[test]
-    fn machine_new_starts_on_the_first_t_cycle() {
-        let machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
-        );
-
-        assert_eq!(machine.next_t_cycle(), TCycle::ZERO);
-        assert_eq!(machine.config().console_model, ConsoleModel::Dmg);
-        assert_eq!(machine.cpu().console_model(), ConsoleModel::Dmg);
-        assert_eq!(machine.boot().startup_mode(), StartupMode::SkipBoot);
-        assert!(machine.cartridge().is_empty());
-    }
-
-    #[test]
-    fn step_t_cycle_advances_exactly_one_cycle_per_call() {
-        let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Mgb).with_execution_mode(ExecutionMode::Permissive),
-        );
-
-        let first = machine.step_t_cycle();
-        let second = machine.step_t_cycle();
-
-        assert_eq!(first.t_cycle(), TCycle::new(0));
-        assert_eq!(second.t_cycle(), TCycle::new(1));
-        assert_eq!(machine.next_t_cycle(), TCycle::new(2));
-    }
-
-    #[test]
-    fn machine_can_restore_cartridge_persistent_state_through_a_narrow_host_api() {
-        let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
-        );
-        machine
-            .load_cartridge(build_test_rom_with_header(&[0x00], 0x09, 0x00, 0x02))
-            .expect("NoMBC+RAM+BATTERY test ROM should load");
-
-        machine
-            .restore_cartridge_persistent_state(&PersistentCartState::NoMbcRam {
-                ram: vec![0xAB; 8 * 1024],
-            })
-            .expect("restoring cartridge RAM should succeed");
-
-        assert_eq!(machine.read_bus(0xA000), 0xAB);
-    }
-
-    #[test]
-    fn machine_parts_keep_the_current_subsystem_boundaries_explicit() {
-        let machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Mgb).with_startup_mode(StartupMode::RealBoot),
-        );
-
-        let parts = machine.into_parts();
-
-        assert!(parts.debug_controls.breakpoints().is_empty());
-        assert!(parts.debug_controls.watchpoints().is_empty());
-        assert_eq!(parts.cpu.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.bus.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.apu.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.ppu.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.dma.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.timer.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.serial.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.boot.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.interrupts.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.joypad.console_model(), ConsoleModel::Mgb);
-        assert_eq!(parts.boot.startup_mode(), StartupMode::RealBoot);
-        assert!(parts.cartridge.is_empty());
-    }
-
-    #[test]
-    fn machine_snapshot_exposes_scheduler_trace_and_live_phase_1_subsystems() {
-        let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
-        );
-
-        machine.step_t_cycle();
-        machine.step_t_cycle();
-
-        let snapshot = machine.snapshot();
-
-        assert_eq!(snapshot.config.console_model, ConsoleModel::Dmg);
-        assert_eq!(snapshot.scheduler.next_t_cycle, TCycle::new(2));
-        assert_eq!(snapshot.trace.buffered_event_count, 40);
-        assert_eq!(snapshot.debug_controls.breakpoint_count, 0);
-        assert_eq!(snapshot.debug_controls.watchpoint_count, 0);
-        assert_eq!(snapshot.cpu.console_model, ConsoleModel::Dmg);
-        assert_eq!(snapshot.apu.console_model, ConsoleModel::Dmg);
-        assert_eq!(snapshot.serial.console_model, ConsoleModel::Dmg);
-        assert_eq!(snapshot.interrupts.console_model, ConsoleModel::Dmg);
-        assert_eq!(snapshot.joypad.console_model, ConsoleModel::Dmg);
-        assert!(matches!(
-            snapshot.cartridge.state,
-            crate::CartridgeSlotState::Empty
-        ));
-    }
-
-    #[test]
-    fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
-        let mut ppu = Ppu::new(ConsoleModel::Dmg);
-        let mut pending = Some(PendingPpuMmioWrite {
-            address: 0xFF42,
-            value: 0x12,
-        });
-
-        assert_eq!(ppu.read_register(0xFF42), 0x00);
-
-        commit_pending_ppu_mmio_write(&mut ppu, &mut pending);
-
-        assert_eq!(ppu.read_register(0xFF42), 0x12);
-        assert!(pending.is_none());
-    }
-
-    #[test]
-    fn cpu_ppu_mmio_writes_commit_during_phase_7_of_the_same_t_cycle() {
-        let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
-        );
-        machine
-            .load_cartridge(build_test_rom(&[
-                0x3E, 0x00, // ld a,$00
-                0xE0, 0x40, // ldh ($40),a
-                0x18, 0xFE, // jr .
-            ]))
-            .expect("NoMBC test ROM should load");
-
-        let mut commit_context = None;
-        for _ in 0..32 {
-            let context = machine.step_t_cycle();
-            if machine.read_bus(0xFF40) == 0x00 {
-                commit_context = Some(context);
-                break;
-            }
-        }
-
-        let context = commit_context.expect("CPU LCDC write should commit within 32 T-cycles");
-        assert!(
-            context
-                .queued_side_effects()
-                .contains(&SchedulerSideEffect::CommitMmioWrite)
-        );
-        assert_eq!(machine.ppu().snapshot().lcd_state, PpuLcdState::Disabled);
-    }
-}
+mod tests;
