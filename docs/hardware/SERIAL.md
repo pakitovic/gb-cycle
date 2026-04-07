@@ -61,6 +61,7 @@ Keep these concerns distinct:
 - In slave mode, transfer progress should occur only when external clock pulses are delivered through the peer or link-endpoint boundary.
 - External serial clocks should remain allowed to arrive at non-uniform intervals; do not hard-code a fixed cadence for slave-mode progress.
 - If no external clock pulses arrive in slave mode, the transfer should remain pending indefinitely rather than timing out inside the emulation core.
+- External clock pulses that arrive while slave mode is not armed with `SC.7 = 1` should be discarded rather than buffered and replayed into a later transfer.
 
 ## Peer / link-endpoint boundary baseline
 
@@ -90,6 +91,7 @@ Keep these concerns distinct:
 
 - External serial clock pulses, peer-provided input bits, and other link-endpoint events should enter the core as timestamped events for a specific T-cycle before serial hardware advances for that cycle.
 - In the current `Machine` host API, externally queued slave-clock pulses may be buffered between T-cycles, but they must cross into serial hardware only during scheduler phase `1` (`ExternalEventIngress`) so the retained trace chronology matches the shared timeline.
+- Once a host pulse crosses that ingress boundary, the serial subsystem should accept it only if slave transfer state is already armed for that same shared timeline point; pulses that arrive while idle should be dropped instead of being banked for a future `SC.7` write.
 - After that ingress point, serial shift work should happen as part of the shared autonomous-peripheral phase on the same T-cycle timeline.
 - On the T-cycle that completes the eighth shift, the serial subsystem should update live `SB`, clear `SC.7`, and emit its completion request so the interrupt controller can aggregate it into `IF` in that same cycle.
 - The scheduler must not defer serial-completion visibility to the end of an instruction, scanline, or video frame.

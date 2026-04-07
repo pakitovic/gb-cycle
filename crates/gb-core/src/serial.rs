@@ -157,6 +157,7 @@ impl Serial {
         } else {
             SerialTransferState::Idle
         };
+        self.external_clock_pulses_pending = 0;
         self.current_outgoing_byte = 0;
     }
 
@@ -176,6 +177,10 @@ impl Serial {
     }
 
     pub fn queue_external_clock_pulse(&mut self) -> bool {
+        if !self.accepts_external_clock_pulse() {
+            return false;
+        }
+
         let previous_pending = self.external_clock_pulses_pending;
         self.external_clock_pulses_pending = self.external_clock_pulses_pending.saturating_add(1);
         self.external_clock_pulses_pending != previous_pending
@@ -251,6 +256,14 @@ impl Serial {
         self.shift_one_bit(context);
     }
 
+    fn accepts_external_clock_pulse(&self) -> bool {
+        self.clock_mode == SerialClockMode::External
+            && matches!(
+                self.transfer_state,
+                SerialTransferState::TransferRequested { .. }
+            )
+    }
+
     fn shift_one_bit(&mut self, context: &mut CycleContext) {
         let SerialTransferState::TransferRequested { bits_shifted } = self.transfer_state else {
             return;
@@ -264,6 +277,7 @@ impl Serial {
         let bits_shifted = bits_shifted + 1;
         if bits_shifted == 8 {
             self.transfer_state = SerialTransferState::Idle;
+            self.external_clock_pulses_pending = 0;
             self.completed_output_bytes.push(self.current_outgoing_byte);
             self.current_outgoing_byte = 0;
             context.queue_interrupt_request(InterruptSource::Serial);
