@@ -71,6 +71,8 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 - [PPU][MOONEYE-STAT-TIMING] `hblank_ly_scx_timing-GS`, `intr_2_0_timing`, `vblank_stat_intr-GS` are now green. Remaining open case: `ppu/intr_2_mode0_timing_sprites` — sprite-coupled Mode `2 -> 0` timing is not fully closed.
 
+- [PPU][FF44-HBLANK-SEAM] The exact DMG `FF44` advance point inside late HBlank is still hypothesis-only. The docs prefer the "last machine cycle of HBlank" wording, but a direct retune of the current implementation threshold to later dots regressed `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` from green to red while leaving the rest of the model unchanged. Re-entry should start from a narrow trace or oracle comparison around the late-HBlank `LY/SCX` polling seam rather than from another blind constant change. Hard gate: `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` must stay green.
+
 #### Re-entry rules
 
 - Resume from one failing family at a time; prefer the smallest oracle-backed reproduction that distinguishes the suspected same-T-cycle window.

@@ -49,6 +49,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - The DMA subsystem should publish a common current-cycle memory-region impact such as `Oam`, `Vram`, or no special region, and the PPU should consume that signal when concurrent transfer activity affects PPU-visible behavior.
 - OAM DMA active state and duration belong to DMA; the PPU keeps ownership of the visible consequences such as OAM read failure, Mode `2/3` interaction, and DMG-family OAM corruption behavior.
 - For DMG OAM DMA, keep the coarse "DMA is currently blocking OAM" signal separate from the finer same-cycle destination-word hint used by late Mode `3` sprite-metadata conflicts; the PPU needs both views.
+- Keep the retained Mode `2` DMA-blocked `Y/X` fallback separate from any late `Mode 3` OBJ metadata word captured for conflict handling; late tile/attribute reads must not overwrite the coarse scan-time `Y/X` state.
 - Future HBlank-conditioned transfers should use the PPU's live mode or HBlank-visible state as an input to DMA advance conditions without moving HDMA scheduling logic into the PPU or the bus.
 
 ## LCD MMIO contract baseline
@@ -114,6 +115,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 - `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
 - On DMG-family timing, the bus-facing `FF44` readback should advance to the next scanline during the last machine cycle of HBlank before the full raster wrap completes; do not force bus-visible `LY` reads to be identical to the internal raster/comparison line at every dot.
+- In the current repo baseline, the exact bus-visible `FF44` handoff inside that late-HBlank tail remains unresolved. A direct retune from the current implementation seam to a stricter "final M-cycle only" threshold regressed `mooneye acceptance/ppu/hblank_ly_scx_timing-GS`, so treat that edge as an open hypothesis rather than as a settled constant tweak.
 - The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
 - Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
 - While the LCD is disabled, the `STAT` coincidence bit should retain the last active-LCD comparison result instead of being silently recomputed from the reset LCD-off `LY = 0` state.
@@ -158,6 +160,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - With LCD disabled, `STAT` mode should report `0`, VRAM should become ordinarily accessible again, and OAM should follow the same LCD-off policy already used by the bus while still remaining compatible with separate DMA-side blocking rules.
 - The internal STAT interrupt line should stop following the ordinary active-LCD mode/coincidence-source schedule while LCD is disabled.
 - The disabled-state transition should also clear or recompute any previous `stat_irq_line` edge-detection state so LCD re-enable does not inherit a stale-high STAT source.
+- Resetting the LCD pipeline on `LCDC.7` transitions must not discard interrupt requests that were already raised earlier in the same shared T-cycle; those requests belong to the later scheduler interrupt-aggregation step, not to the in-flight raster pipeline state.
 - Re-enabling LCD should restart the PPU timing state through the real scheduler path and remain compatible with the separate rule that the first full frame after re-enable stays blank.
 
 ## LCD re-enable and raster restart baseline
@@ -204,8 +207,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Sprite selection should ignore `X`; horizontally off-screen sprites still count toward the per-line selection limit if they match vertically.
 - The selection order should be OAM order from `FE00` upward, stopping once `10` matching sprites have been collected.
 - The current line's selected-sprite list should preserve OAM discovery order for later priority and timing work.
-- On DMG-family hardware during active OAM DMA, blocked Mode `2` OAM reads should reuse the last latched OAM word instead of inventing fresh `Y/X` values or force-clearing selection.
-- That stale Mode `2` word should remain shared with later OAM reads such as Mode `3` sprite metadata fetches, so the next scanline's DMA-blocked Mode `2` path can inherit the most recent latched word even when it came from tile/attribute reads rather than from an earlier `Y/X` scan.
+- On DMG-family hardware during active OAM DMA, blocked Mode `2` OAM reads should reuse the last latched `Y/X` word instead of inventing fresh scan-time coordinates or force-clearing selection.
+- That coarse Mode `2` DMA-blocked `Y/X` fallback must remain separate from late `Mode 3` sprite-metadata conflicts. Late tile/attribute reads may observe a different same-cycle OAM word, but they must not overwrite the retained Mode `2` `Y/X` latch used by later DMA-blocked selection.
 
 ## DMG OBJ priority baseline
 
@@ -254,6 +257,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - BG/window/object fetch helpers should consume `VramBusView` / `OamBusView`-style domain clients rather than unrelated `&[u8]` slices so future bus-ownership, storage, and CGB-bank changes do not force another PPU boundary rewrite.
 - Late Mode `3` sprite metadata reads should come from live OAM rather than from a frozen Mode `2` metadata snapshot.
 - During DMG OAM DMA, that late metadata path should be able to read the DMA destination word being written on the current cycle instead of the nominal sprite metadata address, because tests such as `hacktix/strikethrough` depend on that conflict window.
+- In the current baseline, that conflict should be modeled as one current DMA destination address plus the current DMA byte value for the cycle. The late metadata path should align that address to the destination word, substitute the in-flight byte into the matching half, and read the sibling half from live OAM instead of relying on an address-only hint.
 
 ## Mid-frame toggle and size-change baseline
 
