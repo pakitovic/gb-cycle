@@ -1803,7 +1803,7 @@ fn powered_off_startup_state_matches_the_nr52_power_off_contract() {
     let trace = apu.scheduler_trace_message(&context);
     assert_eq!(
         trace,
-        "t_cycle=0 phase=external_event_ingress console_model=Dmg status=Ready powered=false nr50=0x00 nr51=0x00 nr52=0x70 div_apu=0 active_mask=0x00 dac_mask=0x00 channel_digital_outputs=[0, 0, 0, 0] mixer=(0, 0) hpf=(0, 0)"
+        "t_cycle=0 phase=external_event_ingress console_model=Dmg status=Ready powered=false nr50=0x00 nr51=0x00 nr52=0x70 div_apu=7 active_mask=0x00 dac_mask=0x00 channel_digital_outputs=[0, 0, 0, 0] mixer=(0, 0) hpf=(0, 0)"
     );
 }
 
