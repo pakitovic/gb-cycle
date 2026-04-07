@@ -93,7 +93,7 @@ impl<S: TraceSink> Machine<S> {
     }
 
     pub(super) fn apply_startup_configuration(&mut self) {
-        if let Some(startup_state) = self.boot.direct_boot_state(Some(&self.cartridge)) {
+        if let Some(startup_state) = self.boot.machine_skip_boot_state(Some(&self.cartridge)) {
             self.cpu.apply_startup_state(startup_state.cpu);
             self.apu.apply_startup_state(startup_state.apu);
             self.ppu.apply_startup_state(startup_state.ppu);

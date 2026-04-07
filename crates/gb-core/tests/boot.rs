@@ -127,7 +127,7 @@ fn step_machine_until(
 }
 
 #[test]
-fn skip_boot_uses_the_centralized_post_boot_entry_state() {
+fn skip_boot_uses_the_centralized_synthetic_startup_state() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
@@ -142,7 +142,7 @@ fn skip_boot_uses_the_centralized_post_boot_entry_state() {
         StartupMemoryPolicy::DeterministicZeroed
     );
 
-    assert_eq!(machine.read_bus(0xFF00), 0xCF);
+    assert_eq!(machine.read_bus(0xFF00), 0xFF);
     assert_eq!(machine.read_bus(0xFF01), 0x00);
     assert_eq!(machine.read_bus(0xFF02), 0x7E);
     assert_eq!(machine.read_bus(0xFF04), 0xAB);

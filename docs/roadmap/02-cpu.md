@@ -117,10 +117,12 @@ instruction-level shortcuts or hidden timing.
    next-fetch cartridge visibility after `FF50`, valid handoff versus invalid
    header non-handoff, and DMG-family cartridge-entry state coming from
    executed firmware rather than direct-boot literals.
-   Closure note: the first `2.4` landing may use a synthetic DMG boot ROM that
-   performs representative header reads, conditional non-handoff, and an
-   executed `FF50` write on `No MBC`; full production DMG boot-ROM opcode
-   coverage remains tracked separately.
+   Closure note: the synthetic DMG boot ROM from the first `2.4` landing stays
+   as a narrow deterministic `gb-core` target, but production DMG-family boot
+   closure is now defined by repo-local verified-boot-ROM regressions that
+   cover `dmg0` / `dmg` / `mgb` valid handoff plus DMG invalid-logo,
+   invalid-checksum, and FF-filled-header non-handoff without requiring
+   firmware dumps in CI.
 5. `Phase 2.5` - Interrupt-controller integration and CPU accept/service flow.
    Acceptance criteria: hardware producers request interrupts through the
    interrupt controller, `IF` visibility remains separated from CPU acceptance,
