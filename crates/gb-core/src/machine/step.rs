@@ -52,9 +52,12 @@ fn cpu_write_targets_ppu_mmio(bus: &Bus, address: u16) -> bool {
 pub(super) fn commit_pending_ppu_mmio_write(
     ppu: &mut Ppu,
     pending: &mut Option<PendingPpuMmioWrite>,
-) {
+) -> Option<PendingPpuMmioWrite> {
     if let Some(write) = pending.take() {
         ppu.write_register(write.address, write.value);
+        Some(write)
+    } else {
+        None
     }
 }
 
@@ -323,10 +326,18 @@ impl MachinePhaseRunner<'_> {
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
     ) {
-        commit_pending_ppu_mmio_write(self.ppu, &mut self.pending_ppu_mmio_write);
-        tracer.emit_with(TraceSubsystem::Boot, TraceLevel::Trace, || {
-            self.boot.scheduler_trace_message(context)
-        });
+        if let Some(write) =
+            commit_pending_ppu_mmio_write(self.ppu, &mut self.pending_ppu_mmio_write)
+        {
+            tracer.emit_with(TraceSubsystem::Ppu, TraceLevel::Trace, || {
+                self.ppu
+                    .mmio_commit_trace_message(context, write.address, write.value)
+            });
+        } else {
+            tracer.emit_with(TraceSubsystem::Boot, TraceLevel::Trace, || {
+                self.boot.scheduler_trace_message(context)
+            });
+        }
     }
 
     fn step_interrupt_aggregation<S: TraceSink>(
