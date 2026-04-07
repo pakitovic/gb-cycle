@@ -7,7 +7,7 @@ mod save_session;
 mod settings;
 
 use audio::DesktopAudioOutput;
-use bootrom::{load_boot_rom_assets, resolve_path};
+use bootrom::{load_boot_rom_assets, missing_boot_rom_asset_path, resolve_path};
 use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base_config};
 use gb_core::{
     ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot, CartridgeDiagnostic,
@@ -868,19 +868,38 @@ where
 
     let settings_store = DesktopSettingsStore::load()?;
     let base_config = settings_store.base_config();
-    match parse_cli_arguments_with_base_config(arguments.iter().map(String::as_str), base_config)? {
+    match parse_cli_arguments_with_base_config(
+        arguments.iter().map(String::as_str),
+        base_config.clone(),
+    )? {
         CliAction::ShowHelp => {
             print!("{}", help_text());
             Ok(())
         }
-        CliAction::Run(options) => run_desktop(*options, settings_store),
+        CliAction::Run(options) => {
+            let persist_startup_fallback = options.config == base_config;
+            if persist_startup_fallback {
+                run_desktop_with_startup_fallback_persistence(*options, settings_store, true)
+            } else {
+                run_desktop(*options, settings_store)
+            }
+        }
     }
 }
 
 fn run_desktop(
     options: DesktopRunOptions,
-    mut settings_store: DesktopSettingsStore,
+    settings_store: DesktopSettingsStore,
 ) -> Result<(), String> {
+    run_desktop_with_startup_fallback_persistence(options, settings_store, false)
+}
+
+fn run_desktop_with_startup_fallback_persistence(
+    options: DesktopRunOptions,
+    mut settings_store: DesktopSettingsStore,
+    persist_startup_fallback: bool,
+) -> Result<(), String> {
+    let original_config = options.config.clone();
     let current_dir =
         map_display_result(env::current_dir(), "failed to determine current directory")?;
     let loaded_rom = load_initial_rom(&options, &current_dir)?;
@@ -897,12 +916,22 @@ fn run_desktop(
     };
 
     let (mut machine, diagnostics) = match session.rom_bytes() {
-        Some(rom_bytes) => load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?,
-        None => (
-            Machine::new_summary(build_machine_config(&session.config, &session.current_dir)?),
-            Vec::new(),
-        ),
+        Some(rom_bytes) => {
+            let loaded = load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?;
+            log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
+            session.config = loaded.effective_config;
+            (loaded.machine, loaded.diagnostics)
+        }
+        None => {
+            let prepared = prepare_machine_config(&session.config, &session.current_dir)?;
+            log_boot_rom_fallback_warning(prepared.boot_rom_fallback_warning.as_deref());
+            session.config = prepared.effective_config;
+            (Machine::new_summary(prepared.machine_config), Vec::new())
+        }
     };
+    if persist_startup_fallback && session.config != original_config {
+        settings_store.persist_machine_preferences(&session.config)?;
+    }
     write_cartridge_diagnostics(&diagnostics);
     if let Some(rom_path) = session.rom_path() {
         settings_store.remember_loaded_rom(rom_path)?;
@@ -1152,33 +1181,90 @@ fn run_desktop(
     Ok(())
 }
 
-fn build_machine_config(
+#[derive(Debug)]
+struct PreparedMachineConfig {
+    effective_config: DesktopConfig,
+    machine_config: MachineConfig,
+    boot_rom_fallback_warning: Option<String>,
+}
+
+#[derive(Debug)]
+struct LoadedMachine {
+    effective_config: DesktopConfig,
+    machine: Machine<TraceSummaryBuffer>,
+    diagnostics: Vec<CartridgeDiagnostic>,
+    boot_rom_fallback_warning: Option<String>,
+}
+
+type RebuildMachineResult = (
+    DesktopConfig,
+    Option<String>,
+    Machine<TraceSummaryBuffer>,
+    Option<DesktopSaveSession>,
+);
+
+fn prepare_machine_config(
     config: &DesktopConfig,
     current_dir: &Path,
-) -> Result<MachineConfig, String> {
+) -> Result<PreparedMachineConfig, String> {
+    let mut effective_config = config.clone();
+    let boot_rom_fallback_warning =
+        maybe_apply_missing_boot_rom_fallback(&mut effective_config, current_dir)?;
     let boot_rom_assets = load_boot_rom_assets(
-        config.boot_rom.search_path.as_deref(),
-        config.boot_rom.verification,
-        config.launch.console_model,
-        config.launch.startup_mode,
+        effective_config.boot_rom.search_path.as_deref(),
+        effective_config.boot_rom.verification,
+        effective_config.launch.console_model,
+        effective_config.launch.startup_mode,
         current_dir,
     )?;
 
-    Ok(
-        MachineConfig::new(config.launch.console_model.console_model())
-            .with_startup_mode(config.launch.startup_mode)
-            .with_execution_mode(config.launch.execution_mode)
+    Ok(PreparedMachineConfig {
+        machine_config: MachineConfig::new(effective_config.launch.console_model.console_model())
+            .with_startup_mode(effective_config.launch.startup_mode)
+            .with_execution_mode(effective_config.launch.execution_mode)
             .with_boot_rom_assets(boot_rom_assets),
-    )
+        effective_config,
+        boot_rom_fallback_warning,
+    })
+}
+
+fn maybe_apply_missing_boot_rom_fallback(
+    config: &mut DesktopConfig,
+    current_dir: &Path,
+) -> Result<Option<String>, String> {
+    if config.launch.startup_mode != StartupMode::RealBoot {
+        return Ok(None);
+    }
+
+    let Some(missing_path) = missing_boot_rom_asset_path(
+        config.boot_rom.search_path.as_deref(),
+        config.launch.console_model,
+        current_dir,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    config.launch.startup_mode = StartupMode::SkipBoot;
+    Ok(Some(format!(
+        "boot ROM asset missing at {}; falling back to skip-boot",
+        missing_path.display()
+    )))
+}
+
+fn log_boot_rom_fallback_warning(warning: Option<&str>) {
+    if let Some(warning) = warning {
+        eprintln!("warning: {warning}");
+    }
 }
 
 fn load_machine_for_rom(
     config: &DesktopConfig,
     current_dir: &Path,
     rom_bytes: &[u8],
-) -> Result<(Machine<TraceSummaryBuffer>, Vec<CartridgeDiagnostic>), String> {
-    let machine_config = build_machine_config(config, current_dir)?;
-    let mut machine = Machine::new_summary(machine_config);
+) -> Result<LoadedMachine, String> {
+    let prepared = prepare_machine_config(config, current_dir)?;
+    let mut machine = Machine::new_summary(prepared.machine_config);
     let diagnostics = match machine.load_cartridge(rom_bytes.to_vec()) {
         Ok(diagnostics) => diagnostics,
         Err(error) => {
@@ -1188,7 +1274,12 @@ fn load_machine_for_rom(
             ));
         }
     };
-    Ok((machine, diagnostics))
+    Ok(LoadedMachine {
+        effective_config: prepared.effective_config,
+        machine,
+        diagnostics,
+        boot_rom_fallback_warning: prepared.boot_rom_fallback_warning,
+    })
 }
 
 fn load_initial_rom(
@@ -1463,7 +1554,7 @@ fn process_events(
                             }
                         }
                         HotkeyAction::Reset => {
-                            reset_machine(session, machine, runtime)?;
+                            reset_machine(session, machine, runtime, settings_store)?;
                             let keyboard_bindings = runtime.keyboard_bindings;
                             sync_live_input_state(event_pump, &keyboard_bindings, machine, runtime);
                         }
@@ -1713,13 +1804,16 @@ fn apply_machine_settings_change(
         return Ok(());
     }
 
-    if let Err(error) = rebuild_machine_for_config(canvas, context, &next_config) {
-        show_warning_message(Some(canvas.window()), title, &error);
-        eprintln!("warning: {error}");
-        return Ok(());
-    }
+    let effective_config = match rebuild_machine_for_config(canvas, context, &next_config) {
+        Ok(effective_config) => effective_config,
+        Err(error) => {
+            show_warning_message(Some(canvas.window()), title, &error);
+            eprintln!("warning: {error}");
+            return Ok(());
+        }
+    };
 
-    context.session.config = next_config;
+    context.session.config = effective_config;
     context
         .settings_store
         .persist_machine_preferences(&context.session.config)?;
@@ -1730,7 +1824,7 @@ fn rebuild_machine_for_config(
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
     next_config: &DesktopConfig,
-) -> Result<(), String> {
+) -> Result<DesktopConfig, String> {
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
     let battery_backed_state = uses_battery_backed_hardware_persistence(
@@ -1746,63 +1840,78 @@ fn rebuild_machine_for_config(
         return Err(error);
     }
 
-    let rebuild_result: Result<(Machine<TraceSummaryBuffer>, Option<DesktopSaveSession>), String> =
-        (|| {
-            let (mut next_machine, diagnostics) = match context.session.rom_bytes() {
+    let rebuild_result: Result<RebuildMachineResult, String> = (|| {
+        let (effective_config, boot_rom_fallback_warning, mut next_machine, diagnostics) =
+            match context.session.rom_bytes() {
                 Some(rom_bytes) => {
-                    load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?
+                    let loaded =
+                        load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?;
+                    (
+                        loaded.effective_config,
+                        loaded.boot_rom_fallback_warning,
+                        loaded.machine,
+                        loaded.diagnostics,
+                    )
                 }
-                None => (
-                    Machine::new_summary(build_machine_config(
-                        next_config,
-                        &context.session.current_dir,
-                    )?),
-                    Vec::new(),
-                ),
+                None => {
+                    let prepared =
+                        prepare_machine_config(next_config, &context.session.current_dir)?;
+                    (
+                        prepared.effective_config,
+                        prepared.boot_rom_fallback_warning,
+                        Machine::new_summary(prepared.machine_config),
+                        Vec::new(),
+                    )
+                }
             };
-            write_cartridge_diagnostics(&diagnostics);
-            if let Some(persistent_state) = battery_backed_state
-                && let Err(error) =
-                    next_machine.restore_cartridge_persistent_state(&persistent_state)
-            {
-                return Err(format!(
-                    "failed to restore battery-backed persistence after reconfigure: {error:?}"
-                ));
-            }
-
-            let next_session = DesktopSession {
-                config: next_config.clone(),
-                current_dir: context.session.current_dir.clone(),
-                loaded_rom: context.session.loaded_rom.clone(),
-                last_open_directory: context.session.last_open_directory.clone(),
-                recent_roms: context.session.recent_roms.clone(),
-            };
-            let next_save_session =
-                open_save_session_for_session(&next_session, &mut next_machine)?;
-            Ok((next_machine, next_save_session))
-        })();
-
-    let (next_machine, next_save_session) = match rebuild_result {
-        Ok(value) => value,
-        Err(error) => {
-            context.runtime.save_session = previous_save_session;
-            return Err(error);
+        write_cartridge_diagnostics(&diagnostics);
+        if let Some(persistent_state) = battery_backed_state
+            && let Err(error) = next_machine.restore_cartridge_persistent_state(&persistent_state)
+        {
+            return Err(format!(
+                "failed to restore battery-backed persistence after reconfigure: {error:?}"
+            ));
         }
-    };
+
+        let next_session = DesktopSession {
+            config: effective_config.clone(),
+            current_dir: context.session.current_dir.clone(),
+            loaded_rom: context.session.loaded_rom.clone(),
+            last_open_directory: context.session.last_open_directory.clone(),
+            recent_roms: context.session.recent_roms.clone(),
+        };
+        let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
+        Ok((
+            effective_config,
+            boot_rom_fallback_warning,
+            next_machine,
+            next_save_session,
+        ))
+    })();
+
+    let (effective_config, boot_rom_fallback_warning, next_machine, next_save_session) =
+        match rebuild_result {
+            Ok(value) => value,
+            Err(error) => {
+                context.runtime.save_session = previous_save_session;
+                return Err(error);
+            }
+        };
 
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.clear_buffer()?;
     }
 
+    log_boot_rom_fallback_warning(boot_rom_fallback_warning.as_deref());
     context.runtime.input_state.clear_all(context.machine);
     *context.machine = next_machine;
     context.runtime.save_session = next_save_session;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
-        window_title(context.session, next_config),
+        window_title(context.session, &effective_config),
     )?;
-    Ok(())
+    Ok(effective_config)
 }
 
 fn boot_rom_dialog_default_location(session: &DesktopSession) -> PathBuf {
@@ -1862,18 +1971,22 @@ fn open_selected_rom(
             ));
         }
     };
-    let (mut next_machine, diagnostics) = load_machine_for_rom(
+    let loaded = load_machine_for_rom(
         &context.session.config,
         &context.session.current_dir,
         &rom_bytes,
     )?;
-    write_cartridge_diagnostics(&diagnostics);
+    log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
+    write_cartridge_diagnostics(&loaded.diagnostics);
     let next_loaded_rom = LoadedRom {
         path: rom_path,
         bytes: rom_bytes,
     };
+    let effective_config = loaded.effective_config;
+    let config_fell_back = effective_config != context.session.config;
+    let mut next_machine = loaded.machine;
     let next_session = DesktopSession {
-        config: context.session.config.clone(),
+        config: effective_config.clone(),
         current_dir: context.session.current_dir.clone(),
         loaded_rom: Some(next_loaded_rom),
         last_open_directory: context.session.last_open_directory.clone(),
@@ -1888,12 +2001,18 @@ fn open_selected_rom(
         audio_output.clear_buffer()?;
     }
 
+    context.session.config = effective_config;
     context.session.loaded_rom = next_session.loaded_rom;
     context.session.last_open_directory = context
         .session
         .loaded_rom
         .as_ref()
         .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
+    if config_fell_back {
+        context
+            .settings_store
+            .persist_machine_preferences(&context.session.config)?;
+    }
     if let Some(rom_path) = context.session.rom_path() {
         context.settings_store.remember_loaded_rom(rom_path)?;
         context.session.recent_roms = context.settings_store.recent_roms().to_vec();
@@ -2288,7 +2407,12 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::Reset => {
-            reset_machine(context.session, context.machine, context.runtime)?;
+            reset_machine(
+                context.session,
+                context.machine,
+                context.runtime,
+                context.settings_store,
+            )?;
             close_menu(event_pump, context.machine, context.runtime)?;
             Ok(None)
         }
@@ -2931,9 +3055,10 @@ fn menu_input_for_gamepad_button(
 }
 
 fn reset_machine(
-    session: &DesktopSession,
+    session: &mut DesktopSession,
     machine: &mut Machine<TraceSummaryBuffer>,
     runtime: &mut FrontendRuntime,
+    settings_store: &mut DesktopSettingsStore,
 ) -> Result<(), String> {
     let Some(rom_bytes) = session.rom_bytes() else {
         return Ok(());
@@ -2943,17 +3068,23 @@ fn reset_machine(
         uses_battery_backed_hardware_persistence(machine.cartridge().persistence_metadata())
             .then(|| machine.cartridge().persistent_state());
 
-    let (mut reset_machine, diagnostics) =
-        match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
-            Ok(result) => result,
-            Err(error) => {
-                return Err(format_display_error(
-                    "failed to reload cartridge during reset",
-                    &error,
-                ));
-            }
-        };
-    write_cartridge_diagnostics(&diagnostics);
+    let loaded = match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
+        Ok(result) => result,
+        Err(error) => {
+            return Err(format_display_error(
+                "failed to reload cartridge during reset",
+                &error,
+            ));
+        }
+    };
+    log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
+    write_cartridge_diagnostics(&loaded.diagnostics);
+    let config_fell_back = loaded.effective_config != session.config;
+    session.config = loaded.effective_config;
+    if config_fell_back {
+        settings_store.persist_machine_preferences(&session.config)?;
+    }
+    let mut reset_machine = loaded.machine;
     if let Some(persistent_state) = battery_backed_state
         && let Err(error) = reset_machine.restore_cartridge_persistent_state(&persistent_state)
     {
@@ -3565,7 +3696,7 @@ mod tests {
             let mut machine = if with_rom {
                 super::load_machine_for_rom(&config, &current_dir, &rom_bytes)
                     .expect("frontend harness machine should load")
-                    .0
+                    .machine
             } else {
                 Machine::new_summary(
                     MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -4831,6 +4962,83 @@ mod tests {
     }
 
     #[test]
+    fn prepare_machine_config_falls_back_to_skip_boot_when_the_selected_boot_rom_is_missing() {
+        let root = temp_test_root("missing-bootrom-fallback");
+        let mut config = DesktopConfig::default();
+        config.launch.startup_mode = StartupMode::RealBoot;
+        config.boot_rom.verification = BootRomVerificationMode::Strict;
+        config.boot_rom.search_path = Some(root.join("missing-dmg.bin"));
+
+        let prepared = super::prepare_machine_config(&config, &root)
+            .expect("missing boot ROM paths should degrade to skip-boot");
+
+        assert_eq!(
+            prepared.effective_config.launch.startup_mode,
+            StartupMode::SkipBoot
+        );
+        assert_eq!(prepared.machine_config.startup_mode, StartupMode::SkipBoot);
+        assert!(prepared.machine_config.boot_rom_assets.is_empty());
+        assert!(
+            prepared
+                .boot_rom_fallback_warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains("falling back to skip-boot"))
+        );
+    }
+
+    #[test]
+    fn prepare_machine_config_keeps_strict_real_boot_errors_for_existing_invalid_images() {
+        let root = temp_test_root("invalid-bootrom-strict");
+        let image_path = root.join("dmg_boot.bin");
+        fs::write(&image_path, vec![0x99; 0x100]).expect("synthetic boot ROM image should exist");
+
+        let mut config = DesktopConfig::default();
+        config.launch.startup_mode = StartupMode::RealBoot;
+        config.boot_rom.verification = BootRomVerificationMode::Strict;
+        config.boot_rom.search_path = Some(image_path);
+
+        let error = super::prepare_machine_config(&config, &root)
+            .expect_err("strict real-boot should still reject invalid existing images");
+        assert!(error.contains("unexpected sha256"));
+    }
+
+    #[test]
+    fn run_desktop_persists_skip_boot_after_missing_boot_rom_startup_fallback() {
+        let _guard = crate::lock_sdl_test();
+        crate::configure_headless_sdl();
+
+        let root = temp_test_root("startup-fallback-persist");
+        let settings_path = root.join("desktop-settings.toml");
+        let mut settings_store = DesktopSettingsStore::new_for_tests(settings_path.clone());
+        let mut config = DesktopConfig::default();
+        config.launch.startup_mode = StartupMode::RealBoot;
+        config.boot_rom.verification = BootRomVerificationMode::Strict;
+        config.boot_rom.search_path = Some(root.join("missing-boot.bin"));
+        config.input.gamepad.enabled = false;
+        settings_store
+            .persist_machine_preferences(&config)
+            .expect("stale real-boot settings should persist");
+
+        let quit = schedule_quit_event();
+        super::run_desktop_with_startup_fallback_persistence(
+            DesktopRunOptions {
+                rom_path: None,
+                config,
+            },
+            settings_store,
+            true,
+        )
+        .expect("desktop should start after degrading the missing boot ROM");
+        quit.join()
+            .expect("startup fallback quit-event helper should finish");
+
+        let persisted =
+            fs::read_to_string(&settings_path).expect("desktop settings should persist");
+        assert!(persisted.contains("startup_mode = \"skip-boot\""));
+        assert!(!persisted.contains("startup_mode = \"real-boot\""));
+    }
+
+    #[test]
     fn run_desktop_processes_hotkeys_plus_video_and_audio_menu_actions() {
         let _guard = crate::lock_sdl_test();
         crate::configure_headless_sdl();
@@ -5269,12 +5477,13 @@ mod tests {
             .is_none()
         );
 
-        let (mut reloaded_machine, _diagnostics) = super::load_machine_for_rom(
+        let mut reloaded_machine = super::load_machine_for_rom(
             &harness.session.config,
             &harness.session.current_dir,
             harness.session.rom_bytes().expect("loaded ROM bytes"),
         )
-        .expect("machine should reload from ROM bytes");
+        .expect("machine should reload from ROM bytes")
+        .machine;
         assert!(
             super::open_save_session_for_session(&harness.session, &mut reloaded_machine)
                 .expect("save session should open for the loaded ROM")
@@ -5366,8 +5575,13 @@ mod tests {
             .expect("window scale should apply");
         super::set_fullscreen_state(harness.canvas.window_mut(), false)
             .expect("setting the existing fullscreen state should be a no-op");
-        super::reset_machine(&harness.session, &mut harness.machine, &mut harness.runtime)
-            .expect("machine reset should succeed");
+        super::reset_machine(
+            &mut harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.settings_store,
+        )
+        .expect("machine reset should succeed");
 
         let texture_creator = harness.canvas.texture_creator();
         let mut texture = texture_creator
@@ -5754,6 +5968,35 @@ mod tests {
         } else {
             assert!(gamepad_presentation.active_gamepad_label.is_empty());
         }
+    }
+
+    #[test]
+    fn reset_machine_persists_skip_boot_when_the_boot_rom_path_goes_missing() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("reset-missing-bootrom", true, false, false);
+        harness.session.config.launch.startup_mode = StartupMode::RealBoot;
+        harness.session.config.boot_rom.verification = BootRomVerificationMode::Strict;
+        harness.session.config.boot_rom.search_path = Some(harness.root.join("missing.bin"));
+        harness
+            .settings_store
+            .persist_machine_preferences(&harness.session.config)
+            .expect("stale real-boot settings should persist before reset");
+
+        super::reset_machine(
+            &mut harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.settings_store,
+        )
+        .expect("reset should degrade missing boot ROM settings instead of failing");
+
+        assert_eq!(
+            harness.session.config.launch.startup_mode,
+            StartupMode::SkipBoot
+        );
+        let persisted = fs::read_to_string(&harness.settings_path)
+            .expect("reset fallback should update persisted settings");
+        assert!(persisted.contains("startup_mode = \"skip-boot\""));
     }
 
     #[test]

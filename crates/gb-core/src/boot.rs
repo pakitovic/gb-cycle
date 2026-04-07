@@ -551,7 +551,7 @@ const fn dmg_family_skip_boot_flags(header_checksum: Option<u8>) -> u8 {
 
 const fn synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
     BootIoSnapshot {
-        p1: 0xFF,
+        p1: 0xCF,
         sb: 0x00,
         sc: 0x7E,
         div: 0xAB,
