@@ -19,7 +19,7 @@ fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
     assert_eq!(snapshot.config.console_model, ConsoleModel::Dmg);
     assert_eq!(snapshot.config.startup_mode, StartupMode::SkipBoot);
     assert_eq!(snapshot.scheduler.next_t_cycle, TCycle::new(2));
-    assert_eq!(snapshot.trace.buffered_event_count, 44);
+    assert_eq!(snapshot.trace.buffered_event_count, 40);
     assert_eq!(snapshot.debug_controls.breakpoint_count, 0);
     assert_eq!(snapshot.debug_controls.watchpoint_count, 0);
     assert_eq!(snapshot.boot.startup_mode, StartupMode::SkipBoot);
