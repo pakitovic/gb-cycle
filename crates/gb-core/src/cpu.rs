@@ -168,6 +168,7 @@ pub struct CpuCore {
     operand16_latch: u16,
     last_bus_activity: Option<CpuTraceBusActivity>,
     last_address_event: Option<CpuAddressEvent>,
+    stop_div_reset_requested: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

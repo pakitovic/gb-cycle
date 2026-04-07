@@ -85,6 +85,7 @@ impl CpuCore {
         // interrupt is pending, interrupt_control.rs routes it through the
         // explicit ServiceStopWakeBuggedInterrupt path.
         if opcode == 0x10 && self.stop_completes_on_fetch_machine_cycle(bus_operation) {
+            self.request_stop_div_reset();
             self.finish_instruction();
             return;
         }
@@ -120,6 +121,10 @@ impl CpuCore {
             step: 0,
             t_cycle: 0,
         };
+    }
+
+    pub(super) fn request_stop_div_reset(&mut self) {
+        self.stop_div_reset_requested = true;
     }
 
     pub(super) fn advance_instruction(&mut self, opcode: u8, next_step: u8) {

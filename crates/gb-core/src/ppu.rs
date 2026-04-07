@@ -803,6 +803,36 @@ impl Ppu {
         )
     }
 
+    pub fn mmio_commit_trace_message(
+        &self,
+        context: &CycleContext,
+        address: u16,
+        value: u8,
+    ) -> String {
+        format!(
+            concat!(
+                "t_cycle={} phase={} console_model={:?} status={:?} ",
+                "committed_write={:#06X}<-{:#04X} lcdc={:#04X} stat={:#04X} ",
+                "scy={:#04X} scx={:#04X} ly={} lyc={:#04X} bgp={:#04X} wy={:#04X} wx={:#04X}"
+            ),
+            context.t_cycle().get(),
+            context.phase(),
+            self.console_model,
+            self.status,
+            address,
+            value,
+            self.read_register(0xFF40),
+            self.read_register(0xFF41),
+            self.read_register(0xFF42),
+            self.read_register(0xFF43),
+            self.read_register(0xFF44),
+            self.read_register(0xFF45),
+            self.read_register(0xFF47),
+            self.read_register(0xFF4A),
+            self.read_register(0xFF4B),
+        )
+    }
+
     fn is_lcd_enabled(&self) -> bool {
         self.lcd_state.is_enabled()
     }

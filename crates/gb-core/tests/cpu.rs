@@ -1,7 +1,7 @@
 use gb_core::{
     BootRomAssets, BootRomKind, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
     CpuAddressUpdateDirection, CpuDiagnosticTrap, CpuExecutionState, JoypadButton, Machine,
-    MachineConfig, StartupMode,
+    MachineConfig, SerialTransferState, StartupMode,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -916,6 +916,100 @@ fn stop_does_not_wake_when_no_joyp_rows_are_selected() {
 }
 
 #[test]
+fn stop_resets_div_and_keeps_it_frozen_until_a_later_wake_event() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0x10, 0x00, 0x00], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFF00, 0x10);
+    assert_eq!(machine.read_bus(0xFF04), 0xAB);
+
+    step_machine_t_cycles(&mut machine, 8);
+
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+    assert_eq!(machine.cpu().registers().pc, 0x0102);
+    assert_eq!(machine.read_bus(0xFF04), 0x00);
+
+    step_machine_t_cycles(&mut machine, 64);
+
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+    assert_eq!(machine.read_bus(0xFF04), 0x00);
+
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+    step_machine_t_cycles(&mut machine, 1);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.read_bus(0xFF04), 0x00);
+
+    step_machine_t_cycles(&mut machine, 256);
+
+    assert_eq!(machine.read_bus(0xFF04), 0x01);
+}
+
+#[test]
+fn stop_drops_external_serial_clocks_instead_of_replaying_them_after_wake() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0x10, 0x00, 0x00], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFF00, 0x10);
+    machine.write_bus(0xFF01, 0x81);
+    machine.write_bus(0xFF02, 0x80);
+
+    step_machine_t_cycles(&mut machine, 8);
+
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+    assert_eq!(machine.read_bus(0xFF01), 0x81);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+
+    machine.queue_external_serial_clock();
+    step_machine_t_cycles(&mut machine, 1);
+
+    assert_eq!(machine.cpu().execution_state(), CpuExecutionState::Stopped);
+    assert_eq!(machine.read_bus(0xFF01), 0x81);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+    step_machine_t_cycles(&mut machine, 1);
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.read_bus(0xFF01), 0x81);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+
+    machine.queue_external_serial_clock();
+    step_machine_t_cycles(&mut machine, 1);
+
+    assert_eq!(machine.read_bus(0xFF01), 0x03);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 1 }
+    );
+}
+
+#[test]
 fn stop_wakes_from_the_selected_joypad_line_and_services_irq_later() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -1096,6 +1190,35 @@ fn stop_with_ime_enabled_and_a_selected_held_button_behaves_like_a_one_byte_nop(
 
     assert_eq!(machine.cpu().registers().b, 0x01);
     assert_eq!(machine.cpu().registers().pc, 0x0104);
+}
+
+#[test]
+fn stop_nop_like_entry_still_resets_div_before_running_immediately_again() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0xFB, 0x00, 0x10, 0x04, 0x00], 0x12))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFF00, 0x10);
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+    assert_eq!(machine.read_bus(0xFF04), 0xAB);
+
+    step_machine_t_cycles(&mut machine, 12);
+
+    assert!(machine.cpu().ime());
+    assert_eq!(machine.cpu().registers().pc, 0x0103);
+    assert_eq!(
+        machine.cpu().execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+    assert_eq!(machine.read_bus(0xFF04), 0x00);
+
+    step_machine_t_cycles(&mut machine, 256);
+
+    assert_eq!(machine.read_bus(0xFF04), 0x01);
 }
 
 #[test]

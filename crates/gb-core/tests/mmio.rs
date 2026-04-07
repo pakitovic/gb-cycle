@@ -176,6 +176,53 @@ fn ff46_and_ff50_writes_take_effect_immediately_on_their_owners() {
 }
 
 #[test]
+fn ppu_mmio_commit_phase_emits_a_ppu_trace_for_the_committed_write() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge({
+            let mut rom = vec![0xFF; 32 * 1024];
+            rom[0x0100..0x0106].copy_from_slice(&[
+                0x3E, 0x00, // ld a,$00
+                0xE0, 0x40, // ldh ($40),a
+                0x18, 0xFE, // jr .
+            ]);
+            rom[0x0147] = 0x00;
+            rom[0x0148] = 0x00;
+            rom[0x0149] = 0x00;
+            rom
+        })
+        .expect("NoMBC test ROM should load");
+
+    let mut commit_t_cycle = None;
+    for _ in 0..32 {
+        let context = machine.step_t_cycle();
+        if machine.read_bus(0xFF40) == 0x00 {
+            commit_t_cycle = Some(context.t_cycle().get());
+            break;
+        }
+    }
+
+    let commit_t_cycle = commit_t_cycle.expect("CPU LCDC write should commit within 32 T-cycles");
+    let trace = machine.tracer().sink().render_text();
+
+    let ppu_fragment = format!(
+        "subsystem=ppu level=trace message=\"t_cycle={} phase=mmio_side_effect_commit",
+        commit_t_cycle
+    );
+    assert!(trace.contains(&ppu_fragment));
+    assert!(trace.contains("committed_write=0xFF40<-0x00"));
+    assert!(trace.contains("lcdc=0x00"));
+
+    let boot_fragment = format!(
+        "subsystem=boot level=trace message=\"t_cycle={} phase=mmio_side_effect_commit",
+        commit_t_cycle
+    );
+    assert!(!trace.contains(&boot_fragment));
+}
+
+#[test]
 fn serial_mmio_arming_keeps_transfer_pending_without_instant_completion() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),

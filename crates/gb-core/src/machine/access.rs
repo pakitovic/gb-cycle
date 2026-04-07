@@ -1,30 +1,43 @@
 use super::Machine;
+use crate::apu::Apu;
+use crate::boot::BootController;
 use crate::bus::{BusArbitrationState, BusIoReadView, BusIoWriteView, BusRequester};
 use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError};
-use crate::cpu::{CpuAddressEvent, CpuAddressEventKind};
+use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuCore};
 use crate::debugger::TraceSink;
+use crate::dma::DmaController;
+use crate::interrupts::InterruptController;
+use crate::joypad::Joypad;
+use crate::ppu::Ppu;
 use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
+use crate::serial::Serial;
+use crate::timer::Timer;
 
 impl<S: TraceSink> Machine<S> {
     pub fn read_bus(&mut self, address: u16) -> u8 {
         let state = self.current_bus_arbitration_state();
-        let value = self.bus.read_with_context(
-            address,
-            BusRequester::Cpu,
-            &state,
-            Some(&self.cartridge),
-            BusIoReadView {
-                apu: Some(&self.apu),
-                timer: Some(&self.timer),
-                serial: Some(&self.serial),
-                dma: Some(&self.dma),
-                boot: Some(&self.boot),
-                interrupts: Some(&self.interrupts),
-                interrupt_flag_pending_mask: 0,
-                joypad: Some(&self.joypad),
-                ppu: Some(&self.ppu),
-            },
-        );
+        let value = if address == 0xFF00 {
+            self.joypad
+                .read_p1_with_pressed_mask(self.pending_external_events.joypad_pressed_mask())
+        } else {
+            self.bus.read_with_context(
+                address,
+                BusRequester::Cpu,
+                &state,
+                Some(&self.cartridge),
+                BusIoReadView {
+                    apu: Some(&self.apu),
+                    timer: Some(&self.timer),
+                    serial: Some(&self.serial),
+                    dma: Some(&self.dma),
+                    boot: Some(&self.boot),
+                    interrupts: Some(&self.interrupts),
+                    interrupt_flag_pending_mask: 0,
+                    joypad: Some(&self.joypad),
+                    ppu: Some(&self.ppu),
+                },
+            )
+        };
         self.bus.route_cpu_address_event(
             CpuAddressEvent {
                 kind: CpuAddressEventKind::Read,
@@ -76,8 +89,10 @@ impl<S: TraceSink> Machine<S> {
     ) -> Result<Vec<CartridgeDiagnostic>, CartridgeLoadError> {
         let report = crate::cartridge::CartridgeSlot::load(rom_bytes, &self.config.compatibility)?;
         let (cartridge, diagnostics) = report.into_parts();
+        let serial_peer = self.serial.peer();
+        let host_joypad_pressed_mask = self.pending_external_events.joypad_pressed_mask();
         self.cartridge = cartridge;
-        self.apply_startup_configuration();
+        self.restart_runtime_after_cartridge_load(host_joypad_pressed_mask, serial_peer);
         Ok(diagnostics)
     }
 
@@ -109,7 +124,33 @@ impl<S: TraceSink> Machine<S> {
             .with_dma(self.dma.bus_state())
     }
 
-    pub(super) fn apply_startup_configuration(&mut self) {
+    fn restart_runtime_after_cartridge_load(
+        &mut self,
+        host_joypad_pressed_mask: u8,
+        serial_peer: crate::serial::SerialPeer,
+    ) {
+        let console_model = self.config.console_model;
+        let startup_mode = self.config.startup_mode;
+        let boot_rom_assets = self.config.boot_rom_assets.clone();
+
+        self.scheduler.reset();
+        self.tracer.reset();
+        self.cpu = CpuCore::new(console_model);
+        self.bus = crate::bus::Bus::new(console_model);
+        self.apu = Apu::new(console_model);
+        self.ppu = Ppu::new(console_model);
+        self.dma = DmaController::new(console_model);
+        self.timer = Timer::new(console_model);
+        self.serial = Serial::new(console_model);
+        self.boot = BootController::new(console_model, startup_mode, boot_rom_assets);
+        self.interrupts = InterruptController::new(console_model);
+        self.joypad = Joypad::new(console_model);
+
+        self.apply_startup_configuration(host_joypad_pressed_mask);
+        self.serial.set_peer(serial_peer);
+    }
+
+    pub(super) fn apply_startup_configuration(&mut self, host_joypad_pressed_mask: u8) {
         if let Some(startup_state) = self.boot.machine_skip_boot_state(Some(&self.cartridge)) {
             self.cpu.apply_startup_state(startup_state.cpu);
             self.apu.apply_startup_state(startup_state.apu);
@@ -123,5 +164,8 @@ impl<S: TraceSink> Machine<S> {
             self.bus
                 .apply_startup_memory_policy(startup_state.startup_memory_policy);
         }
+
+        self.pending_external_events
+            .reset_for_startup(host_joypad_pressed_mask, self.joypad.pressed_mask());
     }
 }

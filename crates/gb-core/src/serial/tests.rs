@@ -119,6 +119,33 @@ fn slave_mode_waits_for_external_clocks() {
 }
 
 #[test]
+fn slave_mode_discards_external_clock_pulses_queued_before_transfer_start() {
+    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    assert!(!serial.queue_external_clock_pulse());
+
+    serial.write_sb(0x81);
+    serial.write_sc(0x80);
+    serial.tick_t_cycle(&mut context);
+
+    assert_eq!(serial.read_sb(), 0x81);
+    assert_eq!(
+        serial.transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+
+    assert!(serial.queue_external_clock_pulse());
+    serial.tick_t_cycle(&mut context);
+
+    assert_eq!(serial.read_sb(), 0x03);
+    assert_eq!(
+        serial.transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 1 }
+    );
+}
+
+#[test]
 fn loopback_peer_returns_the_original_byte_after_eight_shifts() {
     let mut serial = Serial::new(ConsoleModel::Dmg);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
