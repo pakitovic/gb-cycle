@@ -230,20 +230,20 @@ explicit narrower boot target is documented.
 | Landed by Phase `2.3` | control flow | `JR`, `JP`, `CALL`, `RET`, and `RST`, including conditional taken-vs-untaken timing splits |
 | Landed by Phase `2.3` | stack traffic | bytewise `PUSH` and `POP`, plus reuse of the same push/pop ordering in `CALL`, `RET`, and `RST` |
 | Landed by Phase `2.3` | CB-prefixed control path | explicit second fetch for `0xCB`, plus register and `(HL)` timing distinction for representative prefixed operations such as `RL` and `BIT` |
-| Pending before Phase `2.4` | boot-facing MMIO loads/stores | `LDH (a8),A`, `LDH A,(a8)`, `LD (C),A`, `LD A,(C)`, and other MMIO-visible load/store forms used by the boot ROM |
+| Landed by Phase `2.4` | boot-facing MMIO loads/stores | `LDH (a8),A`, `LDH A,(a8)`, `LD (C),A`, `LD A,(C)`, and the MMIO-visible load/store forms exercised by the DMG-family boot ROMs |
 | Landed during Phase `4` interleave | implicit-address transfer forms | `[hli]` / `[hld]` style transfers and the shared address-event publication that Phase `4.8` also consumes |
-| Remaining before production DMG boot closure | end-to-end real-boot validation | verified DMG boot ROM assets should still be run under `RealBoot` through the real `FF50` handoff and last pre-handoff fetch window instead of relying only on the synthetic Phase `2.4` boot image |
+| Closed in the current DMG-family boot baseline | end-to-end real-boot validation | repo-local ignored regressions run verified `dmg0`, `dmg`, and `mgb` boot ROM assets under `RealBoot`, assert the real `FF50` handoff and `0x0100` cartridge fetch, compare entry state against the centralized direct-boot snapshot (`BootController::direct_boot_state()`), and keep DMG invalid-logo / invalid-checksum / FF-filled-header cases in the no-handoff path without requiring CI-hosted firmware dumps |
 
 Keep this matrix explicit in roadmap and change reports. Real boot should not
 quietly start "just to see what happens" while the remaining pending rows stay
 unresolved.
 
-Phase `2.4` in this repo currently closes against an explicit narrower boot
-target: a synthetic DMG boot ROM that performs representative header reads
-through `(a16)`, validates them with `CP d8`, remains in boot on failed
-conditional `JR`, and reaches cartridge execution only through an executed
-`LD (a16),A` write to `FF50`. Full production DMG boot-ROM execution remains
-deferred until the pending MMIO and accumulator-rotate groups above land.
+The synthetic DMG boot ROM from Phase `2.4` remains useful as a narrow,
+deterministic `gb-core` integration target, but it is no longer the sole boot
+closure criterion. Production DMG-family closure in this repo is defined by the
+repo-local verified-boot-ROM regression matrix in `gb-test-runner`, and any
+remaining differential-oracle or replay work now belongs to Phase `9`
+hardening rather than to a functional CPU/boot gap.
 
 ## Recommended implementation order
 

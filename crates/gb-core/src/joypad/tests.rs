@@ -61,11 +61,11 @@ fn startup_state_can_recreate_the_documented_post_boot_p1_snapshot() {
     let mut joypad = Joypad::new(ConsoleModel::Dmg);
 
     joypad.apply_startup_state(JoypadStartupState {
-        selection_bits: 0x00,
+        selection_bits: 0x30,
         pressed_mask: 0x00,
     });
 
-    assert_eq!(joypad.read_p1(), 0xCF);
+    assert_eq!(joypad.read_p1(), 0xFF);
 }
 
 #[test]

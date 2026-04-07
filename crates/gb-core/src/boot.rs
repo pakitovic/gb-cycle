@@ -361,7 +361,61 @@ impl BootController {
             .and_then(CartridgeSlot::header)
             .map(|header| header.header_checksum);
         let cpu = build_skip_boot_cpu_state(self.console_model, header_checksum);
-        let io = dmg_family_skip_boot_io_snapshot();
+        let io = verified_boot_entry_io_snapshot(self.console_model);
+        let system_counter = verified_boot_entry_system_counter(self.console_model);
+
+        Some(BootDirectBootState {
+            cpu,
+            io,
+            apu: build_verified_boot_entry_apu_state(self.console_model, io),
+            ppu: PpuStartupState {
+                lcdc: io.lcdc,
+                stat: io.stat,
+                scy: io.scy,
+                scx: io.scx,
+                ly: io.ly,
+                lyc: io.lyc,
+                bgp: io.bgp,
+                wy: io.wy,
+                wx: io.wx,
+                obj_palette_read_policy: crate::ppu::DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+            },
+            serial: SerialStartupState::from_registers(io.sb, io.sc)
+                .with_clock_counter(DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER),
+            timer: TimerStartupState {
+                system_counter,
+                tima: io.tima,
+                tma: io.tma,
+                tac: io.tac & 0x07,
+            },
+            dma: DmaStartupState {
+                source_page_latch: io.dma,
+            },
+            interrupts: InterruptStartupState {
+                interrupt_flags: io.interrupt_flag & 0x1F,
+                interrupt_enable: io.interrupt_enable,
+            },
+            joypad: JoypadStartupState {
+                selection_bits: io.p1 & 0x30,
+                pressed_mask: 0,
+            },
+            startup_memory_policy: self.startup_memory_policy(),
+        })
+    }
+
+    pub(crate) fn machine_skip_boot_state(
+        &self,
+        cartridge: Option<&CartridgeSlot>,
+    ) -> Option<BootDirectBootState> {
+        if self.startup_mode != StartupMode::SkipBoot {
+            return None;
+        }
+
+        let header_checksum = cartridge
+            .and_then(CartridgeSlot::header)
+            .map(|header| header.header_checksum);
+        let cpu = build_skip_boot_cpu_state(self.console_model, header_checksum);
+        let io = synthetic_skip_boot_io_snapshot();
         let dmg_family_skip_boot_system_counter =
             (u16::from(io.div) << 8) | u16::from(DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW);
 
@@ -495,9 +549,9 @@ const fn dmg_family_skip_boot_flags(header_checksum: Option<u8>) -> u8 {
     }
 }
 
-const fn dmg_family_skip_boot_io_snapshot() -> BootIoSnapshot {
+const fn synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
     BootIoSnapshot {
-        p1: 0xCF,
+        p1: 0xFF,
         sb: 0x00,
         sc: 0x7E,
         div: 0xAB,
@@ -517,6 +571,56 @@ const fn dmg_family_skip_boot_io_snapshot() -> BootIoSnapshot {
         wx: 0x00,
         interrupt_enable: 0x00,
         audio: dmg_family_skip_boot_audio_snapshot(),
+    }
+}
+
+const fn verified_boot_entry_io_snapshot(console_model: ConsoleModel) -> BootIoSnapshot {
+    match console_model {
+        ConsoleModel::Dmg | ConsoleModel::Mgb => BootIoSnapshot {
+            p1: 0xFF,
+            sb: 0x00,
+            sc: 0x7E,
+            div: 0xBD,
+            tima: 0x00,
+            tma: 0x00,
+            tac: 0xF8,
+            interrupt_flag: 0xE1,
+            lcdc: 0x91,
+            stat: 0x81,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 153,
+            lyc: 0x00,
+            dma: 0xFF,
+            bgp: 0xFC,
+            wy: 0x00,
+            wx: 0x00,
+            interrupt_enable: 0x00,
+            audio: dmg_family_skip_boot_audio_snapshot(),
+        },
+        ConsoleModel::Dmg0 => BootIoSnapshot {
+            p1: 0xFF,
+            sb: 0x00,
+            sc: 0x7E,
+            div: 0x17,
+            tima: 0x00,
+            tma: 0x00,
+            tac: 0xF8,
+            interrupt_flag: 0xE1,
+            lcdc: 0x91,
+            stat: 0x81,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 144,
+            lyc: 0x00,
+            dma: 0xFF,
+            bgp: 0xFC,
+            wy: 0x00,
+            wx: 0x00,
+            interrupt_enable: 0x00,
+            audio: dmg_family_skip_boot_audio_snapshot(),
+        },
+        ConsoleModel::Cgb => synthetic_skip_boot_io_snapshot(),
     }
 }
 
@@ -577,6 +681,18 @@ fn build_skip_boot_apu_state(system_counter: u16, io: BootIoSnapshot) -> ApuStar
     }
 }
 
+fn build_verified_boot_entry_apu_state(
+    console_model: ConsoleModel,
+    io: BootIoSnapshot,
+) -> ApuStartupState {
+    let mut startup_state = build_skip_boot_apu_state(
+        verified_boot_entry_system_counter(console_model),
+        io,
+    );
+    startup_state.div_apu = verified_boot_entry_div_apu(console_model);
+    startup_state
+}
+
 fn read_boot_rom_file(
     directory: &Path,
     kind: BootRomKind,
@@ -611,6 +727,27 @@ fn validate_boot_rom_len(
 
 const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
+const VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0xBD04;
+const VERIFIED_DMG0_BOOT_ENTRY_SYSTEM_COUNTER: u16 = 0x1748;
+const SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
+    ((synthetic_skip_boot_io_snapshot().div as u16) << 8)
+        | (DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
+
+const fn verified_boot_entry_system_counter(console_model: ConsoleModel) -> u16 {
+    match console_model {
+        ConsoleModel::Dmg | ConsoleModel::Mgb => VERIFIED_DMG_FAMILY_BOOT_ENTRY_SYSTEM_COUNTER,
+        ConsoleModel::Dmg0 => VERIFIED_DMG0_BOOT_ENTRY_SYSTEM_COUNTER,
+        ConsoleModel::Cgb => SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER,
+    }
+}
+
+const fn verified_boot_entry_div_apu(console_model: ConsoleModel) -> u8 {
+    match console_model {
+        ConsoleModel::Dmg | ConsoleModel::Mgb => 0x01,
+        ConsoleModel::Dmg0 => 0x04,
+        ConsoleModel::Cgb => div_apu_phase_from_system_counter(SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER),
+    }
+}
 
 #[cfg(test)]
 mod tests;
