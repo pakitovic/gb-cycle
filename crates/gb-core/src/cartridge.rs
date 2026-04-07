@@ -83,6 +83,7 @@ pub enum CgbFlag {
     None,
     Supported,
     Only,
+    SupportedNonCanonical(u8),
     Unknown(u8),
 }
 
@@ -112,7 +113,7 @@ pub struct CartridgeHeader {
     pub entry_point: [u8; ENTRY_POINT_LEN],
     pub nintendo_logo: [u8; NINTENDO_LOGO_LEN],
     pub title_bytes: [u8; TITLE_BYTES_LEN],
-    pub manufacturer_code: [u8; MANUFACTURER_CODE_LEN],
+    pub raw_title_suffix_or_manufacturer_code: [u8; MANUFACTURER_CODE_LEN],
     pub title: String,
     pub cgb_flag: CgbFlag,
     pub sgb_flag: SgbFlag,

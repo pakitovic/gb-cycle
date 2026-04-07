@@ -98,8 +98,8 @@ impl CartridgeHeader {
         let mut title_bytes = [0; TITLE_BYTES_LEN];
         title_bytes.copy_from_slice(&rom_bytes[TITLE_START..=TITLE_END_INCLUSIVE]);
 
-        let mut manufacturer_code = [0; MANUFACTURER_CODE_LEN];
-        manufacturer_code
+        let mut raw_title_suffix_or_manufacturer_code = [0; MANUFACTURER_CODE_LEN];
+        raw_title_suffix_or_manufacturer_code
             .copy_from_slice(&rom_bytes[MANUFACTURER_CODE_START..=MANUFACTURER_CODE_END_INCLUSIVE]);
 
         let mut new_licensee_code = [0; NEW_LICENSEE_CODE_LEN];
@@ -107,20 +107,21 @@ impl CartridgeHeader {
             &rom_bytes[NEW_LICENSEE_CODE_START..NEW_LICENSEE_CODE_START + NEW_LICENSEE_CODE_LEN],
         );
 
-        let cgb_flag = decode_cgb_flag(rom_bytes[CGB_FLAG_ADDRESS]);
+        let raw_cgb_flag = rom_bytes[CGB_FLAG_ADDRESS];
+        let cgb_flag = decode_cgb_flag(raw_cgb_flag);
         let old_licensee_code = rom_bytes[OLD_LICENSEE_CODE_ADDRESS];
-        let visible_title_bytes = match cgb_flag {
-            CgbFlag::Supported | CgbFlag::Only
-                if uses_newer_manufacturer_title_layout(
-                    &manufacturer_code,
-                    &new_licensee_code,
-                    old_licensee_code,
-                ) =>
-            {
-                &title_bytes[..MANUFACTURER_CODE_START - TITLE_START]
-            }
-            CgbFlag::Supported | CgbFlag::Only => &title_bytes[..TITLE_BYTES_LEN - 1],
-            CgbFlag::None | CgbFlag::Unknown(_) => &title_bytes[..],
+        let visible_title_bytes = if uses_cgb_title_layout(raw_cgb_flag) {
+            // Pan Docs documents both 15-character and 11-character title
+            // layouts for newer cartridges, but the raw header does not expose
+            // a reliable discriminator for "manufacturer code is really active"
+            // versus "these four bytes are still just part of a 15-character
+            // title". Keep the visible title conservative at 15 characters when
+            // 0x0143 has bit 7 set, and preserve 0x013F-0x0142 separately so
+            // later compatibility work can reason about those bytes without
+            // silently truncating valid CGB-era titles.
+            &title_bytes[..TITLE_BYTES_LEN - 1]
+        } else {
+            &title_bytes[..]
         };
         let title_len = visible_title_bytes
             .iter()
@@ -132,7 +133,7 @@ impl CartridgeHeader {
             entry_point,
             nintendo_logo,
             title_bytes,
-            manufacturer_code,
+            raw_title_suffix_or_manufacturer_code,
             title,
             cgb_flag,
             sgb_flag: decode_sgb_flag(rom_bytes[SGB_FLAG_ADDRESS]),
@@ -147,24 +148,8 @@ impl CartridgeHeader {
     }
 }
 
-fn uses_newer_manufacturer_title_layout(
-    manufacturer_code: &[u8; MANUFACTURER_CODE_LEN],
-    new_licensee_code: &[u8; NEW_LICENSEE_CODE_LEN],
-    old_licensee_code: u8,
-) -> bool {
-    // Pan Docs distinguishes the 11-character title layout only on "newer"
-    // headers where 0x013F-0x0142 carry a separate manufacturer code. The
-    // header does not expose a single dedicated bit for that split, so keep the
-    // policy narrow: only collapse to 11 characters when the newer-licensee
-    // format is active and both companion code fields look like real ASCII
-    // tokens rather than title padding.
-    old_licensee_code == 0x33
-        && manufacturer_code
-            .iter()
-            .all(|&byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
-        && new_licensee_code
-            .iter()
-            .all(|&byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+const fn uses_cgb_title_layout(raw_flag: u8) -> bool {
+    raw_flag & 0x80 != 0
 }
 
 pub(in crate::cartridge) const fn decode_cgb_flag(raw_flag: u8) -> CgbFlag {
@@ -172,6 +157,7 @@ pub(in crate::cartridge) const fn decode_cgb_flag(raw_flag: u8) -> CgbFlag {
         0x00 => CgbFlag::None,
         0x80 => CgbFlag::Supported,
         0xC0 => CgbFlag::Only,
+        other if uses_cgb_title_layout(other) => CgbFlag::SupportedNonCanonical(other),
         other => CgbFlag::Unknown(other),
     }
 }

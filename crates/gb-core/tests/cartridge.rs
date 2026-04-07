@@ -11,12 +11,16 @@ const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const ENTRY_POINT_START: usize = 0x0100;
 const LOGO_START: usize = 0x0104;
 const TITLE_START: usize = 0x0134;
+const MANUFACTURER_CODE_START: usize = 0x013F;
+const MANUFACTURER_CODE_END_INCLUSIVE: usize = 0x0142;
 const CGB_FLAG_ADDRESS: usize = 0x0143;
+const NEW_LICENSEE_CODE_START: usize = 0x0144;
 const SGB_FLAG_ADDRESS: usize = 0x0146;
 const CARTRIDGE_TYPE_ADDRESS: usize = 0x0147;
 const ROM_SIZE_ADDRESS: usize = 0x0148;
 const RAM_SIZE_ADDRESS: usize = 0x0149;
 const DESTINATION_CODE_ADDRESS: usize = 0x014A;
+const OLD_LICENSEE_CODE_ADDRESS: usize = 0x014B;
 const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
 
 fn build_test_rom(len: usize, cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
@@ -141,6 +145,30 @@ fn public_header_parser_exposes_typed_core_fields() {
     assert_eq!(header.rom_size.decoded_bytes, Some(32 * 1024));
     assert_eq!(header.ram_size.decoded_bytes, Some(8 * 1024));
     assert_eq!(header.header_checksum, 0x7F);
+}
+
+#[test]
+fn public_header_parser_treats_any_bit7_set_0x0143_byte_as_outside_the_visible_title() {
+    let mut rom = build_test_rom(32 * 1024, 0x09, 0x00, 0x02);
+    rom[TITLE_START..CGB_FLAG_ADDRESS].copy_from_slice(b"CGBTITLE1234567");
+    rom[CGB_FLAG_ADDRESS] = 0xA0;
+
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
+
+    assert_eq!(header.title, "CGBTITLE1234567");
+}
+
+#[test]
+fn public_header_parser_keeps_cgb_titles_conservative_when_manufacturer_bytes_are_ambiguous() {
+    let mut rom = build_test_rom(32 * 1024, 0x09, 0x00, 0x02);
+    rom[TITLE_START..MANUFACTURER_CODE_START].copy_from_slice(b"HELLOTITLE1");
+    rom[MANUFACTURER_CODE_START..=MANUFACTURER_CODE_END_INCLUSIVE].copy_from_slice(b"ABCD");
+    rom[NEW_LICENSEE_CODE_START..NEW_LICENSEE_CODE_START + 2].copy_from_slice(b"01");
+    rom[OLD_LICENSEE_CODE_ADDRESS] = 0x33;
+
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
+
+    assert_eq!(header.title, "HELLOTITLE1ABCD");
 }
 
 #[test]

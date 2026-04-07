@@ -10,7 +10,10 @@ fn header_parser_decodes_typed_core_fields() {
     assert_eq!(header.title, "GBTEST1");
     assert_eq!(&header.title_bytes[..7], b"GBTEST1");
     assert_eq!(header.title_bytes[TITLE_BYTES_LEN - 1], 0x80);
-    assert_eq!(header.manufacturer_code, [0xFF; MANUFACTURER_CODE_LEN]);
+    assert_eq!(
+        header.raw_title_suffix_or_manufacturer_code,
+        [0xFF; MANUFACTURER_CODE_LEN]
+    );
     assert_eq!(header.cgb_flag, CgbFlag::Supported);
     assert_eq!(header.sgb_flag, SgbFlag::Supported);
     assert_eq!(header.cartridge_type, 0x09);
@@ -241,7 +244,21 @@ fn header_parser_keeps_cgb_flag_out_of_the_visible_title_when_0x0143_is_a_real_f
 }
 
 #[test]
-fn header_parser_uses_eleven_char_title_when_newer_manufacturer_layout_is_present() {
+fn header_parser_keeps_bit7_set_cgb_flag_bytes_out_of_the_visible_title_even_when_non_canonical() {
+    let mut rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
+    rom[TITLE_START..CGB_FLAG_ADDRESS].copy_from_slice(b"CGBTITLE1234567");
+    rom[CGB_FLAG_ADDRESS] = 0xA0;
+
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
+
+    assert_eq!(header.title, "CGBTITLE1234567");
+    assert_eq!(&header.title_bytes[..15], b"CGBTITLE1234567");
+    assert_eq!(header.title_bytes[15], 0xA0);
+    assert_eq!(header.cgb_flag, CgbFlag::SupportedNonCanonical(0xA0));
+}
+
+#[test]
+fn header_parser_keeps_cgb_title_conservative_when_manufacturer_split_is_ambiguous() {
     let mut rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
     rom[TITLE_START..MANUFACTURER_CODE_START].copy_from_slice(b"HELLOTITLE1");
     rom[MANUFACTURER_CODE_START..=MANUFACTURER_CODE_END_INCLUSIVE].copy_from_slice(b"ABCD");
@@ -252,8 +269,8 @@ fn header_parser_uses_eleven_char_title_when_newer_manufacturer_layout_is_presen
 
     let header = CartridgeHeader::parse(&rom).expect("header should parse");
 
-    assert_eq!(header.title, "HELLOTITLE1");
-    assert_eq!(header.manufacturer_code, *b"ABCD");
+    assert_eq!(header.title, "HELLOTITLE1ABCD");
+    assert_eq!(header.raw_title_suffix_or_manufacturer_code, *b"ABCD");
     assert_eq!(header.new_licensee_code, *b"01");
     assert_eq!(header.old_licensee_code, 0x33);
 }
