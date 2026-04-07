@@ -5,11 +5,11 @@ use crate::bus::{BusArbitrationState, BusIoReadView, BusIoWriteView, BusRequeste
 use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError};
 use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuCore};
 use crate::debugger::TraceSink;
-use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
 use crate::ppu::Ppu;
+use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 use crate::serial::Serial;
 use crate::timer::Timer;
 
