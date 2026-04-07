@@ -136,6 +136,7 @@ impl MachinePhaseRunner<'_> {
         if self
             .pending_external_events
             .take_external_serial_clock_pulse()
+            && !self.cpu_stop_active()
             && self.serial.queue_external_clock_pulse()
         {
             context.push_external_event(ExternalEvent::ExternalSerialClock);

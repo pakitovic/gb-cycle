@@ -222,6 +222,40 @@ fn external_serial_clock_is_ingested_during_external_event_ingress() {
 }
 
 #[test]
+fn external_serial_clock_is_dropped_while_cpu_stop_is_active() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(&[0x10, 0x00, 0x00]))
+        .expect("NoMBC test ROM should load");
+
+    machine.write_bus(0xFF00, 0x10);
+    machine.write_bus(0xFF01, 0x81);
+    machine.write_bus(0xFF02, 0x80);
+
+    for _ in 0..8 {
+        machine.step_t_cycle();
+    }
+
+    assert_eq!(
+        machine.cpu().execution_state(),
+        crate::cpu::CpuExecutionState::Stopped
+    );
+
+    machine.queue_external_serial_clock();
+    let context = machine.step_t_cycle();
+
+    assert!(context.external_events().is_empty());
+    assert_eq!(machine.read_bus(0xFF01), 0x81);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        crate::serial::SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+}
+
+#[test]
 fn load_cartridge_restarts_skip_boot_runtime_from_cycle_zero() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
