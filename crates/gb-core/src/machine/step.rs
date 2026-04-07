@@ -1,4 +1,4 @@
-use super::Machine;
+use super::{Machine, PendingExternalEvents};
 use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{
@@ -12,7 +12,9 @@ use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
 use crate::ppu::Ppu;
-use crate::scheduler::{CycleContext, InterruptSource, SchedulerPhase, SchedulerSideEffect};
+use crate::scheduler::{
+    CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
+};
 use crate::serial::Serial;
 use crate::timer::Timer;
 
@@ -52,9 +54,19 @@ fn cpu_write_targets_ppu_mmio(bus: &Bus, address: u16) -> bool {
 pub(super) fn commit_pending_ppu_mmio_write(
     ppu: &mut Ppu,
     pending: &mut Option<PendingPpuMmioWrite>,
-) {
+) -> Option<PendingPpuMmioWrite> {
     if let Some(write) = pending.take() {
         ppu.write_register(write.address, write.value);
+        Some(write)
+    } else {
+        None
+    }
+}
+
+fn apply_stop_div_reset(apu: &mut Apu, timer: &mut Timer) {
+    let effects = timer.write_div_with_effects(0);
+    if effects.apu_frame_sequencer_edge {
+        apu.on_div_apu_edge();
     }
 }
 
@@ -70,12 +82,16 @@ struct MachinePhaseRunner<'a> {
     interrupts: &'a mut InterruptController,
     joypad: &'a mut Joypad,
     cartridge: &'a mut CartridgeSlot,
+    pending_external_events: &'a mut PendingExternalEvents,
     pending_ppu_mmio_write: Option<PendingPpuMmioWrite>,
 }
 
 impl MachinePhaseRunner<'_> {
     fn step_phase<S: TraceSink>(&mut self, context: &mut CycleContext, tracer: &mut Tracer<S>) {
         match context.phase() {
+            SchedulerPhase::ExternalEventIngress => {
+                self.step_external_event_ingress(context, tracer);
+            }
             SchedulerPhase::DerivedEdgeResolution => {
                 self.step_derived_edge_resolution(context, tracer);
             }
@@ -98,6 +114,35 @@ impl MachinePhaseRunner<'_> {
                 self.step_cpu_wake_interrupt_evaluation(context, tracer);
             }
             _ => {}
+        }
+    }
+
+    fn step_external_event_ingress<S: TraceSink>(
+        &mut self,
+        context: &mut CycleContext,
+        tracer: &mut Tracer<S>,
+    ) {
+        if let Some(pressed_mask) = self
+            .pending_external_events
+            .take_pending_joypad_pressed_mask()
+            && self.joypad.apply_pressed_mask(pressed_mask)
+        {
+            context.push_external_event(ExternalEvent::HostInputChanged);
+            tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
+                self.joypad.scheduler_trace_message(context)
+            });
+        }
+
+        if self
+            .pending_external_events
+            .take_external_serial_clock_pulse()
+            && !self.cpu_stop_active()
+            && self.serial.queue_external_clock_pulse()
+        {
+            context.push_external_event(ExternalEvent::ExternalSerialClock);
+            tracer.emit_with(TraceSubsystem::Serial, TraceLevel::Trace, || {
+                self.serial.external_event_ingress_trace_message(context)
+            });
         }
     }
 
@@ -302,6 +347,10 @@ impl MachinePhaseRunner<'_> {
             if let Some(event) = cpu.last_address_event() {
                 bus.route_cpu_address_event(event, &arbitration_state, ppu);
             }
+
+            if cpu.take_stop_div_reset_request() {
+                apply_stop_div_reset(apu, timer);
+            }
         }
 
         self.update_ppu_stop_state();
@@ -315,10 +364,18 @@ impl MachinePhaseRunner<'_> {
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
     ) {
-        commit_pending_ppu_mmio_write(self.ppu, &mut self.pending_ppu_mmio_write);
-        tracer.emit_with(TraceSubsystem::Boot, TraceLevel::Trace, || {
-            self.boot.scheduler_trace_message(context)
-        });
+        if let Some(write) =
+            commit_pending_ppu_mmio_write(self.ppu, &mut self.pending_ppu_mmio_write)
+        {
+            tracer.emit_with(TraceSubsystem::Ppu, TraceLevel::Trace, || {
+                self.ppu
+                    .mmio_commit_trace_message(context, write.address, write.value)
+            });
+        } else {
+            tracer.emit_with(TraceSubsystem::Boot, TraceLevel::Trace, || {
+                self.boot.scheduler_trace_message(context)
+            });
+        }
     }
 
     fn step_interrupt_aggregation<S: TraceSink>(
@@ -415,6 +472,7 @@ impl<S: TraceSink> Machine<S> {
             interrupts: &mut self.interrupts,
             joypad: &mut self.joypad,
             cartridge: &mut self.cartridge,
+            pending_external_events: &mut self.pending_external_events,
             pending_ppu_mmio_write: None,
         };
 

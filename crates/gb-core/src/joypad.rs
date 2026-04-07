@@ -87,6 +87,16 @@ impl Joypad {
         self.update_visible_edge_state();
     }
 
+    pub(crate) fn apply_pressed_mask(&mut self, pressed_mask: u8) -> bool {
+        if self.pressed_mask == pressed_mask {
+            return false;
+        }
+
+        self.pressed_mask = pressed_mask;
+        self.update_visible_edge_state();
+        true
+    }
+
     pub fn apply_startup_state(&mut self, startup_state: JoypadStartupState) {
         self.selection_bits = startup_state.selection_bits & SELECT_MASK;
         self.pressed_mask = startup_state.pressed_mask;
@@ -124,6 +134,14 @@ impl Joypad {
         self.interrupt_request_pending
     }
 
+    pub(crate) fn pressed_mask(&self) -> u8 {
+        self.pressed_mask
+    }
+
+    pub(crate) fn read_p1_with_pressed_mask(&self, pressed_mask: u8) -> u8 {
+        0xC0 | self.selection_bits | visible_low_nibble(self.selection_bits, pressed_mask)
+    }
+
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
         format!(
             "t_cycle={} phase={} console_model={:?} status={:?} p1={:#04X} selection_bits={:#04X} pressed_mask={:#04X} visible_low_nibble={:#03X} interrupt_request_pending={} stop_wake_pending={}",
@@ -148,17 +166,7 @@ impl Joypad {
     }
 
     fn visible_low_nibble(&self) -> u8 {
-        let mut low = 0x0F;
-
-        if self.selection_bits & 0x20 == 0 {
-            low &= !button_row_low_bits(self.pressed_mask);
-        }
-
-        if self.selection_bits & 0x10 == 0 {
-            low &= !dpad_row_low_bits(self.pressed_mask);
-        }
-
-        low
+        visible_low_nibble(self.selection_bits, self.pressed_mask)
     }
 
     fn update_visible_edge_state(&mut self) {
@@ -177,7 +185,7 @@ const fn gained_visible_low_bit(previous_visible_low_nibble: u8, visible_low_nib
     (previous_visible_low_nibble & !visible_low_nibble) & 0x0F != 0
 }
 
-const fn button_mask(button: JoypadButton) -> u8 {
+pub(crate) const fn button_mask(button: JoypadButton) -> u8 {
     match button {
         JoypadButton::Right => 0x01,
         JoypadButton::Left => 0x02,
@@ -188,6 +196,20 @@ const fn button_mask(button: JoypadButton) -> u8 {
         JoypadButton::Select => 0x40,
         JoypadButton::Start => 0x80,
     }
+}
+
+const fn visible_low_nibble(selection_bits: u8, pressed_mask: u8) -> u8 {
+    let mut low = 0x0F;
+
+    if selection_bits & 0x20 == 0 {
+        low &= !button_row_low_bits(pressed_mask);
+    }
+
+    if selection_bits & 0x10 == 0 {
+        low &= !dpad_row_low_bits(pressed_mask);
+    }
+
+    low
 }
 
 const fn button_row_low_bits(pressed_mask: u8) -> u8 {

@@ -850,6 +850,10 @@ mod tests {
         machine.joypad().snapshot().pressed_mask
     }
 
+    fn ingest_host_input(machine: &mut Machine<TraceSummaryBuffer>) {
+        machine.step_t_cycle();
+    }
+
     fn joypad_mask(button: JoypadButton) -> u8 {
         match button {
             JoypadButton::Right => 0x01,
@@ -988,30 +992,36 @@ mod tests {
         let mut input_state = FrontendInputState::new();
 
         input_state.set_keyboard_button(&mut machine, JoypadButton::A, true);
+        ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::A));
 
         input_state.set_gamepad_button(&mut machine, JoypadButton::A, true);
         input_state.set_keyboard_button(&mut machine, JoypadButton::A, false);
+        ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::A));
 
         input_state.set_gamepad_left_stick_button(&mut machine, JoypadButton::Left, true);
+        ingest_host_input(&mut machine);
         assert_eq!(
             pressed_mask(&machine),
             joypad_mask(JoypadButton::A) | joypad_mask(JoypadButton::Left)
         );
 
         input_state.clear_keyboard(&mut machine);
+        ingest_host_input(&mut machine);
         assert_eq!(
             pressed_mask(&machine),
             joypad_mask(JoypadButton::A) | joypad_mask(JoypadButton::Left)
         );
 
         input_state.clear_gamepad(&mut machine);
+        ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), 0);
 
         input_state.set_keyboard_button(&mut machine, JoypadButton::Start, true);
         input_state.set_gamepad_button(&mut machine, JoypadButton::B, true);
         input_state.clear_all(&mut machine);
+        ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), 0);
     }
 
@@ -1189,6 +1199,7 @@ mod tests {
         virtual_gamepad.set_axis(Axis::LeftY, -20_000);
         subsystem.update();
         manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        ingest_host_input(&mut machine);
 
         assert_eq!(
             pressed_mask(&machine),
@@ -1202,6 +1213,7 @@ mod tests {
             &mut input_state,
             &mut machine,
         );
+        ingest_host_input(&mut machine);
         assert_eq!(
             manager.directional_source(),
             gb_desktop::GamepadDirectionalSource::DpadOnly
@@ -1217,6 +1229,7 @@ mod tests {
         virtual_gamepad.set_button(Button::South, true);
         subsystem.update();
         manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        ingest_host_input(&mut machine);
         assert!(pressed_mask(&machine) & joypad_mask(JoypadButton::A) != 0);
 
         manager.set_menu_bindings(gb_desktop::GamepadMenuBindings {
@@ -1285,6 +1298,7 @@ mod tests {
         activated_gamepad.set_button(Button::East, true);
         subsystem.update();
         manager.poll_active_gamepad_state(&mut input_state, &mut machine);
+        ingest_host_input(&mut machine);
         assert!(pressed_mask(&machine) & joypad_mask(JoypadButton::A) != 0);
 
         manager
@@ -1308,6 +1322,7 @@ mod tests {
                 &mut machine,
             )
             .expect("remove event");
+        ingest_host_input(&mut machine);
         assert!(!manager.is_active_gamepad(activated_joystick));
         assert!(manager.has_connected_gamepad());
         assert_eq!(pressed_mask(&machine), 0);

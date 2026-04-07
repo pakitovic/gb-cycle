@@ -41,6 +41,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - `SkipBoot` must initialize a model-specific post-boot state directly, start execution at `0x0100`, and leave boot ROM mapping disabled from the beginning.
 - The rest of the system should not care whether execution reached cartridge code through real boot or skip boot; only the configured startup path should differ.
 - In the current repo baseline, keep two centralized direct-start contracts explicit instead of conflating them: `Machine::SkipBoot` applies the deterministic synthetic startup state used by core/fixture continuity tests, while `BootController::direct_boot_state()` owns the verified DMG-family cartridge-entry snapshot used to validate real `FF50` handoff behavior.
+- Replacing the loaded cartridge on an existing `Machine` must restart hardware state from that same configured startup path instead of splicing the new ROM into an already-advanced runtime. Reset the scheduler and trace timeline back to `t_cycle = 0`, rebuild CPU / bus / DMA / timer / serial / PPU / APU / interrupt / boot state from power-on or skip-boot rules, and only preserve explicitly host-owned controls such as debugger configuration, serial-peer selection, and the current effective host joypad state.
 - Treat the post-boot snapshot as a mix of fixed-per-model values, cartridge-header-derived values, explicitly unreliable or uninitialized values, and hidden temporal state that must be synthesized coherently.
 
 ## DMG-family boot baseline

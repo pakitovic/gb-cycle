@@ -116,6 +116,35 @@ fn external_serial_clock_pulses_advance_slave_mode_one_shift_each() {
 }
 
 #[test]
+fn external_serial_clock_pulses_queued_before_sc7_do_not_replay_into_a_later_transfer() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.queue_external_serial_clock();
+    step_machine_t_cycles(&mut machine, 1);
+
+    machine.write_bus(0xFF01, 0x81);
+    machine.write_bus(0xFF02, 0x80);
+    step_machine_t_cycles(&mut machine, 1);
+
+    assert_eq!(machine.read_bus(0xFF01), 0x81);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 0 }
+    );
+
+    machine.queue_external_serial_clock();
+    step_machine_t_cycles(&mut machine, 1);
+
+    assert_eq!(machine.read_bus(0xFF01), 0x03);
+    assert_eq!(
+        machine.serial().transfer_state(),
+        SerialTransferState::TransferRequested { bits_shifted: 1 }
+    );
+}
+
+#[test]
 fn loopback_peer_returns_the_original_byte_after_eight_internal_shifts() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),

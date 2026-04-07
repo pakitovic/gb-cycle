@@ -5550,11 +5550,13 @@ mod tests {
                 .expect("keyboard press should process"),
             super::LoopSignal::Continue
         ));
+        harness.machine.step_t_cycle();
         assert_ne!(harness.machine.joypad().snapshot().pressed_mask, 0);
         harness.push_key(Keycode::Z, false);
         harness
             .process_events()
             .expect("keyboard release should process");
+        harness.machine.step_t_cycle();
         assert_eq!(harness.machine.joypad().snapshot().pressed_mask, 0);
 
         harness.push_key(Keycode::Escape, true);

@@ -30,6 +30,7 @@ The source of truth should be an internal `16`-bit system counter advanced by th
 - The timer should maintain an internal `16`-bit system counter or equivalent state advanced by `1` on every T-cycle.
 - `DIV` should be treated as a visible derivation of that internal counter, not as an independent master counter.
 - Writing to `DIV` should reset the internal divider/system-counter state rather than storing the written byte literally.
+- In the current DMG-family baseline in this repo, executing `STOP` also resets that same shared divider/system-counter state. If `STOP` remains active, `DIV` stays at `0x00` until wake; if `STOP` is cancelled on entry, the counter resumes immediately from zero.
 - TIMA increments should come from a falling-edge (`1 -> 0`) detection on the effective timer signal, not from a generic "every N cycles" accumulator.
 - The effective timer signal on DMG is `timer_enable && selected_counter_bit`.
 - The TAC frequency selection should be modeled as internal counter-bit selection, using the DMG mapping:

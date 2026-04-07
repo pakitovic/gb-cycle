@@ -141,6 +141,7 @@ impl CpuCore {
             },
             CpuInstructionKind::Stop => match step {
                 0 => {
+                    self.request_stop_div_reset();
                     let wake_line_asserted = self.stop_wake_line_asserted(bus_operation);
 
                     if !self.ime {
