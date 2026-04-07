@@ -33,9 +33,9 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The bus must not infer mapper behavior from ROM size, RAM size, filename, or frontend heuristics when the header already declares the cartridge type.
 - A central cartridge-header parser should own decoding of at least:
   - `entry_point`
-  - raw visible `title` bytes from `0x0134-0x0143`, with the documented split that legacy cartridges may use all `16` bytes, cartridges with a real CGB flag in `0x0143` may expose `15` title bytes, and newer headers that clearly use `0x013F-0x0142` as manufacturer code reduce the decoded title to `11` bytes
-  - `manufacturer_code` from `0x013F-0x0142` when the newer header layout is active
-  - `cgb_flag` from `0x0143`
+  - raw visible `title` bytes from `0x0134-0x0143`, with the documented split that legacy cartridges may use all `16` bytes while cartridges whose `0x0143` byte has `bit 7` set reduce the conservative decoded visible title to `15` bytes
+  - raw `0x013F-0x0142` bytes preserved separately, for example as `raw_title_suffix_or_manufacturer_code`, because newer headers leave those bytes ambiguous between manufacturer code and title suffix
+  - `cgb_flag` from `0x0143`, keeping canonical `0x80` / `0xC0` values distinct but also preserving any non-canonical `bit 7`-set values as explicit CGB-capable metadata rather than collapsing them into generic unknowns
   - `new_licensee_code` from `0x0144-0x0145`
   - `sgb_flag` from `0x0146`
   - `cartridge_type` from `0x0147`
@@ -44,6 +44,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
   - `destination_code` from `0x014A`
   - `old_licensee_code` from `0x014B`
 - The parser should preserve enough raw metadata for diagnostics and future compatibility work, including the Nintendo logo bytes, the raw visible title bytes, manufacturer and licensee bytes, and the raw header codes.
+- Do not guess the `11`-character newer-title layout from ad hoc ASCII heuristics alone. The raw header does not expose a reliable discriminator between "manufacturer code is active" and "these four bytes are still part of a 15-character CGB-era title", so the parser should keep the decoded title conservative and leave the split available as explicit preserved metadata.
 - The decoded result should live in a strongly typed structure such as `CartridgeHeader`, not in scattered ad hoc fields.
 - Header-derived capability data should remain available even before the project implements all of the corresponding hardware, because future CGB, SGB, RTC, battery, rumble, and peripheral support depends on it.
 
@@ -561,7 +562,7 @@ Priority order:
 - explicit MBC3 tests for `0x0F`, `0x10`, `0x11`, `0x12`, and `0x13`, deterministic power-up state, immediate visibility of RAM / RTC-enable and selector writes, and the documented `0 -> 1` behavior for the raw `7`-bit ROM-bank register
 - tests that MBC3 supports up to `2 MiB` ROM, preserves access to banks `0x20`, `0x40`, and `0x60`, masks effective ROM and RAM banks by real cartridge size, and reserves or diagnoses MBC30-like `64 KiB` SRAM declarations explicitly
 - tests that MBC3 distinguishes standard RAM-bank selectors `0x00..=0x03`, reserved selector values `0x04..=0x07`, and RTC-register selectors `0x08..=0x0C` in `0xA000-0xBFFF`, routes reads through the correct target, and keeps disabled RAM / RTC behavior under one explicit project policy
-- tests that MBC3 latches RTC state only on the `0x00 -> 0x01` sequence, keeps snapshots stable across multiple reads while live RTC state can advance independently, and routes RTC writes to live state rather than to the latched copy
+- tests that MBC3 accepts the first RTC latch only on the `0x00 -> 0x01` sequence, keeps snapshots stable across multiple reads while live RTC state can advance independently, routes RTC writes to live state rather than to the latched copy, and documents the current curated-compatibility relatch rule for follow-up non-zero writes after a valid snapshot exists
 - tests that MBC3 implements seconds, minutes, hours, day low, and day high / flags correctly, including writes to `DH.bit0`, `DH.bit6`, and `DH.bit7`, sticky carry on day overflow, and `halt` freezing live RTC advancement
 - tests that MBC3 RTC / persistence can run from an injected deterministic time source, including elapsed time across powered-off sessions without coupling the expected result to host wall-clock timing during tests
 - if fine RTC-access delay emulation is implemented, tests that the chosen `16`-T-cycle access-spacing policy matches the documented model; until then, base MBC3 tests should not assume that fine delay is enforced
@@ -663,8 +664,9 @@ Priority order:
 - In the current baseline, standard `MBC3` ROM banking and RAM banking are live
   up to `2 MiB` ROM and `32 KiB` RAM, banks `0x20`, `0x40`, and `0x60` remain
   reachable as documented, reserved selectors `0x04..=0x07` stay explicit, the
-  latch edge is `0x00 -> 0x01`, and writes target live RTC state while reads
-  come from the latched snapshot.
+  first accepted latch edge is `0x00 -> 0x01`, later non-zero relatches remain
+  enabled after a valid snapshot for curated compatibility, and writes target
+  live RTC state while reads come from the latched snapshot.
 - In the current baseline, `MBC3` validation now rejects oversized ROMs, keeps
   MBC30-like `64 KiB` SRAM declarations reserved as a future variant rather
   than silently treating them as standard MBC3, and emits validation warnings
