@@ -10,8 +10,11 @@ use audio::DesktopAudioOutput;
 use bootrom::{load_boot_rom_assets, missing_boot_rom_asset_path, resolve_path};
 use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base_config};
 use gb_core::{
-    CartridgeDiagnostic, CartridgeDiagnosticSeverity, ExecutionMode, JoypadButton, Machine,
-    MachineConfig, StartupMode, TraceSummaryBuffer,
+    ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot, CartridgeDiagnostic,
+    CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
+    CpuBusAccessKind, CpuBusActivitySnapshot, CpuSnapshot, ExecutionMode,
+    InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig, StartupMode,
+    TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel, DesktopKey,
@@ -45,6 +48,7 @@ use sdl3::render::Canvas;
 use sdl3::sys;
 use sdl3::video::{FullscreenType, Window};
 use settings::DesktopSettingsStore;
+use std::collections::VecDeque;
 use std::env;
 use std::fmt::Display;
 use std::fs;
@@ -60,9 +64,16 @@ const FRAMEBUFFER_WIDTH: u32 = 160;
 const FRAMEBUFFER_HEIGHT: u32 = 144;
 const FRAMEBUFFER_PITCH_BYTES: usize = FRAMEBUFFER_WIDTH as usize * 3;
 const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706);
+const AUDIO_QUEUE_TARGET_MS: f64 = 96.0;
+const AUDIO_QUEUE_DEADBAND_MS: f64 = 24.0;
+const AUDIO_QUEUE_PACING_GAIN: f64 = 0.10;
+const AUDIO_QUEUE_MAX_CORRECTION_MS: f64 = 4.0;
 const PERFORMANCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const INPUT_POLL_SLICE_T_CYCLES: usize = 256;
+const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
+const DESKTOP_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_PATH";
+const DESKTOP_TRACE_T_CYCLES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_T_CYCLES";
 const ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
     DialogFileFilter {
         name: "Game Boy ROMs",
@@ -138,6 +149,7 @@ struct FrontendRuntime {
     boot_rom_file_dialog: PathSelectionDialog,
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
+    trace_capture: DesktopTraceCapture,
 }
 
 struct DesktopSession {
@@ -203,6 +215,21 @@ struct PathSelectionDialog {
     pending: bool,
     sender: Sender<PathDialogResult>,
     receiver: Receiver<PathDialogResult>,
+}
+
+struct DesktopTraceCapture {
+    output_path: Option<PathBuf>,
+    max_t_cycles: usize,
+    records: VecDeque<DesktopTraceRecord>,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopTraceRecord {
+    t_cycle: u64,
+    cpu: CpuSnapshot,
+    apu: ApuSnapshot,
+    interrupts: InterruptControllerSnapshot,
+    joypad: JoypadSnapshot,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -294,8 +321,254 @@ impl FrontendRuntime {
     }
 }
 
+impl DesktopTraceCapture {
+    fn from_env() -> Result<Self, String> {
+        let output_path = env::var_os(DESKTOP_TRACE_PATH_ENV_VAR).map(PathBuf::from);
+        let max_t_cycles = if output_path.is_some() {
+            parse_trace_capture_t_cycles(env::var_os(DESKTOP_TRACE_T_CYCLES_ENV_VAR).as_deref())?
+        } else {
+            DEFAULT_TRACE_CAPTURE_T_CYCLES
+        };
+        Ok(Self {
+            output_path,
+            max_t_cycles,
+            records: VecDeque::new(),
+        })
+    }
+
+    fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
+        if self.output_path.is_none() || self.max_t_cycles == 0 {
+            return;
+        }
+
+        if self.records.len() == self.max_t_cycles {
+            self.records.pop_front();
+        }
+        self.records.push_back(DesktopTraceRecord {
+            t_cycle: machine.next_t_cycle().get().saturating_sub(1),
+            cpu: machine.cpu().snapshot(),
+            apu: machine.apu().snapshot(),
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+        });
+    }
+
+    fn write_artifact(&self) -> Result<(), String> {
+        let Some(path) = self.output_path.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!("failed to create desktop trace artifact directory {parent:?}: {error}")
+            })?;
+        }
+
+        let mut rendered = String::new();
+        for record in &self.records {
+            rendered.push_str(&render_desktop_trace_record(record));
+            rendered.push('\n');
+        }
+        fs::write(path, rendered)
+            .map_err(|error| format!("failed to write desktop trace artifact {path:?}: {error}"))
+    }
+}
+
+fn render_desktop_trace_record(record: &DesktopTraceRecord) -> String {
+    format!(
+        "t_cycle={} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?} cpu.ime={} cpu.delayed_ime_enable={} cpu.last_bus_activity={} cpu.last_address_event={} apu.powered={} apu.nr50={:#04X} apu.nr51={:#04X} apu.nr52={:#04X} apu.div_apu={} apu.active_mask={:#04X} apu.dac_mask={:#04X} apu.channel_outputs=[{:#04X},{:#04X},{:#04X},{:#04X}] apu.mixer=({}, {}) apu.hpf=({}, {}) irq.if={:#04X} irq.ie={:#04X} joypad.p1={:#04X} joypad.selection_bits={:#04X} joypad.pressed_mask={:#04X}{}",
+        record.t_cycle,
+        record.cpu.registers.pc,
+        record.cpu.execution_state,
+        record.cpu.current_opcode,
+        record.cpu.ime,
+        record.cpu.delayed_ime_enable,
+        format_cpu_bus_activity(record.cpu.last_bus_activity),
+        format_cpu_address_event(record.cpu.last_address_event),
+        record.apu.powered,
+        record.apu.nr50,
+        record.apu.nr51,
+        visible_nr52(record.apu.powered, record.apu.channel_active_mask),
+        record.apu.div_apu,
+        record.apu.channel_active_mask,
+        record.apu.channel_dac_mask,
+        record.apu.output.channel_digital_outputs[0],
+        record.apu.output.channel_digital_outputs[1],
+        record.apu.output.channel_digital_outputs[2],
+        record.apu.output.channel_digital_outputs[3],
+        record.apu.output.mixer_output.left,
+        record.apu.output.mixer_output.right,
+        record.apu.output.hpf_output.left,
+        record.apu.output.hpf_output.right,
+        record.interrupts.interrupt_flags,
+        record.interrupts.interrupt_enable,
+        0xC0 | record.joypad.selection_bits | visible_joypad_low_nibble(&record.joypad),
+        record.joypad.selection_bits,
+        record.joypad.pressed_mask,
+        format_apu_last_register_write(record.apu.last_register_write.as_ref()),
+    )
+}
+
+fn format_cpu_bus_activity(activity: Option<CpuBusActivitySnapshot>) -> String {
+    match activity {
+        Some(activity) => format!(
+            "{}@{:#06X}={:#04X}",
+            match activity.kind {
+                CpuBusAccessKind::OpcodeFetch => "opcode_fetch",
+                CpuBusAccessKind::OperandRead => "operand_read",
+                CpuBusAccessKind::DataRead => "data_read",
+                CpuBusAccessKind::DataWrite => "data_write",
+            },
+            activity.address,
+            activity.value,
+        ),
+        None => "none".to_string(),
+    }
+}
+
+fn format_cpu_address_event(event: Option<CpuAddressEvent>) -> String {
+    match event {
+        Some(event) => match event.kind {
+            CpuAddressEventKind::Read => match event.access_address {
+                Some(address) => format!("read@{address:#06X}"),
+                None => "read@missing".to_string(),
+            },
+            CpuAddressEventKind::Write => match event.access_address {
+                Some(address) => format!("write@{address:#06X}"),
+                None => "write@missing".to_string(),
+            },
+            CpuAddressEventKind::IncDec => match (event.idu_address, event.update_direction) {
+                (Some(address), Some(direction)) => {
+                    format!("{}@{address:#06X}", format_update_direction(direction))
+                }
+                _ => "incdec@missing".to_string(),
+            },
+            CpuAddressEventKind::ReadWithIncDec | CpuAddressEventKind::WriteWithIncDec => {
+                match (
+                    event.access_address,
+                    event.idu_address,
+                    event.update_direction,
+                ) {
+                    (Some(access), Some(idu), Some(direction)) => format!(
+                        "{}+{}@{access:#06X}->{idu:#06X}",
+                        match event.kind {
+                            CpuAddressEventKind::ReadWithIncDec => "read",
+                            CpuAddressEventKind::WriteWithIncDec => "write",
+                            _ => unreachable!("combined event already constrained"),
+                        },
+                        format_update_direction(direction),
+                    ),
+                    _ => "combined@missing".to_string(),
+                }
+            }
+        },
+        None => "none".to_string(),
+    }
+}
+
+fn format_update_direction(direction: CpuAddressUpdateDirection) -> &'static str {
+    match direction {
+        CpuAddressUpdateDirection::Increment => "inc",
+        CpuAddressUpdateDirection::Decrement => "dec",
+    }
+}
+
+fn format_apu_last_register_write(observation: Option<&ApuRegisterWriteObservation>) -> String {
+    let Some(observation) = observation else {
+        return String::new();
+    };
+
+    format!(
+        " apu.last_write=write@{:#06X}={:#04X} before({}) after({})",
+        observation.address,
+        observation.value,
+        format_apu_register_write_state(&observation.before),
+        format_apu_register_write_state(&observation.after),
+    )
+}
+
+fn format_apu_register_write_state(state: &ApuRegisterWriteState) -> String {
+    format!(
+        "nr52={:#04X} active={:#04X} dac={:#04X} outputs=[{:#04X},{:#04X},{:#04X},{:#04X}] mixer=({}, {}) hpf=({}, {})",
+        state.nr52,
+        state.channel_active_mask,
+        state.channel_dac_mask,
+        state.output.channel_digital_outputs[0],
+        state.output.channel_digital_outputs[1],
+        state.output.channel_digital_outputs[2],
+        state.output.channel_digital_outputs[3],
+        state.output.mixer_output.left,
+        state.output.mixer_output.right,
+        state.output.hpf_output.left,
+        state.output.hpf_output.right,
+    )
+}
+
+fn visible_nr52(powered: bool, active_mask: u8) -> u8 {
+    0x70 | if powered {
+        0x80 | (active_mask & 0x0F)
+    } else {
+        0
+    }
+}
+
+fn visible_joypad_low_nibble(snapshot: &JoypadSnapshot) -> u8 {
+    let dpad_selected = snapshot.selection_bits & 0x10 == 0;
+    let buttons_selected = snapshot.selection_bits & 0x20 == 0;
+    let mut low = 0x0F;
+    if dpad_selected {
+        if snapshot.pressed_mask & 0x01 != 0 {
+            low &= !0x01;
+        }
+        if snapshot.pressed_mask & 0x02 != 0 {
+            low &= !0x02;
+        }
+        if snapshot.pressed_mask & 0x04 != 0 {
+            low &= !0x04;
+        }
+        if snapshot.pressed_mask & 0x08 != 0 {
+            low &= !0x08;
+        }
+    }
+    if buttons_selected {
+        if snapshot.pressed_mask & 0x10 != 0 {
+            low &= !0x01;
+        }
+        if snapshot.pressed_mask & 0x20 != 0 {
+            low &= !0x02;
+        }
+        if snapshot.pressed_mask & 0x40 != 0 {
+            low &= !0x04;
+        }
+        if snapshot.pressed_mask & 0x80 != 0 {
+            low &= !0x08;
+        }
+    }
+    low
+}
+
+fn parse_trace_capture_t_cycles(value: Option<&std::ffi::OsStr>) -> Result<usize, String> {
+    let Some(value) = value else {
+        return Ok(DEFAULT_TRACE_CAPTURE_T_CYCLES);
+    };
+
+    let text = value.to_string_lossy();
+    let parsed = text.parse::<usize>().map_err(|error| {
+        format!(
+            "{DESKTOP_TRACE_T_CYCLES_ENV_VAR} must be a positive integer T-cycle count: {error}"
+        )
+    })?;
+    if parsed == 0 {
+        return Err(format!(
+            "{DESKTOP_TRACE_T_CYCLES_ENV_VAR} must be greater than zero"
+        ));
+    }
+    Ok(parsed)
+}
+
 struct FramePacer {
-    enabled: bool,
     next_frame_start: Instant,
 }
 
@@ -343,19 +616,15 @@ impl HostRtcSync {
 }
 
 impl FramePacer {
-    fn new(vsync_enabled: bool) -> Self {
+    fn new(_vsync_enabled: bool) -> Self {
         Self {
-            enabled: !vsync_enabled,
             next_frame_start: Instant::now(),
         }
     }
 
-    fn wait_until_next_frame(&mut self) -> Duration {
-        if !self.enabled {
-            return Duration::ZERO;
-        }
-
-        self.next_frame_start += FRAME_DURATION;
+    fn wait_until_next_frame(&mut self, audio_queue_ms: Option<f64>) -> Duration {
+        let audio_correction = audio_queue_pacing_correction(audio_queue_ms);
+        self.next_frame_start += FRAME_DURATION + audio_correction;
         let now = Instant::now();
         if now < self.next_frame_start {
             let wait_duration = self.next_frame_start - now;
@@ -367,10 +636,23 @@ impl FramePacer {
         }
     }
 
-    fn set_vsync_enabled(&mut self, vsync_enabled: bool) {
-        self.enabled = !vsync_enabled;
+    fn set_vsync_enabled(&mut self, _vsync_enabled: bool) {
         self.next_frame_start = Instant::now();
     }
+}
+
+fn audio_queue_pacing_correction(audio_queue_ms: Option<f64>) -> Duration {
+    let Some(audio_queue_ms) = audio_queue_ms else {
+        return Duration::ZERO;
+    };
+
+    let excess_ms = audio_queue_ms - (AUDIO_QUEUE_TARGET_MS + AUDIO_QUEUE_DEADBAND_MS);
+    if excess_ms <= 0.0 {
+        return Duration::ZERO;
+    }
+
+    let correction_ms = (excess_ms * AUDIO_QUEUE_PACING_GAIN).min(AUDIO_QUEUE_MAX_CORRECTION_MS);
+    Duration::from_secs_f64(correction_ms / 1_000.0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -733,6 +1015,7 @@ fn run_desktop_with_startup_fallback_persistence(
         boot_rom_file_dialog: PathSelectionDialog::new(),
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
+        trace_capture: DesktopTraceCapture::from_env()?,
     };
     apply_canvas_video_options(&mut canvas, &runtime.video_options)?;
     if !session.has_loaded_rom() {
@@ -859,17 +1142,22 @@ fn run_desktop_with_startup_fallback_persistence(
             performance_counter.hud_snapshot(),
         )?;
         let render_duration = render_started_at.elapsed();
-        let pacing_duration = frame_pacer.wait_until_next_frame();
+        let audio_queue_ms_before_pacing = runtime
+            .audio_output
+            .as_ref()
+            .and_then(DesktopAudioOutput::queued_duration_ms);
+        let pacing_duration = frame_pacer.wait_until_next_frame(audio_queue_ms_before_pacing);
+        let audio_queue_ms_after_pacing = runtime
+            .audio_output
+            .as_ref()
+            .and_then(DesktopAudioOutput::queued_duration_ms);
         performance_counter.record_presented_frame(
             canvas.window_mut(),
             FramePerformanceSample {
                 emulation_duration,
                 render_duration,
                 pacing_duration,
-                audio_queue_ms: runtime
-                    .audio_output
-                    .as_ref()
-                    .and_then(DesktopAudioOutput::queued_duration_ms),
+                audio_queue_ms: audio_queue_ms_after_pacing,
             },
         )?;
     }
@@ -888,6 +1176,7 @@ fn run_desktop_with_startup_fallback_persistence(
     if let Some(audio_output) = &runtime.audio_output {
         audio_output.flush()?;
     }
+    runtime.trace_capture.write_artifact()?;
 
     Ok(())
 }
@@ -1349,6 +1638,10 @@ fn step_until_next_frame(
 
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
             context.machine.step_t_cycle();
+            context
+                .runtime
+                .trace_capture
+                .record_t_cycle(context.machine);
             if let Some(audio_output) = &mut context.runtime.audio_output {
                 audio_output.capture_t_cycle(context.machine.apu());
             }
@@ -3166,12 +3459,16 @@ mod tests {
         map_path_dialog_result, menu_input_for_gamepad_button, menu_input_for_key,
         next_audio_volume_percent, next_boot_rom_verification_mode, next_console_model,
         next_execution_mode, next_gamepad_directional_source, next_gamepad_rumble_mode,
-        next_save_flush_policy, next_startup_mode, next_window_scale, performance_window_title,
-        run_desktop,
+        next_save_flush_policy, next_startup_mode, next_window_scale, parse_trace_capture_t_cycles,
+        performance_window_title, render_desktop_trace_record, run_desktop,
     };
+    use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
     use gb_core::{
-        CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, ExecutionMode, Machine,
-        MachineConfig, PersistentCartState, StartupMode, TraceSummaryBuffer,
+        Apu, ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
+        CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
+        CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
+        JoypadSnapshot, JoypadStatus, Machine, MachineConfig, PersistentCartState, StartupMode,
+        TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopKey,
@@ -3185,7 +3482,9 @@ mod tests {
     use sdl3::keyboard::{Keycode, Mod};
     use sdl3::render::Canvas;
     use sdl3::video::Window;
+    use std::collections::VecDeque;
     use std::ffi::CString;
+    use std::ffi::OsStr;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -3470,6 +3769,11 @@ mod tests {
                 boot_rom_file_dialog: super::PathSelectionDialog::new(),
                 boot_rom_directory_dialog: super::PathSelectionDialog::new(),
                 save_directory_dialog: super::PathSelectionDialog::new(),
+                trace_capture: super::DesktopTraceCapture {
+                    output_path: None,
+                    max_t_cycles: super::DEFAULT_TRACE_CAPTURE_T_CYCLES,
+                    records: VecDeque::new(),
+                },
             };
 
             Self {
@@ -3601,6 +3905,311 @@ mod tests {
             ),
             "gb-desktop | drmario.gb | dmg | real-boot | strict | 14.8 FPS | 67.50 ms | 25% speed | emu 54.20 | render 4.10 | pacing 9.20 | audio 18.4 ms"
         );
+    }
+
+    #[test]
+    fn audio_queue_pacing_correction_ignores_nominal_latency_and_caps_large_backlogs() {
+        assert_eq!(super::audio_queue_pacing_correction(None), Duration::ZERO);
+        assert_eq!(
+            super::audio_queue_pacing_correction(Some(
+                super::AUDIO_QUEUE_TARGET_MS + super::AUDIO_QUEUE_DEADBAND_MS
+            )),
+            Duration::ZERO
+        );
+
+        let modest_correction = super::audio_queue_pacing_correction(Some(
+            super::AUDIO_QUEUE_TARGET_MS + super::AUDIO_QUEUE_DEADBAND_MS + 20.0,
+        ));
+        assert!(modest_correction > Duration::ZERO);
+        assert_eq!(modest_correction, Duration::from_millis(2));
+
+        assert_eq!(
+            super::audio_queue_pacing_correction(Some(2_000.0)),
+            Duration::from_secs_f64(super::AUDIO_QUEUE_MAX_CORRECTION_MS / 1_000.0)
+        );
+    }
+
+    #[test]
+    fn trace_capture_t_cycles_parser_uses_default_and_rejects_zero() {
+        assert_eq!(parse_trace_capture_t_cycles(None), Ok(8_192));
+        assert_eq!(
+            parse_trace_capture_t_cycles(Some(OsStr::new("4096"))),
+            Ok(4_096)
+        );
+        assert!(
+            parse_trace_capture_t_cycles(Some(OsStr::new("0")))
+                .expect_err("zero trace window should be rejected")
+                .contains("must be greater than zero")
+        );
+    }
+
+    #[test]
+    fn desktop_trace_renderer_includes_apu_last_write_when_present() {
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+        apu.write_register(0xFF26, 0x80);
+        apu.write_register(0xFF1A, 0x80);
+        apu.write_register(0xFF1E, 0x80);
+        apu.write_register(0xFF1A, 0x00);
+
+        let rendered = render_desktop_trace_record(&super::DesktopTraceRecord {
+            t_cycle: 123,
+            cpu: machine.cpu().snapshot(),
+            apu: apu.snapshot(),
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+        });
+
+        assert!(rendered.contains("apu.last_write=write@0xFF1A=0x00"));
+        assert!(rendered.contains("before("));
+        assert!(rendered.contains("after("));
+    }
+
+    #[test]
+    fn desktop_trace_capture_from_env_keeps_a_ring_buffer_and_writes_the_artifact() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("trace-capture");
+        let output_path = root.join("artifacts").join("desktop-trace.txt");
+        unsafe {
+            std::env::set_var(super::DESKTOP_TRACE_PATH_ENV_VAR, &output_path);
+            std::env::set_var(super::DESKTOP_TRACE_T_CYCLES_ENV_VAR, "2");
+        }
+        let mut capture = super::DesktopTraceCapture::from_env().expect("trace capture from env");
+        unsafe {
+            std::env::remove_var(super::DESKTOP_TRACE_PATH_ENV_VAR);
+            std::env::remove_var(super::DESKTOP_TRACE_T_CYCLES_ENV_VAR);
+        }
+
+        assert_eq!(capture.output_path.as_deref(), Some(output_path.as_path()));
+        assert_eq!(capture.max_t_cycles, 2);
+
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        for _ in 0..3 {
+            machine.step_t_cycle();
+            capture.record_t_cycle(&machine);
+        }
+
+        assert_eq!(capture.records.len(), 2);
+        capture
+            .write_artifact()
+            .expect("trace artifact should be writable");
+        let rendered = fs::read_to_string(&output_path).expect("trace artifact should exist");
+        assert_eq!(rendered.lines().count(), 2);
+        assert!(rendered.contains("cpu.pc=0x0100"));
+        assert!(rendered.contains("apu.nr50=0x77"));
+
+        super::DesktopTraceCapture {
+            output_path: None,
+            max_t_cycles: 2,
+            records: std::collections::VecDeque::new(),
+        }
+        .write_artifact()
+        .expect("disabled trace capture should be a no-op");
+    }
+
+    #[test]
+    fn desktop_trace_helpers_cover_bus_address_joypad_and_apu_formatting() {
+        assert_eq!(super::format_cpu_bus_activity(None), "none");
+        assert_eq!(
+            super::format_cpu_bus_activity(Some(CpuBusActivitySnapshot {
+                kind: CpuBusAccessKind::OpcodeFetch,
+                address: 0x0100,
+                value: 0x31,
+            })),
+            "opcode_fetch@0x0100=0x31"
+        );
+        assert_eq!(
+            super::format_cpu_bus_activity(Some(CpuBusActivitySnapshot {
+                kind: CpuBusAccessKind::OperandRead,
+                address: 0x0101,
+                value: 0xFE,
+            })),
+            "operand_read@0x0101=0xFE"
+        );
+        assert_eq!(
+            super::format_cpu_bus_activity(Some(CpuBusActivitySnapshot {
+                kind: CpuBusAccessKind::DataRead,
+                address: 0xC123,
+                value: 0x45,
+            })),
+            "data_read@0xC123=0x45"
+        );
+        assert_eq!(
+            super::format_cpu_bus_activity(Some(CpuBusActivitySnapshot {
+                kind: CpuBusAccessKind::DataWrite,
+                address: 0xFF40,
+                value: 0x91,
+            })),
+            "data_write@0xFF40=0x91"
+        );
+
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::Read,
+                access_address: Some(0xC000),
+                idu_address: None,
+                update_direction: None,
+            })),
+            "read@0xC000"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::Read,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "read@missing"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::Write,
+                access_address: Some(0xC001),
+                idu_address: None,
+                update_direction: None,
+            })),
+            "write@0xC001"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::Write,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "write@missing"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::IncDec,
+                access_address: None,
+                idu_address: Some(0xC002),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })),
+            "inc@0xC002"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::IncDec,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "incdec@missing"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: Some(0xC003),
+                idu_address: Some(0xC004),
+                update_direction: Some(CpuAddressUpdateDirection::Decrement),
+            })),
+            "read+dec@0xC003->0xC004"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::ReadWithIncDec,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "combined@missing"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: Some(0xC005),
+                idu_address: Some(0xC006),
+                update_direction: Some(CpuAddressUpdateDirection::Increment),
+            })),
+            "write+inc@0xC005->0xC006"
+        );
+        assert_eq!(
+            super::format_cpu_address_event(Some(CpuAddressEvent {
+                kind: CpuAddressEventKind::WriteWithIncDec,
+                access_address: None,
+                idu_address: None,
+                update_direction: None,
+            })),
+            "combined@missing"
+        );
+        assert_eq!(
+            super::format_update_direction(CpuAddressUpdateDirection::Increment),
+            "inc"
+        );
+        assert_eq!(
+            super::format_update_direction(CpuAddressUpdateDirection::Decrement),
+            "dec"
+        );
+        assert_eq!(super::visible_nr52(true, 0x0B), 0xFB);
+        assert_eq!(super::visible_nr52(false, 0x0B), 0x70);
+        assert_eq!(
+            super::visible_joypad_low_nibble(&JoypadSnapshot {
+                console_model: ConsoleModel::Dmg,
+                status: JoypadStatus::Ready,
+                selection_bits: 0x00,
+                pressed_mask: 0xFF,
+            }),
+            0x00
+        );
+        assert_eq!(
+            super::visible_joypad_low_nibble(&JoypadSnapshot {
+                console_model: ConsoleModel::Dmg,
+                status: JoypadStatus::Ready,
+                selection_bits: 0x30,
+                pressed_mask: 0xFF,
+            }),
+            0x0F
+        );
+
+        let base_state = ApuRegisterWriteState {
+            powered: true,
+            nr50: 0x77,
+            nr51: 0xFF,
+            nr52: 0xFB,
+            channel_active_mask: 0x0B,
+            channel_dac_mask: 0x0F,
+            output: ApuOutputSnapshot {
+                channel_digital_outputs: [0x01, 0x02, 0x03, 0x04],
+                channel_dac_outputs: [0; 4],
+                mixer_output: ApuStereoOutputSnapshot { left: 5, right: 6 },
+                master_output: ApuStereoOutputSnapshot::default(),
+                hpf_output: ApuStereoOutputSnapshot { left: 7, right: 8 },
+                hpf_capacitor: Default::default(),
+            },
+        };
+        assert_eq!(super::format_apu_last_register_write(None), "");
+        let rendered = super::format_apu_last_register_write(Some(&ApuRegisterWriteObservation {
+            address: 0xFF1A,
+            value: 0x00,
+            before: base_state,
+            after: ApuRegisterWriteState {
+                nr52: 0xF7,
+                channel_active_mask: 0x07,
+                ..base_state
+            },
+        }));
+        assert!(rendered.contains("apu.last_write=write@0xFF1A=0x00"));
+        assert!(rendered.contains("before("));
+        assert!(rendered.contains("after("));
+    }
+
+    #[test]
+    fn frame_pacer_and_performance_counter_cover_idle_paths() {
+        let mut frame_pacer = super::FramePacer::new(true);
+        frame_pacer.next_frame_start = Instant::now() - Duration::from_secs(1);
+        assert_eq!(frame_pacer.wait_until_next_frame(None), Duration::ZERO);
+        frame_pacer.set_vsync_enabled(true);
+        assert!(frame_pacer.next_frame_start <= Instant::now());
+
+        let counter = super::PerformanceCounter::new("gb-desktop | no rom".to_string());
+        let snapshot = counter.snapshot_from_elapsed(Duration::ZERO);
+        assert!(snapshot.fps.is_finite());
+        assert_eq!(snapshot.audio_queue_ms, None);
     }
 
     #[test]

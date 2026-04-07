@@ -170,7 +170,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::{
         DEFAULT_BOOT_ROM_ROOT_ENV_VAR, boot_rom_image_path, expected_boot_rom_sha256,
-        load_boot_rom_assets, load_exact_boot_rom_file, missing_boot_rom_asset_path,
+        load_boot_rom_assets, load_exact_boot_rom_file, missing_boot_rom_asset_path, path_exists,
         resolve_boot_rom_source, resolve_path, sha256_hex, verify_boot_rom_file,
     };
     use gb_core::{BootRomAssets, BootRomKind, StartupMode};
@@ -326,6 +326,41 @@ mod tests {
         assert!(!assets.has_image(BootRomKind::Mgb));
 
         fs::remove_dir_all(root).expect("temp bootrom root should be removable");
+    }
+
+    #[test]
+    fn load_boot_rom_assets_reports_directory_loading_failures() {
+        let root = temp_root("directory-error");
+        let directory = root.join("bootrom");
+        fs::create_dir_all(&directory).expect("boot ROM directory should be creatable");
+        fs::write(
+            directory.join(BootRomAssets::filename(BootRomKind::Dmg)),
+            vec![0x42; 0x40],
+        )
+        .expect("invalid boot ROM image should be writable");
+
+        let error = load_boot_rom_assets(
+            Some(&directory),
+            BootRomVerificationMode::Off,
+            DesktopConsoleModel::Dmg,
+            StartupMode::RealBoot,
+            Path::new("/unused"),
+        )
+        .expect_err("invalid directory-backed assets should fail");
+        assert!(error.contains("failed to load boot ROM assets from"));
+
+        fs::remove_dir_all(root).expect("temp bootrom root should be removable");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_exists_reports_invalid_paths() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let invalid_path = PathBuf::from(OsString::from_vec(vec![b'i', 0, b'n', b'v']));
+        let error = path_exists(&invalid_path).expect_err("invalid paths should report errors");
+        assert!(error.contains("failed to inspect boot ROM path"));
     }
 
     #[test]

@@ -95,6 +95,19 @@ impl CpuCore {
             current_opcode: self.current_opcode,
             ime: self.ime,
             delayed_ime_enable: self.delayed_ime_enable,
+            last_bus_activity: self
+                .last_bus_activity
+                .map(|activity| CpuBusActivitySnapshot {
+                    kind: match activity.kind {
+                        trace::CpuTraceBusAccessKind::OpcodeFetch => CpuBusAccessKind::OpcodeFetch,
+                        trace::CpuTraceBusAccessKind::OperandRead => CpuBusAccessKind::OperandRead,
+                        trace::CpuTraceBusAccessKind::DataRead => CpuBusAccessKind::DataRead,
+                        trace::CpuTraceBusAccessKind::DataWrite => CpuBusAccessKind::DataWrite,
+                    },
+                    address: activity.address,
+                    value: activity.value,
+                }),
+            last_address_event: self.last_address_event,
         }
     }
 

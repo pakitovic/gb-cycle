@@ -15,8 +15,9 @@ pub mod serial;
 pub mod timer;
 
 pub use apu::{
-    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuSampleCapture, ApuSampleCaptureError,
-    ApuSnapshot, ApuStartupState, ApuStatus, DMG_FAMILY_APU_CAPTURE_CLOCK_HZ, WaveRamStartupPolicy,
+    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuRegisterWriteObservation,
+    ApuRegisterWriteState, ApuSampleCapture, ApuSampleCaptureError, ApuSnapshot, ApuStartupState,
+    ApuStatus, DMG_FAMILY_APU_CAPTURE_CLOCK_HZ, WaveRamStartupPolicy,
 };
 pub use boot::{
     BootAudioSnapshot, BootController, BootDirectBootState, BootIoSnapshot, BootRomAssetError,
@@ -38,8 +39,9 @@ pub use cartridge::{
     RomSizeInfo, SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
 };
 pub use cpu::{
-    CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuCore, CpuDiagnosticTrap,
-    CpuExecutionState, CpuRegisters, CpuSnapshot, CpuStartupState, CpuStatus,
+    CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,
+    CpuBusActivitySnapshot, CpuCore, CpuDiagnosticTrap, CpuExecutionState, CpuRegisters,
+    CpuSnapshot, CpuStartupState, CpuStatus,
 };
 pub use debugger::{
     Breakpoint, BreakpointCondition, BreakpointId, BreakpointProbe, CartridgeWatchTarget,

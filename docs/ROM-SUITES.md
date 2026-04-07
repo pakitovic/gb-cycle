@@ -153,6 +153,39 @@ cargo run -p gb-test-runner --bin run_rom_suite -- --manifest .artifacts/tetris-
 
 The final framebuffer PNG lands next to the ROM as `/.roms/local-commercial/tetris.png`.
 
+### Audio and menu investigation
+
+For audio issues that depend on deterministic in-game inputs, prefer a manifest-driven local case with `oracle = "info-trace"` and a tight `timeout_tcycles` or `timeout_frames` window around the menu interaction you want to inspect.
+
+- `trace.txt` is a rolling recent-history window rather than an unbounded full-run log; the current runner keeps the most recent `8192` T-cycles so the artifact stays focused on the final interaction window.
+- CPU trace lines already include the last bus access, so APU MMIO writes remain visible there as `last_bus_activity=write@0xFFxx=0xyy`.
+- The current APU scheduler trace now records powered state, `NR50`, `NR51`, live `NR52`, active and DAC masks, per-channel digital outputs, and current mixer/HPF output each traced T-cycle, which makes short menu-driven audio regressions inspectable without involving SDL.
+
+Example shape:
+
+```toml
+version = 1
+
+[[case]]
+id = "pokemon-gold-menu-audio"
+rom = ".roms/local-commercial/pokemon_gold.gbc"
+console = "dmg"
+startup = "real-boot"
+mode = "strict"
+timeout_frames = 920
+oracle = "info-trace"
+
+[[case.stimulus]]
+frame = 870
+button = "start"
+pressed = true
+
+[[case.stimulus]]
+frame = 874
+button = "start"
+pressed = false
+```
+
 ## Differential oracle testing
 
 ### SameBoy Tester

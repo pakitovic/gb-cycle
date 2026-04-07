@@ -3,7 +3,7 @@ use crate::bus::{BusArbitrationState, BusIoReadView, BusIoWriteView, BusRequeste
 use crate::cartridge::{CartridgeDiagnostic, CartridgeLoadError};
 use crate::cpu::{CpuAddressEvent, CpuAddressEventKind};
 use crate::debugger::TraceSink;
-use crate::scheduler::TCycle;
+use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 
 impl<S: TraceSink> Machine<S> {
     pub fn read_bus(&mut self, address: u16) -> u8 {
@@ -83,6 +83,23 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn next_t_cycle(&self) -> TCycle {
         self.scheduler.next_t_cycle()
+    }
+
+    pub fn post_step_debug_trace_line(&self) -> String {
+        let completed_t_cycle = self.scheduler.next_t_cycle().get().saturating_sub(1);
+        let mut context = CycleContext::for_cycle(TCycle::new(completed_t_cycle));
+        context.enter_phase(SchedulerPhase::CpuWakeInterruptEvaluation);
+        let arbitration_state = self.current_bus_arbitration_state();
+
+        format!(
+            "cpu: {} | apu: {} | interrupts: {} | joypad: {} | bus: {}",
+            self.cpu.scheduler_trace_message(&context),
+            self.apu.scheduler_trace_message(&context),
+            self.interrupts.scheduler_trace_message(&context),
+            self.joypad.scheduler_trace_message(&context),
+            self.bus
+                .scheduler_trace_message(&context, &arbitration_state),
+        )
     }
 
     fn current_bus_arbitration_state(&self) -> BusArbitrationState {

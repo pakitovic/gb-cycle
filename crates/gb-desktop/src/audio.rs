@@ -4,11 +4,34 @@ use gb_core::{
 use gb_desktop::AudioOptions;
 use sdl3::AudioSubsystem;
 use sdl3::audio::{AudioFormat, AudioSpec, AudioStreamOwner};
+use std::cell::Cell;
+use std::env;
+use std::ffi::OsStr;
 use std::fmt::Display;
 use std::mem::size_of;
 
 const AUDIO_CHANNEL_COUNT: i32 = 2;
 const BYTES_PER_F32_SAMPLE: i32 = size_of::<f32>() as i32;
+const OVERSIZED_QUEUE_CLEAR_BUFFER_MULTIPLIER: i32 = 192;
+const OVERSIZED_QUEUE_CLEAR_STREAK: u8 = 3;
+pub(crate) const DESKTOP_AUDIO_LOG_ENV_VAR: &str = "GB_CYCLE_DESKTOP_AUDIO_LOG";
+pub(crate) const DESKTOP_AUDIO_DISABLE_AUTO_CLEAR_ENV_VAR: &str =
+    "GB_CYCLE_DESKTOP_AUDIO_DISABLE_AUTO_CLEAR";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum AudioTelemetryMode {
+    #[default]
+    Disabled,
+    Events,
+    Verbose,
+}
+
+#[derive(Debug, Default)]
+struct AudioTelemetry {
+    mode: AudioTelemetryMode,
+    next_sequence: Cell<u64>,
+    queue_clear_count: Cell<u64>,
+}
 
 pub struct DesktopAudioOutput {
     capture: ApuSampleCapture,
@@ -19,7 +42,130 @@ pub struct DesktopAudioOutput {
     volume_percent: u8,
     volume_scale: f32,
     muted: bool,
+    auto_queue_clear_enabled: bool,
     max_queued_bytes: i32,
+    oversized_queue_streak: u8,
+    telemetry: AudioTelemetry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum AutoQueueClearPolicy {
+    #[default]
+    Enabled,
+    Disabled,
+}
+
+impl AudioTelemetryMode {
+    fn from_env() -> Self {
+        Self::from_env_value(env::var_os(DESKTOP_AUDIO_LOG_ENV_VAR).as_deref())
+    }
+
+    fn from_env_value(value: Option<&OsStr>) -> Self {
+        let Some(value) = value else {
+            return Self::Disabled;
+        };
+
+        let value = value.to_string_lossy();
+        if value.is_empty()
+            || value == "0"
+            || value.eq_ignore_ascii_case("false")
+            || value.eq_ignore_ascii_case("off")
+            || value.eq_ignore_ascii_case("no")
+        {
+            Self::Disabled
+        } else if value.eq_ignore_ascii_case("verbose")
+            || value.eq_ignore_ascii_case("debug")
+            || value.eq_ignore_ascii_case("all")
+        {
+            Self::Verbose
+        } else {
+            Self::Events
+        }
+    }
+
+    fn enabled(self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+
+    fn log_submit_batches(self) -> bool {
+        matches!(self, Self::Verbose)
+    }
+}
+
+impl AutoQueueClearPolicy {
+    fn from_env() -> Self {
+        Self::from_env_value(env::var_os(DESKTOP_AUDIO_DISABLE_AUTO_CLEAR_ENV_VAR).as_deref())
+    }
+
+    fn from_env_value(value: Option<&OsStr>) -> Self {
+        let Some(value) = value else {
+            return Self::Enabled;
+        };
+
+        let value = value.to_string_lossy();
+        if value.is_empty()
+            || value.eq_ignore_ascii_case("1")
+            || value.eq_ignore_ascii_case("true")
+            || value.eq_ignore_ascii_case("on")
+            || value.eq_ignore_ascii_case("yes")
+            || value.eq_ignore_ascii_case("disable")
+            || value.eq_ignore_ascii_case("disabled")
+        {
+            Self::Disabled
+        } else {
+            Self::Enabled
+        }
+    }
+
+    fn auto_queue_clear_enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+
+impl AudioTelemetry {
+    fn from_env() -> Self {
+        Self {
+            mode: AudioTelemetryMode::from_env(),
+            next_sequence: Cell::new(0),
+            queue_clear_count: Cell::new(0),
+        }
+    }
+
+    fn enabled(&self) -> bool {
+        self.mode.enabled()
+    }
+
+    fn next_sequence(&self) -> u64 {
+        let sequence = self.next_sequence.get();
+        self.next_sequence.set(sequence + 1);
+        sequence
+    }
+
+    fn record_queue_clear(&self) -> u64 {
+        let next = self.queue_clear_count.get() + 1;
+        self.queue_clear_count.set(next);
+        next
+    }
+
+    fn log_event(&self, event: &str, details: impl Display) {
+        if !self.enabled() {
+            return;
+        }
+
+        let sequence = self.next_sequence();
+        match self.mode {
+            AudioTelemetryMode::Disabled => {}
+            AudioTelemetryMode::Events | AudioTelemetryMode::Verbose => {
+                eprintln!("gb-desktop audio seq={sequence} event={event} {details}");
+            }
+        }
+    }
+
+    fn log_submit_batch(&self, event: &str, details: impl Display) {
+        if self.mode.log_submit_batches() {
+            self.log_event(event, details);
+        }
+    }
 }
 
 impl DesktopAudioOutput {
@@ -40,7 +186,7 @@ impl DesktopAudioOutput {
             "failed to start SDL3 audio playback stream",
         )?;
 
-        Ok(Self {
+        let output = Self {
             capture: ApuSampleCapture::new(options.output_sample_rate_hz)
                 .map_err(format_capture_error)?,
             captured_samples: Vec::new(),
@@ -50,11 +196,26 @@ impl DesktopAudioOutput {
             volume_percent: options.volume_percent,
             volume_scale: f32::from(options.volume_percent) / 100.0,
             muted: false,
+            auto_queue_clear_enabled: AutoQueueClearPolicy::from_env().auto_queue_clear_enabled(),
             max_queued_bytes: i32::from(options.buffer_frames)
                 * AUDIO_CHANNEL_COUNT
                 * BYTES_PER_F32_SAMPLE
-                * 4,
-        })
+                * OVERSIZED_QUEUE_CLEAR_BUFFER_MULTIPLIER,
+            oversized_queue_streak: 0,
+            telemetry: AudioTelemetry::from_env(),
+        };
+        output.telemetry.log_event(
+            "init",
+            format!(
+                "sample_rate_hz={} volume_percent={} max_queued_bytes={} auto_queue_clear_enabled={}",
+                output.output_sample_rate_hz,
+                output.volume_percent,
+                output.max_queued_bytes,
+                output.auto_queue_clear_enabled,
+            ),
+        );
+
+        Ok(output)
     }
 
     pub fn capture_t_cycle(&mut self, apu: &Apu) {
@@ -71,11 +232,35 @@ impl DesktopAudioOutput {
             self.stream.queued_bytes(),
             "failed to query queued SDL3 audio bytes",
         )?;
+        let queued_ms_before = self.queued_duration_ms_for_bytes(queued_bytes);
+        let mut cleared_queue = false;
         if queued_bytes > self.max_queued_bytes {
-            map_audio_result(
-                self.stream.clear(),
-                "failed to clear queued SDL3 audio bytes",
-            )?;
+            if self.oversized_queue_streak < OVERSIZED_QUEUE_CLEAR_STREAK {
+                self.oversized_queue_streak += 1;
+            }
+            if self.auto_queue_clear_enabled
+                && self.oversized_queue_streak >= OVERSIZED_QUEUE_CLEAR_STREAK
+            {
+                self.clear_stream("oversized-queue", Some(queued_bytes))?;
+                self.oversized_queue_streak = 0;
+                cleared_queue = true;
+            } else if !self.auto_queue_clear_enabled
+                && self.oversized_queue_streak == OVERSIZED_QUEUE_CLEAR_STREAK
+            {
+                self.telemetry.log_event(
+                    "oversized-queue-observed",
+                    format!(
+                        "queued_before_bytes={} queued_before_ms={} muted={} volume_percent={} auto_queue_clear_enabled={}",
+                        queued_bytes,
+                        format_optional_ms(queued_ms_before),
+                        self.muted,
+                        self.volume_percent,
+                        self.auto_queue_clear_enabled,
+                    ),
+                );
+            }
+        } else {
+            self.oversized_queue_streak = 0;
         }
 
         let sample_scale = if self.muted { 0.0 } else { self.volume_scale };
@@ -92,15 +277,54 @@ impl DesktopAudioOutput {
         map_audio_result(
             self.stream.put_data_f32(&self.interleaved_buffer),
             "failed to queue SDL3 audio samples",
-        )
+        )?;
+
+        self.telemetry.log_submit_batch(
+            "submit",
+            format!(
+                "sample_count={} queued_before_bytes={} queued_before_ms={} queued_after_bytes={} queued_after_ms={} cleared_queue={} muted={} volume_percent={}",
+                self.captured_samples.len(),
+                queued_bytes,
+                format_optional_ms(queued_ms_before),
+                format_optional_i32(self.stream.queued_bytes().ok()),
+                format_optional_ms(self.queued_duration_ms()),
+                cleared_queue,
+                self.muted,
+                self.volume_percent,
+            ),
+        );
+
+        Ok(())
     }
 
     pub fn pause(&self) -> Result<(), String> {
-        map_audio_result(self.stream.pause(), "failed to pause SDL3 audio stream")
+        map_audio_result(self.stream.pause(), "failed to pause SDL3 audio stream")?;
+        self.telemetry.log_event(
+            "pause",
+            format!(
+                "queued_bytes={} queued_ms={} muted={} volume_percent={}",
+                format_optional_i32(self.stream.queued_bytes().ok()),
+                format_optional_ms(self.queued_duration_ms()),
+                self.muted,
+                self.volume_percent,
+            ),
+        );
+        Ok(())
     }
 
     pub fn resume(&self) -> Result<(), String> {
-        map_audio_result(self.stream.resume(), "failed to resume SDL3 audio stream")
+        map_audio_result(self.stream.resume(), "failed to resume SDL3 audio stream")?;
+        self.telemetry.log_event(
+            "resume",
+            format!(
+                "queued_bytes={} queued_ms={} muted={} volume_percent={}",
+                format_optional_i32(self.stream.queued_bytes().ok()),
+                format_optional_ms(self.queued_duration_ms()),
+                self.muted,
+                self.volume_percent,
+            ),
+        );
+        Ok(())
     }
 
     pub fn is_muted(&self) -> bool {
@@ -113,10 +337,12 @@ impl DesktopAudioOutput {
         }
 
         self.muted = muted;
-        map_audio_result(
-            self.stream.clear(),
-            "failed to clear queued SDL3 audio bytes",
-        )
+        self.telemetry.log_event(
+            "mute",
+            format!("muted={muted} volume_percent={}", self.volume_percent),
+        );
+        self.oversized_queue_streak = 0;
+        self.clear_stream("mute-toggle", None)
     }
 
     pub fn set_volume_percent(&mut self, volume_percent: u8) -> Result<(), String> {
@@ -127,10 +353,15 @@ impl DesktopAudioOutput {
 
         self.volume_percent = volume_percent;
         self.volume_scale = f32::from(volume_percent) / 100.0;
-        map_audio_result(
-            self.stream.clear(),
-            "failed to clear queued SDL3 audio bytes",
-        )
+        self.telemetry.log_event(
+            "volume",
+            format!(
+                "volume_percent={} muted={}",
+                self.volume_percent, self.muted
+            ),
+        );
+        self.oversized_queue_streak = 0;
+        self.clear_stream("volume-change", None)
     }
 
     pub fn clear_buffer(&mut self) -> Result<(), String> {
@@ -138,10 +369,15 @@ impl DesktopAudioOutput {
             ApuSampleCapture::new(self.output_sample_rate_hz).map_err(format_capture_error)?;
         self.captured_samples.clear();
         self.interleaved_buffer.clear();
-        map_audio_result(
-            self.stream.clear(),
-            "failed to clear queued SDL3 audio bytes",
-        )
+        self.oversized_queue_streak = 0;
+        self.telemetry.log_event(
+            "capture-reset",
+            format!(
+                "sample_rate_hz={} muted={} volume_percent={}",
+                self.output_sample_rate_hz, self.muted, self.volume_percent
+            ),
+        );
+        self.clear_stream("capture-reset", None)
     }
 
     pub fn flush(&self) -> Result<(), String> {
@@ -150,6 +386,10 @@ impl DesktopAudioOutput {
 
     pub fn queued_duration_ms(&self) -> Option<f64> {
         let queued_bytes = self.stream.queued_bytes().ok()?;
+        self.queued_duration_ms_for_bytes(queued_bytes)
+    }
+
+    fn queued_duration_ms_for_bytes(&self, queued_bytes: i32) -> Option<f64> {
         let bytes_per_second = f64::from(self.output_sample_rate_hz)
             * f64::from(AUDIO_CHANNEL_COUNT)
             * f64::from(BYTES_PER_F32_SAMPLE);
@@ -159,10 +399,47 @@ impl DesktopAudioOutput {
 
         Some(f64::from(queued_bytes) * 1_000.0 / bytes_per_second)
     }
+
+    fn clear_stream(&self, reason: &str, known_queued_bytes: Option<i32>) -> Result<(), String> {
+        let queued_bytes_before = known_queued_bytes.or_else(|| self.stream.queued_bytes().ok());
+        map_audio_result(
+            self.stream.clear(),
+            "failed to clear queued SDL3 audio bytes",
+        )?;
+        self.telemetry.log_event(
+            "stream-clear",
+            format!(
+                "reason={reason} clear_count={} queued_before_bytes={} queued_before_ms={} muted={} volume_percent={} oversized_queue_streak={}",
+                self.telemetry.record_queue_clear(),
+                format_optional_i32(queued_bytes_before),
+                format_optional_ms(
+                    queued_bytes_before.and_then(|bytes| self.queued_duration_ms_for_bytes(bytes))
+                ),
+                self.muted,
+                self.volume_percent,
+                self.oversized_queue_streak,
+            ),
+        );
+        Ok(())
+    }
 }
 
 fn normalize_sample(sample: i32) -> f32 {
     (sample as f32 / APU_HOST_MAX_ABS_SAMPLE as f32).clamp(-1.0, 1.0)
+}
+
+fn format_optional_i32(value: Option<i32>) -> String {
+    match value {
+        Some(value) => value.to_string(),
+        None => "unknown".to_string(),
+    }
+}
+
+fn format_optional_ms(value: Option<f64>) -> String {
+    match value {
+        Some(value) => format!("{value:.3}"),
+        None => "unknown".to_string(),
+    }
 }
 
 fn map_audio_result<T, E>(result: Result<T, E>, context: &str) -> Result<T, String>
@@ -190,14 +467,16 @@ fn format_capture_error(error: ApuSampleCaptureError) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIO_CHANNEL_COUNT, BYTES_PER_F32_SAMPLE, DesktopAudioOutput, format_audio_error,
-        format_capture_error, map_audio_result, normalize_sample,
+        AUDIO_CHANNEL_COUNT, AudioTelemetryMode, AutoQueueClearPolicy, BYTES_PER_F32_SAMPLE,
+        DesktopAudioOutput, OVERSIZED_QUEUE_CLEAR_STREAK, format_audio_error, format_capture_error,
+        format_optional_i32, format_optional_ms, map_audio_result, normalize_sample,
     };
     use gb_core::{
         APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuSampleCaptureError, ConsoleModel,
     };
     use gb_desktop::AudioOptions;
     use sdl3::{AudioSubsystem, hint};
+    use std::ffi::OsStr;
 
     fn init_audio_subsystem() -> AudioSubsystem {
         crate::configure_headless_sdl();
@@ -259,16 +538,24 @@ mod tests {
         );
 
         output.max_queued_bytes = -1;
-        push_captured_sample(
-            &mut output,
-            ApuHostSample {
-                left: APU_HOST_MAX_ABS_SAMPLE,
-                right: APU_HOST_MAX_ABS_SAMPLE,
-            },
-        );
-        output
-            .submit_captured_samples()
-            .expect("submit_captured_samples should clear oversized queues");
+        for streak in 1..=OVERSIZED_QUEUE_CLEAR_STREAK {
+            push_captured_sample(
+                &mut output,
+                ApuHostSample {
+                    left: APU_HOST_MAX_ABS_SAMPLE,
+                    right: APU_HOST_MAX_ABS_SAMPLE,
+                },
+            );
+            output
+                .submit_captured_samples()
+                .expect("submit_captured_samples should tolerate temporary oversized queues");
+            let expected_streak = if streak == OVERSIZED_QUEUE_CLEAR_STREAK {
+                0
+            } else {
+                streak
+            };
+            assert_eq!(output.oversized_queue_streak, expected_streak);
+        }
         assert_eq!(output.captured_samples.len(), 1);
         assert_eq!(output.interleaved_buffer, vec![1.0, 1.0]);
 
@@ -284,6 +571,33 @@ mod tests {
             .submit_captured_samples()
             .expect("muted submit_captured_samples");
         assert_eq!(output.interleaved_buffer, vec![0.0, -0.0]);
+    }
+
+    #[test]
+    fn desktop_audio_output_can_disable_automatic_oversized_queue_clears() {
+        let _guard = crate::lock_sdl_test();
+        let audio = init_audio_subsystem();
+        let mut output =
+            DesktopAudioOutput::new(&audio, &test_audio_options()).expect("audio output");
+        output.pause().expect("pause");
+        output.auto_queue_clear_enabled = false;
+        output.max_queued_bytes = -1;
+
+        for _ in 0..=OVERSIZED_QUEUE_CLEAR_STREAK {
+            push_captured_sample(
+                &mut output,
+                ApuHostSample {
+                    left: APU_HOST_MAX_ABS_SAMPLE,
+                    right: APU_HOST_MAX_ABS_SAMPLE,
+                },
+            );
+            output
+                .submit_captured_samples()
+                .expect("submit_captured_samples should keep the backlog without auto clear");
+        }
+
+        assert_eq!(output.telemetry.queue_clear_count.get(), 0);
+        assert_eq!(output.oversized_queue_streak, OVERSIZED_QUEUE_CLEAR_STREAK);
     }
 
     #[test]
@@ -352,9 +666,65 @@ mod tests {
 
     #[test]
     fn audio_helpers_cover_normalization_duration_and_capture_errors() {
+        assert_eq!(
+            AudioTelemetryMode::from_env_value(None),
+            AudioTelemetryMode::Disabled
+        );
+        assert_eq!(
+            AudioTelemetryMode::from_env_value(Some(OsStr::new("0"))),
+            AudioTelemetryMode::Disabled
+        );
+        assert_eq!(
+            AudioTelemetryMode::from_env_value(Some(OsStr::new("false"))),
+            AudioTelemetryMode::Disabled
+        );
+        assert_eq!(
+            AudioTelemetryMode::from_env_value(Some(OsStr::new("off"))),
+            AudioTelemetryMode::Disabled
+        );
+        assert_eq!(
+            AudioTelemetryMode::from_env_value(Some(OsStr::new("1"))),
+            AudioTelemetryMode::Events
+        );
+        assert_eq!(
+            AudioTelemetryMode::from_env_value(Some(OsStr::new("debug"))),
+            AudioTelemetryMode::Verbose
+        );
+        assert_eq!(
+            AudioTelemetryMode::from_env_value(Some(OsStr::new("verbose"))),
+            AudioTelemetryMode::Verbose
+        );
+        assert_eq!(
+            AudioTelemetryMode::from_env_value(Some(OsStr::new("all"))),
+            AudioTelemetryMode::Verbose
+        );
+        assert_eq!(
+            AutoQueueClearPolicy::from_env_value(None),
+            AutoQueueClearPolicy::Enabled
+        );
+        assert_eq!(
+            AutoQueueClearPolicy::from_env_value(Some(OsStr::new("1"))),
+            AutoQueueClearPolicy::Disabled
+        );
+        assert_eq!(
+            AutoQueueClearPolicy::from_env_value(Some(OsStr::new("true"))),
+            AutoQueueClearPolicy::Disabled
+        );
+        assert_eq!(
+            AutoQueueClearPolicy::from_env_value(Some(OsStr::new("disabled"))),
+            AutoQueueClearPolicy::Disabled
+        );
+        assert_eq!(
+            AutoQueueClearPolicy::from_env_value(Some(OsStr::new("0"))),
+            AutoQueueClearPolicy::Enabled
+        );
         assert_eq!(normalize_sample(APU_HOST_MAX_ABS_SAMPLE / 4), 0.25);
         assert_eq!(normalize_sample(APU_HOST_MAX_ABS_SAMPLE * 2), 1.0);
         assert_eq!(normalize_sample(-APU_HOST_MAX_ABS_SAMPLE * 2), -1.0);
+        assert_eq!(format_optional_i32(Some(12)), "12");
+        assert_eq!(format_optional_i32(None), "unknown");
+        assert_eq!(format_optional_ms(Some(1.25)), "1.250");
+        assert_eq!(format_optional_ms(None), "unknown");
         assert_eq!(
             format_audio_error("failed to pause SDL3 audio stream", "paused"),
             "failed to pause SDL3 audio stream: paused"

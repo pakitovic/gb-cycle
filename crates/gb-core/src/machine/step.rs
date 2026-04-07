@@ -189,6 +189,9 @@ impl MachinePhaseRunner<'_> {
         tracer.emit_with(TraceSubsystem::Dma, TraceLevel::Trace, || {
             self.dma.scheduler_trace_message(context)
         });
+        tracer.emit_with(TraceSubsystem::Apu, TraceLevel::Trace, || {
+            self.apu.scheduler_trace_message(context)
+        });
         tracer.emit_with(TraceSubsystem::Ppu, TraceLevel::Trace, || {
             self.ppu.scheduler_trace_message(context)
         });
