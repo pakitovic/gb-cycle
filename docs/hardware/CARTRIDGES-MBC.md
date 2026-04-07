@@ -33,12 +33,18 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The bus must not infer mapper behavior from ROM size, RAM size, filename, or frontend heuristics when the header already declares the cartridge type.
 - A central cartridge-header parser should own decoding of at least:
   - `entry_point`
-  - `cgb_flag` from `0x0143`
+  - raw visible `title` bytes from `0x0134-0x0143`, with the documented split that legacy cartridges may use all `16` bytes while cartridges whose `0x0143` byte has `bit 7` set reduce the conservative decoded visible title to `15` bytes
+  - raw `0x013F-0x0142` bytes preserved separately, for example as `raw_title_suffix_or_manufacturer_code`, because newer headers leave those bytes ambiguous between manufacturer code and title suffix
+  - `cgb_flag` from `0x0143`, keeping canonical `0x80` / `0xC0` values distinct but also preserving any non-canonical `bit 7`-set values as explicit CGB-capable metadata rather than collapsing them into generic unknowns
+  - `new_licensee_code` from `0x0144-0x0145`
   - `sgb_flag` from `0x0146`
   - `cartridge_type` from `0x0147`
   - `rom_size_code` from `0x0148`
   - `ram_size_code` from `0x0149`
-- The parser should preserve enough raw metadata for diagnostics and future compatibility work, including the Nintendo logo bytes and the raw header codes.
+  - `destination_code` from `0x014A`
+  - `old_licensee_code` from `0x014B`
+- The parser should preserve enough raw metadata for diagnostics and future compatibility work, including the Nintendo logo bytes, the raw visible title bytes, manufacturer and licensee bytes, and the raw header codes.
+- Do not guess the `11`-character newer-title layout from ad hoc ASCII heuristics alone. The raw header does not expose a reliable discriminator between "manufacturer code is active" and "these four bytes are still part of a 15-character CGB-era title", so the parser should keep the decoded title conservative and leave the split available as explicit preserved metadata.
 - The decoded result should live in a strongly typed structure such as `CartridgeHeader`, not in scattered ad hoc fields.
 - Header-derived capability data should remain available even before the project implements all of the corresponding hardware, because future CGB, SGB, RTC, battery, rumble, and peripheral support depends on it.
 
@@ -168,7 +174,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Treat `MBC30` as a real `MBC3`-family variant, not as an informal alias for ordinary `MBC3`.
 - `MBC30` should classify as `PlannedVariant`.
 - Pan Docs identifies "MBC3 with `64 KiB` of SRAM" as `MBC30`; for this repo that should map to an explicit typed entry such as `Mbc30Cartridge` or `Mbc3Variant::Mbc30`.
-- Detection should trigger when the validated cartridge is in the `MBC3` family and header metadata implies the `64 KiB` SRAM configuration associated with `MBC30`.
+- Detection should trigger only when the validated cartridge is in one of the RAM-bearing `MBC3` header shapes (`0x10`, `0x12`, or `0x13`) and header metadata implies the `64 KiB` SRAM configuration associated with `MBC30`.
 - The factory must not silently construct ordinary standard `MBC3` with oversized SRAM when this case is detected.
 - `Strict` and `Permissive` should reject `MBC30` clearly as a known reserved variant rather than as an invalid or unknown header.
 - `Experimental` may admit `MBC30` only when an explicit partial or complete implementation path exists behind a visible policy gate.
@@ -269,6 +275,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `MBC5` persistence must cover the full validated SRAM backing up to `128 KiB`; rumble state is not part of the ordinary battery-backed save payload.
 - For `MBC3`, the persistible RTC payload must preserve at least seconds, minutes, hours, visible `9`-bit day counter, halt, carry, and enough elapsed-time bookkeeping to reconstruct powered-off advancement on reload.
 - The persistible RTC payload must reflect live RTC state, not the latched snapshot exposed for reads through the `0x00 -> 0x01` latch sequence.
+- Restoring hardware-style `MBC3` persistence into a live cartridge should refresh `rtc_live` while clearing runtime-local latch state (`rtc_latched`, latch-valid flag, edge-arming state, and advisory ready-at timing) so a stale read snapshot does not survive a persistence restore.
 - Hardware-style cartridge saves and full emulator save states are different systems. Cartridge persistence must not serialize CPU, PPU, APU, WRAM, HRAM, or other console-owned state.
 - Cartridges without battery support should not produce automatic hardware-style save files unless the emulator explicitly exposes a non-hardware-faithful opt-in policy.
 - The cartridge side should expose an explicit typed persistence contract such as `PersistentCartState` or `CartridgePersistentPayload` that the storage backend consumes.
@@ -313,6 +320,8 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Treat `32 KiB` external RAM as the standard small-ROM wiring case.
 - Treat `1 MiB` or `2 MiB` ROM as the alternate large-ROM wiring case, not as banked-`32 KiB` RAM cartridges.
 - If declared ROM size, RAM size, real file size, and derived MBC1 wiring disagree, report an explicit diagnostic under the chosen validation policy instead of guessing silently.
+- When degraded validation still admits a contradictory MBC1 header, keep the live RAM capability derived from `0x0147`: `0x01` must remain RAM-less, standard-wiring `0x02/0x03` should fall back to the explicit small-ROM RAM baseline, and large-ROM `0x02/0x03` should keep the fixed `8 KiB` RAM window baseline rather than silently inheriting a different size from the conflicting header code.
+- When degraded validation admits that contradictory MBC1 header, effective RAM banking must follow the validated backing actually allocated by the loader rather than the contradictory `0x0149` bank-count metadata.
 - If the cartridge is too small to observe the secondary register or banking mode, writes may still update the stored register state, but they must not invent visible effects.
 - Power-up state must be deterministic for both `RealBoot` and `SkipBoot`: `ram_enabled = false`, `rom_bank_low5 = 0`, `secondary_bank = 0`, and `banking_mode = 0`.
 - Even though `rom_bank_low5` powers up as `0`, the switchable ROM window at `0x4000-0x7FFF` must initially expose bank `1`, not bank `0`.
@@ -416,11 +425,14 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - With RAM / RTC disabled, `0xA000-0xBFFF` reads and writes should follow one explicit project policy rather than accidental backing-store behavior. A default of `0xFF` is acceptable, but the policy should remain explicit and testable.
 - `0x2000-0x3FFF` is a write-only raw `7`-bit ROM-bank register. Store `value & 0x7F`, ignore upper data bits, apply the documented `0 -> 1` translation for the switchable ROM window, and then mask the effective bank by the real number of loaded ROM banks.
 - `0x4000-0x5FFF` is a write-only selector for the `0xA000-0xBFFF` window. Standard MBC3 values `0x00..=0x03` select RAM banks, values `0x08..=0x0C` select RTC registers, and values `0x04..=0x07` should remain explicit reserved or invalid selector states unless a later typed variant such as `MBC30` gives them meaning.
+- Current source divergence note: the latest public `Pan Docs` wording says `$00-$07` select RAM banks, but the retained curated oracle `cpp/rtc-invalid-banks-test.gb` actively writes to selectors `0x04..=0x07`, re-reads through the same selectors, and only stays green when those states remain invalid or reserved rather than exposing banked SRAM semantics. Until stronger hardware evidence settles the conflict, keep the project model explicit about that compatibility choice instead of silently widening standard MBC3 RAM banking.
 - The MBC3 RAM / RTC selector should decode from the low nibble of the written value. Upper data bits must not create a different selector namespace.
 - Represent the `0x4000-0x5FFF` selector as an explicit mapping target such as `RamBank(u8)`, `ReservedSelector(u8)`, or `RtcRegister(RtcRegisterId)` instead of as one raw numeric field whose meaning is reconstructed ad hoc during each access.
 - External RAM banking must be masked by the real number of available RAM banks declared by validated cartridge metadata; standard MBC3 should not silently treat a `64 KiB` RAM declaration as ordinary banked SRAM support.
-- `0x6000-0x7FFF` is a write-only RTC latch command register. Latch only on the logical edge formed by writing `0x00` and then `0x01`; model the power-up command-register baseline explicitly so a first post-reset `0x01` behaves consistently with that reset state instead of being treated as an impossible edge.
+- When the validated MBC3 SRAM backing is smaller than the visible `8 KiB` aperture, such as the accepted `2 KiB` case, reads and writes through `0xA000-0xBFFF` should wrap within the real SRAM payload instead of exposing out-of-range holes.
+- `0x6000-0x7FFF` is a write-only RTC latch command register. The project keeps the first accepted latch on the logical edge formed by writing `0x00` and then `0x01`, so a first post-reset `0x01` does not latch until software has armed the edge with `0x00`.
 - Keep RTC live state and RTC latched state as separate concepts. RTC register writes should update only the live RTC state; reads must continue to observe the currently latched snapshot until software issues the next latch command accepted by the controller.
+- Before the first accepted latch, the current project policy is explicit: RTC register reads observe a zeroed snapshot rather than live RTC state. That keeps the pre-latch state deterministic and avoids relying on whatever bytes happened to sit in the latched-storage field at reset.
 - The visible RTC register file must include seconds, minutes, hours, day low, and day high / flags.
 - Seconds and minutes should stay within `0..=59`, hours within `0..=23`, and the visible day counter within `0..=511`.
 - Day-counter state should be modeled as a `9`-bit value split across `DL` and `DH.bit0`.
@@ -430,15 +442,17 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `halt = 1` must stop progression of the live RTC state.
 - Pan Docs' recommendation to set `halt` before writing RTC registers should be documented as a hardware-usage rule, but the emulator does not need to reject out-of-flow writes unless later hardware evidence demands that restriction.
 - When the selector targets `0x08..=0x0C`, writes to `0xA000-0xBFFF` must update the live RTC register state, not the latched snapshot.
+- The current implementation records the next recommended RTC-ready point as explicit cartridge state on timed `0x08..=0x0C` accesses: each RTC-register read or write updates `rtc_access_ready_at = current_t_cycle + 16`. This keeps the `4 us` / `16`-T-cycle spacing recommendation observable and testable without yet enforcing an early-access penalty.
+- Current cross-check note: `Pan Docs` documents the spacing as a recommendation, not a defined early-access failure mode, and a direct read of `SameBoy`'s public `MBC3` memory path also does not show an explicit early-access penalty. Keep this project policy advisory-only until hardware evidence or a stronger dedicated oracle demonstrates an observable penalty.
 - Preserve the architecturally visible bits of each written RTC register for later readback through the latched register file: seconds and minutes keep their low `6` bits, hours keeps its low `5` bits, day low keeps all `8` bits, and day high keeps bit `0` plus halt/carry. Only normalize those visible values into valid running-clock ranges when advancing elapsed time in the live RTC model.
-- The practical latch model used by current shootout coverage must accept the documented `0x00 -> 0x01` sequence and keep subsequent non-zero `0x6000-0x7FFF` writes able to refresh the latched snapshot until software writes `0x00` again.
+- After one valid snapshot exists, the current curated-compatibility model also accepts follow-up non-zero `0x6000-0x7FFF` writes as relatch commands. This is an intentional compatibility deviation from the stricter `Pan Docs` reading, kept to match the retained `cpp/latch-rtc-test.gb` oracle after instrumenting that ROM and observing an initial `0x00 -> 0x01` latch followed by repeated non-zero relatch writes without re-arming zeros. Record this explicitly so it can be revisited later.
 - MBC3 control writes are ordinary cartridge commands on the shared T-cycle timeline. Changes to ROM bank, RAM bank, RTC selector, RAM / RTC enable, and latch state must become visible on the access T-cycle for all later cartridge accesses; do not defer them to instruction or frame boundaries.
 - Treat MBC3 bus-visible ordering as T-cycle based even though the RTC itself is driven by a `32.768 kHz` external oscillator in hardware. The long-term RTC progression should come from an injected time / persistence source, not from blindly counting executed CPU T-cycles as if the RTC were just another divider.
 - Frontends or tools that run a live real-time session must keep feeding elapsed wall-clock seconds into the cartridge RTC while the session stays open; applying elapsed time only when loading a save is not sufficient for games that expect the clock to tick during play.
 - The RTC design should separate three layers explicitly: visible RTC registers, live RTC counter state, and emulator-provided time / persistence infrastructure.
 - Battery-backed persistence policy should cover RTC state as well as external RAM where the header declares battery support, while the save backend remains responsible only for storage and time-source integration rather than visible bus semantics.
 - The RTC path must support a deterministic injected or simulated time source for tests; unit and ROM tests must not depend on the host wall clock.
-- Pan Docs recommends leaving roughly `4 us` between separate RTC register accesses. For this project's timing vocabulary, that is `16` T-cycles at normal-speed DMG (`4` M-cycles). Document it as a current research / validation note rather than as an already enforced bus restriction unless the implementation closes that accuracy point explicitly.
+- Pan Docs recommends leaving roughly `4 us` between separate RTC register accesses. For this project's timing vocabulary, that is `16` T-cycles at normal-speed DMG (`4` M-cycles). Keep it as a current research / validation note rather than as an already enforced bus restriction unless the implementation closes that accuracy point explicitly with stronger hardware evidence or a dedicated oracle.
 - A concrete `Mbc3Cartridge` implementing `CartridgeDevice` is the intended implementation shape for this repo.
 - It should contain at least `rom`, optional `ram`, `has_battery`, `has_rtc`, `ram_rtc_enabled`, `rom_bank`, `ram_or_rtc_select`, `rtc_live`, `rtc_latched`, latch-sequence state, and `header`.
 - Prefer explicit helpers such as `effective_rom_bank()`, `effective_ram_bank()`, `current_a000_mapping()`, and `latch_rtc_if_needed()` so raw register state, target-selection state, live RTC state, latched RTC state, and final effective mapping remain inspectable.
@@ -460,10 +474,11 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Loader-visible variant metadata should distinguish at least no-RAM, RAM, RAM+battery, rumble-only, rumble+RAM, and rumble+RAM+battery shapes rather than flattening them into one generic `Mbc5`.
 - Battery presence changes persistence expectations only. Rumble changes cartridge-local motor state and must not change ROM banking semantics.
 - MBC5 must validate up to `8 MiB` ROM, meaning up to `512` total `16 KiB` ROM banks with bank `0` fixed in `0x0000-0x3FFF` and banks `0x000..=0x1FF` visible in `0x4000-0x7FFF`.
-- MBC5 external RAM support should cover ordinary `8 KiB`, `32 KiB`, and `128 KiB` SRAM configurations, meaning up to `16` visible `8 KiB` RAM banks.
+- Standard non-rumble MBC5 external RAM support should cover ordinary `8 KiB`, `32 KiB`, `64 KiB`, and `128 KiB` SRAM configurations, meaning up to `16` visible `8 KiB` RAM banks.
+- Rumble-capable MBC5 external RAM support should cover `8 KiB`, `32 KiB`, and `64 KiB` SRAM configurations. Because `bit 3` of the RAM-bank control register is wired to the motor rather than the RAM chip, only `3` bank-select bits remain for external RAM on those variants.
 - MBC5 external RAM should be modeled as linear `8 KiB` banks selected directly by the RAM-bank register, with no MBC1-style dual banking mode.
 - If a cartridge declares an MBC5 header type but validated ROM size exceeds `8 MiB`, the loader should emit an explicit diagnostic instead of guessing another mapper.
-- If a cartridge declares an MBC5 header type with impossible RAM metadata, such as RAM omitted by `0x0147` while `0x0149 != 0x00`, or a declared MBC5 RAM size larger than `128 KiB`, the loader should emit an explicit diagnostic under the chosen validation policy.
+- If a cartridge declares an MBC5 header type with impossible RAM metadata, such as RAM omitted by `0x0147` while `0x0149 != 0x00`, a standard non-rumble MBC5 RAM size larger than `128 KiB`, or a rumble-capable MBC5 RAM size larger than `64 KiB`, the loader should emit an explicit diagnostic under the chosen validation policy.
 - The visible MBC5 memory map should be:
   - `0x0000-0x3FFF`: fixed ROM bank `0`
   - `0x4000-0x7FFF`: switchable ROM bank `0x000..=0x1FF`
@@ -481,6 +496,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `0x4000-0x5FFF` is a write-only RAM-bank / rumble control register.
 - On standard non-rumble MBC5, use the low `4` bits as the raw RAM-bank register and then mask by the real RAM-bank count.
 - On rumble-capable MBC5, `bit 3` of that control register should update `rumble_on`, while the remaining RAM-bank-relevant bits should still resolve the effective RAM bank according to the validated cartridge wiring.
+- In practice, that means current rumble-capable MBC5 validation should accept RAM size codes `0x02` (`8 KiB`), `0x03` (`32 KiB`), and `0x05` (`64 KiB`), but reject `0x04` (`128 KiB`) because bank bits `0..=2` can select at most `8` external RAM banks once `bit 3` is reserved for rumble.
 - Keep `ram_bank_raw`, `effective_ram_bank()`, and `effective_rumble_state()` as distinct concepts. Do not collapse rumble-capable MBC5 behavior into one integer whose meaning is reconstructed ad hoc.
 - For the current project scope, rumble modeling should stop at the digital hardware-visible motor state. No physical inertia or analog intensity model is required yet.
 - The cartridge should expose `rumble_on` as observable cartridge-local state. A frontend may translate that state into host vibration, but it must not authoritatively set rumble state without going through cartridge writes.
@@ -524,7 +540,7 @@ Priority order:
 
 ## Tests
 
-- header parser tests for `entry_point`, `0x0143`, `0x0146`, `0x0147`, `0x0148`, and `0x0149`
+- header parser tests for `entry_point`, visible title handling across the `0x0143` legacy/CGB split, `0x0143`, `0x0146`, `0x0147`, `0x0148`, and `0x0149`
 - tests for standard `0x0148` ROM-size decoding and explicit handling of `0x52`, `0x53`, and `0x54`
 - tests for `0x0149` RAM-size decoding, including the `MBC2` special case where internal RAM is not described by the ordinary RAM-size table
 - tests for explicit diagnostics on unknown cartridge types and size mismatches
@@ -546,7 +562,7 @@ Priority order:
 - explicit MBC3 tests for `0x0F`, `0x10`, `0x11`, `0x12`, and `0x13`, deterministic power-up state, immediate visibility of RAM / RTC-enable and selector writes, and the documented `0 -> 1` behavior for the raw `7`-bit ROM-bank register
 - tests that MBC3 supports up to `2 MiB` ROM, preserves access to banks `0x20`, `0x40`, and `0x60`, masks effective ROM and RAM banks by real cartridge size, and reserves or diagnoses MBC30-like `64 KiB` SRAM declarations explicitly
 - tests that MBC3 distinguishes standard RAM-bank selectors `0x00..=0x03`, reserved selector values `0x04..=0x07`, and RTC-register selectors `0x08..=0x0C` in `0xA000-0xBFFF`, routes reads through the correct target, and keeps disabled RAM / RTC behavior under one explicit project policy
-- tests that MBC3 latches RTC state only on the `0x00 -> 0x01` sequence, keeps snapshots stable across multiple reads while live RTC state can advance independently, and routes RTC writes to live state rather than to the latched copy
+- tests that MBC3 accepts the first RTC latch only on the `0x00 -> 0x01` sequence, keeps snapshots stable across multiple reads while live RTC state can advance independently, routes RTC writes to live state rather than to the latched copy, and documents the current curated-compatibility relatch rule for follow-up non-zero writes after a valid snapshot exists
 - tests that MBC3 implements seconds, minutes, hours, day low, and day high / flags correctly, including writes to `DH.bit0`, `DH.bit6`, and `DH.bit7`, sticky carry on day overflow, and `halt` freezing live RTC advancement
 - tests that MBC3 RTC / persistence can run from an injected deterministic time source, including elapsed time across powered-off sessions without coupling the expected result to host wall-clock timing during tests
 - if fine RTC-access delay emulation is implemented, tests that the chosen `16`-T-cycle access-spacing policy matches the documented model; until then, base MBC3 tests should not assume that fine delay is enforced
@@ -648,8 +664,9 @@ Priority order:
 - In the current baseline, standard `MBC3` ROM banking and RAM banking are live
   up to `2 MiB` ROM and `32 KiB` RAM, banks `0x20`, `0x40`, and `0x60` remain
   reachable as documented, reserved selectors `0x04..=0x07` stay explicit, the
-  latch edge is `0x00 -> 0x01`, and writes target live RTC state while reads
-  come from the latched snapshot.
+  first accepted latch edge is `0x00 -> 0x01`, later non-zero relatches remain
+  enabled after a valid snapshot for curated compatibility, and writes target
+  live RTC state while reads come from the latched snapshot.
 - In the current baseline, `MBC3` validation now rejects oversized ROMs, keeps
   MBC30-like `64 KiB` SRAM declarations reserved as a future variant rather
   than silently treating them as standard MBC3, and emits validation warnings
@@ -803,6 +820,6 @@ Priority order:
 - enum-based versus trait-based mapper organization for this codebase
 - what public API surface should expose the optional experimental-heuristic loader policy so tests and tools can enable it without contaminating strict default behavior
 - which explicit default policy should govern MBC3 RAM / RTC-disabled reads and writes at `0xA000-0xBFFF`
-- whether the Pan Docs RTC access-spacing recommendation should remain documented-only or later become an enforced `16`-T-cycle timing rule
+- whether the now-observable MBC3 RTC access-spacing state should remain advisory-only or later become an enforced `16`-T-cycle timing rule
 - what persisted RTC serialization shape best separates visible RTC state, elapsed-time bookkeeping, and frontend-specific storage adapters
 - which default flush policy should be enabled for hardware-style saves: close-only, manual plus close, or optional auto-flush after persistible writes

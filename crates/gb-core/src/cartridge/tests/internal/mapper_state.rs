@@ -231,6 +231,7 @@ fn private_mapper_helpers_cover_remaining_zero_bank_noop_and_none_profile_branch
         rtc_latched: Mbc3RtcState::default(),
         rtc_latched_valid: false,
         rtc_latch_armed: false,
+        rtc_access_ready_at: None,
     };
     mbc3.write_ram(0xA000, 0x77);
     assert_eq!(mbc3.ram.as_ref().expect("RAM should exist")[0], 0x11);

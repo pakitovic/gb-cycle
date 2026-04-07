@@ -84,6 +84,7 @@ expected = "Passed"
 [[case]]
 id = "blargg-halt-bug"
 rom = "halt_bug.gb"
+execution_mode = "permissive"
 timeout_frames = 3600
 oracle = "blargg-console-contains"
 expected = "Passed"

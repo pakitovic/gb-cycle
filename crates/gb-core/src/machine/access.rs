@@ -20,11 +20,12 @@ impl<S: TraceSink> Machine<S> {
             self.joypad
                 .read_p1_with_pressed_mask(self.pending_external_events.joypad_pressed_mask())
         } else {
-            self.bus.read_with_context(
+            self.bus.read_with_t_cycle_context(
                 address,
                 BusRequester::Cpu,
                 &state,
-                Some(&self.cartridge),
+                self.next_t_cycle(),
+                Some(&mut self.cartridge),
                 BusIoReadView {
                     apu: Some(&self.apu),
                     timer: Some(&self.timer),
@@ -54,11 +55,12 @@ impl<S: TraceSink> Machine<S> {
     pub fn write_bus(&mut self, address: u16, value: u8) {
         let state = self.current_bus_arbitration_state();
 
-        self.bus.write_with_context(
+        self.bus.write_with_t_cycle_context(
             address,
             value,
             BusRequester::Cpu,
             &state,
+            self.next_t_cycle(),
             Some(&mut self.cartridge),
             BusIoWriteView {
                 apu: Some(&mut self.apu),

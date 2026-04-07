@@ -1,4 +1,5 @@
 use super::*;
+use crate::scheduler::TCycle;
 
 #[test]
 fn mbc3_power_up_state_is_explicit_and_starts_the_high_window_on_bank_one() {
@@ -16,7 +17,7 @@ fn mbc3_power_up_state_is_explicit_and_starts_the_high_window_on_bank_one() {
     assert_eq!(cartridge.rom_bank, 0);
     assert_eq!(cartridge.ram_or_rtc_select, Mbc3RamRtcSelect::RamBank(0));
     assert!(!cartridge.rtc_latched_valid);
-    assert!(cartridge.rtc_latch_armed);
+    assert!(!cartridge.rtc_latch_armed);
     assert_eq!(cartridge.read_rom(0x4000), 0x01);
 }
 
@@ -86,6 +87,148 @@ fn mbc3_selector_ignores_upper_data_bits_and_decodes_from_the_low_nibble() {
 }
 
 #[test]
+fn mbc3_high_selector_variants_0x14_through_0x27_still_follow_low_nibble_semantics() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    for value in 0x14..=0x27 {
+        cartridge.write_rom(0x4000, value);
+
+        let expected = match value & 0x0F {
+            0x00..=0x03 => Mbc3RamRtcSelect::RamBank(value & 0x0F),
+            0x08 => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::Seconds),
+            0x09 => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::Minutes),
+            0x0A => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::Hours),
+            0x0B => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::DayLow),
+            0x0C => Mbc3RamRtcSelect::RtcRegister(Mbc3RtcRegister::DayHigh),
+            other => Mbc3RamRtcSelect::ReservedSelector(other),
+        };
+
+        assert_eq!(
+            cartridge.ram_or_rtc_select, expected,
+            "selector {value:#04X}"
+        );
+    }
+}
+
+#[test]
+fn mbc3_reserved_selectors_do_not_alias_ram_banks() {
+    let rom = build_banked_mbc3_rom(0x13, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+
+    for bank in 0x00..=0x03 {
+        cartridge.write_rom(0x4000, bank);
+        cartridge.write_ram(0xA000, 0xA0 | bank);
+    }
+
+    for selector in 0x04..=0x07 {
+        cartridge.write_rom(0x4000, selector);
+        cartridge.write_ram(0xA000, selector);
+        assert_eq!(cartridge.read_ram(0xA000), RAM_ABSENT_READ_VALUE);
+    }
+
+    for bank in 0x00..=0x03 {
+        cartridge.write_rom(0x4000, bank);
+        assert_eq!(cartridge.read_ram(0xA000), 0xA0 | bank);
+    }
+}
+
+#[test]
+fn mbc3_2kib_sram_wraps_the_full_window_and_selected_bank_into_real_ram() {
+    let rom = build_banked_mbc3_rom(0x13, 0x03, 0x01);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x00);
+    cartridge.write_ram(0xA123, 0x11);
+
+    assert_eq!(cartridge.read_ram(0xA123), 0x11);
+    assert_eq!(cartridge.read_ram(0xA923), 0x11);
+
+    cartridge.write_rom(0x4000, 0x03);
+    assert_eq!(cartridge.read_ram(0xA123), 0x11);
+    cartridge.write_ram(0xA923, 0x22);
+
+    cartridge.write_rom(0x4000, 0x00);
+    assert_eq!(cartridge.read_ram(0xA123), 0x22);
+    assert_eq!(cartridge.read_ram(0xB123), 0x22);
+}
+
+#[test]
+fn mbc3_timed_rtc_accesses_record_the_recommended_ready_t_cycle() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    assert_eq!(cartridge.rtc_access_ready_at, None);
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_ram_timed(0xA000, 0x12, TCycle::new(100));
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(116)));
+
+    assert_eq!(cartridge.read_ram_timed(0xA000, TCycle::new(140)), 0x00);
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(156)));
+
+    cartridge.write_rom(0x4000, 0x02);
+    cartridge.write_ram_timed(0xA000, 0x44, TCycle::new(200));
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(156)));
+
+    cartridge.write_rom(0x4000, 0x05);
+    assert_eq!(
+        cartridge.read_ram_timed(0xA000, TCycle::new(220)),
+        RAM_ABSENT_READ_VALUE
+    );
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(156)));
+}
+
+#[test]
+fn mbc3_timed_rtc_access_spacing_state_remains_advisory() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_ram_timed(0xA000, 0x12, TCycle::new(100));
+    assert_eq!(cartridge.rtc_live.seconds, 0x12);
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(116)));
+
+    cartridge.write_rom(0x4000, 0x09);
+    cartridge.write_ram_timed(0xA000, 0x34, TCycle::new(108));
+    assert_eq!(cartridge.rtc_live.minutes, 0x34);
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(124)));
+
+    cartridge.write_rom(0x6000, 0x00);
+    cartridge.write_rom(0x6000, 0x01);
+
+    cartridge.write_rom(0x4000, 0x08);
+    assert_eq!(cartridge.read_ram_timed(0xA000, TCycle::new(112)), 0x12);
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(128)));
+}
+
+#[test]
 fn strict_validation_admits_mbc3_headers_with_2kib_ram_metadata() {
     let rom = build_banked_mbc3_rom(0x13, 0x00, 0x01);
     let report =
@@ -110,6 +253,10 @@ fn mbc3_rtc_latch_reads_from_snapshot_while_writes_hit_live_state() {
     assert_eq!(cartridge.read_ram(0xA000), 0x00);
 
     cartridge.write_rom(0x6000, 0x01);
+    assert_eq!(cartridge.read_ram(0xA000), 0x00);
+
+    cartridge.write_rom(0x6000, 0x00);
+    cartridge.write_rom(0x6000, 0x01);
     assert_eq!(cartridge.read_ram(0xA000), 0x04);
 
     cartridge.advance_rtc_seconds(1);
@@ -125,6 +272,23 @@ fn mbc3_rtc_latch_reads_from_snapshot_while_writes_hit_live_state() {
 
     cartridge.write_rom(0x6000, 0x55);
     assert_eq!(cartridge.read_ram(0xA000), 0x2A);
+}
+
+#[test]
+fn mbc3_rtc_reads_use_an_explicit_zero_snapshot_before_the_first_valid_latch() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_ram(0xA000, 0x2A);
+
+    assert!(!cartridge.rtc_latched_valid);
+    assert_eq!(cartridge.read_ram(0xA000), 0x00);
 }
 
 #[test]
@@ -149,6 +313,10 @@ fn mbc3_rtc_register_writes_echo_raw_bytes_until_time_advances() {
     assert_eq!(cartridge.read_ram(0xA000), 0x00);
 
     cartridge.write_rom(0x6000, 0x01);
+    assert_eq!(cartridge.read_ram(0xA000), 0x00);
+
+    cartridge.write_rom(0x6000, 0x00);
+    cartridge.write_rom(0x6000, 0x01);
 
     cartridge.write_rom(0x4000, 0x08);
     assert_eq!(cartridge.read_ram(0xA000), 0x34);
@@ -166,7 +334,7 @@ fn mbc3_rtc_register_writes_echo_raw_bytes_until_time_advances() {
 }
 
 #[test]
-fn mbc3_latch_stays_armed_after_a_successful_latch_until_a_zero_write_resets_it() {
+fn mbc3_latch_keeps_legacy_follow_up_non_zero_refreshes_after_a_valid_edge() {
     let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
     let report =
         CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
@@ -178,8 +346,16 @@ fn mbc3_latch_stays_armed_after_a_successful_latch_until_a_zero_write_resets_it(
     cartridge.write_rom(0x4000, 0x08);
 
     cartridge.write_ram(0xA000, 0x11);
-    cartridge.write_rom(0x6000, 0x00);
     cartridge.write_rom(0x6000, 0x01);
+    assert_eq!(cartridge.read_ram(0xA000), 0x00);
+
+    cartridge.write_rom(0x6000, 0x55);
+    assert_eq!(cartridge.read_ram(0xA000), 0x00);
+
+    cartridge.write_rom(0x6000, 0x00);
+    assert!(cartridge.rtc_latch_armed);
+    cartridge.write_rom(0x6000, 0x01);
+    assert!(!cartridge.rtc_latch_armed);
     assert_eq!(cartridge.read_ram(0xA000), 0x11);
 
     cartridge.write_ram(0xA000, 0x37);
@@ -395,4 +571,50 @@ fn mbc3_nonpersistent_ram_and_rtc_only_profiles_cover_remaining_runtime_paths() 
             actual: "None",
         }),
     );
+}
+
+#[test]
+fn restoring_mbc3_persistence_clears_runtime_latch_state_before_the_next_snapshot() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.advance_rtc_seconds(93_784);
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_rom(0x6000, 0x00);
+    cartridge.write_rom(0x6000, 0x01);
+    assert_eq!(cartridge.read_ram(0xA000), 0x04);
+
+    cartridge.read_ram_timed(0xA000, TCycle::new(100));
+    assert_eq!(cartridge.rtc_access_ready_at, Some(TCycle::new(116)));
+
+    let restored_state = PersistentCartState::Mbc3RamRtc {
+        ram: vec![0x6D; 32 * 1024],
+        rtc: Mbc3RtcPersistentState {
+            seconds: 0x2A,
+            minutes: 0x03,
+            hours: 0x02,
+            day_counter: 1,
+            halt: false,
+            carry: false,
+        },
+    };
+    cartridge
+        .restore_persistent_state(&restored_state)
+        .expect("MBC3 persistent state should restore");
+
+    assert_eq!(cartridge.rtc_live.seconds, 0x2A);
+    assert_eq!(cartridge.ram.as_ref().map(|ram| ram[0]), Some(0x6D));
+    assert!(!cartridge.rtc_latched_valid);
+    assert!(!cartridge.rtc_latch_armed);
+    assert_eq!(cartridge.rtc_access_ready_at, None);
+    assert_eq!(cartridge.read_ram(0xA000), 0x00);
+
+    cartridge.write_rom(0x6000, 0x00);
+    cartridge.write_rom(0x6000, 0x01);
+    assert_eq!(cartridge.read_ram(0xA000), 0x2A);
 }

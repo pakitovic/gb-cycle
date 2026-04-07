@@ -2,11 +2,18 @@ use super::*;
 
 #[test]
 fn header_parser_decodes_typed_core_fields() {
-    let rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
+    let mut rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
+    rom[DESTINATION_CODE_ADDRESS] = 0x01;
     let header = CartridgeHeader::parse(&rom).expect("header should parse");
 
     assert_eq!(header.entry_point, [0x00, 0xC3, 0x50, 0x01]);
     assert_eq!(header.title, "GBTEST1");
+    assert_eq!(&header.title_bytes[..7], b"GBTEST1");
+    assert_eq!(header.title_bytes[TITLE_BYTES_LEN - 1], 0x80);
+    assert_eq!(
+        header.raw_title_suffix_or_manufacturer_code,
+        [0xFF; MANUFACTURER_CODE_LEN]
+    );
     assert_eq!(header.cgb_flag, CgbFlag::Supported);
     assert_eq!(header.sgb_flag, SgbFlag::Supported);
     assert_eq!(header.cartridge_type, 0x09);
@@ -18,6 +25,9 @@ fn header_parser_decodes_typed_core_fields() {
         header.ram_size.decoded_bytes,
         Some(NO_MBC_SUPPORTED_RAM_BYTES)
     );
+    assert_eq!(header.new_licensee_code, [0xFF; NEW_LICENSEE_CODE_LEN]);
+    assert_eq!(header.destination_code, 0x01);
+    assert_eq!(header.old_licensee_code, 0xFF);
 }
 
 #[test]
@@ -58,6 +68,20 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
     assert_eq!(
         mbc30_classification.selection(),
         CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::PlannedVariant)
+    );
+
+    let no_ram_mbc3_rom = build_test_rom(256 * 1024, 0x11, 0x03, 0x05);
+    let no_ram_mbc3_header = CartridgeHeader::parse(&no_ram_mbc3_rom).expect("header should parse");
+    let no_ram_mbc3_classification = classify_loaded_cartridge(
+        &no_ram_mbc3_header,
+        &no_ram_mbc3_rom,
+        &CompatibilityPolicy::strict(),
+    );
+
+    assert_eq!(no_ram_mbc3_classification.detected_name(), "MBC3");
+    assert_eq!(
+        no_ram_mbc3_classification.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc3)
     );
 
     let mut ems_rom = build_test_rom(256 * 1024, 0x1B, 0x03, 0x03);
@@ -185,7 +209,7 @@ fn size_decoders_cover_extended_and_unknown_header_codes() {
 }
 
 #[test]
-fn header_parser_rejects_small_images_and_keeps_full_titles_without_terminators() {
+fn header_parser_rejects_small_images_and_keeps_legacy_full_titles_without_terminators() {
     let error = CartridgeHeader::parse(&vec![0x00; HEADER_MINIMUM_ROM_LEN - 1])
         .expect_err("undersized images must be rejected");
     assert_eq!(
@@ -200,5 +224,53 @@ fn header_parser_rejects_small_images_and_keeps_full_titles_without_terminators(
     rom[TITLE_START..=TITLE_END_INCLUSIVE].copy_from_slice(b"FULLTITLE1234567");
 
     let header = CartridgeHeader::parse(&rom).expect("header should parse");
-    assert_eq!(header.title, "FULLTITLE123456");
+    assert_eq!(header.title, "FULLTITLE1234567");
+    assert_eq!(header.title_bytes, *b"FULLTITLE1234567");
+    assert_eq!(header.cgb_flag, CgbFlag::Unknown(b'7'));
+}
+
+#[test]
+fn header_parser_keeps_cgb_flag_out_of_the_visible_title_when_0x0143_is_a_real_flag() {
+    let mut rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
+    rom[TITLE_START..CGB_FLAG_ADDRESS].copy_from_slice(b"CGBTITLE1234567");
+    rom[CGB_FLAG_ADDRESS] = 0x80;
+
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
+
+    assert_eq!(header.title, "CGBTITLE1234567");
+    assert_eq!(&header.title_bytes[..15], b"CGBTITLE1234567");
+    assert_eq!(header.title_bytes[15], 0x80);
+    assert_eq!(header.cgb_flag, CgbFlag::Supported);
+}
+
+#[test]
+fn header_parser_keeps_bit7_set_cgb_flag_bytes_out_of_the_visible_title_even_when_non_canonical() {
+    let mut rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
+    rom[TITLE_START..CGB_FLAG_ADDRESS].copy_from_slice(b"CGBTITLE1234567");
+    rom[CGB_FLAG_ADDRESS] = 0xA0;
+
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
+
+    assert_eq!(header.title, "CGBTITLE1234567");
+    assert_eq!(&header.title_bytes[..15], b"CGBTITLE1234567");
+    assert_eq!(header.title_bytes[15], 0xA0);
+    assert_eq!(header.cgb_flag, CgbFlag::SupportedNonCanonical(0xA0));
+}
+
+#[test]
+fn header_parser_keeps_cgb_title_conservative_when_manufacturer_split_is_ambiguous() {
+    let mut rom = build_test_rom(NO_MBC_SUPPORTED_ROM_BYTES, 0x09, 0x00, 0x02);
+    rom[TITLE_START..MANUFACTURER_CODE_START].copy_from_slice(b"HELLOTITLE1");
+    rom[MANUFACTURER_CODE_START..=MANUFACTURER_CODE_END_INCLUSIVE].copy_from_slice(b"ABCD");
+    rom[CGB_FLAG_ADDRESS] = 0x80;
+    rom[NEW_LICENSEE_CODE_START..NEW_LICENSEE_CODE_START + NEW_LICENSEE_CODE_LEN]
+        .copy_from_slice(b"01");
+    rom[OLD_LICENSEE_CODE_ADDRESS] = 0x33;
+
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
+
+    assert_eq!(header.title, "HELLOTITLE1ABCD");
+    assert_eq!(header.raw_title_suffix_or_manufacturer_code, *b"ABCD");
+    assert_eq!(header.new_licensee_code, *b"01");
+    assert_eq!(header.old_licensee_code, 0x33);
 }

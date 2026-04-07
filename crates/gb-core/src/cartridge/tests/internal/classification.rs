@@ -24,6 +24,7 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
     );
 
     assert_eq!(decode_cgb_flag(0xC0), CgbFlag::Only);
+    assert_eq!(decode_cgb_flag(0xA0), CgbFlag::SupportedNonCanonical(0xA0));
     assert_eq!(decode_cgb_flag(0x42), CgbFlag::Unknown(0x42));
     assert_eq!(decode_sgb_flag(0x7F), SgbFlag::Unknown(0x7F));
     assert_eq!(expected_ram_code_decompressed(0x99), 0);

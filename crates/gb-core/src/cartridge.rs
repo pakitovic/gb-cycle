@@ -1,4 +1,5 @@
 use crate::model::ExecutionMode;
+use crate::scheduler::TCycle;
 
 mod classify;
 mod device;
@@ -28,22 +29,31 @@ use validate::{
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const ENTRY_POINT_LEN: usize = 4;
 const NINTENDO_LOGO_LEN: usize = 48;
+const TITLE_BYTES_LEN: usize = TITLE_END_INCLUSIVE - TITLE_START + 1;
+const MANUFACTURER_CODE_LEN: usize = MANUFACTURER_CODE_END_INCLUSIVE - MANUFACTURER_CODE_START + 1;
+const NEW_LICENSEE_CODE_LEN: usize = 2;
 
 const ENTRY_POINT_START: usize = 0x0100;
 const NINTENDO_LOGO_START: usize = 0x0104;
 const TITLE_START: usize = 0x0134;
+const MANUFACTURER_CODE_START: usize = 0x013F;
+const MANUFACTURER_CODE_END_INCLUSIVE: usize = 0x0142;
 const TITLE_END_INCLUSIVE: usize = 0x0143;
 const CGB_FLAG_ADDRESS: usize = 0x0143;
+const NEW_LICENSEE_CODE_START: usize = 0x0144;
 const SGB_FLAG_ADDRESS: usize = 0x0146;
 const CARTRIDGE_TYPE_ADDRESS: usize = 0x0147;
 const ROM_SIZE_ADDRESS: usize = 0x0148;
 const RAM_SIZE_ADDRESS: usize = 0x0149;
 const DESTINATION_CODE_ADDRESS: usize = 0x014A;
+const OLD_LICENSEE_CODE_ADDRESS: usize = 0x014B;
 const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
 
 const RAM_ABSENT_READ_VALUE: u8 = 0xFF;
 const NO_MBC_SUPPORTED_ROM_BYTES: usize = 32 * 1024;
 const NO_MBC_SUPPORTED_RAM_BYTES: usize = 8 * 1024;
+const MBC1_STANDARD_RAM_BYTES_MAX: usize = 32 * 1024;
+const MBC1_LARGE_ROM_RAM_BYTES: usize = 8 * 1024;
 const M161_BANK_BYTES: usize = 32 * 1024;
 const M161_SUPPORTED_ROM_BYTES_MAX: usize = 8 * M161_BANK_BYTES;
 const MBC2_SUPPORTED_ROM_BYTES_MAX: usize = 256 * 1024;
@@ -51,6 +61,7 @@ const MBC2_RAM_CELL_COUNT: usize = 512;
 const MBC2_RAM_ADDRESS_MASK: usize = MBC2_RAM_CELL_COUNT - 1;
 const MBC2_RAM_READ_HIGH_NIBBLE: u8 = 0xF0;
 const MBC3_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
+const MBC3_RTC_ACCESS_SPACING_T_CYCLES: u64 = 16;
 const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
 const MBC1_STANDARD_ROM_SIZES: [usize; 5] =
     [32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024];
@@ -72,6 +83,7 @@ pub enum CgbFlag {
     None,
     Supported,
     Only,
+    SupportedNonCanonical(u8),
     Unknown(u8),
 }
 
@@ -100,12 +112,17 @@ pub struct RamSizeInfo {
 pub struct CartridgeHeader {
     pub entry_point: [u8; ENTRY_POINT_LEN],
     pub nintendo_logo: [u8; NINTENDO_LOGO_LEN],
+    pub title_bytes: [u8; TITLE_BYTES_LEN],
+    pub raw_title_suffix_or_manufacturer_code: [u8; MANUFACTURER_CODE_LEN],
     pub title: String,
     pub cgb_flag: CgbFlag,
     pub sgb_flag: SgbFlag,
     pub cartridge_type: u8,
     pub rom_size: RomSizeInfo,
     pub ram_size: RamSizeInfo,
+    pub new_licensee_code: [u8; NEW_LICENSEE_CODE_LEN],
+    pub destination_code: u8,
+    pub old_licensee_code: u8,
     pub header_checksum: u8,
 }
 
@@ -221,6 +238,7 @@ enum Mbc1Variant {
 struct Mbc1Layout {
     wiring: Mbc1Wiring,
     variant: Mbc1Variant,
+    ram_len: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -298,6 +316,7 @@ struct Mbc3Cartridge {
     rtc_latched: Mbc3RtcState,
     rtc_latched_valid: bool,
     rtc_latch_armed: bool,
+    rtc_access_ready_at: Option<TCycle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -71,12 +71,7 @@ impl CartridgeSlot {
                 )?;
 
                 let has_battery = matches!(classification.raw_type(), 0x03);
-                let has_ram = matches!(classification.raw_type(), 0x02 | 0x03);
-                let ram_len = match layout.wiring {
-                    Mbc1Wiring::Standard => header.ram_size.decoded_bytes.unwrap_or(0),
-                    Mbc1Wiring::LargeRom => NO_MBC_SUPPORTED_RAM_BYTES,
-                };
-                let ram = (has_ram && ram_len != 0).then(|| vec![0; ram_len]);
+                let ram = (layout.ram_len != 0).then(|| vec![0; layout.ram_len]);
                 let cartridge = Self {
                     device: Some(CartridgeDevice::Mbc1(Mbc1Cartridge {
                         rom: rom_bytes,
@@ -154,7 +149,8 @@ impl CartridgeSlot {
                         rtc_live: Mbc3RtcState::default(),
                         rtc_latched: Mbc3RtcState::default(),
                         rtc_latched_valid: false,
-                        rtc_latch_armed: true,
+                        rtc_latch_armed: false,
+                        rtc_access_ready_at: None,
                     })),
                 };
 
@@ -251,9 +247,23 @@ impl CartridgeSlot {
             .map_or(RAM_ABSENT_READ_VALUE, |device| device.read_ram(address))
     }
 
+    pub(crate) fn read_ram_timed(&mut self, address: u16, t_cycle: TCycle) -> u8 {
+        self.device
+            .as_mut()
+            .map_or(RAM_ABSENT_READ_VALUE, |device| {
+                device.read_ram_timed(address, t_cycle)
+            })
+    }
+
     pub fn write_ram(&mut self, address: u16, value: u8) {
         if let Some(device) = &mut self.device {
             device.write_ram(address, value);
+        }
+    }
+
+    pub(crate) fn write_ram_timed(&mut self, address: u16, value: u8, t_cycle: TCycle) {
+        if let Some(device) = &mut self.device {
+            device.write_ram_timed(address, value, t_cycle);
         }
     }
 

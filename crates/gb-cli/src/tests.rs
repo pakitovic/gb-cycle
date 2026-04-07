@@ -776,7 +776,7 @@ fn inspect_rom_command_covers_rejected_and_header_error_paths() {
     assert!(text.contains("load_status=rejected"));
     assert!(text.contains("selection=unsupported-documented"));
     assert!(text.contains("rejection_reason="));
-    assert!(text.contains("cgb_flag=unknown(0xAA)"));
+    assert!(text.contains("cgb_flag=supported-noncanonical(0xAA)"));
     assert!(text.contains("sgb_flag=unknown(0x7F)"));
     assert!(text.contains("rom_size_bytes=unknown"));
     assert!(text.contains("ram_size_bytes=unknown"));
@@ -1079,7 +1079,11 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(cgb_flag_name(CgbFlag::None), "none");
     assert_eq!(cgb_flag_name(CgbFlag::Supported), "supported");
     assert_eq!(cgb_flag_name(CgbFlag::Only), "only");
-    assert_eq!(cgb_flag_name(CgbFlag::Unknown(0xC0)), "unknown(0xC0)");
+    assert_eq!(
+        cgb_flag_name(CgbFlag::SupportedNonCanonical(0xA0)),
+        "supported-noncanonical(0xA0)"
+    );
+    assert_eq!(cgb_flag_name(CgbFlag::Unknown(0x42)), "unknown(0x42)");
     assert_eq!(sgb_flag_name(SgbFlag::None), "none");
     assert_eq!(sgb_flag_name(SgbFlag::Supported), "supported");
     assert_eq!(sgb_flag_name(SgbFlag::Unknown(0x03)), "unknown(0x03)");

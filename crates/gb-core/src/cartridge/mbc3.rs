@@ -1,6 +1,30 @@
 use super::*;
 
 impl Mbc3Cartridge {
+    fn clear_runtime_rtc_snapshot_state(&mut self) {
+        self.rtc_latched = Mbc3RtcState::default();
+        self.rtc_latched_valid = false;
+        self.rtc_latch_armed = false;
+        self.rtc_access_ready_at = None;
+    }
+
+    fn note_rtc_access_timing(&mut self, t_cycle: TCycle) {
+        self.rtc_access_ready_at = Some(TCycle::new(
+            t_cycle.get() + MBC3_RTC_ACCESS_SPACING_T_CYCLES,
+        ));
+    }
+
+    fn visible_rtc_state(&self) -> Mbc3RtcState {
+        if self.rtc_latched_valid {
+            self.rtc_latched
+        } else {
+            // Before the first accepted latch, keep reads on an explicit
+            // zeroed snapshot policy instead of accidentally reusing the
+            // zero-initialized storage as an implicit behavior.
+            Mbc3RtcState::default()
+        }
+    }
+
     pub(in crate::cartridge) fn read_rom(&self, address: u16) -> u8 {
         let address = address as usize;
         let bank_count = self.header.rom_size.bank_count.unwrap_or(0);
@@ -51,7 +75,31 @@ impl Mbc3Cartridge {
             Mbc3RamRtcSelect::ReservedSelector(_) => RAM_ABSENT_READ_VALUE,
             Mbc3RamRtcSelect::RtcRegister(register) => {
                 if self.has_rtc {
-                    self.rtc_latched.read(register)
+                    self.visible_rtc_state().read(register)
+                } else {
+                    RAM_ABSENT_READ_VALUE
+                }
+            }
+        }
+    }
+
+    pub(in crate::cartridge) fn read_ram_timed(&mut self, address: u16, t_cycle: TCycle) -> u8 {
+        if !self.ram_rtc_enabled {
+            return RAM_ABSENT_READ_VALUE;
+        }
+
+        match self.ram_or_rtc_select {
+            Mbc3RamRtcSelect::RamBank(raw_bank) => {
+                self.ram.as_ref().map_or(RAM_ABSENT_READ_VALUE, |ram| {
+                    let offset = self.effective_ram_offset(address, raw_bank);
+                    ram.get(offset).copied().unwrap_or(RAM_ABSENT_READ_VALUE)
+                })
+            }
+            Mbc3RamRtcSelect::ReservedSelector(_) => RAM_ABSENT_READ_VALUE,
+            Mbc3RamRtcSelect::RtcRegister(register) => {
+                if self.has_rtc {
+                    self.note_rtc_access_timing(t_cycle);
+                    self.visible_rtc_state().read(register)
                 } else {
                     RAM_ABSENT_READ_VALUE
                 }
@@ -82,6 +130,35 @@ impl Mbc3Cartridge {
         }
     }
 
+    pub(in crate::cartridge) fn write_ram_timed(
+        &mut self,
+        address: u16,
+        value: u8,
+        t_cycle: TCycle,
+    ) {
+        if !self.ram_rtc_enabled {
+            return;
+        }
+
+        match self.ram_or_rtc_select {
+            Mbc3RamRtcSelect::RamBank(raw_bank) => {
+                let offset = self.effective_ram_offset(address, raw_bank);
+                if let Some(ram) = &mut self.ram
+                    && let Some(byte) = ram.get_mut(offset)
+                {
+                    *byte = value;
+                }
+            }
+            Mbc3RamRtcSelect::ReservedSelector(_) => {}
+            Mbc3RamRtcSelect::RtcRegister(register) => {
+                if self.has_rtc {
+                    self.note_rtc_access_timing(t_cycle);
+                    self.rtc_live.write(register, value);
+                }
+            }
+        }
+    }
+
     pub(in crate::cartridge) fn effective_rom_bank(&self, bank_count: usize) -> usize {
         let raw_bank = self.rom_bank & 0x7F;
         let translated_bank = if raw_bank == 0 { 1 } else { raw_bank } as usize;
@@ -95,9 +172,15 @@ impl Mbc3Cartridge {
 
     pub(in crate::cartridge) fn effective_ram_offset(&self, address: u16, raw_bank: u8) -> usize {
         let base_offset = (address - 0xA000) as usize;
-        let bank_count = self.header.ram_size.bank_count.unwrap_or(0).max(1);
-        let bank = (raw_bank as usize) % bank_count;
-        bank * 0x2000 + base_offset
+        let Some(ram_len) = self.ram.as_ref().map(Vec::len).filter(|&len| len != 0) else {
+            return base_offset;
+        };
+
+        // MBC-visible external RAM still lives behind an 8 KiB aperture even
+        // when the validated backing store is smaller (for example 2 KiB). In
+        // those cases the internal cartridge address wraps within the real RAM
+        // payload instead of exposing holes through the A000-BFFF window.
+        (base_offset + (raw_bank as usize) * 0x2000) % ram_len
     }
 
     pub(in crate::cartridge) fn latch_rtc_if_needed(&mut self, value: u8) {
@@ -111,12 +194,15 @@ impl Mbc3Cartridge {
             return;
         }
 
-        if self.rtc_latch_armed {
+        // Keep the first accepted latch on the documented 0x00 -> 0x01 edge, but
+        // continue to accept follow-up non-zero relatches once a valid snapshot
+        // exists so the curated cpp RTC oracle stays stable.
+        if (self.rtc_latch_armed && value == 0x01) || self.rtc_latched_valid {
             self.rtc_latched = self.rtc_live;
             self.rtc_latched_valid = true;
         }
 
-        self.rtc_latch_armed = true;
+        self.rtc_latch_armed = false;
     }
 
     pub(in crate::cartridge) fn advance_rtc_seconds(&mut self, seconds: u64) {
@@ -193,6 +279,7 @@ impl Mbc3Cartridge {
                 }
                 ram.copy_from_slice(persisted_ram);
                 self.rtc_live = (*rtc).into();
+                self.clear_runtime_rtc_snapshot_state();
                 Ok(())
             }
             (true, false, Some(ram), PersistentCartState::Mbc3Ram { ram: persisted_ram }) => {
@@ -207,6 +294,7 @@ impl Mbc3Cartridge {
             }
             (true, true, None, PersistentCartState::Mbc3Rtc { rtc }) => {
                 self.rtc_live = (*rtc).into();
+                self.clear_runtime_rtc_snapshot_state();
                 Ok(())
             }
             (true, false, None, PersistentCartState::None) => Ok(()),

@@ -2,21 +2,25 @@ use gb_core::{
     BootRomBusState, Bus, BusAccessKind, BusArbitrationState, BusRequester,
     CartridgeClassification, CartridgeHeader, CartridgePersistenceProfile,
     CartridgePersistentStateError, CartridgeRamPayloadKind, CartridgeSelection, CartridgeSlot,
-    CartridgeSlotState, CompatibilityPolicy, ConsoleModel, Machine, MachineConfig,
-    Mbc3RtcPersistentState, PersistentCartState, SupportedCartridgeFamily,
-    UnsupportedCartridgeCategory,
+    CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy, HeuristicPolicy,
+    Machine, MachineConfig, Mbc3RtcPersistentState, OverridePolicy, PersistentCartState,
+    SupportedCartridgeFamily, UnsupportedCartridgeCategory, ValidationPolicy,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const ENTRY_POINT_START: usize = 0x0100;
 const LOGO_START: usize = 0x0104;
 const TITLE_START: usize = 0x0134;
+const MANUFACTURER_CODE_START: usize = 0x013F;
+const MANUFACTURER_CODE_END_INCLUSIVE: usize = 0x0142;
 const CGB_FLAG_ADDRESS: usize = 0x0143;
+const NEW_LICENSEE_CODE_START: usize = 0x0144;
 const SGB_FLAG_ADDRESS: usize = 0x0146;
 const CARTRIDGE_TYPE_ADDRESS: usize = 0x0147;
 const ROM_SIZE_ADDRESS: usize = 0x0148;
 const RAM_SIZE_ADDRESS: usize = 0x0149;
 const DESTINATION_CODE_ADDRESS: usize = 0x014A;
+const OLD_LICENSEE_CODE_ADDRESS: usize = 0x014B;
 const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
 
 fn build_test_rom(len: usize, cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
@@ -48,7 +52,8 @@ fn build_banked_mbc1_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
         _ => panic!("unsupported MBC1 ROM size code for test"),
     };
     let bank_count = rom_size / 0x4000;
-    let mut rom = build_test_rom(rom_size, 0x03, rom_size_code, ram_size_code);
+    let cartridge_type = if ram_size_code == 0x00 { 0x01 } else { 0x03 };
+    let mut rom = build_test_rom(rom_size, cartridge_type, rom_size_code, ram_size_code);
 
     for bank in 0..bank_count {
         let start = bank * 0x4000;
@@ -129,6 +134,16 @@ fn build_banked_mbc5_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u
     rom
 }
 
+fn ignore_policy() -> CompatibilityPolicy {
+    CompatibilityPolicy {
+        execution_mode: gb_core::ExecutionMode::Permissive,
+        validation_policy: ValidationPolicy::Ignore,
+        heuristic_policy: HeuristicPolicy::Disabled,
+        override_policy: OverridePolicy::default(),
+        diagnostic_policy: DiagnosticPolicy::Standard,
+    }
+}
+
 #[test]
 fn public_header_parser_exposes_typed_core_fields() {
     let rom = build_test_rom(32 * 1024, 0x09, 0x00, 0x02);
@@ -140,6 +155,30 @@ fn public_header_parser_exposes_typed_core_fields() {
     assert_eq!(header.rom_size.decoded_bytes, Some(32 * 1024));
     assert_eq!(header.ram_size.decoded_bytes, Some(8 * 1024));
     assert_eq!(header.header_checksum, 0x7F);
+}
+
+#[test]
+fn public_header_parser_treats_any_bit7_set_0x0143_byte_as_outside_the_visible_title() {
+    let mut rom = build_test_rom(32 * 1024, 0x09, 0x00, 0x02);
+    rom[TITLE_START..CGB_FLAG_ADDRESS].copy_from_slice(b"CGBTITLE1234567");
+    rom[CGB_FLAG_ADDRESS] = 0xA0;
+
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
+
+    assert_eq!(header.title, "CGBTITLE1234567");
+}
+
+#[test]
+fn public_header_parser_keeps_cgb_titles_conservative_when_manufacturer_bytes_are_ambiguous() {
+    let mut rom = build_test_rom(32 * 1024, 0x09, 0x00, 0x02);
+    rom[TITLE_START..MANUFACTURER_CODE_START].copy_from_slice(b"HELLOTITLE1");
+    rom[MANUFACTURER_CODE_START..=MANUFACTURER_CODE_END_INCLUSIVE].copy_from_slice(b"ABCD");
+    rom[NEW_LICENSEE_CODE_START..NEW_LICENSEE_CODE_START + 2].copy_from_slice(b"01");
+    rom[OLD_LICENSEE_CODE_ADDRESS] = 0x33;
+
+    let header = CartridgeHeader::parse(&rom).expect("header should parse");
+
+    assert_eq!(header.title, "HELLOTITLE1ABCD");
 }
 
 #[test]
@@ -869,6 +908,28 @@ fn permissive_validation_can_warn_on_no_ram_mbc3_headers_with_nonzero_ram_metada
 }
 
 #[test]
+fn strict_validation_treats_no_ram_mbc3_with_64kib_code_as_a_header_mismatch_not_mbc30() {
+    let rom = build_banked_mbc3_rom(0x11, 0x03, 0x05);
+    let error = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect_err("no-RAM MBC3 with 64 KiB code should be rejected");
+
+    let (classification, reason) = match error {
+        gb_core::CartridgeLoadError::Rejected {
+            classification,
+            reason,
+            ..
+        } => (classification, reason),
+        other => panic!("unexpected error: {other:?}"),
+    };
+    assert_eq!(classification.detected_name(), "MBC3");
+    assert_eq!(
+        classification.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc3)
+    );
+    assert!(reason.contains("does not provide external RAM"));
+}
+
+#[test]
 fn documented_special_headers_keep_explicit_categories_and_do_not_fall_back_silently() {
     let cases = [
         (
@@ -1212,7 +1273,94 @@ fn rumble_capable_mbc5_keeps_motor_state_distinct_from_the_effective_ram_bank() 
 }
 
 #[test]
-fn strict_validation_rejects_oversized_and_invalid_rumble_mbc5_configurations() {
+fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_through_the_bus() {
+    let rom = build_banked_mbc5_rom(0x1E, 0x03, 0x05);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC5 should load");
+    let (mut cartridge, _) = report.into_parts();
+    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let state = BusArbitrationState::default();
+
+    bus.write_with_cartridge(
+        0x0000,
+        0x0A,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x00,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    bus.write_with_cartridge(
+        0xA000,
+        0x10,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x07,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    bus.write_with_cartridge(
+        0xA000,
+        0x70,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x00,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    assert!(!cartridge.rumble_on());
+    assert_eq!(
+        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        0x10
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x07,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    assert!(!cartridge.rumble_on());
+    assert_eq!(
+        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        0x70
+    );
+
+    bus.write_with_cartridge(
+        0x4000,
+        0x0F,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    assert!(cartridge.rumble_on());
+    assert_eq!(
+        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        0x70
+    );
+}
+
+#[test]
+fn strict_validation_rejects_oversized_and_invalid_128kib_rumble_mbc5_configurations() {
     let oversized = build_test_rom(16 * 1024 * 1024, 0x1B, 0x08, 0x04);
     let oversized_error = CartridgeSlot::load(oversized, &CompatibilityPolicy::strict())
         .expect_err("oversized MBC5 should fail validation");
@@ -1232,6 +1380,10 @@ fn strict_validation_rejects_oversized_and_invalid_rumble_mbc5_configurations() 
         other => panic!("unexpected error: {other:?}"),
     };
     assert!(invalid_rumble_reason.contains("rumble-capable MBC5 baseline"));
+
+    let valid_rumble_64k = build_banked_mbc5_rom(0x1E, 0x03, 0x05);
+    CartridgeSlot::load(valid_rumble_64k, &CompatibilityPolicy::strict())
+        .expect("64 KiB rumble MBC5 should load");
 }
 
 #[test]
@@ -1247,6 +1399,21 @@ fn permissive_validation_can_warn_on_no_ram_mbc5_headers_with_nonzero_ram_metada
             .iter()
             .any(|diagnostic| diagnostic.message.contains("does not provide external RAM"))
     );
+}
+
+#[test]
+fn ignore_validation_keeps_degradable_mbc3_and_mbc5_loader_paths_warning_free() {
+    let mbc3_rom = build_banked_mbc3_rom(0x11, 0x03, 0x02);
+    let mbc3_report = CartridgeSlot::load(mbc3_rom, &ignore_policy())
+        .expect("ignore policy should admit no-RAM MBC3 metadata mismatches");
+    assert_eq!(mbc3_report.cartridge().state(), CartridgeSlotState::Mbc3);
+    assert!(mbc3_report.diagnostics().is_empty());
+
+    let mbc5_rom = build_banked_mbc5_rom(0x19, 0x03, 0x02);
+    let mbc5_report = CartridgeSlot::load(mbc5_rom, &ignore_policy())
+        .expect("ignore policy should admit no-RAM MBC5 metadata mismatches");
+    assert_eq!(mbc5_report.cartridge().state(), CartridgeSlotState::Mbc5);
+    assert!(mbc5_report.diagnostics().is_empty());
 }
 
 #[test]
@@ -1463,6 +1630,14 @@ fn mbc3_persistent_state_serializes_live_rtc_state_not_the_latched_snapshot() {
         }
         other => panic!("unexpected persistent state: {other:?}"),
     }
+
+    machine
+        .restore_cartridge_persistent_state(&state)
+        .expect("hot MBC3 persistence restore should succeed");
+    assert_eq!(machine.read_bus(0xA000), 0x00);
+    machine.write_bus(0x6000, 0x00);
+    machine.write_bus(0x6000, 0x01);
+    assert_eq!(machine.read_bus(0xA000), 0x2A);
 
     let fresh_report = CartridgeSlot::load(
         build_banked_mbc3_rom(0x10, 0x03, 0x03),

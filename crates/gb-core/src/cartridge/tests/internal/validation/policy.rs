@@ -45,6 +45,7 @@ fn validation_helpers_cover_ignore_and_quiet_policy_paths() {
         Mbc1Layout {
             wiring: Mbc1Wiring::LargeRom,
             variant: Mbc1Variant::Mbc1M,
+            ram_len: 0,
         }
     );
     assert!(diagnostics.is_empty());
@@ -93,6 +94,58 @@ fn private_validation_helpers_cover_remaining_policy_and_mapper_branches() {
     ));
 
     diagnostics.clear();
+    let mbc1_no_ram_with_sram_header =
+        CartridgeHeader::parse(&build_banked_mbc1_rom_with_type(0x01, 0x02, 0x02))
+            .expect("header should parse");
+    let mbc1_no_ram_layout = validate_mbc1(
+        &mbc1_no_ram_with_sram_header,
+        128 * 1024,
+        &warn_policy(),
+        &CartridgeClassification::classify(0x01),
+        &mut diagnostics,
+    )
+    .expect("warn policy should keep MBC1 no-RAM loads deterministic");
+    assert_eq!(
+        mbc1_no_ram_layout,
+        Mbc1Layout {
+            wiring: Mbc1Wiring::Standard,
+            variant: Mbc1Variant::Standard,
+            ram_len: 0,
+        }
+    );
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("contradicts the current MBC1 without RAM Standard wiring baseline")
+    }));
+
+    diagnostics.clear();
+    let mbc1_large_rom_missing_ram_header =
+        CartridgeHeader::parse(&build_banked_mbc1_rom_with_type(0x03, 0x05, 0x00))
+            .expect("header should parse");
+    let mbc1_large_rom_layout = validate_mbc1(
+        &mbc1_large_rom_missing_ram_header,
+        1024 * 1024,
+        &warn_policy(),
+        &CartridgeClassification::classify(0x03),
+        &mut diagnostics,
+    )
+    .expect("warn policy should keep large-ROM MBC1 RAM on the explicit fixed-window baseline");
+    assert_eq!(
+        mbc1_large_rom_layout,
+        Mbc1Layout {
+            wiring: Mbc1Wiring::LargeRom,
+            variant: Mbc1Variant::Standard,
+            ram_len: MBC1_LARGE_ROM_RAM_BYTES,
+        }
+    );
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("contradicts the current MBC1+RAM LargeRom wiring baseline")
+    }));
+
+    diagnostics.clear();
     let mbc3_reserved_header =
         CartridgeHeader::parse(&build_test_rom(256 * 1024, 0x13, 0x03, 0x05))
             .expect("header should parse");
@@ -108,6 +161,24 @@ fn private_validation_helpers_cover_remaining_policy_and_mapper_branches() {
         mbc3_reserved_error,
         CartridgeLoadError::Rejected { reason, .. }
             if reason.contains("reserved for the future MBC30 variant")
+    ));
+
+    diagnostics.clear();
+    let no_ram_mbc3_with_mbc30_code_header =
+        CartridgeHeader::parse(&build_test_rom(256 * 1024, 0x11, 0x03, 0x05))
+            .expect("header should parse");
+    let no_ram_mbc3_with_mbc30_code_error = validate_mbc3(
+        &no_ram_mbc3_with_mbc30_code_header,
+        256 * 1024,
+        &strict,
+        &CartridgeClassification::classify(0x11),
+        &mut diagnostics,
+    )
+    .expect_err("RAM-less MBC3 should reject 64 KiB code as a header contradiction");
+    assert!(matches!(
+        no_ram_mbc3_with_mbc30_code_error,
+        CartridgeLoadError::Rejected { reason, .. }
+            if reason.contains("does not provide external RAM")
     ));
 
     diagnostics.clear();
@@ -163,4 +234,19 @@ fn private_validation_helpers_cover_remaining_policy_and_mapper_branches() {
         CartridgeLoadError::Rejected { reason, .. }
             if reason.contains("rumble-capable")
     ));
+
+    diagnostics.clear();
+    let mbc5_rumble_64k_ram_header =
+        CartridgeHeader::parse(&build_test_rom(256 * 1024, 0x1D, 0x03, 0x05))
+            .expect("header should parse");
+    let mbc5_rumble_variant = validate_mbc5(
+        &mbc5_rumble_64k_ram_header,
+        256 * 1024,
+        &strict,
+        &CartridgeClassification::classify(0x1D),
+        &mut diagnostics,
+    )
+    .expect("rumble-capable MBC5 should accept 64 KiB SRAM");
+    assert_eq!(mbc5_rumble_variant, Mbc5Variant::RumbleRam);
+    assert!(diagnostics.is_empty());
 }

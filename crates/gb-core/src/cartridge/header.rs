@@ -95,25 +95,61 @@ impl CartridgeHeader {
             &rom_bytes[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN],
         );
 
-        let title_bytes = &rom_bytes[TITLE_START..TITLE_END_INCLUSIVE];
-        let title_len = title_bytes
+        let mut title_bytes = [0; TITLE_BYTES_LEN];
+        title_bytes.copy_from_slice(&rom_bytes[TITLE_START..=TITLE_END_INCLUSIVE]);
+
+        let mut raw_title_suffix_or_manufacturer_code = [0; MANUFACTURER_CODE_LEN];
+        raw_title_suffix_or_manufacturer_code
+            .copy_from_slice(&rom_bytes[MANUFACTURER_CODE_START..=MANUFACTURER_CODE_END_INCLUSIVE]);
+
+        let mut new_licensee_code = [0; NEW_LICENSEE_CODE_LEN];
+        new_licensee_code.copy_from_slice(
+            &rom_bytes[NEW_LICENSEE_CODE_START..NEW_LICENSEE_CODE_START + NEW_LICENSEE_CODE_LEN],
+        );
+
+        let raw_cgb_flag = rom_bytes[CGB_FLAG_ADDRESS];
+        let cgb_flag = decode_cgb_flag(raw_cgb_flag);
+        let old_licensee_code = rom_bytes[OLD_LICENSEE_CODE_ADDRESS];
+        let visible_title_bytes = if uses_cgb_title_layout(raw_cgb_flag) {
+            // Pan Docs documents both 15-character and 11-character title
+            // layouts for newer cartridges, but the raw header does not expose
+            // a reliable discriminator for "manufacturer code is really active"
+            // versus "these four bytes are still just part of a 15-character
+            // title". Keep the visible title conservative at 15 characters when
+            // 0x0143 has bit 7 set, and preserve 0x013F-0x0142 separately so
+            // later compatibility work can reason about those bytes without
+            // silently truncating valid CGB-era titles.
+            &title_bytes[..TITLE_BYTES_LEN - 1]
+        } else {
+            &title_bytes[..]
+        };
+        let title_len = visible_title_bytes
             .iter()
             .position(|&byte| byte == 0 || byte == 0xFF)
-            .unwrap_or(title_bytes.len());
-        let title = String::from_utf8_lossy(&title_bytes[..title_len]).to_string();
+            .unwrap_or(visible_title_bytes.len());
+        let title = String::from_utf8_lossy(&visible_title_bytes[..title_len]).to_string();
 
         Ok(Self {
             entry_point,
             nintendo_logo,
+            title_bytes,
+            raw_title_suffix_or_manufacturer_code,
             title,
-            cgb_flag: decode_cgb_flag(rom_bytes[CGB_FLAG_ADDRESS]),
+            cgb_flag,
             sgb_flag: decode_sgb_flag(rom_bytes[SGB_FLAG_ADDRESS]),
             cartridge_type: rom_bytes[CARTRIDGE_TYPE_ADDRESS],
             rom_size: RomSizeInfo::decode(rom_bytes[ROM_SIZE_ADDRESS]),
             ram_size: RamSizeInfo::decode(rom_bytes[RAM_SIZE_ADDRESS]),
+            new_licensee_code,
+            destination_code: rom_bytes[DESTINATION_CODE_ADDRESS],
+            old_licensee_code,
             header_checksum: rom_bytes[HEADER_CHECKSUM_ADDRESS],
         })
     }
+}
+
+const fn uses_cgb_title_layout(raw_flag: u8) -> bool {
+    raw_flag & 0x80 != 0
 }
 
 pub(in crate::cartridge) const fn decode_cgb_flag(raw_flag: u8) -> CgbFlag {
@@ -121,6 +157,7 @@ pub(in crate::cartridge) const fn decode_cgb_flag(raw_flag: u8) -> CgbFlag {
         0x00 => CgbFlag::None,
         0x80 => CgbFlag::Supported,
         0xC0 => CgbFlag::Only,
+        other if uses_cgb_title_layout(other) => CgbFlag::SupportedNonCanonical(other),
         other => CgbFlag::Unknown(other),
     }
 }

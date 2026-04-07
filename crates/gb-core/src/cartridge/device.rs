@@ -1,4 +1,5 @@
 use super::*;
+use crate::scheduler::TCycle;
 
 impl CartridgeDevice {
     pub(in crate::cartridge) fn header(&self) -> &CartridgeHeader {
@@ -51,12 +52,37 @@ impl CartridgeDevice {
         }
     }
 
+    pub(in crate::cartridge) fn read_ram_timed(&mut self, address: u16, t_cycle: TCycle) -> u8 {
+        match self {
+            Self::NoMbc(cartridge) => cartridge.read_ram(address),
+            Self::Mbc1(cartridge) => cartridge.read_ram(address),
+            Self::Mbc2(cartridge) => cartridge.read_ram(address),
+            Self::Mbc3(cartridge) => cartridge.read_ram_timed(address, t_cycle),
+            Self::Mbc5(cartridge) => cartridge.read_ram(address),
+        }
+    }
+
     pub(in crate::cartridge) fn write_ram(&mut self, address: u16, value: u8) {
         match self {
             Self::NoMbc(cartridge) => cartridge.write_ram(address, value),
             Self::Mbc1(cartridge) => cartridge.write_ram(address, value),
             Self::Mbc2(cartridge) => cartridge.write_ram(address, value),
             Self::Mbc3(cartridge) => cartridge.write_ram(address, value),
+            Self::Mbc5(cartridge) => cartridge.write_ram(address, value),
+        }
+    }
+
+    pub(in crate::cartridge) fn write_ram_timed(
+        &mut self,
+        address: u16,
+        value: u8,
+        t_cycle: TCycle,
+    ) {
+        match self {
+            Self::NoMbc(cartridge) => cartridge.write_ram(address, value),
+            Self::Mbc1(cartridge) => cartridge.write_ram(address, value),
+            Self::Mbc2(cartridge) => cartridge.write_ram(address, value),
+            Self::Mbc3(cartridge) => cartridge.write_ram_timed(address, value, t_cycle),
             Self::Mbc5(cartridge) => cartridge.write_ram(address, value),
         }
     }

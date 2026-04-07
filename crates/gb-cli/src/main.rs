@@ -1446,6 +1446,9 @@ fn cgb_flag_name(flag: CgbFlag) -> String {
         CgbFlag::None => "none".to_string(),
         CgbFlag::Supported => "supported".to_string(),
         CgbFlag::Only => "only".to_string(),
+        CgbFlag::SupportedNonCanonical(value) => {
+            format!("supported-noncanonical(0x{value:02X})")
+        }
         CgbFlag::Unknown(value) => format!("unknown(0x{value:02X})"),
     }
 }

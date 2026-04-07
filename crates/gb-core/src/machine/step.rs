@@ -203,11 +203,12 @@ impl MachinePhaseRunner<'_> {
                     .with_boot_rom(boot.bus_state())
                     .with_ppu(ppu.bus_state())
                     .with_dma(dma.bus_state());
-                let value = bus.read_with_context(
+                let value = bus.read_with_t_cycle_context(
                     transfer_work.source_address(),
                     BusRequester::Dma,
                     &arbitration_state,
-                    Some(*cartridge),
+                    context.t_cycle(),
+                    Some(cartridge),
                     BusIoReadView {
                         apu: Some(*apu),
                         timer: Some(*timer),
@@ -284,11 +285,12 @@ impl MachinePhaseRunner<'_> {
             let pending_ppu_mmio_write = &mut self.pending_ppu_mmio_write;
 
             cpu.tick_t_cycle(|operation| match operation {
-                CpuBusOperation::Read { address } => Some(bus.read_with_context(
+                CpuBusOperation::Read { address } => Some(bus.read_with_t_cycle_context(
                     address,
                     BusRequester::Cpu,
                     &arbitration_state,
-                    Some(*cartridge),
+                    context.t_cycle(),
+                    Some(cartridge),
                     BusIoReadView {
                         apu: Some(apu),
                         timer: Some(timer),
@@ -306,11 +308,12 @@ impl MachinePhaseRunner<'_> {
                         *pending_ppu_mmio_write = Some(PendingPpuMmioWrite { address, value });
                         context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
                     } else {
-                        bus.write_with_context(
+                        bus.write_with_t_cycle_context(
                             address,
                             value,
                             BusRequester::Cpu,
                             &arbitration_state,
+                            context.t_cycle(),
                             Some(cartridge),
                             BusIoWriteView {
                                 apu: Some(apu),
