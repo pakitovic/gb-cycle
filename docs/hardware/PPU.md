@@ -115,6 +115,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 - `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
 - On DMG-family timing, the bus-facing `FF44` readback should advance to the next scanline during the last machine cycle of HBlank before the full raster wrap completes; do not force bus-visible `LY` reads to be identical to the internal raster/comparison line at every dot.
+- In the current repo baseline, the exact bus-visible `FF44` handoff inside that late-HBlank tail remains unresolved. A direct retune from the current implementation seam to a stricter "final M-cycle only" threshold regressed `mooneye acceptance/ppu/hblank_ly_scx_timing-GS`, so treat that edge as an open hypothesis rather than as a settled constant tweak.
 - The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
 - Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
 - While the LCD is disabled, the `STAT` coincidence bit should retain the last active-LCD comparison result instead of being silently recomputed from the reset LCD-off `LY = 0` state.
@@ -206,8 +207,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Sprite selection should ignore `X`; horizontally off-screen sprites still count toward the per-line selection limit if they match vertically.
 - The selection order should be OAM order from `FE00` upward, stopping once `10` matching sprites have been collected.
 - The current line's selected-sprite list should preserve OAM discovery order for later priority and timing work.
-- On DMG-family hardware during active OAM DMA, blocked Mode `2` OAM reads should reuse the last latched OAM word instead of inventing fresh `Y/X` values or force-clearing selection.
-- That stale Mode `2` word should remain shared with later OAM reads such as Mode `3` sprite metadata fetches, so the next scanline's DMA-blocked Mode `2` path can inherit the most recent latched word even when it came from tile/attribute reads rather than from an earlier `Y/X` scan.
+- On DMG-family hardware during active OAM DMA, blocked Mode `2` OAM reads should reuse the last latched `Y/X` word instead of inventing fresh scan-time coordinates or force-clearing selection.
+- That coarse Mode `2` DMA-blocked `Y/X` fallback must remain separate from late `Mode 3` sprite-metadata conflicts. Late tile/attribute reads may observe a different same-cycle OAM word, but they must not overwrite the retained Mode `2` `Y/X` latch used by later DMA-blocked selection.
 
 ## DMG OBJ priority baseline
 
