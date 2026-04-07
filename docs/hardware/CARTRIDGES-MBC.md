@@ -33,13 +33,17 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The bus must not infer mapper behavior from ROM size, RAM size, filename, or frontend heuristics when the header already declares the cartridge type.
 - A central cartridge-header parser should own decoding of at least:
   - `entry_point`
-  - visible `title` bytes from `0x0134-0x0143`, with the documented split that legacy cartridges may use all `16` bytes while cartridges with a real CGB flag in `0x0143` must keep that byte out of the visible title
+  - raw visible `title` bytes from `0x0134-0x0143`, with the documented split that legacy cartridges may use all `16` bytes, cartridges with a real CGB flag in `0x0143` may expose `15` title bytes, and newer headers that clearly use `0x013F-0x0142` as manufacturer code reduce the decoded title to `11` bytes
+  - `manufacturer_code` from `0x013F-0x0142` when the newer header layout is active
   - `cgb_flag` from `0x0143`
+  - `new_licensee_code` from `0x0144-0x0145`
   - `sgb_flag` from `0x0146`
   - `cartridge_type` from `0x0147`
   - `rom_size_code` from `0x0148`
   - `ram_size_code` from `0x0149`
-- The parser should preserve enough raw metadata for diagnostics and future compatibility work, including the Nintendo logo bytes and the raw header codes.
+  - `destination_code` from `0x014A`
+  - `old_licensee_code` from `0x014B`
+- The parser should preserve enough raw metadata for diagnostics and future compatibility work, including the Nintendo logo bytes, the raw visible title bytes, manufacturer and licensee bytes, and the raw header codes.
 - The decoded result should live in a strongly typed structure such as `CartridgeHeader`, not in scattered ad hoc fields.
 - Header-derived capability data should remain available even before the project implements all of the corresponding hardware, because future CGB, SGB, RTC, battery, rumble, and peripheral support depends on it.
 

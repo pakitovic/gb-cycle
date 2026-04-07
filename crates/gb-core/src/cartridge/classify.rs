@@ -168,12 +168,6 @@ fn classify_experimental_heuristic(
     header: &CartridgeHeader,
     rom_bytes: &[u8],
 ) -> Option<CartridgeClassification> {
-    let title_bytes = &rom_bytes[TITLE_START..=TITLE_END_INCLUSIVE];
-    let destination_code = rom_bytes
-        .get(DESTINATION_CODE_ADDRESS)
-        .copied()
-        .unwrap_or(0x00);
-
     if is_mbc1m_multicart_signature(header, rom_bytes) {
         return Some(supported_with_reason(
             header.cartridge_type,
@@ -192,7 +186,11 @@ fn classify_experimental_heuristic(
         ));
     }
 
-    if is_ems_multicart_signature(title_bytes, header.cartridge_type, destination_code) {
+    if is_ems_multicart_signature(
+        &header.title_bytes,
+        header.cartridge_type,
+        header.destination_code,
+    ) {
         return Some(unsupported(
             header.cartridge_type,
             "EMS",
@@ -202,11 +200,11 @@ fn classify_experimental_heuristic(
     }
 
     if is_wisdom_tree_signature(
-        title_bytes,
+        &header.title_bytes,
         header.cartridge_type,
         header.rom_size.raw_code,
         rom_bytes.len(),
-        destination_code,
+        header.destination_code,
     ) {
         return Some(unsupported(
             header.cartridge_type,

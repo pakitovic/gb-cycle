@@ -29,17 +29,24 @@ use validate::{
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const ENTRY_POINT_LEN: usize = 4;
 const NINTENDO_LOGO_LEN: usize = 48;
+const TITLE_BYTES_LEN: usize = TITLE_END_INCLUSIVE - TITLE_START + 1;
+const MANUFACTURER_CODE_LEN: usize = MANUFACTURER_CODE_END_INCLUSIVE - MANUFACTURER_CODE_START + 1;
+const NEW_LICENSEE_CODE_LEN: usize = 2;
 
 const ENTRY_POINT_START: usize = 0x0100;
 const NINTENDO_LOGO_START: usize = 0x0104;
 const TITLE_START: usize = 0x0134;
+const MANUFACTURER_CODE_START: usize = 0x013F;
+const MANUFACTURER_CODE_END_INCLUSIVE: usize = 0x0142;
 const TITLE_END_INCLUSIVE: usize = 0x0143;
 const CGB_FLAG_ADDRESS: usize = 0x0143;
+const NEW_LICENSEE_CODE_START: usize = 0x0144;
 const SGB_FLAG_ADDRESS: usize = 0x0146;
 const CARTRIDGE_TYPE_ADDRESS: usize = 0x0147;
 const ROM_SIZE_ADDRESS: usize = 0x0148;
 const RAM_SIZE_ADDRESS: usize = 0x0149;
 const DESTINATION_CODE_ADDRESS: usize = 0x014A;
+const OLD_LICENSEE_CODE_ADDRESS: usize = 0x014B;
 const HEADER_CHECKSUM_ADDRESS: usize = 0x014D;
 
 const RAM_ABSENT_READ_VALUE: u8 = 0xFF;
@@ -104,12 +111,17 @@ pub struct RamSizeInfo {
 pub struct CartridgeHeader {
     pub entry_point: [u8; ENTRY_POINT_LEN],
     pub nintendo_logo: [u8; NINTENDO_LOGO_LEN],
+    pub title_bytes: [u8; TITLE_BYTES_LEN],
+    pub manufacturer_code: [u8; MANUFACTURER_CODE_LEN],
     pub title: String,
     pub cgb_flag: CgbFlag,
     pub sgb_flag: SgbFlag,
     pub cartridge_type: u8,
     pub rom_size: RomSizeInfo,
     pub ram_size: RamSizeInfo,
+    pub new_licensee_code: [u8; NEW_LICENSEE_CODE_LEN],
+    pub destination_code: u8,
+    pub old_licensee_code: u8,
     pub header_checksum: u8,
 }
 

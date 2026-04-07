@@ -95,29 +95,76 @@ impl CartridgeHeader {
             &rom_bytes[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN],
         );
 
+        let mut title_bytes = [0; TITLE_BYTES_LEN];
+        title_bytes.copy_from_slice(&rom_bytes[TITLE_START..=TITLE_END_INCLUSIVE]);
+
+        let mut manufacturer_code = [0; MANUFACTURER_CODE_LEN];
+        manufacturer_code
+            .copy_from_slice(&rom_bytes[MANUFACTURER_CODE_START..=MANUFACTURER_CODE_END_INCLUSIVE]);
+
+        let mut new_licensee_code = [0; NEW_LICENSEE_CODE_LEN];
+        new_licensee_code.copy_from_slice(
+            &rom_bytes[NEW_LICENSEE_CODE_START..NEW_LICENSEE_CODE_START + NEW_LICENSEE_CODE_LEN],
+        );
+
         let cgb_flag = decode_cgb_flag(rom_bytes[CGB_FLAG_ADDRESS]);
-        let title_bytes = match cgb_flag {
-            CgbFlag::Supported | CgbFlag::Only => &rom_bytes[TITLE_START..CGB_FLAG_ADDRESS],
-            CgbFlag::None | CgbFlag::Unknown(_) => &rom_bytes[TITLE_START..=TITLE_END_INCLUSIVE],
+        let old_licensee_code = rom_bytes[OLD_LICENSEE_CODE_ADDRESS];
+        let visible_title_bytes = match cgb_flag {
+            CgbFlag::Supported | CgbFlag::Only
+                if uses_newer_manufacturer_title_layout(
+                    &manufacturer_code,
+                    &new_licensee_code,
+                    old_licensee_code,
+                ) =>
+            {
+                &title_bytes[..MANUFACTURER_CODE_START - TITLE_START]
+            }
+            CgbFlag::Supported | CgbFlag::Only => &title_bytes[..TITLE_BYTES_LEN - 1],
+            CgbFlag::None | CgbFlag::Unknown(_) => &title_bytes[..],
         };
-        let title_len = title_bytes
+        let title_len = visible_title_bytes
             .iter()
             .position(|&byte| byte == 0 || byte == 0xFF)
-            .unwrap_or(title_bytes.len());
-        let title = String::from_utf8_lossy(&title_bytes[..title_len]).to_string();
+            .unwrap_or(visible_title_bytes.len());
+        let title = String::from_utf8_lossy(&visible_title_bytes[..title_len]).to_string();
 
         Ok(Self {
             entry_point,
             nintendo_logo,
+            title_bytes,
+            manufacturer_code,
             title,
             cgb_flag,
             sgb_flag: decode_sgb_flag(rom_bytes[SGB_FLAG_ADDRESS]),
             cartridge_type: rom_bytes[CARTRIDGE_TYPE_ADDRESS],
             rom_size: RomSizeInfo::decode(rom_bytes[ROM_SIZE_ADDRESS]),
             ram_size: RamSizeInfo::decode(rom_bytes[RAM_SIZE_ADDRESS]),
+            new_licensee_code,
+            destination_code: rom_bytes[DESTINATION_CODE_ADDRESS],
+            old_licensee_code,
             header_checksum: rom_bytes[HEADER_CHECKSUM_ADDRESS],
         })
     }
+}
+
+fn uses_newer_manufacturer_title_layout(
+    manufacturer_code: &[u8; MANUFACTURER_CODE_LEN],
+    new_licensee_code: &[u8; NEW_LICENSEE_CODE_LEN],
+    old_licensee_code: u8,
+) -> bool {
+    // Pan Docs distinguishes the 11-character title layout only on "newer"
+    // headers where 0x013F-0x0142 carry a separate manufacturer code. The
+    // header does not expose a single dedicated bit for that split, so keep the
+    // policy narrow: only collapse to 11 characters when the newer-licensee
+    // format is active and both companion code fields look like real ASCII
+    // tokens rather than title padding.
+    old_licensee_code == 0x33
+        && manufacturer_code
+            .iter()
+            .all(|&byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+        && new_licensee_code
+            .iter()
+            .all(|&byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
 }
 
 pub(in crate::cartridge) const fn decode_cgb_flag(raw_flag: u8) -> CgbFlag {
