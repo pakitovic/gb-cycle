@@ -58,6 +58,13 @@ pub(super) fn commit_pending_ppu_mmio_write(
     }
 }
 
+fn apply_stop_div_reset(apu: &mut Apu, timer: &mut Timer) {
+    let effects = timer.write_div_with_effects(0);
+    if effects.apu_frame_sequencer_edge {
+        apu.on_div_apu_edge();
+    }
+}
+
 struct MachinePhaseRunner<'a> {
     cpu: &'a mut CpuCore,
     bus: &'a mut Bus,
@@ -298,6 +305,10 @@ impl MachinePhaseRunner<'_> {
 
             if let Some(event) = cpu.last_address_event() {
                 bus.route_cpu_address_event(event, &arbitration_state, ppu);
+            }
+
+            if cpu.take_stop_div_reset_request() {
+                apply_stop_div_reset(apu, timer);
             }
         }
 
