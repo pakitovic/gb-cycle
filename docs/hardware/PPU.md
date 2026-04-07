@@ -11,6 +11,12 @@ Model PPU modes explicitly. Separate fetcher/FIFO logic when it improves clarity
 Even in DMG-only work, avoid hard-wiring the design to a single permanent VRAM interpretation or a renderer that only understands four grayscale outputs.
 For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle`.
 
+## Evidence policy
+
+- Treat Pan Docs plus hardware-backed timing research as the default source of truth for the external PPU contract.
+- Treat statements in this file that are clearly phrased as current repo baselines, provisional behavior, or open closure work as project decisions or active hypotheses, not as hardware-finished facts.
+- When a timing-sensitive rule is still unsettled, label it in the most restrictive way available: `hardware fact` if backed by documentation or oracle closure, `inference` if strongly suggested but not fully closed, and `repo baseline` if it is the implementation contract the repo is currently choosing while closure remains open.
+
 ## Responsibilities
 
 - mode transitions and scanline progression
@@ -61,7 +67,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - That visible-register block should be the source of truth for Mode `3` BG/window/object fetch decisions, BG/OBJ palette lookup, and other active-pipeline reads of `LCDC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, and `OBP*`.
 - In the current March 27, 2026 DMG baseline, keep one second explicit register snapshot for the active pixel pipeline itself, separate from the current-dot-visible MMIO snapshot. This pipeline snapshot should represent the previous-dot DMG view used by the in-flight `Mode 3` pipeline, so live-write-sensitive logic does not have to recover "last `LCDC` / last `WX` / last `BGP`" ad hoc from unrelated state.
 - In that same current DMG baseline, window activation should consume the pipeline snapshot for `LCDC.5` and `WX`, not the newer current-dot-visible copy, because the remaining mealybug window cases hinge on previous-dot `WX` / `WIN_ENABLE` visibility rather than on immediate same-dot MMIO state.
-- In that same current DMG baseline, the live BG/window fetchers should also leave room for localized `LCDC.4` / tile-data-selector glitches instead of forcing every `Mode 3` fetch to use one uniform register snapshot. The low/high bitplane phases should be able to compare previous-dot `LCDC` against current-dot-visible `LCDC` and adjust only the byte already in flight, including the `signed -> unsigned` "reuse the last unsigned fetch byte" case and the `unsigned -> signed` reread case seen in docboy's `last_lcdc`-based fetcher model.
+- In that same current DMG baseline, the live BG/window fetchers should also leave room for localized `LCDC.4` / tile-data-selector seams instead of forcing every `Mode 3` fetch to use one uniform register snapshot. The low/high bitplane phases should be able to compare previous-dot `LCDC` against current-dot-visible `LCDC` and adjust only the byte already in flight, including the documented DMG-style reread / bitplane-desync cases.
+- Do not import the CGB-specific `signed -> unsigned` "reuse the last unsigned fetch byte" behavior into the DMG baseline. If that CGB-family glitch is modeled later, keep it explicitly model-gated in the future CGB path instead of treating it as a generic DMG fetcher rule.
 - In that same current DMG baseline, real window fetch during `Mode 3` should not assume its tilemap base and tile-data base always come from the newest current-dot-visible `LCDC`. Once window fetch is active, the current repo baseline should keep room for those address-selection decisions to consume the previous-dot pipeline `LCDC` view, because remaining mealybug `window map` / `tile select` cases depend on the fetcher-side delayed seam, not only on the already-landed delayed `WX` / `WIN_ENABLE` activation seam.
 - In that same current DMG baseline, visible-pixel transfer should also keep an explicit seam between the previous-dot pipeline `LCDC` view and the current-dot-visible `LCDC` view: the general visible-pixel path should use the delayed pipeline copy for `BG_WIN_ENABLE` and `OBJ_ENABLE`, while the first visible pixel at `LX = 8` keeps its own exception hook to observe the current-dot-visible `LCDC`.
 - In that same current DMG baseline, BG palette resolution for a visible DMG pixel should leave room for the documented one-dot `BGP` overlap artifact by consuming one explicit `current_visible_bgp | previous_pipeline_bgp` value, rather than assuming the panel always sees only the newest current-dot-visible `BGP`.
@@ -96,7 +103,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## STAT register baseline
 
 - `STAT` should remain a mixed register whose writable portion is the software-configured interrupt-enable mask and whose read-only portion is derived from live PPU state.
-- In the current DMG-family baseline, `STAT` bit `7` should read back as `1`; it is not a writable software-owned bit.
+- Treat `STAT` bit `7` as non-writable and keep its readback policy explicit and model-gated rather than baking in one universal DMG invariant here. The current hardware-facing contract for this handbook is that software does not own bit `7`, while bits `6-0` carry the documented interrupt-enable, coincidence, and mode semantics.
 - Bits `6-3` should be treated as writable enables for the `LYC==LY`, Mode `2`, Mode `1`, and Mode `0` STAT sources.
 - Bit `2` should expose the live `LYC==LY` coincidence state as a read-only flag.
 - Bits `1-0` should expose the live current PPU mode as a read-only value: `0` HBlank, `1` VBlank, `2` OAM scan, `3` drawing.
@@ -308,7 +315,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Starting the window should reset the fetcher to its initial fetch step rather than continuing from the current BG fetch phase.
 - The window-start event should alter the remaining pixel sequence of the current scanline without replaying or recomputing the whole line.
 - The DMG special case `WX = 0 && (SCX & 7) > 0` should be modeled as an explicit path that shortens Mode 3 by `1` dot.
-- In the current March 27, 2026 baseline, once the window fetcher is already active, turning `LCDC.5` off should be able to abort the active window fetch back to background fetch on the same fetch-stage boundary rather than waiting for the whole window tile to finish. That reprise should restore BG fetch progress from the saved BG-side fetch pixel, leaving the stage-local tile/index/data contract explicit instead of recomputing a fresh whole-line window/BG split.
+- In the current DMG baseline, once the window fetcher is already active, turning `LCDC.5` off should not cut away the in-flight window tile immediately. The disable should take effect at the end of the current window tile, after which background fetch resumes on a tile boundary from explicit saved BG-side progress rather than from a recomputed whole-line window/BG split.
 
 ## Window line-counter baseline
 
@@ -323,6 +330,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Writes to `WX`, `WY`, and `LCDC.5` during the frame must be visible to the live pipeline rather than deferred until the next frame.
 - If the WY latch is already active for the current line and `LCDC.5` was active at line start but is cleared before the WX trigger point, the design should support the documented window-glitch pixel at the would-be window start.
 - If `WX` changes after the window has already started on the line and the new trigger position is reached again, the documented bug should be representable as a low-priority color-`0` pixel pushed into the BG FIFO path.
+- If `LCDC.5` is disabled during Mode `3` and then re-enabled later on the same scanline, do not model that as a generic "resume window where it left off" path. Keep the same-line reactivation explicitly gated on a new not-yet-served `WX` trigger, and keep room for the documented DMG behavior where the window may restart on the next window row rather than on the interrupted row.
 - These glitches should live in fetcher/FIFO/pipeline logic rather than as framebuffer post-processing rules.
 
 ## Window edge-case baseline
@@ -403,6 +411,18 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - DMG-family OAM corruption should be tied to the exact T-cycle where the triggering access or IDU event occurs, using the Mode `2` row active in that `4`-dot slice.
 - Do not generalize the OAM corruption bug to generic OAM blocking in Mode `3`; the documented bug is a Mode `2` plus IDU phenomenon.
 
+## Canonical external fetcher contract
+
+- For the BG/window pixel fetcher, keep the canonical external state machine from Pan Docs explicit in the design and in the documentation: `TileIndex -> TileDataLow -> TileDataHigh -> Sleep -> Push`.
+- In that canonical BG/window fetcher contract, `TileIndex`, `TileDataLow`, `TileDataHigh`, and `Sleep` each consume `2` dots, while `Push` is retried every dot until the BG FIFO can accept the fetched `8`-pixel slice.
+- If implementing the PPU from scratch, implement this external fetcher contract first and treat later repo-local `Mode 3` notes only as refinements of that contract, not as substitutes for it.
+
+## Residual uncertainty / repo-local closure
+
+- The most fine-grained `Mode 3` notes later in this file include current repo baselines for startup, `Push`, placeholder occupancy, cached slices, and OBJ arbitration. Those notes are useful for reproducing this repo's current behavior, but they should not all be read as hardware-finished facts.
+- The highest remaining residual uncertainty is concentrated in left-edge/startup seams, fine window restart and live-write timing, and some LCD on/off plus `STAT` boundary timing.
+- Keep those seams explicit and localized in the design rather than folding them back into the canonical external fetcher contract above.
+
 ## Dependencies
 
 - bus and memory
@@ -416,6 +436,14 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Pan Docs PPU/LCD sections
 - AntonioND timing material
 - Gekkio and Matt Currie test ROMs where relevant
+
+For fetcher/FIFO behavior and raster-visible glitches, use the references in this order:
+
+1. Pan Docs and hardware research for the canonical external fetcher contract and register semantics
+2. Kevtris, AntonioND, Gekkio, and Matt Currie material for DMG timing refinements, window behavior, and raster-visible quirks
+3. Open-source emulators only as implementation cross-checks once the primary contract is already fixed
+
+Do not treat docboy or any other emulator as a normative source for DMG fetcher behavior when it conflicts with the primary references above.
 
 ## Open-source emulator references
 
@@ -447,8 +475,9 @@ Priority order:
 - tests for `WX = 0` and `WX = 166` special behavior
 - tests for DMG `LCDC.0` suppressing window rendering even when `LCDC.5 = 1`
 - tests for mid-frame `WX`, `WY`, and `LCDC.5` writes when relevant glitches are implemented or intentionally isolated
+- tests for `LCDC.5` disable during active window fetch and same-scanline re-enable with `WX` retargeting when that path is implemented
 - tests for window-start and window-glitch cases that continue into later BG/OBJ mixing without resetting the OBJ/OAM FIFO incorrectly
-- tests for live `STAT` readback composition: forced-high bit `7`, writable enable bits, plus live mode and coincidence bits
+- tests for live `STAT` readback composition: documented writable enable bits, live mode/coincidence bits, and the repo's chosen model-gated bit-`7` policy
 - tests for `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
 - tests for immediate `LYC` write reevaluation of `STAT.2` and the internal STAT interrupt line
 - tests for each enabled LCD STAT mode source path for Mode `0`, Mode `1`, and Mode `2`
@@ -499,7 +528,7 @@ Priority order:
 - Mode 3 should begin by clearing the relevant BG/object FIFO state and resetting the pixel pipeline state instead of assuming pixels are already queued.
 - Represent the pixel pipeline explicitly as fetcher plus FIFO, with state advanced one dot at a time.
 - Treat background and object pixel queues as explicit hardware-facing concepts; do not collapse all pixel production into a single opaque renderer step.
-- A fetcher model with explicit stages such as tile index, tile data low, tile data high, and FIFO push is preferred over opaque bulk tile reads.
+- The canonical external BG/window fetcher contract from the earlier section still governs the implementation here. Repo-local `Mode 3` refinements such as queued fill, push-entry delay, FIFO-empty wait, or cached-slice handoff must refine that contract rather than replace it with an opaque "fetch tile" helper.
 - Treat the framebuffer as an emulator-side output buffer only; hardware pixel production should conceptually flow through fetcher -> FIFO -> LCD output.
 - The fetcher and pixel path should be able to grow future metadata such as bank source, palette selection, or priority-related information without redesigning the whole pipeline.
 - In the current March 27, 2026 baseline, the BG/window fetcher should also keep one explicit fetch-phase state for the addresses it just computed. Tilemap address selection belongs to the tile-index phase, while tile-data address selection belongs to each low/high data phase separately. Keep those addresses materialized in fetcher state and exposed through debug snapshots instead of recomputing them only inside a read helper, so later `SCX` / `SCY` / `LCDC` live-write closure can reason about one visible phase boundary at a time.
