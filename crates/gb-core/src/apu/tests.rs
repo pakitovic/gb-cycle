@@ -129,7 +129,7 @@ fn hpf_capacitor_freezes_while_all_dacs_are_off() {
 }
 
 #[test]
-fn routed_nonzero_vin_keeps_the_output_path_connected_without_channel_dacs() {
+fn routed_nonzero_vin_does_not_keep_the_output_path_connected_without_channel_dacs() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.master.vin_input = ApuStereoOutputSnapshot::new(ANALOG_ONE, ANALOG_ONE / 2);
@@ -143,15 +143,17 @@ fn routed_nonzero_vin_keeps_the_output_path_connected_without_channel_dacs() {
     );
     assert_eq!(routed.master_output.left, ANALOG_ONE);
     assert_eq!(routed.master_output.right, ANALOG_ONE / 2);
-    assert_eq!(routed.hpf_output.left, ANALOG_ONE);
-    assert_eq!(routed.hpf_output.right, ANALOG_ONE / 2);
+    assert_eq!(routed.hpf_output.left, 0);
+    assert_eq!(routed.hpf_output.right, 0);
+    assert_eq!(routed.hpf_capacitor.left, 0);
+    assert_eq!(routed.hpf_capacitor.right, 0);
 
     tick_apu_with_edges(&mut apu, 0, &[]);
     let settled = apu.snapshot().output;
-    assert!(settled.hpf_capacitor.left > 0);
-    assert!(settled.hpf_capacitor.right > 0);
-    assert!(settled.hpf_output.left <= routed.hpf_output.left);
-    assert!(settled.hpf_output.right <= routed.hpf_output.right);
+    assert_eq!(settled.hpf_output.left, 0);
+    assert_eq!(settled.hpf_output.right, 0);
+    assert_eq!(settled.hpf_capacitor.left, 0);
+    assert_eq!(settled.hpf_capacitor.right, 0);
 }
 
 #[test]
