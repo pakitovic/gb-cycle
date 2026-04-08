@@ -148,18 +148,14 @@ Address alone is not enough: the bus must also consider the current temporal har
 ## MMIO descriptor baseline
 
 - Every address in `0xFF00-0xFF7F` and `0xFFFF` should resolve to an explicit descriptor or equally explicit dedicated handler.
-- That descriptor should make the following properties explicit:
+- In the current router-centric / Docboy-compatible architecture, the public bus-facing MMIO descriptor should make at least the following properties explicit:
   - owning subsystem
+  - register identity at per-address granularity
   - access class
-  - readable bits
-  - writable bits
-  - dynamic read-only bits
-  - write-only or read-suppressed bits
-  - reserved or forced bits
-  - read side effects
-  - write side effects
   - model-specific availability such as shared, DMG-only, CGB-only, absent in the current model, or stubbed
-- The descriptor should support readback composition from latched bits, dynamic bits, forced bits, and unimplemented bits rather than assuming all visible bits come from one stored byte.
+- The public bus-facing descriptor does not need to duplicate every per-bit readback rule if that would create a second shadow register model inside the bus.
+- Readable bits, writable bits, forced bits, dynamic bits, and read or write side effects should still remain explicit somewhere, but the source of truth should live with the owning subsystem's register handler or equally explicit register-local contract rather than in a duplicated bus-side schema.
+- Do not collapse materially different registers such as `LY`, write-only `NR13`, wave RAM, and reserved holes into one generic bucket if the descriptor is meant to be consumed as register metadata.
 
 ## MMIO access-class baseline
 

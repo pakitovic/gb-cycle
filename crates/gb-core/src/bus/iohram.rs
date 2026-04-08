@@ -10,7 +10,7 @@ use crate::timer::Timer;
 
 use super::{
     AddressRouter, BLOCKED_READ_VALUE, BusAddressInfo, BusRegion, HRAM_LEN, IoRegisterAvailability,
-    IoRegisterKind,
+    IoRegisterKind, IoRegisterOwner,
 };
 
 #[derive(Default)]
@@ -119,9 +119,6 @@ impl IoHramDomain {
                     interrupts.read_if_with_pending_requests(io.interrupt_flag_pending_mask)
                 })
             }
-            IoRegisterKind::Lcd => io
-                .ppu
-                .map_or(BLOCKED_READ_VALUE, |ppu| ppu.read_register(address)),
             IoRegisterKind::OamDma => io.dma.map_or(BLOCKED_READ_VALUE, DmaController::read_ff46),
             IoRegisterKind::BootRomDisable => io
                 .boot
@@ -129,10 +126,16 @@ impl IoHramDomain {
             IoRegisterKind::InterruptEnable => io
                 .interrupts
                 .map_or(BLOCKED_READ_VALUE, InterruptController::read_ie),
-            IoRegisterKind::Sound => io
-                .apu
-                .map_or(BLOCKED_READ_VALUE, |apu| apu.read_register(address)),
-            IoRegisterKind::CgbSystem | IoRegisterKind::Reserved => BLOCKED_READ_VALUE,
+            _ => match info.owner() {
+                IoRegisterOwner::Ppu => io
+                    .ppu
+                    .map_or(BLOCKED_READ_VALUE, |ppu| ppu.read_register(address)),
+                IoRegisterOwner::Apu => io
+                    .apu
+                    .map_or(BLOCKED_READ_VALUE, |apu| apu.read_register(address)),
+                IoRegisterOwner::CgbOnly | IoRegisterOwner::Reserved => BLOCKED_READ_VALUE,
+                _ => unreachable!("MMIO descriptor kind/owner mismatch for {address:#06X}"),
+            },
         }
     }
 
@@ -199,11 +202,6 @@ impl IoHramDomain {
                     interrupts.write_if(value);
                 }
             }
-            IoRegisterKind::Lcd => {
-                if let Some(ppu) = io.ppu {
-                    ppu.write_register(address, value);
-                }
-            }
             IoRegisterKind::OamDma => {
                 if let Some(dma) = io.dma {
                     dma.write_ff46(value);
@@ -219,17 +217,25 @@ impl IoHramDomain {
                     interrupts.write_ie(value);
                 }
             }
-            IoRegisterKind::Sound => {
-                let BusIoWriteView { apu, timer, .. } = io;
-                if let Some(apu) = apu {
-                    let div_apu_source_high = address == 0xFF26
-                        && timer
-                            .as_ref()
-                            .is_some_and(|timer| timer.div_apu_source_high());
-                    apu.write_register_with_div_apu_source(address, value, div_apu_source_high);
+            _ => match info.owner() {
+                IoRegisterOwner::Ppu => {
+                    if let Some(ppu) = io.ppu {
+                        ppu.write_register(address, value);
+                    }
                 }
-            }
-            IoRegisterKind::CgbSystem | IoRegisterKind::Reserved => {}
+                IoRegisterOwner::Apu => {
+                    let BusIoWriteView { apu, timer, .. } = io;
+                    if let Some(apu) = apu {
+                        let div_apu_source_high = address == 0xFF26
+                            && timer
+                                .as_ref()
+                                .is_some_and(|timer| timer.div_apu_source_high());
+                        apu.write_register_with_div_apu_source(address, value, div_apu_source_high);
+                    }
+                }
+                IoRegisterOwner::CgbOnly | IoRegisterOwner::Reserved => {}
+                _ => unreachable!("MMIO descriptor kind/owner mismatch for {address:#06X}"),
+            },
         }
     }
 }

@@ -190,14 +190,25 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
 
     let ff46 = bus.describe_io_register(0xFF46).unwrap();
     let ff4c = bus.describe_io_register(0xFF4C).unwrap();
+    let ff4d = bus.describe_io_register(0xFF4D).unwrap();
     let ff50 = bus.describe_io_register(0xFF50).unwrap();
+    let ff13 = bus.describe_io_register(0xFF13).unwrap();
+    let ff30 = bus.describe_io_register(0xFF30).unwrap();
+    let ff44 = bus.describe_io_register(0xFF44).unwrap();
     let ie = bus.describe_io_register(0xFFFF).unwrap();
 
     assert_eq!(ff46.owner(), IoRegisterOwner::Dma);
     assert_eq!(ff46.kind(), IoRegisterKind::OamDma);
     assert_eq!(ff4c.owner(), IoRegisterOwner::CgbOnly);
     assert_eq!(ff4c.availability(), IoRegisterAvailability::CgbOnly);
-    assert_eq!(ff4c.kind(), IoRegisterKind::CgbSystem);
+    assert_eq!(ff4c.kind(), IoRegisterKind::Key0);
+    assert_eq!(ff4d.kind(), IoRegisterKind::Key1);
+    assert_eq!(ff13.access(), IoRegisterAccess::WriteOnly);
+    assert_eq!(ff13.kind(), IoRegisterKind::Nr13);
+    assert_eq!(ff30.access(), IoRegisterAccess::ReadWrite);
+    assert_eq!(ff30.kind(), IoRegisterKind::WaveRam);
+    assert_eq!(ff44.access(), IoRegisterAccess::ReadOnly);
+    assert_eq!(ff44.kind(), IoRegisterKind::Ly);
     assert_eq!(ff50.owner(), IoRegisterOwner::Boot);
     assert_eq!(ff50.access(), IoRegisterAccess::WriteOnly);
     assert_eq!(ie.kind(), IoRegisterKind::InterruptEnable);

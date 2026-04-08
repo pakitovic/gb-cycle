@@ -26,8 +26,28 @@ fn public_io_descriptor_table_covers_all_mmio_addresses_and_ie_without_gaps() {
         IoRegisterKind::OamDma
     );
     assert_eq!(
+        bus.describe_io_register(0xFF44).unwrap().kind(),
+        IoRegisterKind::Ly
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF44).unwrap().access(),
+        gb_core::IoRegisterAccess::ReadOnly
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF13).unwrap().kind(),
+        IoRegisterKind::Nr13
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF30).unwrap().kind(),
+        IoRegisterKind::WaveRam
+    );
+    assert_eq!(
         bus.describe_io_register(0xFF50).unwrap().kind(),
         IoRegisterKind::BootRomDisable
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF4C).unwrap().kind(),
+        IoRegisterKind::Key0
     );
     assert_eq!(
         bus.describe_io_register(0xFF4C).unwrap().availability(),

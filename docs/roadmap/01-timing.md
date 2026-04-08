@@ -53,7 +53,7 @@ Build the real foundation of the emulated system on top of which CPU, timer, DMA
 ##### I/O and boot
 
 - general I/O registers with base read/write rules
-- centralized MMIO metadata describing owner, access class, readable bits, writable bits, dynamic bits, reserved bits, read side effects, write side effects, and model-specific availability
+- centralized MMIO metadata describing owner, per-address register identity, access class, and model-specific availability, with detailed bit-level semantics remaining owned by the responsible subsystem
 - MMIO infrastructure for mixed registers composed from latched, dynamic, forced, and unimplemented bits
 - boot ROM integration into the memory map
 - correct boot ROM unmapping
@@ -164,16 +164,17 @@ purely mechanical wiring that does not widen hardware scope.
    Goal: remove any possibility of treating `0xFF00-0xFF7F` and `0xFFFF` like generic RAM by routing every register through an explicit owner contract.
    Scope:
    - central MMIO descriptor table or equivalent routed-owner mechanism
-   - mixed-register composition for latched, dynamic, forced, and unimplemented bits
+   - per-address MMIO register identity plus routed access-class metadata
+   - mixed-register composition for latched, dynamic, forced, and unimplemented bits inside the owning subsystem contracts
    - first closed register set: `JOYP`, `DIV`, `TIMA`, `TMA`, `TAC`, `IF`, `IE`, `FF46`, and `FF50`
    - explicit DMG fallback policy for unavailable CGB-only registers
    Done criteria:
-   - every MMIO address resolves to an explicit owner and access contract
-   - mixed registers are represented per field rather than as coarse masked byte storage
+   - every MMIO address resolves to an explicit owner, register identity, and access contract
+   - mixed registers preserve per-field behavior in the owning subsystem rather than as coarse masked byte storage
    - immediate MMIO side effects are visible on the routed access path rather than in deferred cleanup code
    Validation gate:
    - completeness tests fail if any MMIO address falls back to generic storage
-   - unit tests cover mixed-register readback and write masking behavior
+   - unit tests cover per-address MMIO descriptor accuracy plus representative mixed-register readback and write masking behavior
    - integration tests cover immediate side effects for `FF46` and `FF50` plus DMG `0xFF` readback on unavailable CGB-only registers
 5. **Phase 1E — Boot mapping, startup presets, and handoff**
    Goal: connect boot-ROM overlay, `SkipBoot`, and future real-boot handoff infrastructure to the real bus, MMIO, and cartridge routing established earlier in the phase.
@@ -208,9 +209,9 @@ These steps define register-contract groundwork only.
 They do not move full joypad, serial, audio, or timing-complete PPU implementation out of their later dedicated phases; those later phases still own complete functional behavior on top of the earlier MMIO contract baseline.
 
 1. Define the central MMIO metadata table.
-   Acceptance criteria: every address in `0xFF00-0xFF7F` and `0xFFFF` resolves to an explicit descriptor or dedicated handler, and no MMIO address falls back to accidental generic RAM behavior.
+   Acceptance criteria: every address in `0xFF00-0xFF7F` and `0xFFFF` resolves to an explicit descriptor or dedicated handler, the descriptor identifies the concrete register at that address, and no MMIO address falls back to accidental generic RAM behavior.
 2. Add mixed-register composition infrastructure.
-   Acceptance criteria: registers such as `JOYP`, `STAT`, `NR14`, and `NR52` can compose latched, dynamic, forced, and unimplemented bits without allowing read-only fields to be overwritten accidentally.
+   Acceptance criteria: registers such as `JOYP`, `STAT`, `NR14`, and `NR52` can compose latched, dynamic, forced, and unimplemented bits in their owning subsystem without allowing read-only fields to be overwritten accidentally.
 3. Close the first non-trivial register-contract baselines.
    Scope: `JOYP`, `DIV/TIMA/TMA/TAC`, `IF/IE`, `FF46`, and `FF50`.
    Acceptance criteria: read/write behavior and immediate side effects are observable through the routed MMIO path without duplicated logic in CPU or bus helpers.
@@ -219,7 +220,7 @@ They do not move full joypad, serial, audio, or timing-complete PPU implementati
    Acceptance criteria: dynamic bits, LCD side effects, and impossible writes such as `LY` stores are all handled by the PPU-owned contract.
 5. Close serial and audio MMIO contract baselines.
    Scope: `SB/SC`, the `NRxx` family, and wave RAM ownership / visibility rules.
-   Acceptance criteria: the routed MMIO contract already encodes correct read/write policy, immediate register-side effects, and non-RAM-like behavior for these ranges, including wave RAM's explicit ownership and non-reset-with-`NR52` policy; full transfer timing and full APU behavior remain owned by later subsystem phases.
+   Acceptance criteria: the routed MMIO contract already encodes correct register identity, read/write policy, immediate register-side effects, and non-RAM-like behavior for these ranges, including wave RAM's explicit ownership and non-reset-with-`NR52` policy; full transfer timing and full APU behavior remain owned by later subsystem phases.
 6. Close absent and CGB-only register policy in DMG mode.
    Acceptance criteria: unavailable CGB-only MMIO registers do not behave like RAM, readback follows documented DMG fallback values, and writes follow an explicit ignored-or-stub policy.
 
@@ -269,4 +270,3 @@ the source of truth for CI/oracle usage of execution modes.
 3. Integrate execution mode into save states, replays, CI, and tooling.
    Scope: persist execution-mode metadata, reject mismatched-mode restore by default, keep CI and oracle comparison on `Strict`, and segregate `Experimental` artifacts.
    Acceptance criteria: save states and replay logs record the originating mode and active overrides, strict-mode CI remains the official closure path, and experimental runs cannot be mistaken for oracle evidence.
-
