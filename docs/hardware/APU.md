@@ -181,6 +181,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Writes to `NR50` should affect output immediately on the shared T-cycle timeline.
 - `NR50` changes should remain part of the same DC-offset / pop-sensitive hardware path as routing and DAC-enable changes rather than being deferred to host-buffer boundaries.
 - Keep an explicit routed slot for `VIN` in the master mixer path even if the current DMG target leaves it neutral at analog `0`.
+- The output-path connectivity decision should therefore consider routed `VIN` separately from the four channel DAC lanes; a non-neutral routed `VIN` must keep the master path connected even if all channel DACs are off.
 
 ## HPF, DC-offset, and pops baseline
 
@@ -189,7 +190,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The HPF must keep persistent state across captured samples; it is not a memoryless per-sample transform.
 - Leaving the HPF out may exist as a temporary debug mode, but not as the target DMG-family behavior.
 - The design should leave room for later model-specific HPF aggressiveness differences instead of hard-wiring one backend-oriented filter constant forever.
-- When all four channel DACs are off, the master-volume path should disconnect from the output: the post-HPF output becomes `0`, and the HPF capacitor stops evolving until some DAC is enabled again.
+- When all four channel DACs are off and routed `VIN` is neutral, the master-volume path should disconnect from the output: the post-HPF output becomes `0`, and the HPF capacitor stops evolving until some routed master input becomes non-neutral again.
 - Documented pops caused by DAC enable changes, `NR51` routing changes, or `NR50` volume changes should emerge from the modeled DC-offset step plus HPF response rather than from ad hoc smoothing or suppression in the host backend.
 - A debug tool may visualize DC offset or pop-inducing events, but the default emulation path should not erase those hardware-visible artifacts.
 
