@@ -1,3 +1,4 @@
+use crate::cartridge::CartridgeExternalAccessInfo;
 use crate::ppu::PpuBusState;
 
 use super::map::BusAddressInfo;
@@ -206,17 +207,22 @@ pub struct BusAccessResolution {
     requested_address: u16,
     nominal_target: BusAddressInfo,
     target: BusAddressInfo,
+    nominal_cartridge_external: Option<CartridgeExternalAccessInfo>,
+    cartridge_external: Option<CartridgeExternalAccessInfo>,
     nominal_disposition: BusAccessDisposition,
     disposition: BusAccessDisposition,
 }
 
 impl BusAccessResolution {
+    #[allow(clippy::too_many_arguments)]
     pub const fn new(
         requester: BusRequester,
         kind: BusAccessKind,
         requested_address: u16,
         nominal_target: BusAddressInfo,
         target: BusAddressInfo,
+        nominal_cartridge_external: Option<CartridgeExternalAccessInfo>,
+        cartridge_external: Option<CartridgeExternalAccessInfo>,
         nominal_disposition: BusAccessDisposition,
         disposition: BusAccessDisposition,
     ) -> Self {
@@ -226,6 +232,8 @@ impl BusAccessResolution {
             requested_address,
             nominal_target,
             target,
+            nominal_cartridge_external,
+            cartridge_external,
             nominal_disposition,
             disposition,
         }
@@ -253,6 +261,18 @@ impl BusAccessResolution {
 
     pub const fn effective_target(self) -> BusAddressInfo {
         self.target
+    }
+
+    pub const fn nominal_cartridge_external(self) -> Option<CartridgeExternalAccessInfo> {
+        self.nominal_cartridge_external
+    }
+
+    pub const fn cartridge_external(self) -> Option<CartridgeExternalAccessInfo> {
+        self.cartridge_external
+    }
+
+    pub const fn effective_cartridge_external(self) -> Option<CartridgeExternalAccessInfo> {
+        self.cartridge_external
     }
 
     pub const fn nominal_disposition(self) -> BusAccessDisposition {

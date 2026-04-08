@@ -1,4 +1,4 @@
-use crate::cartridge::CartridgeSlot;
+use crate::cartridge::{CartridgeExternalAccessInfo, CartridgeSlot};
 use crate::scheduler::TCycle;
 
 use super::{
@@ -8,27 +8,45 @@ use super::{
 };
 
 impl Bus {
+    // Public observability is CPU-visible. The runtime still resolves other
+    // bus masters through the shared internal arbitration path.
     pub fn resolve_access(
+        &self,
+        kind: BusAccessKind,
+        address: u16,
+        state: &BusArbitrationState,
+        cartridge: Option<&CartridgeSlot>,
+    ) -> BusAccessResolution {
+        self.resolve_requester_access(BusRequester::Cpu, kind, address, state, cartridge)
+    }
+
+    pub(crate) fn resolve_requester_access(
         &self,
         requester: BusRequester,
         kind: BusAccessKind,
         address: u16,
         state: &BusArbitrationState,
+        cartridge: Option<&CartridgeSlot>,
     ) -> BusAccessResolution {
         let nominal_target = self.resolve_nominal_target(kind, address, state);
         let nominal_disposition =
             self.evaluate_access_policy(requester, kind, nominal_target, state);
+        let nominal_cartridge_external =
+            self.describe_cartridge_external_access(nominal_target, cartridge);
 
         if let Some(conflict_source_address) =
             self.cpu_dma_conflict_source_address(requester, address, state)
         {
             let target = self.resolve_nominal_target(kind, conflict_source_address, state);
+            let cartridge_external = self.describe_cartridge_external_access(target, cartridge);
             return BusAccessResolution::new(
                 requester,
                 kind,
                 address,
                 nominal_target,
                 target,
+                nominal_cartridge_external,
+                cartridge_external,
                 nominal_disposition,
                 BusAccessDisposition::Allowed,
             );
@@ -40,6 +58,8 @@ impl Bus {
             address,
             nominal_target,
             nominal_target,
+            nominal_cartridge_external,
+            nominal_cartridge_external,
             nominal_disposition,
             nominal_disposition,
         )
@@ -83,7 +103,13 @@ impl Bus {
         cartridge: Option<&CartridgeSlot>,
         io: BusIoReadView<'_>,
     ) -> u8 {
-        let resolution = self.resolve_access(requester, BusAccessKind::Read, address, state);
+        let resolution = self.resolve_requester_access(
+            requester,
+            BusAccessKind::Read,
+            address,
+            state,
+            cartridge,
+        );
 
         match resolution.disposition() {
             BusAccessDisposition::Allowed => {
@@ -105,7 +131,13 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoReadView<'_>,
     ) -> u8 {
-        let resolution = self.resolve_access(requester, BusAccessKind::Read, address, state);
+        let resolution = self.resolve_requester_access(
+            requester,
+            BusAccessKind::Read,
+            address,
+            state,
+            cartridge.as_deref(),
+        );
 
         match resolution.disposition() {
             BusAccessDisposition::Allowed => {
@@ -160,7 +192,13 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoWriteView<'_>,
     ) {
-        let resolution = self.resolve_access(requester, BusAccessKind::Write, address, state);
+        let resolution = self.resolve_requester_access(
+            requester,
+            BusAccessKind::Write,
+            address,
+            state,
+            cartridge.as_deref(),
+        );
 
         match resolution.disposition() {
             BusAccessDisposition::Allowed => {
@@ -184,7 +222,13 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoWriteView<'_>,
     ) {
-        let resolution = self.resolve_access(requester, BusAccessKind::Write, address, state);
+        let resolution = self.resolve_requester_access(
+            requester,
+            BusAccessKind::Write,
+            address,
+            state,
+            cartridge.as_deref(),
+        );
 
         match resolution.disposition() {
             BusAccessDisposition::Allowed => {
@@ -233,5 +277,20 @@ impl Bus {
         state: &BusArbitrationState,
     ) -> BusAddressInfo {
         self.router.resolve_nominal_target(kind, address, state)
+    }
+
+    fn describe_cartridge_external_access(
+        &self,
+        target: BusAddressInfo,
+        cartridge: Option<&CartridgeSlot>,
+    ) -> Option<CartridgeExternalAccessInfo> {
+        if target.region() != BusRegion::CartridgeExternal {
+            return None;
+        }
+
+        Some(cartridge.map_or_else(
+            || CartridgeExternalAccessInfo::no_device(target.address()),
+            |cartridge| cartridge.describe_external_access(target.address()),
+        ))
     }
 }

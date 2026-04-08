@@ -1,7 +1,7 @@
 use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection};
 use crate::ppu::{OamCorruptionEventKind, Ppu, PpuAccessMode};
 
-use super::{Bus, BusAccessKind, BusArbitrationState, BusBlockReason, BusRegion, BusRequester};
+use super::{Bus, BusAccessKind, BusArbitrationState, BusBlockReason, BusRegion};
 
 impl Bus {
     pub(crate) fn route_cpu_address_event(
@@ -37,8 +37,7 @@ impl Bus {
             | CpuAddressEventKind::WriteWithIncDec => {
                 let access_address = event.access_address?;
                 let access_kind = access_kind_for_cpu_address_event(event.kind);
-                let resolution =
-                    self.resolve_access(BusRequester::Cpu, access_kind, access_address, state);
+                let resolution = self.resolve_access(access_kind, access_address, state, None);
 
                 let access_hits_corruption = match resolution.target().region() {
                     BusRegion::Oam

@@ -132,8 +132,8 @@ fn boot_overlay_changes_nominal_read_ownership_without_changing_rom_space_writes
     let bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_dmg_low_bytes());
 
-    let read = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x0000, &state);
-    let write = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0x0000, &state);
+    let read = bus.resolve_access(BusAccessKind::Read, 0x0000, &state, None);
+    let write = bus.resolve_access(BusAccessKind::Write, 0x0000, &state, None);
 
     assert_eq!(read.target().region(), BusRegion::BootRom);
     assert_eq!(read.target().owner(), BusRegionOwner::Boot);
@@ -149,10 +149,10 @@ fn cgb_boot_overlay_state_exposes_both_boot_windows() {
     let bus = Bus::new(ConsoleModel::Cgb);
     let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_cgb_windows());
 
-    let low_window = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x0000, &state);
-    let upper_window = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x0200, &state);
-    let cartridge_gap = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x0100, &state);
-    let write = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0x0200, &state);
+    let low_window = bus.resolve_access(BusAccessKind::Read, 0x0000, &state, None);
+    let upper_window = bus.resolve_access(BusAccessKind::Read, 0x0200, &state, None);
+    let cartridge_gap = bus.resolve_access(BusAccessKind::Read, 0x0100, &state, None);
+    let write = bus.resolve_access(BusAccessKind::Write, 0x0200, &state, None);
 
     assert_eq!(low_window.target().region(), BusRegion::BootRom);
     assert_eq!(upper_window.target().region(), BusRegion::BootRom);
@@ -171,18 +171,13 @@ fn cpu_vram_and_oam_access_policy_depends_on_live_ppu_state() {
     let mode2_state =
         BusArbitrationState::default().with_ppu(PpuBusState::lcd_enabled(PpuAccessMode::OamScan));
 
-    let vram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x8000, &mode3_state);
-    let oam = bus.resolve_access(
-        BusRequester::Cpu,
-        BusAccessKind::Write,
-        0xFE00,
-        &mode2_state,
-    );
+    let vram = bus.resolve_access(BusAccessKind::Read, 0x8000, &mode3_state, None);
+    let oam = bus.resolve_access(BusAccessKind::Write, 0xFE00, &mode2_state, None);
     let lcd_off = bus.resolve_access(
-        BusRequester::Cpu,
         BusAccessKind::Read,
         0x8000,
         &BusArbitrationState::default(),
+        None,
     );
 
     assert_eq!(
@@ -202,17 +197,16 @@ fn cpu_vram_and_oam_access_policy_depends_on_live_ppu_state() {
 }
 
 #[test]
-fn external_bus_dma_policy_blocks_all_cpu_regions_except_hram_ff46_and_non_cpu_requesters() {
+fn external_bus_dma_policy_blocks_all_cpu_regions_except_hram_and_ff46() {
     let bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default().with_dma(DmaBusState::external_bus_blocked(Some(
         DmaMemoryRegionImpact::Oam,
     )));
 
-    let cpu_blocked = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xC000, &state);
-    let cpu_vram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x8000, &state);
-    let cpu_hram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xFF80, &state);
-    let cpu_ff46 = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xFF46, &state);
-    let dma_allowed = bus.resolve_access(BusRequester::Dma, BusAccessKind::Read, 0xC000, &state);
+    let cpu_blocked = bus.resolve_access(BusAccessKind::Read, 0xC000, &state, None);
+    let cpu_vram = bus.resolve_access(BusAccessKind::Read, 0x8000, &state, None);
+    let cpu_hram = bus.resolve_access(BusAccessKind::Read, 0xFF80, &state, None);
+    let cpu_ff46 = bus.resolve_access(BusAccessKind::Read, 0xFF46, &state, None);
 
     assert_eq!(
         cpu_blocked.disposition(),
@@ -230,7 +224,6 @@ fn external_bus_dma_policy_blocks_all_cpu_regions_except_hram_ff46_and_non_cpu_r
     );
     assert!(cpu_hram.disposition().is_allowed());
     assert!(cpu_ff46.disposition().is_allowed());
-    assert!(dma_allowed.disposition().is_allowed());
 }
 
 #[test]
@@ -240,10 +233,10 @@ fn external_bus_dma_policy_ignores_cpu_writes_outside_hram_and_ff46() {
         DmaMemoryRegionImpact::Oam,
     )));
 
-    let blocked_wram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0xC000, &state);
-    let allowed_vram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0x8000, &state);
-    let allowed_hram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0xFF80, &state);
-    let allowed_ff46 = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0xFF46, &state);
+    let blocked_wram = bus.resolve_access(BusAccessKind::Write, 0xC000, &state, None);
+    let allowed_vram = bus.resolve_access(BusAccessKind::Write, 0x8000, &state, None);
+    let allowed_hram = bus.resolve_access(BusAccessKind::Write, 0xFF80, &state, None);
+    let allowed_ff46 = bus.resolve_access(BusAccessKind::Write, 0xFF46, &state, None);
 
     assert_eq!(
         blocked_wram.disposition(),
@@ -268,9 +261,9 @@ fn video_bus_dma_policy_blocks_vram_and_oam_but_keeps_wram_accessible() {
         DmaMemoryRegionImpact::Oam,
     )));
 
-    let wram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xC000, &state);
-    let vram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x8000, &state);
-    let oam = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xFE00, &state);
+    let wram = bus.resolve_access(BusAccessKind::Read, 0xC000, &state, None);
+    let vram = bus.resolve_access(BusAccessKind::Read, 0x8000, &state, None);
+    let oam = bus.resolve_access(BusAccessKind::Read, 0xFE00, &state, None);
 
     assert!(wram.disposition().is_allowed());
     assert_eq!(
@@ -298,8 +291,8 @@ fn video_bus_dma_constraints_take_precedence_over_ppu_mode_restrictions() {
         )))
         .with_ppu(PpuBusState::lcd_enabled(PpuAccessMode::Drawing));
 
-    let vram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x8000, &state);
-    let oam = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xFE00, &state);
+    let vram = bus.resolve_access(BusAccessKind::Read, 0x8000, &state, None);
+    let oam = bus.resolve_access(BusAccessKind::Read, 0xFE00, &state, None);
 
     assert_eq!(
         vram.disposition().blocked_reason(),
@@ -333,12 +326,12 @@ fn public_bus_state_accessors_expose_blocked_values_and_built_resolutions() {
     assert!(BootRomBusState::map_cgb_windows().maps_cgb_upper_window());
 
     let resolution = bus.resolve_access(
-        BusRequester::Boot,
         BusAccessKind::Write,
         0x0000,
         &BusArbitrationState::default(),
+        None,
     );
-    assert_eq!(resolution.requester(), BusRequester::Boot);
+    assert_eq!(resolution.requester(), BusRequester::Cpu);
     assert_eq!(resolution.kind(), BusAccessKind::Write);
 }
 
@@ -350,7 +343,7 @@ fn public_bus_resolution_exposes_nominal_and_effective_targets_during_dma_redire
             .with_cpu_conflict_source_address(Some(0xC100)),
     );
 
-    let resolution = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xC200, &state);
+    let resolution = bus.resolve_access(BusAccessKind::Read, 0xC200, &state, None);
 
     assert_eq!(resolution.requested_address(), 0xC200);
     assert_eq!(resolution.nominal_target().address(), 0xC200);
@@ -375,12 +368,12 @@ fn unusable_area_readback_tracks_oam_blocked_periods() {
     let oam_blocked =
         BusArbitrationState::default().with_ppu(PpuBusState::lcd_enabled(PpuAccessMode::Drawing));
 
-    let blocked = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xFEA0, &oam_blocked);
+    let blocked = bus.resolve_access(BusAccessKind::Read, 0xFEA0, &oam_blocked, None);
     let ordinary = bus.resolve_access(
-        BusRequester::Cpu,
         BusAccessKind::Read,
         0xFEA0,
         &BusArbitrationState::default(),
+        None,
     );
 
     assert_eq!(
@@ -401,12 +394,7 @@ fn unusable_area_readback_tracks_dma_video_bus_oam_conflicts() {
         DmaBusState::video_bus_blocked(Some(DmaMemoryRegionImpact::Oam)),
     );
 
-    let blocked = bus.resolve_access(
-        BusRequester::Cpu,
-        BusAccessKind::Read,
-        0xFEA0,
-        &dma_video_bus_blocked,
-    );
+    let blocked = bus.resolve_access(BusAccessKind::Read, 0xFEA0, &dma_video_bus_blocked, None);
 
     assert_eq!(
         blocked.disposition(),

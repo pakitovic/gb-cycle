@@ -32,12 +32,14 @@ pub use bus::{
     UnusableAreaWriteProfile,
 };
 pub use cartridge::{
-    CartridgeClassification, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeHeader,
+    CartridgeClassification, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
+    CartridgeExternalAccessInfo, CartridgeExternalAvailability, CartridgeExternalReadBehavior,
+    CartridgeExternalTarget, CartridgeExternalWriteBehavior, CartridgeHeader,
     CartridgeHeaderParseError, CartridgeLoadError, CartridgeLoadReport,
     CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
-    CartridgeRamPayloadKind, CartridgeSelection, CartridgeSlot, CartridgeSlotState,
-    CartridgeSnapshot, CgbFlag, Mbc3RtcPersistentState, PersistentCartState, RamSizeInfo,
-    RomSizeInfo, SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
+    CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
+    CartridgeSlotState, CartridgeSnapshot, CgbFlag, Mbc3RtcPersistentState, PersistentCartState,
+    RamSizeInfo, RomSizeInfo, SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
 };
 pub use cpu::{
     CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,

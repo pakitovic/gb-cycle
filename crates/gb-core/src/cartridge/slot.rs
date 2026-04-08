@@ -247,6 +247,14 @@ impl CartridgeSlot {
             .map_or(RAM_ABSENT_READ_VALUE, |device| device.read_ram(address))
     }
 
+    pub fn describe_external_access(&self, address: u16) -> CartridgeExternalAccessInfo {
+        self.device
+            .as_ref()
+            .map_or(CartridgeExternalAccessInfo::no_device(address), |device| {
+                device.describe_external_access(address)
+            })
+    }
+
     pub(crate) fn read_ram_timed(&mut self, address: u16, t_cycle: TCycle) -> u8 {
         self.device
             .as_mut()

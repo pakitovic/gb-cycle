@@ -421,6 +421,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
   - `0x4000-0x7FFF`: switchable ROM bank `0x01..=0x7F`
   - `0xA000-0xBFFF`: external RAM bank `0x00..=0x03`, reserved selector states `0x04..=0x07`, or RTC register `0x08..=0x0C`, depending on the current selector
 - The bus should still delegate `0xA000-0xBFFF` completely to the cartridge device; it must not infer from the address alone whether the active target is SRAM or RTC.
+- For this repo's public observability contract, the cartridge should expose a typed descriptor for the currently selected `0xA000-0xBFFF` aperture so `Bus::resolve_access()` can report whether the live target is RAM, RTC, a reserved selector, disabled, or absent without duplicating MBC3 logic in the bus layer.
 - `0x0000-0x1FFF` is a write-only RAM / RTC-enable register. Any write whose low nibble is `0xA` enables both external RAM and RTC-register access; other values disable both.
 - With RAM / RTC disabled, `0xA000-0xBFFF` reads and writes should follow one explicit project policy rather than accidental backing-store behavior. A default of `0xFF` is acceptable, but the policy should remain explicit and testable.
 - `0x2000-0x3FFF` is a write-only raw `7`-bit ROM-bank register. Store `value & 0x7F`, ignore upper data bits, apply the documented `0 -> 1` translation for the switchable ROM window, and then mask the effective bank by the real number of loaded ROM banks.

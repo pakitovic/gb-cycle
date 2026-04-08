@@ -1,7 +1,9 @@
 use gb_core::{
     BootRomBusState, Bus, BusAccessKind, BusArbitrationState, BusRequester,
-    CartridgeClassification, CartridgeHeader, CartridgePersistenceProfile,
-    CartridgePersistentStateError, CartridgeRamPayloadKind, CartridgeSelection, CartridgeSlot,
+    CartridgeClassification, CartridgeExternalAccessInfo, CartridgeExternalAvailability,
+    CartridgeExternalReadBehavior, CartridgeExternalTarget, CartridgeExternalWriteBehavior,
+    CartridgeHeader, CartridgePersistenceProfile, CartridgePersistentStateError,
+    CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
     CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy, HeuristicPolicy,
     Machine, MachineConfig, Mbc3RtcPersistentState, OverridePolicy, PersistentCartState,
     SupportedCartridgeFamily, UnsupportedCartridgeCategory, ValidationPolicy,
@@ -257,12 +259,7 @@ fn no_mbc_rom_reads_and_external_ram_writes_route_through_the_cartridge_device()
 
     let boot_overlay_state =
         BusArbitrationState::default().with_boot_rom(BootRomBusState::map_dmg_low_bytes());
-    let resolution = bus.resolve_access(
-        BusRequester::Cpu,
-        BusAccessKind::Read,
-        0x0000,
-        &boot_overlay_state,
-    );
+    let resolution = bus.resolve_access(BusAccessKind::Read, 0x0000, &boot_overlay_state, None);
     assert_eq!(resolution.target().region(), gb_core::BusRegion::BootRom);
 }
 
@@ -278,6 +275,74 @@ fn machine_load_cartridge_installs_the_loaded_slot() {
     assert!(diagnostics.is_empty());
     assert_eq!(machine.cartridge().state(), CartridgeSlotState::NoMbc);
     assert_eq!(machine.cartridge().read_rom(0x0100), 0x31);
+}
+
+#[test]
+fn resolve_access_surfaces_disabled_mbc1_external_ram_state() {
+    let rom = build_banked_mbc1_rom(0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
+    let (cartridge, _) = report.into_parts();
+    let bus = Bus::new(ConsoleModel::Dmg);
+
+    let resolution = bus.resolve_access(
+        BusAccessKind::Read,
+        0xA000,
+        &BusArbitrationState::default(),
+        Some(&cartridge),
+    );
+    let external = resolution
+        .cartridge_external()
+        .expect("cartridge external aperture should be described");
+
+    assert_eq!(
+        resolution.target().region(),
+        gb_core::BusRegion::CartridgeExternal
+    );
+    assert_eq!(resolution.nominal_cartridge_external(), Some(external));
+    assert_eq!(
+        external,
+        CartridgeExternalAccessInfo::new(
+            0xA000,
+            CartridgeExternalTarget::BankedRam { bank: 0 },
+            CartridgeExternalAvailability::Disabled,
+            CartridgeExternalReadBehavior::FallbackValue(0xFF),
+            CartridgeExternalWriteBehavior::Ignored,
+        )
+    );
+}
+
+#[test]
+fn resolve_access_surfaces_mbc3_rtc_selection_in_the_external_window() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let (mut cartridge, _) = report.into_parts();
+    let bus = Bus::new(ConsoleModel::Dmg);
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+
+    let resolution = bus.resolve_access(
+        BusAccessKind::Read,
+        0xA000,
+        &BusArbitrationState::default(),
+        Some(&cartridge),
+    );
+    let external = resolution
+        .cartridge_external()
+        .expect("cartridge external aperture should be described");
+
+    assert_eq!(
+        external,
+        CartridgeExternalAccessInfo::new(
+            0xA000,
+            CartridgeExternalTarget::RtcRegister(CartridgeRtcRegister::Seconds),
+            CartridgeExternalAvailability::Accessible,
+            CartridgeExternalReadBehavior::RtcLatched,
+            CartridgeExternalWriteBehavior::RtcLive,
+        )
+    );
 }
 
 #[test]

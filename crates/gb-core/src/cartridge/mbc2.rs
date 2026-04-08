@@ -1,6 +1,31 @@
 use super::*;
 
 impl Mbc2Cartridge {
+    pub(in crate::cartridge) fn describe_external_access(
+        &self,
+        address: u16,
+    ) -> CartridgeExternalAccessInfo {
+        CartridgeExternalAccessInfo::new(
+            address,
+            CartridgeExternalTarget::Mbc2InternalRam,
+            if self.ram_enabled {
+                CartridgeExternalAvailability::Accessible
+            } else {
+                CartridgeExternalAvailability::Disabled
+            },
+            if self.ram_enabled {
+                CartridgeExternalReadBehavior::Storage
+            } else {
+                CartridgeExternalReadBehavior::FallbackValue(RAM_ABSENT_READ_VALUE)
+            },
+            if self.ram_enabled {
+                CartridgeExternalWriteBehavior::Storage
+            } else {
+                CartridgeExternalWriteBehavior::Ignored
+            },
+        )
+    }
+
     pub(in crate::cartridge) fn read_rom(&self, address: u16) -> u8 {
         let address = address as usize;
         let bank_count = self.header.rom_size.bank_count.unwrap_or(0);
