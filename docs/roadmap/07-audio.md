@@ -283,7 +283,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Acceptance criteria: each channel can route to left, right, both, or neither; `NR51` writes are immediate; and routing is modeled as analog-bus inclusion rather than as an external mute shortcut.
 3. Integrate `NR50` master-volume scaling and output-side power-state coherence.
    Scope: per-output master-volume scaling, explicit `VIN` slot, and the effect of `NR52` power-off on active mix contributions.
-   Acceptance criteria: `NR50` level `0` does not mute, maximum volume follows the documented highest factor, and powering the APU off removes active channel contributions from the live mix while preserving wave RAM and `DIV-APU`.
+   Acceptance criteria: `NR50` level `0` does not mute, maximum volume follows the documented highest factor, the master path exposes an explicit routed `VIN` lane even if it is currently neutral, and powering the APU off removes active channel contributions from the live mix while preserving wave RAM and `DIV-APU`.
 4. Add the output HPF and DC-offset / pop behavior.
    Scope: one stateful HPF per stereo output after routing and `NR50`, plus documented pop behavior from DAC-enable, `NR51`, and `NR50` changes.
    Acceptance criteria: left/right HPF state persists across captured samples, output converges back toward neutral DC offset, documented pops emerge from the modeled signal path, and HPF absence remains at most a debug-only bypass.

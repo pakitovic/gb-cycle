@@ -135,7 +135,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - `NR51` should route each channel independently into left and/or right output; it is not just a global mute mask.
 - `NR50` should scale each output with the documented master-volume semantics where value `0` behaves like factor `1` and value `7` behaves like factor `8`.
 - The mixer should sum analog DAC outputs before applying `NR50` master-volume scaling.
-- The design should keep room for `VIN`, even if it remains neutral for now.
+- The master path should keep an explicit `VIN` lane even if the current DMG baseline feeds it a neutral analog `0`.
 - Enabling or disabling DACs, changing `NR51`, or changing `NR50` should be allowed to affect output DC offset and therefore the HPF-visible state; those changes are not memoryless.
 - The APU output path should include a high-pass filter per output channel, after mixing and master-volume scaling.
 - Leaving the HPF out entirely should be treated as a temporary debug mode, not as the target hardware behavior.
@@ -180,7 +180,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - `NR50` should not be treated as a backend-oriented "final gain" knob that is free to renormalize the core's analog range arbitrarily.
 - Writes to `NR50` should affect output immediately on the shared T-cycle timeline.
 - `NR50` changes should remain part of the same DC-offset / pop-sensitive hardware path as routing and DAC-enable changes rather than being deferred to host-buffer boundaries.
-- Keep an explicit slot for `VIN` in the master mixer path even if the current DMG target leaves it neutral.
+- Keep an explicit routed slot for `VIN` in the master mixer path even if the current DMG target leaves it neutral at analog `0`.
 
 ## HPF, DC-offset, and pops baseline
 

@@ -142,10 +142,37 @@ fn nr51_routes_channel_dac_outputs_independently_to_left_and_right_buses() {
         snapshot.output.channel_dac_outputs,
         [ANALOG_ONE, ANALOG_ONE, 0, 0]
     );
+    assert_eq!(snapshot.output.vin_analog_output.left, 0);
+    assert_eq!(snapshot.output.vin_analog_output.right, 0);
     assert_eq!(snapshot.output.mixer_output.left, ANALOG_ONE);
     assert_eq!(snapshot.output.mixer_output.right, ANALOG_ONE);
     assert_eq!(snapshot.output.master_output.left, ANALOG_ONE);
     assert_eq!(snapshot.output.master_output.right, ANALOG_ONE);
+}
+
+#[test]
+fn nr50_vin_bits_route_the_explicit_neutral_vin_lane_without_altering_channel_mix() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF25, 0x11);
+    apu.write_register(0xFF24, 0x00);
+
+    let baseline = apu.snapshot().output;
+    assert_eq!(baseline.vin_analog_output.left, 0);
+    assert_eq!(baseline.vin_analog_output.right, 0);
+    assert_eq!(baseline.master_output.left, ANALOG_ONE);
+    assert_eq!(baseline.master_output.right, ANALOG_ONE);
+
+    apu.write_register(0xFF24, NR50_VIN_LEFT_BIT | NR50_VIN_RIGHT_BIT);
+    let vin_routed = apu.snapshot().output;
+
+    assert_eq!(vin_routed.vin_analog_output.left, 0);
+    assert_eq!(vin_routed.vin_analog_output.right, 0);
+    assert_eq!(vin_routed.mixer_output.left, baseline.mixer_output.left);
+    assert_eq!(vin_routed.mixer_output.right, baseline.mixer_output.right);
+    assert_eq!(vin_routed.master_output.left, baseline.master_output.left);
+    assert_eq!(vin_routed.master_output.right, baseline.master_output.right);
 }
 
 #[test]

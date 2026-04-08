@@ -25,6 +25,8 @@ const NR52_MASTER_POWER_BIT: u8 = 0x80;
 const NR30_DAC_POWER_BIT: u8 = 0x80;
 const CHANNEL_TRIGGER_BIT: u8 = 0x80;
 const LENGTH_ENABLE_BIT: u8 = 0x40;
+const NR50_VIN_LEFT_BIT: u8 = 0x80;
+const NR50_VIN_RIGHT_BIT: u8 = 0x08;
 const NRX4_WRITABLE_MASK: u8 = 0x47;
 const NR44_WRITABLE_MASK: u8 = 0x40;
 const PERIOD_HIGH_MASK: u8 = 0x07;
@@ -195,6 +197,7 @@ pub struct ApuHpfCapacitorSnapshot {
 pub struct ApuOutputSnapshot {
     pub channel_digital_outputs: [u8; 4],
     pub channel_dac_outputs: [i32; 4],
+    pub vin_analog_output: ApuStereoOutputSnapshot,
     pub mixer_output: ApuStereoOutputSnapshot,
     pub master_output: ApuStereoOutputSnapshot,
     pub hpf_output: ApuStereoOutputSnapshot,
@@ -206,6 +209,7 @@ struct MasterControlState {
     powered: bool,
     nr50: u8,
     nr51: u8,
+    vin_input: ApuStereoOutputSnapshot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -2134,8 +2138,9 @@ impl Apu {
     }
 
     fn mixer_output(&self, channel_dac_outputs: [i32; 4]) -> ApuStereoOutputSnapshot {
-        let mut left = 0;
-        let mut right = 0;
+        let vin_analog_output = self.vin_analog_output();
+        let mut left = vin_analog_output.left;
+        let mut right = vin_analog_output.right;
 
         if self.master.nr51 & 0x10 != 0 {
             left += channel_dac_outputs[0];
@@ -2166,6 +2171,21 @@ impl Apu {
         ApuStereoOutputSnapshot::new(left, right)
     }
 
+    fn vin_analog_output(&self) -> ApuStereoOutputSnapshot {
+        ApuStereoOutputSnapshot::new(
+            if self.master.nr50 & NR50_VIN_LEFT_BIT != 0 {
+                self.master.vin_input.left
+            } else {
+                0
+            },
+            if self.master.nr50 & NR50_VIN_RIGHT_BIT != 0 {
+                self.master.vin_input.right
+            } else {
+                0
+            },
+        )
+    }
+
     fn master_output(&self, mixer_output: ApuStereoOutputSnapshot) -> ApuStereoOutputSnapshot {
         ApuStereoOutputSnapshot::new(
             mixer_output.left * nr50_left_volume_factor(self.master.nr50),
@@ -2176,12 +2196,14 @@ impl Apu {
     fn output_snapshot(&self) -> ApuOutputSnapshot {
         let channel_digital_outputs = self.channel_digital_outputs();
         let channel_dac_outputs = self.channel_dac_outputs(channel_digital_outputs);
+        let vin_analog_output = self.vin_analog_output();
         let mixer_output = self.mixer_output(channel_dac_outputs);
         let master_output = self.master_output(mixer_output);
 
         ApuOutputSnapshot {
             channel_digital_outputs,
             channel_dac_outputs,
+            vin_analog_output,
             mixer_output,
             master_output,
             hpf_output: self.output_path.current_output,
