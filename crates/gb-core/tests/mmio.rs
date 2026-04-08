@@ -30,6 +30,10 @@ fn public_io_descriptor_table_covers_all_mmio_addresses_and_ie_without_gaps() {
         IoRegisterKind::BootRomDisable
     );
     assert_eq!(
+        bus.describe_io_register(0xFF4C).unwrap().availability(),
+        IoRegisterAvailability::CgbOnly
+    );
+    assert_eq!(
         bus.describe_io_register(0xFF70).unwrap().availability(),
         IoRegisterAvailability::CgbOnly
     );
@@ -278,7 +282,7 @@ fn dmg_family_reads_ff_and_ignores_writes_for_unavailable_cgb_registers() {
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
 
-    for address in [0xFF4D, 0xFF4F, 0xFF70, 0xFF76] {
+    for address in [0xFF4C, 0xFF4D, 0xFF4F, 0xFF70, 0xFF76] {
         machine.write_bus(address, 0xA5);
         assert_eq!(machine.read_bus(address), 0xFF);
     }

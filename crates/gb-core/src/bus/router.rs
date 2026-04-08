@@ -126,14 +126,7 @@ impl AddressRouter {
                 IoRegisterAccess::ReadWrite,
                 IoRegisterKind::OamDma,
             ),
-            0xFF4C => IoRegisterInfo::new(
-                address,
-                IoRegisterOwner::Reserved,
-                IoRegisterAvailability::AllModels,
-                IoRegisterAccess::ReadWrite,
-                IoRegisterKind::Reserved,
-            ),
-            0xFF4D | 0xFF4F | 0xFF51..=0xFF56 | 0xFF68..=0xFF70 | 0xFF72..=0xFF77 => {
+            0xFF4C | 0xFF4D | 0xFF4F | 0xFF51..=0xFF56 | 0xFF68..=0xFF70 | 0xFF72..=0xFF77 => {
                 IoRegisterInfo::new(
                     address,
                     IoRegisterOwner::CgbOnly,

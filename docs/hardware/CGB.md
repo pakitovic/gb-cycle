@@ -37,6 +37,7 @@ When CGB work starts, prioritize these functional areas before worrying about ha
 - speed switch control
 - HDMA registers
 - boot-time interpretation of cartridge CGB compatibility flags
+- `KEY0`
 - `VBK`
 - `SVBK`
 - `BCPS`, `BCPD`
@@ -105,6 +106,7 @@ Priority order:
 - The DMG-family OAM corruption bug should stay behind an explicit model gate so future CGB, AGB, AGS, and GBP support can keep the documented non-bugged behavior.
 - In DMG mode before functional CGB support exists, CGB-only MMIO reads should already return the correct non-CGB fallback value of `0xFF` instead of emulator-invented placeholders.
 - In DMG mode before functional CGB support exists, CGB-only MMIO writes should already be handled explicitly rather than falling through to fake storage.
+- Even before functional CGB work starts, routed MMIO metadata should already classify `KEY0` / `FF4C` as an explicit CGB-only register rather than as a reserved shared-model hole.
 - Future CGB boot flow should be able to branch into full CGB mode or DMG-compatibility mode based on cartridge header information, without requiring a separate emulator core.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
@@ -116,6 +118,7 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 - real CGB palettes
 - VRAM bank 1 behavior
 - WRAM banks 2-7
+- `KEY0` boot-time semantics and lock behavior
 - `KEY1` and double speed behavior
 - APU `DIV-APU` / frame-sequencer behavior under CGB double speed
 - timer behavior under CGB double-speed timing

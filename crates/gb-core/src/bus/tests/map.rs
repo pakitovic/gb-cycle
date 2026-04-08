@@ -189,11 +189,15 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
     }
 
     let ff46 = bus.describe_io_register(0xFF46).unwrap();
+    let ff4c = bus.describe_io_register(0xFF4C).unwrap();
     let ff50 = bus.describe_io_register(0xFF50).unwrap();
     let ie = bus.describe_io_register(0xFFFF).unwrap();
 
     assert_eq!(ff46.owner(), IoRegisterOwner::Dma);
     assert_eq!(ff46.kind(), IoRegisterKind::OamDma);
+    assert_eq!(ff4c.owner(), IoRegisterOwner::CgbOnly);
+    assert_eq!(ff4c.availability(), IoRegisterAvailability::CgbOnly);
+    assert_eq!(ff4c.kind(), IoRegisterKind::CgbSystem);
     assert_eq!(ff50.owner(), IoRegisterOwner::Boot);
     assert_eq!(ff50.access(), IoRegisterAccess::WriteOnly);
     assert_eq!(ie.kind(), IoRegisterKind::InterruptEnable);
@@ -203,6 +207,7 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
 fn dmg_cgb_only_io_fallback_reads_as_ff() {
     let bus = Bus::new(ConsoleModel::Dmg);
 
+    assert_eq!(bus.read_io_target(0xFF4C, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF4D, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF70, BusIoReadView::default()), 0xFF);
 }
