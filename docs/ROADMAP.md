@@ -42,6 +42,7 @@ Two workstreams span multiple phases:
 - Phase `7` follow-up: CH3 active wave-RAM MMIO semantics remain specified only for the DMG family. Keep the APU architecture ready for a later CGB-specific policy, but do not lock in a fake CGB CH3 active-access contract through tests or docs before the CGB APU lane exists.
 - Phase `7` follow-up: `SkipBoot` / direct-boot APU startup is only partially synthesized today. The current DMG baseline keeps visible `NRxx`, powered state, wave-RAM startup policy, channel-active reconstruction, and shared-divider-derived `DIV-APU` aligned, but HPF history plus CH1/CH2/CH3/CH4 deeper hidden runtime continuation are still repo-local defaults rather than verified boot-handoff state. Keep that gap explicit in docs and tests until a stronger oracle closes it.
 - Phase `7` follow-up: CH1 / CH2 / CH4 now model the only zombie-mode path that `Pan Docs` calls useful and cross-unit-consistent, namely live `NRx2` writes in increase mode with pace `0` incrementing the current volume modulo `16`. The rest of the zombie-mode write matrix still varies by hardware revision, so keep any stronger DMG claims deferred until a revision-scoped oracle or hardware-backed policy closes that gap.
+- Phase `7` follow-up: the DMG baseline now follows Pan Docs for the "all DACs off" output disconnect, but it still approximates the per-channel DAC-off analog path as an immediate step to `0` instead of the documented model-dependent fade. Keep that residual gap explicit until a stronger oracle or hardware-backed fade policy closes it.
 
 ## Final notes
 

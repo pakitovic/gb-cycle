@@ -302,14 +302,24 @@ impl ApuSampleCapture {
 }
 
 impl OutputPathState {
-    fn preview(&mut self, input: ApuStereoOutputSnapshot) {
+    fn preview(&mut self, input: ApuStereoOutputSnapshot, any_dac_enabled: bool) {
+        if !any_dac_enabled {
+            self.current_output = ApuStereoOutputSnapshot::default();
+            return;
+        }
+
         self.current_output = ApuStereoOutputSnapshot::new(
             (input.left as i64 - self.hpf_capacitor.left) as i32,
             (input.right as i64 - self.hpf_capacitor.right) as i32,
         );
     }
 
-    fn tick(&mut self, input: ApuStereoOutputSnapshot) {
+    fn tick(&mut self, input: ApuStereoOutputSnapshot, any_dac_enabled: bool) {
+        if !any_dac_enabled {
+            self.current_output = ApuStereoOutputSnapshot::default();
+            return;
+        }
+
         let left_output = input.left as i64 - self.hpf_capacitor.left;
         let right_output = input.right as i64 - self.hpf_capacitor.right;
 
@@ -2030,6 +2040,10 @@ impl Apu {
         self.channel_mask_for_runtime(|runtime| runtime.dac_enabled)
     }
 
+    fn any_dac_enabled(&self) -> bool {
+        self.channel_dac_mask() != 0
+    }
+
     fn channel_mask_for_runtime(&self, select: impl Fn(ChannelRuntimeState) -> bool) -> u8 {
         let mut mask = 0;
 
@@ -2177,12 +2191,13 @@ impl Apu {
 
     fn preview_output_path(&mut self) {
         let master_output = self.output_snapshot().master_output;
-        self.output_path.preview(master_output);
+        self.output_path
+            .preview(master_output, self.any_dac_enabled());
     }
 
     fn tick_output_path(&mut self) {
         let master_output = self.output_snapshot().master_output;
-        self.output_path.tick(master_output);
+        self.output_path.tick(master_output, self.any_dac_enabled());
     }
 
     fn wave_ram_index(&self, address: u16) -> Option<usize> {

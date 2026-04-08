@@ -69,13 +69,12 @@ fn enabled_dac_output_remains_distinct_from_dac_off_even_when_the_channel_is_ina
     let disabled_snapshot = apu.snapshot();
 
     assert_eq!(disabled_snapshot.output.channel_digital_outputs[0], 0);
-    assert_eq!(disabled_snapshot.output.channel_dac_outputs[0], 0);
     assert_eq!(disabled_snapshot.channel_dac_mask, 0x00);
     assert_eq!(disabled_snapshot.channel_active_mask, 0x00);
 }
 
 #[test]
-fn disabling_the_last_dac_preserves_the_immediate_hpf_pop() {
+fn disabling_the_last_dac_disconnects_the_output_immediately() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
@@ -91,13 +90,13 @@ fn disabling_the_last_dac_preserves_the_immediate_hpf_pop() {
     let dac_off = apu.snapshot().output;
 
     assert_eq!(dac_off.channel_dac_outputs[0], 0);
-    assert!(dac_off.hpf_output.left < 0);
-    assert!(dac_off.hpf_output.right < 0);
+    assert_eq!(dac_off.hpf_output.left, 0);
+    assert_eq!(dac_off.hpf_output.right, 0);
     assert_eq!(dac_off.hpf_capacitor, charged.hpf_capacitor);
 }
 
 #[test]
-fn hpf_continues_relaxing_towards_zero_after_the_last_dac_turns_off() {
+fn hpf_capacitor_freezes_while_all_dacs_are_off() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
@@ -113,18 +112,20 @@ fn hpf_continues_relaxing_towards_zero_after_the_last_dac_turns_off() {
     tick_apu_with_edges(&mut apu, 2, &[]);
     let after_second_dac_off_tick = apu.snapshot().output;
 
+    assert_eq!(after_write.hpf_output.left, 0);
+    assert_eq!(after_write.hpf_output.right, 0);
+    assert_eq!(after_first_dac_off_tick.hpf_output.left, 0);
+    assert_eq!(after_first_dac_off_tick.hpf_output.right, 0);
+    assert_eq!(after_second_dac_off_tick.hpf_output.left, 0);
+    assert_eq!(after_second_dac_off_tick.hpf_output.right, 0);
     assert_eq!(
-        after_first_dac_off_tick.hpf_output.left,
-        after_write.hpf_output.left
+        after_first_dac_off_tick.hpf_capacitor,
+        after_write.hpf_capacitor
     );
     assert_eq!(
-        after_first_dac_off_tick.hpf_output.right,
-        after_write.hpf_output.right
+        after_second_dac_off_tick.hpf_capacitor,
+        after_write.hpf_capacitor
     );
-    assert!(after_first_dac_off_tick.hpf_capacitor.left < after_write.hpf_capacitor.left);
-    assert!(after_first_dac_off_tick.hpf_capacitor.right < after_write.hpf_capacitor.right);
-    assert!(after_second_dac_off_tick.hpf_output.left > after_first_dac_off_tick.hpf_output.left);
-    assert!(after_second_dac_off_tick.hpf_output.right > after_first_dac_off_tick.hpf_output.right);
 }
 
 #[test]
