@@ -230,9 +230,23 @@ struct FrameSequencerClocks {
     envelope: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WaveRamMmioPolicy {
+    DmgCurrentByteDuringFetchOnly,
+    DeferredCgbActiveAccess,
+}
+
 impl ApuStereoOutputSnapshot {
     const fn new(left: i32, right: i32) -> Self {
         Self { left, right }
+    }
+}
+
+fn wave_ram_mmio_policy(console_model: ConsoleModel) -> WaveRamMmioPolicy {
+    if console_model.is_dmg_family() {
+        WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly
+    } else {
+        WaveRamMmioPolicy::DeferredCgbActiveAccess
     }
 }
 
@@ -411,6 +425,20 @@ const fn envelope_timer_reload(envelope_pace: u8) -> u8 {
     if envelope_pace == 0 { 8 } else { envelope_pace }
 }
 
+const fn envelope_write_uses_consistent_zombie_increment(value: u8) -> bool {
+    value & (ENVELOPE_DIRECTION_BIT | ENVELOPE_PACE_MASK) == ENVELOPE_DIRECTION_BIT
+}
+
+fn apply_consistent_zombie_mode_increment(active: bool, current_volume: &mut u8, value: u8) {
+    // Pan Docs only documents increase+pace=0 as consistent across tested units; the broader
+    // zombie-mode matrix remains revision-specific and is tracked separately.
+    if !active || !envelope_write_uses_consistent_zombie_increment(value) {
+        return;
+    }
+
+    *current_volume = (*current_volume + 1) & MAX_ENVELOPE_VOLUME;
+}
+
 const fn dac_analog_output(digital_output: u8) -> i32 {
     ANALOG_ONE - ((digital_output & 0x0F) as i32) * DAC_ANALOG_STEP
 }
@@ -521,6 +549,14 @@ impl PulseChannelState {
         self.initial_volume = (value & ENVELOPE_INITIAL_VOLUME_MASK) >> 4;
         self.envelope_increase = value & ENVELOPE_DIRECTION_BIT != 0;
         self.envelope_pace = value & ENVELOPE_PACE_MASK;
+    }
+
+    fn apply_live_envelope_write_effect(&mut self, value: u8) {
+        apply_consistent_zombie_mode_increment(
+            self.runtime.active,
+            &mut self.current_volume,
+            value,
+        );
     }
 
     fn apply_length_enable(&mut self, value: u8) {
@@ -840,6 +876,7 @@ impl Channel1State {
     }
 
     fn write_nr12(&mut self, value: u8) {
+        self.pulse.apply_live_envelope_write_effect(value);
         self.nr12 = value;
         self.pulse.apply_envelope_write(value);
         self.pulse
@@ -995,6 +1032,7 @@ impl Channel2State {
     }
 
     fn write_nr22(&mut self, value: u8) {
+        self.pulse.apply_live_envelope_write_effect(value);
         self.nr22 = value;
         self.pulse.apply_envelope_write(value);
         self.pulse
@@ -1312,8 +1350,16 @@ impl Channel3State {
             return self.wave_ram[active_wave_ram_byte_index];
         }
 
-        if self.runtime.active && console_model.is_dmg_family() {
-            return WAVE_RAM_INACCESSIBLE_READ_VALUE;
+        if self.runtime.active {
+            match wave_ram_mmio_policy(console_model) {
+                WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly => {
+                    return WAVE_RAM_INACCESSIBLE_READ_VALUE;
+                }
+                // The DMG-family fetch-window rule is the only active-wave-RAM
+                // MMIO contract modeled today. CGB-family redirection semantics
+                // are intentionally deferred until the CGB APU lane exists.
+                WaveRamMmioPolicy::DeferredCgbActiveAccess => {}
+            }
         }
 
         self.wave_ram[index]
@@ -1327,8 +1373,13 @@ impl Channel3State {
             return;
         }
 
-        if self.runtime.active && console_model.is_dmg_family() {
-            return;
+        if self.runtime.active {
+            match wave_ram_mmio_policy(console_model) {
+                WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly => return,
+                // See the read path above: this is a deliberately provisional
+                // fallback, not a claimed CGB-accurate active-access contract.
+                WaveRamMmioPolicy::DeferredCgbActiveAccess => {}
+            }
         }
 
         self.wave_ram[index] = value;
@@ -1437,6 +1488,7 @@ impl Channel4State {
     }
 
     fn write_nr42(&mut self, value: u8) {
+        self.apply_live_envelope_write_effect(value);
         self.nr42 = value;
         self.apply_envelope_write(value);
         self.runtime.set_dac_enabled(self.derived_dac_enabled());
@@ -1530,6 +1582,14 @@ impl Channel4State {
         self.initial_volume = (value & ENVELOPE_INITIAL_VOLUME_MASK) >> 4;
         self.envelope_increase = value & ENVELOPE_DIRECTION_BIT != 0;
         self.envelope_pace = value & ENVELOPE_PACE_MASK;
+    }
+
+    fn apply_live_envelope_write_effect(&mut self, value: u8) {
+        apply_consistent_zombie_mode_increment(
+            self.runtime.active,
+            &mut self.current_volume,
+            value,
+        );
     }
 
     fn decode_nr43(&mut self, value: u8) {

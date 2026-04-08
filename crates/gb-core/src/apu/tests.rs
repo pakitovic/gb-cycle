@@ -414,6 +414,53 @@ fn channel_1_trigger_reloads_period_envelope_and_sweep_without_resetting_duty_st
 }
 
 #[test]
+fn pulse_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+
+    apu.write_register(0xFF10, 0x11);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0x00);
+    apu.write_register(0xFF13, 0xAB);
+    apu.channel_1.pulse.period_timer = 0x0123;
+    apu.channel_1.pulse.envelope_timer = 5;
+    apu.channel_1.pulse.current_volume = 7;
+    apu.channel_1.sweep.shadow_period = 0x0456;
+    apu.channel_1.sweep.timer = 3;
+    apu.channel_1.sweep.enabled = true;
+
+    apu.write_register(0xFF14, 0x80);
+
+    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(
+        apu.channel_1.pulse.period_timer,
+        pulse_timer_reload(0x00AB) | (0x0123 & 0x03)
+    );
+    assert_eq!(apu.channel_1.pulse.envelope_timer, envelope_timer_reload(0));
+    assert_eq!(apu.channel_1.pulse.current_volume, 0);
+    assert_eq!(apu.channel_1.sweep.shadow_period, 0x00AB);
+    assert_eq!(apu.channel_1.sweep.timer, 1);
+    assert!(apu.channel_1.sweep.enabled);
+
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0x00);
+    apu.write_register(0xFF18, 0xCD);
+    apu.channel_2.pulse.period_timer = 0x0235;
+    apu.channel_2.pulse.envelope_timer = 6;
+    apu.channel_2.pulse.current_volume = 9;
+
+    apu.write_register(0xFF19, 0x80);
+
+    assert!(!apu.channel_2.pulse.runtime.active);
+    assert_eq!(
+        apu.channel_2.pulse.period_timer,
+        pulse_timer_reload(0x00CD) | (0x0235 & 0x03)
+    );
+    assert_eq!(apu.channel_2.pulse.envelope_timer, envelope_timer_reload(0));
+    assert_eq!(apu.channel_2.pulse.current_volume, 0);
+}
+
+#[test]
 fn channel_1_first_trigger_after_power_on_suppresses_the_initial_high_duty_output() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
@@ -1125,6 +1172,37 @@ fn envelope_reaching_zero_does_not_disable_the_pulse_channel() {
 }
 
 #[test]
+fn live_nrx2_write_with_increase_and_zero_pace_increments_active_pulse_channels() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF14, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0x08);
+    apu.write_register(0xFF19, 0x80);
+
+    assert!(apu.channel_1.pulse.runtime.active);
+    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channel_1.pulse.current_volume, 0);
+    assert_eq!(apu.channel_2.pulse.current_volume, 0);
+
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF17, 0x08);
+
+    assert_eq!(apu.channel_1.pulse.current_volume, 1);
+    assert_eq!(apu.channel_2.pulse.current_volume, 1);
+
+    apu.channel_1.pulse.current_volume = 0x0F;
+    apu.write_register(0xFF12, 0x08);
+    assert_eq!(apu.channel_1.pulse.current_volume, 0);
+
+    apu.channel_2.pulse.current_volume = 7;
+    apu.write_register(0xFF17, 0x09);
+    assert_eq!(apu.channel_2.pulse.current_volume, 7);
+}
+
+#[test]
 fn channel_3_trigger_preserves_the_buffered_sample_until_the_next_wave_fetch() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
@@ -1221,6 +1299,29 @@ fn channel_3_output_level_applies_immediate_digital_attenuation_without_disablin
 }
 
 #[test]
+fn channel_3_trigger_reloads_timer_and_index_but_does_not_activate_while_the_dac_is_off() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF1A, 0x00);
+    apu.write_register(0xFF1D, 0xAB);
+    apu.channel_3.sample_index = 17;
+    apu.channel_3.sample_buffer = 0x0E;
+    apu.channel_3.period_timer = 99;
+    apu.channel_3.length_counter = 7;
+
+    apu.write_register(0xFF1E, 0x80);
+
+    assert!(!apu.channel_3.runtime.active);
+    assert_eq!(apu.channel_3.sample_index, 0);
+    assert_eq!(apu.channel_3.sample_buffer, 0x0E);
+    assert_eq!(
+        apu.channel_3.period_timer,
+        wave_timer_reload(0x00AB) + WAVE_TRIGGER_STARTUP_DELAY_T_CYCLES
+    );
+    assert_eq!(apu.channel_3.length_counter, 7);
+}
+
+#[test]
 fn active_channel_3_wave_ram_reads_return_ff_outside_the_dmg_fetch_window() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
@@ -1279,11 +1380,10 @@ fn dmg_channel_3_wave_ram_access_uses_the_internal_byte_only_during_the_fetch_wi
 }
 
 #[test]
-fn cgb_channel_3_wave_ram_remains_addressable_while_active() {
+fn cgb_channel_3_wave_ram_remains_addressable_while_inactive() {
     let mut apu = Apu::new(ConsoleModel::Cgb);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF1A, 0x80);
-    apu.channel_3.runtime.active = true;
     apu.channel_3.wave_ram[0] = 0x12;
     apu.channel_3.wave_ram[1] = 0x34;
 
@@ -1509,6 +1609,26 @@ fn channel_4_trigger_reloads_envelope_lfsr_and_noise_timer() {
 }
 
 #[test]
+fn channel_4_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF21, 0x00);
+    apu.write_register(0xFF22, 0x15);
+    apu.channel_4.period_timer = 77;
+    apu.channel_4.envelope_timer = 4;
+    apu.channel_4.current_volume = 6;
+    apu.channel_4.lfsr_state = 0x0123;
+
+    apu.write_register(0xFF23, 0x80);
+
+    assert!(!apu.channel_4.runtime.active);
+    assert_eq!(apu.channel_4.period_timer, 160);
+    assert_eq!(apu.channel_4.envelope_timer, envelope_timer_reload(0));
+    assert_eq!(apu.channel_4.current_volume, 0);
+    assert_eq!(apu.channel_4.lfsr_state, NOISE_LFSR_INITIAL_STATE);
+}
+
+#[test]
 fn channel_4_noise_timer_steps_the_lfsr_and_short_width_mode_copies_feedback_into_bit_six() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
@@ -1547,6 +1667,24 @@ fn channel_4_envelope_reaching_zero_does_not_disable_the_channel() {
 
     assert_eq!(apu.channel_4.current_volume, 0);
     assert!(apu.channel_4.runtime.active);
+}
+
+#[test]
+fn live_nr42_write_with_increase_and_zero_pace_increments_active_noise_channel() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF21, 0x08);
+    apu.write_register(0xFF23, 0x80);
+
+    assert!(apu.channel_4.runtime.active);
+    assert_eq!(apu.channel_4.current_volume, 0);
+
+    apu.write_register(0xFF21, 0x08);
+    assert_eq!(apu.channel_4.current_volume, 1);
+
+    apu.channel_4.current_volume = 0x0F;
+    apu.write_register(0xFF21, 0x08);
+    assert_eq!(apu.channel_4.current_volume, 0);
 }
 
 #[test]
