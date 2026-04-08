@@ -15,10 +15,34 @@ impl Bus {
         address: u16,
         state: &BusArbitrationState,
     ) -> BusAccessResolution {
-        let target = self.resolve_nominal_target(kind, address, state);
-        let disposition = self.evaluate_access_policy(requester, kind, target, state);
+        let nominal_target = self.resolve_nominal_target(kind, address, state);
+        let nominal_disposition =
+            self.evaluate_access_policy(requester, kind, nominal_target, state);
 
-        BusAccessResolution::new(requester, kind, target, disposition)
+        if let Some(conflict_source_address) =
+            self.cpu_dma_conflict_source_address(requester, address, state)
+        {
+            let target = self.resolve_nominal_target(kind, conflict_source_address, state);
+            return BusAccessResolution::new(
+                requester,
+                kind,
+                address,
+                nominal_target,
+                target,
+                nominal_disposition,
+                BusAccessDisposition::Allowed,
+            );
+        }
+
+        BusAccessResolution::new(
+            requester,
+            kind,
+            address,
+            nominal_target,
+            nominal_target,
+            nominal_disposition,
+            nominal_disposition,
+        )
     }
 
     #[cfg(test)]
@@ -60,14 +84,6 @@ impl Bus {
         cartridge: Option<&CartridgeSlot>,
         io: BusIoReadView<'_>,
     ) -> u8 {
-        if let Some(conflict_source_address) =
-            self.cpu_dma_conflict_source_address(requester, address, state)
-        {
-            let target =
-                self.resolve_nominal_target(BusAccessKind::Read, conflict_source_address, state);
-            return self.perform_allowed_read(target, cartridge, io);
-        }
-
         let resolution = self.resolve_access(requester, BusAccessKind::Read, address, state);
 
         match resolution.disposition() {
@@ -90,14 +106,6 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoReadView<'_>,
     ) -> u8 {
-        if let Some(conflict_source_address) =
-            self.cpu_dma_conflict_source_address(requester, address, state)
-        {
-            let target =
-                self.resolve_nominal_target(BusAccessKind::Read, conflict_source_address, state);
-            return self.perform_allowed_read_timed(target, t_cycle, cartridge, io);
-        }
-
         let resolution = self.resolve_access(requester, BusAccessKind::Read, address, state);
 
         match resolution.disposition() {
@@ -154,15 +162,6 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoWriteView<'_>,
     ) {
-        if let Some(conflict_source_address) =
-            self.cpu_dma_conflict_source_address(requester, address, state)
-        {
-            let target =
-                self.resolve_nominal_target(BusAccessKind::Write, conflict_source_address, state);
-            self.perform_allowed_write(target, value, cartridge, io);
-            return;
-        }
-
         let resolution = self.resolve_access(requester, BusAccessKind::Write, address, state);
 
         match resolution.disposition() {
@@ -187,15 +186,6 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoWriteView<'_>,
     ) {
-        if let Some(conflict_source_address) =
-            self.cpu_dma_conflict_source_address(requester, address, state)
-        {
-            let target =
-                self.resolve_nominal_target(BusAccessKind::Write, conflict_source_address, state);
-            self.perform_allowed_write_timed(target, value, t_cycle, cartridge, io);
-            return;
-        }
-
         let resolution = self.resolve_access(requester, BusAccessKind::Write, address, state);
 
         match resolution.disposition() {

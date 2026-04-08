@@ -203,7 +203,10 @@ impl BusArbitrationState {
 pub struct BusAccessResolution {
     requester: BusRequester,
     kind: BusAccessKind,
+    requested_address: u16,
+    nominal_target: BusAddressInfo,
     target: BusAddressInfo,
+    nominal_disposition: BusAccessDisposition,
     disposition: BusAccessDisposition,
 }
 
@@ -211,13 +214,19 @@ impl BusAccessResolution {
     pub const fn new(
         requester: BusRequester,
         kind: BusAccessKind,
+        requested_address: u16,
+        nominal_target: BusAddressInfo,
         target: BusAddressInfo,
+        nominal_disposition: BusAccessDisposition,
         disposition: BusAccessDisposition,
     ) -> Self {
         Self {
             requester,
             kind,
+            requested_address,
+            nominal_target,
             target,
+            nominal_disposition,
             disposition,
         }
     }
@@ -230,11 +239,39 @@ impl BusAccessResolution {
         self.kind
     }
 
+    pub const fn requested_address(self) -> u16 {
+        self.requested_address
+    }
+
+    pub const fn nominal_target(self) -> BusAddressInfo {
+        self.nominal_target
+    }
+
     pub const fn target(self) -> BusAddressInfo {
         self.target
     }
 
+    pub const fn effective_target(self) -> BusAddressInfo {
+        self.target
+    }
+
+    pub const fn nominal_disposition(self) -> BusAccessDisposition {
+        self.nominal_disposition
+    }
+
     pub const fn disposition(self) -> BusAccessDisposition {
         self.disposition
+    }
+
+    pub const fn is_redirected(self) -> bool {
+        self.target.address() != self.requested_address
+    }
+
+    pub const fn redirected_source_address(self) -> Option<u16> {
+        if self.is_redirected() {
+            Some(self.target.address())
+        } else {
+            None
+        }
     }
 }

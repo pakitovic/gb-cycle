@@ -124,3 +124,30 @@ fn external_bus_dma_policy_keeps_ff46_readable_and_writable_during_active_dma() 
     assert_eq!(write_resolution.target().region(), BusRegion::Mmio);
     assert!(write_resolution.disposition().is_allowed());
 }
+
+#[test]
+fn external_bus_dma_resolution_exposes_nominal_blocking_and_effective_redirection() {
+    let bus = Bus::new(ConsoleModel::Dmg);
+    let state = BusArbitrationState::default().with_dma(
+        DmaBusState::external_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
+            .with_cpu_conflict_source_address(Some(0xC100)),
+    );
+
+    let resolution = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xC200, &state);
+
+    assert_eq!(resolution.requested_address(), 0xC200);
+    assert_eq!(resolution.nominal_target().address(), 0xC200);
+    assert_eq!(resolution.nominal_target().region(), BusRegion::WramBank0);
+    assert_eq!(
+        resolution.nominal_disposition(),
+        BusAccessDisposition::BlockedRead {
+            value: BLOCKED_READ_VALUE,
+            reason: BusBlockReason::DmaExternalBusConflict,
+        }
+    );
+    assert_eq!(resolution.target().address(), 0xC100);
+    assert_eq!(resolution.target().region(), BusRegion::WramBank0);
+    assert_eq!(resolution.disposition(), BusAccessDisposition::Allowed);
+    assert!(resolution.is_redirected());
+    assert_eq!(resolution.redirected_source_address(), Some(0xC100));
+}
