@@ -510,6 +510,7 @@ struct PulseChannelState {
     initial_volume: u8,
     envelope_increase: bool,
     envelope_pace: u8,
+    envelope_automatic_updates_enabled: bool,
     envelope_timer: u8,
     current_volume: u8,
 }
@@ -596,6 +597,7 @@ impl PulseChannelState {
         self.apply_length_enable(startup.nrx4);
         self.first_trigger_after_power_on_pending = startup.first_trigger_after_power_on_pending;
         self.period_timer = pulse_timer_reload(startup.period_value);
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
         self.envelope_timer = envelope_timer_reload(self.envelope_pace);
         self.current_volume = self.initial_volume;
         self.runtime = startup.runtime;
@@ -616,6 +618,7 @@ impl PulseChannelState {
         self.apply_envelope_write(envelope_value);
         let preserved_period_timer_low_bits = self.period_timer & 0x03;
         self.period_timer = pulse_timer_reload(period_value) | preserved_period_timer_low_bits;
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
         self.envelope_timer =
             envelope_timer_reload(self.envelope_pace) + u8::from(next_step_clocks_envelope);
         self.current_volume = self.initial_volume;
@@ -655,7 +658,7 @@ impl PulseChannelState {
     }
 
     fn clock_envelope(&mut self) {
-        if self.envelope_pace == 0 {
+        if self.envelope_pace == 0 || !self.envelope_automatic_updates_enabled {
             return;
         }
 
@@ -671,9 +674,13 @@ impl PulseChannelState {
         if self.envelope_increase {
             if self.current_volume < MAX_ENVELOPE_VOLUME {
                 self.current_volume += 1;
+            } else {
+                self.envelope_automatic_updates_enabled = false;
             }
         } else if self.current_volume > 0 {
             self.current_volume -= 1;
+        } else {
+            self.envelope_automatic_updates_enabled = false;
         }
     }
 
@@ -1472,6 +1479,7 @@ struct Channel4State {
     initial_volume: u8,
     envelope_increase: bool,
     envelope_pace: u8,
+    envelope_automatic_updates_enabled: bool,
     envelope_timer: u8,
     current_volume: u8,
     clock_shift: u8,
@@ -1534,6 +1542,7 @@ impl Channel4State {
         self.length_enabled = self.nr44 & LENGTH_ENABLE_BIT != 0;
         self.apply_envelope_write(self.nr42);
         self.decode_nr43(self.nr43);
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
         self.envelope_timer = envelope_timer_reload(self.envelope_pace);
         self.current_volume = self.initial_volume;
         self.period_timer = self.noise_timer_reload();
@@ -1553,6 +1562,7 @@ impl Channel4State {
         self.initial_volume = 0;
         self.envelope_increase = false;
         self.envelope_pace = 0;
+        self.envelope_automatic_updates_enabled = false;
         self.envelope_timer = 0;
         self.current_volume = 0;
         self.clock_shift = 0;
@@ -1641,6 +1651,7 @@ impl Channel4State {
         self.apply_envelope_write(self.nr42);
         self.period_timer = self.noise_timer_reload();
         self.lfsr_state = NOISE_LFSR_INITIAL_STATE;
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
         self.envelope_timer =
             envelope_timer_reload(self.envelope_pace) + u8::from(next_step_clocks_envelope);
         self.current_volume = self.initial_volume;
@@ -1687,7 +1698,7 @@ impl Channel4State {
     }
 
     fn clock_envelope(&mut self) {
-        if self.envelope_pace == 0 {
+        if self.envelope_pace == 0 || !self.envelope_automatic_updates_enabled {
             return;
         }
 
@@ -1703,9 +1714,13 @@ impl Channel4State {
         if self.envelope_increase {
             if self.current_volume < MAX_ENVELOPE_VOLUME {
                 self.current_volume += 1;
+            } else {
+                self.envelope_automatic_updates_enabled = false;
             }
         } else if self.current_volume > 0 {
             self.current_volume -= 1;
+        } else {
+            self.envelope_automatic_updates_enabled = false;
         }
     }
 

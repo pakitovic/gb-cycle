@@ -1213,6 +1213,39 @@ fn envelope_reaching_zero_does_not_disable_the_pulse_channel() {
 }
 
 #[test]
+fn pulse_envelope_stops_automatic_updates_after_saturating_at_fifteen() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0xFA);
+    apu.write_register(0xFF19, 0x80);
+
+    apu.channel_2.pulse.envelope_timer = 1;
+
+    assert!(apu.channel_2.pulse.envelope_automatic_updates_enabled);
+    assert_eq!(apu.channel_2.pulse.current_volume, 0x0F);
+
+    apu.channel_2.clock_envelope();
+
+    assert_eq!(apu.channel_2.pulse.current_volume, 0x0F);
+    assert_eq!(apu.channel_2.pulse.envelope_timer, 2);
+    assert!(apu.channel_2.pulse.runtime.active);
+    assert!(!apu.channel_2.pulse.envelope_automatic_updates_enabled);
+
+    apu.channel_2.clock_envelope();
+
+    assert_eq!(apu.channel_2.pulse.current_volume, 0x0F);
+    assert_eq!(apu.channel_2.pulse.envelope_timer, 2);
+    assert!(apu.channel_2.pulse.runtime.active);
+
+    apu.write_register(0xFF19, 0x80);
+
+    assert!(apu.channel_2.pulse.envelope_automatic_updates_enabled);
+    assert_eq!(apu.channel_2.pulse.current_volume, 0x0F);
+    assert_eq!(apu.channel_2.pulse.envelope_timer, 2);
+}
+
+#[test]
 fn pulse_envelope_clock_advances_while_the_channel_is_inactive() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
@@ -1754,22 +1787,47 @@ fn channel_4_noise_timer_steps_the_lfsr_and_short_width_mode_copies_feedback_int
 fn channel_4_envelope_reaching_zero_does_not_disable_the_channel() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
-    apu.write_register(0xFF21, 0x11);
+    apu.write_register(0xFF21, 0x12);
     apu.write_register(0xFF22, 0x00);
     apu.write_register(0xFF23, 0x80);
+    apu.channel_4.envelope_timer = 1;
 
     assert!(apu.channel_4.runtime.active);
     assert_eq!(apu.channel_4.current_volume, 1);
+    assert!(apu.channel_4.envelope_automatic_updates_enabled);
 
     apu.channel_4.clock_envelope();
 
     assert_eq!(apu.channel_4.current_volume, 0);
+    assert_eq!(apu.channel_4.envelope_timer, 2);
     assert!(apu.channel_4.runtime.active);
+    assert!(apu.channel_4.envelope_automatic_updates_enabled);
 
     apu.channel_4.clock_envelope();
 
     assert_eq!(apu.channel_4.current_volume, 0);
+    assert_eq!(apu.channel_4.envelope_timer, 1);
     assert!(apu.channel_4.runtime.active);
+    assert!(apu.channel_4.envelope_automatic_updates_enabled);
+
+    apu.channel_4.clock_envelope();
+
+    assert_eq!(apu.channel_4.current_volume, 0);
+    assert_eq!(apu.channel_4.envelope_timer, 2);
+    assert!(apu.channel_4.runtime.active);
+    assert!(!apu.channel_4.envelope_automatic_updates_enabled);
+
+    apu.channel_4.clock_envelope();
+
+    assert_eq!(apu.channel_4.current_volume, 0);
+    assert_eq!(apu.channel_4.envelope_timer, 2);
+    assert!(apu.channel_4.runtime.active);
+
+    apu.write_register(0xFF23, 0x80);
+
+    assert!(apu.channel_4.envelope_automatic_updates_enabled);
+    assert_eq!(apu.channel_4.current_volume, 1);
+    assert_eq!(apu.channel_4.envelope_timer, 2);
 }
 
 #[test]

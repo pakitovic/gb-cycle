@@ -304,6 +304,7 @@ Current branch baseline, March 31, 2026:
 - While CH1 is active, ordinary `NR12` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH1 trigger.
 - While CH1 is active, `NR12` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
 - Envelope progression must update CH1's internal current volume, not the readable initial-volume bits in `NR12`.
+- Once an automatic envelope step would push CH1 below `0` or above `15`, the current volume should remain clamped and the envelope should stop further automatic updates until CH1 is retriggered.
 - Reaching volume `0` through the envelope must not disable CH1 by itself.
 
 ## CH1 sweep baseline
@@ -414,6 +415,7 @@ Current branch baseline, March 31, 2026:
 - While CH2 is active, ordinary `NR22` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH2 trigger.
 - While CH2 is active, `NR22` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
 - Envelope progression must update CH2's internal current volume, not the readable initial-volume bits in `NR22`.
+- Once an automatic envelope step would push CH2 below `0` or above `15`, the current volume should remain clamped and the envelope should stop further automatic updates until CH2 is retriggered.
 - Reaching volume `0` through the envelope must not disable CH2 by itself.
 
 ## CH2 active-state integration and shared quirks baseline
@@ -657,6 +659,7 @@ Current branch baseline, March 30, 2026:
 - While CH4 is active, ordinary `NR42` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH4 trigger.
 - While CH4 is active, `NR42` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
 - Envelope progression must update CH4's internal current volume, not the readable initial-volume bits in `NR42`.
+- Once an automatic envelope step would push CH4 below `0` or above `15`, the current volume should remain clamped and the envelope should stop further automatic updates until CH4 is retriggered.
 - Reaching volume `0` through the envelope must not disable CH4 by itself.
 
 ## CH4 active-state integration and timing baseline
@@ -746,14 +749,14 @@ Priority order:
 - tests for CH1 duty-step behavior, including "retrigger resets timer but not duty step"
 - tests for CH1 period-write delay where `NR13` / `NR14` changes apply after the current sample ends
 - tests that CH1 trigger reloads period/envelope/sweep state but does not activate the channel while DAC is off
-- tests for CH1 length expiry, CH1 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
+- tests for CH1 length expiry, CH1 envelope progression, the rule that envelope volume reaching `0` does not disable the channel, and the rule that automatic envelope updates stop after saturation until retrigger
 - sweep tests covering trigger-time shadow copy, immediate overflow check, timed writeback, second overflow check, and the rule that `NR13` / `NR14` writes do not update the sweep shadow automatically
 - dedicated CH1 quirk tests for period-`0`-treated-as-`8`, extra length clocking, low frequency-timer bits on trigger, the first-duty-step-after-power-on path, and the conservative live `NR12` zombie-mode increment path
 - tests for `NR21`-`NR24` ownership and MMIO semantics, including `NR23` write-only readback policy
 - tests for CH2 duty-step behavior, including "retrigger resets timer but not duty step"
 - tests for CH2 period-write delay where `NR23` / `NR24` changes apply after the current sample ends
 - tests that CH2 trigger reloads period/envelope state but does not activate the channel while DAC is off
-- tests for CH2 length expiry, CH2 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
+- tests for CH2 length expiry, CH2 envelope progression, the rule that envelope volume reaching `0` does not disable the channel, and the rule that automatic envelope updates stop after saturation until retrigger
 - dedicated CH2 quirk tests for envelope-timer `0 -> 8`, extra length clocking, low frequency-timer bits on trigger, the first-duty-step-after-power-on path, and the conservative live `NR22` zombie-mode increment path
 - tests for `NR30`-`NR34` ownership and MMIO semantics, including `NR31` / `NR33` write-only readback policy
 - tests that wave RAM remains accessible and is not cleared by `NR52` power-off
@@ -765,7 +768,7 @@ Priority order:
 - tests for `NR41`-`NR44` ownership and MMIO semantics, including `NR41` write-only readback policy and immediate `NR44` trigger/length-enable behavior
 - tests for CH4 `noise_timer` cadence, live LFSR progression, and decoded `NR43` behavior including divider `0 -> 0.5` and clock-shift `14` / `15` suppressing CH4 clocks
 - tests that CH4 trigger reloads envelope/LFSR/timer state but does not activate the channel while DAC is off
-- tests for CH4 length expiry, CH4 envelope progression, and the rule that envelope volume reaching `0` does not disable the channel
+- tests for CH4 length expiry, CH4 envelope progression, the rule that envelope volume reaching `0` does not disable the channel, and the rule that automatic envelope updates stop after saturation until retrigger
 - dedicated CH4 quirk tests for `15`-bit versus `7`-bit mode behavior, live width-mode changes, LFSR lock-up on `15 -> 7` transitions, retrigger recovery from lock-up, extra length clocking, and the conservative live `NR42` zombie-mode increment path whenever those behaviors are implemented
 
 ## Implementation notes for this repo
