@@ -201,6 +201,9 @@ fn external_bus_dma_restricts_machine_bus_access_to_hram_and_ff46_only_from_live
     assert_eq!(machine.read_bus(0x8000), 0xFF);
     assert_eq!(machine.read_bus(0xFF46), 0x12);
 
+    machine.write_bus(0xFF46, 0x34);
+    assert_eq!(machine.dma().source_page_latch(), 0x34);
+
     machine.write_bus(0xC000, 0x99);
     machine.write_bus(0x8000, 0xBC);
     machine.write_bus(0xFF80, 0x56);

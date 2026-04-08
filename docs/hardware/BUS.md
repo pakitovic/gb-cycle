@@ -191,7 +191,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - On the shared scheduler timeline, the arbitration decision for a T-cycle should see the already-updated current-cycle DMA and PPU state before the CPU micro-operation issues its access for that same T-cycle.
 - The bus should consult DMA-owned published constraints such as CPU impact, region impact, and current-cycle transfer activity instead of peeking at `FF46` or future `HDMA1-5` register state directly.
 - DMA policy questions such as "external bus blocked", "video bus blocked", "fully stalled until done", or "stalled only during a block" belong to the DMA subsystem; the bus should only apply the resulting requester-visible constraints.
-- For the current DMG OAM-DMA baseline, keep one explicit exception to the ordinary CPU-side DMA block: `FF46` itself must stay readable and writable so active-DMA readback and restart behavior remain visible through the MMIO path.
+- For the current DMG OAM-DMA baseline, keep one explicit exception to the ordinary CPU-side DMA block: `FF46` itself must stay readable and writable so active-DMA readback and restart behavior remain visible through the MMIO path. This refines the coarse "HRAM only" wording in the OAM-DMA overview with the more specific `FF46` MMIO evidence from Pan Docs' hardware-register contract and the `mooneye/acceptance/oam_dma/reg_read.gb` oracle.
 
 ## Model-aware MMIO baseline
 
@@ -204,7 +204,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 
 - HRAM should be modeled as a dedicated internal RAM region distinct from WRAM and MMIO.
 - On DMG, CPU HRAM access should remain available during OAM DMA regardless of which source bus the transfer currently occupies.
-- During an external-bus OAM-DMA conflict, the current baseline keeps CPU HRAM plus the explicit `FF46` exception accessible while other CPU accesses observe DMA-blocked semantics.
+- During an external-bus OAM-DMA conflict, the current baseline keeps CPU `HRAM` plus the explicit `FF46` exception accessible while other CPU accesses observe DMA-blocked semantics.
 - During a video-bus OAM-DMA conflict, the current baseline keeps CPU access to non-VRAM, non-OAM regions available while VRAM and OAM observe DMA-blocked semantics.
 - During either DMG OAM-DMA conflict shape, the dedicated `FF46` MMIO path should remain accessible for DMA readback and restart writes.
 - HRAM initialization policy is separate from its access semantics.
