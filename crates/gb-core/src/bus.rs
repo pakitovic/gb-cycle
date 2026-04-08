@@ -15,7 +15,7 @@ use crate::model::ConsoleModel;
 pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use map::{
     BusAddressInfo, BusDomain, BusRegion, BusRegionOwner, IoRegisterAccess, IoRegisterAvailability,
-    IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
+    IoRegisterImplementation, IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
 };
 pub use meta::BusSnapshot;
 pub use router::AddressRouter;

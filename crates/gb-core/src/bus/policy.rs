@@ -94,6 +94,15 @@ impl Bus {
         }
 
         if requester == BusRequester::Cpu
+            && state.dma.cpu_access_policy() == DmaCpuAccessPolicy::VideoBusBlocked
+        {
+            return Some(BusAccessDisposition::BlockedRead {
+                value: BLOCKED_READ_VALUE,
+                reason: BusBlockReason::UnusableRegionDuringDmaVideoBusConflict,
+            });
+        }
+
+        if requester == BusRequester::Cpu
             && state.ppu.is_lcd_enabled()
             && matches!(
                 state.ppu.mode(),

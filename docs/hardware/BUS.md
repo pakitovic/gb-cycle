@@ -123,7 +123,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 
 - This region must not be modeled as free RAM.
 - For the current DMG-family target, it should have explicit revision-aware behavior instead of a placeholder array.
-- For the current repo baseline on `DMG0`, `DMG`, and `MGB`, reads should return `0x00` outside OAM-blocked periods and `0xFF` during OAM-blocked periods.
+- For the current repo baseline on `DMG0`, `DMG`, and `MGB`, reads should return `0x00` outside OAM-blocked periods and `0xFF` during OAM-blocked periods, including ordinary PPU Mode `2/3` OAM blocking and DMA-published video-bus conflicts that also block OAM.
 - If later model coverage or hardware evidence requires refinement for a specific revision, keep that change model-gated here rather than falling back to generic RAM semantics.
 - On affected DMG-family hardware during the specific Mode `2` OAM-scan block, reads from this range should also enter the same OAM-corruption trigger path used for OAM reads.
 - Other causes of temporary OAM unavailability must not be treated as an automatic OAM-corruption trigger for `FEA0-FEFF`; the bug hook belongs to the Mode `2` path.
@@ -152,15 +152,18 @@ Address alone is not enough: the bus must also consider the current temporal har
   - owning subsystem
   - register identity at per-address granularity
   - access class
-  - model-specific availability such as shared, DMG-only, CGB-only, absent in the current model, or stubbed
+  - nominal model or mode availability such as shared, DMG-compatible, or CGB-only
+  - current implementation state such as implemented, stubbed, or unavailable
 - The public bus-facing descriptor does not need to duplicate every per-bit readback rule if that would create a second shadow register model inside the bus.
 - Readable bits, writable bits, forced bits, dynamic bits, and read or write side effects should still remain explicit somewhere, but the source of truth should live with the owning subsystem's register handler or equally explicit register-local contract rather than in a duplicated bus-side schema.
 - Do not collapse materially different registers such as `LY`, write-only `NR13`, wave RAM, and reserved holes into one generic bucket if the descriptor is meant to be consumed as register metadata.
+- In the current DMG-only but CGB-ready baseline, the descriptor may publish nominal `DmgCompatible` availability for registers such as `BGP` and `OBP*` before the machine has a real "CGB full mode vs DMG-compat mode" runtime switch. That later mode state must refine the same descriptor contract rather than replace it.
 
 ## MMIO access-class baseline
 
 - The minimum MMIO access taxonomy should be `ReadOnly`, `WriteOnly`, `ReadWrite`, and `Mixed`.
 - `Mixed` registers must keep per-bit or per-field behavior explicit; they should not be downgraded to generic `ReadWrite` storage plus one coarse mask.
+- Reserved or otherwise unavailable slots whose published behavior is "read returns `0xFF`, write is ignored" should not be advertised as ordinary `ReadWrite`; in the current descriptor they should use `Mixed` plus an explicit unavailable or stubbed implementation state.
 - Write-only readback policy must be explicit per register or per field. Do not rely on an accidental project-wide default.
 - Writes to read-only bits inside mixed registers should follow register-specific masking or ignore rules rather than mutating storage accidentally.
 
@@ -188,6 +191,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 ## Model-aware MMIO baseline
 
 - Register availability must stay model-aware rather than being inferred from whether a backing field exists today.
+- Current implementation state must stay explicit too: a register may be nominally CGB-only yet still be a routed stub in the present DMG-first core.
 - In DMG mode, unimplemented CGB-only registers should return the correct DMG fallback read value, typically `0xFF`, through the ordinary MMIO path.
 - Writes to unavailable CGB-only registers in DMG mode should follow an explicit ignored-or-stub policy; they must not mutate fake storage just because the address is in `FFxx`.
 

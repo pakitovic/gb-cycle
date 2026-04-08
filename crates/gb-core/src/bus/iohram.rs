@@ -10,7 +10,7 @@ use crate::timer::Timer;
 
 use super::{
     AddressRouter, BLOCKED_READ_VALUE, BusAddressInfo, BusRegion, HRAM_LEN, IoRegisterAvailability,
-    IoRegisterKind, IoRegisterOwner,
+    IoRegisterImplementation, IoRegisterKind, IoRegisterOwner,
 };
 
 #[derive(Default)]
@@ -102,7 +102,9 @@ impl IoHramDomain {
             return BLOCKED_READ_VALUE;
         };
 
-        if info.availability() == IoRegisterAvailability::CgbOnly && console_model.is_dmg_family() {
+        if !io_register_is_available(info.availability(), console_model)
+            || info.implementation() != IoRegisterImplementation::Implemented
+        {
             return BLOCKED_READ_VALUE;
         }
 
@@ -133,7 +135,10 @@ impl IoHramDomain {
                 IoRegisterOwner::Apu => io
                     .apu
                     .map_or(BLOCKED_READ_VALUE, |apu| apu.read_register(address)),
-                IoRegisterOwner::CgbOnly | IoRegisterOwner::Reserved => BLOCKED_READ_VALUE,
+                IoRegisterOwner::MemoryController
+                | IoRegisterOwner::Infrared
+                | IoRegisterOwner::CgbSystem
+                | IoRegisterOwner::Reserved => BLOCKED_READ_VALUE,
                 _ => unreachable!("MMIO descriptor kind/owner mismatch for {address:#06X}"),
             },
         }
@@ -151,7 +156,9 @@ impl IoHramDomain {
             return;
         };
 
-        if info.availability() == IoRegisterAvailability::CgbOnly && console_model.is_dmg_family() {
+        if !io_register_is_available(info.availability(), console_model)
+            || info.implementation() != IoRegisterImplementation::Implemented
+        {
             return;
         }
 
@@ -233,9 +240,22 @@ impl IoHramDomain {
                         apu.write_register_with_div_apu_source(address, value, div_apu_source_high);
                     }
                 }
-                IoRegisterOwner::CgbOnly | IoRegisterOwner::Reserved => {}
+                IoRegisterOwner::MemoryController
+                | IoRegisterOwner::Infrared
+                | IoRegisterOwner::CgbSystem
+                | IoRegisterOwner::Reserved => {}
                 _ => unreachable!("MMIO descriptor kind/owner mismatch for {address:#06X}"),
             },
         }
+    }
+}
+
+fn io_register_is_available(
+    availability: IoRegisterAvailability,
+    console_model: ConsoleModel,
+) -> bool {
+    match availability {
+        IoRegisterAvailability::Shared | IoRegisterAvailability::DmgCompatible => true,
+        IoRegisterAvailability::CgbOnly => console_model.is_cgb_family(),
     }
 }

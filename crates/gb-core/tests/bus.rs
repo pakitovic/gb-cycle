@@ -313,3 +313,27 @@ fn unusable_area_readback_tracks_oam_blocked_periods() {
     assert!(ordinary.disposition().is_allowed());
     assert_eq!(ordinary.target().region(), BusRegion::Unusable);
 }
+
+#[test]
+fn unusable_area_readback_tracks_dma_video_bus_oam_conflicts() {
+    let bus = Bus::new(ConsoleModel::Dmg);
+    let dma_video_bus_blocked = BusArbitrationState::default().with_dma(
+        DmaBusState::video_bus_blocked(Some(DmaMemoryRegionImpact::Oam)),
+    );
+
+    let blocked = bus.resolve_access(
+        BusRequester::Cpu,
+        BusAccessKind::Read,
+        0xFEA0,
+        &dma_video_bus_blocked,
+    );
+
+    assert_eq!(
+        blocked.disposition(),
+        BusAccessDisposition::BlockedRead {
+            value: 0xFF,
+            reason: BusBlockReason::UnusableRegionDuringDmaVideoBusConflict,
+        }
+    );
+    assert_eq!(blocked.target().region(), BusRegion::Unusable);
+}

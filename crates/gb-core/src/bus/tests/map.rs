@@ -189,7 +189,15 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
     }
 
     let ff46 = bus.describe_io_register(0xFF46).unwrap();
+    let ff47 = bus.describe_io_register(0xFF47).unwrap();
+    let ff03 = bus.describe_io_register(0xFF03).unwrap();
+    let ff15 = bus.describe_io_register(0xFF15).unwrap();
+    let ff27 = bus.describe_io_register(0xFF27).unwrap();
+    let ff4e = bus.describe_io_register(0xFF4E).unwrap();
     let ff4c = bus.describe_io_register(0xFF4C).unwrap();
+    let ff51 = bus.describe_io_register(0xFF51).unwrap();
+    let ff68 = bus.describe_io_register(0xFF68).unwrap();
+    let ff70 = bus.describe_io_register(0xFF70).unwrap();
     let ff4d = bus.describe_io_register(0xFF4D).unwrap();
     let ff50 = bus.describe_io_register(0xFF50).unwrap();
     let ff13 = bus.describe_io_register(0xFF13).unwrap();
@@ -199,10 +207,22 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
 
     assert_eq!(ff46.owner(), IoRegisterOwner::Dma);
     assert_eq!(ff46.kind(), IoRegisterKind::OamDma);
-    assert_eq!(ff4c.owner(), IoRegisterOwner::CgbOnly);
+    assert_eq!(ff47.availability(), IoRegisterAvailability::DmgCompatible);
+    assert_eq!(ff47.implementation(), IoRegisterImplementation::Implemented);
+    assert_eq!(ff03.access(), IoRegisterAccess::Mixed);
+    assert_eq!(ff03.implementation(), IoRegisterImplementation::Unavailable);
+    assert_eq!(ff15.access(), IoRegisterAccess::Mixed);
+    assert_eq!(ff27.access(), IoRegisterAccess::Mixed);
+    assert_eq!(ff4e.access(), IoRegisterAccess::Mixed);
+    assert_eq!(ff4c.owner(), IoRegisterOwner::CgbSystem);
     assert_eq!(ff4c.availability(), IoRegisterAvailability::CgbOnly);
+    assert_eq!(ff4c.implementation(), IoRegisterImplementation::Stubbed);
     assert_eq!(ff4c.kind(), IoRegisterKind::Key0);
     assert_eq!(ff4d.kind(), IoRegisterKind::Key1);
+    assert_eq!(ff51.owner(), IoRegisterOwner::Dma);
+    assert_eq!(ff51.implementation(), IoRegisterImplementation::Stubbed);
+    assert_eq!(ff68.owner(), IoRegisterOwner::Ppu);
+    assert_eq!(ff70.owner(), IoRegisterOwner::MemoryController);
     assert_eq!(ff13.access(), IoRegisterAccess::WriteOnly);
     assert_eq!(ff13.kind(), IoRegisterKind::Nr13);
     assert_eq!(ff30.access(), IoRegisterAccess::ReadWrite);
@@ -224,12 +244,21 @@ fn dmg_cgb_only_io_fallback_reads_as_ff() {
 }
 
 #[test]
+fn cgb_ready_stubbed_io_registers_still_read_as_ff_until_implemented() {
+    let bus = Bus::new(ConsoleModel::Cgb);
+
+    assert_eq!(bus.read_io_target(0xFF4C, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF51, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF68, BusIoReadView::default()), 0xFF);
+}
+
+#[test]
 fn bus_address_and_io_metadata_accessors_keep_domain_information_explicit() {
     let address = BusAddressInfo::new(0x8000, BusRegion::Vram, 0x0012);
     let io = IoRegisterInfo::new(
         0xFF46,
         IoRegisterOwner::Dma,
-        IoRegisterAvailability::AllModels,
+        IoRegisterAvailability::Shared,
         IoRegisterAccess::WriteOnly,
         IoRegisterKind::OamDma,
     );
@@ -242,7 +271,8 @@ fn bus_address_and_io_metadata_accessors_keep_domain_information_explicit() {
 
     assert_eq!(io.address(), 0xFF46);
     assert_eq!(io.owner(), IoRegisterOwner::Dma);
-    assert_eq!(io.availability(), IoRegisterAvailability::AllModels);
+    assert_eq!(io.availability(), IoRegisterAvailability::Shared);
+    assert_eq!(io.implementation(), IoRegisterImplementation::Implemented);
     assert_eq!(io.access(), IoRegisterAccess::WriteOnly);
     assert_eq!(io.kind(), IoRegisterKind::OamDma);
 }

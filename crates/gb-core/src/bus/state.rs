@@ -35,6 +35,7 @@ pub enum BusBlockReason {
     PpuOamBlockedDuringMode3,
     UnusableRegion,
     UnusableRegionDuringOamBlock,
+    UnusableRegionDuringDmaVideoBusConflict,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

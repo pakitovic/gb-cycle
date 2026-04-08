@@ -1,7 +1,7 @@
 use gb_core::{
-    BootStatus, Bus, ConsoleModel, DmaTransferState, IoRegisterAvailability, IoRegisterKind,
-    IoRegisterOwner, JoypadButton, Machine, MachineConfig, SerialClockMode, SerialTransferState,
-    StartupMode,
+    BootStatus, Bus, ConsoleModel, DmaTransferState, IoRegisterAvailability,
+    IoRegisterImplementation, IoRegisterKind, IoRegisterOwner, JoypadButton, Machine,
+    MachineConfig, SerialClockMode, SerialTransferState, StartupMode,
 };
 
 #[test]
@@ -56,6 +56,42 @@ fn public_io_descriptor_table_covers_all_mmio_addresses_and_ie_without_gaps() {
     assert_eq!(
         bus.describe_io_register(0xFF70).unwrap().availability(),
         IoRegisterAvailability::CgbOnly
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF47).unwrap().availability(),
+        IoRegisterAvailability::DmgCompatible
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF4C).unwrap().implementation(),
+        IoRegisterImplementation::Stubbed
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF51).unwrap().owner(),
+        IoRegisterOwner::Dma
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF68).unwrap().owner(),
+        IoRegisterOwner::Ppu
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF70).unwrap().owner(),
+        IoRegisterOwner::MemoryController
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF03).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF15).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF27).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF4E).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
     );
 }
 

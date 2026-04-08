@@ -114,14 +114,24 @@ pub enum IoRegisterOwner {
     Ppu,
     Dma,
     Boot,
-    CgbOnly,
+    MemoryController,
+    Infrared,
+    CgbSystem,
     Reserved,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IoRegisterAvailability {
-    AllModels,
+    Shared,
+    DmgCompatible,
     CgbOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IoRegisterImplementation {
+    Implemented,
+    Stubbed,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -204,6 +214,7 @@ pub struct IoRegisterInfo {
     address: u16,
     owner: IoRegisterOwner,
     availability: IoRegisterAvailability,
+    implementation: IoRegisterImplementation,
     access: IoRegisterAccess,
     kind: IoRegisterKind,
 }
@@ -216,10 +227,29 @@ impl IoRegisterInfo {
         access: IoRegisterAccess,
         kind: IoRegisterKind,
     ) -> Self {
+        Self::new_with_implementation(
+            address,
+            owner,
+            availability,
+            IoRegisterImplementation::Implemented,
+            access,
+            kind,
+        )
+    }
+
+    pub const fn new_with_implementation(
+        address: u16,
+        owner: IoRegisterOwner,
+        availability: IoRegisterAvailability,
+        implementation: IoRegisterImplementation,
+        access: IoRegisterAccess,
+        kind: IoRegisterKind,
+    ) -> Self {
         Self {
             address,
             owner,
             availability,
+            implementation,
             access,
             kind,
         }
@@ -235,6 +265,10 @@ impl IoRegisterInfo {
 
     pub const fn availability(self) -> IoRegisterAvailability {
         self.availability
+    }
+
+    pub const fn implementation(self) -> IoRegisterImplementation {
+        self.implementation
     }
 
     pub const fn access(self) -> IoRegisterAccess {

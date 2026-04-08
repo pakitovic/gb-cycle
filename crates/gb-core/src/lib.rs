@@ -27,8 +27,8 @@ pub use bus::{
     AddressRouter, BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution,
     BusAddressInfo, BusArbitrationState, BusBlockReason, BusDomain, BusMaster, BusRegion,
     BusRegionOwner, BusRequester, BusSnapshot, BusStatus, DmaBusState, DmaCpuAccessPolicy,
-    DmaMemoryRegionImpact, IoRegisterAccess, IoRegisterAvailability, IoRegisterInfo,
-    IoRegisterKind, IoRegisterOwner,
+    DmaMemoryRegionImpact, IoRegisterAccess, IoRegisterAvailability, IoRegisterImplementation,
+    IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
 };
 pub use cartridge::{
     CartridgeClassification, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeHeader,

@@ -56,6 +56,8 @@ impl Bus {
                     }
                     BusRegion::Unusable
                         if access_kind == BusAccessKind::Read
+                            && state.ppu.is_lcd_enabled()
+                            && state.ppu.mode() == PpuAccessMode::OamScan
                             && resolution.disposition().blocked_reason()
                                 == Some(BusBlockReason::UnusableRegionDuringOamBlock) =>
                     {
