@@ -1,6 +1,7 @@
 use super::map::{
     BusAddressInfo, BusRegion, IoRegisterAccess, IoRegisterAvailability, IoRegisterImplementation,
     IoRegisterInfo, IoRegisterKind, IoRegisterOwner, UnusableAreaInfo, UnusableAreaReadProfile,
+    UnusableAreaWriteProfile,
 };
 use super::{BLOCKED_READ_VALUE, BusAccessKind, BusArbitrationState, DMG_UNUSABLE_READ_VALUE};
 use crate::model::ConsoleModel;
@@ -613,12 +614,16 @@ impl AddressRouter {
             ConsoleModel::Dmg0 | ConsoleModel::Dmg | ConsoleModel::Mgb => UnusableAreaInfo::new(
                 address,
                 UnusableAreaReadProfile::DmgFamilyFixedZero,
+                UnusableAreaWriteProfile::Ignored,
                 DMG_UNUSABLE_READ_VALUE,
+                true,
             ),
             ConsoleModel::Cgb => UnusableAreaInfo::new(
                 address,
                 UnusableAreaReadProfile::CgbRevisionDependent,
+                UnusableAreaWriteProfile::CgbRevisionDependentRam,
                 BLOCKED_READ_VALUE,
+                true,
             ),
         })
     }

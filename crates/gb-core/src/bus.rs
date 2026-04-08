@@ -16,7 +16,7 @@ pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use map::{
     BusAddressInfo, BusDomain, BusRegion, BusRegionOwner, IoRegisterAccess, IoRegisterAvailability,
     IoRegisterImplementation, IoRegisterInfo, IoRegisterKind, IoRegisterOwner, UnusableAreaInfo,
-    UnusableAreaReadProfile,
+    UnusableAreaReadProfile, UnusableAreaWriteProfile,
 };
 pub use meta::BusSnapshot;
 pub use router::AddressRouter;

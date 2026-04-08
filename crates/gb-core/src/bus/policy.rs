@@ -84,7 +84,12 @@ impl Bus {
             return None;
         }
 
-        if kind == BusAccessKind::Write {
+        if kind == BusAccessKind::Write
+            && self
+                .describe_unusable_area(target.address())
+                .map(|info| info.runtime_fallback_writes_ignored())
+                .unwrap_or(true)
+        {
             return Some(BusAccessDisposition::IgnoredWrite {
                 reason: BusBlockReason::UnusableRegion,
             });

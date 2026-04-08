@@ -2,7 +2,7 @@ use gb_core::{
     BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusArbitrationState, BusBlockReason,
     BusRegion, BusRegionOwner, BusRequester, ConsoleModel, CycleContext, DmaBusState,
     DmaMemoryRegionImpact, PpuAccessMode, PpuBusState, SchedulerPhase, TCycle,
-    UnusableAreaReadProfile,
+    UnusableAreaReadProfile, UnusableAreaWriteProfile,
 };
 
 fn read_cartridgeless_bus_harness(bus: &mut Bus, address: u16) -> u8 {
@@ -112,12 +112,19 @@ fn public_unusable_area_descriptor_keeps_cgb_readback_revision_dependent() {
         dmg.read_profile(),
         UnusableAreaReadProfile::DmgFamilyFixedZero
     );
+    assert_eq!(dmg.write_profile(), UnusableAreaWriteProfile::Ignored);
     assert_eq!(dmg.runtime_fallback_read_value(), 0x00);
+    assert!(dmg.runtime_fallback_writes_ignored());
     assert_eq!(
         cgb.read_profile(),
         UnusableAreaReadProfile::CgbRevisionDependent
     );
+    assert_eq!(
+        cgb.write_profile(),
+        UnusableAreaWriteProfile::CgbRevisionDependentRam
+    );
     assert_eq!(cgb.runtime_fallback_read_value(), 0xFF);
+    assert!(cgb.runtime_fallback_writes_ignored());
 }
 
 #[test]

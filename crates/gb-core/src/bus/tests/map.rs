@@ -306,14 +306,21 @@ fn unusable_area_descriptor_is_model_aware() {
         dmg.read_profile(),
         UnusableAreaReadProfile::DmgFamilyFixedZero
     );
+    assert_eq!(dmg.write_profile(), UnusableAreaWriteProfile::Ignored);
     assert_eq!(dmg.runtime_fallback_read_value(), 0x00);
+    assert!(dmg.runtime_fallback_writes_ignored());
 
     assert_eq!(cgb.address(), 0xFEA0);
     assert_eq!(
         cgb.read_profile(),
         UnusableAreaReadProfile::CgbRevisionDependent
     );
+    assert_eq!(
+        cgb.write_profile(),
+        UnusableAreaWriteProfile::CgbRevisionDependentRam
+    );
     assert_eq!(cgb.runtime_fallback_read_value(), 0xFF);
+    assert!(cgb.runtime_fallback_writes_ignored());
 
     assert!(dmg_bus.describe_unusable_area(0xFE9F).is_none());
     assert!(cgb_bus.describe_unusable_area(0xFF00).is_none());

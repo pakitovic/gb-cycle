@@ -99,6 +99,26 @@ fn cgb_unusable_placeholder_reads_stay_tied_to_the_public_revision_dependent_des
         descriptor.read_profile(),
         UnusableAreaReadProfile::CgbRevisionDependent
     );
+    assert_eq!(
+        descriptor.write_profile(),
+        UnusableAreaWriteProfile::CgbRevisionDependentRam
+    );
+    assert!(descriptor.runtime_fallback_writes_ignored());
+    assert_eq!(bus.read(0xFEA0), descriptor.runtime_fallback_read_value());
+}
+
+#[test]
+fn cgb_unusable_placeholder_writes_are_currently_ignored_but_not_advertised_as_nominally_absent() {
+    let mut bus = Bus::new(ConsoleModel::Cgb);
+    let descriptor = bus.describe_unusable_area(0xFEA0).unwrap();
+
+    bus.write(0xFEA0, 0x12);
+
+    assert_eq!(
+        descriptor.write_profile(),
+        UnusableAreaWriteProfile::CgbRevisionDependentRam
+    );
+    assert!(descriptor.runtime_fallback_writes_ignored());
     assert_eq!(bus.read(0xFEA0), descriptor.runtime_fallback_read_value());
 }
 

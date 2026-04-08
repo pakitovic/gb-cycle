@@ -111,22 +111,34 @@ pub enum UnusableAreaReadProfile {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnusableAreaWriteProfile {
+    Ignored,
+    CgbRevisionDependentRam,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UnusableAreaInfo {
     address: u16,
     read_profile: UnusableAreaReadProfile,
+    write_profile: UnusableAreaWriteProfile,
     runtime_fallback_read_value: u8,
+    runtime_fallback_writes_ignored: bool,
 }
 
 impl UnusableAreaInfo {
     pub const fn new(
         address: u16,
         read_profile: UnusableAreaReadProfile,
+        write_profile: UnusableAreaWriteProfile,
         runtime_fallback_read_value: u8,
+        runtime_fallback_writes_ignored: bool,
     ) -> Self {
         Self {
             address,
             read_profile,
+            write_profile,
             runtime_fallback_read_value,
+            runtime_fallback_writes_ignored,
         }
     }
 
@@ -138,8 +150,16 @@ impl UnusableAreaInfo {
         self.read_profile
     }
 
+    pub const fn write_profile(self) -> UnusableAreaWriteProfile {
+        self.write_profile
+    }
+
     pub const fn runtime_fallback_read_value(self) -> u8 {
         self.runtime_fallback_read_value
+    }
+
+    pub const fn runtime_fallback_writes_ignored(self) -> bool {
+        self.runtime_fallback_writes_ignored
     }
 }
 
