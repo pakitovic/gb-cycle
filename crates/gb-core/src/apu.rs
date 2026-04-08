@@ -1734,7 +1734,7 @@ impl Channel4State {
             return 0;
         }
 
-        if self.lfsr_state & 0x01 != 0 {
+        if self.lfsr_state & 0x01 == 0 {
             self.current_volume
         } else {
             0

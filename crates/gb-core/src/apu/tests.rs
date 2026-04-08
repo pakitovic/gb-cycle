@@ -1854,7 +1854,7 @@ fn channel_4_trigger_reloads_envelope_lfsr_and_noise_timer() {
     assert_eq!(apu.channel_4.current_volume, 0x0F);
     assert_eq!(apu.channel_4.envelope_timer, 2);
     assert_eq!(apu.channel_4.lfsr_state, NOISE_LFSR_INITIAL_STATE);
-    assert_eq!(apu.channel_4.current_digital_output(), 0);
+    assert_eq!(apu.channel_4.current_digital_output(), 0x0F);
     assert_eq!(apu.channel_4.period_timer, 160);
 }
 
@@ -1894,7 +1894,7 @@ fn channel_4_noise_timer_steps_the_lfsr_and_short_width_mode_copies_feedback_int
 
     assert_eq!(channel.period_timer, 8);
     assert_eq!(channel.lfsr_state, 0x4040);
-    assert_eq!(channel.current_digital_output(), 0);
+    assert_eq!(channel.current_digital_output(), 0x0F);
 }
 
 #[test]
@@ -1936,7 +1936,7 @@ fn channel_4_live_nr43_write_into_shift_14_reloads_the_suppressed_noise_timer() 
 
     assert_eq!(channel.period_timer, noise_timer_reload(14, 0));
     assert_eq!(channel.lfsr_state, lfsr_before);
-    assert_eq!(channel.current_digital_output(), 0);
+    assert_eq!(channel.current_digital_output(), 0x0F);
 }
 
 #[test]
@@ -2077,7 +2077,7 @@ fn live_nr42_write_requires_retrigger_before_reprogramming_the_noise_envelope() 
 }
 
 #[test]
-fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window() {
+fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window_silently() {
     let mut wide = Channel4State::default();
     wide.runtime.dac_enabled = true;
     wide.runtime.active = true;
@@ -2094,14 +2094,14 @@ fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window() {
 
     assert_eq!(wide.lfsr_state & 0x7F, 0x3F);
     assert_eq!(narrow.lfsr_state & 0x7F, 0x7F);
-    assert_eq!(narrow.current_digital_output(), 0x0F);
+    assert_eq!(narrow.current_digital_output(), 0);
     assert!(narrow.runtime.active);
 
     narrow.period_timer = 1;
     narrow.tick_fast_timer();
 
     assert_eq!(narrow.lfsr_state & 0x7F, 0x7F);
-    assert_eq!(narrow.current_digital_output(), 0x0F);
+    assert_eq!(narrow.current_digital_output(), 0);
     assert!(narrow.runtime.active);
 }
 
@@ -2117,14 +2117,14 @@ fn channel_4_retrigger_recovers_from_short_width_lockup_without_clearing_activit
     apu.channel_4.current_volume = 0x0F;
 
     assert_eq!(apu.read_register(0xFF26) & 0x08, 0x08);
-    assert_eq!(apu.channel_4.current_digital_output(), 0x0F);
+    assert_eq!(apu.channel_4.current_digital_output(), 0);
 
     apu.write_register(0xFF23, 0x80);
 
     assert_eq!(apu.channel_4.lfsr_state, NOISE_LFSR_INITIAL_STATE);
     assert!(apu.channel_4.runtime.active);
     assert_eq!(apu.read_register(0xFF26) & 0x08, 0x08);
-    assert_eq!(apu.channel_4.current_digital_output(), 0);
+    assert_eq!(apu.channel_4.current_digital_output(), 0x0F);
 
     apu.channel_4.period_timer = 1;
     apu.channel_4.tick_fast_timer();

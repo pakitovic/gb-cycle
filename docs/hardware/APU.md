@@ -585,6 +585,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - shift the register right
   - derive the resolved digital output decision from the documented output bit after that step
 - CH4 digital output should not be the raw numeric LFSR value; it should resolve to either digital `0` or the current envelope-derived volume according to the LFSR output bit.
+- In the documented polarity, LFSR bit `0 = 0` selects the current envelope-derived volume and bit `0 = 1` selects digital `0`, which is why the all-ones short-width lock-up effectively silences CH4 without clearing its active state.
 - The `15`-bit and `7`-bit modes should share the same underlying LFSR machinery, with the short-width mode emerging from the additional bit-`7` feedback path rather than from a second independent pseudo-random generator.
 - `NR43` bits `7..=4` should decode as clock shift, bit `3` as width mode, and bits `2..=0` as clock divider.
 - Clock divider `0` should be treated as divider `0.5` on the documented CH4 timer formula rather than as literal `0` or silently coerced to `1`.
