@@ -285,7 +285,7 @@ fn div_write_can_advance_div_apu_immediately_when_it_resets_a_high_source_bit() 
 }
 
 #[test]
-fn powering_on_apu_while_the_div_apu_source_bit_is_high_skips_the_next_frame_edge() {
+fn powering_on_apu_while_the_div_apu_source_bit_is_high_keeps_the_next_live_frame_edge() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
@@ -306,13 +306,13 @@ fn powering_on_apu_while_the_div_apu_source_bit_is_high_skips_the_next_frame_edg
         machine.step_t_cycle();
     }
 
-    assert_eq!(machine.apu().snapshot().div_apu, 0x00);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
 
     for _ in 0..0x2000 {
         machine.step_t_cycle();
     }
 
-    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x02);
 }
 
 #[test]

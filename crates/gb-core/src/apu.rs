@@ -117,7 +117,6 @@ pub struct Apu {
     status: ApuStatus,
     master: MasterControlState,
     frame_sequencer: FrameSequencerState,
-    skip_next_div_apu_edge: bool,
     output_path: OutputPathState,
     channel_1: Channel1State,
     channel_2: Channel2State,
@@ -1742,7 +1741,6 @@ impl Apu {
             status: ApuStatus::Ready,
             master: MasterControlState::default(),
             frame_sequencer: FrameSequencerState::default(),
-            skip_next_div_apu_edge: false,
             output_path: OutputPathState::default(),
             channel_1: Channel1State::default(),
             channel_2: Channel2State::default(),
@@ -1826,7 +1824,7 @@ impl Apu {
         &mut self,
         address: u16,
         value: u8,
-        div_apu_source_high: bool,
+        _div_apu_source_high: bool,
     ) {
         self.last_register_write = None;
         if let Some(index) = self.wave_ram_index(address) {
@@ -1840,7 +1838,7 @@ impl Apu {
             Self::should_observe_register_write(address).then(|| self.register_write_state());
 
         if address == 0xFF26 {
-            self.write_nr52(value, div_apu_source_high);
+            self.write_nr52(value);
             self.preview_output_path();
             self.record_register_write_observation(address, value, before_register_write);
             return;
@@ -1900,7 +1898,6 @@ impl Apu {
         self.wave_ram_startup_policy = startup_state.wave_ram_startup_policy;
         self.channel_3
             .initialize_wave_ram(startup_state.wave_ram_startup_policy.initial_bytes());
-        self.skip_next_div_apu_edge = false;
         self.output_path = OutputPathState::default();
 
         if startup_state.powered {
@@ -2000,7 +1997,7 @@ impl Apu {
             | self.channel_active_mask()
     }
 
-    fn write_nr52(&mut self, value: u8, div_apu_source_high: bool) {
+    fn write_nr52(&mut self, value: u8) {
         let next_powered = value & NR52_MASTER_POWER_BIT != 0;
 
         match (self.master.powered, next_powered) {
@@ -2008,7 +2005,6 @@ impl Apu {
             (false, true) => {
                 self.master.powered = true;
                 self.frame_sequencer.apply_startup_phase(0);
-                self.skip_next_div_apu_edge = div_apu_source_high;
                 self.channel_1.pulse.mark_powered_on();
                 self.channel_2.pulse.mark_powered_on();
             }
@@ -2018,7 +2014,6 @@ impl Apu {
 
     fn power_off(&mut self) {
         self.master.powered = false;
-        self.skip_next_div_apu_edge = false;
         self.master.nr50 = 0;
         self.master.nr51 = 0;
         self.channel_1.power_off_registers(self.console_model);
@@ -2198,11 +2193,6 @@ impl Apu {
     }
 
     fn advance_frame_sequencer(&mut self) {
-        if self.skip_next_div_apu_edge {
-            self.skip_next_div_apu_edge = false;
-            return;
-        }
-
         let clocks = self.frame_sequencer.advance();
         if !self.master.powered {
             self.preview_output_path();

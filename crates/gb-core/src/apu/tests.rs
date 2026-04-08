@@ -389,7 +389,7 @@ fn frame_sequencer_advances_only_on_the_shared_div_apu_edge() {
 }
 
 #[test]
-fn powering_on_with_the_div_apu_source_high_skips_the_next_frame_sequencer_edge() {
+fn powering_on_with_the_div_apu_source_high_keeps_waiting_for_the_next_live_edge() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.apply_startup_state(ApuStartupState {
         powered: false,
@@ -423,9 +423,6 @@ fn powering_on_with_the_div_apu_source_high_skips_the_next_frame_sequencer_edge(
     assert_eq!(apu.snapshot().div_apu, 0x00);
 
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
-    assert_eq!(apu.snapshot().div_apu, 0x00);
-
-    tick_apu_with_edges(&mut apu, 1, &[DerivedEdge::ApuFrameSequencerEdge]);
     assert_eq!(apu.snapshot().div_apu, 0x01);
 }
 
