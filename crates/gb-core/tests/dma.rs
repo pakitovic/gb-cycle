@@ -6,7 +6,7 @@ use gb_core::{
 
 fn read_cartridgeless_bus_harness(bus: &mut Bus, address: u16) -> u8 {
     let state = BusArbitrationState::default();
-    bus.read_with_cartridge(address, BusRequester::Cpu, &state, None)
+    bus.read_partial_harness_with_cartridge(address, BusRequester::Cpu, &state, None)
 }
 
 #[test]

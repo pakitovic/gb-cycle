@@ -56,11 +56,10 @@ impl Bus {
         )
     }
 
-    // This is a limited harness entry point for callers that can provide the
-    // live arbitration state plus cartridge owner explicitly. Public runtime
-    // access should go through Machine::read_bus so MMIO stays routed to the
-    // owning live subsystems on the shared timeline.
-    pub fn read_with_cartridge(
+    // This is a limited partial-harness entry point for fixture setup and
+    // storage inspection. It does not provide live MMIO owners, so public
+    // runtime access must still go through Machine::read_bus.
+    pub fn read_partial_harness_with_cartridge(
         &mut self,
         address: u16,
         requester: BusRequester,
@@ -131,11 +130,10 @@ impl Bus {
         );
     }
 
-    // This is a limited harness entry point for callers that can provide the
-    // live arbitration state plus cartridge owner explicitly. Public runtime
-    // access should go through Machine::write_bus so MMIO side effects are
-    // committed by the owning live subsystems on the shared timeline.
-    pub fn write_with_cartridge(
+    // This is a limited partial-harness entry point for fixture setup and
+    // storage inspection. It does not provide live MMIO owners, so public
+    // runtime access must still go through Machine::write_bus.
+    pub fn write_partial_harness_with_cartridge(
         &mut self,
         address: u16,
         value: u8,
