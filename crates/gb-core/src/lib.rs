@@ -28,7 +28,7 @@ pub use bus::{
     BusAddressInfo, BusArbitrationState, BusBlockReason, BusDomain, BusMaster, BusRegion,
     BusRegionOwner, BusRequester, BusSnapshot, BusStatus, DmaBusState, DmaCpuAccessPolicy,
     DmaMemoryRegionImpact, IoRegisterAccess, IoRegisterAvailability, IoRegisterImplementation,
-    IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
+    IoRegisterInfo, IoRegisterKind, IoRegisterOwner, UnusableAreaInfo, UnusableAreaReadProfile,
 };
 pub use cartridge::{
     CartridgeClassification, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeHeader,

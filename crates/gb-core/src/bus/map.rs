@@ -105,6 +105,45 @@ impl BusAddressInfo {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnusableAreaReadProfile {
+    DmgFamilyFixedZero,
+    CgbRevisionDependent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UnusableAreaInfo {
+    address: u16,
+    read_profile: UnusableAreaReadProfile,
+    runtime_fallback_read_value: u8,
+}
+
+impl UnusableAreaInfo {
+    pub const fn new(
+        address: u16,
+        read_profile: UnusableAreaReadProfile,
+        runtime_fallback_read_value: u8,
+    ) -> Self {
+        Self {
+            address,
+            read_profile,
+            runtime_fallback_read_value,
+        }
+    }
+
+    pub const fn address(self) -> u16 {
+        self.address
+    }
+
+    pub const fn read_profile(self) -> UnusableAreaReadProfile {
+        self.read_profile
+    }
+
+    pub const fn runtime_fallback_read_value(self) -> u8 {
+        self.runtime_fallback_read_value
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IoRegisterOwner {
     Joypad,
     Serial,

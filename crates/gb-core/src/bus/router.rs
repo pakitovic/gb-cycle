@@ -1,8 +1,9 @@
 use super::map::{
     BusAddressInfo, BusRegion, IoRegisterAccess, IoRegisterAvailability, IoRegisterImplementation,
-    IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
+    IoRegisterInfo, IoRegisterKind, IoRegisterOwner, UnusableAreaInfo, UnusableAreaReadProfile,
 };
-use super::{BusAccessKind, BusArbitrationState};
+use super::{BLOCKED_READ_VALUE, BusAccessKind, BusArbitrationState, DMG_UNUSABLE_READ_VALUE};
+use crate::model::ConsoleModel;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct AddressRouter;
@@ -596,6 +597,29 @@ impl AddressRouter {
                 IoRegisterKind::InterruptEnable,
             ),
             _ => return None,
+        })
+    }
+
+    pub fn describe_unusable_area(
+        &self,
+        console_model: ConsoleModel,
+        address: u16,
+    ) -> Option<UnusableAreaInfo> {
+        if !(0xFEA0..=0xFEFF).contains(&address) {
+            return None;
+        }
+
+        Some(match console_model {
+            ConsoleModel::Dmg0 | ConsoleModel::Dmg | ConsoleModel::Mgb => UnusableAreaInfo::new(
+                address,
+                UnusableAreaReadProfile::DmgFamilyFixedZero,
+                DMG_UNUSABLE_READ_VALUE,
+            ),
+            ConsoleModel::Cgb => UnusableAreaInfo::new(
+                address,
+                UnusableAreaReadProfile::CgbRevisionDependent,
+                BLOCKED_READ_VALUE,
+            ),
         })
     }
 

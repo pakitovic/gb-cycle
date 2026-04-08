@@ -292,3 +292,29 @@ fn bus_address_and_io_metadata_accessors_keep_domain_information_explicit() {
     assert_eq!(io.access(), IoRegisterAccess::WriteOnly);
     assert_eq!(io.kind(), IoRegisterKind::OamDma);
 }
+
+#[test]
+fn unusable_area_descriptor_is_model_aware() {
+    let dmg_bus = Bus::new(ConsoleModel::Dmg);
+    let cgb_bus = Bus::new(ConsoleModel::Cgb);
+
+    let dmg = dmg_bus.describe_unusable_area(0xFEA0).unwrap();
+    let cgb = cgb_bus.describe_unusable_area(0xFEA0).unwrap();
+
+    assert_eq!(dmg.address(), 0xFEA0);
+    assert_eq!(
+        dmg.read_profile(),
+        UnusableAreaReadProfile::DmgFamilyFixedZero
+    );
+    assert_eq!(dmg.runtime_fallback_read_value(), 0x00);
+
+    assert_eq!(cgb.address(), 0xFEA0);
+    assert_eq!(
+        cgb.read_profile(),
+        UnusableAreaReadProfile::CgbRevisionDependent
+    );
+    assert_eq!(cgb.runtime_fallback_read_value(), 0xFF);
+
+    assert!(dmg_bus.describe_unusable_area(0xFE9F).is_none());
+    assert!(cgb_bus.describe_unusable_area(0xFF00).is_none());
+}

@@ -90,6 +90,19 @@ fn cartridge_mmio_and_unusable_placeholders_do_not_behave_like_storage() {
 }
 
 #[test]
+fn cgb_unusable_placeholder_reads_stay_tied_to_the_public_revision_dependent_descriptor() {
+    let mut bus = Bus::new(ConsoleModel::Cgb);
+
+    let descriptor = bus.describe_unusable_area(0xFEA0).unwrap();
+
+    assert_eq!(
+        descriptor.read_profile(),
+        UnusableAreaReadProfile::CgbRevisionDependent
+    );
+    assert_eq!(bus.read(0xFEA0), descriptor.runtime_fallback_read_value());
+}
+
+#[test]
 fn video_bus_dma_policy_has_precedence_over_ppu_region_rules() {
     let bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default()

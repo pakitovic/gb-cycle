@@ -15,7 +15,8 @@ use crate::model::ConsoleModel;
 pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use map::{
     BusAddressInfo, BusDomain, BusRegion, BusRegionOwner, IoRegisterAccess, IoRegisterAvailability,
-    IoRegisterImplementation, IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
+    IoRegisterImplementation, IoRegisterInfo, IoRegisterKind, IoRegisterOwner, UnusableAreaInfo,
+    UnusableAreaReadProfile,
 };
 pub use meta::BusSnapshot;
 pub use router::AddressRouter;
@@ -74,6 +75,11 @@ impl Bus {
 
     pub fn describe_io_register(&self, address: u16) -> Option<IoRegisterInfo> {
         self.router.describe_io_register(address)
+    }
+
+    pub fn describe_unusable_area(&self, address: u16) -> Option<UnusableAreaInfo> {
+        self.router
+            .describe_unusable_area(self.console_model, address)
     }
 }
 

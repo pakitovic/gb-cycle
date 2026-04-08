@@ -122,8 +122,10 @@ Address alone is not enough: the bus must also consider the current temporal har
 ### Unusable area `0xFEA0-0xFEFF`
 
 - This region must not be modeled as free RAM.
-- For the current DMG-family target, it should have explicit revision-aware behavior instead of a placeholder array.
+- The nominal decode may stay as one `Unusable` region, but the public bus contract should also expose a model-aware unusable-area descriptor so `DMG` and future `CGB` revision-specific behavior are not collapsed into one fake readback rule.
 - For the current repo baseline on `DMG0`, `DMG`, and `MGB`, reads should return `0x00` outside OAM-blocked periods and `0xFF` during OAM-blocked periods, including ordinary PPU Mode `2/3` OAM blocking and DMA-published video-bus conflicts that also block OAM.
+- `ConsoleModel::Cgb` should already publish that the non-blocked readback is revision-dependent even before concrete CGB revisions are modeled.
+- Until the core has concrete CGB revision coverage, any raw `Bus` fallback value used there must be documented as a temporary placeholder for harness use, not as verified hardware truth.
 - If later model coverage or hardware evidence requires refinement for a specific revision, keep that change model-gated here rather than falling back to generic RAM semantics.
 - On affected DMG-family hardware during the specific Mode `2` OAM-scan block, reads from this range should also enter the same OAM-corruption trigger path used for OAM reads.
 - Other causes of temporary OAM unavailability must not be treated as an automatic OAM-corruption trigger for `FEA0-FEFF`; the bug hook belongs to the Mode `2` path.

@@ -2,6 +2,7 @@ use gb_core::{
     BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusArbitrationState, BusBlockReason,
     BusRegion, BusRegionOwner, BusRequester, ConsoleModel, CycleContext, DmaBusState,
     DmaMemoryRegionImpact, PpuAccessMode, PpuBusState, SchedulerPhase, TCycle,
+    UnusableAreaReadProfile,
 };
 
 fn read_cartridgeless_bus_harness(bus: &mut Bus, address: u16) -> u8 {
@@ -97,6 +98,26 @@ fn explicit_cartridgeless_bus_harness_uses_placeholders_for_unowned_regions() {
     assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xA123), 0xFF);
     assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xFF40), 0xFF);
     assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xFEA0), 0x00);
+}
+
+#[test]
+fn public_unusable_area_descriptor_keeps_cgb_readback_revision_dependent() {
+    let dmg_bus = Bus::new(ConsoleModel::Dmg);
+    let cgb_bus = Bus::new(ConsoleModel::Cgb);
+
+    let dmg = dmg_bus.describe_unusable_area(0xFEA0).unwrap();
+    let cgb = cgb_bus.describe_unusable_area(0xFEA0).unwrap();
+
+    assert_eq!(
+        dmg.read_profile(),
+        UnusableAreaReadProfile::DmgFamilyFixedZero
+    );
+    assert_eq!(dmg.runtime_fallback_read_value(), 0x00);
+    assert_eq!(
+        cgb.read_profile(),
+        UnusableAreaReadProfile::CgbRevisionDependent
+    );
+    assert_eq!(cgb.runtime_fallback_read_value(), 0xFF);
 }
 
 #[test]
