@@ -43,6 +43,23 @@ fn ff50_only_unmaps_on_non_zero_writes() {
 }
 
 #[test]
+fn bus_state_publishes_model_specific_boot_overlay_windows() {
+    let dmg = BootController::new(ConsoleModel::Dmg, StartupMode::RealBoot, empty_assets());
+    let cgb = BootController::new(ConsoleModel::Cgb, StartupMode::RealBoot, empty_assets());
+    let skip_boot = BootController::new(ConsoleModel::Cgb, StartupMode::SkipBoot, empty_assets());
+
+    let dmg_bus_state = dmg.bus_state();
+    let cgb_bus_state = cgb.bus_state();
+
+    assert!(dmg_bus_state.maps_dmg_low_bytes());
+    assert!(!dmg_bus_state.maps_cgb_upper_window());
+    assert!(cgb_bus_state.maps_low_window());
+    assert!(cgb_bus_state.maps_cgb_upper_window());
+    assert!(!skip_boot.bus_state().maps_low_window());
+    assert!(!skip_boot.bus_state().maps_cgb_upper_window());
+}
+
+#[test]
 fn console_model_selects_the_expected_dmg_family_boot_kind() {
     assert_eq!(
         BootController::new(ConsoleModel::Dmg0, StartupMode::RealBoot, empty_assets())

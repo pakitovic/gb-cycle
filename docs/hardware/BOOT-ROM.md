@@ -34,6 +34,13 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - `FF50` boot ROM disable behavior
 - future CGB boot ROM overlays across `0000-00FF` and `0200-08FF`
 
+## Bus-facing mapping baseline
+
+- The boot subsystem should publish boot-ROM visibility to the bus as active overlay windows, not as one DMG-only "`0000-00FF` mapped" boolean.
+- In the current DMG-family baseline, that published state enables only the low window at `0000-00FF`.
+- Future CGB work should be able to publish both the low window and the upper boot-ROM window at `0200-08FF` through the same contract, without forcing a new bus-state shape.
+- The bus may still decode those windows into one `BootRom` routed owner; the important constraint is that the mapping state itself remains window-oriented and model-aware.
+
 ## Boot mode baseline
 
 - The project should support two explicit startup modes: `RealBoot` and `SkipBoot`.
@@ -200,6 +207,7 @@ Priority order:
 - Cartridge-derived post-boot fields such as DMG/MGB `F` should be computed from the loaded header at initialization time rather than hard-coded into one static table.
 - Uninitialized-state policy for WRAM, HRAM, cartridge RAM whether external or mapper-local, `OBP0`, and `OBP1` should be explicit and testable.
 - Do not hard-code boot ROM support around a fixed 256-byte assumption; CGB boot ROM is larger and uses a split mapped layout.
+- Keep the bus-facing boot mapping state aligned with that split-layout requirement: the contract should stay able to express multiple active windows even while the current functional target is still DMG-only.
 - When CGB is implemented, boot should be able to inspect cartridge header compatibility information and choose CGB mode or DMG-compatibility mode accordingly.
 - In the current Phase `2.8` baseline for this repo, the boot trace should make
   the `FF50` mapping state visible at phase `6` on the same timeline as the

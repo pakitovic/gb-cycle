@@ -28,7 +28,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 
 - full memory map routing
 - shared access to cartridge, VRAM, WRAM, OAM, HRAM, and MMIO registers
-- startup mapping of boot ROM over `0000-00FF` and later cartridge handoff
+- startup mapping of boot-ROM overlay windows and later cartridge handoff
 
 ## DMG region-decode baseline
 
@@ -54,7 +54,9 @@ Address alone is not enough: the bus must also consider the current temporal har
 - Treat the routed target as `domain + region + offset`, not only as one flat region enum.
 - The current DMG-first preferred domain split is `BootRom`, `Cartridge`, `Vram`, `Wram`, `Oam`, `IoHram`, and `Unusable`.
 - If a docboy-like internal domain is introduced, prefer `IoHram` or `Internal` naming over `CpuBus`; `FFxx`, `HRAM`, and `IE` belong together there, while WRAM should stay explicit for future CGB expansion.
+- A docboy-like split into requester-visible bus families such as external, CPU/internal, OAM, and VRAM is a valid internal organization as long as the routed bus contract still exposes one central nominal-decode result plus explicit requester-aware arbitration.
 - The address router or MMU should only resolve nominal routing and boot-overlay ownership. It must not decide live PPU Mode `3` blocking, DMA conflict policy, or other timing-dependent outcomes.
+- Boot-ROM mapping state should describe which overlay windows are currently active, not hard-code one DMG-only low-byte boolean into the bus-facing contract. In the current DMG baseline, the active window is only `0000-00FF`; future CGB work should be able to add the `0200-08FF` window without reshaping the API.
 - Timing-dependent blocked-access behavior remains the responsibility of arbitration plus the owning domain or device contract.
 - PPU and DMA may consume bus-originated OAM and VRAM views instead of raw storage pointers, but those views must still come from the same bus/domain layer and remain synchronized to the shared T-cycle timeline.
 

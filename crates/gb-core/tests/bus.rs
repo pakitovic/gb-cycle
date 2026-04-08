@@ -107,6 +107,25 @@ fn boot_overlay_changes_nominal_read_ownership_without_changing_rom_space_writes
 }
 
 #[test]
+fn cgb_boot_overlay_state_exposes_both_boot_windows() {
+    let bus = Bus::new(ConsoleModel::Cgb);
+    let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_cgb_windows());
+
+    let low_window = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x0000, &state);
+    let upper_window = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x0200, &state);
+    let cartridge_gap = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x0100, &state);
+    let write = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0x0200, &state);
+
+    assert_eq!(low_window.target().region(), BusRegion::BootRom);
+    assert_eq!(upper_window.target().region(), BusRegion::BootRom);
+    assert_eq!(
+        cartridge_gap.target().region(),
+        BusRegion::CartridgeRomBank0
+    );
+    assert_eq!(write.target().region(), BusRegion::CartridgeRomBank0);
+}
+
+#[test]
 fn cpu_vram_and_oam_access_policy_depends_on_live_ppu_state() {
     let bus = Bus::new(ConsoleModel::Dmg);
     let mode3_state =
@@ -257,6 +276,8 @@ fn public_bus_state_accessors_expose_blocked_values_and_built_resolutions() {
     assert_eq!(ignored.blocked_read_value(), None);
     assert_eq!(dma_state.cpu_conflict_source_address(), Some(0x8123));
     assert!(boot_state.maps_dmg_low_bytes());
+    assert!(!boot_state.maps_cgb_upper_window());
+    assert!(BootRomBusState::map_cgb_windows().maps_cgb_upper_window());
 
     let resolution = bus.resolve_access(
         BusRequester::Boot,

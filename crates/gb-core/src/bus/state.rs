@@ -130,28 +130,47 @@ impl DmaBusState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct BootRomBusState {
-    dmg_low_bytes_mapped: bool,
+    low_window_mapped: bool,
+    cgb_upper_window_mapped: bool,
 }
 
 impl BootRomBusState {
     pub const fn unmapped() -> Self {
         Self {
-            dmg_low_bytes_mapped: false,
+            low_window_mapped: false,
+            cgb_upper_window_mapped: false,
         }
     }
 
     pub const fn map_dmg_low_bytes() -> Self {
         Self {
-            dmg_low_bytes_mapped: true,
+            low_window_mapped: true,
+            cgb_upper_window_mapped: false,
         }
     }
 
+    pub const fn map_cgb_windows() -> Self {
+        Self {
+            low_window_mapped: true,
+            cgb_upper_window_mapped: true,
+        }
+    }
+
+    pub const fn maps_low_window(self) -> bool {
+        self.low_window_mapped
+    }
+
     pub const fn maps_dmg_low_bytes(self) -> bool {
-        self.dmg_low_bytes_mapped
+        self.maps_low_window()
+    }
+
+    pub const fn maps_cgb_upper_window(self) -> bool {
+        self.cgb_upper_window_mapped
     }
 
     pub const fn overlays_read(self, address: u16) -> bool {
-        self.dmg_low_bytes_mapped && address <= 0x00FF
+        (self.low_window_mapped && address <= 0x00FF)
+            || (self.cgb_upper_window_mapped && address >= 0x0200 && address <= 0x08FF)
     }
 }
 

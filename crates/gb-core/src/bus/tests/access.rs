@@ -27,6 +27,22 @@ fn boot_overlay_reads_report_the_boot_domain() {
 }
 
 #[test]
+fn cgb_boot_overlay_can_cover_the_upper_window_without_changing_write_ownership() {
+    let bus = Bus::new(ConsoleModel::Cgb);
+    let state = BusArbitrationState::default().with_boot_rom(BootRomBusState::map_cgb_windows());
+
+    let read = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x0200, &state);
+    let write = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0x0200, &state);
+
+    assert_eq!(read.target().region(), BusRegion::BootRom);
+    assert_eq!(read.target().owner(), BusRegionOwner::Boot);
+    assert!(read.disposition().is_allowed());
+    assert_eq!(write.target().region(), BusRegion::CartridgeRomBank0);
+    assert_eq!(write.target().owner(), BusRegionOwner::Cartridge);
+    assert!(write.disposition().is_allowed());
+}
+
+#[test]
 fn resolve_access_keeps_nominal_target_and_policy_separate() {
     let bus = Bus::new(ConsoleModel::Dmg);
     let state =

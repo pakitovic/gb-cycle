@@ -322,10 +322,15 @@ impl BootController {
     }
 
     pub fn bus_state(&self) -> BootRomBusState {
-        if self.boot_rom_mapped {
-            BootRomBusState::map_dmg_low_bytes()
-        } else {
-            BootRomBusState::unmapped()
+        if !self.boot_rom_mapped {
+            return BootRomBusState::unmapped();
+        }
+
+        match self.console_model {
+            ConsoleModel::Cgb => BootRomBusState::map_cgb_windows(),
+            ConsoleModel::Dmg0 | ConsoleModel::Dmg | ConsoleModel::Mgb => {
+                BootRomBusState::map_dmg_low_bytes()
+            }
         }
     }
 
