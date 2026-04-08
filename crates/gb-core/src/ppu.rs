@@ -52,6 +52,44 @@ const OAM_CORRUPTION_ROW_BYTES: usize = 8;
 const OAM_CORRUPTION_ROW_WORDS: usize = 4;
 const OAM_CORRUPTION_ROW_COUNT: u8 = 20;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuStepRegion {
+    Other,
+    Mode0Or1,
+    Mode2Scan,
+    Mode3Startup,
+    Mode3BgFetch,
+    Mode3WindowFetch,
+    Mode3Push,
+    Mode3ObjFetch,
+    Mode3PixelTransfer,
+}
+
+pub trait PpuStepObserver {
+    fn begin_ppu_region(&mut self, _region: PpuStepRegion) {}
+
+    fn end_ppu_region(&mut self, _region: PpuStepRegion) {}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct NoopPpuStepObserver;
+
+impl PpuStepObserver for NoopPpuStepObserver {}
+
+fn observe_ppu_step_region<O, R>(
+    observer: &mut O,
+    region: PpuStepRegion,
+    observe: impl FnOnce() -> R,
+) -> R
+where
+    O: PpuStepObserver,
+{
+    observer.begin_ppu_region(region);
+    let result = observe();
+    observer.end_ppu_region(region);
+    result
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PpuAccessMode {
     #[default]
@@ -631,14 +669,37 @@ impl Ppu {
         self.stat_state.irq_line = self.compute_stat_irq_line(false);
     }
 
+    #[cfg(test)]
     pub(crate) fn tick_t_cycle(
+        &mut self,
+        context: &mut CycleContext,
+        oam: OamBusView<'_>,
+        vram: VramBusView<'_>,
+        dma_oam_active: bool,
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
+    ) {
+        let mut observer = NoopPpuStepObserver;
+        self.tick_t_cycle_with_observer(
+            context,
+            oam,
+            vram,
+            dma_oam_active,
+            dma_oam_conflict,
+            &mut observer,
+        );
+    }
+
+    pub(crate) fn tick_t_cycle_with_observer<O>(
         &mut self,
         _context: &mut CycleContext,
         oam: OamBusView<'_>,
         vram: VramBusView<'_>,
         dma_oam_active: bool,
         dma_oam_conflict: Option<PpuDmaOamConflict>,
-    ) {
+        observer: &mut O,
+    ) where
+        O: PpuStepObserver,
+    {
         debug_assert_eq!(oam.master(), BusMaster::Ppu);
         debug_assert_eq!(vram.master(), BusMaster::Ppu);
         debug_assert_eq!(
@@ -662,49 +723,57 @@ impl Ppu {
             return;
         }
 
-        self.sync_pipeline_registers();
-        self.sync_visible_registers();
-        let previous_mode = self.current_access_mode();
-        self.startup_mode_latch = None;
-        self.line_dot += 1;
-        self.advance_lcd_restart_phase();
-        self.prepare_visible_scanline_state();
-        self.advance_mode2_scan(&oam, dma_oam_active);
-        self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict);
-
-        if self.line_dot == DOTS_PER_SCANLINE {
-            let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
-            if self.bg_pipeline_state.window_started_this_line {
-                self.window_state.window_line_counter =
-                    self.window_state.window_line_counter.wrapping_add(1);
-            }
-            self.line_dot = 0;
-            self.ly = if self.ly + 1 == TOTAL_SCANLINES {
-                0
-            } else {
-                self.ly + 1
-            };
+        let step_region = self.current_step_region_after_line_advance();
+        let previous_mode = observe_ppu_step_region(observer, step_region, || {
+            self.sync_pipeline_registers();
+            self.sync_visible_registers();
+            let previous_mode = self.current_access_mode();
+            self.startup_mode_latch = None;
+            self.line_dot += 1;
             self.advance_lcd_restart_phase();
-            if self.ly >= VISIBLE_SCANLINES {
-                self.window_state.reset();
-            }
-            self.mode2_scan_state.reset_scanline();
-            self.bg_pipeline_state.reset();
-            self.obj_pipeline_state.reset();
-            self.current_scanline_pixels.fill(0);
-            self.current_scanline_mixed_pixels
-                .fill(MixedPixel::background(0));
-            if wraps_to_frame_start && self.blank_frame_active {
-                self.blank_frame_active = false;
-                self.refresh_visible_output();
-            }
-        }
+            self.prepare_visible_scanline_state();
+            previous_mode
+        });
+        observe_ppu_step_region(observer, PpuStepRegion::Mode2Scan, || {
+            self.advance_mode2_scan(&oam, dma_oam_active);
+        });
+        self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict, observer);
 
-        let current_mode = self.current_access_mode();
-        if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
-            self.queue_interrupt_request(InterruptSource::VBlank);
-        }
-        self.refresh_stat_irq_line(false);
+        observe_ppu_step_region(observer, step_region, || {
+            if self.line_dot == DOTS_PER_SCANLINE {
+                let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
+                if self.bg_pipeline_state.window_started_this_line {
+                    self.window_state.window_line_counter =
+                        self.window_state.window_line_counter.wrapping_add(1);
+                }
+                self.line_dot = 0;
+                self.ly = if self.ly + 1 == TOTAL_SCANLINES {
+                    0
+                } else {
+                    self.ly + 1
+                };
+                self.advance_lcd_restart_phase();
+                if self.ly >= VISIBLE_SCANLINES {
+                    self.window_state.reset();
+                }
+                self.mode2_scan_state.reset_scanline();
+                self.bg_pipeline_state.reset();
+                self.obj_pipeline_state.reset();
+                self.current_scanline_pixels.fill(0);
+                self.current_scanline_mixed_pixels
+                    .fill(MixedPixel::background(0));
+                if wraps_to_frame_start && self.blank_frame_active {
+                    self.blank_frame_active = false;
+                    self.refresh_visible_output();
+                }
+            }
+
+            let current_mode = self.current_access_mode();
+            if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
+                self.queue_interrupt_request(InterruptSource::VBlank);
+            }
+            self.refresh_stat_irq_line(false);
+        });
     }
 
     pub fn snapshot(&self) -> PpuSnapshot {
@@ -785,6 +854,19 @@ impl Ppu {
 
     pub fn line_dot(&self) -> u16 {
         self.line_dot
+    }
+
+    pub fn mode0_start_dot(&self) -> u16 {
+        self.current_mode0_start_dot()
+    }
+
+    pub fn is_blank_frame_active(&self) -> bool {
+        self.blank_frame_active
+    }
+
+    pub fn is_startup_mode0_window_active(&self) -> bool {
+        self.lcd_restart_phase
+            .is_startup_mode0_window_active(self.ly, self.line_dot)
     }
 
     pub fn framebuffer(&self) -> &[u8] {
@@ -1100,12 +1182,15 @@ impl Ppu {
             .prepare_window_line(wy_latch, force_x0_this_line);
     }
 
-    fn advance_mode3_pipeline(
+    fn advance_mode3_pipeline<O>(
         &mut self,
         oam: &OamBusView<'_>,
         vram: &VramBusView<'_>,
         dma_oam_conflict: Option<PpuDmaOamConflict>,
-    ) {
+        observer: &mut O,
+    ) where
+        O: PpuStepObserver,
+    {
         if self.ly >= VISIBLE_SCANLINES
             || self.line_dot < MODE2_DOTS
             || self.line_dot >= self.current_mode0_start_dot()
@@ -1114,21 +1199,36 @@ impl Ppu {
         }
 
         if !self.bg_pipeline_state.mode3_started {
-            self.bg_pipeline_state
-                .start_line(self.visible_registers.scx);
+            observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
+                self.bg_pipeline_state
+                    .start_line(self.visible_registers.scx);
+            });
         }
 
-        self.maybe_recompute_pending_background_fill(vram);
-        self.flush_pending_bg_fifo_fill();
+        let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
+        observe_ppu_step_region(observer, bg_pipeline_region, || {
+            self.maybe_recompute_pending_background_fill(vram);
+            self.flush_pending_bg_fifo_fill();
+        });
 
-        if self.advance_mode3_object_phase(oam, vram, dma_oam_conflict) {
+        if observe_ppu_step_region(observer, PpuStepRegion::Mode3ObjFetch, || {
+            self.advance_mode3_object_phase(oam, vram, dma_oam_conflict)
+        }) {
             return;
         }
 
-        let output_dot = self.advance_mode3_output_phase();
-        self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
-        let _ = self.maybe_start_window_after_transfer_dot(output_dot);
-        let _ = self.advance_bg_fetcher(vram);
+        let output_dot =
+            observe_ppu_step_region(observer, PpuStepRegion::Mode3PixelTransfer, || {
+                self.advance_mode3_output_phase()
+            });
+        observe_ppu_step_region(observer, PpuStepRegion::Mode3WindowFetch, || {
+            self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
+            let _ = self.maybe_start_window_after_transfer_dot(output_dot);
+        });
+        let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
+        let _ = observe_ppu_step_region(observer, bg_pipeline_region, || {
+            self.advance_bg_fetcher(vram)
+        });
     }
 
     fn advance_mode3_object_phase(
@@ -1514,6 +1614,49 @@ impl Ppu {
     fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
         let ownership = self.current_bg_push_dot_ownership();
         self.execute_bg_push_dot_ownership(ownership)
+    }
+
+    fn current_step_region_after_line_advance(&self) -> PpuStepRegion {
+        let next_line_dot = self.line_dot + 1;
+        let next_lcd_restart_phase = self.lcd_restart_phase.advance(self.ly, next_line_dot);
+        if next_lcd_restart_phase.is_startup_mode0_window_active(self.ly, next_line_dot)
+            || self.ly >= VISIBLE_SCANLINES
+            || next_line_dot >= self.current_mode0_start_dot()
+        {
+            return PpuStepRegion::Mode0Or1;
+        }
+
+        if next_line_dot < MODE2_DOTS {
+            return PpuStepRegion::Mode2Scan;
+        }
+
+        if !self.bg_pipeline_state.mode3_started {
+            return PpuStepRegion::Mode3Startup;
+        }
+
+        PpuStepRegion::Other
+    }
+
+    fn current_mode3_bg_pipeline_region(&self) -> PpuStepRegion {
+        if self.bg_pipeline_state.fill.pending
+            || self.bg_pipeline_state.push.pending
+            || matches!(
+                self.bg_pipeline_state.fetcher.stage,
+                PpuBgFetcherStage::Push
+            )
+        {
+            return PpuStepRegion::Mode3Push;
+        }
+
+        if matches!(
+            self.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::WindowActivating
+        ) || self.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Window
+        {
+            PpuStepRegion::Mode3WindowFetch
+        } else {
+            PpuStepRegion::Mode3BgFetch
+        }
     }
 
     #[cfg(test)]

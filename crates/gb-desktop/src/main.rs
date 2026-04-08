@@ -6,15 +6,15 @@ mod menu;
 mod save_session;
 mod settings;
 
-use audio::DesktopAudioOutput;
+use audio::{AudioSubmitTelemetry, DesktopAudioOutput};
 use bootrom::{load_boot_rom_assets, missing_boot_rom_asset_path, resolve_path};
 use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base_config};
 use gb_core::{
     ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot, CartridgeDiagnostic,
     CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
     CpuBusAccessKind, CpuBusActivitySnapshot, CpuSnapshot, ExecutionMode,
-    InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig, StartupMode,
-    TraceSummaryBuffer,
+    InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
+    MachineStepObserver, MachineStepRegion, PpuStepRegion, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel, DesktopKey,
@@ -50,11 +50,12 @@ use sdl3::video::{FullscreenType, Window};
 use settings::DesktopSettingsStore;
 use std::collections::VecDeque;
 use std::env;
+use std::ffi::OsStr;
 use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 #[cfg(test)]
 use std::sync::{Mutex, OnceLock};
 use std::thread;
@@ -69,9 +70,12 @@ const AUDIO_QUEUE_DEADBAND_MS: f64 = 24.0;
 const AUDIO_QUEUE_PACING_GAIN: f64 = 0.10;
 const AUDIO_QUEUE_MAX_CORRECTION_MS: f64 = 4.0;
 const PERFORMANCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
+const EXPECTED_SCANLINE_T_CYCLES: usize = 456;
 const INPUT_POLL_SLICE_T_CYCLES: usize = 256;
 const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
+const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
+const DESKTOP_EMU_PROFILE_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EMU_PROFILE";
 const DESKTOP_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_PATH";
 const DESKTOP_TRACE_T_CYCLES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_T_CYCLES";
 const ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
@@ -121,6 +125,7 @@ fn configure_headless_sdl() {
     let _ = hint::set("SDL_AUDIO_DUMMY_TIMESCALE", "0");
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LoopSignal {
     Continue,
     Quit,
@@ -232,6 +237,101 @@ struct DesktopTraceRecord {
     joypad: JoypadSnapshot,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum EmulationProfileMode {
+    #[default]
+    Disabled,
+    SampledSummary {
+        sample_every_frames: u32,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct EmulationBreakdownSample {
+    core_external_events_duration: Duration,
+    core_timer_duration: Duration,
+    core_apu_duration: Duration,
+    core_dma_duration: Duration,
+    core_ppu_duration: Duration,
+    core_ppu_mode0_1_duration: Duration,
+    core_ppu_mode2_duration: Duration,
+    core_ppu_mode3_startup_duration: Duration,
+    core_ppu_bg_fetch_duration: Duration,
+    core_ppu_window_fetch_duration: Duration,
+    core_ppu_push_duration: Duration,
+    core_ppu_obj_fetch_duration: Duration,
+    core_ppu_pixel_transfer_duration: Duration,
+    core_serial_duration: Duration,
+    core_cpu_duration: Duration,
+    core_interrupts_duration: Duration,
+    host_event_poll_duration: Duration,
+    host_audio_submit_duration: Duration,
+    host_save_flush_duration: Duration,
+}
+
+#[derive(Debug)]
+struct StepUntilNextFrameResult {
+    signal: LoopSignal,
+    emulation_profile_request: Option<EmulationProfileRequest>,
+    frame_loop_telemetry: FrameLoopTelemetry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct FrameLoopTelemetry {
+    start_ly: u8,
+    start_dot: u16,
+    end_ly: u8,
+    end_dot: u16,
+    stepped_t_cycles: usize,
+    frame_origin_crossings: u8,
+    scanline_transitions: u16,
+    scanlines_over_456: u16,
+    max_scanline_t_cycles: usize,
+    max_scanline_ly: u8,
+    max_mode0_start_dot: u16,
+    max_mode0_start_dot_ly: u8,
+    ly_153_to_0_transitions: u8,
+    ly_153_to_0_startup_mode0: u8,
+    ly_153_to_0_blank_frame: u8,
+    ly_0_self_wraps: u8,
+    ly_0_self_wrap_startup_mode0: u8,
+    ly_0_self_wrap_blank_frame: u8,
+    ly_0_to_1_transitions: u8,
+    ly_0_max_mode0_start_dot: u16,
+}
+
+#[derive(Debug)]
+struct EmulationProfileRequest {
+    machine: Machine<TraceSummaryBuffer>,
+    breakdown: EmulationBreakdownSample,
+}
+
+#[derive(Debug)]
+struct EmulationProfileWorkItem {
+    machine: Machine<TraceSummaryBuffer>,
+    emulation_duration: Duration,
+    breakdown: EmulationBreakdownSample,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CompletedEmulationProfileSample {
+    emulation_duration: Duration,
+    breakdown: EmulationBreakdownSample,
+}
+
+#[derive(Debug, Default)]
+struct ReplayFrameCoreProfiler {
+    sample: EmulationBreakdownSample,
+    active_region: Option<(MachineStepRegion, Instant)>,
+    active_ppu_region: Option<(PpuStepRegion, Instant)>,
+}
+
+struct AsyncEmulationProfileWorker {
+    request_sender: Option<SyncSender<EmulationProfileWorkItem>>,
+    result_receiver: Receiver<CompletedEmulationProfileSample>,
+    worker_handle: Option<thread::JoinHandle<()>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PathDialogResult {
     Selected(PathBuf),
@@ -318,6 +418,295 @@ impl FrontendRuntime {
             || self.boot_rom_file_dialog.is_pending()
             || self.boot_rom_directory_dialog.is_pending()
             || self.save_directory_dialog.is_pending()
+    }
+}
+
+impl EmulationProfileMode {
+    fn from_env() -> Self {
+        Self::from_env_value(env::var_os(DESKTOP_EMU_PROFILE_ENV_VAR).as_deref())
+    }
+
+    fn from_env_value(value: Option<&OsStr>) -> Self {
+        let Some(value) = value else {
+            return Self::Disabled;
+        };
+
+        let value = value.to_string_lossy();
+        if value.is_empty()
+            || value == "0"
+            || value.eq_ignore_ascii_case("false")
+            || value.eq_ignore_ascii_case("off")
+            || value.eq_ignore_ascii_case("no")
+            || value.eq_ignore_ascii_case("disabled")
+        {
+            Self::Disabled
+        } else {
+            let normalized = value.trim().to_ascii_lowercase();
+            let sample_every_frames = ["summary:", "sampled:", "every:", "stride:"]
+                .iter()
+                .find_map(|prefix| {
+                    normalized.strip_prefix(prefix).and_then(|rest| {
+                        rest.parse::<u32>()
+                            .ok()
+                            .filter(|sample_every| *sample_every > 0)
+                    })
+                })
+                .unwrap_or(DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES);
+            Self::SampledSummary {
+                sample_every_frames,
+            }
+        }
+    }
+
+    fn enabled(self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+
+    fn sample_every_frames(self) -> Option<u32> {
+        match self {
+            Self::Disabled => None,
+            Self::SampledSummary {
+                sample_every_frames,
+            } => Some(sample_every_frames),
+        }
+    }
+}
+
+impl EmulationBreakdownSample {
+    fn add_core_region_duration(&mut self, region: MachineStepRegion, duration: Duration) {
+        match region {
+            MachineStepRegion::ExternalEvents => self.core_external_events_duration += duration,
+            MachineStepRegion::Timer => self.core_timer_duration += duration,
+            MachineStepRegion::Apu => self.core_apu_duration += duration,
+            MachineStepRegion::Dma => self.core_dma_duration += duration,
+            MachineStepRegion::Ppu => self.core_ppu_duration += duration,
+            MachineStepRegion::Serial => self.core_serial_duration += duration,
+            MachineStepRegion::Cpu => self.core_cpu_duration += duration,
+            MachineStepRegion::Interrupts => self.core_interrupts_duration += duration,
+        }
+    }
+
+    fn add_host_event_poll_duration(&mut self, duration: Duration) {
+        self.host_event_poll_duration += duration;
+    }
+
+    fn add_host_audio_submit_duration(&mut self, duration: Duration) {
+        self.host_audio_submit_duration += duration;
+    }
+
+    fn add_ppu_region_duration(&mut self, region: PpuStepRegion, duration: Duration) {
+        match region {
+            PpuStepRegion::Other => {}
+            PpuStepRegion::Mode0Or1 => self.core_ppu_mode0_1_duration += duration,
+            PpuStepRegion::Mode2Scan => self.core_ppu_mode2_duration += duration,
+            PpuStepRegion::Mode3Startup => self.core_ppu_mode3_startup_duration += duration,
+            PpuStepRegion::Mode3BgFetch => self.core_ppu_bg_fetch_duration += duration,
+            PpuStepRegion::Mode3WindowFetch => self.core_ppu_window_fetch_duration += duration,
+            PpuStepRegion::Mode3Push => self.core_ppu_push_duration += duration,
+            PpuStepRegion::Mode3ObjFetch => self.core_ppu_obj_fetch_duration += duration,
+            PpuStepRegion::Mode3PixelTransfer => {
+                self.core_ppu_pixel_transfer_duration += duration;
+            }
+        }
+    }
+
+    fn add_host_save_flush_duration(&mut self, duration: Duration) {
+        self.host_save_flush_duration += duration;
+    }
+
+    fn accumulate(&mut self, other: Self) {
+        self.core_external_events_duration += other.core_external_events_duration;
+        self.core_timer_duration += other.core_timer_duration;
+        self.core_apu_duration += other.core_apu_duration;
+        self.core_dma_duration += other.core_dma_duration;
+        self.core_ppu_duration += other.core_ppu_duration;
+        self.core_ppu_mode0_1_duration += other.core_ppu_mode0_1_duration;
+        self.core_ppu_mode2_duration += other.core_ppu_mode2_duration;
+        self.core_ppu_mode3_startup_duration += other.core_ppu_mode3_startup_duration;
+        self.core_ppu_bg_fetch_duration += other.core_ppu_bg_fetch_duration;
+        self.core_ppu_window_fetch_duration += other.core_ppu_window_fetch_duration;
+        self.core_ppu_push_duration += other.core_ppu_push_duration;
+        self.core_ppu_obj_fetch_duration += other.core_ppu_obj_fetch_duration;
+        self.core_ppu_pixel_transfer_duration += other.core_ppu_pixel_transfer_duration;
+        self.core_serial_duration += other.core_serial_duration;
+        self.core_cpu_duration += other.core_cpu_duration;
+        self.core_interrupts_duration += other.core_interrupts_duration;
+        self.host_event_poll_duration += other.host_event_poll_duration;
+        self.host_audio_submit_duration += other.host_audio_submit_duration;
+        self.host_save_flush_duration += other.host_save_flush_duration;
+    }
+
+    fn core_duration(self) -> Duration {
+        self.core_external_events_duration
+            + self.core_timer_duration
+            + self.core_apu_duration
+            + self.core_dma_duration
+            + self.core_ppu_duration
+            + self.core_serial_duration
+            + self.core_cpu_duration
+            + self.core_interrupts_duration
+    }
+
+    fn host_duration(self) -> Duration {
+        self.host_event_poll_duration
+            + self.host_audio_submit_duration
+            + self.host_save_flush_duration
+    }
+
+    fn core_other_duration(self) -> Duration {
+        self.core_duration()
+            .saturating_sub(self.core_ppu_duration + self.core_cpu_duration)
+    }
+
+    fn ppu_profiled_duration(self) -> Duration {
+        self.core_ppu_mode0_1_duration
+            + self.core_ppu_mode2_duration
+            + self.core_ppu_mode3_startup_duration
+            + self.core_ppu_bg_fetch_duration
+            + self.core_ppu_window_fetch_duration
+            + self.core_ppu_push_duration
+            + self.core_ppu_obj_fetch_duration
+            + self.core_ppu_pixel_transfer_duration
+    }
+
+    fn ppu_other_duration(self) -> Duration {
+        self.core_ppu_duration
+            .saturating_sub(self.ppu_profiled_duration())
+    }
+}
+
+impl EmulationProfileRequest {
+    fn new(machine: Machine<TraceSummaryBuffer>) -> Self {
+        Self {
+            machine,
+            breakdown: EmulationBreakdownSample::default(),
+        }
+    }
+
+    fn record_host_event_poll_duration(&mut self, duration: Duration) {
+        self.breakdown.add_host_event_poll_duration(duration);
+    }
+
+    fn record_host_audio_submit_duration(&mut self, duration: Duration) {
+        self.breakdown.add_host_audio_submit_duration(duration);
+    }
+
+    fn record_host_save_flush_duration(&mut self, duration: Duration) {
+        self.breakdown.add_host_save_flush_duration(duration);
+    }
+
+    fn into_work_item(self, emulation_duration: Duration) -> EmulationProfileWorkItem {
+        EmulationProfileWorkItem {
+            machine: self.machine,
+            emulation_duration,
+            breakdown: self.breakdown,
+        }
+    }
+}
+
+impl ReplayFrameCoreProfiler {
+    fn finish(self) -> EmulationBreakdownSample {
+        debug_assert!(self.active_region.is_none());
+        self.sample
+    }
+}
+
+impl MachineStepObserver for ReplayFrameCoreProfiler {
+    fn begin_region(&mut self, region: MachineStepRegion) {
+        debug_assert!(self.active_region.is_none());
+        self.active_region = Some((region, Instant::now()));
+    }
+
+    fn end_region(&mut self, region: MachineStepRegion) {
+        let (active_region, started_at) = self
+            .active_region
+            .take()
+            .expect("machine-step profiler region should have started before it ends");
+        debug_assert_eq!(active_region, region);
+        self.sample
+            .add_core_region_duration(active_region, started_at.elapsed());
+    }
+
+    fn begin_ppu_region(&mut self, region: PpuStepRegion) {
+        debug_assert!(self.active_ppu_region.is_none());
+        self.active_ppu_region = Some((region, Instant::now()));
+    }
+
+    fn end_ppu_region(&mut self, region: PpuStepRegion) {
+        let (active_region, started_at) = self
+            .active_ppu_region
+            .take()
+            .expect("ppu-step profiler region should have started before it ends");
+        debug_assert_eq!(active_region, region);
+        self.sample
+            .add_ppu_region_duration(active_region, started_at.elapsed());
+    }
+}
+
+impl AsyncEmulationProfileWorker {
+    fn new() -> Self {
+        let (request_sender, request_receiver) = mpsc::sync_channel(1);
+        let (result_sender, result_receiver) = mpsc::channel();
+        let worker_handle = thread::spawn(move || {
+            while let Ok(work_item) = request_receiver.recv() {
+                let result = profile_emulation_work_item(work_item);
+                if result_sender.send(result).is_err() {
+                    break;
+                }
+            }
+        });
+        Self {
+            request_sender: Some(request_sender),
+            result_receiver,
+            worker_handle: Some(worker_handle),
+        }
+    }
+
+    fn try_submit(&self, work_item: EmulationProfileWorkItem) -> bool {
+        self.request_sender
+            .as_ref()
+            .expect("emulation profile worker sender should exist while the worker is alive")
+            .try_send(work_item)
+            .is_ok()
+    }
+
+    fn collect_completed(&self, completed: &mut impl FnMut(CompletedEmulationProfileSample)) {
+        while let Ok(result) = self.result_receiver.try_recv() {
+            completed(result);
+        }
+    }
+}
+
+impl Drop for AsyncEmulationProfileWorker {
+    fn drop(&mut self) {
+        self.request_sender.take();
+        if let Some(worker_handle) = self.worker_handle.take() {
+            let _ = worker_handle.join();
+        }
+    }
+}
+
+fn profile_emulation_work_item(
+    mut work_item: EmulationProfileWorkItem,
+) -> CompletedEmulationProfileSample {
+    let mut profiler = ReplayFrameCoreProfiler::default();
+    let mut at_frame_origin =
+        work_item.machine.ppu().ly() == 0 && work_item.machine.ppu().line_dot() == 0;
+
+    loop {
+        work_item.machine.step_t_cycle_with_observer(&mut profiler);
+        let now_at_frame_origin =
+            work_item.machine.ppu().ly() == 0 && work_item.machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            break;
+        }
+        at_frame_origin = now_at_frame_origin;
+    }
+
+    work_item.breakdown.accumulate(profiler.finish());
+    CompletedEmulationProfileSample {
+        emulation_duration: work_item.emulation_duration,
+        breakdown: work_item.breakdown,
     }
 }
 
@@ -572,6 +961,15 @@ struct FramePacer {
     next_frame_start: Instant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct FramePacingSample {
+    pacing_duration: Duration,
+    sleep_target_duration: Duration,
+    audio_correction_duration: Duration,
+    late_duration: Duration,
+    oversleep_duration: Duration,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct HostRtcSync {
     last_host_unix_seconds: u64,
@@ -622,17 +1020,32 @@ impl FramePacer {
         }
     }
 
-    fn wait_until_next_frame(&mut self, audio_queue_ms: Option<f64>) -> Duration {
+    fn wait_until_next_frame(&mut self, audio_queue_ms: Option<f64>) -> FramePacingSample {
         let audio_correction = audio_queue_pacing_correction(audio_queue_ms);
         self.next_frame_start += FRAME_DURATION + audio_correction;
         let now = Instant::now();
         if now < self.next_frame_start {
-            let wait_duration = self.next_frame_start - now;
-            thread::sleep(wait_duration);
-            wait_duration
+            let sleep_target_duration = self.next_frame_start - now;
+            thread::sleep(sleep_target_duration);
+            let oversleep_duration =
+                Instant::now().saturating_duration_since(self.next_frame_start);
+            FramePacingSample {
+                pacing_duration: sleep_target_duration,
+                sleep_target_duration,
+                audio_correction_duration: audio_correction,
+                late_duration: Duration::ZERO,
+                oversleep_duration,
+            }
         } else {
+            let late_duration = now - self.next_frame_start;
             self.next_frame_start = now;
-            Duration::ZERO
+            FramePacingSample {
+                pacing_duration: Duration::ZERO,
+                sleep_target_duration: Duration::ZERO,
+                audio_correction_duration: audio_correction,
+                late_duration,
+                oversleep_duration: Duration::ZERO,
+            }
         }
     }
 
@@ -655,37 +1068,206 @@ fn audio_queue_pacing_correction(audio_queue_ms: Option<f64>) -> Duration {
     Duration::from_secs_f64(correction_ms / 1_000.0)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug)]
 struct FramePerformanceSample {
     emulation_duration: Duration,
+    emulation_profile_request: Option<EmulationProfileRequest>,
     render_duration: Duration,
+    present_duration: Duration,
     pacing_duration: Duration,
-    audio_queue_ms: Option<f64>,
+    pacing_sleep_target_duration: Duration,
+    pacing_audio_correction_duration: Duration,
+    pacing_late_duration: Duration,
+    pacing_oversleep_duration: Duration,
+    audio_submit_sample_count: Option<usize>,
+    audio_submit_t_cycles: Option<usize>,
+    audio_submit_queue_before_ms: Option<f64>,
+    audio_submit_enqueued_ms: Option<f64>,
+    audio_submit_queue_after_ms: Option<f64>,
+    audio_queue_before_pacing_ms: Option<f64>,
+    audio_queue_after_pacing_ms: Option<f64>,
+    frame_step_t_cycles: Option<usize>,
+    frame_start_ly: Option<u8>,
+    frame_start_dot: Option<u16>,
+    frame_end_ly: Option<u8>,
+    frame_end_dot: Option<u16>,
+    frame_origin_crossings: Option<u8>,
+    scanline_transitions: Option<u16>,
+    scanlines_over_456: Option<u16>,
+    max_scanline_t_cycles: Option<usize>,
+    max_scanline_ly: Option<u8>,
+    max_mode0_start_dot: Option<u16>,
+    max_mode0_start_dot_ly: Option<u8>,
+    ly_153_to_0_transitions: Option<u8>,
+    ly_153_to_0_startup_mode0: Option<u8>,
+    ly_153_to_0_blank_frame: Option<u8>,
+    ly_0_self_wraps: Option<u8>,
+    ly_0_self_wrap_startup_mode0: Option<u8>,
+    ly_0_self_wrap_blank_frame: Option<u8>,
+    ly_0_to_1_transitions: Option<u8>,
+    ly_0_max_mode0_start_dot: Option<u16>,
 }
 
 struct PerformanceCounter {
     base_title: String,
+    emulation_profile_mode: EmulationProfileMode,
+    emulation_profile_worker: Option<AsyncEmulationProfileWorker>,
+    emulation_profile_request_in_flight: bool,
+    presented_frames_total: u64,
     sample_started_at: Instant,
     frames_in_sample: u32,
     sample_emulation_duration: Duration,
+    sample_profiled_frames: u32,
+    sample_profiled_emulation_duration: Duration,
+    sample_profiled_emulation_breakdown: EmulationBreakdownSample,
     sample_render_duration: Duration,
+    sample_present_duration: Duration,
     sample_pacing_duration: Duration,
-    sample_audio_queue_ms: f64,
-    sample_audio_queue_observations: u32,
+    sample_pacing_sleep_target_duration: Duration,
+    sample_pacing_audio_correction_duration: Duration,
+    sample_pacing_late_duration: Duration,
+    sample_pacing_oversleep_duration: Duration,
+    sample_audio_submit_sample_count: u64,
+    sample_audio_submit_sample_count_observations: u32,
+    sample_audio_submit_t_cycles: u64,
+    sample_audio_submit_t_cycles_observations: u32,
+    sample_audio_submit_queue_before_ms: f64,
+    sample_audio_submit_queue_before_observations: u32,
+    sample_audio_submit_enqueued_ms: f64,
+    sample_audio_submit_enqueued_observations: u32,
+    sample_audio_submit_queue_after_ms: f64,
+    sample_audio_submit_queue_after_observations: u32,
+    sample_audio_queue_before_pacing_ms: f64,
+    sample_audio_queue_before_pacing_observations: u32,
+    sample_audio_queue_after_pacing_ms: f64,
+    sample_audio_queue_after_pacing_observations: u32,
+    sample_frame_step_t_cycles: u64,
+    sample_frame_step_t_cycles_observations: u32,
+    sample_frame_start_ly: u64,
+    sample_frame_start_ly_observations: u32,
+    sample_frame_start_dot: u64,
+    sample_frame_start_dot_observations: u32,
+    sample_frame_end_ly: u64,
+    sample_frame_end_ly_observations: u32,
+    sample_frame_end_dot: u64,
+    sample_frame_end_dot_observations: u32,
+    sample_frame_origin_crossings: u64,
+    sample_frame_origin_crossings_observations: u32,
+    sample_scanline_transitions: u64,
+    sample_scanline_transitions_observations: u32,
+    sample_scanlines_over_456: u64,
+    sample_scanlines_over_456_observations: u32,
+    sample_max_scanline_t_cycles: u64,
+    sample_max_scanline_t_cycles_observations: u32,
+    sample_max_scanline_ly: u64,
+    sample_max_scanline_ly_observations: u32,
+    sample_max_mode0_start_dot: u64,
+    sample_max_mode0_start_dot_observations: u32,
+    sample_max_mode0_start_dot_ly: u64,
+    sample_max_mode0_start_dot_ly_observations: u32,
+    sample_ly_153_to_0_transitions: u64,
+    sample_ly_153_to_0_transitions_observations: u32,
+    sample_ly_153_to_0_startup_mode0: u64,
+    sample_ly_153_to_0_startup_mode0_observations: u32,
+    sample_ly_153_to_0_blank_frame: u64,
+    sample_ly_153_to_0_blank_frame_observations: u32,
+    sample_ly_0_self_wraps: u64,
+    sample_ly_0_self_wraps_observations: u32,
+    sample_ly_0_self_wrap_startup_mode0: u64,
+    sample_ly_0_self_wrap_startup_mode0_observations: u32,
+    sample_ly_0_self_wrap_blank_frame: u64,
+    sample_ly_0_self_wrap_blank_frame_observations: u32,
+    sample_ly_0_to_1_transitions: u64,
+    sample_ly_0_to_1_transitions_observations: u32,
+    sample_ly_0_max_mode0_start_dot: u64,
+    sample_ly_0_max_mode0_start_dot_observations: u32,
     hud_snapshot: Option<PerformanceHudSnapshot>,
 }
 
 impl PerformanceCounter {
     fn new(base_title: String) -> Self {
+        Self::new_with_emulation_profile_mode(base_title, EmulationProfileMode::from_env())
+    }
+
+    fn new_with_emulation_profile_mode(
+        base_title: String,
+        emulation_profile_mode: EmulationProfileMode,
+    ) -> Self {
         Self {
             base_title,
+            emulation_profile_mode,
+            emulation_profile_worker: emulation_profile_mode
+                .enabled()
+                .then(AsyncEmulationProfileWorker::new),
+            emulation_profile_request_in_flight: false,
+            presented_frames_total: 0,
             sample_started_at: Instant::now(),
             frames_in_sample: 0,
             sample_emulation_duration: Duration::ZERO,
+            sample_profiled_frames: 0,
+            sample_profiled_emulation_duration: Duration::ZERO,
+            sample_profiled_emulation_breakdown: EmulationBreakdownSample::default(),
             sample_render_duration: Duration::ZERO,
+            sample_present_duration: Duration::ZERO,
             sample_pacing_duration: Duration::ZERO,
-            sample_audio_queue_ms: 0.0,
-            sample_audio_queue_observations: 0,
+            sample_pacing_sleep_target_duration: Duration::ZERO,
+            sample_pacing_audio_correction_duration: Duration::ZERO,
+            sample_pacing_late_duration: Duration::ZERO,
+            sample_pacing_oversleep_duration: Duration::ZERO,
+            sample_audio_submit_sample_count: 0,
+            sample_audio_submit_sample_count_observations: 0,
+            sample_audio_submit_t_cycles: 0,
+            sample_audio_submit_t_cycles_observations: 0,
+            sample_audio_submit_queue_before_ms: 0.0,
+            sample_audio_submit_queue_before_observations: 0,
+            sample_audio_submit_enqueued_ms: 0.0,
+            sample_audio_submit_enqueued_observations: 0,
+            sample_audio_submit_queue_after_ms: 0.0,
+            sample_audio_submit_queue_after_observations: 0,
+            sample_audio_queue_before_pacing_ms: 0.0,
+            sample_audio_queue_before_pacing_observations: 0,
+            sample_audio_queue_after_pacing_ms: 0.0,
+            sample_audio_queue_after_pacing_observations: 0,
+            sample_frame_step_t_cycles: 0,
+            sample_frame_step_t_cycles_observations: 0,
+            sample_frame_start_ly: 0,
+            sample_frame_start_ly_observations: 0,
+            sample_frame_start_dot: 0,
+            sample_frame_start_dot_observations: 0,
+            sample_frame_end_ly: 0,
+            sample_frame_end_ly_observations: 0,
+            sample_frame_end_dot: 0,
+            sample_frame_end_dot_observations: 0,
+            sample_frame_origin_crossings: 0,
+            sample_frame_origin_crossings_observations: 0,
+            sample_scanline_transitions: 0,
+            sample_scanline_transitions_observations: 0,
+            sample_scanlines_over_456: 0,
+            sample_scanlines_over_456_observations: 0,
+            sample_max_scanline_t_cycles: 0,
+            sample_max_scanline_t_cycles_observations: 0,
+            sample_max_scanline_ly: 0,
+            sample_max_scanline_ly_observations: 0,
+            sample_max_mode0_start_dot: 0,
+            sample_max_mode0_start_dot_observations: 0,
+            sample_max_mode0_start_dot_ly: 0,
+            sample_max_mode0_start_dot_ly_observations: 0,
+            sample_ly_153_to_0_transitions: 0,
+            sample_ly_153_to_0_transitions_observations: 0,
+            sample_ly_153_to_0_startup_mode0: 0,
+            sample_ly_153_to_0_startup_mode0_observations: 0,
+            sample_ly_153_to_0_blank_frame: 0,
+            sample_ly_153_to_0_blank_frame_observations: 0,
+            sample_ly_0_self_wraps: 0,
+            sample_ly_0_self_wraps_observations: 0,
+            sample_ly_0_self_wrap_startup_mode0: 0,
+            sample_ly_0_self_wrap_startup_mode0_observations: 0,
+            sample_ly_0_self_wrap_blank_frame: 0,
+            sample_ly_0_self_wrap_blank_frame_observations: 0,
+            sample_ly_0_to_1_transitions: 0,
+            sample_ly_0_to_1_transitions_observations: 0,
+            sample_ly_0_max_mode0_start_dot: 0,
+            sample_ly_0_max_mode0_start_dot_observations: 0,
             hud_snapshot: None,
         }
     }
@@ -695,13 +1277,129 @@ impl PerformanceCounter {
         window: &mut Window,
         sample: FramePerformanceSample,
     ) -> Result<(), String> {
+        self.presented_frames_total = self.presented_frames_total.saturating_add(1);
+        self.collect_emulation_profile_results();
+        self.submit_emulation_profile_request(
+            sample.emulation_profile_request,
+            sample.emulation_duration,
+        );
+
         self.frames_in_sample += 1;
         self.sample_emulation_duration += sample.emulation_duration;
         self.sample_render_duration += sample.render_duration;
+        self.sample_present_duration += sample.present_duration;
         self.sample_pacing_duration += sample.pacing_duration;
-        if let Some(audio_queue_ms) = sample.audio_queue_ms {
-            self.sample_audio_queue_ms += audio_queue_ms;
-            self.sample_audio_queue_observations += 1;
+        self.sample_pacing_sleep_target_duration += sample.pacing_sleep_target_duration;
+        self.sample_pacing_audio_correction_duration += sample.pacing_audio_correction_duration;
+        self.sample_pacing_late_duration += sample.pacing_late_duration;
+        self.sample_pacing_oversleep_duration += sample.pacing_oversleep_duration;
+        if let Some(sample_count) = sample.audio_submit_sample_count {
+            self.sample_audio_submit_sample_count += sample_count as u64;
+            self.sample_audio_submit_sample_count_observations += 1;
+        }
+        if let Some(t_cycles) = sample.audio_submit_t_cycles {
+            self.sample_audio_submit_t_cycles += t_cycles as u64;
+            self.sample_audio_submit_t_cycles_observations += 1;
+        }
+        if let Some(audio_queue_ms) = sample.audio_submit_queue_before_ms {
+            self.sample_audio_submit_queue_before_ms += audio_queue_ms;
+            self.sample_audio_submit_queue_before_observations += 1;
+        }
+        if let Some(audio_queue_ms) = sample.audio_submit_enqueued_ms {
+            self.sample_audio_submit_enqueued_ms += audio_queue_ms;
+            self.sample_audio_submit_enqueued_observations += 1;
+        }
+        if let Some(audio_queue_ms) = sample.audio_submit_queue_after_ms {
+            self.sample_audio_submit_queue_after_ms += audio_queue_ms;
+            self.sample_audio_submit_queue_after_observations += 1;
+        }
+        if let Some(audio_queue_ms) = sample.audio_queue_before_pacing_ms {
+            self.sample_audio_queue_before_pacing_ms += audio_queue_ms;
+            self.sample_audio_queue_before_pacing_observations += 1;
+        }
+        if let Some(audio_queue_ms) = sample.audio_queue_after_pacing_ms {
+            self.sample_audio_queue_after_pacing_ms += audio_queue_ms;
+            self.sample_audio_queue_after_pacing_observations += 1;
+        }
+        if let Some(t_cycles) = sample.frame_step_t_cycles {
+            self.sample_frame_step_t_cycles += t_cycles as u64;
+            self.sample_frame_step_t_cycles_observations += 1;
+        }
+        if let Some(start_ly) = sample.frame_start_ly {
+            self.sample_frame_start_ly += u64::from(start_ly);
+            self.sample_frame_start_ly_observations += 1;
+        }
+        if let Some(start_dot) = sample.frame_start_dot {
+            self.sample_frame_start_dot += u64::from(start_dot);
+            self.sample_frame_start_dot_observations += 1;
+        }
+        if let Some(end_ly) = sample.frame_end_ly {
+            self.sample_frame_end_ly += u64::from(end_ly);
+            self.sample_frame_end_ly_observations += 1;
+        }
+        if let Some(end_dot) = sample.frame_end_dot {
+            self.sample_frame_end_dot += u64::from(end_dot);
+            self.sample_frame_end_dot_observations += 1;
+        }
+        if let Some(frame_origin_crossings) = sample.frame_origin_crossings {
+            self.sample_frame_origin_crossings += u64::from(frame_origin_crossings);
+            self.sample_frame_origin_crossings_observations += 1;
+        }
+        if let Some(scanline_transitions) = sample.scanline_transitions {
+            self.sample_scanline_transitions += u64::from(scanline_transitions);
+            self.sample_scanline_transitions_observations += 1;
+        }
+        if let Some(scanlines_over_456) = sample.scanlines_over_456 {
+            self.sample_scanlines_over_456 += u64::from(scanlines_over_456);
+            self.sample_scanlines_over_456_observations += 1;
+        }
+        if let Some(max_scanline_t_cycles) = sample.max_scanline_t_cycles {
+            self.sample_max_scanline_t_cycles += max_scanline_t_cycles as u64;
+            self.sample_max_scanline_t_cycles_observations += 1;
+        }
+        if let Some(max_scanline_ly) = sample.max_scanline_ly {
+            self.sample_max_scanline_ly += u64::from(max_scanline_ly);
+            self.sample_max_scanline_ly_observations += 1;
+        }
+        if let Some(max_mode0_start_dot) = sample.max_mode0_start_dot {
+            self.sample_max_mode0_start_dot += u64::from(max_mode0_start_dot);
+            self.sample_max_mode0_start_dot_observations += 1;
+        }
+        if let Some(max_mode0_start_dot_ly) = sample.max_mode0_start_dot_ly {
+            self.sample_max_mode0_start_dot_ly += u64::from(max_mode0_start_dot_ly);
+            self.sample_max_mode0_start_dot_ly_observations += 1;
+        }
+        if let Some(transitions) = sample.ly_153_to_0_transitions {
+            self.sample_ly_153_to_0_transitions += u64::from(transitions);
+            self.sample_ly_153_to_0_transitions_observations += 1;
+        }
+        if let Some(transitions) = sample.ly_153_to_0_startup_mode0 {
+            self.sample_ly_153_to_0_startup_mode0 += u64::from(transitions);
+            self.sample_ly_153_to_0_startup_mode0_observations += 1;
+        }
+        if let Some(transitions) = sample.ly_153_to_0_blank_frame {
+            self.sample_ly_153_to_0_blank_frame += u64::from(transitions);
+            self.sample_ly_153_to_0_blank_frame_observations += 1;
+        }
+        if let Some(wraps) = sample.ly_0_self_wraps {
+            self.sample_ly_0_self_wraps += u64::from(wraps);
+            self.sample_ly_0_self_wraps_observations += 1;
+        }
+        if let Some(wraps) = sample.ly_0_self_wrap_startup_mode0 {
+            self.sample_ly_0_self_wrap_startup_mode0 += u64::from(wraps);
+            self.sample_ly_0_self_wrap_startup_mode0_observations += 1;
+        }
+        if let Some(wraps) = sample.ly_0_self_wrap_blank_frame {
+            self.sample_ly_0_self_wrap_blank_frame += u64::from(wraps);
+            self.sample_ly_0_self_wrap_blank_frame_observations += 1;
+        }
+        if let Some(transitions) = sample.ly_0_to_1_transitions {
+            self.sample_ly_0_to_1_transitions += u64::from(transitions);
+            self.sample_ly_0_to_1_transitions_observations += 1;
+        }
+        if let Some(mode0_start_dot) = sample.ly_0_max_mode0_start_dot {
+            self.sample_ly_0_max_mode0_start_dot += u64::from(mode0_start_dot);
+            self.sample_ly_0_max_mode0_start_dot_observations += 1;
         }
 
         let elapsed = self.sample_started_at.elapsed();
@@ -717,6 +1415,9 @@ impl PerformanceCounter {
             window.set_title(&performance_window_title(&self.base_title, snapshot)),
             "failed to update SDL3 window title",
         )?;
+        if let Some(summary) = self.emulation_profile_summary(elapsed, snapshot) {
+            eprintln!("{summary}");
+        }
 
         self.reset_sample();
 
@@ -737,6 +1438,20 @@ impl PerformanceCounter {
         self.hud_snapshot
     }
 
+    fn emulation_profile_enabled(&self) -> bool {
+        self.emulation_profile_mode.enabled()
+    }
+
+    fn should_profile_next_frame(&mut self) -> bool {
+        self.collect_emulation_profile_results();
+        let Some(sample_every_frames) = self.emulation_profile_mode.sample_every_frames() else {
+            return false;
+        };
+        !self.emulation_profile_request_in_flight
+            && self.presented_frames_total > 0
+            && (self.presented_frames_total + 1).is_multiple_of(u64::from(sample_every_frames))
+    }
+
     fn snapshot_from_elapsed(&self, elapsed: Duration) -> PerformanceHudSnapshot {
         let frames = self.frames_in_sample.max(1);
         let frames_f64 = f64::from(frames);
@@ -750,21 +1465,495 @@ impl PerformanceCounter {
             emulation_time_ms: self.sample_emulation_duration.as_secs_f64() * 1_000.0 / frames_f64,
             render_time_ms: self.sample_render_duration.as_secs_f64() * 1_000.0 / frames_f64,
             pacing_time_ms: self.sample_pacing_duration.as_secs_f64() * 1_000.0 / frames_f64,
-            audio_queue_ms: (self.sample_audio_queue_observations > 0).then_some(
-                self.sample_audio_queue_ms / f64::from(self.sample_audio_queue_observations),
+            audio_queue_ms: (self.sample_audio_queue_after_pacing_observations > 0).then_some(
+                self.sample_audio_queue_after_pacing_ms
+                    / f64::from(self.sample_audio_queue_after_pacing_observations),
             ),
         }
+    }
+
+    fn emulation_profile_summary(
+        &self,
+        elapsed: Duration,
+        snapshot: PerformanceHudSnapshot,
+    ) -> Option<String> {
+        if !self.emulation_profile_enabled() || self.frames_in_sample == 0 {
+            return None;
+        }
+        if self.sample_profiled_frames == 0 {
+            return None;
+        }
+
+        let profiled_frames_f64 = f64::from(self.sample_profiled_frames.max(1));
+        let frames_f64 = f64::from(self.frames_in_sample.max(1));
+        let breakdown = self.sample_profiled_emulation_breakdown;
+        let sampled_emu_ms =
+            average_duration_ms(self.sample_profiled_emulation_duration, profiled_frames_f64);
+        let estimated_core_duration = self
+            .sample_profiled_emulation_duration
+            .saturating_sub(breakdown.host_duration());
+        let core_ms = average_duration_ms(estimated_core_duration, profiled_frames_f64);
+        let host_ms = average_duration_ms(breakdown.host_duration(), profiled_frames_f64);
+        let sample_every_frames = self
+            .emulation_profile_mode
+            .sample_every_frames()
+            .expect("sampled emulation profile mode should provide a frame stride");
+        let audio_submit_samples = if self.sample_audio_submit_sample_count_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_audio_submit_sample_count as f64
+                    / f64::from(self.sample_audio_submit_sample_count_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let audio_submit_t_cycles = if self.sample_audio_submit_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_audio_submit_t_cycles as f64
+                    / f64::from(self.sample_audio_submit_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let audio_submit_queue_before_ms = if self.sample_audio_submit_queue_before_observations > 0
+        {
+            format!(
+                "{:.2}",
+                self.sample_audio_submit_queue_before_ms
+                    / f64::from(self.sample_audio_submit_queue_before_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let audio_submit_enqueued_ms = if self.sample_audio_submit_enqueued_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_audio_submit_enqueued_ms
+                    / f64::from(self.sample_audio_submit_enqueued_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let audio_submit_queue_after_ms = if self.sample_audio_submit_queue_after_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_audio_submit_queue_after_ms
+                    / f64::from(self.sample_audio_submit_queue_after_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let audio_queue_before_pacing_ms = if self.sample_audio_queue_before_pacing_observations > 0
+        {
+            format!(
+                "{:.2}",
+                self.sample_audio_queue_before_pacing_ms
+                    / f64::from(self.sample_audio_queue_before_pacing_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let audio_queue_after_pacing_ms = if self.sample_audio_queue_after_pacing_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_audio_queue_after_pacing_ms
+                    / f64::from(self.sample_audio_queue_after_pacing_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let frame_step_t_cycles = if self.sample_frame_step_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_frame_step_t_cycles as f64
+                    / f64::from(self.sample_frame_step_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let frame_start_ly = if self.sample_frame_start_ly_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_frame_start_ly as f64
+                    / f64::from(self.sample_frame_start_ly_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let frame_start_dot = if self.sample_frame_start_dot_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_frame_start_dot as f64
+                    / f64::from(self.sample_frame_start_dot_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let frame_end_ly = if self.sample_frame_end_ly_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_frame_end_ly as f64 / f64::from(self.sample_frame_end_ly_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let frame_end_dot = if self.sample_frame_end_dot_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_frame_end_dot as f64
+                    / f64::from(self.sample_frame_end_dot_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let frame_origin_crossings = if self.sample_frame_origin_crossings_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_frame_origin_crossings as f64
+                    / f64::from(self.sample_frame_origin_crossings_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let scanline_transitions = if self.sample_scanline_transitions_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_scanline_transitions as f64
+                    / f64::from(self.sample_scanline_transitions_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let scanlines_over_456 = if self.sample_scanlines_over_456_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_scanlines_over_456 as f64
+                    / f64::from(self.sample_scanlines_over_456_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let max_scanline_t_cycles = if self.sample_max_scanline_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_max_scanline_t_cycles as f64
+                    / f64::from(self.sample_max_scanline_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let max_scanline_ly = if self.sample_max_scanline_ly_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_max_scanline_ly as f64
+                    / f64::from(self.sample_max_scanline_ly_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let max_mode0_start_dot = if self.sample_max_mode0_start_dot_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_max_mode0_start_dot as f64
+                    / f64::from(self.sample_max_mode0_start_dot_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let max_mode0_start_dot_ly = if self.sample_max_mode0_start_dot_ly_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_max_mode0_start_dot_ly as f64
+                    / f64::from(self.sample_max_mode0_start_dot_ly_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_153_to_0_transitions = if self.sample_ly_153_to_0_transitions_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_153_to_0_transitions as f64
+                    / f64::from(self.sample_ly_153_to_0_transitions_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_153_to_0_startup_mode0 = if self.sample_ly_153_to_0_startup_mode0_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_153_to_0_startup_mode0 as f64
+                    / f64::from(self.sample_ly_153_to_0_startup_mode0_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_153_to_0_blank_frame = if self.sample_ly_153_to_0_blank_frame_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_153_to_0_blank_frame as f64
+                    / f64::from(self.sample_ly_153_to_0_blank_frame_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_self_wraps = if self.sample_ly_0_self_wraps_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_self_wraps as f64
+                    / f64::from(self.sample_ly_0_self_wraps_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_self_wrap_startup_mode0 =
+            if self.sample_ly_0_self_wrap_startup_mode0_observations > 0 {
+                format!(
+                    "{:.2}",
+                    self.sample_ly_0_self_wrap_startup_mode0 as f64
+                        / f64::from(self.sample_ly_0_self_wrap_startup_mode0_observations)
+                )
+            } else {
+                "off".to_string()
+            };
+        let ly_0_self_wrap_blank_frame = if self.sample_ly_0_self_wrap_blank_frame_observations > 0
+        {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_self_wrap_blank_frame as f64
+                    / f64::from(self.sample_ly_0_self_wrap_blank_frame_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_to_1_transitions = if self.sample_ly_0_to_1_transitions_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_to_1_transitions as f64
+                    / f64::from(self.sample_ly_0_to_1_transitions_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_max_mode0_start_dot = if self.sample_ly_0_max_mode0_start_dot_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_max_mode0_start_dot as f64
+                    / f64::from(self.sample_ly_0_max_mode0_start_dot_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+
+        Some(format!(
+            "gb-desktop emu-profile fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            snapshot.fps,
+            snapshot.speed_percent,
+            snapshot.frame_time_ms,
+            snapshot.emulation_time_ms,
+            self.sample_profiled_frames,
+            sample_every_frames,
+            scaled_average_duration_ms(
+                breakdown.core_ppu_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_cpu_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_other_duration(),
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_mode0_1_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_mode2_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_mode3_startup_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_bg_fetch_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_window_fetch_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_push_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_obj_fetch_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_ppu_pixel_transfer_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.ppu_other_duration(),
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            average_duration_ms(breakdown.host_event_poll_duration, profiled_frames_f64),
+            average_duration_ms(breakdown.host_audio_submit_duration, profiled_frames_f64),
+            average_duration_ms(breakdown.host_save_flush_duration, profiled_frames_f64),
+            average_duration_ms(self.sample_present_duration, frames_f64),
+            average_duration_ms(self.sample_pacing_duration, frames_f64),
+            average_duration_ms(self.sample_pacing_sleep_target_duration, frames_f64),
+            average_duration_ms(self.sample_pacing_audio_correction_duration, frames_f64),
+            average_duration_ms(self.sample_pacing_late_duration, frames_f64),
+            average_duration_ms(self.sample_pacing_oversleep_duration, frames_f64),
+            elapsed.as_secs_f64(),
+        ))
     }
 
     fn reset_sample(&mut self) {
         self.sample_started_at = Instant::now();
         self.frames_in_sample = 0;
         self.sample_emulation_duration = Duration::ZERO;
+        self.sample_profiled_frames = 0;
+        self.sample_profiled_emulation_duration = Duration::ZERO;
+        self.sample_profiled_emulation_breakdown = EmulationBreakdownSample::default();
         self.sample_render_duration = Duration::ZERO;
+        self.sample_present_duration = Duration::ZERO;
         self.sample_pacing_duration = Duration::ZERO;
-        self.sample_audio_queue_ms = 0.0;
-        self.sample_audio_queue_observations = 0;
+        self.sample_pacing_sleep_target_duration = Duration::ZERO;
+        self.sample_pacing_audio_correction_duration = Duration::ZERO;
+        self.sample_pacing_late_duration = Duration::ZERO;
+        self.sample_pacing_oversleep_duration = Duration::ZERO;
+        self.sample_audio_submit_sample_count = 0;
+        self.sample_audio_submit_sample_count_observations = 0;
+        self.sample_audio_submit_t_cycles = 0;
+        self.sample_audio_submit_t_cycles_observations = 0;
+        self.sample_audio_submit_queue_before_ms = 0.0;
+        self.sample_audio_submit_queue_before_observations = 0;
+        self.sample_audio_submit_enqueued_ms = 0.0;
+        self.sample_audio_submit_enqueued_observations = 0;
+        self.sample_audio_submit_queue_after_ms = 0.0;
+        self.sample_audio_submit_queue_after_observations = 0;
+        self.sample_audio_queue_before_pacing_ms = 0.0;
+        self.sample_audio_queue_before_pacing_observations = 0;
+        self.sample_audio_queue_after_pacing_ms = 0.0;
+        self.sample_audio_queue_after_pacing_observations = 0;
+        self.sample_frame_step_t_cycles = 0;
+        self.sample_frame_step_t_cycles_observations = 0;
+        self.sample_frame_start_ly = 0;
+        self.sample_frame_start_ly_observations = 0;
+        self.sample_frame_start_dot = 0;
+        self.sample_frame_start_dot_observations = 0;
+        self.sample_frame_end_ly = 0;
+        self.sample_frame_end_ly_observations = 0;
+        self.sample_frame_end_dot = 0;
+        self.sample_frame_end_dot_observations = 0;
+        self.sample_frame_origin_crossings = 0;
+        self.sample_frame_origin_crossings_observations = 0;
+        self.sample_scanline_transitions = 0;
+        self.sample_scanline_transitions_observations = 0;
+        self.sample_scanlines_over_456 = 0;
+        self.sample_scanlines_over_456_observations = 0;
+        self.sample_max_scanline_t_cycles = 0;
+        self.sample_max_scanline_t_cycles_observations = 0;
+        self.sample_max_scanline_ly = 0;
+        self.sample_max_scanline_ly_observations = 0;
+        self.sample_max_mode0_start_dot = 0;
+        self.sample_max_mode0_start_dot_observations = 0;
+        self.sample_max_mode0_start_dot_ly = 0;
+        self.sample_max_mode0_start_dot_ly_observations = 0;
+        self.sample_ly_153_to_0_transitions = 0;
+        self.sample_ly_153_to_0_transitions_observations = 0;
+        self.sample_ly_153_to_0_startup_mode0 = 0;
+        self.sample_ly_153_to_0_startup_mode0_observations = 0;
+        self.sample_ly_153_to_0_blank_frame = 0;
+        self.sample_ly_153_to_0_blank_frame_observations = 0;
+        self.sample_ly_0_self_wraps = 0;
+        self.sample_ly_0_self_wraps_observations = 0;
+        self.sample_ly_0_self_wrap_startup_mode0 = 0;
+        self.sample_ly_0_self_wrap_startup_mode0_observations = 0;
+        self.sample_ly_0_self_wrap_blank_frame = 0;
+        self.sample_ly_0_self_wrap_blank_frame_observations = 0;
+        self.sample_ly_0_to_1_transitions = 0;
+        self.sample_ly_0_to_1_transitions_observations = 0;
+        self.sample_ly_0_max_mode0_start_dot = 0;
+        self.sample_ly_0_max_mode0_start_dot_observations = 0;
     }
+
+    fn collect_emulation_profile_results(&mut self) {
+        let Some(worker) = self.emulation_profile_worker.as_ref() else {
+            return;
+        };
+        worker.collect_completed(&mut |result| {
+            self.emulation_profile_request_in_flight = false;
+            self.sample_profiled_frames += 1;
+            self.sample_profiled_emulation_duration += result.emulation_duration;
+            self.sample_profiled_emulation_breakdown
+                .accumulate(result.breakdown);
+        });
+    }
+
+    fn submit_emulation_profile_request(
+        &mut self,
+        request: Option<EmulationProfileRequest>,
+        emulation_duration: Duration,
+    ) {
+        let Some(request) = request else {
+            return;
+        };
+        let Some(worker) = self.emulation_profile_worker.as_ref() else {
+            return;
+        };
+        self.emulation_profile_request_in_flight =
+            worker.try_submit(request.into_work_item(emulation_duration));
+    }
+}
+
+fn average_duration_ms(duration: Duration, frames_f64: f64) -> f64 {
+    duration.as_secs_f64() * 1_000.0 / frames_f64.max(f64::EPSILON)
+}
+
+fn scaled_average_duration_ms(
+    observed_duration: Duration,
+    observed_total: Duration,
+    scaled_total: Duration,
+    frames_f64: f64,
+) -> f64 {
+    let observed_total_secs = observed_total.as_secs_f64();
+    if observed_total_secs <= f64::EPSILON {
+        return 0.0;
+    }
+
+    average_duration_ms(observed_duration, frames_f64)
+        * (scaled_total.as_secs_f64() / observed_total_secs)
 }
 
 fn map_path_dialog_result(result: Result<Vec<PathBuf>, DialogError>) -> PathDialogResult {
@@ -1031,7 +2220,7 @@ fn run_desktop_with_startup_fallback_persistence(
         &runtime.menu_state,
         current_menu_presentation(canvas.window(), &runtime, &machine, &session),
     ));
-    render_frame(
+    let _ = render_frame(
         &mut canvas,
         &mut texture,
         &mut rgb_frame,
@@ -1080,7 +2269,7 @@ fn run_desktop_with_startup_fallback_persistence(
                     &runtime.menu_state,
                     current_menu_presentation(canvas.window(), &runtime, &machine, &session),
                 ));
-                render_frame(
+                let _ = render_frame(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
@@ -1095,7 +2284,7 @@ fn run_desktop_with_startup_fallback_persistence(
         }
 
         let emulation_started_at = Instant::now();
-        match {
+        let step_result = {
             let mut context = FrontendActionContext {
                 session: &mut session,
                 machine: &mut machine,
@@ -1105,11 +2294,16 @@ fn run_desktop_with_startup_fallback_persistence(
                 settings_store: &mut settings_store,
             };
             step_until_next_frame(&mut event_pump, &mut canvas, &mut context)
-        }? {
+        }?;
+        match step_result.signal {
             LoopSignal::Continue => {}
             LoopSignal::Quit => break 'running,
         }
         let emulation_duration = emulation_started_at.elapsed();
+        let audio_submit_telemetry = runtime
+            .audio_output
+            .as_mut()
+            .and_then(DesktopAudioOutput::take_last_submit_telemetry);
 
         if emulation_paused(&machine, &runtime) {
             if runtime.menu_state.is_open() {
@@ -1117,7 +2311,7 @@ fn run_desktop_with_startup_fallback_persistence(
                     &runtime.menu_state,
                     current_menu_presentation(canvas.window(), &runtime, &machine, &session),
                 ));
-                render_frame(
+                let _ = render_frame(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
@@ -1132,7 +2326,7 @@ fn run_desktop_with_startup_fallback_persistence(
         }
 
         let render_started_at = Instant::now();
-        render_frame(
+        let present_duration = render_frame(
             &mut canvas,
             &mut texture,
             &mut rgb_frame,
@@ -1146,18 +2340,60 @@ fn run_desktop_with_startup_fallback_persistence(
             .audio_output
             .as_ref()
             .and_then(DesktopAudioOutput::queued_duration_ms);
-        let pacing_duration = frame_pacer.wait_until_next_frame(audio_queue_ms_before_pacing);
+        let pacing = frame_pacer.wait_until_next_frame(audio_queue_ms_before_pacing);
         let audio_queue_ms_after_pacing = runtime
             .audio_output
             .as_ref()
             .and_then(DesktopAudioOutput::queued_duration_ms);
+        let AudioSubmitTelemetry {
+            sample_count: audio_submit_sample_count,
+            captured_t_cycles: audio_submit_t_cycles,
+            queued_ms_before: audio_submit_queue_before_ms,
+            enqueued_ms: audio_submit_enqueued_ms,
+            queued_ms_after: audio_submit_queue_after_ms,
+        } = audio_submit_telemetry.unwrap_or_default();
+        let frame_loop_telemetry = step_result.frame_loop_telemetry;
         performance_counter.record_presented_frame(
             canvas.window_mut(),
             FramePerformanceSample {
                 emulation_duration,
+                emulation_profile_request: step_result.emulation_profile_request,
                 render_duration,
-                pacing_duration,
-                audio_queue_ms: audio_queue_ms_after_pacing,
+                present_duration,
+                pacing_duration: pacing.pacing_duration,
+                pacing_sleep_target_duration: pacing.sleep_target_duration,
+                pacing_audio_correction_duration: pacing.audio_correction_duration,
+                pacing_late_duration: pacing.late_duration,
+                pacing_oversleep_duration: pacing.oversleep_duration,
+                audio_submit_sample_count: Some(audio_submit_sample_count),
+                audio_submit_t_cycles: Some(audio_submit_t_cycles),
+                audio_submit_queue_before_ms,
+                audio_submit_enqueued_ms,
+                audio_submit_queue_after_ms,
+                audio_queue_before_pacing_ms: audio_queue_ms_before_pacing,
+                audio_queue_after_pacing_ms: audio_queue_ms_after_pacing,
+                frame_step_t_cycles: Some(frame_loop_telemetry.stepped_t_cycles),
+                frame_start_ly: Some(frame_loop_telemetry.start_ly),
+                frame_start_dot: Some(frame_loop_telemetry.start_dot),
+                frame_end_ly: Some(frame_loop_telemetry.end_ly),
+                frame_end_dot: Some(frame_loop_telemetry.end_dot),
+                frame_origin_crossings: Some(frame_loop_telemetry.frame_origin_crossings),
+                scanline_transitions: Some(frame_loop_telemetry.scanline_transitions),
+                scanlines_over_456: Some(frame_loop_telemetry.scanlines_over_456),
+                max_scanline_t_cycles: Some(frame_loop_telemetry.max_scanline_t_cycles),
+                max_scanline_ly: Some(frame_loop_telemetry.max_scanline_ly),
+                max_mode0_start_dot: Some(frame_loop_telemetry.max_mode0_start_dot),
+                max_mode0_start_dot_ly: Some(frame_loop_telemetry.max_mode0_start_dot_ly),
+                ly_153_to_0_transitions: Some(frame_loop_telemetry.ly_153_to_0_transitions),
+                ly_153_to_0_startup_mode0: Some(frame_loop_telemetry.ly_153_to_0_startup_mode0),
+                ly_153_to_0_blank_frame: Some(frame_loop_telemetry.ly_153_to_0_blank_frame),
+                ly_0_self_wraps: Some(frame_loop_telemetry.ly_0_self_wraps),
+                ly_0_self_wrap_startup_mode0: Some(
+                    frame_loop_telemetry.ly_0_self_wrap_startup_mode0,
+                ),
+                ly_0_self_wrap_blank_frame: Some(frame_loop_telemetry.ly_0_self_wrap_blank_frame),
+                ly_0_to_1_transitions: Some(frame_loop_telemetry.ly_0_to_1_transitions),
+                ly_0_max_mode0_start_dot: Some(frame_loop_telemetry.ly_0_max_mode0_start_dot),
             },
         )?;
     }
@@ -1623,40 +2859,195 @@ fn step_until_next_frame(
     event_pump: &mut sdl3::EventPump,
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
-) -> Result<LoopSignal, String> {
-    let mut at_frame_origin =
-        context.machine.ppu().ly() == 0 && context.machine.ppu().line_dot() == 0;
+) -> Result<StepUntilNextFrameResult, String> {
+    let frame_start_ly = context.machine.ppu().ly();
+    let frame_start_dot = context.machine.ppu().line_dot();
+    let mut current_scanline_ly = frame_start_ly;
+    let mut current_scanline_t_cycles = 0usize;
+    let mut at_frame_origin = frame_start_ly == 0 && frame_start_dot == 0;
+    let mut previous_ly = frame_start_ly;
+    let mut previous_dot = frame_start_dot;
+    let profile_this_frame = context.performance_counter.should_profile_next_frame();
+    let mut profile_request = None::<EmulationProfileRequest>;
+    let mut pending_event_poll_duration = Duration::ZERO;
+    let mut stepped_t_cycles = 0usize;
+    let mut frame_origin_crossings = 0u8;
+    let mut scanline_transitions = 0u16;
+    let mut scanlines_over_456 = 0u16;
+    let mut max_scanline_t_cycles = 0usize;
+    let mut max_scanline_ly = frame_start_ly;
+    let mut max_mode0_start_dot = context.machine.ppu().mode0_start_dot();
+    let mut max_mode0_start_dot_ly = frame_start_ly;
+    let mut ly_153_to_0_transitions = 0u8;
+    let mut ly_153_to_0_startup_mode0 = 0u8;
+    let mut ly_153_to_0_blank_frame = 0u8;
+    let mut ly_0_self_wraps = 0u8;
+    let mut ly_0_self_wrap_startup_mode0 = 0u8;
+    let mut ly_0_self_wrap_blank_frame = 0u8;
+    let mut ly_0_to_1_transitions = 0u8;
+    let mut ly_0_max_mode0_start_dot = if frame_start_ly == 0 {
+        max_mode0_start_dot
+    } else {
+        0
+    };
 
     loop {
-        match process_events(event_pump, canvas, context)? {
+        let process_events_started_at = profile_this_frame.then(Instant::now);
+        let loop_signal = process_events(event_pump, canvas, context)?;
+        if let Some(process_events_started_at) = process_events_started_at {
+            let duration = process_events_started_at.elapsed();
+            if let Some(profile_request) = &mut profile_request {
+                profile_request.record_host_event_poll_duration(duration);
+            } else {
+                pending_event_poll_duration += duration;
+            }
+        }
+        match loop_signal {
             LoopSignal::Continue => {}
-            LoopSignal::Quit => return Ok(LoopSignal::Quit),
+            LoopSignal::Quit => {
+                return Ok(StepUntilNextFrameResult {
+                    signal: LoopSignal::Quit,
+                    emulation_profile_request: None,
+                    frame_loop_telemetry: FrameLoopTelemetry::default(),
+                });
+            }
         }
         if emulation_paused(context.machine, context.runtime) {
-            return Ok(LoopSignal::Continue);
+            return Ok(StepUntilNextFrameResult {
+                signal: LoopSignal::Continue,
+                emulation_profile_request: None,
+                frame_loop_telemetry: FrameLoopTelemetry::default(),
+            });
+        }
+        if profile_this_frame && profile_request.is_none() {
+            let mut request = EmulationProfileRequest::new(context.machine.clone());
+            request.record_host_event_poll_duration(pending_event_poll_duration);
+            profile_request = Some(request);
+            pending_event_poll_duration = Duration::ZERO;
         }
 
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
             context.machine.step_t_cycle();
+            stepped_t_cycles += 1;
+            current_scanline_t_cycles += 1;
             context
                 .runtime
                 .trace_capture
                 .record_t_cycle(context.machine);
+
             if let Some(audio_output) = &mut context.runtime.audio_output {
                 audio_output.capture_t_cycle(context.machine.apu());
             }
-            sync_gamepad_rumble(context.runtime, context.machine, Instant::now())?;
-            let now_at_frame_origin =
-                context.machine.ppu().ly() == 0 && context.machine.ppu().line_dot() == 0;
+
+            let rumble_result =
+                sync_gamepad_rumble(context.runtime, context.machine, Instant::now());
+            rumble_result?;
+
+            let current_ly = context.machine.ppu().ly();
+            let current_dot = context.machine.ppu().line_dot();
+            let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
+            if current_mode0_start_dot > max_mode0_start_dot {
+                max_mode0_start_dot = current_mode0_start_dot;
+                max_mode0_start_dot_ly = current_ly;
+            }
+            if current_ly == 0 {
+                ly_0_max_mode0_start_dot = ly_0_max_mode0_start_dot.max(current_mode0_start_dot);
+            }
+            if current_dot == 0 && previous_dot != 0 {
+                let startup_mode0_active = context.machine.ppu().is_startup_mode0_window_active();
+                let blank_frame_active = context.machine.ppu().is_blank_frame_active();
+                match (previous_ly, current_ly) {
+                    (153, 0) => {
+                        ly_153_to_0_transitions = ly_153_to_0_transitions.saturating_add(1);
+                        if startup_mode0_active {
+                            ly_153_to_0_startup_mode0 = ly_153_to_0_startup_mode0.saturating_add(1);
+                        }
+                        if blank_frame_active {
+                            ly_153_to_0_blank_frame = ly_153_to_0_blank_frame.saturating_add(1);
+                        }
+                    }
+                    (0, 0) => {
+                        ly_0_self_wraps = ly_0_self_wraps.saturating_add(1);
+                        if startup_mode0_active {
+                            ly_0_self_wrap_startup_mode0 =
+                                ly_0_self_wrap_startup_mode0.saturating_add(1);
+                        }
+                        if blank_frame_active {
+                            ly_0_self_wrap_blank_frame =
+                                ly_0_self_wrap_blank_frame.saturating_add(1);
+                        }
+                    }
+                    (0, 1) => {
+                        ly_0_to_1_transitions = ly_0_to_1_transitions.saturating_add(1);
+                    }
+                    _ => {}
+                }
+            }
+            if current_dot == 0 && current_ly != current_scanline_ly {
+                scanline_transitions = scanline_transitions.saturating_add(1);
+                if current_scanline_t_cycles > max_scanline_t_cycles {
+                    max_scanline_t_cycles = current_scanline_t_cycles;
+                    max_scanline_ly = current_scanline_ly;
+                }
+                if current_scanline_t_cycles > EXPECTED_SCANLINE_T_CYCLES {
+                    scanlines_over_456 = scanlines_over_456.saturating_add(1);
+                }
+                current_scanline_ly = current_ly;
+                current_scanline_t_cycles = 0;
+            }
+            previous_ly = current_ly;
+            previous_dot = current_dot;
+
+            let now_at_frame_origin = current_ly == 0 && current_dot == 0;
             if now_at_frame_origin && !at_frame_origin {
+                frame_origin_crossings = frame_origin_crossings.saturating_add(1);
                 if let Some(audio_output) = &mut context.runtime.audio_output {
+                    let audio_submit_started_at = profile_request.as_ref().map(|_| Instant::now());
                     audio_output.submit_captured_samples()?;
+                    if let Some(audio_submit_started_at) = audio_submit_started_at
+                        && let Some(profile_request) = &mut profile_request
+                    {
+                        profile_request
+                            .record_host_audio_submit_duration(audio_submit_started_at.elapsed());
+                    }
                 }
                 if let Some(save_session) = &mut context.runtime.save_session {
+                    let save_flush_started_at = profile_request.as_ref().map(|_| Instant::now());
                     let _ = save_session
                         .maybe_flush_at_frame_boundary(context.machine, Instant::now())?;
+                    if let Some(save_flush_started_at) = save_flush_started_at
+                        && let Some(profile_request) = &mut profile_request
+                    {
+                        profile_request
+                            .record_host_save_flush_duration(save_flush_started_at.elapsed());
+                    }
                 }
-                return Ok(LoopSignal::Continue);
+                return Ok(StepUntilNextFrameResult {
+                    signal: LoopSignal::Continue,
+                    emulation_profile_request: profile_request,
+                    frame_loop_telemetry: FrameLoopTelemetry {
+                        start_ly: frame_start_ly,
+                        start_dot: frame_start_dot,
+                        end_ly: current_ly,
+                        end_dot: current_dot,
+                        stepped_t_cycles,
+                        frame_origin_crossings,
+                        scanline_transitions,
+                        scanlines_over_456,
+                        max_scanline_t_cycles,
+                        max_scanline_ly,
+                        max_mode0_start_dot,
+                        max_mode0_start_dot_ly,
+                        ly_153_to_0_transitions,
+                        ly_153_to_0_startup_mode0,
+                        ly_153_to_0_blank_frame,
+                        ly_0_self_wraps,
+                        ly_0_self_wrap_startup_mode0,
+                        ly_0_self_wrap_blank_frame,
+                        ly_0_to_1_transitions,
+                        ly_0_max_mode0_start_dot,
+                    },
+                });
             }
             at_frame_origin = now_at_frame_origin;
         }
@@ -3197,7 +4588,7 @@ fn render_frame(
     video_options: &VideoOptions,
     menu_state: Option<(&OverlayMenuState, MenuPresentation)>,
     performance_hud: Option<PerformanceHudSnapshot>,
-) -> Result<(), String> {
+) -> Result<Duration, String> {
     apply_canvas_video_options(canvas, video_options)?;
     for (source, target) in framebuffer.iter().zip(rgb_frame.chunks_exact_mut(3)) {
         let shade = framebuffer_pixel_to_grayscale(*source);
@@ -3235,8 +4626,9 @@ fn render_frame(
         canvas.copy(texture, None, None),
         "failed to present framebuffer texture",
     )?;
+    let present_started_at = Instant::now();
     canvas.present();
-    Ok(())
+    Ok(present_started_at.elapsed())
 }
 
 fn write_cartridge_diagnostics(diagnostics: &[CartridgeDiagnostic]) {
@@ -3467,8 +4859,8 @@ mod tests {
         Apu, ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
         CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
         CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
-        JoypadSnapshot, JoypadStatus, Machine, MachineConfig, PersistentCartState, StartupMode,
-        TraceSummaryBuffer,
+        JoypadSnapshot, JoypadStatus, Machine, MachineConfig, MachineStepRegion,
+        PersistentCartState, PpuStepRegion, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopKey,
@@ -3606,6 +4998,17 @@ mod tests {
                 .push_event(Event::Quit { timestamp: 0 })
                 .expect("quit event should be pushable");
         })
+    }
+
+    fn wait_for_profiled_counter_sample(counter: &mut super::PerformanceCounter) {
+        for _ in 0..200 {
+            counter.collect_emulation_profile_results();
+            if counter.sample_profiled_frames > 0 {
+                return;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        panic!("timed out waiting for an async emulation profile sample");
     }
 
     struct VirtualGamepad {
@@ -3750,8 +5153,10 @@ mod tests {
                 .expect("frontend harness vsync");
             let event_pump = sdl.event_pump().expect("frontend harness event pump");
             let settings_store = DesktopSettingsStore::new_for_tests(settings_path.clone());
-            let performance_counter =
-                super::PerformanceCounter::new(super::window_title(&session, &config));
+            let performance_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+                super::window_title(&session, &config),
+                super::EmulationProfileMode::Disabled,
+            );
             let save_session = super::open_save_session_for_session(&session, &mut machine)
                 .expect("frontend harness save session");
             let runtime = super::FrontendRuntime {
@@ -3837,6 +5242,7 @@ mod tests {
                 settings_store: &mut self.settings_store,
             };
             super::step_until_next_frame(&mut self.event_pump, &mut self.canvas, &mut context)
+                .map(|result| result.signal)
         }
 
         fn process_pending_open_rom_dialog(&mut self) -> Result<(), String> {
@@ -3927,6 +5333,674 @@ mod tests {
             super::audio_queue_pacing_correction(Some(2_000.0)),
             Duration::from_secs_f64(super::AUDIO_QUEUE_MAX_CORRECTION_MS / 1_000.0)
         );
+    }
+
+    #[test]
+    fn emulation_profile_mode_from_env_value_accepts_common_toggle_tokens() {
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(None),
+            super::EmulationProfileMode::Disabled
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("0"))),
+            super::EmulationProfileMode::Disabled
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("off"))),
+            super::EmulationProfileMode::Disabled
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("disabled"))),
+            super::EmulationProfileMode::Disabled
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("1"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary:8"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 8,
+            }
+        );
+    }
+
+    #[test]
+    fn emulation_profile_summary_reports_core_frontend_and_other_buckets() {
+        let mut counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | no rom".to_string(),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+            },
+        );
+        counter.frames_in_sample = 2;
+        counter.sample_emulation_duration = Duration::from_millis(22);
+        counter.sample_present_duration = Duration::from_millis(2);
+        counter.sample_pacing_duration = Duration::from_millis(4);
+        counter.sample_pacing_sleep_target_duration = Duration::from_millis(4);
+        counter.sample_pacing_audio_correction_duration = Duration::from_millis(1);
+        counter.sample_pacing_late_duration = Duration::from_millis(2);
+        counter.sample_pacing_oversleep_duration = Duration::from_millis(1);
+        counter.sample_audio_submit_sample_count = 1_608;
+        counter.sample_audio_submit_sample_count_observations = 2;
+        counter.sample_audio_submit_t_cycles = 140_448;
+        counter.sample_audio_submit_t_cycles_observations = 2;
+        counter.sample_audio_submit_queue_before_ms = 48.0;
+        counter.sample_audio_submit_queue_before_observations = 2;
+        counter.sample_audio_submit_enqueued_ms = 8.0;
+        counter.sample_audio_submit_enqueued_observations = 2;
+        counter.sample_audio_submit_queue_after_ms = 56.0;
+        counter.sample_audio_submit_queue_after_observations = 2;
+        counter.sample_audio_queue_before_pacing_ms = 40.0;
+        counter.sample_audio_queue_before_pacing_observations = 2;
+        counter.sample_audio_queue_after_pacing_ms = 36.0;
+        counter.sample_audio_queue_after_pacing_observations = 2;
+        counter.sample_frame_step_t_cycles = 140_448;
+        counter.sample_frame_step_t_cycles_observations = 2;
+        counter.sample_frame_start_ly = 0;
+        counter.sample_frame_start_ly_observations = 2;
+        counter.sample_frame_start_dot = 0;
+        counter.sample_frame_start_dot_observations = 2;
+        counter.sample_frame_end_ly = 0;
+        counter.sample_frame_end_ly_observations = 2;
+        counter.sample_frame_end_dot = 0;
+        counter.sample_frame_end_dot_observations = 2;
+        counter.sample_frame_origin_crossings = 2;
+        counter.sample_frame_origin_crossings_observations = 2;
+        counter.sample_scanline_transitions = 308;
+        counter.sample_scanline_transitions_observations = 2;
+        counter.sample_scanlines_over_456 = 0;
+        counter.sample_scanlines_over_456_observations = 2;
+        counter.sample_max_scanline_t_cycles = 912;
+        counter.sample_max_scanline_t_cycles_observations = 2;
+        counter.sample_max_scanline_ly = 306;
+        counter.sample_max_scanline_ly_observations = 2;
+        counter.sample_max_mode0_start_dot = 504;
+        counter.sample_max_mode0_start_dot_observations = 2;
+        counter.sample_max_mode0_start_dot_ly = 10;
+        counter.sample_max_mode0_start_dot_ly_observations = 2;
+        counter.sample_ly_153_to_0_transitions = 2;
+        counter.sample_ly_153_to_0_transitions_observations = 2;
+        counter.sample_ly_153_to_0_startup_mode0 = 0;
+        counter.sample_ly_153_to_0_startup_mode0_observations = 2;
+        counter.sample_ly_153_to_0_blank_frame = 0;
+        counter.sample_ly_153_to_0_blank_frame_observations = 2;
+        counter.sample_ly_0_self_wraps = 0;
+        counter.sample_ly_0_self_wraps_observations = 2;
+        counter.sample_ly_0_self_wrap_startup_mode0 = 0;
+        counter.sample_ly_0_self_wrap_startup_mode0_observations = 2;
+        counter.sample_ly_0_self_wrap_blank_frame = 0;
+        counter.sample_ly_0_self_wrap_blank_frame_observations = 2;
+        counter.sample_ly_0_to_1_transitions = 2;
+        counter.sample_ly_0_to_1_transitions_observations = 2;
+        counter.sample_ly_0_max_mode0_start_dot = 508;
+        counter.sample_ly_0_max_mode0_start_dot_observations = 2;
+        counter.sample_profiled_frames = 2;
+        counter.sample_profiled_emulation_duration = Duration::from_millis(24);
+        counter.sample_profiled_emulation_breakdown = super::EmulationBreakdownSample {
+            core_cpu_duration: Duration::from_millis(4),
+            core_ppu_duration: Duration::from_millis(16),
+            core_ppu_mode0_1_duration: Duration::from_millis(2),
+            core_ppu_mode2_duration: Duration::from_millis(1),
+            core_ppu_mode3_startup_duration: Duration::from_millis(1),
+            core_ppu_bg_fetch_duration: Duration::from_millis(4),
+            core_ppu_window_fetch_duration: Duration::from_millis(2),
+            core_ppu_push_duration: Duration::from_millis(3),
+            core_ppu_obj_fetch_duration: Duration::from_millis(2),
+            core_ppu_pixel_transfer_duration: Duration::from_millis(1),
+            host_event_poll_duration: Duration::from_millis(2),
+            host_audio_submit_duration: Duration::from_millis(1),
+            host_save_flush_duration: Duration::from_millis(1),
+            ..Default::default()
+        };
+        let elapsed = Duration::from_millis(34);
+        let snapshot = counter.snapshot_from_elapsed(elapsed);
+        let summary = counter
+            .emulation_profile_summary(elapsed, snapshot)
+            .expect("summary mode should render a profile line");
+
+        assert!(summary.contains("emu_ms=11.00"));
+        assert!(summary.contains("sampled_frames=2"));
+        assert!(summary.contains(&format!(
+            "sample_every={}",
+            super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES
+        )));
+        assert!(summary.contains("sampled_emu_ms=12.00"));
+        assert!(summary.contains("core_est_ms=10.00"));
+        assert!(summary.contains("ppu_ms=8.00"));
+        assert!(summary.contains("cpu_ms=2.00"));
+        assert!(summary.contains("core_other_ms=0.00"));
+        assert!(summary.contains("ppu_mode0_1_ms=1.00"));
+        assert!(summary.contains("ppu_mode2_ms=0.50"));
+        assert!(summary.contains("ppu_mode3_startup_ms=0.50"));
+        assert!(summary.contains("ppu_bg_ms=2.00"));
+        assert!(summary.contains("ppu_win_ms=1.00"));
+        assert!(summary.contains("ppu_push_ms=1.50"));
+        assert!(summary.contains("ppu_obj_ms=1.00"));
+        assert!(summary.contains("ppu_px_ms=0.50"));
+        assert!(summary.contains("ppu_other_ms=0.00"));
+        assert!(summary.contains("host_ms=2.00"));
+        assert!(summary.contains("poll_ms=1.00"));
+        assert!(summary.contains("audsubmit_ms=0.50"));
+        assert!(summary.contains("save_ms=0.50"));
+        assert!(summary.contains("frame_tcycles=70224.00"));
+        assert!(summary.contains("frame_start_ly=0.00"));
+        assert!(summary.contains("frame_start_dot=0.00"));
+        assert!(summary.contains("frame_end_ly=0.00"));
+        assert!(summary.contains("frame_end_dot=0.00"));
+        assert!(summary.contains("frame_crossings=1.00"));
+        assert!(summary.contains("scanline_transitions=154.00"));
+        assert!(summary.contains("scanlines_over_456=0.00"));
+        assert!(summary.contains("max_scanline_tcycles=456.00"));
+        assert!(summary.contains("max_scanline_ly=153.00"));
+        assert!(summary.contains("max_mode0_start_dot=252.00"));
+        assert!(summary.contains("max_mode0_start_dot_ly=5.00"));
+        assert!(summary.contains("ly153_to0=1.00"));
+        assert!(summary.contains("ly153_to0_startup=0.00"));
+        assert!(summary.contains("ly153_to0_blank=0.00"));
+        assert!(summary.contains("ly0_self_wraps=0.00"));
+        assert!(summary.contains("ly0_self_wrap_startup=0.00"));
+        assert!(summary.contains("ly0_self_wrap_blank=0.00"));
+        assert!(summary.contains("ly0_to1=1.00"));
+        assert!(summary.contains("ly0_max_mode0_start_dot=254.00"));
+        assert!(summary.contains("submit_samples=804.00"));
+        assert!(summary.contains("submit_tcycles=70224.00"));
+        assert!(summary.contains("submit_queue_before_ms=24.00"));
+        assert!(summary.contains("submit_enqueued_ms=4.00"));
+        assert!(summary.contains("submit_queue_after_ms=28.00"));
+        assert!(summary.contains("audio_queue_before_ms=20.00"));
+        assert!(summary.contains("audio_queue_after_ms=18.00"));
+        assert!(summary.contains("present_ms=1.00"));
+        assert!(summary.contains("pac_ms=2.00"));
+        assert!(summary.contains("sleep_target_ms=2.00"));
+        assert!(summary.contains("audio_corr_ms=0.50"));
+        assert!(summary.contains("late_ms=1.00"));
+        assert!(summary.contains("oversleep_ms=0.50"));
+        let summary_without_audio = counter
+            .emulation_profile_summary(
+                elapsed,
+                super::PerformanceHudSnapshot {
+                    fps: 60.0,
+                    speed_percent: 100.0,
+                    frame_time_ms: 16.7,
+                    emulation_time_ms: 10.0,
+                    render_time_ms: 1.0,
+                    pacing_time_ms: 5.0,
+                    audio_queue_ms: None,
+                },
+            )
+            .expect("summary mode should render a profile line without audio");
+        assert!(summary_without_audio.contains("audio_queue_before_ms=20.00"));
+        assert!(summary_without_audio.contains("audio_queue_after_ms=18.00"));
+
+        let disabled = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | no rom".to_string(),
+            super::EmulationProfileMode::Disabled,
+        );
+        assert!(
+            disabled
+                .emulation_profile_summary(
+                    elapsed,
+                    super::PerformanceHudSnapshot {
+                        fps: 60.0,
+                        speed_percent: 100.0,
+                        frame_time_ms: 16.7,
+                        emulation_time_ms: 10.0,
+                        render_time_ms: 1.0,
+                        pacing_time_ms: 5.0,
+                        audio_queue_ms: Some(18.0),
+                    },
+                )
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn emulation_profile_mode_and_breakdown_helpers_cover_all_sampling_buckets() {
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("sampled:7"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 7,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("every:9"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 9,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("stride:11"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 11,
+            }
+        );
+        assert_eq!(
+            super::EmulationProfileMode::from_env_value(Some(OsStr::new("summary:0"))),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: super::DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES,
+            }
+        );
+
+        let disabled = super::EmulationProfileMode::Disabled;
+        assert!(!disabled.enabled());
+        assert_eq!(disabled.sample_every_frames(), None);
+
+        let sampled = super::EmulationProfileMode::SampledSummary {
+            sample_every_frames: 7,
+        };
+        assert!(sampled.enabled());
+        assert_eq!(sampled.sample_every_frames(), Some(7));
+
+        let mut breakdown = super::EmulationBreakdownSample::default();
+        for (region, millis) in [
+            (MachineStepRegion::ExternalEvents, 1),
+            (MachineStepRegion::Timer, 2),
+            (MachineStepRegion::Apu, 3),
+            (MachineStepRegion::Dma, 4),
+            (MachineStepRegion::Ppu, 8),
+            (MachineStepRegion::Serial, 6),
+            (MachineStepRegion::Cpu, 7),
+            (MachineStepRegion::Interrupts, 8),
+        ] {
+            breakdown.add_core_region_duration(region, Duration::from_millis(millis));
+        }
+        breakdown.add_host_event_poll_duration(Duration::from_millis(9));
+        breakdown.add_host_audio_submit_duration(Duration::from_millis(10));
+        breakdown.add_host_save_flush_duration(Duration::from_millis(11));
+        for (region, millis) in [
+            (PpuStepRegion::Mode0Or1, 1),
+            (PpuStepRegion::Mode2Scan, 1),
+            (PpuStepRegion::Mode3Startup, 1),
+            (PpuStepRegion::Mode3BgFetch, 1),
+            (PpuStepRegion::Mode3WindowFetch, 1),
+            (PpuStepRegion::Mode3Push, 1),
+            (PpuStepRegion::Mode3ObjFetch, 1),
+            (PpuStepRegion::Mode3PixelTransfer, 1),
+        ] {
+            breakdown.add_ppu_region_duration(region, Duration::from_millis(millis));
+        }
+
+        assert_eq!(breakdown.core_duration(), Duration::from_millis(39));
+        assert_eq!(breakdown.host_duration(), Duration::from_millis(30));
+        assert_eq!(breakdown.core_other_duration(), Duration::from_millis(24));
+        assert_eq!(breakdown.ppu_profiled_duration(), Duration::from_millis(8));
+        assert_eq!(breakdown.ppu_other_duration(), Duration::ZERO);
+
+        breakdown.accumulate(super::EmulationBreakdownSample {
+            core_ppu_duration: Duration::from_millis(2),
+            core_cpu_duration: Duration::from_millis(1),
+            core_ppu_bg_fetch_duration: Duration::from_millis(1),
+            host_event_poll_duration: Duration::from_millis(3),
+            ..Default::default()
+        });
+        assert_eq!(breakdown.core_ppu_duration, Duration::from_millis(10));
+        assert_eq!(breakdown.core_cpu_duration, Duration::from_millis(8));
+        assert_eq!(
+            breakdown.core_ppu_bg_fetch_duration,
+            Duration::from_millis(2)
+        );
+        assert_eq!(
+            breakdown.host_event_poll_duration,
+            Duration::from_millis(12)
+        );
+        assert_eq!(breakdown.core_duration(), Duration::from_millis(42));
+        assert_eq!(breakdown.host_duration(), Duration::from_millis(33));
+        assert_eq!(breakdown.core_other_duration(), Duration::from_millis(24));
+        assert_eq!(breakdown.ppu_other_duration(), Duration::from_millis(1));
+    }
+
+    #[test]
+    fn emulation_profile_request_and_replay_preserve_host_and_core_timing() {
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut request = super::EmulationProfileRequest::new(machine);
+        request.record_host_event_poll_duration(Duration::from_millis(2));
+        request.record_host_audio_submit_duration(Duration::from_millis(3));
+        request.record_host_save_flush_duration(Duration::from_millis(4));
+
+        let work_item = request.into_work_item(Duration::from_millis(9));
+        assert_eq!(work_item.emulation_duration, Duration::from_millis(9));
+        assert_eq!(
+            work_item.breakdown.host_duration(),
+            Duration::from_millis(9)
+        );
+
+        let completed = super::profile_emulation_work_item(work_item);
+        assert_eq!(completed.emulation_duration, Duration::from_millis(9));
+        assert!(completed.breakdown.core_duration() > Duration::ZERO);
+        assert_eq!(
+            completed.breakdown.host_duration(),
+            Duration::from_millis(9)
+        );
+    }
+
+    #[test]
+    fn async_emulation_profile_worker_and_counter_collect_samples() {
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let worker = super::AsyncEmulationProfileWorker::new();
+        let mut completed = Vec::new();
+        worker.collect_completed(&mut |sample| completed.push(sample));
+        assert!(completed.is_empty());
+        assert!(
+            worker.try_submit(
+                super::EmulationProfileRequest::new(machine.clone())
+                    .into_work_item(Duration::from_millis(7))
+            )
+        );
+        for _ in 0..200 {
+            worker.collect_completed(&mut |sample| completed.push(sample));
+            if !completed.is_empty() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(completed.len(), 1);
+        assert_eq!(completed[0].emulation_duration, Duration::from_millis(7));
+        assert!(completed[0].breakdown.core_duration() > Duration::ZERO);
+
+        let mut disabled = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | disabled".to_string(),
+            super::EmulationProfileMode::Disabled,
+        );
+        assert!(!disabled.emulation_profile_enabled());
+        assert!(!disabled.should_profile_next_frame());
+        disabled.collect_emulation_profile_results();
+        disabled.submit_emulation_profile_request(
+            Some(super::EmulationProfileRequest::new(machine.clone())),
+            Duration::from_millis(5),
+        );
+        assert!(!disabled.emulation_profile_request_in_flight);
+
+        let mut counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | sampled".to_string(),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 2,
+            },
+        );
+        assert!(counter.emulation_profile_enabled());
+        assert!(!counter.should_profile_next_frame());
+        counter.presented_frames_total = 1;
+        assert!(counter.should_profile_next_frame());
+        counter.emulation_profile_request_in_flight = true;
+        assert!(!counter.should_profile_next_frame());
+        counter.emulation_profile_request_in_flight = false;
+        counter.submit_emulation_profile_request(
+            Some(super::EmulationProfileRequest::new(machine)),
+            Duration::from_millis(6),
+        );
+        assert!(counter.emulation_profile_request_in_flight);
+        wait_for_profiled_counter_sample(&mut counter);
+        assert!(!counter.emulation_profile_request_in_flight);
+        assert_eq!(counter.sample_profiled_frames, 1);
+        assert_eq!(
+            counter.sample_profiled_emulation_duration,
+            Duration::from_millis(6)
+        );
+        assert!(counter.sample_profiled_emulation_breakdown.core_duration() > Duration::ZERO);
+    }
+
+    #[test]
+    fn performance_counter_record_presented_frame_reports_and_resets_sampled_state() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("profile-summary", true, false, false);
+        let mut counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | profile-summary".to_string(),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 4,
+            },
+        );
+        counter.sample_started_at = Instant::now() - Duration::from_secs(2);
+        counter.sample_profiled_frames = 1;
+        counter.sample_profiled_emulation_duration = Duration::from_millis(12);
+        counter.sample_profiled_emulation_breakdown = super::EmulationBreakdownSample {
+            core_cpu_duration: Duration::from_millis(2),
+            core_ppu_duration: Duration::from_millis(6),
+            host_event_poll_duration: Duration::from_millis(1),
+            host_audio_submit_duration: Duration::from_millis(1),
+            ..Default::default()
+        };
+        counter
+            .record_presented_frame(
+                harness.canvas.window_mut(),
+                super::FramePerformanceSample {
+                    emulation_duration: Duration::from_millis(12),
+                    emulation_profile_request: None,
+                    render_duration: Duration::from_millis(2),
+                    present_duration: Duration::from_millis(1),
+                    pacing_duration: Duration::from_millis(4),
+                    pacing_sleep_target_duration: Duration::from_millis(4),
+                    pacing_audio_correction_duration: Duration::from_millis(1),
+                    pacing_late_duration: Duration::from_millis(2),
+                    pacing_oversleep_duration: Duration::from_millis(1),
+                    audio_submit_sample_count: Some(804),
+                    audio_submit_t_cycles: Some(70_224),
+                    audio_submit_queue_before_ms: Some(24.0),
+                    audio_submit_enqueued_ms: Some(4.0),
+                    audio_submit_queue_after_ms: Some(28.0),
+                    audio_queue_before_pacing_ms: Some(20.0),
+                    audio_queue_after_pacing_ms: Some(18.0),
+                    frame_step_t_cycles: Some(70_224),
+                    frame_start_ly: Some(0),
+                    frame_start_dot: Some(0),
+                    frame_end_ly: Some(0),
+                    frame_end_dot: Some(0),
+                    frame_origin_crossings: Some(1),
+                    scanline_transitions: Some(154),
+                    scanlines_over_456: Some(0),
+                    max_scanline_t_cycles: Some(456),
+                    max_scanline_ly: Some(153),
+                    max_mode0_start_dot: Some(252),
+                    max_mode0_start_dot_ly: Some(5),
+                    ly_153_to_0_transitions: Some(1),
+                    ly_153_to_0_startup_mode0: Some(0),
+                    ly_153_to_0_blank_frame: Some(0),
+                    ly_0_self_wraps: Some(0),
+                    ly_0_self_wrap_startup_mode0: Some(0),
+                    ly_0_self_wrap_blank_frame: Some(0),
+                    ly_0_to_1_transitions: Some(1),
+                    ly_0_max_mode0_start_dot: Some(254),
+                },
+            )
+            .expect("recording a sampled frame should succeed");
+        assert_eq!(counter.frames_in_sample, 0);
+        assert_eq!(counter.sample_profiled_frames, 0);
+        assert_eq!(counter.sample_emulation_duration, Duration::ZERO);
+        assert_eq!(counter.sample_present_duration, Duration::ZERO);
+        assert_eq!(counter.sample_pacing_sleep_target_duration, Duration::ZERO);
+        assert_eq!(
+            counter.sample_pacing_audio_correction_duration,
+            Duration::ZERO
+        );
+        assert_eq!(counter.sample_pacing_late_duration, Duration::ZERO);
+        assert_eq!(counter.sample_pacing_oversleep_duration, Duration::ZERO);
+        assert_eq!(counter.sample_audio_submit_sample_count, 0);
+        assert_eq!(counter.sample_audio_submit_sample_count_observations, 0);
+        assert_eq!(counter.sample_audio_submit_t_cycles, 0);
+        assert_eq!(counter.sample_audio_submit_t_cycles_observations, 0);
+        assert_eq!(counter.sample_audio_submit_queue_before_ms, 0.0);
+        assert_eq!(counter.sample_audio_submit_queue_before_observations, 0);
+        assert_eq!(counter.sample_audio_submit_enqueued_ms, 0.0);
+        assert_eq!(counter.sample_audio_submit_enqueued_observations, 0);
+        assert_eq!(counter.sample_audio_submit_queue_after_ms, 0.0);
+        assert_eq!(counter.sample_audio_submit_queue_after_observations, 0);
+        assert_eq!(counter.sample_audio_queue_before_pacing_ms, 0.0);
+        assert_eq!(counter.sample_audio_queue_before_pacing_observations, 0);
+        assert_eq!(counter.sample_audio_queue_after_pacing_ms, 0.0);
+        assert_eq!(counter.sample_audio_queue_after_pacing_observations, 0);
+        assert_eq!(counter.sample_frame_step_t_cycles, 0);
+        assert_eq!(counter.sample_frame_step_t_cycles_observations, 0);
+        assert_eq!(counter.sample_frame_start_ly, 0);
+        assert_eq!(counter.sample_frame_start_ly_observations, 0);
+        assert_eq!(counter.sample_frame_start_dot, 0);
+        assert_eq!(counter.sample_frame_start_dot_observations, 0);
+        assert_eq!(counter.sample_frame_end_ly, 0);
+        assert_eq!(counter.sample_frame_end_ly_observations, 0);
+        assert_eq!(counter.sample_frame_end_dot, 0);
+        assert_eq!(counter.sample_frame_end_dot_observations, 0);
+        assert_eq!(counter.sample_frame_origin_crossings, 0);
+        assert_eq!(counter.sample_frame_origin_crossings_observations, 0);
+        assert_eq!(counter.sample_scanline_transitions, 0);
+        assert_eq!(counter.sample_scanline_transitions_observations, 0);
+        assert_eq!(counter.sample_scanlines_over_456, 0);
+        assert_eq!(counter.sample_scanlines_over_456_observations, 0);
+        assert_eq!(counter.sample_max_scanline_t_cycles, 0);
+        assert_eq!(counter.sample_max_scanline_t_cycles_observations, 0);
+        assert_eq!(counter.sample_max_scanline_ly, 0);
+        assert_eq!(counter.sample_max_scanline_ly_observations, 0);
+        assert_eq!(counter.sample_max_mode0_start_dot, 0);
+        assert_eq!(counter.sample_max_mode0_start_dot_observations, 0);
+        assert_eq!(counter.sample_max_mode0_start_dot_ly, 0);
+        assert_eq!(counter.sample_max_mode0_start_dot_ly_observations, 0);
+        assert!(counter.hud_snapshot().is_some());
+
+        counter.frames_in_sample = 1;
+        assert!(
+            counter
+                .emulation_profile_summary(
+                    Duration::from_millis(20),
+                    super::PerformanceHudSnapshot {
+                        fps: 60.0,
+                        speed_percent: 100.0,
+                        frame_time_ms: 16.7,
+                        emulation_time_ms: 9.0,
+                        render_time_ms: 1.0,
+                        pacing_time_ms: 2.0,
+                        audio_queue_ms: None,
+                    },
+                )
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn step_until_next_frame_returns_quit_when_process_events_requests_exit() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("step-quit", true, false, false);
+        harness
+            .sdl
+            .event()
+            .expect("quit-path event subsystem")
+            .push_event(Event::Quit { timestamp: 0 })
+            .expect("quit event should be pushable");
+        let FrontendHarness {
+            event_pump,
+            canvas,
+            session,
+            machine,
+            runtime,
+            settings_store,
+            performance_counter,
+            frame_pacer,
+            ..
+        } = &mut harness;
+        let mut context = super::FrontendActionContext {
+            session,
+            machine,
+            runtime,
+            performance_counter,
+            frame_pacer,
+            settings_store,
+        };
+        let result = super::step_until_next_frame(event_pump, canvas, &mut context)
+            .expect("quit-path stepping should succeed");
+        assert_eq!(result.signal, super::LoopSignal::Quit);
+        assert!(result.emulation_profile_request.is_none());
+        assert_eq!(
+            result.frame_loop_telemetry,
+            super::FrameLoopTelemetry::default()
+        );
+    }
+
+    #[test]
+    fn step_until_next_frame_returns_continue_without_profile_when_paused() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("step-paused", true, false, false);
+        harness.runtime.paused = true;
+        let FrontendHarness {
+            event_pump,
+            canvas,
+            session,
+            machine,
+            runtime,
+            settings_store,
+            performance_counter,
+            frame_pacer,
+            ..
+        } = &mut harness;
+        let mut context = super::FrontendActionContext {
+            session,
+            machine,
+            runtime,
+            performance_counter,
+            frame_pacer,
+            settings_store,
+        };
+        let result = super::step_until_next_frame(event_pump, canvas, &mut context)
+            .expect("paused stepping should succeed");
+        assert_eq!(result.signal, super::LoopSignal::Continue);
+        assert!(result.emulation_profile_request.is_none());
+        assert_eq!(
+            result.frame_loop_telemetry,
+            super::FrameLoopTelemetry::default()
+        );
+    }
+
+    #[test]
+    fn step_until_next_frame_returns_profile_requests_for_sampled_frames() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("step-profile", true, true, false);
+        harness.performance_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | step-profile".to_string(),
+            super::EmulationProfileMode::SampledSummary {
+                sample_every_frames: 2,
+            },
+        );
+        harness.performance_counter.presented_frames_total = 1;
+        let FrontendHarness {
+            event_pump,
+            canvas,
+            session,
+            machine,
+            runtime,
+            settings_store,
+            performance_counter,
+            frame_pacer,
+            ..
+        } = &mut harness;
+        let mut context = super::FrontendActionContext {
+            session,
+            machine,
+            runtime,
+            performance_counter,
+            frame_pacer,
+            settings_store,
+        };
+        let result = super::step_until_next_frame(event_pump, canvas, &mut context)
+            .expect("sampled stepping should succeed");
+        assert_eq!(result.signal, super::LoopSignal::Continue);
+        let request = result
+            .emulation_profile_request
+            .expect("sampled frames should snapshot a profile request");
+        assert_eq!(result.frame_loop_telemetry.start_ly, 0);
+        assert_eq!(result.frame_loop_telemetry.start_dot, 0);
+        assert_eq!(result.frame_loop_telemetry.end_ly, 0);
+        assert_eq!(result.frame_loop_telemetry.end_dot, 0);
+        assert!(result.frame_loop_telemetry.stepped_t_cycles > 0);
+        assert_eq!(result.frame_loop_telemetry.frame_origin_crossings, 1);
+        assert!(request.breakdown.host_event_poll_duration <= Duration::from_millis(50));
+        assert!(request.breakdown.host_audio_submit_duration <= Duration::from_millis(50));
     }
 
     #[test]
@@ -4202,11 +6276,19 @@ mod tests {
     fn frame_pacer_and_performance_counter_cover_idle_paths() {
         let mut frame_pacer = super::FramePacer::new(true);
         frame_pacer.next_frame_start = Instant::now() - Duration::from_secs(1);
-        assert_eq!(frame_pacer.wait_until_next_frame(None), Duration::ZERO);
+        let pacing = frame_pacer.wait_until_next_frame(None);
+        assert_eq!(pacing.pacing_duration, Duration::ZERO);
+        assert_eq!(pacing.sleep_target_duration, Duration::ZERO);
+        assert!(pacing.late_duration > Duration::ZERO);
+        assert_eq!(pacing.audio_correction_duration, Duration::ZERO);
+        assert_eq!(pacing.oversleep_duration, Duration::ZERO);
         frame_pacer.set_vsync_enabled(true);
         assert!(frame_pacer.next_frame_start <= Instant::now());
 
-        let counter = super::PerformanceCounter::new("gb-desktop | no rom".to_string());
+        let counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | no rom".to_string(),
+            super::EmulationProfileMode::Disabled,
+        );
         let snapshot = counter.snapshot_from_elapsed(Duration::ZERO);
         assert!(snapshot.fps.is_finite());
         assert_eq!(snapshot.audio_queue_ms, None);
@@ -5192,9 +7274,41 @@ mod tests {
                 harness.canvas.window_mut(),
                 super::FramePerformanceSample {
                     emulation_duration: Duration::from_millis(10),
+                    emulation_profile_request: None,
                     render_duration: Duration::from_millis(2),
+                    present_duration: Duration::from_millis(1),
                     pacing_duration: Duration::from_millis(4),
-                    audio_queue_ms: Some(18.0),
+                    pacing_sleep_target_duration: Duration::from_millis(4),
+                    pacing_audio_correction_duration: Duration::from_millis(1),
+                    pacing_late_duration: Duration::from_millis(2),
+                    pacing_oversleep_duration: Duration::from_millis(1),
+                    audio_submit_sample_count: Some(804),
+                    audio_submit_t_cycles: Some(70_224),
+                    audio_submit_queue_before_ms: Some(24.0),
+                    audio_submit_enqueued_ms: Some(4.0),
+                    audio_submit_queue_after_ms: Some(28.0),
+                    audio_queue_before_pacing_ms: Some(20.0),
+                    audio_queue_after_pacing_ms: Some(18.0),
+                    frame_step_t_cycles: Some(70_224),
+                    frame_start_ly: Some(0),
+                    frame_start_dot: Some(0),
+                    frame_end_ly: Some(0),
+                    frame_end_dot: Some(0),
+                    frame_origin_crossings: Some(1),
+                    scanline_transitions: Some(154),
+                    scanlines_over_456: Some(0),
+                    max_scanline_t_cycles: Some(456),
+                    max_scanline_ly: Some(153),
+                    max_mode0_start_dot: Some(252),
+                    max_mode0_start_dot_ly: Some(5),
+                    ly_153_to_0_transitions: Some(1),
+                    ly_153_to_0_startup_mode0: Some(0),
+                    ly_153_to_0_blank_frame: Some(0),
+                    ly_0_self_wraps: Some(0),
+                    ly_0_self_wrap_startup_mode0: Some(0),
+                    ly_0_self_wrap_blank_frame: Some(0),
+                    ly_0_to_1_transitions: Some(1),
+                    ly_0_max_mode0_start_dot: Some(254),
                 },
             )
             .expect("performance counter should record a frame");
@@ -5608,7 +7722,7 @@ mod tests {
             &harness.machine,
             &harness.session,
         );
-        super::render_frame(
+        let _ = super::render_frame(
             &mut harness.canvas,
             &mut texture,
             &mut rgb_frame,
@@ -5622,7 +7736,7 @@ mod tests {
 
         harness.runtime.menu_state.close();
         harness.runtime.video_options.show_performance_hud = true;
-        super::render_frame(
+        let _ = super::render_frame(
             &mut harness.canvas,
             &mut texture,
             &mut rgb_frame,

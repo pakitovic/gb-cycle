@@ -33,6 +33,15 @@ struct AudioTelemetry {
     queue_clear_count: Cell<u64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct AudioSubmitTelemetry {
+    pub(crate) sample_count: usize,
+    pub(crate) captured_t_cycles: usize,
+    pub(crate) queued_ms_before: Option<f64>,
+    pub(crate) enqueued_ms: Option<f64>,
+    pub(crate) queued_ms_after: Option<f64>,
+}
+
 pub struct DesktopAudioOutput {
     capture: ApuSampleCapture,
     captured_samples: Vec<ApuHostSample>,
@@ -45,7 +54,9 @@ pub struct DesktopAudioOutput {
     auto_queue_clear_enabled: bool,
     max_queued_bytes: i32,
     oversized_queue_streak: u8,
+    captured_t_cycles_since_submit: usize,
     telemetry: AudioTelemetry,
+    last_submit_telemetry: Option<AudioSubmitTelemetry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -202,7 +213,9 @@ impl DesktopAudioOutput {
                 * BYTES_PER_F32_SAMPLE
                 * OVERSIZED_QUEUE_CLEAR_BUFFER_MULTIPLIER,
             oversized_queue_streak: 0,
+            captured_t_cycles_since_submit: 0,
             telemetry: AudioTelemetry::from_env(),
+            last_submit_telemetry: None,
         };
         output.telemetry.log_event(
             "init",
@@ -219,10 +232,12 @@ impl DesktopAudioOutput {
     }
 
     pub fn capture_t_cycle(&mut self, apu: &Apu) {
+        self.captured_t_cycles_since_submit += 1;
         self.capture.record_t_cycle(apu);
     }
 
     pub fn submit_captured_samples(&mut self) -> Result<(), String> {
+        self.last_submit_telemetry = None;
         self.capture.drain_samples_into(&mut self.captured_samples);
         if self.captured_samples.is_empty() {
             return Ok(());
@@ -262,6 +277,8 @@ impl DesktopAudioOutput {
         } else {
             self.oversized_queue_streak = 0;
         }
+        let sample_count = self.captured_samples.len();
+        let enqueued_ms = self.sample_frames_duration_ms(sample_count);
 
         let sample_scale = if self.muted { 0.0 } else { self.volume_scale };
         self.interleaved_buffer.clear();
@@ -278,6 +295,17 @@ impl DesktopAudioOutput {
             self.stream.put_data_f32(&self.interleaved_buffer),
             "failed to queue SDL3 audio samples",
         )?;
+        let queued_bytes_after = self.stream.queued_bytes().ok();
+        let queued_ms_after = queued_bytes_after
+            .and_then(|queued_bytes| self.queued_duration_ms_for_bytes(queued_bytes));
+        self.last_submit_telemetry = Some(AudioSubmitTelemetry {
+            sample_count,
+            captured_t_cycles: self.captured_t_cycles_since_submit,
+            queued_ms_before,
+            enqueued_ms,
+            queued_ms_after,
+        });
+        self.captured_t_cycles_since_submit = 0;
 
         self.telemetry.log_submit_batch(
             "submit",
@@ -286,8 +314,8 @@ impl DesktopAudioOutput {
                 self.captured_samples.len(),
                 queued_bytes,
                 format_optional_ms(queued_ms_before),
-                format_optional_i32(self.stream.queued_bytes().ok()),
-                format_optional_ms(self.queued_duration_ms()),
+                format_optional_i32(queued_bytes_after),
+                format_optional_ms(queued_ms_after),
                 cleared_queue,
                 self.muted,
                 self.volume_percent,
@@ -370,6 +398,7 @@ impl DesktopAudioOutput {
         self.captured_samples.clear();
         self.interleaved_buffer.clear();
         self.oversized_queue_streak = 0;
+        self.captured_t_cycles_since_submit = 0;
         self.telemetry.log_event(
             "capture-reset",
             format!(
@@ -389,6 +418,10 @@ impl DesktopAudioOutput {
         self.queued_duration_ms_for_bytes(queued_bytes)
     }
 
+    pub(crate) fn take_last_submit_telemetry(&mut self) -> Option<AudioSubmitTelemetry> {
+        self.last_submit_telemetry.take()
+    }
+
     fn queued_duration_ms_for_bytes(&self, queued_bytes: i32) -> Option<f64> {
         let bytes_per_second = f64::from(self.output_sample_rate_hz)
             * f64::from(AUDIO_CHANNEL_COUNT)
@@ -398,6 +431,14 @@ impl DesktopAudioOutput {
         }
 
         Some(f64::from(queued_bytes) * 1_000.0 / bytes_per_second)
+    }
+
+    fn sample_frames_duration_ms(&self, sample_frames: usize) -> Option<f64> {
+        if self.output_sample_rate_hz == 0 {
+            return None;
+        }
+
+        Some(sample_frames as f64 * 1_000.0 / f64::from(self.output_sample_rate_hz))
     }
 
     fn clear_stream(&self, reason: &str, known_queued_bytes: Option<i32>) -> Result<(), String> {
@@ -530,6 +571,25 @@ mod tests {
 
         assert_eq!(output.captured_samples.len(), 2);
         assert_eq!(output.interleaved_buffer, vec![0.5, -1.0, 1.0, 0.0]);
+        let submit_telemetry = output
+            .take_last_submit_telemetry()
+            .expect("submit should record queue telemetry");
+        assert_eq!(submit_telemetry.sample_count, 2);
+        assert_eq!(submit_telemetry.captured_t_cycles, 0);
+        assert_eq!(submit_telemetry.queued_ms_before, Some(0.0));
+        assert!(
+            submit_telemetry
+                .enqueued_ms
+                .expect("submit should report enqueued duration")
+                > 0.0
+        );
+        assert!(
+            submit_telemetry
+                .queued_ms_after
+                .expect("submit should report queued duration after enqueue")
+                > 0.0
+        );
+        assert_eq!(output.take_last_submit_telemetry(), None);
         assert!(
             output
                 .queued_duration_ms()
@@ -624,6 +684,19 @@ mod tests {
             .submit_captured_samples()
             .expect("empty submit_captured_samples");
         assert!(output.captured_samples.is_empty());
+
+        let silent_apu = Apu::new(ConsoleModel::Dmg);
+        while output.capture.pending_sample_count() == 0 {
+            output.capture_t_cycle(&silent_apu);
+        }
+        output
+            .submit_captured_samples()
+            .expect("submit_captured_samples after capture_t_cycle");
+        let submit_telemetry = output
+            .take_last_submit_telemetry()
+            .expect("capture_t_cycle submits should record telemetry");
+        assert!(submit_telemetry.sample_count > 0);
+        assert!(submit_telemetry.captured_t_cycles > 0);
 
         push_captured_sample(
             &mut output,
