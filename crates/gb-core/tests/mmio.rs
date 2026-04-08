@@ -179,6 +179,7 @@ fn joyp_readback_comes_from_hardware_button_state_plus_selected_rows() {
 
     machine.set_joypad_button_pressed(JoypadButton::A, true);
     machine.set_joypad_button_pressed(JoypadButton::Right, true);
+    machine.step_t_cycle();
 
     machine.write_bus(0xFF00, 0x30);
     assert_eq!(machine.read_bus(0xFF00), 0xFF);

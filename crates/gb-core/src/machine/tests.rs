@@ -186,7 +186,7 @@ fn joypad_host_input_is_ingested_during_external_event_ingress() {
     machine.write_bus(0xFF00, 0x10);
     machine.set_joypad_button_pressed(JoypadButton::A, true);
 
-    assert_eq!(machine.read_bus(0xFF00), 0xDE);
+    assert_eq!(machine.read_bus(0xFF00), 0xDF);
     assert_eq!(machine.joypad().pressed_mask(), 0x00);
 
     let context = machine.step_t_cycle();
@@ -200,6 +200,7 @@ fn joypad_host_input_is_ingested_during_external_event_ingress() {
         &[ExternalEvent::HostInputChanged]
     );
     assert_eq!(machine.joypad().pressed_mask(), 0x10);
+    assert_eq!(machine.read_bus(0xFF00), 0xDE);
 }
 
 #[test]
