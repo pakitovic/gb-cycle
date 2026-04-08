@@ -75,6 +75,59 @@ fn enabled_dac_output_remains_distinct_from_dac_off_even_when_the_channel_is_ina
 }
 
 #[test]
+fn disabling_the_last_dac_preserves_the_immediate_hpf_pop() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF24, 0x00);
+    apu.write_register(0xFF25, 0x11);
+
+    tick_apu_with_edges(&mut apu, 0, &[]);
+    let charged = apu.snapshot().output;
+    assert!(charged.hpf_capacitor.left > 0);
+    assert!(charged.hpf_capacitor.right > 0);
+
+    apu.write_register(0xFF12, 0x00);
+    let dac_off = apu.snapshot().output;
+
+    assert_eq!(dac_off.channel_dac_outputs[0], 0);
+    assert!(dac_off.hpf_output.left < 0);
+    assert!(dac_off.hpf_output.right < 0);
+    assert_eq!(dac_off.hpf_capacitor, charged.hpf_capacitor);
+}
+
+#[test]
+fn hpf_continues_relaxing_towards_zero_after_the_last_dac_turns_off() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF24, 0x00);
+    apu.write_register(0xFF25, 0x11);
+
+    tick_apu_with_edges(&mut apu, 0, &[]);
+    apu.write_register(0xFF12, 0x00);
+    let after_write = apu.snapshot().output;
+
+    tick_apu_with_edges(&mut apu, 1, &[]);
+    let after_first_dac_off_tick = apu.snapshot().output;
+    tick_apu_with_edges(&mut apu, 2, &[]);
+    let after_second_dac_off_tick = apu.snapshot().output;
+
+    assert_eq!(
+        after_first_dac_off_tick.hpf_output.left,
+        after_write.hpf_output.left
+    );
+    assert_eq!(
+        after_first_dac_off_tick.hpf_output.right,
+        after_write.hpf_output.right
+    );
+    assert!(after_first_dac_off_tick.hpf_capacitor.left < after_write.hpf_capacitor.left);
+    assert!(after_first_dac_off_tick.hpf_capacitor.right < after_write.hpf_capacitor.right);
+    assert!(after_second_dac_off_tick.hpf_output.left > after_first_dac_off_tick.hpf_output.left);
+    assert!(after_second_dac_off_tick.hpf_output.right > after_first_dac_off_tick.hpf_output.right);
+}
+
+#[test]
 fn nr51_routes_channel_dac_outputs_independently_to_left_and_right_buses() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);

@@ -186,6 +186,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The HPF must keep persistent state across captured samples; it is not a memoryless per-sample transform.
 - Leaving the HPF out may exist as a temporary debug mode, but not as the target DMG-family behavior.
 - The design should leave room for later model-specific HPF aggressiveness differences instead of hard-wiring one backend-oriented filter constant forever.
+- Turning the last enabled DAC off should not clamp the post-HPF output to `0` or freeze the HPF state; the DAC-off transition still feeds the same DC-offset / HPF path and should continue to relax on the shared T-cycle timeline.
 - Documented pops caused by DAC enable changes, `NR51` routing changes, or `NR50` volume changes should emerge from the modeled DC-offset step plus HPF response rather than from ad hoc smoothing or suppression in the host backend.
 - A debug tool may visualize DC offset or pop-inducing events, but the default emulation path should not erase those hardware-visible artifacts.
 
