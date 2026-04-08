@@ -1867,6 +1867,56 @@ fn channel_4_noise_timer_keeps_running_while_the_channel_is_inactive() {
 }
 
 #[test]
+fn channel_4_live_nr43_write_into_shift_14_reloads_the_suppressed_noise_timer() {
+    let mut channel = Channel4State::default();
+    channel.runtime.dac_enabled = true;
+    channel.runtime.active = true;
+    channel.current_volume = 0x0F;
+    channel.lfsr_state = 0x1234;
+    channel.write_nr43(0x00);
+    channel.period_timer = 1;
+
+    channel.write_nr43(0xE0);
+
+    assert_eq!(channel.period_timer, noise_timer_reload(14, 0));
+
+    let lfsr_before = channel.lfsr_state;
+    channel.tick_fast_timer();
+
+    assert_eq!(channel.period_timer, noise_timer_reload(14, 0));
+    assert_eq!(channel.lfsr_state, lfsr_before);
+    assert_eq!(channel.current_digital_output(), 0);
+}
+
+#[test]
+fn channel_4_live_nr43_write_out_of_shift_14_reloads_from_the_new_clocked_timer_base() {
+    let mut channel = Channel4State::default();
+    channel.runtime.dac_enabled = true;
+    channel.runtime.active = true;
+    channel.current_volume = 0x0F;
+    channel.lfsr_state = 0x1234;
+    channel.write_nr43(0xE0);
+
+    assert_eq!(channel.period_timer, noise_timer_reload(14, 0));
+
+    channel.write_nr43(0x00);
+
+    assert_eq!(channel.period_timer, noise_timer_reload(0, 0));
+    let lfsr_before = channel.lfsr_state;
+
+    for expected_timer in (1..noise_timer_reload(0, 0)).rev() {
+        channel.tick_fast_timer();
+        assert_eq!(channel.period_timer, expected_timer);
+        assert_eq!(channel.lfsr_state, lfsr_before);
+    }
+
+    channel.tick_fast_timer();
+
+    assert_eq!(channel.period_timer, noise_timer_reload(0, 0));
+    assert_ne!(channel.lfsr_state, lfsr_before);
+}
+
+#[test]
 fn channel_4_envelope_reaching_zero_does_not_disable_the_channel() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);

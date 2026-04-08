@@ -613,6 +613,7 @@ Current branch baseline, March 30, 2026:
 - Clock divider `0` should be treated as divider `0.5` on the documented CH4 timer formula rather than as literal `0` or silently coerced to `1`.
 - Clock shift values `14` and `15` should prevent CH4 from receiving LFSR clocks rather than being approximated as merely "very slow noise".
 - Live writes to `NR43` should update the decoded CH4 noise parameters and affect the running channel on its own timer path rather than waiting for the next trigger.
+- If a live `NR43` write moves CH4 into or out of the `14`/`15` no-clocks state, the explicit `noise_timer` should be reloaded from the new decoded `NR43` state so the channel does not later resume from a stale pre-suppression countdown.
 
 ## CH4 noise-timer baseline
 
@@ -621,6 +622,7 @@ Current branch baseline, March 30, 2026:
 - The frame sequencer must not be used as CH4's noise clock; only the fast CH4 timer path should advance the LFSR.
 - Writes to `NR43` should alter CH4's effective timer configuration, not swap in a different abstract "noise texture".
 - Updating `NR43` should not retroactively inject an extra LFSR tick into an in-flight timer interval; the new effective timing should apply through the explicit timer/reload path rather than by mutating past channel time.
+- The explicit timer hand-off for `14`/`15` suppression transitions should therefore reload the stored `noise_timer` from the new decoded state, but should not synthesize an immediate extra LFSR step at write time.
 
 ## CH4 width-mode and lock-up baseline
 
@@ -684,6 +686,7 @@ Current branch baseline, March 30, 2026:
 - DMG power-off semantics are now explicit for the shared `NRx1` length family: on DMG, writes to `NR11/NR21/NR31/NR41` while `NR52=0` update only the internal length counters, and those counters survive the power-off interval instead of being reset to the powered-on defaults.
 - External evidence has closed the CH4-facing Blargg lane needed for the current Phase `7` bring-up: `dmg_sound 02-len ctr`, `08-len ctr during power`, and `11-regs after power` now pass alongside the already-green pulse and CH3 cases.
 - The remaining CH4 follow-up that used to stay implicit is now covered locally as well: unit tests lock the active 7-bit LFSR window through a live `15-bit -> 7-bit` width change into the documented all-ones short-width state without dropping `channel_active`, and verify that retrigger reloads the LFSR back to the zeroed trigger state instead of needing a fake mute flag.
+- Unit coverage also now fixes the `NR43` shift-`14` / `15` hand-off explicitly: entering the no-clocks state reloads the stored `noise_timer` without clocking the LFSR, and leaving that state reloads from the new decoded timer base instead of resuming from a stale pre-suppression countdown.
 
 ## Timing / accuracy requirements
 
@@ -767,7 +770,7 @@ Priority order:
 - tests for CH3 length expiry, `NR32` digital output-level semantics, and the rule that `NR32` mute is not equivalent to DAC-off or channel-off
 - dedicated CH3 quirk tests for digital-`0` startup state, skipped-first-sample / first-buffer behavior, explicit wave-RAM access policy while active, trigger-with-length-0 behavior, and DMG-family retrigger corruption keyed both to the exact byte-read position and to the aligned source block whenever those behaviors are implemented
 - tests for `NR41`-`NR44` ownership and MMIO semantics, including `NR41` write-only readback policy and immediate `NR44` trigger/length-enable behavior
-- tests for CH4 `noise_timer` cadence, live LFSR progression, and decoded `NR43` behavior including divider `0 -> 0.5` and clock-shift `14` / `15` suppressing CH4 clocks
+- tests for CH4 `noise_timer` cadence, live LFSR progression, and decoded `NR43` behavior including divider `0 -> 0.5`, clock-shift `14` / `15` suppressing CH4 clocks, and the live timer hand-off into / out of that suppressed state
 - tests that CH4 trigger reloads envelope/LFSR/timer state but does not activate the channel while DAC is off
 - tests for CH4 length expiry, CH4 envelope progression, the rule that envelope volume reaching `0` does not disable the channel, and the rule that automatic envelope updates stop after saturation until retrigger
 - dedicated CH4 quirk tests for `15`-bit versus `7`-bit mode behavior, live width-mode changes, LFSR lock-up on `15 -> 7` transitions, retrigger recovery from lock-up, extra length clocking, and the conservative live `NR42` zombie-mode increment path whenever those behaviors are implemented

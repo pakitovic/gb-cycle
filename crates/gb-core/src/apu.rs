@@ -413,6 +413,10 @@ const fn noise_timer_reload(clock_shift: u8, clock_divider_code: u8) -> u32 {
     noise_divisor_base(clock_divider_code) << (clock_shift & 0x0F)
 }
 
+const fn noise_clocking_suppressed(clock_shift: u8) -> bool {
+    clock_shift >= 14
+}
+
 const fn frame_sequencer_step_clocks_length(step: u8) -> bool {
     matches!(step & 0x07, 0 | 2 | 4 | 6)
 }
@@ -1502,8 +1506,13 @@ impl Channel4State {
     }
 
     fn write_nr43(&mut self, value: u8) {
+        let was_clocking_suppressed = noise_clocking_suppressed(self.clock_shift);
         self.nr43 = value;
         self.decode_nr43(value);
+        let is_clocking_suppressed = noise_clocking_suppressed(self.clock_shift);
+        if was_clocking_suppressed != is_clocking_suppressed {
+            self.period_timer = self.noise_timer_reload();
+        }
     }
 
     fn write_nr44(&mut self, value: u8, next_frame_sequencer_step: u8) {
@@ -1656,7 +1665,7 @@ impl Channel4State {
     }
 
     fn tick_fast_timer(&mut self) {
-        if self.clock_shift >= 14 {
+        if noise_clocking_suppressed(self.clock_shift) {
             return;
         }
 

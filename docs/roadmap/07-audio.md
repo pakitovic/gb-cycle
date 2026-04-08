@@ -134,10 +134,11 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    extra-length-clock handling, and `NR52` bit `3` clearing on length expiry;
    unit coverage now includes CH4 timer/LFSR/envelope seams, the Pan Docs
    zeroed trigger state, live `15-bit -> 7-bit` width-change lock-up, retrigger
-   recovery from that lock-up, inactive-channel slow-control clocking for CH1
-   sweep and CH1 / CH2 / CH4 envelopes, inactive-channel fast-timer
-   continuation for CH1 / CH2 / CH3 / CH4, and DMG powered-off `NR41`
-   length writes, while machine integration coverage
+   recovery from that lock-up, explicit timer hand-off into / out of the
+   shift-`14` / `15` no-clocks state, inactive-channel slow-control clocking
+   for CH1 sweep and CH1 / CH2 / CH4 envelopes, inactive-channel fast-timer
+   continuation for CH1 / CH2 / CH3 / CH4, and DMG powered-off `NR41` length
+   writes, while machine integration coverage
    includes DMG `NR41` length persistence through an `NR52` power cycle.
 7. `Phase 7.6` — DAC, mixer, HPF, and host boundary
    Scope: channel digital-output ownership, per-channel DAC conversion,
