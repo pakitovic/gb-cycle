@@ -1,8 +1,8 @@
 mod common;
 
 use gb_core::{
-    ConsoleModel, CpuExecutionState, Machine, MachineConfig, SerialClockMode, SerialTransferState,
-    StartupMode, TCycle,
+    ConsoleModel, CpuExecutionState, DmaCpuAccessPolicy, Machine, MachineConfig, PpuAccessMode,
+    SerialClockMode, SerialTransferState, StartupMode, TCycle,
 };
 
 const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_MACHINE_FIXTURES";
@@ -37,6 +37,19 @@ fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
     assert_eq!(snapshot.serial.sb, 0x00);
     assert_eq!(snapshot.serial.clock_mode, SerialClockMode::External);
     assert_eq!(snapshot.serial.transfer_state, SerialTransferState::Idle);
+    assert!(!snapshot.bus.arbitration.boot_rom.maps_low_window());
+    assert!(!snapshot.bus.arbitration.boot_rom.maps_cgb_upper_window());
+    assert!(snapshot.bus.arbitration.ppu.is_lcd_enabled());
+    assert_eq!(snapshot.bus.arbitration.ppu.mode(), PpuAccessMode::OamScan);
+    assert_eq!(
+        snapshot.bus.arbitration.dma.cpu_access_policy(),
+        DmaCpuAccessPolicy::Unrestricted
+    );
+    assert_eq!(snapshot.bus.arbitration.dma.active_region(), None);
+    assert_eq!(
+        snapshot.bus.arbitration.dma.cpu_conflict_source_address(),
+        None
+    );
     assert!(!snapshot.boot.boot_rom_mapped);
     assert!(!snapshot.boot.boot_rom_asset_configured);
     assert!(snapshot.cartridge.state == gb_core::CartridgeSlotState::Empty);

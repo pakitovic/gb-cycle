@@ -517,6 +517,38 @@ impl AddressRouter {
                 IoRegisterAccess::Mixed,
                 IoRegisterKind::Svbk,
             ),
+            0xFF72 => non_functional_io(
+                address,
+                IoRegisterOwner::CgbSystem,
+                IoRegisterAvailability::CgbOnly,
+                IoRegisterImplementation::Stubbed,
+                IoRegisterAccess::ReadWrite,
+                IoRegisterKind::CgbUndocumented72,
+            ),
+            0xFF73 => non_functional_io(
+                address,
+                IoRegisterOwner::CgbSystem,
+                IoRegisterAvailability::CgbOnly,
+                IoRegisterImplementation::Stubbed,
+                IoRegisterAccess::ReadWrite,
+                IoRegisterKind::CgbUndocumented73,
+            ),
+            0xFF74 => non_functional_io(
+                address,
+                IoRegisterOwner::CgbSystem,
+                IoRegisterAvailability::CgbOnly,
+                IoRegisterImplementation::Stubbed,
+                IoRegisterAccess::ReadWrite,
+                IoRegisterKind::CgbUndocumented74,
+            ),
+            0xFF75 => non_functional_io(
+                address,
+                IoRegisterOwner::CgbSystem,
+                IoRegisterAvailability::CgbOnly,
+                IoRegisterImplementation::Stubbed,
+                IoRegisterAccess::Mixed,
+                IoRegisterKind::CgbUndocumented75,
+            ),
             0xFF76 => non_functional_io(
                 address,
                 IoRegisterOwner::Apu,
@@ -533,7 +565,7 @@ impl AddressRouter {
                 IoRegisterAccess::ReadOnly,
                 IoRegisterKind::Pcm34,
             ),
-            0xFF6D..=0xFF6F | 0xFF72..=0xFF75 => non_functional_io(
+            0xFF6D..=0xFF6F => non_functional_io(
                 address,
                 IoRegisterOwner::CgbSystem,
                 IoRegisterAvailability::CgbOnly,

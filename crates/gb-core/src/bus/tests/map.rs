@@ -198,6 +198,10 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
     let ff51 = bus.describe_io_register(0xFF51).unwrap();
     let ff68 = bus.describe_io_register(0xFF68).unwrap();
     let ff70 = bus.describe_io_register(0xFF70).unwrap();
+    let ff72 = bus.describe_io_register(0xFF72).unwrap();
+    let ff73 = bus.describe_io_register(0xFF73).unwrap();
+    let ff74 = bus.describe_io_register(0xFF74).unwrap();
+    let ff75 = bus.describe_io_register(0xFF75).unwrap();
     let ff4d = bus.describe_io_register(0xFF4D).unwrap();
     let ff50 = bus.describe_io_register(0xFF50).unwrap();
     let ff13 = bus.describe_io_register(0xFF13).unwrap();
@@ -223,6 +227,16 @@ fn io_contract_table_covers_ff00_ff7f_and_ie() {
     assert_eq!(ff51.implementation(), IoRegisterImplementation::Stubbed);
     assert_eq!(ff68.owner(), IoRegisterOwner::Ppu);
     assert_eq!(ff70.owner(), IoRegisterOwner::MemoryController);
+    assert_eq!(ff72.owner(), IoRegisterOwner::CgbSystem);
+    assert_eq!(ff72.availability(), IoRegisterAvailability::CgbOnly);
+    assert_eq!(ff72.implementation(), IoRegisterImplementation::Stubbed);
+    assert_eq!(ff72.access(), IoRegisterAccess::ReadWrite);
+    assert_eq!(ff72.kind(), IoRegisterKind::CgbUndocumented72);
+    assert_eq!(ff73.kind(), IoRegisterKind::CgbUndocumented73);
+    assert_eq!(ff74.kind(), IoRegisterKind::CgbUndocumented74);
+    assert_eq!(ff74.access(), IoRegisterAccess::ReadWrite);
+    assert_eq!(ff75.kind(), IoRegisterKind::CgbUndocumented75);
+    assert_eq!(ff75.access(), IoRegisterAccess::Mixed);
     assert_eq!(ff13.access(), IoRegisterAccess::WriteOnly);
     assert_eq!(ff13.kind(), IoRegisterKind::Nr13);
     assert_eq!(ff30.access(), IoRegisterAccess::ReadWrite);
@@ -250,6 +264,8 @@ fn cgb_ready_stubbed_io_registers_still_read_as_ff_until_implemented() {
     assert_eq!(bus.read_io_target(0xFF4C, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF51, BusIoReadView::default()), 0xFF);
     assert_eq!(bus.read_io_target(0xFF68, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF72, BusIoReadView::default()), 0xFF);
+    assert_eq!(bus.read_io_target(0xFF75, BusIoReadView::default()), 0xFF);
 }
 
 #[test]

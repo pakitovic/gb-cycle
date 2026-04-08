@@ -309,6 +309,7 @@ Priority order:
 - For the current DMG-first baseline, `state.rs` should own reusable requester-facing bus contract types such as blocked-access results, DMA-published bus state, boot-overlay state, and the shared arbitration-state bundle.
 - For the current DMG-first baseline, `dispatch.rs` should own the common requester-facing access pipeline, including `resolve_access`, routed `read/write` entry points, and the explicit DMG CPU-visible redirection that occurs during external-bus OAM-DMA conflicts.
 - For the current DMG-first baseline, `meta.rs` should own bus snapshot structs and trace-formatting helpers that expose the live arbitration state without pulling debug presentation back into the facade.
+- In that observability layer, structured bus snapshots and bus-arbitration trace lines should surface the current boot-overlay windows alongside the live PPU and DMA arbitration state, rather than exposing only the static bus model plus status.
 - Keep a scheduler-visible ownership sync step or equally explicit equivalent for `VRAM/OAM`; the router must not guess live PPU or DMA ownership on its own.
 - Requester-facing OAM/VRAM views may expose real `acquire` / `release` operations, but observable policy must still stay coherent with the shared T-cycle scheduler rather than relying on ad hoc local borrowing conventions.
 - Prefer a centralized MMIO descriptor table or equivalent routed register map over scattered `match` blocks that each know only part of a register's semantics.

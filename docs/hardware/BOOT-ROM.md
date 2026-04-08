@@ -40,6 +40,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - In the current DMG-family baseline, that published state enables only the low window at `0000-00FF`.
 - Future CGB work should be able to publish both the low window and the upper boot-ROM window at `0200-08FF` through the same contract, without forcing a new bus-state shape.
 - The bus may still decode those windows into one `BootRom` routed owner; the important constraint is that the mapping state itself remains window-oriented and model-aware.
+- Bus-facing structured snapshots and bus-arbitration traces should expose those low and upper boot-overlay windows explicitly so tooling can observe the same routing state that the decode path is using.
 
 ## Boot mode baseline
 

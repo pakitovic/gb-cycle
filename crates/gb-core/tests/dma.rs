@@ -310,7 +310,7 @@ fn dma_and_bus_traces_show_the_same_cycle_arbitration_constraints() {
         "subsystem=dma level=trace message=\"t_cycle=0 phase=autonomous_peripheral_ticks console_model=Dmg status=Ready transfer_state=Starting transfer_kind=Oam transfer_family=FullBurst block_size=1 advance_condition=EveryTCycle first_byte_delay_t_cycles=8 first_byte_delay_remaining_t_cycles=7 cpu_bus_restriction_delay_t_cycles=5 cpu_bus_restriction_delay_remaining_t_cycles=4 cpu_bus_restriction_active=false elapsed_t_cycles=1 completed_bytes=0 remaining_bytes=160 completed_blocks=0 remaining_blocks=160"
     ));
     assert!(trace.contains(
-        "subsystem=bus level=trace message=\"t_cycle=0 phase=bus_arbitration console_model=Dmg status=Ready ppu_lcd_enabled=true ppu_mode=OamScan dma_cpu_access_policy=Unrestricted dma_active_region=None\""
+        "subsystem=bus level=trace message=\"t_cycle=0 phase=bus_arbitration console_model=Dmg status=Ready boot_low_window_mapped=false boot_cgb_upper_window_mapped=false ppu_lcd_enabled=true ppu_mode=OamScan dma_cpu_access_policy=Unrestricted dma_active_region=None dma_cpu_conflict_source_address=None\""
     ));
 }
 

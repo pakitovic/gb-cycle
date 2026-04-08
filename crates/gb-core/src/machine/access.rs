@@ -119,7 +119,7 @@ impl<S: TraceSink> Machine<S> {
         )
     }
 
-    fn current_bus_arbitration_state(&self) -> BusArbitrationState {
+    pub(super) fn current_bus_arbitration_state(&self) -> BusArbitrationState {
         BusArbitrationState::default()
             .with_boot_rom(self.boot.bus_state())
             .with_ppu(self.ppu.bus_state())

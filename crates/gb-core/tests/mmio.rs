@@ -78,6 +78,30 @@ fn public_io_descriptor_table_covers_all_mmio_addresses_and_ie_without_gaps() {
         IoRegisterOwner::MemoryController
     );
     assert_eq!(
+        bus.describe_io_register(0xFF72).unwrap().kind(),
+        IoRegisterKind::CgbUndocumented72
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF72).unwrap().access(),
+        gb_core::IoRegisterAccess::ReadWrite
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF74).unwrap().kind(),
+        IoRegisterKind::CgbUndocumented74
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF74).unwrap().availability(),
+        IoRegisterAvailability::CgbOnly
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF75).unwrap().kind(),
+        IoRegisterKind::CgbUndocumented75
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF75).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
+    );
+    assert_eq!(
         bus.describe_io_register(0xFF03).unwrap().access(),
         gb_core::IoRegisterAccess::Mixed
     );

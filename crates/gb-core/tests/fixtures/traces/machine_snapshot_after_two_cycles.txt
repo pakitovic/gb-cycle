@@ -7,7 +7,7 @@ trace.last_event=seq=41 subsystem=cpu level=trace message="t_cycle=1 phase=cpu_w
 debug.breakpoint_count=0 debug.enabled_breakpoint_count=0
 debug.watchpoint_count=0 debug.enabled_watchpoint_count=0
 cpu.console_model=Dmg cpu.status=Ready cpu.startup_pc=0x0100 cpu.pc=0x0100 cpu.execution_state=FetchOpcode { t_cycle: 2 } cpu.current_opcode=None
-bus.console_model=Dmg bus.status=Ready
+bus.console_model=Dmg bus.status=Ready bus.boot_low_window_mapped=false bus.boot_cgb_upper_window_mapped=false bus.ppu_lcd_enabled=true bus.ppu_mode=OamScan bus.dma_cpu_access_policy=Unrestricted bus.dma_active_region=None bus.dma_cpu_conflict_source_address=None
 apu.console_model=Dmg apu.status=Ready apu.powered=true apu.div_apu=5
 ppu.console_model=Dmg ppu.status=RegistersReady
 dma.console_model=Dmg dma.status=Ready

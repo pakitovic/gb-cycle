@@ -152,7 +152,7 @@ impl<S: TraceSink + TraceSnapshotProvider> Machine<S> {
             trace: self.tracer.snapshot(),
             debug_controls: self.debug_controls.snapshot(),
             cpu: self.cpu.snapshot(),
-            bus: self.bus.snapshot(),
+            bus: self.bus.snapshot(self.current_bus_arbitration_state()),
             apu: self.apu.snapshot(),
             ppu: self.ppu.snapshot(),
             dma: self.dma.snapshot(),
