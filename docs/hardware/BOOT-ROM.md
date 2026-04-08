@@ -41,6 +41,8 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - Future CGB work should be able to publish both the low window and the upper boot-ROM window at `0200-08FF` through the same contract, without forcing a new bus-state shape.
 - The bus may still decode those windows into one `BootRom` routed owner; the important constraint is that the mapping state itself remains window-oriented and model-aware.
 - Bus-facing structured snapshots and bus-arbitration traces should expose those low and upper boot-overlay windows explicitly so tooling can observe the same routing state that the decode path is using.
+- The boot-ROM asset contract must stay aligned with that mapping contract too: a `CGB` model must not silently reuse a DMG-family boot image just because the current functional target is still DMG-first.
+- In the current repo baseline, CGB boot assets may be provided either as a compact `0x800`-byte image containing the two executable windows back-to-back, or as a sparse `0x900`-byte address-space image that keeps the visible cartridge gap at `0x0100-0x01FF`. The boot subsystem should interpret either form through the same split-window routing contract.
 
 ## Boot mode baseline
 
@@ -196,6 +198,7 @@ Priority order:
 - Boot ROM loading should be configurable so the emulator can use real dumps, custom firmware, or no boot ROM at all.
 - A dedicated `BootRom` component with bytes, selected kind, and mapped/unmapped state is the intended baseline.
 - Keep boot-ROM asset ownership and boot enable/disable state in the boot subsystem even if the bus performs the actual address routing.
+- Keep boot-ROM asset selection model-aware too: DMG-family models may keep their `0x100`-byte images, but `ConsoleModel::Cgb` should select an explicit `CGB` boot image kind rather than aliasing to `DMG`.
 - Keep real-boot and skip-boot as explicit modes such as `RealBoot` and `SkipBoot`; the rest of the emulator should see only the resulting machine state and bus mapping.
 - A `SkipBoot` or equivalent explicit direct-boot mode is useful for tests, tooling, and differential validation, but it must remain distinct from verified boot ROM execution.
 - DMG-family observable differences should initially be assumed to come from firmware and startup state unless a proven hardware-level difference matters to the emulator.

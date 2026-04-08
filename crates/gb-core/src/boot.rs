@@ -15,13 +15,17 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-const BOOT_ROM_LEN: usize = 0x0100;
+const DMG_FAMILY_BOOT_ROM_LEN: usize = 0x0100;
+const CGB_BOOT_ROM_RAW_LEN: usize = 0x0800;
+const CGB_BOOT_ROM_MAPPED_LEN: usize = 0x0900;
+const CGB_BOOT_ROM_UPPER_WINDOW_START: usize = 0x0200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BootRomKind {
     Dmg0,
     Dmg,
     Mgb,
+    Cgb,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -29,6 +33,7 @@ pub struct BootRomAssets {
     dmg0: Option<Vec<u8>>,
     dmg: Option<Vec<u8>>,
     mgb: Option<Vec<u8>>,
+    cgb: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -105,6 +110,7 @@ impl BootRomAssets {
             dmg0: None,
             dmg: None,
             mgb: None,
+            cgb: None,
         }
     }
 
@@ -125,6 +131,7 @@ impl BootRomAssets {
             dmg0: read_boot_rom_file(path, BootRomKind::Dmg0)?,
             dmg: read_boot_rom_file(path, BootRomKind::Dmg)?,
             mgb: read_boot_rom_file(path, BootRomKind::Mgb)?,
+            cgb: read_boot_rom_file(path, BootRomKind::Cgb)?,
         })
     }
 
@@ -152,6 +159,7 @@ impl BootRomAssets {
             BootRomKind::Dmg0 => "dmg0_boot.bin",
             BootRomKind::Dmg => "dmg_boot.bin",
             BootRomKind::Mgb => "mgb_boot.bin",
+            BootRomKind::Cgb => "cgb_boot.bin",
         }
     }
 
@@ -163,11 +171,18 @@ impl BootRomAssets {
         !self.has_image(BootRomKind::Dmg0)
             && !self.has_image(BootRomKind::Dmg)
             && !self.has_image(BootRomKind::Mgb)
+            && !self.has_image(BootRomKind::Cgb)
     }
 
     pub fn read_byte(&self, kind: BootRomKind, address: u16) -> Option<u8> {
-        self.bytes_for(kind)
-            .and_then(|bytes| bytes.get(address as usize).copied())
+        let bytes = self.bytes_for(kind)?;
+
+        match kind {
+            BootRomKind::Dmg0 | BootRomKind::Dmg | BootRomKind::Mgb => {
+                bytes.get(address as usize).copied()
+            }
+            BootRomKind::Cgb => read_cgb_boot_rom_byte(bytes, address),
+        }
     }
 
     fn bytes_for(&self, kind: BootRomKind) -> Option<&[u8]> {
@@ -175,6 +190,7 @@ impl BootRomAssets {
             BootRomKind::Dmg0 => self.dmg0.as_deref(),
             BootRomKind::Dmg => self.dmg.as_deref(),
             BootRomKind::Mgb => self.mgb.as_deref(),
+            BootRomKind::Cgb => self.cgb.as_deref(),
         }
     }
 
@@ -183,7 +199,24 @@ impl BootRomAssets {
             BootRomKind::Dmg0 => &mut self.dmg0,
             BootRomKind::Dmg => &mut self.dmg,
             BootRomKind::Mgb => &mut self.mgb,
+            BootRomKind::Cgb => &mut self.cgb,
         }
+    }
+}
+
+fn read_cgb_boot_rom_byte(bytes: &[u8], address: u16) -> Option<u8> {
+    let address = address as usize;
+
+    if bytes.len() >= CGB_BOOT_ROM_MAPPED_LEN {
+        return bytes.get(address).copied();
+    }
+
+    match address {
+        0x0000..=0x00FF => bytes.get(address).copied(),
+        0x0200..=0x08FF => bytes
+            .get(address - (CGB_BOOT_ROM_UPPER_WINDOW_START - DMG_FAMILY_BOOT_ROM_LEN))
+            .copied(),
+        _ => None,
     }
 }
 
@@ -524,7 +557,7 @@ const fn select_boot_rom_kind(console_model: ConsoleModel) -> BootRomKind {
         ConsoleModel::Dmg0 => BootRomKind::Dmg0,
         ConsoleModel::Dmg => BootRomKind::Dmg,
         ConsoleModel::Mgb => BootRomKind::Mgb,
-        ConsoleModel::Cgb => BootRomKind::Dmg,
+        ConsoleModel::Cgb => BootRomKind::Cgb,
     }
 }
 
@@ -746,16 +779,23 @@ fn validate_boot_rom_len(
     bytes: &[u8],
     path: &Path,
 ) -> Result<(), BootRomAssetError> {
-    if bytes.len() < BOOT_ROM_LEN {
+    if bytes.len() < minimum_boot_rom_len(kind) {
         return Err(BootRomAssetError::ImageTooShort {
             kind,
             path: path.to_path_buf(),
-            expected_at_least: BOOT_ROM_LEN,
+            expected_at_least: minimum_boot_rom_len(kind),
             actual: bytes.len(),
         });
     }
 
     Ok(())
+}
+
+const fn minimum_boot_rom_len(kind: BootRomKind) -> usize {
+    match kind {
+        BootRomKind::Dmg0 | BootRomKind::Dmg | BootRomKind::Mgb => DMG_FAMILY_BOOT_ROM_LEN,
+        BootRomKind::Cgb => CGB_BOOT_ROM_RAW_LEN,
+    }
 }
 
 const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;

@@ -76,14 +76,19 @@ fn console_model_selects_the_expected_dmg_family_boot_kind() {
             .boot_rom_kind(),
         BootRomKind::Mgb
     );
+    assert_eq!(
+        BootController::new(ConsoleModel::Cgb, StartupMode::RealBoot, empty_assets())
+            .boot_rom_kind(),
+        BootRomKind::Cgb
+    );
 }
 
 #[test]
 fn boot_rom_reads_come_from_the_configured_selected_model_image() {
     let assets = BootRomAssets::none()
-        .with_bytes(BootRomKind::Dmg, vec![0xC0; BOOT_ROM_LEN])
+        .with_bytes(BootRomKind::Dmg, vec![0xC0; DMG_FAMILY_BOOT_ROM_LEN])
         .expect("dmg image should validate")
-        .with_bytes(BootRomKind::Mgb, vec![0xB0; BOOT_ROM_LEN])
+        .with_bytes(BootRomKind::Mgb, vec![0xB0; DMG_FAMILY_BOOT_ROM_LEN])
         .expect("mgb image should validate");
     let dmg = BootController::new(ConsoleModel::Dmg, StartupMode::RealBoot, assets.clone());
     let mgb = BootController::new(ConsoleModel::Mgb, StartupMode::RealBoot, assets);
@@ -91,6 +96,39 @@ fn boot_rom_reads_come_from_the_configured_selected_model_image() {
     assert_eq!(dmg.read_boot_rom(0x0000), 0xC0);
     assert_eq!(mgb.read_boot_rom(0x0000), 0xB0);
     assert_ne!(dmg.read_boot_rom(0x0000), mgb.read_boot_rom(0x0000));
+}
+
+#[test]
+fn cgb_boot_rom_reads_cover_both_overlay_windows_without_aliasing_to_dmg_assets() {
+    let mut cgb_boot = vec![0x00; CGB_BOOT_ROM_RAW_LEN];
+    cgb_boot[0x0000] = 0xC0;
+    cgb_boot[0x0100] = 0xD2;
+    cgb_boot[CGB_BOOT_ROM_RAW_LEN - 1] = 0xE4;
+
+    let assets = BootRomAssets::none()
+        .with_bytes(BootRomKind::Cgb, cgb_boot)
+        .expect("cgb image should validate");
+    let cgb = BootController::new(ConsoleModel::Cgb, StartupMode::RealBoot, assets);
+
+    assert_eq!(cgb.read_boot_rom(0x0000), 0xC0);
+    assert_eq!(cgb.read_boot_rom(0x0200), 0xD2);
+    assert_eq!(cgb.read_boot_rom(0x08FF), 0xE4);
+}
+
+#[test]
+fn cgb_boot_rom_assets_also_accept_sparse_address_space_images() {
+    let mut cgb_boot = vec![0xFF; CGB_BOOT_ROM_MAPPED_LEN];
+    cgb_boot[0x0000] = 0x44;
+    cgb_boot[0x0200] = 0x55;
+    cgb_boot[0x08FF] = 0x66;
+
+    let assets = BootRomAssets::none()
+        .with_bytes(BootRomKind::Cgb, cgb_boot)
+        .expect("sparse cgb image should validate");
+
+    assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x0000), Some(0x44));
+    assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x0200), Some(0x55));
+    assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x08FF), Some(0x66));
 }
 
 #[test]
@@ -177,7 +215,7 @@ fn boot_rom_assets_can_load_a_configured_directory_source() {
     fs::create_dir_all(&directory).expect("temporary asset directory should be creatable");
     fs::write(
         directory.join(BootRomAssets::filename(BootRomKind::Dmg)),
-        vec![0x42; BOOT_ROM_LEN],
+        vec![0x42; DMG_FAMILY_BOOT_ROM_LEN],
     )
     .expect("boot ROM file should be writable");
 
@@ -233,21 +271,26 @@ fn boot_rom_asset_errors_cover_missing_non_directory_and_read_failure_paths() {
 #[test]
 fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
     let assets = BootRomAssets::none()
-        .with_bytes(BootRomKind::Dmg0, vec![0x10; BOOT_ROM_LEN])
+        .with_bytes(BootRomKind::Dmg0, vec![0x10; DMG_FAMILY_BOOT_ROM_LEN])
         .expect("dmg0 image should validate")
-        .with_bytes(BootRomKind::Dmg, vec![0x20; BOOT_ROM_LEN])
+        .with_bytes(BootRomKind::Dmg, vec![0x20; DMG_FAMILY_BOOT_ROM_LEN])
         .expect("dmg image should validate")
-        .with_bytes(BootRomKind::Mgb, vec![0x30; BOOT_ROM_LEN])
-        .expect("mgb image should validate");
+        .with_bytes(BootRomKind::Mgb, vec![0x30; DMG_FAMILY_BOOT_ROM_LEN])
+        .expect("mgb image should validate")
+        .with_bytes(BootRomKind::Cgb, vec![0x40; CGB_BOOT_ROM_RAW_LEN])
+        .expect("cgb image should validate");
 
     assert_eq!(BootRomAssets::filename(BootRomKind::Dmg0), "dmg0_boot.bin");
     assert_eq!(BootRomAssets::filename(BootRomKind::Dmg), "dmg_boot.bin");
     assert_eq!(BootRomAssets::filename(BootRomKind::Mgb), "mgb_boot.bin");
+    assert_eq!(BootRomAssets::filename(BootRomKind::Cgb), "cgb_boot.bin");
     assert!(!assets.is_empty());
     assert!(assets.has_image(BootRomKind::Dmg0));
     assert!(assets.has_image(BootRomKind::Dmg));
     assert!(assets.has_image(BootRomKind::Mgb));
+    assert!(assets.has_image(BootRomKind::Cgb));
     assert_eq!(assets.read_byte(BootRomKind::Dmg0, 0x0000), Some(0x10));
     assert_eq!(assets.read_byte(BootRomKind::Dmg, 0x0000), Some(0x20));
     assert_eq!(assets.read_byte(BootRomKind::Mgb, 0x0000), Some(0x30));
+    assert_eq!(assets.read_byte(BootRomKind::Cgb, 0x0000), Some(0x40));
 }

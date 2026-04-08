@@ -4,6 +4,16 @@ use gb_core::{
     DmaMemoryRegionImpact, PpuAccessMode, PpuBusState, SchedulerPhase, TCycle,
 };
 
+fn read_cartridgeless_bus_harness(bus: &mut Bus, address: u16) -> u8 {
+    let state = BusArbitrationState::default();
+    bus.read_with_cartridge(address, BusRequester::Cpu, &state, None)
+}
+
+fn write_cartridgeless_bus_harness(bus: &mut Bus, address: u16, value: u8) {
+    let state = BusArbitrationState::default();
+    bus.write_with_cartridge(address, value, BusRequester::Cpu, &state, None);
+}
+
 #[test]
 fn public_bus_decode_covers_the_complete_dmg_region_map() {
     let bus = Bus::new(ConsoleModel::Dmg);
@@ -47,46 +57,46 @@ fn public_bus_decode_covers_the_complete_dmg_region_map() {
 }
 
 #[test]
-fn public_bus_round_trips_only_through_explicit_storage_regions() {
+fn explicit_cartridgeless_bus_harness_round_trips_only_through_storage_regions() {
     let mut bus = Bus::new(ConsoleModel::Dmg);
 
-    bus.write(0x8000, 0x11);
-    bus.write(0xC000, 0x22);
-    bus.write(0xDFFF, 0x33);
-    bus.write(0xFE9F, 0x44);
-    bus.write(0xFF80, 0x55);
+    write_cartridgeless_bus_harness(&mut bus, 0x8000, 0x11);
+    write_cartridgeless_bus_harness(&mut bus, 0xC000, 0x22);
+    write_cartridgeless_bus_harness(&mut bus, 0xDFFF, 0x33);
+    write_cartridgeless_bus_harness(&mut bus, 0xFE9F, 0x44);
+    write_cartridgeless_bus_harness(&mut bus, 0xFF80, 0x55);
 
-    assert_eq!(bus.read(0x8000), 0x11);
-    assert_eq!(bus.read(0xC000), 0x22);
-    assert_eq!(bus.read(0xDFFF), 0x33);
-    assert_eq!(bus.read(0xFE9F), 0x44);
-    assert_eq!(bus.read(0xFF80), 0x55);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0x8000), 0x11);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xC000), 0x22);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xDFFF), 0x33);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xFE9F), 0x44);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xFF80), 0x55);
 }
 
 #[test]
-fn public_bus_echo_ram_aliases_wram_in_both_directions() {
+fn explicit_cartridgeless_bus_harness_keeps_echo_ram_aliased_to_wram() {
     let mut bus = Bus::new(ConsoleModel::Dmg);
 
-    bus.write(0xC000, 0xA1);
-    bus.write(0xE321, 0xB2);
+    write_cartridgeless_bus_harness(&mut bus, 0xC000, 0xA1);
+    write_cartridgeless_bus_harness(&mut bus, 0xE321, 0xB2);
 
-    assert_eq!(bus.read(0xE000), 0xA1);
-    assert_eq!(bus.read(0xC321), 0xB2);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xE000), 0xA1);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xC321), 0xB2);
 }
 
 #[test]
-fn placeholder_regions_do_not_fall_back_to_generic_byte_storage() {
+fn explicit_cartridgeless_bus_harness_uses_placeholders_for_unowned_regions() {
     let mut bus = Bus::new(ConsoleModel::Dmg);
 
-    bus.write(0x0100, 0x77);
-    bus.write(0xA123, 0x88);
-    bus.write(0xFF40, 0x99);
-    bus.write(0xFEA0, 0xAA);
+    write_cartridgeless_bus_harness(&mut bus, 0x0100, 0x77);
+    write_cartridgeless_bus_harness(&mut bus, 0xA123, 0x88);
+    write_cartridgeless_bus_harness(&mut bus, 0xFF40, 0x99);
+    write_cartridgeless_bus_harness(&mut bus, 0xFEA0, 0xAA);
 
-    assert_eq!(bus.read(0x0100), 0xFF);
-    assert_eq!(bus.read(0xA123), 0xFF);
-    assert_eq!(bus.read(0xFF40), 0xFF);
-    assert_eq!(bus.read(0xFEA0), 0x00);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0x0100), 0xFF);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xA123), 0xFF);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xFF40), 0xFF);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xFEA0), 0x00);
 }
 
 #[test]

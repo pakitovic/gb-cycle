@@ -21,19 +21,21 @@ impl Bus {
         BusAccessResolution::new(requester, kind, target, disposition)
     }
 
-    pub fn read(&mut self, address: u16) -> u8 {
-        self.read_with(address, BusRequester::Cpu, &BusArbitrationState::default())
+    #[cfg(test)]
+    pub(crate) fn read(&mut self, address: u16) -> u8 {
+        self.read_with_context(
+            address,
+            BusRequester::Cpu,
+            &BusArbitrationState::default(),
+            None,
+            BusIoReadView::default(),
+        )
     }
 
-    pub fn read_with(
-        &mut self,
-        address: u16,
-        requester: BusRequester,
-        state: &BusArbitrationState,
-    ) -> u8 {
-        self.read_with_context(address, requester, state, None, BusIoReadView::default())
-    }
-
+    // This is a limited harness entry point for callers that can provide the
+    // live arbitration state plus cartridge owner explicitly. Public runtime
+    // access should go through Machine::read_bus so MMIO stays routed to the
+    // owning live subsystems on the shared timeline.
     pub fn read_with_cartridge(
         &mut self,
         address: u16,
@@ -109,32 +111,22 @@ impl Bus {
         }
     }
 
-    pub fn write(&mut self, address: u16, value: u8) {
-        self.write_with(
+    #[cfg(test)]
+    pub(crate) fn write(&mut self, address: u16, value: u8) {
+        self.write_with_context(
             address,
             value,
             BusRequester::Cpu,
             &BusArbitrationState::default(),
-        );
-    }
-
-    pub fn write_with(
-        &mut self,
-        address: u16,
-        value: u8,
-        requester: BusRequester,
-        state: &BusArbitrationState,
-    ) {
-        self.write_with_context(
-            address,
-            value,
-            requester,
-            state,
             None,
             BusIoWriteView::default(),
         );
     }
 
+    // This is a limited harness entry point for callers that can provide the
+    // live arbitration state plus cartridge owner explicitly. Public runtime
+    // access should go through Machine::write_bus so MMIO side effects are
+    // committed by the owning live subsystems on the shared timeline.
     pub fn write_with_cartridge(
         &mut self,
         address: u16,

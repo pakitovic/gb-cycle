@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const BOOT_ROM_LEN: usize = 0x0100;
+const CGB_BOOT_ROM_RAW_LEN: usize = 0x0800;
 const ENTRY_POINT_START: usize = 0x0100;
 const LOGO_START: usize = 0x0104;
 const TITLE_START: usize = 0x0134;
@@ -41,6 +42,13 @@ fn build_test_rom(header_checksum: u8) -> Vec<u8> {
 fn build_boot_rom_image(first_byte: u8) -> Vec<u8> {
     let mut rom = vec![0xFF; BOOT_ROM_LEN];
     rom[0x0000] = first_byte;
+    rom
+}
+
+fn build_cgb_boot_rom_image(low_byte: u8, upper_window_byte: u8) -> Vec<u8> {
+    let mut rom = vec![0xFF; CGB_BOOT_ROM_RAW_LEN];
+    rom[0x0000] = low_byte;
+    rom[0x0100] = upper_window_byte;
     rom
 }
 
@@ -209,6 +217,30 @@ fn real_boot_reads_boot_rom_at_0000_until_ff50_handoff_restores_cartridge_visibi
     assert_eq!(machine.read_bus(0x0000), 0x12);
     assert_eq!(machine.read_bus(0x0100), 0x31);
     assert_eq!(machine.read_bus(0x4000), 0x56);
+}
+
+#[test]
+fn cgb_real_boot_uses_a_cgb_boot_asset_for_the_split_boot_windows() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Cgb)
+            .with_startup_mode(StartupMode::RealBoot)
+            .with_boot_rom_assets(
+                BootRomAssets::none()
+                    .with_bytes(BootRomKind::Cgb, build_cgb_boot_rom_image(0x99, 0x77))
+                    .expect("configured CGB boot ROM should validate"),
+            ),
+    );
+
+    machine
+        .load_cartridge(build_test_rom(0x7F))
+        .expect("supported NoMBC image should load");
+
+    assert_eq!(machine.boot().boot_rom_kind(), BootRomKind::Cgb);
+    assert!(machine.boot().is_boot_rom_mapped());
+    assert!(machine.boot().has_boot_rom_asset());
+    assert_eq!(machine.read_bus(0x0000), 0x99);
+    assert_eq!(machine.read_bus(0x0200), 0x77);
+    assert_eq!(machine.read_bus(0x0100), 0x31);
 }
 
 #[test]
