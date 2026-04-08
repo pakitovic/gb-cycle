@@ -679,6 +679,7 @@ Current branch baseline, March 30, 2026:
 
 - `CH4` now owns explicit `NR43` decode, a fast `noise_timer`, live `lfsr_state`, envelope runtime (`initial_volume`, direction, pace, timer, current volume), and trigger-time reload of timer / envelope / LFSR instead of remaining a length-only placeholder.
 - The frame sequencer now clocks both CH4 length and CH4 envelope on the shared slow-control timeline, while the fast T-cycle path advances the decoded noise timer and LFSR independently.
+- The fast waveform/sample/noise timers now stay decoupled from `channel_active`: after the pulse channels have seen their first post-power-on trigger, CH1/CH2 duty stepping, CH3 sample progression, and CH4 noise/LFSR stepping continue from the shared T-cycle clock even while the channel is logically inactive or currently inaudible.
 - The slow-control clocks are now explicit hardware units rather than being gated by audibility: CH1 sweep and CH1 / CH2 / CH4 envelopes continue to advance from the frame sequencer according to their own enable / pace state even if `channel_active` is already false.
 - DMG power-off semantics are now explicit for the shared `NRx1` length family: on DMG, writes to `NR11/NR21/NR31/NR41` while `NR52=0` update only the internal length counters, and those counters survive the power-off interval instead of being reset to the powered-on defaults.
 - External evidence has closed the CH4-facing Blargg lane needed for the current Phase `7` bring-up: `dmg_sound 02-len ctr`, `08-len ctr during power`, and `11-regs after power` now pass alongside the already-green pulse and CH3 cases.
@@ -693,7 +694,7 @@ Current branch baseline, March 30, 2026:
 - Internal APU state should advance from the shared master clock / T-cycle timeline, not from host audio callback cadence or an ad hoc `44.1`/`48` kHz loop.
 - The frame-sequencer path should derive its timing from the shared `DIV`/system-counter edge, not from a duplicate software timer hidden inside the audio backend.
 - Slow frame-sequencer clocks and fast per-channel waveform timers should remain distinct in the model; do not let the frame sequencer become a surrogate sample clock.
-- Do not assume a channel's fast waveform/sample/noise timer halts merely because `channel_active` or the resolved audible output is currently false; that pause policy must be justified per channel by hardware evidence rather than inherited accidentally from a software mute flag.
+- CH1 / CH2 / CH3 / CH4 fast waveform/sample/noise timers should continue advancing from the shared T-cycle clock even when `channel_active` is false; do not reintroduce audibility-driven gating through a software mute flag.
 - The core should not depend on emitting one host sample per T-cycle; instead, keep hardware state evolution and host-rate sampling or resampling as separate stages.
 - APU power transitions, DAC-enable changes, `NR50` / `NR51` mixer changes, and `NRx4` trigger effects should all remain expressible as ordered T-cycle-visible events.
 
@@ -793,7 +794,6 @@ Priority order:
 - The stereo mixer should consume DAC outputs derived from already-resolved channel digital output and DAC state rather than peeking back into raw register storage or channel-internal waveform state to reconstruct behavior indirectly.
 - Keep a clear API boundary between exact internal audio state and the later host-facing sample or resampler path, including a distinct final normalization step for host `float` / `int16` output.
 - Reserve explicit follow-up work items for per-channel quirks such as extra length clocking, CH1 sweep details, CH3 retrigger/wave-RAM edge cases, CH4 lock-up, and the remaining per-revision zombie-mode matrix beyond the conservative `increase + pace 0 => volume + 1` path.
-- Keep a dedicated follow-up item for whether inactive CH1 / CH2 / CH3 / CH4 channels should continue advancing their fast timers and phase state off-audibly; the current branch behavior pauses those timers on `channel_active`, but that has not yet been closed against a dedicated hardware oracle.
 - A channel shape such as `Channel1 { active, dac_enabled, period_value, period_timer, duty, duty_step, length_counter, length_enabled, envelope, sweep }` is a good fit for keeping CH1 readable and testable, even if field names differ.
 - Keep CH1 sweep logic isolated enough that trigger-time setup, timed sweep iterations, overflow checks, and shadow-register behavior can each be tested directly.
 - A sibling shape such as `Channel2 { active, dac_enabled, period_value, period_timer, duty, duty_step, length_counter, length_enabled, envelope }` is a good fit for reusing the pulse-channel base without carrying sweep-only state into CH2.

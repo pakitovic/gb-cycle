@@ -512,6 +512,24 @@ fn channel_2_retrigger_after_the_first_post_power_on_trigger_does_not_resuppress
 }
 
 #[test]
+fn pulse_fast_timer_stays_frozen_until_the_first_trigger_after_power_on() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0xF0);
+    apu.write_register(0xFF18, 0xFF);
+
+    apu.channel_2.pulse.duty_step = 3;
+    apu.channel_2.pulse.period_timer = 1;
+
+    apu.channel_2.tick_fast_timer();
+
+    assert_eq!(apu.channel_2.pulse.duty_step, 3);
+    assert_eq!(apu.channel_2.pulse.period_timer, 1);
+    assert!(apu.channel_2.pulse.first_trigger_after_power_on_pending);
+}
+
+#[test]
 fn nr52_power_cycle_rearms_the_first_trigger_after_power_on_pulse_suppression() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
@@ -1246,6 +1264,27 @@ fn pulse_envelope_stops_automatic_updates_after_saturating_at_fifteen() {
 }
 
 #[test]
+fn pulse_fast_timer_advances_duty_step_while_the_channel_is_inactive() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0xF0);
+    apu.write_register(0xFF18, 0xFF);
+    apu.write_register(0xFF19, 0x87);
+
+    apu.channel_2.pulse.runtime.active = false;
+    apu.channel_2.pulse.duty_step = 6;
+    apu.channel_2.pulse.period_timer = 1;
+
+    apu.channel_2.tick_fast_timer();
+
+    assert_eq!(apu.channel_2.pulse.duty_step, 7);
+    assert_eq!(apu.channel_2.pulse.period_timer, 4);
+    assert!(!apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channel_2.pulse.current_digital_output(), 0);
+}
+
+#[test]
 fn pulse_envelope_clock_advances_while_the_channel_is_inactive() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
@@ -1431,6 +1470,30 @@ fn channel_3_output_level_applies_immediate_digital_attenuation_without_disablin
     apu.write_register(0xFF1C, 0x60);
     assert_eq!(apu.channel_3.current_digital_output(), 0x03);
     assert!(apu.channel_3.runtime.active);
+}
+
+#[test]
+fn channel_3_fast_timer_advances_sample_state_while_the_channel_is_inactive() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.channel_3.wave_ram[0] = 0x12;
+    apu.write_register(0xFF1A, 0x80);
+    apu.write_register(0xFF1C, 0x20);
+    apu.write_register(0xFF1D, 0xFF);
+    apu.write_register(0xFF1E, 0x87);
+
+    apu.channel_3.runtime.active = false;
+    apu.channel_3.sample_index = 0;
+    apu.channel_3.sample_buffer = 0x0E;
+    apu.channel_3.period_timer = 1;
+
+    apu.channel_3.tick_fast_timer();
+
+    assert_eq!(apu.channel_3.sample_index, 1);
+    assert_eq!(apu.channel_3.sample_buffer, 0x02);
+    assert_eq!(apu.channel_3.period_timer, 2);
+    assert!(!apu.channel_3.runtime.active);
+    assert_eq!(apu.channel_3.current_digital_output(), 0);
 }
 
 #[test]
@@ -1780,6 +1843,26 @@ fn channel_4_noise_timer_steps_the_lfsr_and_short_width_mode_copies_feedback_int
 
     assert_eq!(channel.period_timer, 8);
     assert_eq!(channel.lfsr_state, 0x4040);
+    assert_eq!(channel.current_digital_output(), 0);
+}
+
+#[test]
+fn channel_4_noise_timer_keeps_running_while_the_channel_is_inactive() {
+    let mut channel = Channel4State::default();
+    channel.runtime.dac_enabled = true;
+    channel.runtime.active = false;
+    channel.short_width_mode = true;
+    channel.clock_shift = 0;
+    channel.clock_divider_code = 0;
+    channel.period_timer = 1;
+    channel.current_volume = 0x0F;
+    channel.lfsr_state = NOISE_LFSR_INITIAL_STATE;
+
+    channel.tick_fast_timer();
+
+    assert_eq!(channel.period_timer, 8);
+    assert_eq!(channel.lfsr_state, 0x4040);
+    assert!(!channel.runtime.active);
     assert_eq!(channel.current_digital_output(), 0);
 }
 

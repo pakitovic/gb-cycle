@@ -135,8 +135,9 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    unit coverage now includes CH4 timer/LFSR/envelope seams, the Pan Docs
    zeroed trigger state, live `15-bit -> 7-bit` width-change lock-up, retrigger
    recovery from that lock-up, inactive-channel slow-control clocking for CH1
-   sweep and CH1 / CH2 / CH4 envelopes, and DMG powered-off `NR41` length
-   writes, while machine integration coverage
+   sweep and CH1 / CH2 / CH4 envelopes, inactive-channel fast-timer
+   continuation for CH1 / CH2 / CH3 / CH4, and DMG powered-off `NR41`
+   length writes, while machine integration coverage
    includes DMG `NR41` length persistence through an `NR52` power cycle.
 7. `Phase 7.6` — DAC, mixer, HPF, and host boundary
    Scope: channel digital-output ownership, per-channel DAC conversion,
@@ -193,7 +194,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Acceptance criteria: the pipeline has an explicit place for DC-offset and pop-sensitive behavior, and HPF presence no longer depends on frontend audio code.
 6. Prepare the channel blocks without collapsing the timing model.
    Scope: stable hooks for CH1-CH4 slow clocks and fast timers, plus follow-up placeholders for channel-specific quirks and edge cases.
-   Acceptance criteria: each channel can later receive its own waveform timer without changing the master frame-sequencer architecture, and known follow-up work such as extra length clocking, inactive-channel fast-timer continuation, CH3 wave-RAM quirks, CH4 lock-up, and envelope zombie-mode remains explicitly tracked rather than implicit.
+   Acceptance criteria: each channel can later receive its own waveform timer without changing the master frame-sequencer architecture, and known follow-up work such as extra length clocking, CH3 wave-RAM quirks, CH4 lock-up, and envelope zombie-mode remains explicitly tracked rather than implicit.
 
 #### CH1 sequencing inside Phase 7
 

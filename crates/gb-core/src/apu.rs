@@ -631,7 +631,7 @@ impl PulseChannelState {
     }
 
     fn tick_fast_timer(&mut self, period_value: u16) {
-        if !self.runtime.active {
+        if self.first_trigger_after_power_on_pending {
             return;
         }
 
@@ -1329,10 +1329,6 @@ impl Channel3State {
     }
 
     fn tick_fast_timer(&mut self) {
-        if !self.runtime.active {
-            return;
-        }
-
         if self.period_timer > 0 {
             self.period_timer -= 1;
         }
@@ -1660,7 +1656,7 @@ impl Channel4State {
     }
 
     fn tick_fast_timer(&mut self) {
-        if !self.runtime.active || self.clock_shift >= 14 {
+        if self.clock_shift >= 14 {
             return;
         }
 
