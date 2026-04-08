@@ -14,24 +14,27 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## Evidence policy
 
 - Treat Pan Docs plus hardware-backed timing research as the default source of truth for the external PPU contract.
-- Treat statements in this file that are clearly phrased as current repo baselines, provisional behavior, or open closure work as project decisions or active hypotheses, not as hardware-finished facts.
-- When a timing-sensitive rule is still unsettled, label it in the most restrictive way available: `hardware fact` if backed by documentation or oracle closure, `inference` if strongly suggested but not fully closed, and `repo baseline` if it is the implementation contract the repo is currently choosing while closure remains open.
+- Use `[hardware fact]` for rules backed by documentation, hardware research, or strong oracle closure, and `[inference]` for design guidance that is strongly suggested but not fully closed.
+- [PPU.md](./PPU.md) is the authoritative hardware handbook. Repo-local migration constraints and compatibility notes live in [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md), which never overrides this file.
+
+## Normative hardware contract
+
+The sections from `Responsibilities` through `Tests` define the hardware-facing contract for a new implementation.
+
+Use those sections first when designing or reimplementing the PPU.
+Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need to preserve current repo behavior or stage a migration without reopening already-closed tests.
 
 ## Responsibilities
 
-- mode transitions and scanline progression
-- current Mode `2` OAM-row progression
-- background, window, and sprite fetch behavior
-- pixel priority rules
-- STAT/LY/LYC and LCD-visible interrupts
+- mode transitions, scanline progression, and LCD on/off raster restart behavior
+- panel-visible output state, including LCD-off blanking and the first blank frame after LCD re-enable
+- current Mode `2` OAM-row progression and sprite selection
+- background, window, and object pixel-pipeline behavior
+- pixel priority, transparency, and BG/OBJ mixing rules
+- MMIO-visible LCD/PPU register semantics, including separation between MMIO-owned storage and the register view visible to the active pixel pipeline
+- `STAT`, `LY`, `LYC`, and LCD-visible interrupt generation
+- VRAM/OAM accessibility and the PPU-visible consequences of bus/DMA ownership, without owning DMA scheduling
 - DMG-family OAM corruption behavior
-- reaction to DMA-declared OAM/VRAM contention without owning DMA scheduling
-- consumption of bus-originated OAM/VRAM domain views rather than unrelated raw backing arrays
-- consumption of bus-synchronized OAM/VRAM ownership state; the PPU must not invent video-bus acquisition or release transitions locally
-- explicit separation between MMIO-owned register storage and the register values currently visible to the active pixel pipeline
-- tile fetcher state
-- background and object FIFO state
-- pixel FIFO state and output timing
 
 ## Registers / MMIO
 
@@ -58,25 +61,19 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Writing `LCDC.7` should trigger immediate LCD/PPU side effects, including the LCD enable/disable transition and the corresponding VRAM/OAM accessibility rules.
 - `STAT` should be modeled as a mixed register with writable interrupt-enable fields and dynamic read-only fields for coincidence and the current PPU mode.
 - Preserve the documented DMG-specific spurious `STAT` interrupt quirk on `STAT` writes; do not assume the same write behavior on GBC running in DMG mode.
-- `LY` should be read-only and reflect the current live scanline `0-153`; writes must not behave like storage updates.
+- `LY` should be read-only and reflect the live scanline `0-153`; writes must not behave like storage updates.
 - `LYC` is readable and writable storage, but its comparison effect belongs to the live PPU state and should be evaluated continuously against `LY`.
 - `SCX`, `SCY`, `WX`, and `WY` should be modeled as MMIO-visible PPU registers whose mid-frame writes participate in the same temporal PPU model rather than a deferred renderer recomputation.
 - `BGP`, `OBP0`, and `OBP1` should remain PPU-owned DMG palette registers.
-- On the shared scheduler path, CPU-originated writes to PPU MMIO registers should stage during the CPU micro-operation phase and commit on the same T-cycle during the dedicated MMIO-commit phase. The PPU should therefore treat the MMIO-owned storage update itself as a phase-`7` device-owned event, distinct from the later next-dot-visible fetch/pipeline snapshots.
-- For retained scheduler-trace observability in this repo baseline, that phase-`7` device-owned MMIO commit should be reported under the PPU trace hook on the committing T-cycle, including the committed MMIO address/value and the post-commit MMIO-owned PPU register state. The boot trace at phase `7` remains reserved for boot-owned visibility such as `FF50`, not as a placeholder for unrelated PPU commits.
-- The implementation should keep one explicit current-dot-visible register block for active-LCD fetch and pixel mixing. In the current DMG baseline, that visible block may lag the MMIO-owned storage by one shared T-cycle so writes committed after the PPU tick become visible on the next PPU dot instead of retroactively changing the fetch already in progress.
-- That visible-register block should be the source of truth for Mode `3` BG/window/object fetch decisions, BG/OBJ palette lookup, and other active-pipeline reads of `LCDC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, and `OBP*`.
-- In the current March 27, 2026 DMG baseline, keep one second explicit register snapshot for the active pixel pipeline itself, separate from the current-dot-visible MMIO snapshot. This pipeline snapshot should represent the previous-dot DMG view used by the in-flight `Mode 3` pipeline, so live-write-sensitive logic does not have to recover "last `LCDC` / last `WX` / last `BGP`" ad hoc from unrelated state.
-- In that same current DMG baseline, window activation should consume the pipeline snapshot for `LCDC.5` and `WX`, not the newer current-dot-visible copy, because the remaining mealybug window cases hinge on previous-dot `WX` / `WIN_ENABLE` visibility rather than on immediate same-dot MMIO state.
-- In that same current DMG baseline, the live BG/window fetchers should also leave room for localized `LCDC.4` / tile-data-selector seams instead of forcing every `Mode 3` fetch to use one uniform register snapshot. The low/high bitplane phases should be able to compare previous-dot `LCDC` against current-dot-visible `LCDC` and adjust only the byte already in flight, including the documented DMG-style reread / bitplane-desync cases.
+- On the shared scheduler path, CPU-originated writes to PPU MMIO registers should stage during the CPU micro-operation phase and commit on the same T-cycle during a dedicated MMIO-commit phase.
+- Keep MMIO-owned storage separate from the register view currently visible to the active pixel pipeline.
+- That active-pipeline-visible register view should drive Mode `3` BG/window/object fetch decisions, BG/OBJ palette lookup, and other in-flight pipeline reads of `LCDC`, `SCX`, `SCY`, `WX`, `WY`, `BGP`, and `OBP*`.
+- The design should also leave room for a previous-dot or pipeline-visible snapshot where live-write-sensitive DMG behavior needs it, especially for window activation, tile-data selection, and palette-conflict handling.
 - Do not import the CGB-specific `signed -> unsigned` "reuse the last unsigned fetch byte" behavior into the DMG baseline. If that CGB-family glitch is modeled later, keep it explicitly model-gated in the future CGB path instead of treating it as a generic DMG fetcher rule.
-- In that same current DMG baseline, real window fetch during `Mode 3` should not assume its tilemap base and tile-data base always come from the newest current-dot-visible `LCDC`. Once window fetch is active, the current repo baseline should keep room for those address-selection decisions to consume the previous-dot pipeline `LCDC` view, because remaining mealybug `window map` / `tile select` cases depend on the fetcher-side delayed seam, not only on the already-landed delayed `WX` / `WIN_ENABLE` activation seam.
-- In that same current DMG baseline, visible-pixel transfer should also keep an explicit seam between the previous-dot pipeline `LCDC` view and the current-dot-visible `LCDC` view: the general visible-pixel path should use the delayed pipeline copy for `BG_WIN_ENABLE` and `OBJ_ENABLE`, while the first visible pixel at `LX = 8` keeps its own exception hook to observe the current-dot-visible `LCDC`.
-- In that same current DMG baseline, BG palette resolution for a visible DMG pixel should leave room for the documented one-dot `BGP` overlap artifact by consuming one explicit `current_visible_bgp | previous_pipeline_bgp` value, rather than assuming the panel always sees only the newest current-dot-visible `BGP`.
 - For `OBP0` and `OBP1`, the low two bits must not change the meaning of OBJ color index `0`, because that index remains transparent.
 - On DMG-family hardware, writes to `BGP`, `OBP0`, and `OBP1` during Mode `3` should not be treated as ordinary "new value is visible only from the next pixel onward" MMIO updates. The PPU design should leave room for the documented/raster-oracle-visible palette-conflict artifacts, including transient write values and limited retroactive recoloring of the most recent visible pixels when those writes race the LCD pipeline.
 - That DMG palette-conflict window should also remain compatible with the observed early-HBlank tail used by raster tests such as `mealybug m3_bgp_change`; do not hard-cut those writes to "no effect" merely because the mode bits already advanced to HBlank in the coarse scheduler model.
-- The current DMG baseline should not assume `BGP` and `OBP*` share exactly the same retroactive span. Current mealybug evidence in this repo supports a slightly wider retroactive OBJ-palettes window than the BG-palettes window, so keep the two cases separable in the design instead of baking one universal pixel count into every palette-write path.
+- Keep BG and OBJ palette-conflict handling separable; do not assume `BGP` and `OBP*` share exactly the same retroactive span.
 
 ## LCD master-control baseline
 
@@ -104,7 +101,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## STAT register baseline
 
 - `STAT` should remain a mixed register whose writable portion is the software-configured interrupt-enable mask and whose read-only portion is derived from live PPU state.
-- Treat `STAT` bit `7` as non-writable and keep its readback policy explicit and model-gated rather than baking in one universal DMG invariant here. The current hardware-facing contract for this handbook is that software does not own bit `7`, while bits `6-0` carry the documented interrupt-enable, coincidence, and mode semantics.
+- Treat `STAT` bit `7` as non-writable and keep its readback policy explicit and model-gated rather than baking in one universal DMG invariant here. In this handbook, software does not own bit `7`, while bits `6-0` carry the documented interrupt-enable, coincidence, and mode semantics.
 - Bits `6-3` should be treated as writable enables for the `LYC==LY`, Mode `2`, Mode `1`, and Mode `0` STAT sources.
 - Bit `2` should expose the live `LYC==LY` coincidence state as a read-only flag.
 - Bits `1-0` should expose the live current PPU mode as a read-only value: `0` HBlank, `1` VBlank, `2` OAM scan, `3` drawing.
@@ -113,15 +110,13 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 ## LY / LYC coincidence baseline
 
-- `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
-- On DMG-family timing, the bus-facing `FF44` readback should advance to the next scanline during the last machine cycle of HBlank before the full raster wrap completes; do not force bus-visible `LY` reads to be identical to the internal raster/comparison line at every dot.
-- In the current repo baseline, the exact bus-visible `FF44` handoff inside that late-HBlank tail remains unresolved. A direct retune from the current implementation seam to a stricter "final M-cycle only" threshold regressed `mooneye acceptance/ppu/hblank_ly_scx_timing-GS`, so treat that edge as an open hypothesis rather than as a settled constant tweak.
-- The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
-- Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
-- While the LCD is disabled, the `STAT` coincidence bit should retain the last active-LCD comparison result instead of being silently recomputed from the reset LCD-off `LY = 0` state.
-- Writing `LYC` while the LCD is disabled should update the stored compare target only; it must not recompute that retained LCD-off coincidence result or request LCD STAT by itself.
-- Coincidence should remain possible during VBlank as well as during visible scanlines.
-- The PPU should not model `LYC` as "schedule a future interrupt when LY reaches this line"; it is a live comparison input to `STAT`.
+- [hardware fact] `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
+- [inference] On DMG-family timing, the bus-facing `FF44` readback should advance to the next scanline during the last machine cycle of HBlank before the full raster wrap completes; do not force bus-visible `LY` reads to be identical to the internal raster/comparison line at every dot.
+- [hardware fact] The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
+- [hardware fact] Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
+- [inference] For a from-scratch implementation, do not treat LCD-off readback as "retain the last active-LCD coincidence result". While the LCD is disabled, the external `LY` / `STAT` contract should follow the LCD-off readback rules explicitly instead of pretending the active raster comparison is still live.
+- [hardware fact] Coincidence should remain possible during VBlank as well as during visible scanlines.
+- [hardware fact] The PPU should not model `LYC` as "schedule a future interrupt when LY reaches this line"; it is a live comparison input to `STAT`.
 
 ## STAT interrupt-line baseline
 
@@ -131,7 +126,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
   - `stat_mode1_enable && mode == 1`
   - `stat_mode2_enable && mode == 2`
   - `stat_lyc_enable && ly == lyc`
-- In the current DMG-family baseline, the Mode `2` STAT enable should also request LCD STAT at the exact VBlank-entry transition on line `144`, but it should not be treated as a continuously active source for the rest of VBlank.
+- The Mode `2` STAT path should be modeled carefully around the line-`144` VBlank-entry boundary instead of being flattened into a coarse "Mode 2 stays active through all of VBlank" rule.
 - LCD STAT interrupt requests should be emitted only on a rising edge of that internal line, not merely because one contributing condition is true.
 - STAT blocking should be preserved: if one enabled source keeps the internal line high while another source becomes true, no new LCD STAT interrupt should be requested until the line first drops low and rises again.
 - Mode `3` must not be treated as a direct STAT interrupt source.
@@ -145,7 +140,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Entering VBlank at `LY = 144` should be able to request both the dedicated VBlank interrupt and the LCD STAT interrupt for Mode `1` independently when the corresponding `STAT` enable is set.
 - The same live mode state that feeds `STAT` must also feed VRAM/OAM accessibility decisions so software polling `STAT` sees the same timing the bus uses for blocking.
 - On the shared scheduler, the PPU dot tick should happen before current-cycle bus arbitration and interrupt aggregation so `STAT`, LCD IRQ requests, `LY`, and VRAM/OAM restrictions remain coherent for that T-cycle.
-- In the current March 27, 2026 baseline, the scheduler-backed CPU path now also keeps one explicit `CPU phase -> PPU MMIO commit phase -> interrupt aggregation` seam. That means `STAT` / `LCDC` side effects produced by a CPU MMIO write do not appear during the earlier PPU dot tick of the same T-cycle, but they do reach the owning PPU state before step `8` interrupt aggregation.
+- CPU MMIO side effects that commit after the earlier PPU dot tick of a T-cycle should still reach the owning PPU state before same-cycle interrupt aggregation.
 
 ## STAT write quirk baseline
 
@@ -167,14 +162,14 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 - Re-enabling the LCD should enter one explicit, reproducible raster-start state rather than resuming from an ambiguous saved dot or half-finished scanline.
 - The implementation should keep one source of truth for the initial scanline, dot, mode, and related scheduler state used after `LCDC.7: 0 -> 1`.
-- In the current DMG-family baseline, `STAT` should expose one short initial Mode `0` readback window immediately after LCD re-enable before ordinary raster mode reporting resumes; full first-line restart timing still needs its own oracle closure.
+- If the chosen DMG-family model exposes a short initial Mode `0` readback window immediately after LCD re-enable, keep that window explicit and tested rather than scattering it across special-case guards.
 - The first-full-frame blank period should be counted from that re-enabled raster start, not from the earlier disable event.
 - The implementation should also keep one explicit, tested policy for how `LY` behaves while the LCD is disabled and how it re-enters the active raster model after re-enable.
 
 ## LCD pipeline reset baseline
 
 - Disabling the LCD should explicitly invalidate or reset in-flight pixel-pipeline state rather than freezing and later resuming a half-consumed scanline.
-- That reset should cover at least BG FIFO state, OBJ/OAM FIFO state, background/window fetcher state, object-fetch state, window latch/counter state, and any in-progress pixel-mixing state.
+- That reset should cover at least BG FIFO state, OBJ FIFO state, background/window fetcher state, object-fetch state, window latch/counter state, and any in-progress pixel-mixing state.
 - Re-enabling the LCD should start pixel production from a clean pipeline state compatible with the chosen raster-start state.
 - Do not resume fetchers or FIFOs from the last active-LCD dot before disable; that would contradict the hardware-facing model of the PPU being off and then starting a new draw again.
 
@@ -189,7 +184,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## Sprite pipeline baseline
 
 - DMG sprites must be integrated into the real Mode 3 pixel pipeline rather than rendered by a scanline-level compositor layered over a finished background image.
-- The PPU should keep separate BG FIFO and OBJ/OAM FIFO state and perform BG/OBJ mixing when pixels are popped for LCD output, not after the background has already been rendered.
+- The PPU should keep separate BG FIFO and OBJ FIFO state and perform BG/OBJ mixing when pixels are popped for LCD output, not after the background has already been rendered.
 - Sprite presence must be able to lengthen Mode 3 through real fetch pauses and object-fetch work rather than through a fixed per-scanline sprite surcharge.
 
 ## Sprite representation baseline
@@ -206,7 +201,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Mode 2 should select candidate sprites for the current scanline using only the current `LY`, the sprite `Y` coordinate, and the live global size selected by `LCDC.2`.
 - Sprite selection should ignore `X`; horizontally off-screen sprites still count toward the per-line selection limit if they match vertically.
 - The selection order should be OAM order from `FE00` upward, stopping once `10` matching sprites have been collected.
-- The current line's selected-sprite list should preserve OAM discovery order for later priority and timing work.
+- The selected-sprite list for the line should preserve OAM discovery order for later priority and timing work.
 - On DMG-family hardware during active OAM DMA, blocked Mode `2` OAM reads should reuse the last latched `Y/X` word instead of inventing fresh scan-time coordinates or force-clearing selection.
 - That coarse Mode `2` DMA-blocked `Y/X` fallback must remain separate from late `Mode 3` sprite-metadata conflicts. Late tile/attribute reads may observe a different same-cycle OAM word, but they must not overwrite the retained Mode `2` `Y/X` latch used by later DMA-blocked selection.
 
@@ -232,32 +227,21 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 ## Object fetch and stall baseline
 
-- Mode 3 should include an explicit object-fetch path instead of treating sprite timing as a scalar penalty.
-- Object fetch should be able to wait for the BG fetcher to reach the relevant point before the sprite data is incorporated into the object FIFO.
-- Sprite fetch work should be able to stall pixel output and lengthen Mode 3 on the shared dot timeline.
-- Mode `3` should expose one explicit per-dot arbitration boundary for "BG may serve this dot" versus "OBJ may start on this dot", and that arbitration should stay shared between output-side BG service and push-side BG/window/OBJ handoff paths instead of being rebuilt by separate ad hoc checks.
-- In the current March 27, 2026 baseline, the FIFO-backed OBJ-start branch should require both pieces of evidence explicitly: the current transfer dot must really be one of the FIFO-backed hidden/visible transfer dots, and the BG FIFO must already contain a pixel for that dot. A merely non-empty BG FIFO during the earlier abstract startup seam is not enough to justify the FIFO-backed OBJ-start path; that case must still go through the queued-fill overlap path instead.
-- In the same current baseline, the startup seam between abstract pre-visible transfer and hidden transfer should be driven by transfer progress that was really served, not by raw `line_dot` alone. If earlier startup dots stall, the PPU should not silently promote the current ownership from pre-visible to hidden just because more dots elapsed on the scanline; the hidden seam should move only after the documented number of startup transfer dots has actually been served.
-- In the same current baseline, the current transfer dot should expose one explicit combined context: which lane is being served (`pre-visible`, `hidden`, or `visible`) and whether the transfer already belongs to the FIFO-backed post-priming window or is still in the abstract startup window. Those are not the same question. A heavily stalled startup can already be in the FIFO-backed post-priming window while still serving pre-visible startup dots, and the model should keep that distinction explicit instead of collapsing it back into "hidden because priming ended".
-- In the same current baseline, the moment when startup transfer becomes eligible should live in explicit PPU state, not be recovered ad hoc from the raw scanline dot on every read. The implementation should keep one startup-entry delay state that counts down to the first transferable startup dot and opens the transfer window explicitly, while still allowing synthetic tests that skip `start_line()` to seed later states directly.
-- In the same current baseline, the startup source window (`AbstractStartup` versus `FifoBacked`) should also live in explicit per-line state instead of being recomputed from the raw scanline dot every time. The hardware-visible question here is "has the startup already crossed into the FIFO-backed post-priming window on the shared dot timeline?", which is distinct from both transfer-lane classification and startup-entry eligibility, so the model should keep that countdown explicit too.
-- In the same current baseline, the startup `pre-visible -> hidden` lane seam should likewise live in explicit per-line state instead of being re-derived from a cumulative "served startup dots" total at every call site. The current transfer context should be able to answer "this startup dot is still pre-visible" or "this startup dot is already hidden" from one dedicated countdown, while synthetic tests can still seed that later seam directly when they intentionally bypass the real line-start path.
-- In the same current baseline, startup transfer ownership and startup FIFO occupancy should remain separate explicit states. The transfer context should still say whether the current dot belongs to the abstract startup window or the FIFO-backed post-priming window, but the startup path should also keep one explicit effective-BG-FIFO occupancy model for the startup pixels that exist before the first real tile push. In the live DMG runtime, that effective occupancy now begins as explicit placeholder state at `start_line()`, and the startup-alignment seam later materializes the remaining dummy occupancy into the BG FIFO when the discarded alignment fetch reaches `Push`; synthetic tests and later-seeded partial states may still use placeholder occupancy directly when they intentionally bypass the real line-start path.
-- In the current DMG baseline, the docboy-style startup/alignment seam should remain constrained by the stable raster gates that are already green. A broader rewrite that treats the discarded alignment fetch as a fully real BG push is still deferred, because the raw version of that idea regressed `SCX discard`, early-left-edge timing, and `acid/dmg-acid2`.
-- The remaining left-edge debt should no longer be treated as generic startup work. Repo-local tracing now shows the relevant `FF40` / `FF42` writes landing while the second or later visible BG slice is already cached in `Push` or `fill.pending`, so the next closure work belongs to cached-slice live-write timing after startup, not to another broad startup-placeholder rewrite.
-- Cached background slices should remain first-class state across `Push -> fill -> FIFO`. The cached slice now owns its source/origin label, `fetch_x`, tilemap and tile-data addresses, tile index, fetched bytes, same-T-cycle tilemap-reread window, and pending `LCDC/SCY` reread flags. Same-T-cycle cached-slice refetch is a distinct seam from the active dot's visible/pipeline register snapshots and should continue to use the MMIO-owned storage values together with the cached slice's own metadata.
-- Keep the cached-slice live-write rules narrow. Localized tile-data refetch for cached slices on live `SCY` and `LCDC.4` writes improved `m3_lcdc_tile_sel_change` / `m3_scy_change` without reopening `acid`, but broad cached tilemap or tile-index rereads made `m3_lcdc_bg_map_change` worse. The `LCDC.3` tilemap-retarget seam should therefore stay limited to the carried same-T-cycle window or to the explicitly labeled third visible post-startup slice, and it should survive the `Push -> fill.pending` handoff without becoming a generic "any real cached fill may retarget" rule.
-- The current stable exploratory shape of the remaining `LCDC.3` left-edge debt is now known: the third visible BG tile after startup (`x = 16..23`) dominates it more than the second tile does. The model should therefore keep explicit post-startup origin labels for at least the second and third visible BG tiles and treat that third tile as the primary next target if this PPU lane is resumed.
-- In the same current baseline, output-side transfer service and OBJ-start arbitration should consume one shared notion of current-dot transfer readiness instead of independently reconstructing "is this dot FIFO-backed and ready right now?". That readiness should answer both whether BG may really serve the dot and whether FIFO-backed OBJ-start is legal on that same dot, so later tightening can refine one readiness boundary instead of patching two parallel helpers.
-- In the same current baseline, the current transfer context and the current transfer readiness should be materialized together as one current-dot snapshot instead of being rebuilt by adjacent helpers on demand. Output-side execution, OBJ-hit ownership, and FIFO-backed OBJ-start arbitration should all be able to inspect the same transfer snapshot for "what kind of dot is this?" and "is it actually ready right now?" so later hidden-dot tightening does not reopen another split between context, readiness, and arbitration.
-- In the same current baseline, the execution effect of the current transfer dot should also be explicit instead of being inferred indirectly from a cross-product such as `action + backing`. The core should be able to say clearly whether this dot consumes one `SCX`-discard slot at `lx0`, advances a pre-visible startup dot while consuming one effective BG FIFO slot, advances a hidden startup/output dot while consuming one effective BG FIFO slot plus one OBJ slot, or emits one visible pixel from a real BG FIFO pixel. That leaves one direct seam for later hidden-dot tightening without having to rediscover execution semantics from multiple helper booleans.
-- In the same current baseline, the BG/window `Push` state should also expose one explicit current-dot ownership result instead of discovering "wait for empty FIFO", "queue fill now", and "start OBJ from this push dot" through a branchy sequence of side effects. The model should be able to answer whether the push dot is still under entry delay, waiting for FIFO emptiness, handing the dot to FIFO-backed OBJ start, queueing a fill, or queueing a fill and then handing that same dot to OBJ start. That keeps later `strict push only when empty` work tied to one explicit push-dot seam instead of another cluster of ad hoc checks.
-- The special DMG timing penalty involving `SCX & 7 > 0` together with a sprite at `X = 0` should have an explicit path in the design even if the exact timing remains documented as partially unsettled.
-- Avoid reducing sprite timing to "add N dots per sprite" without internal fetcher state.
-- BG/window/object fetch helpers should consume `VramBusView` / `OamBusView`-style domain clients rather than unrelated `&[u8]` slices so future bus-ownership, storage, and CGB-bank changes do not force another PPU boundary rewrite.
-- Late Mode `3` sprite metadata reads should come from live OAM rather than from a frozen Mode `2` metadata snapshot.
-- During DMG OAM DMA, that late metadata path should be able to read the DMA destination word being written on the current cycle instead of the nominal sprite metadata address, because tests such as `hacktix/strikethrough` depend on that conflict window.
-- In the current baseline, that conflict should be modeled as one current DMA destination address plus the current DMA byte value for the cycle. The late metadata path should align that address to the destination word, substitute the in-flight byte into the matching half, and read the sibling half from live OAM instead of relying on an address-only hint.
+- [hardware fact] Mode 3 should include an explicit object-fetch path instead of treating sprite timing as a scalar penalty.
+- [hardware fact] Object fetch should be able to wait for the BG fetcher to reach the relevant point before the sprite data is incorporated into the object FIFO.
+- [hardware fact] In the canonical Pan Docs fetcher/FIFO contract, the OBJ fetch path may only seize the shared pixel-slice fetcher when the BG/window fetcher is at `Push` and the BG FIFO is not empty. If the BG FIFO is empty, BG/window refill takes priority and the OBJ fetch waits for the next eligible `Push` opportunity.
+- [hardware fact] Sprite fetch work should be able to stall pixel output and lengthen Mode 3 on the shared dot timeline.
+- [inference] Mode `3` should expose one explicit per-dot arbitration boundary for "BG may serve this dot" versus "OBJ may start on this dot", and that arbitration should stay shared between output-side BG service and push-side BG/window/OBJ handoff paths instead of being rebuilt by separate ad hoc checks.
+- [inference] If startup, left-edge, or hidden-dot behavior needs finer closure, keep transfer-lane ownership, transfer readiness, startup window, and effective BG FIFO occupancy as separate explicit state instead of recovering them from raw `line_dot` or generic FIFO length checks.
+- [inference] Keep cached background slices explicit across `Push -> fill -> FIFO` so localized live-write timing can stay narrow and testable.
+- [inference] Keep the current transfer-dot execution result explicit enough to answer whether the dot consumed discard, hidden transfer, visible transfer, or a stalled startup/OBJ boundary.
+- Detailed repo-local closure for startup, cached-slice live writes, strict push behavior, and left-edge arbitration lives in [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md).
+- [inference] The special DMG timing penalty involving `SCX & 7 > 0` together with a sprite at `X = 0` should have an explicit path in the design even if the exact timing remains documented as partially unsettled.
+- [inference] Avoid reducing sprite timing to "add N dots per sprite" without internal fetcher state.
+- [inference] BG/window/object fetch helpers should consume `VramBusView` / `OamBusView`-style domain clients rather than unrelated `&[u8]` slices.
+- [hardware fact] Late Mode `3` sprite metadata reads should come from live OAM rather than from a frozen Mode `2` metadata snapshot.
+- [hardware fact] During DMG OAM DMA, that late metadata path should be able to read the DMA destination word being written on the current cycle instead of the nominal sprite metadata address, because tests such as `hacktix/strikethrough` depend on that conflict window.
+- [inference] If that DMA conflict is modeled in detail, keep the current DMA destination address and current DMA byte explicit for the cycle instead of relying on an address-only hint.
 
 ## Mid-frame toggle and size-change baseline
 
@@ -265,7 +249,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - If `LCDC.1` is turned off during active object fetching, the design should support an explicit fetch-cancel path with real timing cost rather than a pure visibility flag change.
 - `LCDC.2` sprite size should be treated as live state, not as a once-per-frame configuration snapshot.
 - In `8x16` mode, line selection and tile-row calculation should treat the sprite as two stacked tiles with even/odd tile pairing derived from the masked tile index.
-- If a live `LCDC.2` size change shrinks a previously selected sprite so that the current scanline row falls outside the new height, keep that out-of-range case explicit instead of letting row arithmetic underflow; the baseline may currently resolve that fetch as no OBJ data while preserving the rest of the timing path until oracle-backed artifact closure lands.
+- If a live `LCDC.2` size change shrinks a previously selected sprite so that the current scanline row falls outside the new height, keep that out-of-range case explicit instead of letting row arithmetic underflow.
 - Keep a dedicated task for the visible DMG artifacts and leaks caused by changing `LCDC.2` mid-frame, especially during the lower half of an `8x16` sprite.
 
 ## Sprite edge-case baseline
@@ -285,9 +269,9 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - The window must be part of the same Mode 3 fetcher/FIFO pipeline as BG and sprites; it must not be modeled as a second background compositor applied after the scanline has already been built.
 - Window start is a temporal pipeline event in the middle of the scanline rather than a frame-level or scanline-level mode switch.
 - When the window starts rendering, the BG FIFO should be cleared and the fetcher should restart from its initial fetch step.
-- In the current DMG baseline, treat the window trigger itself as one explicit activation dot before the restarted window fetcher begins advancing again; do not let the restart behave as if the first window fetch step had already consumed time on the same activation dot.
+- Treat the window trigger itself as one explicit activation dot before the restarted window fetcher begins advancing again.
 - Window visibility must depend on the combined state of `LCDC.5`, the WY latch, and the runtime WX trigger rather than on a single late visibility flag.
-- Window Y addressing must come from a dedicated internal window line counter rather than from naïvely using `LY - WY` at all times.
+- Window Y addressing must come from a dedicated internal window line counter rather than from naively using `LY - WY` at all times.
 
 ## Window coordinate baseline
 
@@ -298,11 +282,13 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 
 ## Window activation baseline
 
-- The WY condition should be checked at the start of Mode 2 for each scanline and latched for later Mode 3 use.
-- Once latched for a given scanline, the WY condition should not be recomputed continuously during the same line.
-- The WX condition should be evaluated during pixel production using the current render position of the pipeline.
-- The window should start on a scanline only when the WY latch is active, the WX trigger point is reached, and `LCDC.5 = 1`.
-- In DMG mode, `LCDC.0 = 0` should suppress window rendering even if `LCDC.5 = 1`.
+- [hardware fact] Keep two distinct window-eligibility states explicit: a frame-scoped `WY` latch and the line-local runtime `WX` trigger.
+- [hardware fact] At the start of Mode `2` on each scanline, compare `LY` against `WY`; if they match, set the frame-scoped `WY` latch.
+- [inference] Reset that frame-scoped `WY` latch during VBlank / frame restart rather than recomputing a faux active state from current `LY` later in the frame.
+- [hardware fact] Once that frame-scoped `WY` latch has become true, do not require `LY == WY` again on later scanlines for the window to remain eligible in the frame.
+- [hardware fact] The WX condition should be evaluated during pixel production using the current render position of the pipeline.
+- [hardware fact] For any given scanline, the window should start only when the frame-scoped `WY` latch is already active, the WX trigger point is reached, and `LCDC.5 = 1`.
+- [hardware fact] In DMG mode, `LCDC.0 = 0` should suppress window rendering even if `LCDC.5 = 1`.
 
 ## Window tilemap and fetch baseline
 
@@ -319,7 +305,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Starting the window should reset the fetcher to its initial fetch step rather than continuing from the current BG fetch phase.
 - The window-start event should alter the remaining pixel sequence of the current scanline without replaying or recomputing the whole line.
 - The DMG special case `WX = 0 && (SCX & 7) > 0` should be modeled as an explicit path that shortens Mode 3 by `1` dot.
-- In the current DMG baseline, once the window fetcher is already active, turning `LCDC.5` off should not cut away the in-flight window tile immediately. The disable should take effect at the end of the current window tile, after which background fetch resumes on a tile boundary from explicit saved BG-side progress rather than from a recomputed whole-line window/BG split.
+- Once the window fetcher is already active, turning `LCDC.5` off should not cut away the in-flight window tile immediately.
+- That disable should take effect at the end of the current window tile, after which background fetch resumes on a tile boundary from explicit saved BG-side progress.
 
 ## Window line-counter baseline
 
@@ -346,7 +333,7 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 ## Window and sprite interaction baseline
 
 - Window start should change the BG/window pixel stream before OBJ-versus-BG mixing for the final LCD pixel.
-- Starting the window should not automatically clear the OBJ/OAM FIFO; the documented reset is on the BG-side FIFO path.
+- Starting the window should not automatically clear the OBJ FIFO; the documented reset is on the BG-side FIFO path.
 - Window glitches must be able to affect final sprite mixing because they alter the actual BG/window pixels consumed by the mixer.
 
 ## OAM corruption bug baseline
@@ -402,7 +389,8 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - Model scanline timing in dots: `456` dots per scanline and `154` scanlines per frame.
 - Treat the full frame as `70224` dots.
 - Treat Mode 2 as `80` dots and keep Mode 3 variable by construction instead of forcing a fixed duration.
-- Treat Mode 3 as a variable phase in the `172-289` dot range for DMG-family behavior, depending on fetcher/FIFO work and stalls.
+- Treat Mode 3 as a variable phase driven by fetcher/FIFO work and stalls.
+- Use the `172-289` dot DMG-family range as a sanity envelope, not as a fixed target to quantize to.
 - Treat Mode 0 / HBlank as the remainder of the scanline budget after Mode 2 and variable Mode 3 work have completed.
 - Treat Mode 1 / VBlank as part of the same real LCD mode schedule, with transitions aligned to scanline and STAT timing rather than as a separate high-level event.
 - Output and pipeline progress should be expressible dot-by-dot on the shared T-cycle timeline.
@@ -413,38 +401,41 @@ For this project, the PPU should be modeled dot-by-dot, where `1 dot = 1 T-cycle
 - On DMG, CPU OAM access should be treated as blocked during Modes `2` and `3`, while CPU VRAM access should be treated as blocked during Mode `3`.
 - When those CPU accesses are blocked, writes should be ignored and reads should return the blocked-access result rather than the underlying stored byte.
 - DMG-family OAM corruption should be tied to the exact T-cycle where the triggering access or IDU event occurs, using the Mode `2` row active in that `4`-dot slice.
-- Do not generalize the OAM corruption bug to generic OAM blocking in Mode `3`; the documented bug is a Mode `2` plus IDU phenomenon.
+- Do not generalize the OAM corruption bug to generic OAM blocking in Mode `3`; the documented bug is a Mode `2` OAM-access and IDU phenomenon.
 
 ## Canonical external fetcher contract
 
-- For the BG/window pixel fetcher, keep the canonical external state machine from Pan Docs explicit in the design and in the documentation: `TileIndex -> TileDataLow -> TileDataHigh -> Sleep -> Push`.
-- In that canonical BG/window fetcher contract, `TileIndex`, `TileDataLow`, `TileDataHigh`, and `Sleep` each consume `2` dots, while `Push` is retried every dot until the BG FIFO can accept the fetched `8`-pixel slice.
-- If implementing the PPU from scratch, implement this external fetcher contract first and treat later repo-local `Mode 3` notes only as refinements of that contract, not as substitutes for it.
+- [hardware fact] For the BG/window pixel fetcher, keep the canonical external state machine from Pan Docs `pixel_fifo` explicit in the design and in the documentation: `TileIndex -> TileDataLow -> TileDataHigh -> Sleep -> Push`.
+- [hardware fact] Pan Docs `Rendering Internals` also presents a simplified four-step summary (`TileIndex -> TileDataLow -> TileDataHigh -> Push`). For this project's normative from-scratch contract, treat `pixel_fifo` as authoritative for the external fetcher schedule and read the `Rendering Internals` sequence as a higher-level summary, not as a competing timing model.
+- [hardware fact] In that canonical BG/window fetcher contract, `TileIndex`, `TileDataLow`, `TileDataHigh`, and `Sleep` each consume `2` dots, while `Push` is retried every dot until the BG FIFO can accept the fetched `8`-pixel slice.
+- [hardware fact] In that same canonical contract, BG/window pixels may be pushed only when the BG FIFO is empty; a non-empty BG FIFO keeps the fetcher in `Push` retry until the queue can accept the full `8`-pixel slice.
+- [inference] For a new implementation in this project, land this `pixel_fifo` contract first and add finer startup, push, or arbitration seams later.
 
-## Residual uncertainty / repo-local closure
+## Residual uncertainty
 
-- The most fine-grained `Mode 3` notes later in this file include current repo baselines for startup, `Push`, placeholder occupancy, cached slices, and OBJ arbitration. Those notes are useful for reproducing this repo's current behavior, but they should not all be read as hardware-finished facts.
 - The highest remaining residual uncertainty is concentrated in left-edge/startup seams, fine window restart and live-write timing, and some LCD on/off plus `STAT` boundary timing.
 - Keep those seams explicit and localized in the design rather than folding them back into the canonical external fetcher contract above.
+- Use [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) for repo-local closure status, rollout constraints, and compatibility notes.
 
 ## Dependencies
 
-- bus and memory
+- bus / MMIO wiring and video-memory access views
 - CPU
+- T-cycle scheduler or clock source
 - interrupt controller
 - DMA
 - model/revision configuration
 
 ## Primary references
 
-- Pan Docs PPU/LCD sections
-- AntonioND timing material
-- Gekkio and Matt Currie test ROMs where relevant
+- Pan Docs PPU/LCD sections, especially the rendering, `pixel_fifo`, LCDC/STAT, VRAM/OAM access, and OAM-corruption pages
+- AntonioND cycle-accurate timing material
+- Gekkio hardware research and technical reference material where applicable
 
 For fetcher/FIFO behavior and raster-visible glitches, use the references in this order:
 
 1. Pan Docs and hardware research for the canonical external fetcher contract and register semantics
-2. Kevtris, AntonioND, Gekkio, and Matt Currie material for DMG timing refinements, window behavior, and raster-visible quirks
+2. Kevtris, AntonioND, Gekkio, and Matt Currie material and test ROMs for DMG timing refinements, window behavior, and raster-visible quirks
 3. Open-source emulators only as implementation cross-checks once the primary contract is already fixed
 
 Do not treat docboy or any other emulator as a normative source for DMG fetcher behavior when it conflicts with the primary references above.
@@ -454,34 +445,46 @@ Do not treat docboy or any other emulator as a normative source for DMG fetcher 
 Priority order:
 
 1. SameBoy
-2. accurateboy
-3. binjgb
-4. Mooneye GB
-5. Danger Boy
-6. Gambatte
+2. docboy
+3. accurateboy
+4. binjgb
+5. GameRoy
+6. Mooneye GB
+7. Gambatte
+8. Danger Boy
+
+For PPU work, this order is weighted by usefulness for DMG pixel FIFO, window timing, and raster-visible behavior, not only by aggregate shootout score.
 
 ## Tests
 
-- dmg-acid2 / cgb-acid2
-- mealybug-tearoom-tests
-- Mooneye LCD/STAT tests
-- tests for variable Mode 3 timing, SCX discard behavior, and sprite-induced stalls when available
+External ROM suites, in recommended closure order:
+- `dmg-acid2`
+- Blargg `oam_bug`
+- Mooneye LCD/STAT/LCDC timing tests
+- `mealybug-tearoom-tests`
+- `cgb-acid2` when the CGB rendering path is under validation
+
+Project-owned tests:
+- tests for variable Mode 3 timing, `SCX` discard behavior, and sprite-induced stalls
+- tests for the canonical BG/window fetcher phase order: `TileIndex -> TileDataLow -> TileDataHigh -> Sleep -> Push`
+- tests that BG/window `Push` retries until the BG FIFO is empty and does not push into a non-empty BG FIFO
+- tests that OBJ fetch may seize the shared fetcher only from an eligible BG/window `Push` point, with BG refill still taking priority when the BG FIFO is empty
 - tests for Mode 2 sprite selection using Y only, including horizontally off-screen sprites still consuming one of the `10` slots
 - tests for DMG OBJ/OBJ priority: lower `X` wins, then OAM order on equal `X`
 - tests for OBJ color `0` transparency and transparent object FIFO filler behavior
 - tests for BG/OBJ mixing using the winning OBJ pixel before applying the BG-over-OBJ rule
 - tests for `8x8` versus `8x16` selection and row mapping, including bit `0` ignored on `8x16` tile indices
 - tests for top-edge and bottom-edge partial sprite visibility such as `Y = 2` and `Y = 154`
-- tests for mid-frame `LCDC.1` and `LCDC.2` changes when relevant behavior is implemented or intentionally isolated
+- tests for mid-frame `LCDC.1` and `LCDC.2` changes
 - tests for WY latch timing at Mode 2 start and WX-trigger timing during Mode 3
 - tests for window fetcher reset and BG FIFO clear when the window starts mid-scanline
 - tests for the internal window line counter, including increment-only-when-started and reset during VBlank
 - tests for `WX = 0` and `WX = 166` special behavior
 - tests for DMG `LCDC.0` suppressing window rendering even when `LCDC.5 = 1`
-- tests for mid-frame `WX`, `WY`, and `LCDC.5` writes when relevant glitches are implemented or intentionally isolated
-- tests for `LCDC.5` disable during active window fetch and same-scanline re-enable with `WX` retargeting when that path is implemented
-- tests for window-start and window-glitch cases that continue into later BG/OBJ mixing without resetting the OBJ/OAM FIFO incorrectly
-- tests for live `STAT` readback composition: documented writable enable bits, live mode/coincidence bits, and the repo's chosen model-gated bit-`7` policy
+- tests for mid-frame `WX`, `WY`, and `LCDC.5` writes
+- tests for `LCDC.5` disable during active window fetch and same-scanline re-enable with `WX` retargeting
+- tests for window-start and window-glitch cases that continue into later BG/OBJ mixing without resetting the OBJ FIFO incorrectly
+- tests for live `STAT` readback composition: documented writable enable bits, live mode/coincidence bits, and the chosen bit-`7` model
 - tests for `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
 - tests for immediate `LYC` write reevaluation of `STAT.2` and the internal STAT interrupt line
 - tests for each enabled LCD STAT mode source path for Mode `0`, Mode `1`, and Mode `2`
@@ -491,6 +494,7 @@ Priority order:
 - tests that entering Mode `1` can request both VBlank interrupt and LCD STAT interrupt independently
 - tests for DMG-family `STAT` write quirk in Mode `2`, Mode `0`, Mode `1`, and coincidence-active cases, plus a negative test for Mode `3`
 - tests that the mode reported through `STAT` matches the same live state used by the bus to block or allow VRAM/OAM access
+- tests for blocked CPU VRAM/OAM access semantics, including ignored writes and blocked-read return values in the relevant modes
 - tests for LCD off/on behavior around `STAT`, including LCD-off `STAT` mode readback, release of ordinary LCD-mode VRAM/OAM restrictions, and re-enable without stale STAT-line or coincidence carry-over
 - tests for `LCDC.7: 1 -> 0` causing immediate LCD/PPU disable, visible white output, and release of ordinary VRAM/OAM mode restrictions
 - tests for `LCDC.7: 0 -> 1` causing immediate internal PPU restart while keeping the visible output blank for the first full frame
@@ -507,136 +511,47 @@ Priority order:
 - tests that DMG-family models are affected while future CGB-family models are not
 - direct-boot continuity tests that verify the first LCD-visible dots after `SkipBoot` are coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
 
-## Implementation notes for this repo
-
-- Keep mode state explicit.
-- Separate rendering backend concerns from internal PPU state.
-- Do not implement the PPU as a scanline renderer or a mode-only renderer if the goal is dot-by-dot / T-cycle-level accuracy.
-- Mode 2 should be an explicit PPU state with its own dot counter, OAM traversal progress, and temporary visible-sprite list.
-- In the current Phase `4.2` baseline, advance Mode `2` OAM traversal one sprite entry every `2` dots while preserving the fixed `80`-dot mode duration and carrying the resulting selected-sprite list forward for the rest of the line.
-- In the current Phase `4.3` baseline, keep BG-only Mode `3` as one explicit fetcher-plus-FIFO pipeline with a `12`-dot startup cost, one BG pixel popped per dot after startup, and HBlank entry delayed by the latched `SCX & 7` startup discard for that line.
-- In the current Phase `4.4` baseline, latch the WY condition at Mode `2` start, restart the shared BG/window fetcher plus clear the BG FIFO when the live WX trigger fires, increment the internal window line counter only on lines where window rendering actually began, and keep explicit provisional edge paths for `WX = 0` and `WX = 166`.
-- In the current Phase `4.5` baseline, model OBJ work as an explicit `Startup -> TileDataLow -> TileDataHigh -> Push` fetch path with its own FIFO, resolve DMG OBJ/OBJ priority while populating that FIFO using lower `X` then OAM order, and perform BG/OBJ mixing only when the winning OBJ pixel and the current BG/window pixel are popped for LCD output.
-- Keep the earliest-visible-sprite timing path explicit. The current baseline no longer clamps the left edge to a single "visible X = 0" trigger; it keeps a distinct pre-visible raw-`X` match path for early OBJ fetches so partially off-screen sprites can begin before the first visible BG pixel without collapsing every `X = 1..7` case into the same trigger point. For those low-`X` startup cases specifically, the FIFO-backed OBJ-start path should not begin stealing dots as soon as the BG FIFO merely becomes non-empty. In the current March 28, 2026 baseline, it now waits until the BG side has already left both `TileIndex` and `TileDataLow`, which keeps the left-edge startup seam closer to docboy's "let the current BG slice really exist before OBJ steals the dot" behavior and trims `m3_scy_change` without reopening the stable external DMG baseline.
-- In the current mealybug-driven DMG baseline, the palette-conflict approximation is also slightly asymmetric: `OBP0/OBP1` writes currently recolor one more recent visible OBJ pixel than `BGP` writes under the same coarse Mode `3` / early-HBlank conditions. Keep that asymmetry explicit rather than folding it back into the BG path.
-- In the current Phase `4.6` baseline, keep one explicit internal LCD STAT line inside the PPU, recompute it from the live mode/coincidence state on every timing transition and relevant MMIO write, and request the LCD STAT interrupt only on `0 -> 1` edges of that line.
-- Route both VBlank and LCD STAT requests out of the PPU through the shared interrupt-controller path on the scheduler timeline, and clear/reseed the internal STAT-line baseline across LCD off/on transitions so re-enable does not inherit stale-high edge state.
-- In the current Phase `4.7` baseline, treat `LCDC.7` as a real LCD power transition: `1 -> 0` moves the PPU immediately into one explicit LCD-disabled state with `LY = 0`, `line_dot = 0`, cleared in-flight pipeline state, released ordinary LCD-mode bus restrictions, and panel-visible forced blank output.
-- In the current Phase `4.7` baseline, `0 -> 1` restarts the internal raster immediately from one explicit DMG-family provisional entry state at line `0`, dot `4`, while the panel-visible output stays forced blank for the first full frame.
-- In the current DMG-family `STOP` baseline, CPU `Stopped` also forces panel-visible blank output and freezes further PPU raster progress until the shared scheduler leaves `STOP`; that blanking is a system-stop effect, distinct from `LCDC.7` power-off and from the first-full-frame blank after LCD re-enable.
-- The same restart path currently publishes one short early-dot `STAT.mode = 0` startup window after LCD re-enable before the ordinary raster-derived mode schedule resumes; model that window as one explicit raster state consumed consistently by `STAT`, mode-dot reporting, and Mode `2` gating rather than as scattered special-case guards. The finer restarted-line timing remains open.
-- That restart state is still only partially closed: the retained LCD-off coincidence behavior and immediate re-enable `STAT` readback now satisfy `mooneye ppu/stat_lyc_onoff`, but the finer `LY/STAT` and OAM/VRAM boundary timing around `mooneye ppu/lcdon_timing-GS` and `ppu/lcdon_write_timing-GS` remains open and should not be treated as oracle-finished.
-- In the current Phase `4.8` baseline, expose the live Mode `2` OAM row directly from the PPU raster as `line_dot / 4` over the fixed `80`-dot OAM-scan window, and keep that row unavailable outside visible-line Mode `2`.
-- In the current Phase `4.8` baseline, keep one explicit `OamCorruptionController` inside the PPU, gate it to DMG-family models only, map pure IDU `inc/dec` events to the write-corruption path, and keep the dedicated `read + inc/dec` path restricted to rows `4..=18` before the ordinary read-corruption step is applied.
-- Preserve OAM discovery order during Mode 2 instead of rebuilding an idealized sprite list later.
-- Mode 3 should begin by clearing the relevant BG/object FIFO state and resetting the pixel pipeline state instead of assuming pixels are already queued.
-- Represent the pixel pipeline explicitly as fetcher plus FIFO, with state advanced one dot at a time.
-- Treat background and object pixel queues as explicit hardware-facing concepts; do not collapse all pixel production into a single opaque renderer step.
-- The canonical external BG/window fetcher contract from the earlier section still governs the implementation here. Repo-local `Mode 3` refinements such as queued fill, push-entry delay, FIFO-empty wait, or cached-slice handoff must refine that contract rather than replace it with an opaque "fetch tile" helper.
-- Treat the framebuffer as an emulator-side output buffer only; hardware pixel production should conceptually flow through fetcher -> FIFO -> LCD output.
-- The fetcher and pixel path should be able to grow future metadata such as bank source, palette selection, or priority-related information without redesigning the whole pipeline.
-- In the current March 27, 2026 baseline, the BG/window fetcher should also keep one explicit fetch-phase state for the addresses it just computed. Tilemap address selection belongs to the tile-index phase, while tile-data address selection belongs to each low/high data phase separately. Keep those addresses materialized in fetcher state and exposed through debug snapshots instead of recomputing them only inside a read helper, so later `SCX` / `SCY` / `LCDC` live-write closure can reason about one visible phase boundary at a time.
-- In that same current baseline, background tile-data address selection on DMG should be recomputed independently for the low and high bitplanes from the current-dot-visible `SCY` and `LCDC.4`, rather than sharing one latched address across both planes. That keeps room for the documented DMG `SCY` and tile-selector bitplane desync behavior.
-- Do not hard-code DMG palette mapping as the final renderer boundary; keep a stage where hardware pixel meaning can later expand for CGB palettes and tile attributes.
-- Treat CGB palette and tile-attribute support as future extensions of the same pixel pipeline, not as a replacement renderer.
-- SCX startup discard, window start behavior, and sprite fetch pauses must be able to delay pixel output and therefore stretch Mode 3 naturally.
-- In the current DMG baseline, the visible `Mode 3 -> 0` boundary should come from one line-local dot target owned by the live pixel-transfer state, updated on the exact dots where window restart or active OBJ fetch actually steal pixel-transfer time, instead of being reconstructed later from scanline-wide penalty counters.
-- Window activation must be treated as a pipeline event that can change the tile source and extend Mode 3, not as a purely visual switch.
-- Sprite handling during Mode 3 must be able to interrupt or stall the normal background fetch flow while object data is incorporated.
-- In the current March 26, 2026 repo baseline, matching OBJ hits are now first latched into explicit pending per-line state instead of being rediscovered from one transient `current X` comparison. That pending-hit state is allowed to survive until the shared fetcher can actually begin the OBJ fetch.
-- The same current baseline also requires the BG/window push-side state to carry an explicit "interrupted by object fetch" condition so an already fetched BG/window tile can remain cached across an intervening OBJ fetch rather than forcing a new tile read or silently losing the fetched slice.
-- In the same current baseline, the BG/window `Push` state is now polled once per dot after an explicit one-dot entry delay instead of remaining tied to the generic 2-dot fetch-stage cadence forever. That keeps the repo's current first-push timing stable while allowing later push-side retries and OBJ arbitration to live on a per-dot state machine.
-- In the same current baseline, push-side arbitration and BG FIFO refill are no longer the same internal event. The push phase first decides whether the fetched slice should wait, hand off to OBJ timing, or queue one explicit pending BG FIFO fill, and that queued fill is then materialized by a separate fill phase at the start of the following Mode `3` dot before OBJ fetch or pixel pop for that dot. Keep that separation explicit so future tightening toward stricter FIFO-empty push behavior does not require another state-boundary rewrite.
-- In the same current baseline, the push phase should expose one explicit per-dot decision result instead of hiding all non-progress behind a boolean return. Entry-delay waiting, FIFO-empty waiting, OBJ handoff, and queued-fill progression should remain distinguishable states so later stricter push policy can change the occupancy rule without rewriting the dot scheduler contract again.
-- In the current March 27, 2026 baseline, BG/window push occupancy is now already tightened to the stricter contract used by Pan Docs and docboy: a fetched BG/window slice may only queue a fill once the BG FIFO is empty, not merely below a low-watermark threshold. Keep that rule explicit at the push seam rather than reintroducing implicit slack in FIFO length checks elsewhere.
-- In the same current March 27, 2026 baseline, the strict FIFO-empty push path no longer treats BG fill and OBJ start as mutually exclusive when both can legitimately happen on the same dot. If the BG FIFO is empty and the current dot already owns a pending OBJ hit, the PPU should queue the BG fill first and still let the OBJ fetch overlap that same push dot, which is closer to the docboy `can_push_to_bg_fifo && is_obj_ready_to_be_fetched()` branch than the older "BG or OBJ, but not both" handoff.
-- In the same current March 27, 2026 baseline, push-side cached-tile OBJ handoff should stay distinct from output-side FIFO-backed OBJ-start. When the push phase is holding one fetched BG/window tile but the effective BG FIFO is still logically non-empty, the core may still cache that fetched tile and hand the same push dot to OBJ fetch if a pending OBJ hit already owns the current transfer `X`. That matches the docboy `!can_push_to_bg_fifo && is_obj_ready_to_be_fetched()` branch and should not be re-expressed as if the output-side transfer dot itself had already become FIFO-backed and ready.
-- The current March 27, 2026 baseline also keeps one explicit dot-local `Mode 3` phase order inside the PPU core: pending BG FIFO fill materialization for the dot, then active OBJ-fetch work if any, then BG pixel pop/discard/output work, then window-trigger evaluation derived from that dot's actual transfer-service result, and only after that the shared BG/window fetcher tick for the dot. Keep that ordering explicit so future docboy-style tightening can move one phase at a time instead of rewiring the whole line model again.
-- In the same current baseline, the BG/window fetcher and OBJ fetcher should no longer advance through a generic "increment `stage_dot`, then maybe do work" helper. Treat the pair `stage + stage_dot` itself as the explicit one-dot automaton state for each fetcher, with each non-push fetch stage owning two concrete dot positions (`0` then `1`) and transitions expressed directly in the code. That keeps the live snapshot contract stable while making later dot-accurate timing changes local to one state edge at a time.
-- In that same current baseline, BG/window fetch-stage side effects should happen on the first dot of each two-dot fetch stage, not the second. `TileIndex,0` should perform tilemap selection and tile-number read, `TileDataLow,0` should perform low-plane address selection and data read, and `TileDataHigh,0` should perform high-plane address selection and data read; the matching `stage_dot = 1` positions should act as the transition dots that move the fetcher into the next phase or into `Push`. That matches the docboy-style fetch-phase ordering more closely and keeps fetch-phase live-write work from being delayed one dot too late.
-- In that same current baseline, the first window tile immediately after window activation should keep its own explicit `Push` seam instead of being folded into the ordinary BG/window push delay. After the activation dot and the first window fetch, the first window tile may skip the normal one-dot `Push` entry delay while later window tiles still use the ordinary push cadence. Keep that distinction explicit so future window-map and window-timing work can reason about the first activated window tile without reopening the whole `Push` contract.
-- In that same current baseline, the first activated window-tile push should also keep one explicit "no OBJ handoff on this push dot" seam. While that first window tile is still marked as the activation tile, the push side should not immediately cede the dot to OBJ fetch even if a pending sprite hit already exists for the current transfer `X`; later window tiles may resume the ordinary push-to-OBJ arbitration rules. This matches the current docboy-style `w.just_activated` split more closely and keeps the first activated window tile behavior debuggable as its own state rather than as an accidental side effect of generic push arbitration.
-- In that same current baseline, window tilemap progress should also be explicit instead of being inferred from the generic fetch pixel counter. The window fetcher should keep its own tilemap-`X` counter and advance it on the `TileIndex,0` dot, matching the docboy-style `wf.tilemap_x++` seam. That keeps `window map` live-write work tied to the first tile-index dot itself, rather than delaying window tilemap progress until later push-side state.
-- In the same current baseline, once a sprite hit has already been latched for the current dot but the OBJ fetch cannot yet begin, the output side should not keep advancing `current X` as if nothing were pending. Keep one explicit output-side gate for that state: BG pop/pre-visible X advance must stall for the dot, and the line-local `Mode 3 -> 0` target must extend by one dot, until the pending OBJ hit is actually consumed or OBJ rendering becomes disabled.
-- Keep the pending-hit queue tied to the current transfer-side `X` that produced it, not to one narrower transient phase snapshot of that same `X`. In the current March 27, 2026 baseline, a pending OBJ hit may survive the `pre-visible -> hidden` ownership-class transition while `current_transfer_x` is still the same, which matches the docboy-style `oam_entries[lx]` model more closely. If OBJ rendering is disabled or the pixel-transfer side advances to a different `current X`, any still-pending hits owned by the old `X` must be discarded as stale rather than being allowed to start a late OBJ fetch on a later dot.
-- In the same current baseline, the output side should distinguish "this dot was really served by the transfer side" from "the output phase merely ran". The abstract pre-visible startup dots before ordinary BG FIFO pops, later BG-pop / `SCX`-discard dots, and visible pixel-output dots all count as served transfer dots, but a true post-priming BG FIFO starvation dot must not advance transfer ownership; instead it should explicitly stretch `Mode 3` by one dot and leave the transfer-side ownership coordinate in place until pixel service resumes.
-- In the same current baseline, do not collapse all served transfer dots into one undifferentiated "served" flag. Keep at least three explicit served-dot classes in the implementation: abstract pre-visible transfer service before the FIFO-backed startup seam, hidden non-visible transfer service after that seam but before visible output begins, and real visible pixel service. That separation is needed for the current window-start rules, `WX = 166` deferral, and later stricter FIFO/push timing work.
-- In the same current baseline, keep one explicit transfer-dot result object that carries both the served-dot class and whether that dot consumed the last remaining `SCX` discard. The window-start path and the DMG `WX = 0 && (SCX & 7) > 0` shortening path should both consume that same dot result instead of being driven by separate pre-dot heuristics.
-- In the same current baseline, the startup seam is now split into two explicit questions: lane ownership (`pre-visible`, `hidden`, `visible`) and effective BG FIFO occupancy. The first four startup transfer dots remain `pre-visible`, the later startup dots before the first visible pixel are `hidden`, and both groups consume one effective BG FIFO slot per served dot even before real visible output begins. In the live DMG runtime, that effective occupancy now starts as explicit placeholder state rather than as real dummy BG FIFO bytes already present at `start_line()`, and the startup-alignment seam materializes the remaining dummy occupancy into the BG FIFO only when the discarded alignment fetch reaches `Push`; synthetic tests and partially seeded states may still model the same occupancy through explicit placeholder slots when they intentionally skip the real line-start path.
-- In the same current baseline, visible output should still require a real BG FIFO pixel, but startup `SCX` discard and all `x < 8` transfer dots should consume one effective BG FIFO slot instead of forcing an early "real pixel already exists" gate. This is the current closure that keeps `dmg-acid2` green while moving startup timing closer to docboy: the startup path is no longer abstract no-op timing, and in live execution the startup dots now consume placeholder-backed effective FIFO slots first, then real dummy BG FIFO entries from the alignment seam, before the first real tile push takes over.
-- In the same current baseline, that startup-effective-FIFO rule is now intentionally split at the `AbstractStartup -> FifoBacked` seam instead of being treated as one uniform policy for all `x < 8` dots. In live execution, the earlier abstract-startup dots may consume placeholder-backed or alignment-materialized dummy occupancy; once the source window crosses into `FifoBacked`, late hidden transfer dots and any remaining `SCX` discard must require a real BG FIFO pixel and must no longer rely on synthetic placeholder occupancy. Synthetic tests that seed placeholder slots directly should still clear those placeholders explicitly at the same seam so later hidden dots do not pretend to remain backed by synthetic pixels after the fetcher has entered the real FIFO-backed startup window.
-- In the same current baseline, push-side FIFO emptiness for the first real BG/window fill should remain distinct from startup dummy occupancy. The live DMG runtime now tracks how many leading effective slots still belong to the startup-alignment path, and the push phase should treat "the FIFO contains only startup dummy occupancy" as empty for the purpose of queueing the first real BG/window fill. Those dummy slots still count for output-side startup consumption, but they must not delay the first real fill until every startup dummy pixel has already drained out of the queue.
-- In the same current baseline, the first startup BG fetch should have one explicit alignment/discard path instead of being treated as the first real fetch. That discarded alignment fetch is allowed to materialize the remaining startup dummy occupancy, only the truly pre-visible left-edge OBJ case may overlap that seam, and the first subsequent real BG/window push should skip the ordinary one-dot push-entry delay and execute the push dot immediately from `TileDataHigh,1`. This is now the stable March 28, 2026 DMG baseline: it closes the previous one-dot `SCX`-discard drift at the left edge, keeps `dmg-acid2` green again, keeps the materialized curated external suite green, keeps `.roms/test/test-report.md` free of diff, and leaves the remaining `bg_map / tile_sel / scy` work concentrated in the left-edge live-write families rather than in the old generic push/FIFO architecture.
-- In the same current baseline, window-trigger evaluation should no longer treat every dot with the right counters as equally eligible. A window trigger may be evaluated only on dots that could really serve transfer work on the current line: no active or still-pending OBJ fetch may still own the dot, and the BG side must already have the required service readiness for that dot. During startup, that means the effective BG FIFO for `SCX`-discard and `x < 8` transfer service, while visible restart paths still require the real BG FIFO pixel. Keep the DMG `WX = 0 && (SCX & 7) > 0` shortening case explicit too: the final remaining `SCX`-discard dot still carries its own one-dot shortening credit even when that dot consumed only a startup placeholder rather than a real BG pixel.
-- The current provisional DMG window baseline should derive every `trigger_x = 0` restart from that same served transfer-dot model instead of from a separate `WX = 0` shortcut. `WX = 0`, `WX = 7`, and the forced `WX = 166 -> next line` `x = 0` continuation may all claim the shared `x = 0` transfer seam when the seam was actually served, but only the real `WX = 0 && (SCX & 7) > 0` path keeps the extra one-dot shortening credit.
-- In the same current baseline, the transfer side should keep one explicit internal phase boundary between initial priming and active transfer. Once active transfer begins, one explicit ownership coordinate should stay at `lx0` while initial `SCX` discard is being consumed, then advance through the hidden `lx < 8` region, and only then continue through visible output for `lx >= 8`. This is intentionally still only a partial docboy-style `LX` rewrite: the earliest hidden startup dots are still modeled as abstract served transfer dots rather than full strict FIFO-empty BG pops.
-- In the same current baseline, one explicit `current_transfer_x`-style counter should own Mode `3` dot ownership for BG/window/OBJ arbitration instead of rebuilding that ownership from separate pre-visible and visible-output counters at each call site. That counter is no longer just a centralized mirror of the old heuristic phases: it now keeps the active-transfer ownership path aligned with the current partial `discard_lx0 -> hidden lx<8 -> visible lx>=8` model so later timing work can tighten FIFO/push semantics without another ownership rewrite first.
-- Keep the stricter "BG FIFO push only when empty" rule coupled to the real fetcher / BG-OBJ interruption model. Do not land that push-side tightening in isolation if the current shared fetcher state cannot yet preserve already-validated DMG cases such as `dmg-acid2`; otherwise the project risks regressing known-good framebuffer output while chasing a more correct internal contract.
-- The same caution applies to moving OBJ-start arbitration wholesale onto the BG fetcher's `Push` state. A March 26, 2026 attempt to combine strict FIFO-empty BG push with `Push`-anchored OBJ start regressed repo-managed external DMG cases including `mooneye acceptance/ppu/hblank_ly_scx_timing-GS`, `intr_2_mode0_timing`, `intr_2_oam_ok_timing`, `manual-only/sprite_priority`, `hacktix/strikethrough`, and `mealybug m3_bgp_change`, so that behavior remains explicitly deferred until the shared BG/window/OBJ fetcher model is rewritten more completely.
-- Treat Mode 2 as a preparatory pipeline phase for Mode 3, not as an isolated bookkeeping pass.
-- The list of visible sprites produced in Mode 2 should feed directly into Mode 3 object timing and mixing logic.
-- A shape such as `SelectedSpritesForLine`, `ObjectFetcherState`, `OamFifo`, `ObjectPixel`, `SpritePriorityResolver`, and `BgObjMixer` is a good fit for keeping sprite work explicit and testable.
-- A shape such as `wy_triggered`, `window_active_this_line`, `window_line_counter`, `window_x_counter`, explicit window-start events, and pending WX/LCDC-related glitch state is a good fit for keeping window behavior explicit and testable.
-- A `StatController`-style unit inside the PPU is a good fit for owning `STAT` enable bits, live coincidence calculation, internal STAT-line composition, rising-edge detection, and the DMG `STAT` write quirk.
-- A shape such as `current_oam_scan_row`, `OamCorruptionController`, and `OamCorruptionEventKind` is a good fit for keeping the DMG-family OAM corruption bug deterministic and testable.
-- A shape such as `lcd_enabled`, `panel_blank_forced`, `blank_frame_pending`, an explicit raster-start state for LCD re-enable, and a clean pixel-pipeline reset path is a good fit for making LCD power transitions reproducible and testable.
-- A fetcher-source distinction such as `BackgroundFetch` versus `WindowFetch` is preferred over late coordinate branching at mix time.
-- Use one consistent local term for the sprite-pixel queue; `OBJ FIFO`, `OAM FIFO`, and `ObjectFifo` in this documentation refer to the same hardware-facing queue.
-- The object FIFO should carry per-pixel metadata such as color index, palette selection, OBJ priority attribute, X-priority information, OAM-order tie-break information, and transparency.
-- Keep OBJ/OBJ priority resolution separate from BG/OBJ mixing so the BG-over-OBJ attribute is applied only after the winning sprite pixel has been chosen.
-- Apply X flip, Y flip, palette selection, and `8x16` tile-row mapping during object fetch and FIFO population rather than as a framebuffer post-process.
-- The BG-to-window fetch transition should be represented as an explicit pipeline event rather than as a late conditional in the pixel mixer.
-- Let the main PPU scheduler remain the source of truth for live mode and `LY`; the `STAT` controller should consume that state rather than re-derive timing independently.
-- LCD STAT interrupt requests should leave the PPU through the shared interrupt-controller path rather than by mutating CPU state directly.
-- STAT mode transitions should be modeled from the real dot schedule, not reconstructed after the scanline.
-- Document and preserve the DMG-specific STAT write quirk when STAT behavior is implemented in detail; do not assume GBC-in-DMG-mode behaves identically.
-- Mid-frame writes to LCD-visible registers should be interpreted on the same dot timeline that drives mode, fetcher, FIFO, and interrupt behavior.
-- Keep the visible panel-blanking policy separate from the internal pixel pipeline so the first post-enable blank frame does not accidentally become a delayed scheduler start.
-- A `SkipBoot` path should synthesize internal LCD mode, dot position, and any relevant pipeline state coherently with the visible post-boot register snapshot instead of inventing a contradictory hidden phase.
-- In the current Phase `4.1` spine, keep `LY` plus per-line dot position as the raster source of truth and allow only one explicit startup-mode latch when `SkipBoot` needs to preserve the published post-boot `STAT` mode at handoff before the standard raster baseline takes over on the next dot.
-- Do not present `OBP0` and `OBP1` as stable fixed post-boot values in DMG-family direct-boot presets; those registers should remain under an explicit uninitialized-state policy when firmware execution is skipped.
-- Let the PPU define when VRAM/OAM are logically inaccessible, while the bus remains responsible for exposing the observable blocked-access result to other actors.
-- Keep the PPU as the source of truth for whether VRAM or OAM are currently accessible, but let the bus enforce the resulting CPU-visible read/write behavior.
-- Let the PPU raise LCD interrupt requests through the shared interrupt-controller path rather than owning `IF` state or dispatching CPU interrupt service directly.
-- Let the PPU own the current Mode `2` OAM row and the corruption formulas, while the bus and CPU only feed address-based and IDU-based trigger events into that controller.
-
 ## Known pitfalls
 
-- STAT interrupt edge handling
-- window trigger behavior
-- sprite priority and timing shortcuts
-- modeling DMA/PPU access conflicts too loosely
-- baking DMG-only palette assumptions into the final pixel representation
-- assuming Mode 3 starts with valid queued pixels and no pipeline startup cost
-- forcing Mode 3 to a constant duration
-- forcing HBlank to a constant duration independent of Mode 3 work
-- pushing whole tiles or scanlines directly to a framebuffer without a FIFO model
-- selecting sprites without respecting OAM order and the per-line limit of `10`
-- modeling Mode 2 as an instant scan instead of a fixed `80`-dot phase
-- modeling the window as a second background layer composited after the scanline instead of as a fetcher/FIFO transition
-- deriving the window row solely from `LY - WY` and thereby breaking mid-frame hide/show behavior
-- resetting the whole scanline instead of only the relevant fetcher/FIFO state when the window starts
-- ignoring `WX = 0`, `WX = 166`, or mid-frame `WX`/`WY`/`LCDC.5` writes because they are rare edge cases
-- treating LCD STAT interrupts as level-triggered "condition is true" events instead of rising edges on one shared internal line
-- recalculating LCD STAT source timing independently from the real PPU mode scheduler
-- desynchronizing the mode exposed through `STAT` from the mode the bus uses for VRAM/OAM blocking
-- treating `LCDC.7` as a cosmetic display-visibility bit instead of a master LCD/PPU power transition
-- pausing the whole machine when the LCD is disabled instead of only disabling the LCD/PPU path
-- delaying LCD on/off writes until the end of a scanline or frame without hardware evidence
-- resuming fetchers, FIFOs, or partial scanlines after LCD re-enable instead of restarting from a clean raster state
-- modeling the first post-enable blank frame as a delayed PPU restart instead of as panel-visible blanking over an already-running internal pipeline
-- resolving BG/OBJ mixing before resolving which OBJ pixel actually wins an overlap
-- using X visibility as part of Mode 2 sprite selection and thereby hiding real `10`-sprite-per-line exhaustion
-- treating OBJ color `0` as white output instead of transparency
+Fetcher / FIFO / timing:
+- modeling the PPU as a scanline renderer instead of a dot-by-dot pipeline
+- modeling Mode `2` as an instant scan instead of a fixed `80`-dot phase
+- assuming Mode `3` starts with valid queued pixels and no pipeline startup cost
+- forcing Mode `3` or HBlank to a constant duration instead of deriving them from fetcher/FIFO work
+- implementing BG/window rendering without the canonical fetcher/FIFO model, including `Sleep` and `Push` retry
+- allowing BG/window `Push` to ignore BG FIFO occupancy instead of waiting for an eligible push point
 - collapsing sprite timing into a constant per-sprite penalty with no explicit object-fetch state
-- treating STAT behavior as a generic interrupt source without hardware-specific LCD quirks
-- storing `LY` as a writable register instead of exposing the live scanline
-- letting LCD-visible MMIO writes bypass the temporal PPU model and only affect a later renderer pass
+- starting OBJ fetch from arbitrary dots instead of the shared BG/window fetcher arbitration seam
+
+OBJ / mixing:
+- resolving BG/OBJ mixing before resolving which OBJ pixel actually wins an overlap
+- treating OBJ color `0` as white output instead of transparency
+- selecting sprites using X visibility or without respecting OAM order and the per-line limit of `10`
+
+Window:
+- modeling the window as a second background layer composited after the scanline instead of as a fetcher/FIFO transition
+- deriving the window row solely from `LY - WY` or requiring `LY == WY` again after the WY latch has already fired
+- resetting the whole scanline, or clearing the OBJ FIFO, when the window starts instead of resetting only the BG-side fetcher/FIFO state
+- ignoring `WX = 0`, `WX = 166`, or mid-frame `WX`/`WY`/`LCDC.5` writes because they are rare edge cases
+
+STAT / LCD / MMIO:
+- treating LCD STAT as level-triggered state instead of one internal line with rising-edge interrupt behavior
+- recalculating `STAT` timing independently from the real PPU mode scheduler or desynchronizing readable `STAT` mode from VRAM/OAM blocking
+- treating `STAT` as a generic interrupt source and forgetting DMG-specific write quirks
+- storing `LY` as a writable register instead of exposing the live scanline and live `LYC` comparison
+- treating `LCDC.7` as a cosmetic display-visibility bit instead of a master LCD/PPU power transition
+- pausing the whole machine when the LCD is disabled, or resuming partial scanlines/fetchers after re-enable instead of restarting from a clean raster state
+- modeling the first post-enable blank frame as a delayed PPU restart instead of as panel-visible blanking over an already-running internal pipeline
+- letting LCD-visible MMIO writes bypass the temporal PPU model and affect only a later renderer pass
+- conflating MMIO-owned register storage with the register view currently visible to the active pixel pipeline
+
+Bus / DMA / OAM:
+- treating blocked VRAM/OAM CPU access as ordinary memory access instead of returning the blocked-access result and ignoring blocked writes
+- modeling DMA/PPU access conflicts too loosely, especially late Mode `3` OAM metadata behavior during OAM DMA
+- baking DMG-only palette assumptions into the final pixel representation so future CGB expansion becomes a redesign
+
+Boot / startup / model gating:
 - synthesizing `SkipBoot` LCD registers without a matching hidden PPU phase
 - modeling OAM corruption as an opcode blacklist instead of as Mode `2` plus micro-event hardware behavior
 - treating all blocked OAM access the same and thereby triggering OAM corruption during Mode `3`
 - forgetting that the first OAM row is special and should remain immune to the basic corruption patterns
-
-## Open questions
-
-- the exact level of sprite-fetch and window-trigger detail required for the first DMG milestone
