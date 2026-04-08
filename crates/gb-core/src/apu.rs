@@ -601,13 +601,19 @@ impl PulseChannelState {
         self.runtime = startup.runtime;
     }
 
-    fn trigger(&mut self, period_value: u16, next_step_clocks_envelope: bool) -> bool {
+    fn trigger(
+        &mut self,
+        period_value: u16,
+        envelope_value: u8,
+        next_step_clocks_envelope: bool,
+    ) -> bool {
         let reloaded_zero_length = self.length_counter == 0;
         if self.length_counter == 0 {
             self.length_counter = PULSE_LENGTH_COUNTER_RELOAD;
             self.length_enabled = false;
         }
 
+        self.apply_envelope_write(envelope_value);
         let preserved_period_timer_low_bits = self.period_timer & 0x03;
         self.period_timer = pulse_timer_reload(period_value) | preserved_period_timer_low_bits;
         self.envelope_timer =
@@ -877,7 +883,6 @@ impl Channel1State {
     fn write_nr12(&mut self, value: u8) {
         self.pulse.apply_live_envelope_write_effect(value);
         self.nr12 = value;
-        self.pulse.apply_envelope_write(value);
         self.pulse
             .runtime
             .set_dac_enabled(self.derived_dac_enabled());
@@ -979,7 +984,8 @@ impl Channel1State {
     fn trigger(&mut self, next_step_clocks_envelope: bool) -> bool {
         let period_value = self.period_value();
         let trigger_reloaded_zero_length =
-            self.pulse.trigger(period_value, next_step_clocks_envelope);
+            self.pulse
+                .trigger(period_value, self.nr12, next_step_clocks_envelope);
         self.sweep
             .trigger(self.nr10, period_value, &mut self.pulse.runtime);
         trigger_reloaded_zero_length
@@ -1033,7 +1039,6 @@ impl Channel2State {
     fn write_nr22(&mut self, value: u8) {
         self.pulse.apply_live_envelope_write_effect(value);
         self.nr22 = value;
-        self.pulse.apply_envelope_write(value);
         self.pulse
             .runtime
             .set_dac_enabled(self.derived_dac_enabled());
@@ -1119,7 +1124,7 @@ impl Channel2State {
 
     fn trigger(&mut self, next_step_clocks_envelope: bool) -> bool {
         self.pulse
-            .trigger(self.period_value(), next_step_clocks_envelope)
+            .trigger(self.period_value(), self.nr22, next_step_clocks_envelope)
     }
 
     fn tick_fast_timer(&mut self) {
@@ -1489,7 +1494,6 @@ impl Channel4State {
     fn write_nr42(&mut self, value: u8) {
         self.apply_live_envelope_write_effect(value);
         self.nr42 = value;
-        self.apply_envelope_write(value);
         self.runtime.set_dac_enabled(self.derived_dac_enabled());
     }
 
@@ -1634,6 +1638,7 @@ impl Channel4State {
             self.length_enabled = false;
         }
 
+        self.apply_envelope_write(self.nr42);
         self.period_timer = self.noise_timer_reload();
         self.lfsr_state = NOISE_LFSR_INITIAL_STATE;
         self.envelope_timer =

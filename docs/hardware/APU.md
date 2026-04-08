@@ -301,6 +301,7 @@ Current branch baseline, March 31, 2026:
 - CH1 should keep envelope timer state and current volume separate from the readable contents of `NR12`.
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
+- While CH1 is active, ordinary `NR12` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH1 trigger.
 - While CH1 is active, `NR12` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
 - Envelope progression must update CH1's internal current volume, not the readable initial-volume bits in `NR12`.
 - Reaching volume `0` through the envelope must not disable CH1 by itself.
@@ -410,6 +411,7 @@ Current branch baseline, March 31, 2026:
 - CH2 should keep envelope timer state and current volume separate from the readable contents of `NR22`.
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
+- While CH2 is active, ordinary `NR22` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH2 trigger.
 - While CH2 is active, `NR22` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
 - Envelope progression must update CH2's internal current volume, not the readable initial-volume bits in `NR22`.
 - Reaching volume `0` through the envelope must not disable CH2 by itself.
@@ -652,6 +654,7 @@ Current branch baseline, March 30, 2026:
 - CH4 should keep envelope timer state and current volume separate from the readable contents of `NR42`.
 - The envelope should be clocked from the frame sequencer's `64` Hz envelope clock.
 - Envelope pace `0` should disable visible automatic envelope stepping, while still preserving the documented internal timer-reload rule that a programmed pace or period of `0` behaves as `8`.
+- While CH4 is active, ordinary `NR42` writes should only update the readable register state and DAC status; the running envelope's latched pace/direction/initial-volume state should not be reloaded until the next CH4 trigger.
 - While CH4 is active, `NR42` writes should at least model the cross-revision-consistent zombie-mode subset: writing increase mode with pace `0` increments the live current volume by `1` modulo `16`.
 - Envelope progression must update CH4's internal current volume, not the readable initial-volume bits in `NR42`.
 - Reaching volume `0` through the envelope must not disable CH4 by itself.

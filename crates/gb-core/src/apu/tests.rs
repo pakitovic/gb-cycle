@@ -1264,6 +1264,47 @@ fn live_nrx2_write_with_increase_and_zero_pace_increments_active_pulse_channels(
 }
 
 #[test]
+fn live_nrx2_write_requires_retrigger_before_reprogramming_pulse_envelopes() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0x52);
+    apu.write_register(0xFF14, 0x80);
+    apu.channel_1.pulse.envelope_timer = 1;
+
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0x52);
+    apu.write_register(0xFF19, 0x80);
+    apu.channel_2.pulse.envelope_timer = 1;
+
+    assert_eq!(apu.channel_1.pulse.current_volume, 5);
+    assert_eq!(apu.channel_2.pulse.current_volume, 5);
+
+    apu.write_register(0xFF12, 0x69);
+    apu.write_register(0xFF17, 0x69);
+
+    assert_eq!(apu.channel_1.pulse.current_volume, 5);
+    assert_eq!(apu.channel_2.pulse.current_volume, 5);
+
+    apu.channel_1.clock_envelope();
+    apu.channel_2.clock_envelope();
+
+    assert_eq!(apu.channel_1.pulse.current_volume, 4);
+    assert_eq!(apu.channel_1.pulse.envelope_timer, 2);
+    assert_eq!(apu.channel_2.pulse.current_volume, 4);
+    assert_eq!(apu.channel_2.pulse.envelope_timer, 2);
+
+    apu.write_register(0xFF14, 0x80);
+    apu.write_register(0xFF19, 0x80);
+
+    assert_eq!(apu.channel_1.pulse.current_volume, 6);
+    assert_eq!(apu.channel_1.pulse.envelope_timer, 1);
+    assert_eq!(apu.channel_2.pulse.current_volume, 6);
+    assert_eq!(apu.channel_2.pulse.envelope_timer, 1);
+}
+
+#[test]
 fn channel_3_trigger_preserves_the_buffered_sample_until_the_next_wave_fetch() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
@@ -1766,6 +1807,31 @@ fn live_nr42_write_with_increase_and_zero_pace_increments_active_noise_channel()
     apu.channel_4.current_volume = 0x0F;
     apu.write_register(0xFF21, 0x08);
     assert_eq!(apu.channel_4.current_volume, 0);
+}
+
+#[test]
+fn live_nr42_write_requires_retrigger_before_reprogramming_the_noise_envelope() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF21, 0x52);
+    apu.write_register(0xFF23, 0x80);
+    apu.channel_4.envelope_timer = 1;
+
+    assert_eq!(apu.channel_4.current_volume, 5);
+
+    apu.write_register(0xFF21, 0x69);
+
+    assert_eq!(apu.channel_4.current_volume, 5);
+
+    apu.channel_4.clock_envelope();
+
+    assert_eq!(apu.channel_4.current_volume, 4);
+    assert_eq!(apu.channel_4.envelope_timer, 2);
+
+    apu.write_register(0xFF23, 0x80);
+
+    assert_eq!(apu.channel_4.current_volume, 6);
+    assert_eq!(apu.channel_4.envelope_timer, 1);
 }
 
 #[test]
