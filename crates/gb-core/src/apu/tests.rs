@@ -249,6 +249,55 @@ fn hpf_state_persists_across_t_cycles_and_pulls_the_output_towards_zero() {
 }
 
 #[test]
+fn output_path_selects_the_expected_hpf_charge_model_per_console_model() {
+    assert_eq!(
+        Apu::new(ConsoleModel::Dmg0).output_path.hpf_charge_model,
+        HpfChargeModel::Dmg0Dmg
+    );
+    assert_eq!(
+        Apu::new(ConsoleModel::Dmg).output_path.hpf_charge_model,
+        HpfChargeModel::Dmg0Dmg
+    );
+    assert_eq!(
+        Apu::new(ConsoleModel::Mgb).output_path.hpf_charge_model,
+        HpfChargeModel::MgbCgb
+    );
+    assert_eq!(
+        Apu::new(ConsoleModel::Cgb).output_path.hpf_charge_model,
+        HpfChargeModel::MgbCgb
+    );
+}
+
+#[test]
+fn cgb_hpf_settles_more_aggressively_than_dmg() {
+    let mut dmg = Apu::new(ConsoleModel::Dmg);
+    let mut cgb = Apu::new(ConsoleModel::Cgb);
+
+    for apu in [&mut dmg, &mut cgb] {
+        apu.write_register(0xFF26, 0x80);
+        apu.write_register(0xFF12, 0x08);
+        apu.write_register(0xFF24, 0x00);
+        apu.write_register(0xFF25, 0x11);
+    }
+
+    tick_apu_with_edges(&mut dmg, 0, &[]);
+    tick_apu_with_edges(&mut cgb, 0, &[]);
+
+    let dmg_after_first_tick = dmg.snapshot().output;
+    let cgb_after_first_tick = cgb.snapshot().output;
+    assert!(cgb_after_first_tick.hpf_capacitor.left > dmg_after_first_tick.hpf_capacitor.left);
+    assert!(cgb_after_first_tick.hpf_capacitor.right > dmg_after_first_tick.hpf_capacitor.right);
+
+    tick_apu_with_edges(&mut dmg, 1, &[]);
+    tick_apu_with_edges(&mut cgb, 1, &[]);
+
+    let dmg_after_second_tick = dmg.snapshot().output;
+    let cgb_after_second_tick = cgb.snapshot().output;
+    assert!(cgb_after_second_tick.hpf_output.left < dmg_after_second_tick.hpf_output.left);
+    assert!(cgb_after_second_tick.hpf_output.right < dmg_after_second_tick.hpf_output.right);
+}
+
+#[test]
 fn host_output_sample_matches_the_live_post_hpf_output_snapshot() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);

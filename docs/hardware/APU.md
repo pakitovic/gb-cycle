@@ -189,7 +189,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The HPF should be placed after stereo routing and `NR50` master-volume scaling, not before them.
 - The HPF must keep persistent state across captured samples; it is not a memoryless per-sample transform.
 - Leaving the HPF out may exist as a temporary debug mode, but not as the target DMG-family behavior.
-- The design should leave room for later model-specific HPF aggressiveness differences instead of hard-wiring one backend-oriented filter constant forever.
+- HPF charge behavior should remain model-driven rather than hard-wired to one global constant: `DMG0/DMG` use the documented `0.999958` factor, while `MGB/CGB` use the more aggressive `0.998943` factor, both applied on the shared `4_194_304 Hz` T-cycle timeline.
 - When all four channel DACs are off and routed `VIN` is neutral, the master-volume path should disconnect from the output: the post-HPF output becomes `0`, and the HPF capacitor stops evolving until some routed master input becomes non-neutral again.
 - Documented pops caused by DAC enable changes, `NR51` routing changes, or `NR50` volume changes should emerge from the modeled DC-offset step plus HPF response rather than from ad hoc smoothing or suppression in the host backend.
 - A debug tool may visualize DC offset or pop-inducing events, but the default emulation path should not erase those hardware-visible artifacts.

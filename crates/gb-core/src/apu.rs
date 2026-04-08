@@ -49,7 +49,8 @@ const WAVE_TRIGGER_STARTUP_DELAY_T_CYCLES: u16 = 6;
 const NOISE_LFSR_INITIAL_STATE: u16 = 0x0000;
 const ANALOG_ONE: i32 = 15_000_000;
 const DAC_ANALOG_STEP: i32 = 2_000_000;
-const HPF_CHARGE_FACTOR_NUMERATOR: i64 = 999_958;
+const DMG_FAMILY_HPF_CHARGE_FACTOR_NUMERATOR: i64 = 999_958;
+const MGB_CGB_HPF_CHARGE_FACTOR_NUMERATOR: i64 = 998_943;
 const HPF_CHARGE_FACTOR_DENOMINATOR: i64 = 1_000_000;
 pub const DMG_FAMILY_APU_CAPTURE_CLOCK_HZ: u32 = 4_194_304;
 pub const APU_HOST_MAX_ABS_SAMPLE: i32 = ANALOG_ONE * 4 * 8;
@@ -212,8 +213,15 @@ struct MasterControlState {
     vin_input: ApuStereoOutputSnapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HpfChargeModel {
+    Dmg0Dmg,
+    MgbCgb,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct OutputPathState {
+    hpf_charge_model: HpfChargeModel,
     hpf_capacitor: ApuHpfCapacitorSnapshot,
     current_output: ApuStereoOutputSnapshot,
 }
@@ -250,6 +258,22 @@ fn wave_ram_mmio_policy(console_model: ConsoleModel) -> WaveRamMmioPolicy {
         WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly
     } else {
         WaveRamMmioPolicy::DeferredCgbActiveAccess
+    }
+}
+
+impl HpfChargeModel {
+    const fn for_console_model(console_model: ConsoleModel) -> Self {
+        match console_model {
+            ConsoleModel::Dmg0 | ConsoleModel::Dmg => Self::Dmg0Dmg,
+            ConsoleModel::Mgb | ConsoleModel::Cgb => Self::MgbCgb,
+        }
+    }
+
+    const fn numerator(self) -> i64 {
+        match self {
+            Self::Dmg0Dmg => DMG_FAMILY_HPF_CHARGE_FACTOR_NUMERATOR,
+            Self::MgbCgb => MGB_CGB_HPF_CHARGE_FACTOR_NUMERATOR,
+        }
     }
 }
 
@@ -306,6 +330,14 @@ impl ApuSampleCapture {
 }
 
 impl OutputPathState {
+    const fn new(console_model: ConsoleModel) -> Self {
+        Self {
+            hpf_charge_model: HpfChargeModel::for_console_model(console_model),
+            hpf_capacitor: ApuHpfCapacitorSnapshot { left: 0, right: 0 },
+            current_output: ApuStereoOutputSnapshot { left: 0, right: 0 },
+        }
+    }
+
     fn preview(&mut self, input: ApuStereoOutputSnapshot, any_dac_enabled: bool) {
         if !any_dac_enabled {
             self.current_output = ApuStereoOutputSnapshot::default();
@@ -326,12 +358,13 @@ impl OutputPathState {
 
         let left_output = input.left as i64 - self.hpf_capacitor.left;
         let right_output = input.right as i64 - self.hpf_capacitor.right;
+        let hpf_charge_factor_numerator = self.hpf_charge_model.numerator();
 
         self.current_output = ApuStereoOutputSnapshot::new(left_output as i32, right_output as i32);
         self.hpf_capacitor.left = input.left as i64
-            - (left_output * HPF_CHARGE_FACTOR_NUMERATOR) / HPF_CHARGE_FACTOR_DENOMINATOR;
+            - (left_output * hpf_charge_factor_numerator) / HPF_CHARGE_FACTOR_DENOMINATOR;
         self.hpf_capacitor.right = input.right as i64
-            - (right_output * HPF_CHARGE_FACTOR_NUMERATOR) / HPF_CHARGE_FACTOR_DENOMINATOR;
+            - (right_output * hpf_charge_factor_numerator) / HPF_CHARGE_FACTOR_DENOMINATOR;
     }
 }
 
@@ -1755,7 +1788,7 @@ impl Apu {
             status: ApuStatus::Ready,
             master: MasterControlState::default(),
             frame_sequencer: FrameSequencerState::default(),
-            output_path: OutputPathState::default(),
+            output_path: OutputPathState::new(console_model),
             channel_1: Channel1State::default(),
             channel_2: Channel2State::default(),
             channel_3: Channel3State::default(),
@@ -1912,7 +1945,7 @@ impl Apu {
         self.wave_ram_startup_policy = startup_state.wave_ram_startup_policy;
         self.channel_3
             .initialize_wave_ram(startup_state.wave_ram_startup_policy.initial_bytes());
-        self.output_path = OutputPathState::default();
+        self.output_path = OutputPathState::new(self.console_model);
 
         if startup_state.powered {
             self.master.powered = true;
