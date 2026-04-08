@@ -330,7 +330,6 @@ Current branch baseline, March 31, 2026:
 - Keep this second overflow check explicit; do not fold it into a generic "next tick will catch it" simplification.
 - Writes to `NR13` / `NR14` while sweep is active must not refresh `sweep_shadow_period`; a later sweep tick may therefore overwrite the just-written register value unless CH1 is retriggered.
 - Sweep pace `0` should still preserve the documented trigger/overflow semantics and the documented timer-reload rule that a programmed pace or period of `0` behaves as `8`, rather than being simplified to "sweep logic fully off".
-- Keep an explicit follow-up work item for the documented CH1 behavior where clearing the sweep direction bit after subtraction-mode calculations can immediately disable the channel.
 
 ## CH1 active-state integration baseline
 

@@ -723,7 +723,6 @@ impl Channel1SweepState {
         if sweep_decreases_from_nr10(old_nr10)
             && !sweep_decreases_from_nr10(new_nr10)
             && self.negate_calculated_since_trigger
-            && self.shadow_period + self.completed_addend + 1 > PULSE_PERIOD_MAX
         {
             runtime.active = false;
         }

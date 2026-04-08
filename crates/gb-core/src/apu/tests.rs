@@ -1143,6 +1143,26 @@ fn clearing_negate_after_a_negate_calculation_disables_channel_1() {
 }
 
 #[test]
+fn clearing_negate_after_an_in_range_negate_calculation_still_disables_channel_1() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF10, 0x19);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, 0x00);
+    apu.write_register(0xFF14, 0x84);
+
+    assert!(apu.channel_1.pulse.runtime.active);
+    assert!(apu.channel_1.sweep.negate_calculated_since_trigger);
+    assert_eq!(apu.channel_1.period_value(), 0x0400);
+
+    apu.write_register(0xFF10, 0x11);
+
+    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channel_1.period_value(), 0x0400);
+}
+
+#[test]
 fn clearing_negate_without_a_negate_calculation_keeps_channel_1_active() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
