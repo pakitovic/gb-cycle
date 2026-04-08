@@ -90,8 +90,9 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    cover trigger reloads, duty-step persistence across retrigger, period-write
    delay, envelope/length behavior, CH1 second-overflow sweep handling,
    trigger-time extra-length and envelope `+1` quirks, preserved low timer
-   bits on trigger, `NR52` power-on frame-sequencer reset plus the skip-when-
-   source-high rule, and `NR52` live-bit clearing on length expiry or sweep
+   bits on trigger, `NR52` power-on frame-sequencer reset plus the preserved-
+   divider-phase power-on behavior, and `NR52` live-bit clearing on length
+   expiry or sweep
    overflow. External evidence has also moved the remaining sweep-specific
    pulse ROMs out of the red set: `dmg_sound 03-trigger`, `04-sweep`, and
    `05-sweep_details` now pass alongside `dmg_sound 07-len sweep period sync`
