@@ -43,10 +43,7 @@ impl Bus {
         match state.dma.cpu_access_policy() {
             DmaCpuAccessPolicy::Unrestricted => None,
             DmaCpuAccessPolicy::ExternalBusBlocked => {
-                if target.region() == BusRegion::Hram
-                    || target.region() == BusRegion::Vram
-                    || target.address() == 0xFF46
-                {
+                if target.region() == BusRegion::Hram || target.address() == 0xFF46 {
                     return None;
                 }
 

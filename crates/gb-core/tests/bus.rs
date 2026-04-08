@@ -195,7 +195,7 @@ fn cpu_vram_and_oam_access_policy_depends_on_live_ppu_state() {
 }
 
 #[test]
-fn external_bus_dma_policy_blocks_wram_but_not_vram_or_dma_requesters() {
+fn external_bus_dma_policy_blocks_all_cpu_regions_except_hram_ff46_and_non_cpu_requesters() {
     let bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default().with_dma(DmaBusState::external_bus_blocked(Some(
         DmaMemoryRegionImpact::Oam,
@@ -204,6 +204,7 @@ fn external_bus_dma_policy_blocks_wram_but_not_vram_or_dma_requesters() {
     let cpu_blocked = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xC000, &state);
     let cpu_vram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0x8000, &state);
     let cpu_hram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xFF80, &state);
+    let cpu_ff46 = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Read, 0xFF46, &state);
     let dma_allowed = bus.resolve_access(BusRequester::Dma, BusAccessKind::Read, 0xC000, &state);
 
     assert_eq!(
@@ -213,13 +214,20 @@ fn external_bus_dma_policy_blocks_wram_but_not_vram_or_dma_requesters() {
             reason: BusBlockReason::DmaExternalBusConflict,
         }
     );
-    assert!(cpu_vram.disposition().is_allowed());
+    assert_eq!(
+        cpu_vram.disposition(),
+        BusAccessDisposition::BlockedRead {
+            value: 0xFF,
+            reason: BusBlockReason::DmaExternalBusConflict,
+        }
+    );
     assert!(cpu_hram.disposition().is_allowed());
+    assert!(cpu_ff46.disposition().is_allowed());
     assert!(dma_allowed.disposition().is_allowed());
 }
 
 #[test]
-fn external_bus_dma_policy_ignores_cpu_writes_outside_hram_and_vram_but_keeps_them_writable() {
+fn external_bus_dma_policy_ignores_cpu_writes_outside_hram_and_ff46() {
     let bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default().with_dma(DmaBusState::external_bus_blocked(Some(
         DmaMemoryRegionImpact::Oam,
@@ -228,6 +236,7 @@ fn external_bus_dma_policy_ignores_cpu_writes_outside_hram_and_vram_but_keeps_th
     let blocked_wram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0xC000, &state);
     let allowed_vram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0x8000, &state);
     let allowed_hram = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0xFF80, &state);
+    let allowed_ff46 = bus.resolve_access(BusRequester::Cpu, BusAccessKind::Write, 0xFF46, &state);
 
     assert_eq!(
         blocked_wram.disposition(),
@@ -235,8 +244,14 @@ fn external_bus_dma_policy_ignores_cpu_writes_outside_hram_and_vram_but_keeps_th
             reason: BusBlockReason::DmaExternalBusConflict,
         }
     );
-    assert!(allowed_vram.disposition().is_allowed());
+    assert_eq!(
+        allowed_vram.disposition(),
+        BusAccessDisposition::IgnoredWrite {
+            reason: BusBlockReason::DmaExternalBusConflict,
+        }
+    );
     assert!(allowed_hram.disposition().is_allowed());
+    assert!(allowed_ff46.disposition().is_allowed());
 }
 
 #[test]

@@ -203,7 +203,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 
 - HRAM should be modeled as a dedicated internal RAM region distinct from WRAM and MMIO.
 - On DMG, CPU HRAM access should remain available during OAM DMA regardless of which source bus the transfer currently occupies.
-- During an external-bus OAM-DMA conflict, the current baseline keeps CPU VRAM plus `FF46` accessible while other CPU accesses observe DMA-blocked semantics.
+- During an external-bus OAM-DMA conflict, the current baseline keeps CPU HRAM plus the explicit `FF46` exception accessible while other CPU accesses observe DMA-blocked semantics.
 - During a video-bus OAM-DMA conflict, the current baseline keeps CPU access to non-VRAM, non-OAM regions available while VRAM and OAM observe DMA-blocked semantics.
 - During either DMG OAM-DMA conflict shape, the dedicated `FF46` MMIO path should remain accessible for DMA readback and restart writes.
 - HRAM initialization policy is separate from its access semantics.
@@ -223,7 +223,7 @@ Address alone is not enough: the bus must also consider the current temporal har
 - OAM decisions must consider address, LCD enable state, PPU mode, and OAM DMA state together rather than as unrelated checks.
 - OAM access blocking during PPU Mode 2 must be represented as observable bus behavior, not as a render-only detail.
 - During PPU Mode 3, both OAM and VRAM access restrictions must be represented as observable bus behavior.
-- During DMG OAM DMA, CPU accesses should retain normal HRAM behavior while DMA-published source-bus conflicts determine whether the blocked set is "everything except HRAM, VRAM, and `FF46`" or "VRAM and OAM only".
+- During DMG OAM DMA, CPU accesses should retain normal HRAM behavior while DMA-published source-bus conflicts determine whether the blocked set is "everything except HRAM and `FF46`" or "VRAM and OAM only".
 - DMA-visible blocking and DMA data movement should remain separable on the T-cycle timeline; a transfer may affect CPU-visible access policy on a cycle even if no byte commit occurs on that same cycle.
 - With LCD disabled, access rules should return to the hardware state expected for LCD-off behavior.
 - LCD-off accessibility should remove ordinary PPU mode locks, but it must not erase independent blocking rules coming from DMA or any later bus actor.
