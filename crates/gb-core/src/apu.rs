@@ -44,7 +44,7 @@ const WAVE_RAM_LEN: usize = 0x10;
 const WAVE_SAMPLE_COUNT: u8 = 32;
 const WAVE_RAM_INACCESSIBLE_READ_VALUE: u8 = 0xFF;
 const WAVE_TRIGGER_STARTUP_DELAY_T_CYCLES: u16 = 6;
-const NOISE_LFSR_INITIAL_STATE: u16 = 0x7FFF;
+const NOISE_LFSR_INITIAL_STATE: u16 = 0x0000;
 const ANALOG_ONE: i32 = 15_000_000;
 const DAC_ANALOG_STEP: i32 = 2_000_000;
 const HPF_CHARGE_FACTOR_NUMERATOR: i64 = 999_958;
@@ -649,7 +649,7 @@ impl PulseChannelState {
     }
 
     fn clock_envelope(&mut self) {
-        if self.envelope_pace == 0 || !self.runtime.active {
+        if self.envelope_pace == 0 {
             return;
         }
 
@@ -750,7 +750,7 @@ impl Channel1SweepState {
     }
 
     fn clock(&mut self, nr10: u8, nr13: &mut u8, nr14: &mut u8, runtime: &mut ChannelRuntimeState) {
-        if !self.enabled || !runtime.active {
+        if !self.enabled {
             return;
         }
 
@@ -771,7 +771,7 @@ impl Channel1SweepState {
         runtime: &mut ChannelRuntimeState,
     ) {
         let pace = sweep_pace_from_nr10(nr10);
-        if self.phase != 7 || pace == 0 || !self.enabled || !runtime.active {
+        if self.phase != 7 || pace == 0 || !self.enabled {
             return;
         }
 
@@ -1660,12 +1660,12 @@ impl Channel4State {
     }
 
     fn step_lfsr(&mut self) {
-        let feedback_bit = ((self.lfsr_state & 0x01) ^ ((self.lfsr_state >> 1) & 0x01)) & 0x01;
+        let feedback_bit = u16::from((self.lfsr_state & 0x01) == ((self.lfsr_state >> 1) & 0x01));
         self.lfsr_state >>= 1;
         self.lfsr_state = (self.lfsr_state & !(1 << 14)) | (feedback_bit << 14);
         if self.short_width_mode {
             // In short mode the feedback path also overwrites bit 6, so a live
-            // 15-bit -> 7-bit switch can trap the active 7-bit window at zero
+            // 15-bit -> 7-bit switch can trap the active 7-bit window at ones
             // until a retrigger reloads the LFSR.
             self.lfsr_state = (self.lfsr_state & !(1 << 6)) | (feedback_bit << 6);
         }
@@ -1683,7 +1683,7 @@ impl Channel4State {
     }
 
     fn clock_envelope(&mut self) {
-        if self.envelope_pace == 0 || !self.runtime.active {
+        if self.envelope_pace == 0 {
             return;
         }
 

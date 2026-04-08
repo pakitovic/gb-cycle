@@ -625,7 +625,7 @@ Current branch baseline, March 30, 2026:
 - Changing `NR43` width mode while CH4 is already running should affect the live LFSR state rather than only taking effect on the next trigger.
 - Keep an explicit CH4 work item for the documented lock-up behavior when switching from `15`-bit mode to `7`-bit mode in certain all-ones states.
 - That lock-up should arise from the real LFSR contents and width-mode transition, not from a fake external mute flag disconnected from the register state.
-- Retriggering CH4 should clear the lock-up by reinitializing the LFSR state.
+- Retriggering CH4 should clear the lock-up by reinitializing the LFSR back to Pan Docs' zeroed trigger state.
 
 ## CH4 DAC and trigger baseline
 
@@ -638,7 +638,7 @@ Current branch baseline, March 30, 2026:
   - the channel should become active if the DAC is enabled
   - the envelope timer should reset
   - current volume should become the initial volume from `NR42`
-  - the LFSR state should reset to its trigger-defined initial pattern
+  - the LFSR state should reset to the zeroed trigger state described in Pan Docs
   - the noise timer should reload coherently from the current decoded `NR43`
   - expired length state should be restored to a valid running state
 - CH4 retrigger should also serve as the explicit path that exits any current LFSR lock-up state.
@@ -674,9 +674,10 @@ Current branch baseline, March 30, 2026:
 
 - `CH4` now owns explicit `NR43` decode, a fast `noise_timer`, live `lfsr_state`, envelope runtime (`initial_volume`, direction, pace, timer, current volume), and trigger-time reload of timer / envelope / LFSR instead of remaining a length-only placeholder.
 - The frame sequencer now clocks both CH4 length and CH4 envelope on the shared slow-control timeline, while the fast T-cycle path advances the decoded noise timer and LFSR independently.
+- The slow-control clocks are now explicit hardware units rather than being gated by audibility: CH1 sweep and CH1 / CH2 / CH4 envelopes continue to advance from the frame sequencer according to their own enable / pace state even if `channel_active` is already false.
 - DMG power-off semantics are now explicit for the shared `NRx1` length family: on DMG, writes to `NR11/NR21/NR31/NR41` while `NR52=0` update only the internal length counters, and those counters survive the power-off interval instead of being reset to the powered-on defaults.
 - External evidence has closed the CH4-facing Blargg lane needed for the current Phase `7` bring-up: `dmg_sound 02-len ctr`, `08-len ctr during power`, and `11-regs after power` now pass alongside the already-green pulse and CH3 cases.
-- The remaining CH4 follow-up that used to stay implicit is now covered locally as well: unit tests lock the active 7-bit LFSR window through a live `15-bit -> 7-bit` width change without dropping `channel_active`, and verify that retrigger reloads the LFSR out of that lock-up state instead of needing a fake mute flag.
+- The remaining CH4 follow-up that used to stay implicit is now covered locally as well: unit tests lock the active 7-bit LFSR window through a live `15-bit -> 7-bit` width change into the documented all-ones short-width state without dropping `channel_active`, and verify that retrigger reloads the LFSR back to the zeroed trigger state instead of needing a fake mute flag.
 
 ## Timing / accuracy requirements
 

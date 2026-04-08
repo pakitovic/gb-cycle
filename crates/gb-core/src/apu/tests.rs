@@ -1053,6 +1053,27 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
 }
 
 #[test]
+fn channel_1_sweep_clock_can_update_the_shadow_period_while_inactive() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF10, 0x11);
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, 0x00);
+    apu.write_register(0xFF14, 0x85);
+
+    assert_eq!(apu.channel_1.period_value(), 0x0500);
+    assert!(apu.channel_1.sweep.enabled);
+
+    apu.channel_1.pulse.runtime.active = false;
+    apu.channel_1.clock_sweep();
+
+    assert_eq!(apu.channel_1.period_value(), 0x0780);
+    assert_eq!(apu.channel_1.sweep.shadow_period, 0x0780);
+    assert!(!apu.channel_1.pulse.runtime.active);
+}
+
+#[test]
 fn channel_1_shift_zero_sweep_does_not_calculate_on_trigger_but_can_overflow_on_sweep_clock() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
@@ -1169,6 +1190,26 @@ fn envelope_reaching_zero_does_not_disable_the_pulse_channel() {
 
     assert_eq!(apu.channel_2.pulse.current_volume, 0);
     assert!(apu.channel_2.pulse.runtime.active);
+}
+
+#[test]
+fn pulse_envelope_clock_advances_while_the_channel_is_inactive() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0x11);
+    apu.write_register(0xFF19, 0x80);
+
+    apu.channel_2.pulse.runtime.active = false;
+    apu.channel_2.pulse.envelope_timer = 1;
+    apu.channel_2.pulse.current_volume = 1;
+
+    apu.channel_2.clock_envelope();
+
+    assert_eq!(apu.channel_2.pulse.envelope_timer, 1);
+    assert_eq!(apu.channel_2.pulse.current_volume, 0);
+    assert!(!apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channel_2.pulse.current_digital_output(), 0);
 }
 
 #[test]
@@ -1605,6 +1646,7 @@ fn channel_4_trigger_reloads_envelope_lfsr_and_noise_timer() {
     assert_eq!(apu.channel_4.current_volume, 0x0F);
     assert_eq!(apu.channel_4.envelope_timer, 2);
     assert_eq!(apu.channel_4.lfsr_state, NOISE_LFSR_INITIAL_STATE);
+    assert_eq!(apu.channel_4.current_digital_output(), 0);
     assert_eq!(apu.channel_4.period_timer, 160);
 }
 
@@ -1643,8 +1685,8 @@ fn channel_4_noise_timer_steps_the_lfsr_and_short_width_mode_copies_feedback_int
     channel.tick_fast_timer();
 
     assert_eq!(channel.period_timer, 8);
-    assert_eq!(channel.lfsr_state, 0x3FBF);
-    assert_eq!(channel.current_digital_output(), 0x0F);
+    assert_eq!(channel.lfsr_state, 0x4040);
+    assert_eq!(channel.current_digital_output(), 0);
 }
 
 #[test]
@@ -1667,6 +1709,25 @@ fn channel_4_envelope_reaching_zero_does_not_disable_the_channel() {
 
     assert_eq!(apu.channel_4.current_volume, 0);
     assert!(apu.channel_4.runtime.active);
+}
+
+#[test]
+fn channel_4_envelope_clock_advances_while_the_channel_is_inactive() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF21, 0x11);
+    apu.write_register(0xFF23, 0x80);
+
+    apu.channel_4.runtime.active = false;
+    apu.channel_4.envelope_timer = 1;
+    apu.channel_4.current_volume = 1;
+
+    apu.channel_4.clock_envelope();
+
+    assert_eq!(apu.channel_4.envelope_timer, 1);
+    assert_eq!(apu.channel_4.current_volume, 0);
+    assert!(!apu.channel_4.runtime.active);
+    assert_eq!(apu.channel_4.current_digital_output(), 0);
 }
 
 #[test]
@@ -1695,7 +1756,7 @@ fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window() {
     wide.write_nr43(0x00);
     wide.period_timer = 1;
     wide.current_volume = 0x0F;
-    wide.lfsr_state = 0x0080;
+    wide.lfsr_state = 0x007F;
 
     let mut narrow = wide.clone();
     narrow.write_nr43(0x08);
@@ -1703,16 +1764,16 @@ fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window() {
     wide.tick_fast_timer();
     narrow.tick_fast_timer();
 
-    assert_eq!(wide.lfsr_state & 0x7F, 0x40);
-    assert_eq!(narrow.lfsr_state & 0x7F, 0x00);
-    assert_eq!(narrow.current_digital_output(), 0);
+    assert_eq!(wide.lfsr_state & 0x7F, 0x3F);
+    assert_eq!(narrow.lfsr_state & 0x7F, 0x7F);
+    assert_eq!(narrow.current_digital_output(), 0x0F);
     assert!(narrow.runtime.active);
 
     narrow.period_timer = 1;
     narrow.tick_fast_timer();
 
-    assert_eq!(narrow.lfsr_state & 0x7F, 0x00);
-    assert_eq!(narrow.current_digital_output(), 0);
+    assert_eq!(narrow.lfsr_state & 0x7F, 0x7F);
+    assert_eq!(narrow.current_digital_output(), 0x0F);
     assert!(narrow.runtime.active);
 }
 
@@ -1724,22 +1785,23 @@ fn channel_4_retrigger_recovers_from_short_width_lockup_without_clearing_activit
     apu.write_register(0xFF22, 0x08);
 
     apu.channel_4.runtime.active = true;
-    apu.channel_4.lfsr_state = 0x0000;
+    apu.channel_4.lfsr_state = 0x007F;
     apu.channel_4.current_volume = 0x0F;
 
     assert_eq!(apu.read_register(0xFF26) & 0x08, 0x08);
-    assert_eq!(apu.channel_4.current_digital_output(), 0);
+    assert_eq!(apu.channel_4.current_digital_output(), 0x0F);
 
     apu.write_register(0xFF23, 0x80);
 
     assert_eq!(apu.channel_4.lfsr_state, NOISE_LFSR_INITIAL_STATE);
     assert!(apu.channel_4.runtime.active);
     assert_eq!(apu.read_register(0xFF26) & 0x08, 0x08);
+    assert_eq!(apu.channel_4.current_digital_output(), 0);
 
     apu.channel_4.period_timer = 1;
     apu.channel_4.tick_fast_timer();
 
-    assert_ne!(apu.channel_4.lfsr_state & 0x7F, 0x00);
+    assert_ne!(apu.channel_4.lfsr_state & 0x7F, 0x7F);
 }
 
 #[test]
