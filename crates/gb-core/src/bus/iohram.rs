@@ -51,9 +51,7 @@ impl IoHramDomain {
     }
 
     pub(crate) fn apply_startup_memory_policy(&mut self, policy: StartupMemoryPolicy) {
-        match policy {
-            StartupMemoryPolicy::DeterministicZeroed => self.hram.fill(0),
-        }
+        policy.initialize_hram(&mut self.hram);
     }
 
     pub(crate) fn read(

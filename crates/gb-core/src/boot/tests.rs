@@ -118,8 +118,26 @@ fn direct_boot_state_uses_model_specific_verified_entry_presets() {
     assert_eq!(direct_boot.io.interrupt_flag, 0xE1);
     assert_eq!(
         direct_boot.startup_memory_policy,
-        StartupMemoryPolicy::DeterministicZeroed
+        StartupMemoryPolicy::DeterministicPatterned
     );
+}
+
+#[test]
+fn patterned_startup_memory_policy_is_deterministic_without_zero_filling_wram_or_hram() {
+    let mut first_wram = [0; 8];
+    let mut second_wram = [0; 8];
+    let mut first_hram = [0; 8];
+    let mut second_hram = [0; 8];
+
+    StartupMemoryPolicy::DeterministicPatterned.initialize_wram(&mut first_wram);
+    StartupMemoryPolicy::DeterministicPatterned.initialize_wram(&mut second_wram);
+    StartupMemoryPolicy::DeterministicPatterned.initialize_hram(&mut first_hram);
+    StartupMemoryPolicy::DeterministicPatterned.initialize_hram(&mut second_hram);
+
+    assert_eq!(first_wram, second_wram);
+    assert_eq!(first_hram, second_hram);
+    assert_ne!(first_wram, [0; 8]);
+    assert_ne!(first_hram, [0; 8]);
 }
 
 #[test]

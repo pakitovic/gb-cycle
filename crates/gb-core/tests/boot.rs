@@ -139,7 +139,7 @@ fn skip_boot_uses_the_centralized_synthetic_startup_state() {
     assert_eq!(machine.cpu().startup_state().f, 0xB0);
     assert_eq!(
         machine.boot().startup_memory_policy(),
-        StartupMemoryPolicy::DeterministicZeroed
+        StartupMemoryPolicy::DeterministicPatterned
     );
 
     assert_eq!(machine.read_bus(0xFF00), 0xCF);
@@ -161,8 +161,20 @@ fn skip_boot_uses_the_centralized_synthetic_startup_state() {
     assert_eq!(machine.read_bus(0xFF4A), 0x00);
     assert_eq!(machine.read_bus(0xFF4B), 0x00);
     assert_eq!(machine.read_bus(0xFFFF), 0x00);
-    assert_eq!(machine.read_bus(0xC000), 0x00);
-    assert_eq!(machine.read_bus(0xFF80), 0x00);
+    let wram_seed = machine.read_bus(0xC000);
+    let hram_seed = machine.read_bus(0xFF80);
+    assert_ne!(wram_seed, 0x00);
+    assert_ne!(hram_seed, 0x00);
+
+    let mut second_machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    assert_eq!(
+        second_machine.boot().startup_memory_policy(),
+        StartupMemoryPolicy::DeterministicPatterned
+    );
+    assert_eq!(second_machine.read_bus(0xC000), wram_seed);
+    assert_eq!(second_machine.read_bus(0xFF80), hram_seed);
 }
 
 #[test]

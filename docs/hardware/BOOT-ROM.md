@@ -113,9 +113,10 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 ## Uninitialized and cartridge-dependent startup state
 
 - `SkipBoot` must distinguish between values that are fixed by model, values derived from the cartridge header, and values that are genuinely unreliable after power-up.
-- WRAM and HRAM should not be treated as fixed zero-filled memory in the direct post-boot snapshot.
+- Pan Docs and hardware research do not support treating WRAM and HRAM as fixed zero-filled memory in the direct post-boot snapshot; they remain unreliable or effectively random across power-up.
 - Cartridge RAM, whether external or mapper-local to the cartridge controller, should not be assumed clean on first power-up when a direct post-boot path is used.
 - A direct-boot path should use an explicit policy for uninitialized memory and unreliable registers, such as seeded pseudo-random data, a documented pattern, or a debug-oriented deterministic startup policy.
+- In the current repo baseline, `SkipBoot` uses an explicit deterministic patterned policy for WRAM and HRAM so continuity tests stay reproducible without claiming those bytes are hardware constants.
 - That uninitialized-state policy must not overwrite values that are deterministic in the documented post-boot snapshot.
 
 ## Post-boot visible map baseline

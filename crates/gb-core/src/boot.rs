@@ -189,7 +189,37 @@ impl BootRomAssets {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StartupMemoryPolicy {
-    DeterministicZeroed,
+    DeterministicPatterned,
+}
+
+impl StartupMemoryPolicy {
+    pub(crate) fn initialize_wram(self, bytes: &mut [u8]) {
+        self.fill_bytes(bytes, 0xC000);
+    }
+
+    pub(crate) fn initialize_hram(self, bytes: &mut [u8]) {
+        self.fill_bytes(bytes, 0xFF80);
+    }
+
+    fn fill_bytes(self, bytes: &mut [u8], base_address: u16) {
+        match self {
+            Self::DeterministicPatterned => fill_deterministic_startup_pattern(bytes, base_address),
+        }
+    }
+}
+
+fn fill_deterministic_startup_pattern(bytes: &mut [u8], base_address: u16) {
+    for (offset, byte) in bytes.iter_mut().enumerate() {
+        let address = base_address.wrapping_add(offset as u16);
+        *byte = deterministic_startup_byte(address);
+    }
+}
+
+const fn deterministic_startup_byte(address: u16) -> u8 {
+    let low = address as u8;
+    let high = (address >> 8) as u8;
+    let mixed = low.wrapping_mul(0x3D) ^ high.wrapping_mul(0xA7) ^ 0x5A;
+    mixed.rotate_left(((address >> 1) & 0x07) as u32) ^ 0xA5
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -339,7 +369,7 @@ impl BootController {
     }
 
     pub fn startup_memory_policy(&self) -> StartupMemoryPolicy {
-        StartupMemoryPolicy::DeterministicZeroed
+        StartupMemoryPolicy::DeterministicPatterned
     }
 
     pub fn read_boot_rom(&self, address: u16) -> u8 {
