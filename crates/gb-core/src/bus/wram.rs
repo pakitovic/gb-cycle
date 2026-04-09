@@ -15,9 +15,7 @@ impl WramDomain {
     }
 
     pub(crate) fn apply_startup_memory_policy(&mut self, policy: StartupMemoryPolicy) {
-        match policy {
-            StartupMemoryPolicy::DeterministicZeroed => self.bytes.fill(0),
-        }
+        policy.initialize_wram(&mut self.bytes);
     }
 
     pub(crate) fn read(&self, address: u16) -> u8 {

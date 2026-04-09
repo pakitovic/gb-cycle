@@ -138,10 +138,6 @@ impl Joypad {
         self.pressed_mask
     }
 
-    pub(crate) fn read_p1_with_pressed_mask(&self, pressed_mask: u8) -> u8 {
-        0xC0 | self.selection_bits | visible_low_nibble(self.selection_bits, pressed_mask)
-    }
-
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
         format!(
             "t_cycle={} phase={} console_model={:?} status={:?} p1={:#04X} selection_bits={:#04X} pressed_mask={:#04X} visible_low_nibble={:#03X} interrupt_request_pending={} stop_wake_pending={}",

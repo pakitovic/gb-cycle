@@ -1,6 +1,33 @@
 use super::*;
 
 impl NoMbcCartridge {
+    pub(in crate::cartridge) fn describe_external_access(
+        &self,
+        address: u16,
+    ) -> CartridgeExternalAccessInfo {
+        let has_ram = self.ram.is_some();
+
+        CartridgeExternalAccessInfo::new(
+            address,
+            CartridgeExternalTarget::LinearRam,
+            if has_ram {
+                CartridgeExternalAvailability::Accessible
+            } else {
+                CartridgeExternalAvailability::Absent
+            },
+            if has_ram {
+                CartridgeExternalReadBehavior::Storage
+            } else {
+                CartridgeExternalReadBehavior::FallbackValue(RAM_ABSENT_READ_VALUE)
+            },
+            if has_ram {
+                CartridgeExternalWriteBehavior::Storage
+            } else {
+                CartridgeExternalWriteBehavior::Ignored
+            },
+        )
+    }
+
     pub(in crate::cartridge) fn read_rom(&self, address: u16) -> u8 {
         self.rom
             .get(address as usize)

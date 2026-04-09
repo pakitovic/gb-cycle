@@ -1099,6 +1099,12 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
 }
 
 #[test]
+#[should_panic(expected = "gb-cli currently exposes only DMG-family run models")]
+fn expected_boot_rom_sha256_rejects_cgb_kind_in_the_dmg_only_cli_surface() {
+    let _ = expected_boot_rom_sha256(BootRomKind::Cgb);
+}
+
+#[test]
 fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities() {
     assert_eq!(
         derive_save_key(Path::new("Pokemon Red!.gb")).expect("save key should derive"),

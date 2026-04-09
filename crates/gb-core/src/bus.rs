@@ -15,7 +15,8 @@ use crate::model::ConsoleModel;
 pub(crate) use iohram::{BusIoReadView, BusIoWriteView, IoHramDomain};
 pub use map::{
     BusAddressInfo, BusDomain, BusRegion, BusRegionOwner, IoRegisterAccess, IoRegisterAvailability,
-    IoRegisterInfo, IoRegisterKind, IoRegisterOwner,
+    IoRegisterImplementation, IoRegisterInfo, IoRegisterKind, IoRegisterOwner, UnusableAreaInfo,
+    UnusableAreaReadProfile, UnusableAreaWriteProfile,
 };
 pub use meta::BusSnapshot;
 pub use router::AddressRouter;
@@ -68,12 +69,21 @@ impl Bus {
         self.status
     }
 
+    /// Returns the static DMG memory-map classification for `address`.
+    ///
+    /// This is an address-only decode surface. It does not apply boot ROM
+    /// overlay windows or any other live arbitration state.
     pub fn decode_address(&self, address: u16) -> BusAddressInfo {
         self.router.decode_address(address)
     }
 
     pub fn describe_io_register(&self, address: u16) -> Option<IoRegisterInfo> {
         self.router.describe_io_register(address)
+    }
+
+    pub fn describe_unusable_area(&self, address: u16) -> Option<UnusableAreaInfo> {
+        self.router
+            .describe_unusable_area(self.console_model, address)
     }
 }
 

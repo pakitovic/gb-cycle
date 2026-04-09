@@ -1,4 +1,5 @@
 use super::Machine;
+use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write, cpu_write_targets_ppu_mmio};
 use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{BusArbitrationState, BusIoReadView, BusIoWriteView, BusRequester};
@@ -16,29 +17,24 @@ use crate::timer::Timer;
 impl<S: TraceSink> Machine<S> {
     pub fn read_bus(&mut self, address: u16) -> u8 {
         let state = self.current_bus_arbitration_state();
-        let value = if address == 0xFF00 {
-            self.joypad
-                .read_p1_with_pressed_mask(self.pending_external_events.joypad_pressed_mask())
-        } else {
-            self.bus.read_with_t_cycle_context(
-                address,
-                BusRequester::Cpu,
-                &state,
-                self.next_t_cycle(),
-                Some(&mut self.cartridge),
-                BusIoReadView {
-                    apu: Some(&self.apu),
-                    timer: Some(&self.timer),
-                    serial: Some(&self.serial),
-                    dma: Some(&self.dma),
-                    boot: Some(&self.boot),
-                    interrupts: Some(&self.interrupts),
-                    interrupt_flag_pending_mask: 0,
-                    joypad: Some(&self.joypad),
-                    ppu: Some(&self.ppu),
-                },
-            )
-        };
+        let value = self.bus.read_with_t_cycle_context(
+            address,
+            BusRequester::Cpu,
+            &state,
+            self.next_t_cycle(),
+            Some(&mut self.cartridge),
+            BusIoReadView {
+                apu: Some(&self.apu),
+                timer: Some(&self.timer),
+                serial: Some(&self.serial),
+                dma: Some(&self.dma),
+                boot: Some(&self.boot),
+                interrupts: Some(&self.interrupts),
+                interrupt_flag_pending_mask: 0,
+                joypad: Some(&self.joypad),
+                ppu: Some(&self.ppu),
+            },
+        );
         self.bus.route_cpu_address_event(
             CpuAddressEvent {
                 kind: CpuAddressEventKind::Read,
@@ -54,6 +50,23 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn write_bus(&mut self, address: u16, value: u8) {
         let state = self.current_bus_arbitration_state();
+
+        if cpu_write_targets_ppu_mmio(&self.bus, address) {
+            let mut pending = Some(PendingPpuMmioWrite { address, value });
+
+            self.bus.route_cpu_address_event(
+                CpuAddressEvent {
+                    kind: CpuAddressEventKind::Write,
+                    access_address: Some(address),
+                    idu_address: None,
+                    update_direction: None,
+                },
+                &state,
+                &mut self.ppu,
+            );
+            let _ = commit_pending_ppu_mmio_write(&mut self.ppu, &mut pending);
+            return;
+        }
 
         self.bus.write_with_t_cycle_context(
             address,
@@ -119,7 +132,7 @@ impl<S: TraceSink> Machine<S> {
         )
     }
 
-    fn current_bus_arbitration_state(&self) -> BusArbitrationState {
+    pub(super) fn current_bus_arbitration_state(&self) -> BusArbitrationState {
         BusArbitrationState::default()
             .with_boot_rom(self.boot.bus_state())
             .with_ppu(self.ppu.bus_state())

@@ -105,6 +105,65 @@ impl BusAddressInfo {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnusableAreaReadProfile {
+    DmgFamilyFixedZero,
+    CgbRevisionDependent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnusableAreaWriteProfile {
+    Ignored,
+    CgbRevisionDependentRam,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UnusableAreaInfo {
+    address: u16,
+    read_profile: UnusableAreaReadProfile,
+    write_profile: UnusableAreaWriteProfile,
+    runtime_fallback_read_value: u8,
+    runtime_fallback_writes_ignored: bool,
+}
+
+impl UnusableAreaInfo {
+    pub const fn new(
+        address: u16,
+        read_profile: UnusableAreaReadProfile,
+        write_profile: UnusableAreaWriteProfile,
+        runtime_fallback_read_value: u8,
+        runtime_fallback_writes_ignored: bool,
+    ) -> Self {
+        Self {
+            address,
+            read_profile,
+            write_profile,
+            runtime_fallback_read_value,
+            runtime_fallback_writes_ignored,
+        }
+    }
+
+    pub const fn address(self) -> u16 {
+        self.address
+    }
+
+    pub const fn read_profile(self) -> UnusableAreaReadProfile {
+        self.read_profile
+    }
+
+    pub const fn write_profile(self) -> UnusableAreaWriteProfile {
+        self.write_profile
+    }
+
+    pub const fn runtime_fallback_read_value(self) -> u8 {
+        self.runtime_fallback_read_value
+    }
+
+    pub const fn runtime_fallback_writes_ignored(self) -> bool {
+        self.runtime_fallback_writes_ignored
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IoRegisterOwner {
     Joypad,
     Serial,
@@ -114,14 +173,24 @@ pub enum IoRegisterOwner {
     Ppu,
     Dma,
     Boot,
-    CgbOnly,
+    MemoryController,
+    Infrared,
+    CgbSystem,
     Reserved,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IoRegisterAvailability {
-    AllModels,
+    Shared,
+    DmgCompatible,
     CgbOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IoRegisterImplementation {
+    Implemented,
+    Stubbed,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -142,11 +211,63 @@ pub enum IoRegisterKind {
     Tma,
     Tac,
     InterruptFlag,
-    Sound,
-    Lcd,
+    Nr10,
+    Nr11,
+    Nr12,
+    Nr13,
+    Nr14,
+    Nr21,
+    Nr22,
+    Nr23,
+    Nr24,
+    Nr30,
+    Nr31,
+    Nr32,
+    Nr33,
+    Nr34,
+    Nr41,
+    Nr42,
+    Nr43,
+    Nr44,
+    Nr50,
+    Nr51,
+    Nr52,
+    WaveRam,
+    Lcdc,
+    Stat,
+    Scy,
+    Scx,
+    Ly,
+    Lyc,
+    Bgp,
+    Obp0,
+    Obp1,
+    Wy,
+    Wx,
     OamDma,
     BootRomDisable,
-    CgbSystem,
+    Key0,
+    Key1,
+    Vbk,
+    Hdma1,
+    Hdma2,
+    Hdma3,
+    Hdma4,
+    Hdma5,
+    Rp,
+    Bcps,
+    Bcpd,
+    Ocps,
+    Ocpd,
+    Opri,
+    Svbk,
+    CgbUndocumented72,
+    CgbUndocumented73,
+    CgbUndocumented74,
+    CgbUndocumented75,
+    Pcm12,
+    Pcm34,
+    CgbUndocumented,
     Reserved,
     InterruptEnable,
 }
@@ -156,6 +277,7 @@ pub struct IoRegisterInfo {
     address: u16,
     owner: IoRegisterOwner,
     availability: IoRegisterAvailability,
+    implementation: IoRegisterImplementation,
     access: IoRegisterAccess,
     kind: IoRegisterKind,
 }
@@ -168,10 +290,29 @@ impl IoRegisterInfo {
         access: IoRegisterAccess,
         kind: IoRegisterKind,
     ) -> Self {
+        Self::new_with_implementation(
+            address,
+            owner,
+            availability,
+            IoRegisterImplementation::Implemented,
+            access,
+            kind,
+        )
+    }
+
+    pub const fn new_with_implementation(
+        address: u16,
+        owner: IoRegisterOwner,
+        availability: IoRegisterAvailability,
+        implementation: IoRegisterImplementation,
+        access: IoRegisterAccess,
+        kind: IoRegisterKind,
+    ) -> Self {
         Self {
             address,
             owner,
             availability,
+            implementation,
             access,
             kind,
         }
@@ -187,6 +328,10 @@ impl IoRegisterInfo {
 
     pub const fn availability(self) -> IoRegisterAvailability {
         self.availability
+    }
+
+    pub const fn implementation(self) -> IoRegisterImplementation {
+        self.implementation
     }
 
     pub const fn access(self) -> IoRegisterAccess {

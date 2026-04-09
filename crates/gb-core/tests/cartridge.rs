@@ -1,10 +1,12 @@
 use gb_core::{
     BootRomBusState, Bus, BusAccessKind, BusArbitrationState, BusRequester,
-    CartridgeClassification, CartridgeHeader, CartridgePersistenceProfile,
-    CartridgePersistentStateError, CartridgeRamPayloadKind, CartridgeSelection, CartridgeSlot,
+    CartridgeClassification, CartridgeExternalAccessInfo, CartridgeExternalAvailability,
+    CartridgeExternalReadBehavior, CartridgeExternalTarget, CartridgeExternalWriteBehavior,
+    CartridgeHeader, CartridgePersistenceProfile, CartridgePersistentStateError,
+    CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
     CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy, HeuristicPolicy,
     Machine, MachineConfig, Mbc3RtcPersistentState, OverridePolicy, PersistentCartState,
-    SupportedCartridgeFamily, UnsupportedCartridgeCategory, ValidationPolicy,
+    StartupMode, SupportedCartridgeFamily, TCycle, UnsupportedCartridgeCategory, ValidationPolicy,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -211,19 +213,34 @@ fn no_mbc_rom_reads_and_external_ram_writes_route_through_the_cartridge_device()
     let state = BusArbitrationState::default();
 
     assert_eq!(
-        bus.read_with_cartridge(0x0000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x0000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x12
     );
     assert_eq!(
-        bus.read_with_cartridge(0x0100, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x0100,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x31
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x56
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x9A,
         BusRequester::Cpu,
@@ -231,18 +248,18 @@ fn no_mbc_rom_reads_and_external_ram_writes_route_through_the_cartridge_device()
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x9A
     );
 
     let boot_overlay_state =
         BusArbitrationState::default().with_boot_rom(BootRomBusState::map_dmg_low_bytes());
-    let resolution = bus.resolve_access(
-        BusRequester::Cpu,
-        BusAccessKind::Read,
-        0x0000,
-        &boot_overlay_state,
-    );
+    let resolution = bus.resolve_access(BusAccessKind::Read, 0x0000, &boot_overlay_state, None);
     assert_eq!(resolution.target().region(), gb_core::BusRegion::BootRom);
 }
 
@@ -258,6 +275,125 @@ fn machine_load_cartridge_installs_the_loaded_slot() {
     assert!(diagnostics.is_empty());
     assert_eq!(machine.cartridge().state(), CartridgeSlotState::NoMbc);
     assert_eq!(machine.cartridge().read_rom(0x0100), 0x31);
+}
+
+#[test]
+fn resolve_access_surfaces_disabled_mbc1_external_ram_state() {
+    let rom = build_banked_mbc1_rom(0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1 should load");
+    let (cartridge, _) = report.into_parts();
+    let bus = Bus::new(ConsoleModel::Dmg);
+
+    let resolution = bus.resolve_access(
+        BusAccessKind::Read,
+        0xA000,
+        &BusArbitrationState::default(),
+        Some(&cartridge),
+    );
+    let external = resolution
+        .cartridge_external()
+        .expect("cartridge external aperture should be described");
+
+    assert_eq!(
+        resolution.target().region(),
+        gb_core::BusRegion::CartridgeExternal
+    );
+    assert_eq!(resolution.nominal_cartridge_external(), Some(external));
+    assert_eq!(
+        external,
+        CartridgeExternalAccessInfo::new(
+            0xA000,
+            CartridgeExternalTarget::BankedRam { bank: 0 },
+            CartridgeExternalAvailability::Disabled,
+            CartridgeExternalReadBehavior::FallbackValue(0xFF),
+            CartridgeExternalWriteBehavior::Ignored,
+        )
+    );
+}
+
+#[test]
+fn resolve_access_surfaces_mbc3_rtc_selection_in_the_external_window() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let (mut cartridge, _) = report.into_parts();
+    let bus = Bus::new(ConsoleModel::Dmg);
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+
+    let resolution = bus.resolve_access(
+        BusAccessKind::Read,
+        0xA000,
+        &BusArbitrationState::default(),
+        Some(&cartridge),
+    );
+    let external = resolution
+        .cartridge_external()
+        .expect("cartridge external aperture should be described");
+
+    assert_eq!(
+        external,
+        CartridgeExternalAccessInfo::new(
+            0xA000,
+            CartridgeExternalTarget::RtcRegister(CartridgeRtcRegister::Seconds),
+            CartridgeExternalAvailability::Accessible,
+            CartridgeExternalReadBehavior::RtcLatched,
+            CartridgeExternalWriteBehavior::RtcLive,
+        )
+    );
+}
+
+#[test]
+fn public_mbc3_rtc_access_spacing_state_surfaces_through_descriptor_and_snapshot() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("MBC3 cartridge should load into the machine");
+
+    machine.write_bus(0x0000, 0x0A);
+    machine.write_bus(0x4000, 0x08);
+    assert_eq!(
+        machine
+            .cartridge()
+            .describe_external_access(0xA000)
+            .rtc_access_ready_at(),
+        None
+    );
+
+    let access_t_cycle = machine.next_t_cycle();
+    machine.write_bus(0xA000, 0x12);
+    let expected_ready_at = Some(TCycle::new(access_t_cycle.get() + 16));
+
+    let external = machine.cartridge().describe_external_access(0xA000);
+    assert_eq!(
+        external.target(),
+        CartridgeExternalTarget::RtcRegister(CartridgeRtcRegister::Seconds)
+    );
+    assert_eq!(external.rtc_access_ready_at(), expected_ready_at);
+
+    let snapshot = machine.cartridge().snapshot();
+    assert_eq!(snapshot.state, CartridgeSlotState::Mbc3);
+    assert_eq!(snapshot.rtc_access_ready_at, expected_ready_at);
+
+    let bus = Bus::new(ConsoleModel::Dmg);
+    let resolution = bus.resolve_access(
+        BusAccessKind::Read,
+        0xA000,
+        &BusArbitrationState::default(),
+        Some(machine.cartridge()),
+    );
+    assert_eq!(
+        resolution
+            .cartridge_external()
+            .expect("cartridge external aperture should be described")
+            .rtc_access_ready_at(),
+        expected_ready_at
+    );
 }
 
 #[test]
@@ -290,11 +426,16 @@ fn mbc1_rom_bank_writes_take_effect_immediately_for_later_bus_reads() {
     let state = BusArbitrationState::default();
 
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x01
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2000,
         0x02,
         BusRequester::Cpu,
@@ -302,11 +443,16 @@ fn mbc1_rom_bank_writes_take_effect_immediately_for_later_bus_reads() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x02
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2000,
         0x00,
         BusRequester::Cpu,
@@ -314,7 +460,12 @@ fn mbc1_rom_bank_writes_take_effect_immediately_for_later_bus_reads() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x01
     );
 }
@@ -328,7 +479,7 @@ fn mbc1_standard_high_window_supports_bank_0x1f_through_the_bus() {
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default();
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2000,
         0x1F,
         BusRequester::Cpu,
@@ -337,7 +488,12 @@ fn mbc1_standard_high_window_supports_bank_0x1f_through_the_bus() {
     );
 
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x1F
     );
 }
@@ -352,11 +508,16 @@ fn mbc1_small_rom_masking_can_surface_bank_zero_in_the_high_window_through_the_b
     let state = BusArbitrationState::default();
 
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x01
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2000,
         0x04,
         BusRequester::Cpu,
@@ -365,7 +526,12 @@ fn mbc1_small_rom_masking_can_surface_bank_zero_in_the_high_window_through_the_b
     );
 
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x00
     );
 }
@@ -379,7 +545,7 @@ fn mbc1_large_rom_high_window_exposes_0x21_0x41_and_0x61_not_0x20_0x40_or_0x60()
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default();
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2000,
         0x00,
         BusRequester::Cpu,
@@ -387,7 +553,7 @@ fn mbc1_large_rom_high_window_exposes_0x21_0x41_and_0x61_not_0x20_0x40_or_0x60()
         Some(&mut cartridge),
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x01,
         BusRequester::Cpu,
@@ -395,11 +561,16 @@ fn mbc1_large_rom_high_window_exposes_0x21_0x41_and_0x61_not_0x20_0x40_or_0x60()
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x21
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x02,
         BusRequester::Cpu,
@@ -407,11 +578,16 @@ fn mbc1_large_rom_high_window_exposes_0x21_0x41_and_0x61_not_0x20_0x40_or_0x60()
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x41
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x03,
         BusRequester::Cpu,
@@ -419,7 +595,12 @@ fn mbc1_large_rom_high_window_exposes_0x21_0x41_and_0x61_not_0x20_0x40_or_0x60()
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x61
     );
 }
@@ -433,14 +614,14 @@ fn mbc1_large_rom_mode_one_remaps_the_low_window_through_the_bus() {
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default();
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2000,
         0x01,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x02,
         BusRequester::Cpu,
@@ -449,15 +630,25 @@ fn mbc1_large_rom_mode_one_remaps_the_low_window_through_the_bus() {
     );
 
     assert_eq!(
-        bus.read_with_cartridge(0x0000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x0000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x00
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x41
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x6000,
         0x01,
         BusRequester::Cpu,
@@ -466,11 +657,21 @@ fn mbc1_large_rom_mode_one_remaps_the_low_window_through_the_bus() {
     );
 
     assert_eq!(
-        bus.read_with_cartridge(0x0000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x0000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x40
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x41
     );
 }
@@ -484,7 +685,7 @@ fn mbc1_ram_enable_controls_external_ram_visibility_through_the_bus() {
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default();
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x9A,
         BusRequester::Cpu,
@@ -492,18 +693,23 @@ fn mbc1_ram_enable_controls_external_ram_visibility_through_the_bus() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFF
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x0A,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x9A,
         BusRequester::Cpu,
@@ -511,7 +717,12 @@ fn mbc1_ram_enable_controls_external_ram_visibility_through_the_bus() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x9A
     );
 }
@@ -525,21 +736,21 @@ fn mbc1_standard_ram_mode_zero_and_mode_one_select_the_expected_ram_banks() {
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default();
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x0A,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x02,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x11,
         BusRequester::Cpu,
@@ -547,14 +758,14 @@ fn mbc1_standard_ram_mode_zero_and_mode_one_select_the_expected_ram_banks() {
         Some(&mut cartridge),
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x6000,
         0x01,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x22,
         BusRequester::Cpu,
@@ -562,7 +773,7 @@ fn mbc1_standard_ram_mode_zero_and_mode_one_select_the_expected_ram_banks() {
         Some(&mut cartridge),
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x6000,
         0x00,
         BusRequester::Cpu,
@@ -570,11 +781,16 @@ fn mbc1_standard_ram_mode_zero_and_mode_one_select_the_expected_ram_banks() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x11
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x6000,
         0x01,
         BusRequester::Cpu,
@@ -582,7 +798,12 @@ fn mbc1_standard_ram_mode_zero_and_mode_one_select_the_expected_ram_banks() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x22
     );
 }
@@ -596,28 +817,28 @@ fn mbc1_large_rom_keeps_a_fixed_8kib_ram_window_through_the_bus() {
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default();
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x0A,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x33,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x01,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x6000,
         0x01,
         BusRequester::Cpu,
@@ -626,7 +847,12 @@ fn mbc1_large_rom_keeps_a_fixed_8kib_ram_window_through_the_bus() {
     );
 
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x33
     );
 }
@@ -652,18 +878,23 @@ fn mbc2_address_bit_8_decode_and_bank_zero_translation_are_visible_through_the_b
     let state = BusArbitrationState::default();
 
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x01
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x0A,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x00,
         BusRequester::Cpu,
@@ -671,11 +902,16 @@ fn mbc2_address_bit_8_decode_and_bank_zero_translation_are_visible_through_the_b
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFF
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0100,
         0x00,
         BusRequester::Cpu,
@@ -683,11 +919,16 @@ fn mbc2_address_bit_8_decode_and_bank_zero_translation_are_visible_through_the_b
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x01
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2100,
         0x03,
         BusRequester::Cpu,
@@ -695,7 +936,12 @@ fn mbc2_address_bit_8_decode_and_bank_zero_translation_are_visible_through_the_b
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x03
     );
 }
@@ -709,14 +955,14 @@ fn mbc2_internal_nibble_ram_aliases_and_honors_the_repo_readback_policy() {
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default();
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x0A,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0xAB,
         BusRequester::Cpu,
@@ -725,22 +971,32 @@ fn mbc2_internal_nibble_ram_aliases_and_honors_the_repo_readback_policy() {
     );
 
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFB
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA200, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA200,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFB
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x00,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x0C,
         BusRequester::Cpu,
@@ -748,11 +1004,16 @@ fn mbc2_internal_nibble_ram_aliases_and_honors_the_repo_readback_policy() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFF
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x0A,
         BusRequester::Cpu,
@@ -760,7 +1021,12 @@ fn mbc2_internal_nibble_ram_aliases_and_honors_the_repo_readback_policy() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFB
     );
 }
@@ -821,7 +1087,7 @@ fn mbc3_high_window_can_reach_banks_0x20_0x40_and_0x60_through_the_bus() {
     let state = BusArbitrationState::default();
 
     for bank in [0x20, 0x40, 0x60] {
-        bus.write_with_cartridge(
+        bus.write_partial_harness_with_cartridge(
             0x2000,
             bank,
             BusRequester::Cpu,
@@ -829,7 +1095,12 @@ fn mbc3_high_window_can_reach_banks_0x20_0x40_and_0x60_through_the_bus() {
             Some(&mut cartridge),
         );
         assert_eq!(
-            bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+            bus.read_partial_harness_with_cartridge(
+                0x4000,
+                BusRequester::Cpu,
+                &state,
+                Some(&cartridge)
+            ),
             bank
         );
     }
@@ -1090,22 +1361,32 @@ fn mbc5_power_up_bank_one_and_the_0xff_to_0x100_boundary_are_visible_through_the
     let state = BusArbitrationState::default();
 
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x01
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4001, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4001,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x00
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2000,
         0xFF,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x3000,
         0x00,
         BusRequester::Cpu,
@@ -1113,22 +1394,32 @@ fn mbc5_power_up_bank_one_and_the_0xff_to_0x100_boundary_are_visible_through_the
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFF
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4001, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4001,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x00
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2000,
         0x00,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x3000,
         0x01,
         BusRequester::Cpu,
@@ -1136,15 +1427,25 @@ fn mbc5_power_up_bank_one_and_the_0xff_to_0x100_boundary_are_visible_through_the
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x00
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4001, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4001,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x01
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x2000,
         0xFF,
         BusRequester::Cpu,
@@ -1152,11 +1453,21 @@ fn mbc5_power_up_bank_one_and_the_0xff_to_0x100_boundary_are_visible_through_the
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFF
     );
     assert_eq!(
-        bus.read_with_cartridge(0x4001, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0x4001,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x01
     );
 }
@@ -1171,11 +1482,16 @@ fn mbc5_linear_ram_banking_supports_128kib_sram_through_the_bus() {
     let state = BusArbitrationState::default();
 
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFF
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x22,
         BusRequester::Cpu,
@@ -1183,25 +1499,30 @@ fn mbc5_linear_ram_banking_supports_128kib_sram_through_the_bus() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xFF
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x0A,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x00,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x11,
         BusRequester::Cpu,
@@ -1209,14 +1530,14 @@ fn mbc5_linear_ram_banking_supports_128kib_sram_through_the_bus() {
         Some(&mut cartridge),
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x0F,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0xEE,
         BusRequester::Cpu,
@@ -1224,7 +1545,7 @@ fn mbc5_linear_ram_banking_supports_128kib_sram_through_the_bus() {
         Some(&mut cartridge),
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x00,
         BusRequester::Cpu,
@@ -1232,11 +1553,16 @@ fn mbc5_linear_ram_banking_supports_128kib_sram_through_the_bus() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x11
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x0F,
         BusRequester::Cpu,
@@ -1244,7 +1570,12 @@ fn mbc5_linear_ram_banking_supports_128kib_sram_through_the_bus() {
         Some(&mut cartridge),
     );
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0xEE
     );
 }
@@ -1281,7 +1612,7 @@ fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_throug
     let mut bus = Bus::new(ConsoleModel::Dmg);
     let state = BusArbitrationState::default();
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x0000,
         0x0A,
         BusRequester::Cpu,
@@ -1289,14 +1620,14 @@ fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_throug
         Some(&mut cartridge),
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x00,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x10,
         BusRequester::Cpu,
@@ -1304,14 +1635,14 @@ fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_throug
         Some(&mut cartridge),
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x07,
         BusRequester::Cpu,
         &state,
         Some(&mut cartridge),
     );
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0xA000,
         0x70,
         BusRequester::Cpu,
@@ -1319,7 +1650,7 @@ fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_throug
         Some(&mut cartridge),
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x00,
         BusRequester::Cpu,
@@ -1328,11 +1659,16 @@ fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_throug
     );
     assert!(!cartridge.rumble_on());
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x10
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x07,
         BusRequester::Cpu,
@@ -1341,11 +1677,16 @@ fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_throug
     );
     assert!(!cartridge.rumble_on());
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x70
     );
 
-    bus.write_with_cartridge(
+    bus.write_partial_harness_with_cartridge(
         0x4000,
         0x0F,
         BusRequester::Cpu,
@@ -1354,7 +1695,12 @@ fn rumble_capable_mbc5_supports_64kib_sram_while_preserving_motor_control_throug
     );
     assert!(cartridge.rumble_on());
     assert_eq!(
-        bus.read_with_cartridge(0xA000, BusRequester::Cpu, &state, Some(&cartridge)),
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
         0x70
     );
 }

@@ -1,7 +1,7 @@
 use gb_core::{
-    BootStatus, Bus, ConsoleModel, DmaTransferState, IoRegisterAvailability, IoRegisterKind,
-    IoRegisterOwner, JoypadButton, Machine, MachineConfig, SerialClockMode, SerialTransferState,
-    StartupMode,
+    BootStatus, Bus, ConsoleModel, DmaTransferState, IoRegisterAvailability,
+    IoRegisterImplementation, IoRegisterKind, IoRegisterOwner, JoypadButton, Machine,
+    MachineConfig, SerialClockMode, SerialTransferState, StartupMode,
 };
 
 #[test]
@@ -26,12 +26,96 @@ fn public_io_descriptor_table_covers_all_mmio_addresses_and_ie_without_gaps() {
         IoRegisterKind::OamDma
     );
     assert_eq!(
+        bus.describe_io_register(0xFF44).unwrap().kind(),
+        IoRegisterKind::Ly
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF44).unwrap().access(),
+        gb_core::IoRegisterAccess::ReadOnly
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF13).unwrap().kind(),
+        IoRegisterKind::Nr13
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF30).unwrap().kind(),
+        IoRegisterKind::WaveRam
+    );
+    assert_eq!(
         bus.describe_io_register(0xFF50).unwrap().kind(),
         IoRegisterKind::BootRomDisable
     );
     assert_eq!(
+        bus.describe_io_register(0xFF4C).unwrap().kind(),
+        IoRegisterKind::Key0
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF4C).unwrap().availability(),
+        IoRegisterAvailability::CgbOnly
+    );
+    assert_eq!(
         bus.describe_io_register(0xFF70).unwrap().availability(),
         IoRegisterAvailability::CgbOnly
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF47).unwrap().availability(),
+        IoRegisterAvailability::DmgCompatible
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF4C).unwrap().implementation(),
+        IoRegisterImplementation::Stubbed
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF51).unwrap().owner(),
+        IoRegisterOwner::Dma
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF68).unwrap().owner(),
+        IoRegisterOwner::Ppu
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF70).unwrap().owner(),
+        IoRegisterOwner::MemoryController
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF72).unwrap().kind(),
+        IoRegisterKind::CgbUndocumented72
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF72).unwrap().access(),
+        gb_core::IoRegisterAccess::ReadWrite
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF74).unwrap().kind(),
+        IoRegisterKind::CgbUndocumented74
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF74).unwrap().availability(),
+        IoRegisterAvailability::CgbOnly
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF75).unwrap().kind(),
+        IoRegisterKind::CgbUndocumented75
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF75).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF03).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF15).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF27).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
+    );
+    assert_eq!(
+        bus.describe_io_register(0xFF4E).unwrap().access(),
+        gb_core::IoRegisterAccess::Mixed
     );
 }
 
@@ -95,6 +179,7 @@ fn joyp_readback_comes_from_hardware_button_state_plus_selected_rows() {
 
     machine.set_joypad_button_pressed(JoypadButton::A, true);
     machine.set_joypad_button_pressed(JoypadButton::Right, true);
+    machine.step_t_cycle();
 
     machine.write_bus(0xFF00, 0x30);
     assert_eq!(machine.read_bus(0xFF00), 0xFF);
@@ -278,7 +363,7 @@ fn dmg_family_reads_ff_and_ignores_writes_for_unavailable_cgb_registers() {
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
 
-    for address in [0xFF4D, 0xFF4F, 0xFF70, 0xFF76] {
+    for address in [0xFF4C, 0xFF4D, 0xFF4F, 0xFF70, 0xFF76] {
         machine.write_bus(address, 0xA5);
         assert_eq!(machine.read_bus(address), 0xFF);
     }

@@ -1,8 +1,13 @@
 use gb_core::{
-    ConsoleModel, DmaAdvanceCondition, DmaBusState, DmaCpuAccessPolicy, DmaCpuImpactPolicy,
-    DmaMemoryRegionImpact, DmaTransferFamily, DmaTransferKind, DmaTransferLifecycle,
-    DmaTransferState, Machine, MachineConfig, StartupMode,
+    Bus, BusArbitrationState, BusRequester, ConsoleModel, DmaAdvanceCondition, DmaBusState,
+    DmaCpuAccessPolicy, DmaCpuImpactPolicy, DmaMemoryRegionImpact, DmaTransferFamily,
+    DmaTransferKind, DmaTransferLifecycle, DmaTransferState, Machine, MachineConfig, StartupMode,
 };
+
+fn read_cartridgeless_bus_harness(bus: &mut Bus, address: u16) -> u8 {
+    let state = BusArbitrationState::default();
+    bus.read_partial_harness_with_cartridge(address, BusRequester::Cpu, &state, None)
+}
 
 #[test]
 fn ff46_write_builds_a_starting_oam_transfer_with_normalized_dmg_metadata() {
@@ -166,7 +171,7 @@ fn dma_trace_shows_start_and_completion_points_with_progress_metadata() {
 }
 
 #[test]
-fn external_bus_dma_restricts_machine_bus_access_to_hram_and_vram_only_from_live_state() {
+fn external_bus_dma_restricts_machine_bus_access_to_hram_and_ff46_only_from_live_state() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
@@ -193,15 +198,18 @@ fn external_bus_dma_restricts_machine_bus_access_to_hram_and_vram_only_from_live
         DmaBusState::external_bus_blocked(Some(DmaMemoryRegionImpact::Oam))
     );
     assert_eq!(machine.read_bus(0xC000), 0xFF);
-    assert_eq!(machine.read_bus(0x8000), 0x78);
+    assert_eq!(machine.read_bus(0x8000), 0xFF);
     assert_eq!(machine.read_bus(0xFF46), 0x12);
+
+    machine.write_bus(0xFF46, 0x34);
+    assert_eq!(machine.dma().source_page_latch(), 0x34);
 
     machine.write_bus(0xC000, 0x99);
     machine.write_bus(0x8000, 0xBC);
     machine.write_bus(0xFF80, 0x56);
 
     assert_eq!(machine.read_bus(0xC000), 0xFF);
-    assert_eq!(machine.read_bus(0x8000), 0xBC);
+    assert_eq!(machine.read_bus(0x8000), 0xFF);
     assert_eq!(machine.read_bus(0xFF80), 0x56);
 
     for _ in 0..649 {
@@ -310,7 +318,7 @@ fn dma_and_bus_traces_show_the_same_cycle_arbitration_constraints() {
         "subsystem=dma level=trace message=\"t_cycle=0 phase=autonomous_peripheral_ticks console_model=Dmg status=Ready transfer_state=Starting transfer_kind=Oam transfer_family=FullBurst block_size=1 advance_condition=EveryTCycle first_byte_delay_t_cycles=8 first_byte_delay_remaining_t_cycles=7 cpu_bus_restriction_delay_t_cycles=5 cpu_bus_restriction_delay_remaining_t_cycles=4 cpu_bus_restriction_active=false elapsed_t_cycles=1 completed_bytes=0 remaining_bytes=160 completed_blocks=0 remaining_blocks=160"
     ));
     assert!(trace.contains(
-        "subsystem=bus level=trace message=\"t_cycle=0 phase=bus_arbitration console_model=Dmg status=Ready ppu_lcd_enabled=true ppu_mode=OamScan dma_cpu_access_policy=Unrestricted dma_active_region=None\""
+        "subsystem=bus level=trace message=\"t_cycle=0 phase=bus_arbitration console_model=Dmg status=Ready boot_low_window_mapped=false boot_cgb_upper_window_mapped=false ppu_lcd_enabled=true ppu_mode=OamScan dma_cpu_access_policy=Unrestricted dma_active_region=None dma_cpu_conflict_source_address=None\""
     ));
 }
 
@@ -340,11 +348,11 @@ fn oam_dma_copies_the_latched_source_page_contents_into_oam_after_completion() {
 
     for byte_index in 0..160u16 {
         assert_eq!(
-            bus.read(0xFE00 + byte_index),
+            read_cartridgeless_bus_harness(&mut bus, 0xFE00 + byte_index),
             dma_source_byte(0x5C, byte_index)
         );
         assert_ne!(
-            bus.read(0xFE00 + byte_index),
+            read_cartridgeless_bus_harness(&mut bus, 0xFE00 + byte_index),
             dma_source_byte(0x19, byte_index)
         );
     }
@@ -447,8 +455,14 @@ fn oam_dma_progress_and_partial_oam_contents_remain_observable_before_completion
     assert_eq!(machine.dma().bus_state(), DmaBusState::unrestricted());
 
     let mut warm_up_bus = machine.bus().clone();
-    assert_eq!(warm_up_bus.read(0xFE00), 0xE0);
-    assert_eq!(warm_up_bus.read(0xFE01), 0xE1);
+    assert_eq!(
+        read_cartridgeless_bus_harness(&mut warm_up_bus, 0xFE00),
+        0xE0
+    );
+    assert_eq!(
+        read_cartridgeless_bus_harness(&mut warm_up_bus, 0xFE01),
+        0xE1
+    );
 
     machine.step_t_cycle();
 
@@ -467,8 +481,14 @@ fn oam_dma_progress_and_partial_oam_contents_remain_observable_before_completion
     );
 
     let mut active_bus = machine.bus().clone();
-    assert_eq!(active_bus.read(0xFE00), 0xE0);
-    assert_eq!(active_bus.read(0xFE01), 0xE1);
+    assert_eq!(
+        read_cartridgeless_bus_harness(&mut active_bus, 0xFE00),
+        0xE0
+    );
+    assert_eq!(
+        read_cartridgeless_bus_harness(&mut active_bus, 0xFE01),
+        0xE1
+    );
 
     for _ in 0..3 {
         machine.step_t_cycle();
@@ -485,9 +505,12 @@ fn oam_dma_progress_and_partial_oam_contents_remain_observable_before_completion
     assert_eq!(first_byte_progress.remaining_bytes(), 159);
 
     let mut bus = machine.bus().clone();
-    assert_eq!(bus.read(0xFE00), dma_source_byte(0x33, 0));
-    assert_eq!(bus.read(0xFE01), 0xE1);
-    assert_eq!(bus.read(0xFE02), 0xE2);
+    assert_eq!(
+        read_cartridgeless_bus_harness(&mut bus, 0xFE00),
+        dma_source_byte(0x33, 0)
+    );
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xFE01), 0xE1);
+    assert_eq!(read_cartridgeless_bus_harness(&mut bus, 0xFE02), 0xE2);
 }
 
 #[test]
@@ -514,7 +537,10 @@ fn oam_dma_completion_happens_after_the_last_active_transfer_t_cycle() {
     assert_eq!(final_active_progress.byte_phase_t_cycles(), 3);
 
     let mut active_bus = machine.bus().clone();
-    assert_eq!(active_bus.read(0xFE9F), dma_source_byte(0x47, 159));
+    assert_eq!(
+        read_cartridgeless_bus_harness(&mut active_bus, 0xFE9F),
+        dma_source_byte(0x47, 159)
+    );
 
     machine.step_t_cycle();
 
@@ -528,7 +554,10 @@ fn oam_dma_completion_happens_after_the_last_active_transfer_t_cycle() {
     assert_eq!(machine.dma().bus_state(), DmaBusState::unrestricted());
 
     let mut completed_bus = machine.bus().clone();
-    assert_eq!(completed_bus.read(0xFE9F), dma_source_byte(0x47, 159));
+    assert_eq!(
+        read_cartridgeless_bus_harness(&mut completed_bus, 0xFE9F),
+        dma_source_byte(0x47, 159)
+    );
 }
 
 fn seed_dma_source_page(machine: &mut Machine, source_page: u8, seed: u8) {

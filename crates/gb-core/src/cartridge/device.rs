@@ -2,6 +2,19 @@ use super::*;
 use crate::scheduler::TCycle;
 
 impl CartridgeDevice {
+    pub(in crate::cartridge) fn describe_external_access(
+        &self,
+        address: u16,
+    ) -> CartridgeExternalAccessInfo {
+        match self {
+            Self::NoMbc(cartridge) => cartridge.describe_external_access(address),
+            Self::Mbc1(cartridge) => cartridge.describe_external_access(address),
+            Self::Mbc2(cartridge) => cartridge.describe_external_access(address),
+            Self::Mbc3(cartridge) => cartridge.describe_external_access(address),
+            Self::Mbc5(cartridge) => cartridge.describe_external_access(address),
+        }
+    }
+
     pub(in crate::cartridge) fn header(&self) -> &CartridgeHeader {
         match self {
             Self::NoMbc(cartridge) => &cartridge.header,
@@ -115,6 +128,13 @@ impl CartridgeDevice {
             Self::Mbc2(cartridge) => cartridge.persistence_metadata(),
             Self::Mbc3(cartridge) => cartridge.persistence_metadata(),
             Self::Mbc5(cartridge) => cartridge.persistence_metadata(),
+        }
+    }
+
+    pub(in crate::cartridge) fn rtc_access_ready_at(&self) -> Option<TCycle> {
+        match self {
+            Self::Mbc3(cartridge) => cartridge.rtc_access_ready_at,
+            Self::NoMbc(_) | Self::Mbc1(_) | Self::Mbc2(_) | Self::Mbc5(_) => None,
         }
     }
 

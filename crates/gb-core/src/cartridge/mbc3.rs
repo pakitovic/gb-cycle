@@ -1,6 +1,79 @@
 use super::*;
 
 impl Mbc3Cartridge {
+    pub(in crate::cartridge) fn describe_external_access(
+        &self,
+        address: u16,
+    ) -> CartridgeExternalAccessInfo {
+        match self.ram_or_rtc_select {
+            Mbc3RamRtcSelect::RamBank(raw_bank) => {
+                let has_ram = self.ram.is_some();
+                let available = self.ram_rtc_enabled && has_ram;
+
+                CartridgeExternalAccessInfo::new(
+                    address,
+                    CartridgeExternalTarget::BankedRam {
+                        bank: self.effective_ram_bank(raw_bank),
+                    },
+                    if available {
+                        CartridgeExternalAvailability::Accessible
+                    } else if self.ram_rtc_enabled {
+                        CartridgeExternalAvailability::Absent
+                    } else {
+                        CartridgeExternalAvailability::Disabled
+                    },
+                    if available {
+                        CartridgeExternalReadBehavior::Storage
+                    } else {
+                        CartridgeExternalReadBehavior::FallbackValue(RAM_ABSENT_READ_VALUE)
+                    },
+                    if available {
+                        CartridgeExternalWriteBehavior::Storage
+                    } else {
+                        CartridgeExternalWriteBehavior::Ignored
+                    },
+                )
+            }
+            Mbc3RamRtcSelect::ReservedSelector(raw_selector) => CartridgeExternalAccessInfo::new(
+                address,
+                CartridgeExternalTarget::ReservedSelector(raw_selector),
+                if self.ram_rtc_enabled {
+                    CartridgeExternalAvailability::Reserved
+                } else {
+                    CartridgeExternalAvailability::Disabled
+                },
+                CartridgeExternalReadBehavior::FallbackValue(RAM_ABSENT_READ_VALUE),
+                CartridgeExternalWriteBehavior::Ignored,
+            ),
+            Mbc3RamRtcSelect::RtcRegister(register) => {
+                let available = self.ram_rtc_enabled && self.has_rtc;
+
+                CartridgeExternalAccessInfo::new(
+                    address,
+                    CartridgeExternalTarget::RtcRegister(register.public_id()),
+                    if available {
+                        CartridgeExternalAvailability::Accessible
+                    } else if self.ram_rtc_enabled {
+                        CartridgeExternalAvailability::Absent
+                    } else {
+                        CartridgeExternalAvailability::Disabled
+                    },
+                    if available {
+                        CartridgeExternalReadBehavior::RtcLatched
+                    } else {
+                        CartridgeExternalReadBehavior::FallbackValue(RAM_ABSENT_READ_VALUE)
+                    },
+                    if available {
+                        CartridgeExternalWriteBehavior::RtcLive
+                    } else {
+                        CartridgeExternalWriteBehavior::Ignored
+                    },
+                )
+                .with_rtc_access_ready_at(self.rtc_access_ready_at)
+            }
+        }
+    }
+
     fn clear_runtime_rtc_snapshot_state(&mut self) {
         self.rtc_latched = Mbc3RtcState::default();
         self.rtc_latched_valid = false;
@@ -183,6 +256,11 @@ impl Mbc3Cartridge {
         (base_offset + (raw_bank as usize) * 0x2000) % ram_len
     }
 
+    pub(in crate::cartridge) fn effective_ram_bank(&self, raw_bank: u8) -> u8 {
+        let bank_count = self.header.ram_size.bank_count.unwrap_or(0).max(1);
+        (raw_bank as usize % bank_count) as u8
+    }
+
     pub(in crate::cartridge) fn latch_rtc_if_needed(&mut self, value: u8) {
         if !self.has_rtc {
             self.rtc_latch_armed = value == 0x00;
@@ -318,6 +396,18 @@ impl Mbc3Cartridge {
                 expected: "None",
                 actual: other.kind_name(),
             }),
+        }
+    }
+}
+
+impl Mbc3RtcRegister {
+    fn public_id(self) -> CartridgeRtcRegister {
+        match self {
+            Self::Seconds => CartridgeRtcRegister::Seconds,
+            Self::Minutes => CartridgeRtcRegister::Minutes,
+            Self::Hours => CartridgeRtcRegister::Hours,
+            Self::DayLow => CartridgeRtcRegister::DayLow,
+            Self::DayHigh => CartridgeRtcRegister::DayHigh,
         }
     }
 }

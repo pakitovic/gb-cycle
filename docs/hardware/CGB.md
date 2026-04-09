@@ -37,15 +37,19 @@ When CGB work starts, prioritize these functional areas before worrying about ha
 - speed switch control
 - HDMA registers
 - boot-time interpretation of cartridge CGB compatibility flags
+- `KEY0`
 - `VBK`
 - `SVBK`
 - `BCPS`, `BCPD`
 - `OCPS`, `OCPD`
 - `KEY1`
+- undocumented `FF72`, `FF73`, `FF74`, `FF75`
 
 ## DMG fallback policy for CGB-only MMIO
 
-- The shared MMIO map should record, per register, whether a CGB-only address is implemented, stubbed, or unavailable in the active model.
+- The shared MMIO map should record, per register, both nominal availability and current implementation state.
+- In the current DMG-only but CGB-ready baseline, nominal availability should at least distinguish shared, DMG-compatible, and CGB-only registers.
+- In that same baseline, current implementation state should distinguish implemented, stubbed, and unavailable registers without forcing the bus to fake full CGB support.
 - In DMG mode, CGB-only registers that are not functionally implemented should return the documented non-CGB fallback value, typically `0xFF`, rather than behaving as RAM.
 - Writes to those registers in DMG mode should follow an explicit ignored-or-DMG-semantics policy and must not mutate nonexistent state accidentally.
 - Bringing CGB support online later should extend the same routed MMIO contract rather than replacing a temporary DMG-only shortcut.
@@ -105,6 +109,10 @@ Priority order:
 - The DMG-family OAM corruption bug should stay behind an explicit model gate so future CGB, AGB, AGS, and GBP support can keep the documented non-bugged behavior.
 - In DMG mode before functional CGB support exists, CGB-only MMIO reads should already return the correct non-CGB fallback value of `0xFF` instead of emulator-invented placeholders.
 - In DMG mode before functional CGB support exists, CGB-only MMIO writes should already be handled explicitly rather than falling through to fake storage.
+- Even before functional CGB work starts, routed MMIO metadata should already classify `KEY0` / `FF4C` as an explicit CGB-only register rather than as a reserved shared-model hole.
+- Even before functional CGB work starts, the routed MMIO metadata should keep nominal future ownership for stubbed CGB registers, such as PPU-owned palettes, DMA-owned `HDMA*`, and system-owned `KEY0` / `KEY1`, rather than collapsing all of them into one generic "CGB-only owner".
+- Even before functional CGB work starts, the routed MMIO metadata should keep `FF72`, `FF73`, `FF74`, and `FF75` as distinct per-address register identities. In the current descriptor baseline, `FF72-FF74` should publish nominal `ReadWrite` access, while `FF75` should remain `Mixed` because only bits `4-6` are writable in CGB mode.
+- Until the machine has an explicit CGB operating-mode state, descriptors such as `BGP` / `OBP*` may publish nominal `DMG-compatible` availability without trying to decide at runtime whether the active CGB mode is full-color or DMG-compatibility mode.
 - Future CGB boot flow should be able to branch into full CGB mode or DMG-compatibility mode based on cartridge header information, without requiring a separate emulator core.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
@@ -116,6 +124,7 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 - real CGB palettes
 - VRAM bank 1 behavior
 - WRAM banks 2-7
+- `KEY0` boot-time semantics and lock behavior
 - `KEY1` and double speed behavior
 - APU `DIV-APU` / frame-sequencer behavior under CGB double speed
 - timer behavior under CGB double-speed timing
