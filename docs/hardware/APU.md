@@ -181,7 +181,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Writes to `NR50` should affect output immediately on the shared T-cycle timeline.
 - `NR50` changes should remain part of the same DC-offset / pop-sensitive hardware path as routing and DAC-enable changes rather than being deferred to host-buffer boundaries.
 - Keep an explicit routed slot for `VIN` in the master mixer path even if the current DMG target leaves it neutral at analog `0`.
-- That explicit `VIN` lane should still feed the pre-output mixer/master-volume stages, but it should not bypass the documented all-DACs-off disconnect of the final output path.
+- That explicit `VIN` lane should still feed the pre-master mixer stage, but it should not bypass the documented all-DACs-off disconnect of the master-volume and later output stages.
 
 ## HPF, DC-offset, and pops baseline
 
@@ -190,7 +190,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The HPF must keep persistent state across captured samples; it is not a memoryless per-sample transform.
 - Leaving the HPF out may exist as a temporary debug mode, but not as the target DMG-family behavior.
 - HPF charge behavior should remain model-driven rather than hard-wired to one global constant: `DMG0/DMG` use the documented `0.999958` factor, while `MGB/CGB` use the more aggressive `0.998943` factor, both applied on the shared `4_194_304 Hz` T-cycle timeline.
-- When all four channel DACs are off, the master-volume path should disconnect from the output: the post-HPF output becomes `0`, and the HPF capacitor stops evolving until some channel DAC is enabled again. Routed `VIN` should not override that global disconnect.
+- When all four channel DACs are off, the master-volume path should disconnect from the output: `master_output` and post-HPF output both become `0`, and the HPF capacitor stops evolving until some channel DAC is enabled again. Routed `VIN` should not override that global disconnect.
 - Documented pops caused by DAC enable changes, `NR51` routing changes, or `NR50` volume changes should emerge from the modeled DC-offset step plus HPF response rather than from ad hoc smoothing or suppression in the host backend.
 - A debug tool may visualize DC offset or pop-inducing events, but the default emulation path should not erase those hardware-visible artifacts.
 

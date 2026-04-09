@@ -2220,6 +2220,10 @@ impl Apu {
     }
 
     fn master_output(&self, mixer_output: ApuStereoOutputSnapshot) -> ApuStereoOutputSnapshot {
+        if !self.any_dac_enabled() {
+            return ApuStereoOutputSnapshot::default();
+        }
+
         ApuStereoOutputSnapshot::new(
             mixer_output.left * nr50_left_volume_factor(self.master.nr50),
             mixer_output.right * nr50_right_volume_factor(self.master.nr50),

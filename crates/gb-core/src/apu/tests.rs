@@ -141,8 +141,10 @@ fn routed_nonzero_vin_does_not_keep_the_output_path_connected_without_channel_da
         routed.vin_analog_output,
         ApuStereoOutputSnapshot::new(ANALOG_ONE, ANALOG_ONE / 2)
     );
-    assert_eq!(routed.master_output.left, ANALOG_ONE);
-    assert_eq!(routed.master_output.right, ANALOG_ONE / 2);
+    assert_eq!(routed.mixer_output.left, ANALOG_ONE);
+    assert_eq!(routed.mixer_output.right, ANALOG_ONE / 2);
+    assert_eq!(routed.master_output.left, 0);
+    assert_eq!(routed.master_output.right, 0);
     assert_eq!(routed.hpf_output.left, 0);
     assert_eq!(routed.hpf_output.right, 0);
     assert_eq!(routed.hpf_capacitor.left, 0);
