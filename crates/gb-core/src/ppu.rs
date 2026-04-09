@@ -52,6 +52,44 @@ const OAM_CORRUPTION_ROW_BYTES: usize = 8;
 const OAM_CORRUPTION_ROW_WORDS: usize = 4;
 const OAM_CORRUPTION_ROW_COUNT: u8 = 20;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuStepRegion {
+    Other,
+    Mode0Or1,
+    Mode2Scan,
+    Mode3Startup,
+    Mode3BgFetch,
+    Mode3WindowFetch,
+    Mode3Push,
+    Mode3ObjFetch,
+    Mode3PixelTransfer,
+}
+
+pub trait PpuStepObserver {
+    fn begin_ppu_region(&mut self, _region: PpuStepRegion) {}
+
+    fn end_ppu_region(&mut self, _region: PpuStepRegion) {}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct NoopPpuStepObserver;
+
+impl PpuStepObserver for NoopPpuStepObserver {}
+
+fn observe_ppu_step_region<O, R>(
+    observer: &mut O,
+    region: PpuStepRegion,
+    observe: impl FnOnce() -> R,
+) -> R
+where
+    O: PpuStepObserver,
+{
+    observer.begin_ppu_region(region);
+    let result = observe();
+    observer.end_ppu_region(region);
+    result
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PpuAccessMode {
     #[default]
@@ -190,6 +228,30 @@ impl PpuBusState {
 impl Default for PpuBusState {
     fn default() -> Self {
         Self::lcd_disabled()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct PpuDmaOamConflict {
+    address: u16,
+    value: u8,
+}
+
+impl PpuDmaOamConflict {
+    pub(crate) const fn new(address: u16, value: u8) -> Self {
+        Self { address, value }
+    }
+
+    const fn word_address(self) -> u16 {
+        self.address & !0x0001
+    }
+
+    const fn byte_offset_in_word(self) -> usize {
+        (self.address & 0x0001) as usize
+    }
+
+    const fn value(self) -> u8 {
+        self.value
     }
 }
 
@@ -607,14 +669,37 @@ impl Ppu {
         self.stat_state.irq_line = self.compute_stat_irq_line(false);
     }
 
+    #[cfg(test)]
     pub(crate) fn tick_t_cycle(
+        &mut self,
+        context: &mut CycleContext,
+        oam: OamBusView<'_>,
+        vram: VramBusView<'_>,
+        dma_oam_active: bool,
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
+    ) {
+        let mut observer = NoopPpuStepObserver;
+        self.tick_t_cycle_with_observer(
+            context,
+            oam,
+            vram,
+            dma_oam_active,
+            dma_oam_conflict,
+            &mut observer,
+        );
+    }
+
+    pub(crate) fn tick_t_cycle_with_observer<O>(
         &mut self,
         _context: &mut CycleContext,
         oam: OamBusView<'_>,
         vram: VramBusView<'_>,
         dma_oam_active: bool,
-        dma_oam_conflict_address: Option<u16>,
-    ) {
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
+        observer: &mut O,
+    ) where
+        O: PpuStepObserver,
+    {
         debug_assert_eq!(oam.master(), BusMaster::Ppu);
         debug_assert_eq!(vram.master(), BusMaster::Ppu);
         debug_assert_eq!(
@@ -638,49 +723,57 @@ impl Ppu {
             return;
         }
 
-        self.sync_pipeline_registers();
-        self.sync_visible_registers();
-        let previous_mode = self.current_access_mode();
-        self.startup_mode_latch = None;
-        self.line_dot += 1;
-        self.advance_lcd_restart_phase();
-        self.prepare_visible_scanline_state();
-        self.advance_mode2_scan(&oam, dma_oam_active);
-        self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict_address);
-
-        if self.line_dot == DOTS_PER_SCANLINE {
-            let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
-            if self.bg_pipeline_state.window_started_this_line {
-                self.window_state.window_line_counter =
-                    self.window_state.window_line_counter.wrapping_add(1);
-            }
-            self.line_dot = 0;
-            self.ly = if self.ly + 1 == TOTAL_SCANLINES {
-                0
-            } else {
-                self.ly + 1
-            };
+        let step_region = self.current_step_region_after_line_advance();
+        let previous_mode = observe_ppu_step_region(observer, step_region, || {
+            self.sync_pipeline_registers();
+            self.sync_visible_registers();
+            let previous_mode = self.current_access_mode();
+            self.startup_mode_latch = None;
+            self.line_dot += 1;
             self.advance_lcd_restart_phase();
-            if self.ly >= VISIBLE_SCANLINES {
-                self.window_state.reset();
-            }
-            self.mode2_scan_state.reset_scanline();
-            self.bg_pipeline_state.reset();
-            self.obj_pipeline_state.reset();
-            self.current_scanline_pixels.fill(0);
-            self.current_scanline_mixed_pixels
-                .fill(MixedPixel::background(0));
-            if wraps_to_frame_start && self.blank_frame_active {
-                self.blank_frame_active = false;
-                self.refresh_visible_output();
-            }
-        }
+            self.prepare_visible_scanline_state();
+            previous_mode
+        });
+        observe_ppu_step_region(observer, PpuStepRegion::Mode2Scan, || {
+            self.advance_mode2_scan(&oam, dma_oam_active);
+        });
+        self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict, observer);
 
-        let current_mode = self.current_access_mode();
-        if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
-            self.queue_interrupt_request(InterruptSource::VBlank);
-        }
-        self.refresh_stat_irq_line(false);
+        observe_ppu_step_region(observer, step_region, || {
+            if self.line_dot == DOTS_PER_SCANLINE {
+                let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
+                if self.bg_pipeline_state.window_started_this_line {
+                    self.window_state.window_line_counter =
+                        self.window_state.window_line_counter.wrapping_add(1);
+                }
+                self.line_dot = 0;
+                self.ly = if self.ly + 1 == TOTAL_SCANLINES {
+                    0
+                } else {
+                    self.ly + 1
+                };
+                self.advance_lcd_restart_phase();
+                if self.ly >= VISIBLE_SCANLINES {
+                    self.window_state.reset();
+                }
+                self.mode2_scan_state.reset_scanline();
+                self.bg_pipeline_state.reset();
+                self.obj_pipeline_state.reset();
+                self.current_scanline_pixels.fill(0);
+                self.current_scanline_mixed_pixels
+                    .fill(MixedPixel::background(0));
+                if wraps_to_frame_start && self.blank_frame_active {
+                    self.blank_frame_active = false;
+                    self.refresh_visible_output();
+                }
+            }
+
+            let current_mode = self.current_access_mode();
+            if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
+                self.queue_interrupt_request(InterruptSource::VBlank);
+            }
+            self.refresh_stat_irq_line(false);
+        });
     }
 
     pub fn snapshot(&self) -> PpuSnapshot {
@@ -761,6 +854,31 @@ impl Ppu {
 
     pub fn line_dot(&self) -> u16 {
         self.line_dot
+    }
+
+    pub fn mode0_start_dot(&self) -> u16 {
+        self.current_mode0_start_dot()
+    }
+
+    pub fn access_mode(&self) -> PpuAccessMode {
+        self.current_access_mode()
+    }
+
+    pub fn mode_dot(&self) -> u16 {
+        self.current_raster_state().mode_dot()
+    }
+
+    pub fn lcd_state(&self) -> PpuLcdState {
+        self.lcd_state
+    }
+
+    pub fn is_blank_frame_active(&self) -> bool {
+        self.blank_frame_active
+    }
+
+    pub fn is_startup_mode0_window_active(&self) -> bool {
+        self.lcd_restart_phase
+            .is_startup_mode0_window_active(self.ly, self.line_dot)
     }
 
     pub fn framebuffer(&self) -> &[u8] {
@@ -991,7 +1109,7 @@ impl Ppu {
 
         let nominal_sprite = read_oam_sprite(oam, oam_index);
         let sprite = if dma_oam_active && self.console_model.is_dmg_family() {
-            let Some((y, x)) = self.mode2_scan_state.latched_oam_word() else {
+            let Some((y, x)) = self.mode2_scan_state.latched_mode2_yx_word() else {
                 return;
             };
             let (tile_index, attributes) = nominal_sprite
@@ -1009,7 +1127,8 @@ impl Ppu {
                 Some(sprite) => sprite,
                 None => return,
             };
-            self.mode2_scan_state.latch_oam_word(sprite.y, sprite.x);
+            self.mode2_scan_state
+                .latch_mode2_yx_word(sprite.y, sprite.x);
             sprite
         };
 
@@ -1075,12 +1194,15 @@ impl Ppu {
             .prepare_window_line(wy_latch, force_x0_this_line);
     }
 
-    fn advance_mode3_pipeline(
+    fn advance_mode3_pipeline<O>(
         &mut self,
         oam: &OamBusView<'_>,
         vram: &VramBusView<'_>,
-        dma_oam_conflict_address: Option<u16>,
-    ) {
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
+        observer: &mut O,
+    ) where
+        O: PpuStepObserver,
+    {
         if self.ly >= VISIBLE_SCANLINES
             || self.line_dot < MODE2_DOTS
             || self.line_dot >= self.current_mode0_start_dot()
@@ -1089,28 +1211,43 @@ impl Ppu {
         }
 
         if !self.bg_pipeline_state.mode3_started {
-            self.bg_pipeline_state
-                .start_line(self.visible_registers.scx);
+            observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
+                self.bg_pipeline_state
+                    .start_line(self.visible_registers.scx);
+            });
         }
 
-        self.maybe_recompute_pending_background_fill(vram);
-        self.flush_pending_bg_fifo_fill();
+        let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
+        observe_ppu_step_region(observer, bg_pipeline_region, || {
+            self.maybe_recompute_pending_background_fill(vram);
+            self.flush_pending_bg_fifo_fill();
+        });
 
-        if self.advance_mode3_object_phase(oam, vram, dma_oam_conflict_address) {
+        if observe_ppu_step_region(observer, PpuStepRegion::Mode3ObjFetch, || {
+            self.advance_mode3_object_phase(oam, vram, dma_oam_conflict)
+        }) {
             return;
         }
 
-        let output_dot = self.advance_mode3_output_phase();
-        self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
-        let _ = self.maybe_start_window_after_transfer_dot(output_dot);
-        let _ = self.advance_bg_fetcher(vram);
+        let output_dot =
+            observe_ppu_step_region(observer, PpuStepRegion::Mode3PixelTransfer, || {
+                self.advance_mode3_output_phase()
+            });
+        observe_ppu_step_region(observer, PpuStepRegion::Mode3WindowFetch, || {
+            self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
+            let _ = self.maybe_start_window_after_transfer_dot(output_dot);
+        });
+        let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
+        let _ = observe_ppu_step_region(observer, bg_pipeline_region, || {
+            self.advance_bg_fetcher(vram)
+        });
     }
 
     fn advance_mode3_object_phase(
         &mut self,
         oam: &OamBusView<'_>,
         vram: &VramBusView<'_>,
-        dma_oam_conflict_address: Option<u16>,
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
     ) -> bool {
         self.sync_pending_obj_hit_ownership();
         self.latch_object_fetch_hits();
@@ -1118,7 +1255,7 @@ impl Ppu {
             ObjFetchStartSource::FifoBackedTransfer,
             false,
         );
-        self.advance_object_fetch(oam, vram, dma_oam_conflict_address)
+        self.advance_object_fetch(oam, vram, dma_oam_conflict)
     }
 
     fn advance_mode3_output_phase(&mut self) -> Mode3TransferDot {
@@ -1489,6 +1626,49 @@ impl Ppu {
     fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
         let ownership = self.current_bg_push_dot_ownership();
         self.execute_bg_push_dot_ownership(ownership)
+    }
+
+    fn current_step_region_after_line_advance(&self) -> PpuStepRegion {
+        let next_line_dot = self.line_dot + 1;
+        let next_lcd_restart_phase = self.lcd_restart_phase.advance(self.ly, next_line_dot);
+        if next_lcd_restart_phase.is_startup_mode0_window_active(self.ly, next_line_dot)
+            || self.ly >= VISIBLE_SCANLINES
+            || next_line_dot >= self.current_mode0_start_dot()
+        {
+            return PpuStepRegion::Mode0Or1;
+        }
+
+        if next_line_dot < MODE2_DOTS {
+            return PpuStepRegion::Mode2Scan;
+        }
+
+        if !self.bg_pipeline_state.mode3_started {
+            return PpuStepRegion::Mode3Startup;
+        }
+
+        PpuStepRegion::Other
+    }
+
+    fn current_mode3_bg_pipeline_region(&self) -> PpuStepRegion {
+        if self.bg_pipeline_state.fill.pending
+            || self.bg_pipeline_state.push.pending
+            || matches!(
+                self.bg_pipeline_state.fetcher.stage,
+                PpuBgFetcherStage::Push
+            )
+        {
+            return PpuStepRegion::Mode3Push;
+        }
+
+        if matches!(
+            self.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::WindowActivating
+        ) || self.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Window
+        {
+            PpuStepRegion::Mode3WindowFetch
+        } else {
+            PpuStepRegion::Mode3BgFetch
+        }
     }
 
     #[cfg(test)]
@@ -1914,7 +2094,7 @@ impl Ppu {
         &mut self,
         oam: &OamBusView<'_>,
         vram: &VramBusView<'_>,
-        dma_oam_conflict_address: Option<u16>,
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
     ) -> bool {
         if self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle {
             return false;
@@ -1937,9 +2117,9 @@ impl Ppu {
                 self.obj_pipeline_state.fetch.stage_dot = 1;
             }
             (PpuObjFetcherStage::Startup, 1) => {
-                let resolved_sprite = fetch.sprite.map(|sprite| {
-                    self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict_address)
-                });
+                let resolved_sprite = fetch
+                    .sprite
+                    .map(|sprite| self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict));
                 self.obj_pipeline_state.fetch.resolved_sprite = resolved_sprite;
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataLow;
                 self.obj_pipeline_state.fetch.stage_dot = 0;
@@ -2020,11 +2200,11 @@ impl Ppu {
         &mut self,
         oam: &OamBusView<'_>,
         sprite: PpuSelectedSprite,
-        dma_oam_conflict_address: Option<u16>,
+        dma_oam_conflict: Option<PpuDmaOamConflict>,
     ) -> PpuSelectedSprite {
         let (tile_index, attributes) =
-            read_obj_fetch_sprite_metadata(oam, sprite, dma_oam_conflict_address);
-        self.mode2_scan_state.latch_oam_word(tile_index, attributes);
+            read_obj_fetch_sprite_metadata(oam, sprite, dma_oam_conflict);
+        self.obj_pipeline_state.late_metadata_word = Some((tile_index, attributes));
 
         PpuSelectedSprite {
             tile_index,
@@ -2544,7 +2724,6 @@ impl Ppu {
         self.current_scanline_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
-        self.pending_interrupts = 0;
     }
 
     fn clear_visible_buffers(&mut self) {
@@ -3871,6 +4050,7 @@ struct ObjPipelineState {
     fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
     pending_sprite_slots: VecDeque<u8>,
     pending_match_x: Option<u8>,
+    late_metadata_word: Option<(u8, u8)>,
     fetch: ObjFetchState,
 }
 
@@ -3880,6 +4060,7 @@ impl ObjPipelineState {
         self.fetched_sprite_slots.fill(false);
         self.pending_sprite_slots.clear();
         self.pending_match_x = None;
+        self.late_metadata_word = None;
         self.fetch = ObjFetchState::default();
     }
 
@@ -4033,7 +4214,7 @@ struct Mode2ScanState {
     scanned_entries: u8,
     selected_sprite_count: u8,
     selected_sprites: [Option<PpuSelectedSprite>; MAX_SELECTED_SPRITES_PER_LINE],
-    latched_oam_word: Option<(u8, u8)>,
+    latched_mode2_yx_word: Option<(u8, u8)>,
 }
 
 impl Mode2ScanState {
@@ -4045,7 +4226,7 @@ impl Mode2ScanState {
 
     fn reset(&mut self) {
         self.reset_scanline();
-        self.latched_oam_word = None;
+        self.latched_mode2_yx_word = None;
     }
 
     fn scanned_entries(&self) -> u8 {
@@ -4056,12 +4237,12 @@ impl Mode2ScanState {
         self.scanned_entries += 1;
     }
 
-    fn latch_oam_word(&mut self, first: u8, second: u8) {
-        self.latched_oam_word = Some((first, second));
+    fn latch_mode2_yx_word(&mut self, y: u8, x: u8) {
+        self.latched_mode2_yx_word = Some((y, x));
     }
 
-    fn latched_oam_word(&self) -> Option<(u8, u8)> {
-        self.latched_oam_word
+    fn latched_mode2_yx_word(&self) -> Option<(u8, u8)> {
+        self.latched_mode2_yx_word
     }
 
     fn selected_sprite_count(&self) -> u8 {
@@ -4104,7 +4285,7 @@ impl Default for Mode2ScanState {
             scanned_entries: 0,
             selected_sprite_count: 0,
             selected_sprites: [None; MAX_SELECTED_SPRITES_PER_LINE],
-            latched_oam_word: None,
+            latched_mode2_yx_word: None,
         }
     }
 }
@@ -4180,18 +4361,25 @@ fn read_oam_sprite(oam: &OamBusView<'_>, oam_index: u8) -> Option<PpuSelectedSpr
 fn read_obj_fetch_sprite_metadata(
     oam: &OamBusView<'_>,
     sprite: PpuSelectedSprite,
-    dma_oam_conflict_address: Option<u16>,
+    dma_oam_conflict: Option<PpuDmaOamConflict>,
 ) -> (u8, u8) {
     let nominal_word_address = 0xFE00_u16 + sprite.oam_index as u16 * OAM_ENTRY_BYTES as u16 + 2;
-    let word_address = dma_oam_conflict_address
-        .filter(|address| (0xFE00..=0xFE9F).contains(address))
-        .map(|address| address & !0x0001)
+    let word_address = dma_oam_conflict
+        .filter(|conflict| (0xFE00..=0xFE9F).contains(&conflict.address))
+        .map(PpuDmaOamConflict::word_address)
         .unwrap_or(nominal_word_address);
     let word_offset = word_address.saturating_sub(0xFE00) as usize;
-    let tile_index = oam.read(word_offset).unwrap_or(sprite.tile_index);
-    let attributes = oam.read(word_offset + 1).unwrap_or(sprite.attributes);
+    let mut metadata = [
+        oam.read(word_offset).unwrap_or(sprite.tile_index),
+        oam.read(word_offset + 1).unwrap_or(sprite.attributes),
+    ];
+    if let Some(conflict) =
+        dma_oam_conflict.filter(|conflict| conflict.word_address() == word_address)
+    {
+        metadata[conflict.byte_offset_in_word()] = conflict.value();
+    }
 
-    (tile_index, attributes)
+    (metadata[0], metadata[1])
 }
 
 fn sprite_matches_line(sprite: PpuSelectedSprite, ly: u8, height: u8) -> bool {

@@ -193,6 +193,15 @@ impl DesktopSettingsStore {
         self.save()
     }
 
+    pub fn clear_recent_roms(&mut self) -> Result<(), String> {
+        if self.settings.recent_roms.is_empty() {
+            return Ok(());
+        }
+
+        self.settings.recent_roms.clear();
+        self.save()
+    }
+
     pub fn set_gamepad_directional_source(
         &mut self,
         directional_source: GamepadDirectionalSource,
@@ -1259,6 +1268,29 @@ mod tests {
             reloaded.recent_roms,
             vec![PathBuf::from("/tmp/roms/DrMario.gb")]
         );
+    }
+
+    #[test]
+    fn clearing_recent_roms_updates_the_persisted_history() {
+        let path = unique_test_path("clear-recent-roms");
+        let mut store = DesktopSettingsStore {
+            path: Some(path.clone()),
+            settings: PersistedDesktopSettings::default(),
+        };
+
+        store
+            .remember_loaded_rom(Path::new("/tmp/roms/Tetris.gb"))
+            .expect("first ROM should persist");
+        store
+            .remember_loaded_rom(Path::new("/tmp/roms/DrMario.gb"))
+            .expect("second ROM should persist");
+        store
+            .clear_recent_roms()
+            .expect("recent ROM history should clear");
+
+        let reloaded =
+            PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+        assert!(reloaded.recent_roms.is_empty());
     }
 
     #[test]

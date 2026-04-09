@@ -14,7 +14,7 @@ use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::{Joypad, JoypadButton, button_mask};
 use crate::model::MachineConfig;
-use crate::ppu::Ppu;
+use crate::ppu::{Ppu, PpuStepObserver, PpuStepRegion};
 use crate::scheduler::GlobalScheduler;
 use crate::serial::{Serial, SerialPeer};
 use crate::timer::Timer;
@@ -130,6 +130,46 @@ pub struct MachineParts<S = TraceBuffer> {
     pub interrupts: InterruptController,
     pub joypad: Joypad,
     pub cartridge: CartridgeSlot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MachineStepRegion {
+    ExternalEvents,
+    Timer,
+    Apu,
+    Dma,
+    Ppu,
+    Serial,
+    Cpu,
+    Interrupts,
+}
+
+pub trait MachineStepObserver {
+    fn begin_region(&mut self, _region: MachineStepRegion) {}
+
+    fn end_region(&mut self, _region: MachineStepRegion) {}
+
+    fn begin_ppu_region(&mut self, _region: PpuStepRegion) {}
+
+    fn end_ppu_region(&mut self, _region: PpuStepRegion) {}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct NoopMachineStepObserver;
+
+impl MachineStepObserver for NoopMachineStepObserver {}
+
+impl<T> PpuStepObserver for T
+where
+    T: MachineStepObserver,
+{
+    fn begin_ppu_region(&mut self, region: PpuStepRegion) {
+        MachineStepObserver::begin_ppu_region(self, region);
+    }
+
+    fn end_ppu_region(&mut self, region: PpuStepRegion) {
+        MachineStepObserver::end_ppu_region(self, region);
+    }
 }
 
 impl Machine<TraceBuffer> {

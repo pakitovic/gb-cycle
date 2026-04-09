@@ -35,6 +35,7 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 - `ROADMAP.md` plus `roadmap/*.md` own implementation sequencing and phase context; they do not redefine subsystem behavior.
 - `TODO.md` owns the active TODO ledger for concrete remaining work across phases.
 - `hardware/*.md` own subsystem-specific behavior, MMIO semantics, timing expectations, and subsystem-specific validation detail.
+- `hardware/PPU-REIMPLEMENTATION.md` owns repo-local migration and compatibility notes for PPU rewrites; it does not override `hardware/PPU.md`.
 - `hardware/BOOT-ROM.md` owns startup-path semantics such as real boot, skip boot, `FF50` handoff, and post-boot snapshot policy.
 
 When guidance overlaps, the more specific document wins:
@@ -51,6 +52,7 @@ Subsystem handbooks may refine the generic reference consultation order from `RE
 The project-wide timing baseline is T-cycle based; see `ARCHITECTURE.md`, `TIMING-AND-ACCURACY.md`, and `hardware/CPU.md`.
 The project-wide CPU baseline is a fine-grained fetch/decode/execute model with explicit bus-visible steps; see `hardware/CPU.md`.
 The project-wide PPU baseline is dot-by-dot with explicit fetcher/FIFO behavior; see `hardware/PPU.md`.
+Repo-local PPU rewrite constraints live in `hardware/PPU-REIMPLEMENTATION.md`; `hardware/PPU.md` remains authoritative for hardware behavior.
 The global scheduler phase contract lives in `ARCHITECTURE.md` and `TIMING-AND-ACCURACY.md`.
 The cartridge handbook owns header-driven mapper classification, special-cartridge taxonomy, the cartridge-specific compatibility-category matrix, and cartridge-persistence semantics; `ARCHITECTURE.md` owns the central compatibility-policy shape plus the top-level boundary between cartridge persistence and whole-machine save states; `TESTING.md` owns CI/oracle usage of execution modes and save/load determinism policy; see `hardware/CARTRIDGES-MBC.md`.
 Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work, or when documenting known remaining gaps after an implementation.
@@ -63,6 +65,7 @@ Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work,
 - `hardware/INTERRUPTS.md`
 - `hardware/TIMER.md`
 - `hardware/PPU.md`
+- `hardware/PPU-REIMPLEMENTATION.md`
 - `hardware/DMA.md`
 - `hardware/APU.md`
 - `hardware/JOYPAD.md`

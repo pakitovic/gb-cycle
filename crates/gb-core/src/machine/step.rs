@@ -1,4 +1,6 @@
-use super::{Machine, PendingExternalEvents};
+use super::{
+    Machine, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver, PendingExternalEvents,
+};
 use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{
@@ -11,7 +13,7 @@ use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
-use crate::ppu::Ppu;
+use crate::ppu::{Ppu, PpuDmaOamConflict};
 use crate::scheduler::{
     CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
 };
@@ -70,6 +72,20 @@ fn apply_stop_div_reset(apu: &mut Apu, timer: &mut Timer) {
     }
 }
 
+fn observe_machine_step_region<O, R>(
+    observer: &mut O,
+    region: MachineStepRegion,
+    observe: impl FnOnce() -> R,
+) -> R
+where
+    O: MachineStepObserver,
+{
+    observer.begin_region(region);
+    let result = observe();
+    observer.end_region(region);
+    result
+}
+
 struct MachinePhaseRunner<'a> {
     cpu: &'a mut CpuCore,
     bus: &'a mut Bus,
@@ -87,148 +103,183 @@ struct MachinePhaseRunner<'a> {
 }
 
 impl MachinePhaseRunner<'_> {
-    fn step_phase<S: TraceSink>(&mut self, context: &mut CycleContext, tracer: &mut Tracer<S>) {
+    fn step_phase<S, O>(
+        &mut self,
+        context: &mut CycleContext,
+        tracer: &mut Tracer<S>,
+        observer: &mut O,
+    ) where
+        S: TraceSink,
+        O: MachineStepObserver,
+    {
         match context.phase() {
             SchedulerPhase::ExternalEventIngress => {
-                self.step_external_event_ingress(context, tracer);
+                self.step_external_event_ingress(context, tracer, observer);
             }
             SchedulerPhase::DerivedEdgeResolution => {
-                self.step_derived_edge_resolution(context, tracer);
+                self.step_derived_edge_resolution(context, tracer, observer);
             }
             SchedulerPhase::AutonomousPeripheralTicks => {
-                self.step_autonomous_peripheral_ticks(context, tracer);
+                self.step_autonomous_peripheral_ticks(context, tracer, observer);
             }
             SchedulerPhase::BusArbitration => {
                 self.step_bus_arbitration(context, tracer);
             }
             SchedulerPhase::CpuMicroOperation => {
-                self.step_cpu_micro_operation(context, tracer);
+                self.step_cpu_micro_operation(context, tracer, observer);
             }
             SchedulerPhase::MmioSideEffectCommit => {
-                self.step_mmio_side_effect_commit(context, tracer);
+                self.step_mmio_side_effect_commit(context, tracer, observer);
             }
             SchedulerPhase::InterruptAggregation => {
-                self.step_interrupt_aggregation(context, tracer);
+                self.step_interrupt_aggregation(context, tracer, observer);
             }
             SchedulerPhase::CpuWakeInterruptEvaluation => {
-                self.step_cpu_wake_interrupt_evaluation(context, tracer);
+                self.step_cpu_wake_interrupt_evaluation(context, tracer, observer);
             }
             _ => {}
         }
     }
 
-    fn step_external_event_ingress<S: TraceSink>(
+    fn step_external_event_ingress<S, O>(
         &mut self,
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
-    ) {
-        if let Some(pressed_mask) = self
-            .pending_external_events
-            .take_pending_joypad_pressed_mask()
-            && self.joypad.apply_pressed_mask(pressed_mask)
-        {
-            context.push_external_event(ExternalEvent::HostInputChanged);
-            tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
-                self.joypad.scheduler_trace_message(context)
-            });
-        }
+        observer: &mut O,
+    ) where
+        S: TraceSink,
+        O: MachineStepObserver,
+    {
+        observe_machine_step_region(observer, MachineStepRegion::ExternalEvents, || {
+            if let Some(pressed_mask) = self
+                .pending_external_events
+                .take_pending_joypad_pressed_mask()
+                && self.joypad.apply_pressed_mask(pressed_mask)
+            {
+                context.push_external_event(ExternalEvent::HostInputChanged);
+                tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
+                    self.joypad.scheduler_trace_message(context)
+                });
+            }
 
-        if self
-            .pending_external_events
-            .take_external_serial_clock_pulse()
-            && !self.cpu_stop_active()
-            && self.serial.queue_external_clock_pulse()
-        {
-            context.push_external_event(ExternalEvent::ExternalSerialClock);
-            tracer.emit_with(TraceSubsystem::Serial, TraceLevel::Trace, || {
-                self.serial.external_event_ingress_trace_message(context)
-            });
-        }
+            if self
+                .pending_external_events
+                .take_external_serial_clock_pulse()
+                && !self.cpu_stop_active()
+                && self.serial.queue_external_clock_pulse()
+            {
+                context.push_external_event(ExternalEvent::ExternalSerialClock);
+                tracer.emit_with(TraceSubsystem::Serial, TraceLevel::Trace, || {
+                    self.serial.external_event_ingress_trace_message(context)
+                });
+            }
+        });
     }
 
-    fn step_derived_edge_resolution<S: TraceSink>(
+    fn step_derived_edge_resolution<S, O>(
         &mut self,
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
-    ) {
+        observer: &mut O,
+    ) where
+        S: TraceSink,
+        O: MachineStepObserver,
+    {
         if !self.cpu_stop_active() {
-            self.timer.tick_t_cycle(context);
+            observe_machine_step_region(observer, MachineStepRegion::Timer, || {
+                self.timer.tick_t_cycle(context);
+            });
         }
         tracer.emit_with(TraceSubsystem::Timer, TraceLevel::Trace, || {
             self.timer.scheduler_trace_message(context)
         });
     }
 
-    fn step_autonomous_peripheral_ticks<S: TraceSink>(
+    fn step_autonomous_peripheral_ticks<S, O>(
         &mut self,
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
-    ) {
+        observer: &mut O,
+    ) where
+        S: TraceSink,
+        O: MachineStepObserver,
+    {
         if !self.cpu_stop_active() {
-            let bus = &mut self.bus;
-            let apu = &mut self.apu;
-            let ppu = &mut self.ppu;
-            let dma = &mut self.dma;
-            let timer = &mut self.timer;
-            let serial = &mut self.serial;
-            let boot = &mut self.boot;
-            let interrupts = &mut self.interrupts;
-            let joypad = &mut self.joypad;
-            let cartridge = &mut self.cartridge;
-
-            apu.tick_t_cycle(context);
-            let dma_transfer_work = dma.tick_t_cycle(context);
-            let dma_oam_conflict_address = dma_transfer_work.and_then(|transfer_work| {
-                let destination_address = transfer_work.destination_address();
-                (0xFE00..=0xFE9F)
-                    .contains(&destination_address)
-                    .then_some(destination_address)
+            observe_machine_step_region(observer, MachineStepRegion::Apu, || {
+                self.apu.tick_t_cycle(context);
             });
-            let dma_oam_active = dma.bus_state().active_region().is_some();
+            let dma_transfer_work =
+                observe_machine_step_region(observer, MachineStepRegion::Dma, || {
+                    self.dma.tick_t_cycle(context)
+                });
+            let dma_arbitration_state = BusArbitrationState::default()
+                .with_boot_rom(self.boot.bus_state())
+                .with_ppu(self.ppu.bus_state())
+                .with_dma(self.dma.bus_state());
+            let dma_transfer_byte =
+                observe_machine_step_region(observer, MachineStepRegion::Dma, || {
+                    dma_transfer_work.map(|transfer_work| {
+                        self.bus.read_with_t_cycle_context(
+                            transfer_work.source_address(),
+                            BusRequester::Dma,
+                            &dma_arbitration_state,
+                            context.t_cycle(),
+                            Some(&mut self.cartridge),
+                            BusIoReadView {
+                                apu: Some(self.apu),
+                                timer: Some(self.timer),
+                                serial: Some(self.serial),
+                                dma: Some(self.dma),
+                                boot: Some(self.boot),
+                                interrupts: Some(self.interrupts),
+                                interrupt_flag_pending_mask: 0,
+                                joypad: Some(self.joypad),
+                                ppu: Some(self.ppu),
+                            },
+                        )
+                    })
+                });
+            let dma_oam_conflict =
+                dma_transfer_work
+                    .zip(dma_transfer_byte)
+                    .and_then(|(transfer_work, value)| {
+                        let destination_address = transfer_work.destination_address();
+                        (0xFE00..=0xFE9F)
+                            .contains(&destination_address)
+                            .then_some(PpuDmaOamConflict::new(destination_address, value))
+                    });
+            let dma_oam_active = self.dma.bus_state().active_region().is_some();
 
-            bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
-            let (oam_view, vram_view) = bus.video_views(BusMaster::Ppu);
-            ppu.tick_t_cycle(
+            observer.begin_region(MachineStepRegion::Ppu);
+            self.bus
+                .sync_video_domain_ownership(self.ppu.bus_state(), self.dma.bus_state());
+            let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
+            self.ppu.tick_t_cycle_with_observer(
                 context,
                 oam_view,
                 vram_view,
                 dma_oam_active,
-                dma_oam_conflict_address,
+                dma_oam_conflict,
+                observer,
             );
-            bus.sync_video_domain_ownership(ppu.bus_state(), dma.bus_state());
-            serial.tick_t_cycle(context);
+            self.bus
+                .sync_video_domain_ownership(self.ppu.bus_state(), self.dma.bus_state());
+            observer.end_region(MachineStepRegion::Ppu);
+            observe_machine_step_region(observer, MachineStepRegion::Serial, || {
+                self.serial.tick_t_cycle(context);
+            });
 
-            if let Some(transfer_work) = dma_transfer_work {
-                let arbitration_state = BusArbitrationState::default()
-                    .with_boot_rom(boot.bus_state())
-                    .with_ppu(ppu.bus_state())
-                    .with_dma(dma.bus_state());
-                let value = bus.read_with_t_cycle_context(
-                    transfer_work.source_address(),
-                    BusRequester::Dma,
-                    &arbitration_state,
-                    context.t_cycle(),
-                    Some(cartridge),
-                    BusIoReadView {
-                        apu: Some(*apu),
-                        timer: Some(*timer),
-                        serial: Some(*serial),
-                        dma: Some(*dma),
-                        boot: Some(*boot),
-                        interrupts: Some(*interrupts),
-                        interrupt_flag_pending_mask: 0,
-                        joypad: Some(*joypad),
-                        ppu: Some(*ppu),
-                    },
-                );
-                bus.write_with_context(
-                    transfer_work.destination_address(),
-                    value,
-                    BusRequester::Dma,
-                    &arbitration_state,
-                    None,
-                    BusIoWriteView::default(),
-                );
+            if let Some((transfer_work, value)) = dma_transfer_work.zip(dma_transfer_byte) {
+                observe_machine_step_region(observer, MachineStepRegion::Dma, || {
+                    self.bus.write_with_context(
+                        transfer_work.destination_address(),
+                        value,
+                        BusRequester::Dma,
+                        &dma_arbitration_state,
+                        None,
+                        BusIoWriteView::default(),
+                    );
+                });
             }
         }
 
@@ -261,16 +312,20 @@ impl MachinePhaseRunner<'_> {
         });
     }
 
-    fn step_cpu_micro_operation<S: TraceSink>(
+    fn step_cpu_micro_operation<S, O>(
         &mut self,
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
-    ) {
+        observer: &mut O,
+    ) where
+        S: TraceSink,
+        O: MachineStepObserver,
+    {
         let arbitration_state = self.current_bus_arbitration_state();
         let interrupt_flag_pending_mask =
             current_cycle_interrupt_read_mask(context, self.ppu, self.joypad);
 
-        {
+        observe_machine_step_region(observer, MachineStepRegion::Cpu, || {
             let cpu = &mut self.cpu;
             let bus = &mut self.bus;
             let apu = &mut self.apu;
@@ -351,7 +406,7 @@ impl MachinePhaseRunner<'_> {
             if cpu.take_stop_div_reset_request() {
                 apply_stop_div_reset(apu, timer);
             }
-        }
+        });
 
         self.update_ppu_stop_state();
         tracer.emit_with(TraceSubsystem::Cpu, TraceLevel::Trace, || {
@@ -359,14 +414,18 @@ impl MachinePhaseRunner<'_> {
         });
     }
 
-    fn step_mmio_side_effect_commit<S: TraceSink>(
+    fn step_mmio_side_effect_commit<S, O>(
         &mut self,
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
-    ) {
-        if let Some(write) =
+        observer: &mut O,
+    ) where
+        S: TraceSink,
+        O: MachineStepObserver,
+    {
+        if let Some(write) = observe_machine_step_region(observer, MachineStepRegion::Ppu, || {
             commit_pending_ppu_mmio_write(self.ppu, &mut self.pending_ppu_mmio_write)
-        {
+        }) {
             tracer.emit_with(TraceSubsystem::Ppu, TraceLevel::Trace, || {
                 self.ppu
                     .mmio_commit_trace_message(context, write.address, write.value)
@@ -378,18 +437,22 @@ impl MachinePhaseRunner<'_> {
         }
     }
 
-    fn step_interrupt_aggregation<S: TraceSink>(
+    fn step_interrupt_aggregation<S, O>(
         &mut self,
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
-    ) {
+        observer: &mut O,
+    ) where
+        S: TraceSink,
+        O: MachineStepObserver,
+    {
         if self.joypad.should_emit_scheduler_trace() {
             tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
                 self.joypad.scheduler_trace_message(context)
             });
         }
 
-        {
+        observe_machine_step_region(observer, MachineStepRegion::Interrupts, || {
             let interrupts = &mut self.interrupts;
             let ppu = &mut self.ppu;
             let joypad = &mut self.joypad;
@@ -403,24 +466,28 @@ impl MachinePhaseRunner<'_> {
             if joypad.consume_interrupt_request() {
                 interrupts.request(InterruptSource::Joypad);
             }
-        }
+        });
 
         tracer.emit_with(TraceSubsystem::Interrupts, TraceLevel::Trace, || {
             self.interrupts.scheduler_trace_message(context)
         });
     }
 
-    fn step_cpu_wake_interrupt_evaluation<S: TraceSink>(
+    fn step_cpu_wake_interrupt_evaluation<S, O>(
         &mut self,
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
-    ) {
-        {
+        observer: &mut O,
+    ) where
+        S: TraceSink,
+        O: MachineStepObserver,
+    {
+        observe_machine_step_region(observer, MachineStepRegion::Cpu, || {
             let cpu = &mut self.cpu;
             let interrupts = &mut self.interrupts;
             let joypad = &mut self.joypad;
             cpu.evaluate_wake_and_interrupts(interrupts, joypad);
-        }
+        });
 
         self.update_ppu_stop_state();
 
@@ -458,6 +525,13 @@ impl MachinePhaseRunner<'_> {
 
 impl<S: TraceSink> Machine<S> {
     pub fn step_t_cycle(&mut self) -> CycleContext {
+        self.step_t_cycle_with_observer(&mut NoopMachineStepObserver)
+    }
+
+    pub fn step_t_cycle_with_observer<O>(&mut self, observer: &mut O) -> CycleContext
+    where
+        O: MachineStepObserver,
+    {
         let scheduler = &mut self.scheduler;
         let tracer = &mut self.tracer;
         let mut runner = MachinePhaseRunner {
@@ -476,6 +550,8 @@ impl<S: TraceSink> Machine<S> {
             pending_ppu_mmio_write: None,
         };
 
-        scheduler.step_with_trace(tracer, |context, tracer| runner.step_phase(context, tracer))
+        scheduler.step_with_trace(tracer, |context, tracer| {
+            runner.step_phase(context, tracer, observer)
+        })
     }
 }
