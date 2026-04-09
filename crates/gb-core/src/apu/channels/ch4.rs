@@ -1,0 +1,287 @@
+use crate::model::ConsoleModel;
+
+use super::super::common::{
+    CHANNEL_TRIGGER_BIT, ChannelRuntimeState, LENGTH_ENABLE_BIT, NOISE_LFSR_INITIAL_STATE,
+    NR44_FORCED_HIGH_MASK, NR44_READ_MASK, NR44_WRITABLE_MASK, PULSE_LENGTH_COUNTER_RELOAD,
+    apply_consistent_zombie_mode_increment, clock_envelope_unit, decode_envelope_register,
+    envelope_timer_reload, frame_sequencer_step_clocks_envelope,
+    frame_sequencer_step_clocks_length, noise_clocking_suppressed, noise_timer_reload,
+    pulse_length_counter_from_load, should_apply_extra_length_clocking_on_enable,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(in crate::apu) struct Channel4State {
+    pub(in crate::apu) nr41: u8,
+    pub(in crate::apu) nr42: u8,
+    pub(in crate::apu) nr43: u8,
+    pub(in crate::apu) nr44: u8,
+    pub(in crate::apu) runtime: ChannelRuntimeState,
+    pub(in crate::apu) length_counter: u8,
+    pub(in crate::apu) length_enabled: bool,
+    pub(in crate::apu) initial_volume: u8,
+    pub(in crate::apu) envelope_increase: bool,
+    pub(in crate::apu) envelope_pace: u8,
+    pub(in crate::apu) envelope_automatic_updates_enabled: bool,
+    pub(in crate::apu) envelope_timer: u8,
+    pub(in crate::apu) current_volume: u8,
+    pub(in crate::apu) clock_shift: u8,
+    pub(in crate::apu) short_width_mode: bool,
+    pub(in crate::apu) clock_divider_code: u8,
+    pub(in crate::apu) period_timer: u32,
+    pub(in crate::apu) lfsr_state: u16,
+}
+
+impl Channel4State {
+    pub(in crate::apu) fn read_nr44(&self) -> u8 {
+        (self.nr44 & NR44_READ_MASK) | NR44_FORCED_HIGH_MASK
+    }
+
+    pub(in crate::apu) fn write_nr41(&mut self, value: u8) {
+        self.nr41 = value;
+        self.length_counter = pulse_length_counter_from_load(value);
+    }
+
+    pub(in crate::apu) fn write_nr42(&mut self, value: u8) {
+        self.apply_live_envelope_write_effect(value);
+        self.nr42 = value;
+        self.runtime.set_dac_enabled(self.derived_dac_enabled());
+    }
+
+    pub(in crate::apu) fn write_nr43(&mut self, value: u8) {
+        let was_clocking_suppressed = noise_clocking_suppressed(self.clock_shift);
+        self.nr43 = value;
+        self.decode_nr43(value);
+        let is_clocking_suppressed = noise_clocking_suppressed(self.clock_shift);
+        if was_clocking_suppressed != is_clocking_suppressed {
+            self.period_timer = self.noise_timer_reload();
+        }
+    }
+
+    pub(in crate::apu) fn write_nr44(
+        &mut self,
+        value: u8,
+        console_model: ConsoleModel,
+        next_frame_sequencer_step: u8,
+    ) {
+        let trigger = value & CHANNEL_TRIGGER_BIT != 0;
+        let next_step_clocks_length = frame_sequencer_step_clocks_length(next_frame_sequencer_step);
+        let next_step_clocks_envelope =
+            frame_sequencer_step_clocks_envelope(next_frame_sequencer_step);
+        self.nr44 = value & NR44_WRITABLE_MASK;
+        let mut was_length_enabled = self.length_enabled;
+        let mut trigger_reloaded_zero_length = false;
+
+        if trigger {
+            trigger_reloaded_zero_length = self.trigger(next_step_clocks_envelope);
+            was_length_enabled = self.length_enabled;
+        }
+
+        self.length_enabled = self.nr44 & LENGTH_ENABLE_BIT != 0;
+        self.apply_extra_length_clocking_on_enable(
+            console_model,
+            was_length_enabled,
+            next_step_clocks_length,
+            trigger,
+            trigger_reloaded_zero_length,
+        );
+    }
+
+    pub(in crate::apu) fn apply_powered_startup(
+        &mut self,
+        nr41: u8,
+        nr42: u8,
+        nr43: u8,
+        nr44: u8,
+        active: bool,
+    ) {
+        self.nr41 = nr41;
+        self.nr42 = nr42;
+        self.nr43 = nr43;
+        self.nr44 = nr44 & NR44_WRITABLE_MASK;
+        self.length_counter = pulse_length_counter_from_load(self.nr41);
+        self.length_enabled = self.nr44 & LENGTH_ENABLE_BIT != 0;
+        self.apply_envelope_write(self.nr42);
+        self.decode_nr43(self.nr43);
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
+        self.envelope_timer = envelope_timer_reload(self.envelope_pace);
+        self.current_volume = self.initial_volume;
+        self.period_timer = self.noise_timer_reload();
+        self.lfsr_state = NOISE_LFSR_INITIAL_STATE;
+        self.runtime.clear();
+        self.runtime.set_dac_enabled(self.derived_dac_enabled());
+        self.runtime.set_active_from_startup(active);
+    }
+
+    fn clear_registers(&mut self) {
+        self.nr41 = 0;
+        self.nr42 = 0;
+        self.nr43 = 0;
+        self.nr44 = 0;
+        self.length_counter = 0;
+        self.length_enabled = false;
+        self.initial_volume = 0;
+        self.envelope_increase = false;
+        self.envelope_pace = 0;
+        self.envelope_automatic_updates_enabled = false;
+        self.envelope_timer = 0;
+        self.current_volume = 0;
+        self.clock_shift = 0;
+        self.short_width_mode = false;
+        self.clock_divider_code = 0;
+        self.period_timer = 0;
+        self.lfsr_state = 0;
+        self.runtime.clear();
+    }
+
+    pub(in crate::apu) fn write_length_while_powered_off(&mut self, value: u8) {
+        self.length_counter = pulse_length_counter_from_load(value);
+    }
+
+    pub(in crate::apu) fn power_off_registers(&mut self, console_model: ConsoleModel) {
+        let preserved_length = if console_model.is_dmg_family() {
+            self.length_counter
+        } else {
+            0
+        };
+        self.clear_registers();
+        self.length_counter = preserved_length;
+    }
+
+    fn derived_dac_enabled(&self) -> bool {
+        self.nr42 & 0xF8 != 0
+    }
+
+    fn apply_envelope_write(&mut self, value: u8) {
+        decode_envelope_register(
+            value,
+            &mut self.initial_volume,
+            &mut self.envelope_increase,
+            &mut self.envelope_pace,
+        );
+    }
+
+    fn apply_live_envelope_write_effect(&mut self, value: u8) {
+        apply_consistent_zombie_mode_increment(
+            self.runtime.active,
+            &mut self.current_volume,
+            value,
+        );
+    }
+
+    fn decode_nr43(&mut self, value: u8) {
+        self.clock_shift = (value >> 4) & 0x0F;
+        self.short_width_mode = value & 0x08 != 0;
+        self.clock_divider_code = value & 0x07;
+    }
+
+    pub(in crate::apu) fn noise_timer_reload(&self) -> u32 {
+        noise_timer_reload(self.clock_shift, self.clock_divider_code)
+    }
+
+    fn apply_extra_length_clocking_on_enable(
+        &mut self,
+        console_model: ConsoleModel,
+        was_length_enabled: bool,
+        next_step_clocks_length: bool,
+        trigger: bool,
+        trigger_reloaded_zero_length: bool,
+    ) {
+        if !should_apply_extra_length_clocking_on_enable(
+            console_model,
+            self.length_enabled,
+            self.length_counter == 0,
+            was_length_enabled,
+            next_step_clocks_length,
+            trigger_reloaded_zero_length,
+        ) {
+            return;
+        }
+
+        self.length_counter -= 1;
+        if self.length_counter == 0 {
+            if trigger {
+                self.length_counter = PULSE_LENGTH_COUNTER_RELOAD - 1;
+            } else {
+                self.runtime.active = false;
+            }
+        }
+    }
+
+    fn trigger(&mut self, next_step_clocks_envelope: bool) -> bool {
+        let reloaded_zero_length = self.length_counter == 0;
+        if self.length_counter == 0 {
+            self.length_counter = PULSE_LENGTH_COUNTER_RELOAD;
+            self.length_enabled = false;
+        }
+
+        self.apply_envelope_write(self.nr42);
+        self.period_timer = self.noise_timer_reload();
+        self.lfsr_state = NOISE_LFSR_INITIAL_STATE;
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
+        self.envelope_timer =
+            envelope_timer_reload(self.envelope_pace) + u8::from(next_step_clocks_envelope);
+        self.current_volume = self.initial_volume;
+        self.runtime.trigger();
+        reloaded_zero_length
+    }
+
+    pub(in crate::apu) fn tick_fast_timer(&mut self) {
+        if noise_clocking_suppressed(self.clock_shift) {
+            return;
+        }
+
+        if self.period_timer > 0 {
+            self.period_timer -= 1;
+        }
+
+        if self.period_timer == 0 {
+            self.period_timer = self.noise_timer_reload();
+            self.step_lfsr();
+        }
+    }
+
+    fn step_lfsr(&mut self) {
+        let feedback_bit = u16::from((self.lfsr_state & 0x01) == ((self.lfsr_state >> 1) & 0x01));
+        self.lfsr_state >>= 1;
+        self.lfsr_state = (self.lfsr_state & !(1 << 14)) | (feedback_bit << 14);
+        if self.short_width_mode {
+            // In short mode the feedback path also overwrites bit 6, so a live
+            // 15-bit -> 7-bit switch can trap the active 7-bit window at ones
+            // until a retrigger reloads the LFSR.
+            self.lfsr_state = (self.lfsr_state & !(1 << 6)) | (feedback_bit << 6);
+        }
+    }
+
+    pub(in crate::apu) fn clock_length(&mut self) {
+        if !self.length_enabled || self.length_counter == 0 {
+            return;
+        }
+
+        self.length_counter -= 1;
+        if self.length_counter == 0 {
+            self.runtime.active = false;
+        }
+    }
+
+    pub(in crate::apu) fn clock_envelope(&mut self) {
+        clock_envelope_unit(
+            self.envelope_pace,
+            self.envelope_increase,
+            &mut self.envelope_timer,
+            &mut self.current_volume,
+            &mut self.envelope_automatic_updates_enabled,
+        );
+    }
+
+    pub(in crate::apu) fn current_digital_output(&self) -> u8 {
+        if !self.runtime.active {
+            return 0;
+        }
+
+        if self.lfsr_state & 0x01 == 0 {
+            self.current_volume
+        } else {
+            0
+        }
+    }
+}
