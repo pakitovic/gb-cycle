@@ -4,6 +4,7 @@ use gb_desktop::{
     GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
     GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
 };
+use std::time::{Duration, Instant};
 
 const GLYPH_WIDTH: usize = 5;
 const GLYPH_HEIGHT: usize = 7;
@@ -18,6 +19,9 @@ const MENU_ITEM_AREA_BOTTOM_PADDING: usize = 12;
 const MENU_ITEM_CURSOR_X: usize = MENU_PANEL_X + 10;
 const MENU_ITEM_TEXT_X: usize = MENU_PANEL_X + 18;
 const MENU_ITEM_TEXT_Y: usize = MENU_PANEL_Y + MENU_ITEM_AREA_TOP_OFFSET;
+const MENU_ITEM_TEXT_AREA_WIDTH: usize = MENU_PANEL_WIDTH - (MENU_ITEM_TEXT_X - MENU_PANEL_X) - 8;
+const MENU_ITEM_TEXT_CAPACITY: usize =
+    (MENU_ITEM_TEXT_AREA_WIDTH + GLYPH_SPACING) / (GLYPH_WIDTH + GLYPH_SPACING);
 const MENU_VISIBLE_ITEM_CAPACITY: usize =
     (MENU_PANEL_HEIGHT - MENU_ITEM_AREA_TOP_OFFSET - MENU_ITEM_AREA_BOTTOM_PADDING)
         / MENU_ITEM_HEIGHT;
@@ -47,10 +51,13 @@ const DISABLED_TEXT_COLOR: [u8; 3] = [118, 128, 112];
 const SELECTION_COLOR: [u8; 3] = [181, 199, 122];
 const CURSOR_COLOR: [u8; 3] = [26, 35, 27];
 const COMPACT_MENU_LABEL_MAX_BYTES: usize = 9;
-const RECENT_ROM_LABEL_MAX_BYTES: usize = 13;
+const RECENT_ROM_LABEL_MAX_BYTES: usize = 64;
+const RECENT_ROM_SCROLL_DELAY: Duration = Duration::from_millis(900);
+const RECENT_ROM_SCROLL_STEP: Duration = Duration::from_millis(150);
+const RECENT_ROM_SCROLL_GAP_CHARS: usize = 3;
 pub const RECENT_ROM_MENU_CAPACITY: usize = 8;
 
-const ROOT_MENU_ITEMS: [MenuItem; 8] = [
+const ROOT_MENU_ITEMS: [MenuItem; 9] = [
     MenuItem::Resume,
     MenuItem::OpenRom,
     MenuItem::RecentMenu,
@@ -59,8 +66,9 @@ const ROOT_MENU_ITEMS: [MenuItem; 8] = [
     MenuItem::AudioMenu,
     MenuItem::InputMenu,
     MenuItem::SystemMenu,
+    MenuItem::Quit,
 ];
-const RECENT_MENU_ITEMS: [MenuItem; RECENT_ROM_MENU_CAPACITY + 1] = [
+const RECENT_MENU_ITEMS: [MenuItem; RECENT_ROM_MENU_CAPACITY + 2] = [
     MenuItem::RecentRom1,
     MenuItem::RecentRom2,
     MenuItem::RecentRom3,
@@ -69,6 +77,7 @@ const RECENT_MENU_ITEMS: [MenuItem; RECENT_ROM_MENU_CAPACITY + 1] = [
     MenuItem::RecentRom6,
     MenuItem::RecentRom7,
     MenuItem::RecentRom8,
+    MenuItem::ClearRecentList,
     MenuItem::Return,
 ];
 const VIDEO_MENU_ITEMS: [MenuItem; 7] = [
@@ -143,7 +152,7 @@ const GAMEPAD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::GamepadMenuCancel,
     MenuItem::Return,
 ];
-const SYSTEM_MENU_ITEMS: [MenuItem; 14] = [
+const SYSTEM_MENU_ITEMS: [MenuItem; 13] = [
     MenuItem::ConsoleModel,
     MenuItem::StartupMode,
     MenuItem::ExecutionMode,
@@ -156,7 +165,6 @@ const SYSTEM_MENU_ITEMS: [MenuItem; 14] = [
     MenuItem::SaveDefaultPath,
     MenuItem::SaveDirectoryPath,
     MenuItem::Reset,
-    MenuItem::Quit,
     MenuItem::Return,
 ];
 
@@ -173,6 +181,7 @@ pub enum MenuAction {
     Close,
     OpenRom,
     OpenRecentRom(usize),
+    ClearRecentList,
     SaveBattery,
     CycleConsoleModel,
     CycleStartupMode,
@@ -244,10 +253,19 @@ impl CompactMenuLabel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompactRecentRomLabel {
     bytes: [u8; RECENT_ROM_LABEL_MAX_BYTES],
     len: u8,
+}
+
+impl Default for CompactRecentRomLabel {
+    fn default() -> Self {
+        Self {
+            bytes: [0; RECENT_ROM_LABEL_MAX_BYTES],
+            len: 0,
+        }
+    }
 }
 
 impl CompactRecentRomLabel {
@@ -393,6 +411,7 @@ impl MenuPresentation {
             MenuItem::RecentRom6 => self.recent_rom_count >= 6,
             MenuItem::RecentRom7 => self.recent_rom_count >= 7,
             MenuItem::RecentRom8 => self.recent_rom_count >= 8,
+            MenuItem::ClearRecentList => self.recent_rom_count > 0,
             _ => true,
         }
     }
@@ -479,6 +498,7 @@ impl MenuPresentation {
             | MenuItem::VideoDefaults
             | MenuItem::AudioDefaults
             | MenuItem::InputDefaults
+            | MenuItem::ClearRecentList
             | MenuItem::Quit
             | MenuItem::Return => true,
         }
@@ -489,14 +509,15 @@ impl MenuPresentation {
             MenuItem::Resume => "RESUME".to_string(),
             MenuItem::OpenRom => "OPEN ROM".to_string(),
             MenuItem::RecentMenu => "OPEN RECENT".to_string(),
-            MenuItem::RecentRom1 => recent_rom_item_label(1, self.recent_rom_labels[0]),
-            MenuItem::RecentRom2 => recent_rom_item_label(2, self.recent_rom_labels[1]),
-            MenuItem::RecentRom3 => recent_rom_item_label(3, self.recent_rom_labels[2]),
-            MenuItem::RecentRom4 => recent_rom_item_label(4, self.recent_rom_labels[3]),
-            MenuItem::RecentRom5 => recent_rom_item_label(5, self.recent_rom_labels[4]),
-            MenuItem::RecentRom6 => recent_rom_item_label(6, self.recent_rom_labels[5]),
-            MenuItem::RecentRom7 => recent_rom_item_label(7, self.recent_rom_labels[6]),
-            MenuItem::RecentRom8 => recent_rom_item_label(8, self.recent_rom_labels[7]),
+            MenuItem::RecentRom1 => recent_rom_item_label(self.recent_rom_labels[0]),
+            MenuItem::RecentRom2 => recent_rom_item_label(self.recent_rom_labels[1]),
+            MenuItem::RecentRom3 => recent_rom_item_label(self.recent_rom_labels[2]),
+            MenuItem::RecentRom4 => recent_rom_item_label(self.recent_rom_labels[3]),
+            MenuItem::RecentRom5 => recent_rom_item_label(self.recent_rom_labels[4]),
+            MenuItem::RecentRom6 => recent_rom_item_label(self.recent_rom_labels[5]),
+            MenuItem::RecentRom7 => recent_rom_item_label(self.recent_rom_labels[6]),
+            MenuItem::RecentRom8 => recent_rom_item_label(self.recent_rom_labels[7]),
+            MenuItem::ClearRecentList => "CLEAR LIST".to_string(),
             MenuItem::SaveBattery => "SAVE BATTERY".to_string(),
             MenuItem::VideoMenu => "VIDEO".to_string(),
             MenuItem::AudioMenu => "AUDIO".to_string(),
@@ -808,6 +829,7 @@ enum MenuItem {
     RecentRom6,
     RecentRom7,
     RecentRom8,
+    ClearRecentList,
     SaveBattery,
     VideoMenu,
     AudioMenu,
@@ -897,6 +919,7 @@ pub struct OverlayMenuState {
     open: bool,
     screen_stack: Vec<ScreenState>,
     pending_binding_capture: Option<PendingBindingCapture>,
+    selection_started_at: Option<Instant>,
 }
 
 struct OverlayCanvas<'a> {
@@ -1120,12 +1143,14 @@ impl OverlayMenuState {
         self.pending_binding_capture = None;
         self.screen_stack
             .push(ScreenState::new(MenuScreen::Root, presentation));
+        self.selection_started_at = Some(Instant::now());
     }
 
     pub fn close(&mut self) {
         self.open = false;
         self.screen_stack.clear();
         self.pending_binding_capture = None;
+        self.selection_started_at = None;
     }
 
     pub fn cancel_binding_capture(&mut self) {
@@ -1171,21 +1196,23 @@ impl OverlayMenuState {
 
         match input {
             MenuInput::Up => {
-                let screen_state = self.current_screen_state_mut();
-                screen_state.selected_index = previous_enabled_index(
+                let screen_state = self.current_screen_state();
+                let selected_index = previous_enabled_index(
                     screen_state.screen,
                     screen_state.selected_index,
                     presentation,
                 );
+                self.set_selected_index(selected_index);
                 None
             }
             MenuInput::Down => {
-                let screen_state = self.current_screen_state_mut();
-                screen_state.selected_index = next_enabled_index(
+                let screen_state = self.current_screen_state();
+                let selected_index = next_enabled_index(
                     screen_state.screen,
                     screen_state.selected_index,
                     presentation,
                 );
+                self.set_selected_index(selected_index);
                 None
             }
             MenuInput::Confirm => {
@@ -1196,6 +1223,9 @@ impl OverlayMenuState {
                     presentation,
                 )
                 .expect("normalized menu selection should point to a visible item");
+                if !presentation.item_enabled(item) {
+                    return None;
+                }
                 self.apply_item_action(item, presentation)
             }
             MenuInput::Cancel => self.pop_screen_or_close(presentation),
@@ -1216,6 +1246,7 @@ impl OverlayMenuState {
         let screen = screen_state.screen;
         let selected_index =
             normalized_selected_index(screen, screen_state.selected_index, presentation);
+        let selection_elapsed = self.selection_elapsed();
         let item_count = visible_item_count(screen, presentation);
 
         let mut canvas = OverlayCanvas::new(rgb_frame, frame_width, frame_height);
@@ -1318,7 +1349,7 @@ impl OverlayMenuState {
                     "PRESS BTN".to_string()
                 }
             } else {
-                presentation.item_label(item)
+                rendered_item_label(item, selected, presentation, selection_elapsed)
             };
             canvas.draw_text(MENU_ITEM_TEXT_X, item_y, &label, color, 1);
         }
@@ -1347,6 +1378,7 @@ impl OverlayMenuState {
             MenuItem::RecentRom6 => Some(MenuAction::OpenRecentRom(5)),
             MenuItem::RecentRom7 => Some(MenuAction::OpenRecentRom(6)),
             MenuItem::RecentRom8 => Some(MenuAction::OpenRecentRom(7)),
+            MenuItem::ClearRecentList => Some(MenuAction::ClearRecentList),
             MenuItem::SaveBattery => Some(MenuAction::SaveBattery),
             MenuItem::VideoMenu => {
                 self.push_screen(MenuScreen::Video, presentation);
@@ -1675,12 +1707,14 @@ impl OverlayMenuState {
     fn push_screen(&mut self, screen: MenuScreen, presentation: MenuPresentation) {
         self.screen_stack
             .push(ScreenState::new(screen, presentation));
+        self.selection_started_at = Some(Instant::now());
     }
 
     fn pop_screen_or_close(&mut self, presentation: MenuPresentation) -> Option<MenuAction> {
         self.pending_binding_capture = None;
         if self.screen_stack.len() > 1 {
             self.screen_stack.pop();
+            self.selection_started_at = Some(Instant::now());
             None
         } else if !presentation.rom_loaded {
             None
@@ -1691,12 +1725,13 @@ impl OverlayMenuState {
     }
 
     fn normalize_current_selection(&mut self, presentation: MenuPresentation) {
-        let screen_state = self.current_screen_state_mut();
-        screen_state.selected_index = normalized_selected_index(
+        let screen_state = self.current_screen_state();
+        let selected_index = normalized_selected_index(
             screen_state.screen,
             screen_state.selected_index,
             presentation,
         );
+        self.set_selected_index(selected_index);
     }
 
     fn current_screen_state(&self) -> &ScreenState {
@@ -1709,6 +1744,27 @@ impl OverlayMenuState {
         self.screen_stack
             .last_mut()
             .expect("open overlay menu should always have one active screen")
+    }
+
+    fn set_selected_index(&mut self, selected_index: usize) {
+        let selection_changed = {
+            let screen_state = self.current_screen_state_mut();
+            if screen_state.selected_index == selected_index {
+                false
+            } else {
+                screen_state.selected_index = selected_index;
+                true
+            }
+        };
+
+        if selection_changed {
+            self.selection_started_at = Some(Instant::now());
+        }
+    }
+
+    fn selection_elapsed(&self) -> Duration {
+        self.selection_started_at
+            .map_or(Duration::default(), |started_at| started_at.elapsed())
     }
 }
 
@@ -1789,12 +1845,71 @@ fn gamepad_binding_label(binding: GamepadButtonBinding) -> &'static str {
     }
 }
 
-fn recent_rom_item_label(index: usize, label: CompactRecentRomLabel) -> String {
+fn recent_rom_item_label(label: CompactRecentRomLabel) -> String {
     if label.is_empty() {
-        format!("{index} ROM")
+        "ROM".to_string()
     } else {
-        format!("{index} {}", label.as_str())
+        label.as_str().to_string()
     }
+}
+
+fn rendered_item_label(
+    item: MenuItem,
+    selected: bool,
+    presentation: MenuPresentation,
+    selection_elapsed: Duration,
+) -> String {
+    let label = presentation.item_label(item);
+    if !matches!(
+        item,
+        MenuItem::RecentRom1
+            | MenuItem::RecentRom2
+            | MenuItem::RecentRom3
+            | MenuItem::RecentRom4
+            | MenuItem::RecentRom5
+            | MenuItem::RecentRom6
+            | MenuItem::RecentRom7
+            | MenuItem::RecentRom8
+    ) {
+        return label;
+    }
+
+    rendered_recent_rom_item_label(&label, selected, selection_elapsed)
+}
+
+fn rendered_recent_rom_item_label(
+    label: &str,
+    selected: bool,
+    selection_elapsed: Duration,
+) -> String {
+    if label.len() <= MENU_ITEM_TEXT_CAPACITY {
+        return label.to_string();
+    }
+
+    if !selected || selection_elapsed < RECENT_ROM_SCROLL_DELAY {
+        return label[..MENU_ITEM_TEXT_CAPACITY].to_string();
+    }
+
+    let step = (selection_elapsed - RECENT_ROM_SCROLL_DELAY).as_millis()
+        / RECENT_ROM_SCROLL_STEP.as_millis();
+    let cycle_offset = (step as usize) % (label.len() + RECENT_ROM_SCROLL_GAP_CHARS);
+    marquee_label_window(label, cycle_offset, MENU_ITEM_TEXT_CAPACITY)
+}
+
+fn marquee_label_window(label: &str, start_offset: usize, visible_capacity: usize) -> String {
+    let cycle_len = label.len() + RECENT_ROM_SCROLL_GAP_CHARS;
+    let bytes = label.as_bytes();
+    let mut window = String::with_capacity(visible_capacity);
+    for offset in 0..visible_capacity {
+        let index = (start_offset + offset) % cycle_len;
+        if index < bytes.len() {
+            window.push(bytes[index] as char);
+        } else {
+            window.push(' ');
+        }
+    }
+
+    window
 }
 
 fn compact_gamepad_name(name: &str) -> String {
@@ -1895,8 +2010,7 @@ fn normalized_selected_index(
     current_index: usize,
     presentation: MenuPresentation,
 ) -> usize {
-    let item = visible_item_at(screen, current_index, presentation);
-    if item.is_some_and(|item| presentation.item_enabled(item)) {
+    if visible_item_at(screen, current_index, presentation).is_some() {
         current_index
     } else {
         first_enabled_index(screen, presentation)
@@ -2086,8 +2200,9 @@ mod tests {
         KeyboardBindingTarget, KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction,
         MenuInput, MenuItem, MenuPresentation, MenuScreen, OverlayMenuState,
         PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, ScrollIndicatorDirection,
-        gamepad_binding_label, performance_hud_lines, previous_enabled_index,
-        render_performance_hud, scroll_indicator_rows, viewport_start_index,
+        gamepad_binding_label, normalized_selected_index, performance_hud_lines,
+        previous_enabled_index, render_performance_hud, rendered_recent_rom_item_label,
+        scroll_indicator_rows, viewport_start_index,
     };
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
@@ -2095,6 +2210,7 @@ mod tests {
         GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
         GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
     };
+    use std::time::Duration;
 
     fn test_presentation() -> MenuPresentation {
         MenuPresentation {
@@ -2488,14 +2604,25 @@ mod tests {
 
     #[test]
     fn opening_rom_is_skipped_while_dialog_is_pending() {
-        let blocked_presentation = MenuPresentation {
+        let presentation = MenuPresentation {
             rom_loaded: false,
-            any_dialog_pending: true,
             ..test_presentation()
         };
+        let blocked_presentation = MenuPresentation {
+            any_dialog_pending: true,
+            ..presentation
+        };
         let mut menu = OverlayMenuState::default();
-        menu.open(blocked_presentation);
+        menu.open(presentation);
 
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, blocked_presentation),
+            None
+        );
+        assert_eq!(
+            menu.handle_input(MenuInput::Down, blocked_presentation),
+            None
+        );
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, blocked_presentation),
             None
@@ -2503,6 +2630,33 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, blocked_presentation),
             Some(MenuAction::ToggleFullscreen)
+        );
+    }
+
+    #[test]
+    fn open_rom_stays_selected_while_the_dialog_is_pending() {
+        let presentation = MenuPresentation {
+            rom_loaded: false,
+            ..test_presentation()
+        };
+        let blocked_presentation = MenuPresentation {
+            any_dialog_pending: true,
+            ..presentation
+        };
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::OpenRom)
+        );
+        assert_eq!(
+            normalized_selected_index(MenuScreen::Root, 1, blocked_presentation),
+            1
+        );
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, blocked_presentation),
+            None
         );
     }
 
@@ -2524,6 +2678,28 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::OpenRecentRom(0))
+        );
+    }
+
+    #[test]
+    fn recent_submenu_exposes_clear_list_before_return() {
+        let mut recent_rom_labels = [CompactRecentRomLabel::default(); RECENT_ROM_MENU_CAPACITY];
+        recent_rom_labels[0] = CompactRecentRomLabel::from_text("TETRIS");
+        let presentation = MenuPresentation {
+            recent_rom_count: 1,
+            recent_rom_labels,
+            ..test_presentation()
+        };
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ClearRecentList)
         );
     }
 
@@ -2895,14 +3071,30 @@ mod tests {
         );
         assert_eq!(
             previous_enabled_index(MenuScreen::Root, 0, test_presentation()),
-            5
+            6
         );
 
         let mut presentation = test_presentation();
         presentation.recent_rom_count = 2;
         presentation.recent_rom_labels[0] = CompactRecentRomLabel::from_text("TETRIS");
         presentation.recent_rom_labels[1] = CompactRecentRomLabel::from_text("MARIO");
-        assert_eq!(presentation.item_label(MenuItem::RecentRom2), "2 MARIO");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom2), "MARIO");
+    }
+
+    #[test]
+    fn recent_rom_titles_scroll_when_selected_for_long_enough() {
+        assert_eq!(
+            rendered_recent_rom_item_label("ABCDEFGHIJKLMNOP", false, Duration::from_millis(2_000)),
+            "ABCDEFGHIJKLMNO"
+        );
+        assert_eq!(
+            rendered_recent_rom_item_label("ABCDEFGHIJKLMNOP", true, Duration::from_millis(900)),
+            "ABCDEFGHIJKLMNO"
+        );
+        assert_eq!(
+            rendered_recent_rom_item_label("ABCDEFGHIJKLMNOP", true, Duration::from_millis(1_050)),
+            "BCDEFGHIJKLMNOP"
+        );
     }
 
     #[test]
@@ -2917,8 +3109,12 @@ mod tests {
         {
             presentation.recent_rom_labels[index] = CompactRecentRomLabel::from_text(label);
         }
-        assert_eq!(presentation.item_label(MenuItem::RecentRom1), "1 TETRIS");
-        assert_eq!(presentation.item_label(MenuItem::RecentRom8), "8 TENNIS");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom1), "TETRIS");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom8), "TENNIS");
+        assert_eq!(
+            presentation.item_label(MenuItem::ClearRecentList),
+            "CLEAR LIST"
+        );
 
         presentation.console_model = DesktopConsoleModel::Dmg0;
         assert_eq!(
@@ -3166,6 +3362,20 @@ mod tests {
             presentation.item_label(MenuItem::HotkeySaveBattery),
             "SAVE BATTERY F5"
         );
+        assert_eq!(presentation.item_label(MenuItem::Quit), "QUIT");
+    }
+
+    #[test]
+    fn root_menu_exposes_quit_as_the_last_first_level_action() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Up, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::Quit)
+        );
     }
 
     #[test]
@@ -3217,6 +3427,10 @@ mod tests {
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::OpenRecentRom(0))
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ClearRecentList, presentation),
+            Some(MenuAction::ClearRecentList)
         );
         menu.open(presentation);
         assert_eq!(
