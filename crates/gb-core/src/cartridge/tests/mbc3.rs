@@ -229,6 +229,41 @@ fn mbc3_timed_rtc_access_spacing_state_remains_advisory() {
 }
 
 #[test]
+fn mbc3_external_access_descriptor_surfaces_rtc_access_ready_t_cycle() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let Some(CartridgeDevice::Mbc3(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC3 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+    assert_eq!(
+        cartridge
+            .describe_external_access(0xA000)
+            .rtc_access_ready_at(),
+        None
+    );
+
+    cartridge.write_ram_timed(0xA000, 0x12, TCycle::new(100));
+    let external = cartridge.describe_external_access(0xA000);
+    assert_eq!(
+        external.target(),
+        CartridgeExternalTarget::RtcRegister(CartridgeRtcRegister::Seconds)
+    );
+    assert_eq!(external.rtc_access_ready_at(), Some(TCycle::new(116)));
+
+    cartridge.write_rom(0x4000, 0x02);
+    assert_eq!(
+        cartridge
+            .describe_external_access(0xA000)
+            .rtc_access_ready_at(),
+        None
+    );
+}
+
+#[test]
 fn strict_validation_admits_mbc3_headers_with_2kib_ram_metadata() {
     let rom = build_banked_mbc3_rom(0x13, 0x00, 0x01);
     let report =

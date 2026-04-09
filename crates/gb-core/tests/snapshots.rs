@@ -53,6 +53,7 @@ fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
     assert!(!snapshot.boot.boot_rom_mapped);
     assert!(!snapshot.boot.boot_rom_asset_configured);
     assert!(snapshot.cartridge.state == gb_core::CartridgeSlotState::Empty);
+    assert_eq!(snapshot.cartridge.rtc_access_ready_at, None);
 }
 
 #[test]

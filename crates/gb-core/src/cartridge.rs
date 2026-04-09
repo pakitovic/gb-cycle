@@ -348,6 +348,7 @@ struct Mbc5Cartridge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CartridgeSnapshot {
     pub state: CartridgeSlotState,
+    pub rtc_access_ready_at: Option<TCycle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -398,6 +399,7 @@ pub struct CartridgeExternalAccessInfo {
     availability: CartridgeExternalAvailability,
     read_behavior: CartridgeExternalReadBehavior,
     write_behavior: CartridgeExternalWriteBehavior,
+    rtc_access_ready_at: Option<TCycle>,
 }
 
 impl CartridgeExternalAccessInfo {
@@ -414,6 +416,7 @@ impl CartridgeExternalAccessInfo {
             availability,
             read_behavior,
             write_behavior,
+            rtc_access_ready_at: None,
         }
     }
 
@@ -445,6 +448,15 @@ impl CartridgeExternalAccessInfo {
 
     pub const fn write_behavior(self) -> CartridgeExternalWriteBehavior {
         self.write_behavior
+    }
+
+    pub const fn rtc_access_ready_at(self) -> Option<TCycle> {
+        self.rtc_access_ready_at
+    }
+
+    pub const fn with_rtc_access_ready_at(mut self, rtc_access_ready_at: Option<TCycle>) -> Self {
+        self.rtc_access_ready_at = rtc_access_ready_at;
+        self
     }
 }
 

@@ -255,6 +255,12 @@ impl CartridgeSlot {
             })
     }
 
+    pub fn rtc_access_ready_at(&self) -> Option<TCycle> {
+        self.device
+            .as_ref()
+            .and_then(CartridgeDevice::rtc_access_ready_at)
+    }
+
     pub(crate) fn read_ram_timed(&mut self, address: u16, t_cycle: TCycle) -> u8 {
         self.device
             .as_mut()
@@ -278,6 +284,7 @@ impl CartridgeSlot {
     pub fn snapshot(&self) -> CartridgeSnapshot {
         CartridgeSnapshot {
             state: self.state(),
+            rtc_access_ready_at: self.rtc_access_ready_at(),
         }
     }
 

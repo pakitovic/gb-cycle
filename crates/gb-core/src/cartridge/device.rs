@@ -131,6 +131,13 @@ impl CartridgeDevice {
         }
     }
 
+    pub(in crate::cartridge) fn rtc_access_ready_at(&self) -> Option<TCycle> {
+        match self {
+            Self::Mbc3(cartridge) => cartridge.rtc_access_ready_at,
+            Self::NoMbc(_) | Self::Mbc1(_) | Self::Mbc2(_) | Self::Mbc5(_) => None,
+        }
+    }
+
     pub(in crate::cartridge) fn persistent_state(&self) -> PersistentCartState {
         match self {
             Self::NoMbc(cartridge) => cartridge.persistent_state(),

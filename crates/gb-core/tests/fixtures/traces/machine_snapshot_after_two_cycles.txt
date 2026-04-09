@@ -16,4 +16,4 @@ serial.console_model=Dmg serial.status=Ready serial.sb=0x00 serial.clock_mode=Ex
 boot.console_model=Dmg boot.startup_mode=SkipBoot boot.status=Ready boot.boot_rom_kind=Dmg boot.boot_rom_mapped=false boot.asset_configured=false boot.memory_policy=DeterministicPatterned
 interrupts.console_model=Dmg interrupts.status=Ready
 joypad.console_model=Dmg joypad.status=Ready
-cartridge.state=Empty
+cartridge.state=Empty cartridge.rtc_access_ready_at=None

@@ -6,7 +6,7 @@ use gb_core::{
     CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
     CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy, HeuristicPolicy,
     Machine, MachineConfig, Mbc3RtcPersistentState, OverridePolicy, PersistentCartState,
-    SupportedCartridgeFamily, UnsupportedCartridgeCategory, ValidationPolicy,
+    StartupMode, SupportedCartridgeFamily, TCycle, UnsupportedCartridgeCategory, ValidationPolicy,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -342,6 +342,57 @@ fn resolve_access_surfaces_mbc3_rtc_selection_in_the_external_window() {
             CartridgeExternalReadBehavior::RtcLatched,
             CartridgeExternalWriteBehavior::RtcLive,
         )
+    );
+}
+
+#[test]
+fn public_mbc3_rtc_access_spacing_state_surfaces_through_descriptor_and_snapshot() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("MBC3 cartridge should load into the machine");
+
+    machine.write_bus(0x0000, 0x0A);
+    machine.write_bus(0x4000, 0x08);
+    assert_eq!(
+        machine
+            .cartridge()
+            .describe_external_access(0xA000)
+            .rtc_access_ready_at(),
+        None
+    );
+
+    let access_t_cycle = machine.next_t_cycle();
+    machine.write_bus(0xA000, 0x12);
+    let expected_ready_at = Some(TCycle::new(access_t_cycle.get() + 16));
+
+    let external = machine.cartridge().describe_external_access(0xA000);
+    assert_eq!(
+        external.target(),
+        CartridgeExternalTarget::RtcRegister(CartridgeRtcRegister::Seconds)
+    );
+    assert_eq!(external.rtc_access_ready_at(), expected_ready_at);
+
+    let snapshot = machine.cartridge().snapshot();
+    assert_eq!(snapshot.state, CartridgeSlotState::Mbc3);
+    assert_eq!(snapshot.rtc_access_ready_at, expected_ready_at);
+
+    let bus = Bus::new(ConsoleModel::Dmg);
+    let resolution = bus.resolve_access(
+        BusAccessKind::Read,
+        0xA000,
+        &BusArbitrationState::default(),
+        Some(machine.cartridge()),
+    );
+    assert_eq!(
+        resolution
+            .cartridge_external()
+            .expect("cartridge external aperture should be described")
+            .rtc_access_ready_at(),
+        expected_ready_at
     );
 }
 

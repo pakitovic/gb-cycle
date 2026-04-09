@@ -69,6 +69,7 @@ impl Mbc3Cartridge {
                         CartridgeExternalWriteBehavior::Ignored
                     },
                 )
+                .with_rtc_access_ready_at(self.rtc_access_ready_at)
             }
         }
     }
