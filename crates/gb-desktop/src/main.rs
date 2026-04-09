@@ -75,6 +75,8 @@ const INPUT_POLL_SLICE_T_CYCLES: usize = 256;
 const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
+const DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR: &str =
+    "GB_CYCLE_DESKTOP_AUDIO_DISABLE_PACING_CORRECTION";
 const DESKTOP_EMU_PROFILE_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EMU_PROFILE";
 const DESKTOP_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_PATH";
 const DESKTOP_TRACE_T_CYCLES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_T_CYCLES";
@@ -957,8 +959,48 @@ fn parse_trace_capture_t_cycles(value: Option<&std::ffi::OsStr>) -> Result<usize
     Ok(parsed)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum AudioQueuePacingCorrectionPolicy {
+    #[default]
+    Enabled,
+    Disabled,
+}
+
+impl AudioQueuePacingCorrectionPolicy {
+    fn from_env() -> Self {
+        Self::from_env_value(
+            env::var_os(DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR).as_deref(),
+        )
+    }
+
+    fn from_env_value(value: Option<&OsStr>) -> Self {
+        let Some(value) = value else {
+            return Self::Enabled;
+        };
+
+        let value = value.to_string_lossy();
+        if value.is_empty()
+            || value == "1"
+            || value.eq_ignore_ascii_case("true")
+            || value.eq_ignore_ascii_case("on")
+            || value.eq_ignore_ascii_case("yes")
+            || value.eq_ignore_ascii_case("disable")
+            || value.eq_ignore_ascii_case("disabled")
+        {
+            Self::Disabled
+        } else {
+            Self::Enabled
+        }
+    }
+
+    fn correction_enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+
 struct FramePacer {
     next_frame_start: Instant,
+    audio_queue_pacing_correction_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1017,11 +1059,16 @@ impl FramePacer {
     fn new(_vsync_enabled: bool) -> Self {
         Self {
             next_frame_start: Instant::now(),
+            audio_queue_pacing_correction_enabled: AudioQueuePacingCorrectionPolicy::from_env()
+                .correction_enabled(),
         }
     }
 
     fn wait_until_next_frame(&mut self, audio_queue_ms: Option<f64>) -> FramePacingSample {
-        let audio_correction = audio_queue_pacing_correction(audio_queue_ms);
+        let audio_correction = audio_queue_pacing_correction_with_policy(
+            audio_queue_ms,
+            self.audio_queue_pacing_correction_enabled,
+        );
         self.next_frame_start += FRAME_DURATION + audio_correction;
         let now = Instant::now();
         if now < self.next_frame_start {
@@ -1054,7 +1101,14 @@ impl FramePacer {
     }
 }
 
-fn audio_queue_pacing_correction(audio_queue_ms: Option<f64>) -> Duration {
+fn audio_queue_pacing_correction_with_policy(
+    audio_queue_ms: Option<f64>,
+    correction_enabled: bool,
+) -> Duration {
+    if !correction_enabled {
+        return Duration::ZERO;
+    }
+
     let Some(audio_queue_ms) = audio_queue_ms else {
         return Duration::ZERO;
     };
@@ -5315,23 +5369,64 @@ mod tests {
 
     #[test]
     fn audio_queue_pacing_correction_ignores_nominal_latency_and_caps_large_backlogs() {
-        assert_eq!(super::audio_queue_pacing_correction(None), Duration::ZERO);
         assert_eq!(
-            super::audio_queue_pacing_correction(Some(
-                super::AUDIO_QUEUE_TARGET_MS + super::AUDIO_QUEUE_DEADBAND_MS
-            )),
+            super::audio_queue_pacing_correction_with_policy(None, true),
+            Duration::ZERO
+        );
+        assert_eq!(
+            super::audio_queue_pacing_correction_with_policy(
+                Some(super::AUDIO_QUEUE_TARGET_MS + super::AUDIO_QUEUE_DEADBAND_MS,),
+                true,
+            ),
             Duration::ZERO
         );
 
-        let modest_correction = super::audio_queue_pacing_correction(Some(
-            super::AUDIO_QUEUE_TARGET_MS + super::AUDIO_QUEUE_DEADBAND_MS + 20.0,
-        ));
+        let modest_correction = super::audio_queue_pacing_correction_with_policy(
+            Some(super::AUDIO_QUEUE_TARGET_MS + super::AUDIO_QUEUE_DEADBAND_MS + 20.0),
+            true,
+        );
         assert!(modest_correction > Duration::ZERO);
         assert_eq!(modest_correction, Duration::from_millis(2));
 
         assert_eq!(
-            super::audio_queue_pacing_correction(Some(2_000.0)),
+            super::audio_queue_pacing_correction_with_policy(Some(2_000.0), true),
             Duration::from_secs_f64(super::AUDIO_QUEUE_MAX_CORRECTION_MS / 1_000.0)
+        );
+        assert_eq!(
+            super::audio_queue_pacing_correction_with_policy(Some(2_000.0), false),
+            Duration::ZERO
+        );
+    }
+
+    #[test]
+    fn audio_queue_pacing_correction_policy_from_env_value_accepts_disable_tokens() {
+        assert_eq!(
+            super::AudioQueuePacingCorrectionPolicy::from_env_value(None),
+            super::AudioQueuePacingCorrectionPolicy::Enabled
+        );
+        assert_eq!(
+            super::AudioQueuePacingCorrectionPolicy::from_env_value(Some(OsStr::new(""))),
+            super::AudioQueuePacingCorrectionPolicy::Disabled
+        );
+        assert_eq!(
+            super::AudioQueuePacingCorrectionPolicy::from_env_value(Some(OsStr::new("1"))),
+            super::AudioQueuePacingCorrectionPolicy::Disabled
+        );
+        assert_eq!(
+            super::AudioQueuePacingCorrectionPolicy::from_env_value(Some(OsStr::new("true"))),
+            super::AudioQueuePacingCorrectionPolicy::Disabled
+        );
+        assert_eq!(
+            super::AudioQueuePacingCorrectionPolicy::from_env_value(Some(OsStr::new("disabled"))),
+            super::AudioQueuePacingCorrectionPolicy::Disabled
+        );
+        assert_eq!(
+            super::AudioQueuePacingCorrectionPolicy::from_env_value(Some(OsStr::new("0"))),
+            super::AudioQueuePacingCorrectionPolicy::Enabled
+        );
+        assert_eq!(
+            super::AudioQueuePacingCorrectionPolicy::from_env_value(Some(OsStr::new("off"))),
+            super::AudioQueuePacingCorrectionPolicy::Enabled
         );
     }
 
