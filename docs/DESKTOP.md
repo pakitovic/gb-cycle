@@ -60,11 +60,15 @@ All rebinding takes immediate runtime effect:
 
 Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM extensions, plus frontend-owned submenus:
 
+- `Escape` and the active gamepad `Guide` button open the overlay when it is closed; when it is already open they both act as the same back/cancel control.
+- In launcher mode without a loaded ROM, that shared back/cancel behavior does not dismiss the root overlay.
+- While a native file dialog is pending from the overlay, the triggering entry stays selected but disabled until the dialog resolves.
+- Root overlay also exposes `QUIT` directly at the first menu level.
 - **`VIDEO`** — fullscreen, vsync, window scale, integer presentation, stats HUD visibility.
 - **`AUDIO`** — toggle mute, cycle host volume.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).
-- **`SYSTEM`** — system-level options.
-- **`OPEN RECENT`** — recent-ROM history, available from the root overlay whenever recent ROMs exist; entries can relaunch directly.
+- **`SYSTEM`** — system-level options such as console model, startup mode, boot ROM paths, save policy, and reset.
+- **`OPEN RECENT`** — recent-ROM history for the last `8` ROMs, available from the root overlay whenever recent ROMs exist; entries can relaunch directly, the submenu exposes `CLEAR LIST`, and the selected entry scrolls after a short dwell when the sanitized title is wider than the overlay text area.
 - **`DEFAULTS`** — reset actions inside `VIDEO`, `AUDIO`, and `INPUT` to restore host-side settings and bindings without touching CLI config.
 
 ## Battery saves
