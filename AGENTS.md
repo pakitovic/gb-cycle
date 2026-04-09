@@ -74,6 +74,14 @@ Read only the `docs/` files relevant to the task at hand. Do not preload documen
 - Prefer a scope matching the touched subsystem, for example `gb-core`, `cpu`, `ppu`, `apu`, `cartridge`, `bus`, `scheduler`
 - Do not create free-form commit messages outside this format.
 
+## Pull request rules
+
+- Pull request titles must also use Conventional Commits.
+- Pull request title format: `<type>(<scope>): <subject>`
+- Do not prefix pull request titles with `[codex]` or any other automation tag.
+- When asked to open a pull request, create it in ready-for-review state by default.
+- Only create a draft pull request when the user explicitly asks for a draft PR.
+
 ## Final decision rule
 
 For doubtful decisions, prefer this sequence:
