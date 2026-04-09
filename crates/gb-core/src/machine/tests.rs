@@ -4,7 +4,7 @@ use crate::cartridge::PersistentCartState;
 use crate::debugger::BreakpointCondition;
 use crate::joypad::JoypadButton;
 use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
-use crate::ppu::PpuLcdState;
+use crate::ppu::{PpuLcdState, PpuStepRegion};
 use crate::scheduler::{ExternalEvent, SchedulerSideEffect, TCycle};
 use crate::serial::SerialPeer;
 
@@ -59,6 +59,57 @@ fn step_t_cycle_advances_exactly_one_cycle_per_call() {
     assert_eq!(first.t_cycle(), TCycle::new(0));
     assert_eq!(second.t_cycle(), TCycle::new(1));
     assert_eq!(machine.next_t_cycle(), TCycle::new(2));
+}
+
+#[derive(Default)]
+struct RegionCollector {
+    regions: Vec<MachineStepRegion>,
+    ppu_regions: Vec<PpuStepRegion>,
+}
+
+impl MachineStepObserver for RegionCollector {
+    fn begin_region(&mut self, region: MachineStepRegion) {
+        self.regions.push(region);
+    }
+
+    fn begin_ppu_region(&mut self, region: PpuStepRegion) {
+        self.ppu_regions.push(region);
+    }
+}
+
+#[test]
+fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    let mut observer = RegionCollector::default();
+
+    machine.step_t_cycle_with_observer(&mut observer);
+
+    assert_eq!(
+        observer.regions,
+        vec![
+            MachineStepRegion::ExternalEvents,
+            MachineStepRegion::Timer,
+            MachineStepRegion::Apu,
+            MachineStepRegion::Dma,
+            MachineStepRegion::Dma,
+            MachineStepRegion::Ppu,
+            MachineStepRegion::Serial,
+            MachineStepRegion::Cpu,
+            MachineStepRegion::Ppu,
+            MachineStepRegion::Interrupts,
+            MachineStepRegion::Cpu,
+        ]
+    );
+    assert_eq!(
+        observer.ppu_regions,
+        vec![
+            PpuStepRegion::Mode2Scan,
+            PpuStepRegion::Mode2Scan,
+            PpuStepRegion::Mode2Scan,
+        ]
+    );
 }
 
 #[test]
