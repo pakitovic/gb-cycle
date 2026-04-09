@@ -3287,7 +3287,26 @@ fn process_events(
                         manager.is_active_gamepad(gamepad_event_joystick_id(*which))
                     }) =>
             {
-                toggle_menu(event_pump, canvas.window(), session, machine, runtime)?;
+                if runtime.menu_state.is_open() {
+                    let presentation =
+                        current_menu_presentation(canvas.window(), runtime, machine, session);
+                    if let Some(action) = runtime
+                        .menu_state
+                        .handle_input(MenuInput::Cancel, presentation)
+                    {
+                        let mut context = FrontendActionContext {
+                            session,
+                            machine,
+                            runtime,
+                            performance_counter,
+                            frame_pacer,
+                            settings_store,
+                        };
+                        let _ = execute_menu_action(action, event_pump, canvas, &mut context)?;
+                    }
+                } else {
+                    toggle_menu(event_pump, canvas.window(), session, machine, runtime)?;
+                }
                 continue;
             }
             _ => {}
@@ -3788,6 +3807,7 @@ fn process_pending_open_rom_dialog(
         }
     }
 
+    restore_window_after_native_dialog(canvas);
     Ok(())
 }
 
@@ -3816,6 +3836,7 @@ fn process_pending_boot_rom_file_dialog(
         }
     }
 
+    restore_window_after_native_dialog(canvas);
     Ok(())
 }
 
@@ -3844,6 +3865,7 @@ fn process_pending_boot_rom_directory_dialog(
         }
     }
 
+    restore_window_after_native_dialog(canvas);
     Ok(())
 }
 
@@ -3872,7 +3894,12 @@ fn process_pending_save_directory_dialog(
         }
     }
 
+    restore_window_after_native_dialog(canvas);
     Ok(())
+}
+
+fn restore_window_after_native_dialog(canvas: &mut Canvas<Window>) {
+    let _ = canvas.window_mut().raise();
 }
 
 fn apply_machine_settings_change(
@@ -4261,6 +4288,17 @@ fn execute_menu_action(
                 show_warning_message(Some(canvas.window()), "Open Recent", &error);
                 eprintln!("warning: {error}");
             }
+            Ok(None)
+        }
+        MenuAction::ClearRecentList => {
+            context.settings_store.clear_recent_roms()?;
+            context.session.recent_roms = context.settings_store.recent_roms().to_vec();
+            context.runtime.menu_state.open(current_menu_presentation(
+                canvas.window(),
+                context.runtime,
+                context.machine,
+                context.session,
+            ));
             Ok(None)
         }
         MenuAction::SaveBattery => {
@@ -5718,7 +5756,9 @@ mod tests {
             descriptor.naxes = 0;
             descriptor.nbuttons = 16;
             descriptor.button_mask = (1 << Button::Guide as u32)
+                | (1 << Button::South as u32)
                 | (1 << Button::East as u32)
+                | (1 << Button::DPadDown as u32)
                 | (1 << Button::North as u32);
             descriptor.name = name.as_ptr();
 
@@ -7285,7 +7325,7 @@ mod tests {
                 "/tmp/roms/Super Mario Land 2 - 6 Golden Coins (USA, Europe) (Rev 2).gb"
             ))
             .as_str(),
-            "SUPER MARIO L"
+            "SUPER MARIO LAND 2 6 GOLDEN COINS"
         );
     }
 
@@ -8718,6 +8758,135 @@ mod tests {
     }
 
     #[test]
+    fn guide_button_keeps_the_launcher_open_without_a_loaded_rom() {
+        let _guard = crate::lock_sdl_test();
+        let virtual_gamepad = VirtualGamepad::attach("Launcher Pad");
+        let mut harness = FrontendHarness::new("launcher-guide", false, false, true);
+        harness
+            ._gamepad_subsystem
+            .as_ref()
+            .expect("gamepad subsystem")
+            .update();
+        harness
+            .runtime
+            .gamepad_manager
+            .as_mut()
+            .expect("gamepad manager")
+            .set_preferred_device(
+                gb_desktop::PreferredGamepadIdentity {
+                    path: None,
+                    name: Some("Launcher Pad".to_string()),
+                },
+                &mut harness.runtime.input_state,
+                &mut harness.machine,
+            );
+
+        let events = harness
+            .sdl
+            .event()
+            .expect("event subsystem should initialize for controller events");
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                &harness.machine,
+                &harness.session,
+            ));
+        assert!(harness.runtime.menu_state.is_open());
+
+        events
+            .push_event(Event::ControllerButtonDown {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                button: Button::Guide,
+            })
+            .expect("guide event should be pushable");
+        harness
+            .process_events()
+            .expect("guide button should leave the launcher open");
+        assert!(harness.runtime.menu_state.is_open());
+    }
+
+    #[test]
+    fn guide_button_matches_keyboard_cancel_behavior_inside_submenus() {
+        let _guard = crate::lock_sdl_test();
+        let virtual_gamepad = VirtualGamepad::attach("Overlay Pad");
+        let mut harness = FrontendHarness::new("guide-cancel", true, false, true);
+        harness
+            ._gamepad_subsystem
+            .as_ref()
+            .expect("gamepad subsystem")
+            .update();
+        harness
+            .runtime
+            .gamepad_manager
+            .as_mut()
+            .expect("gamepad manager")
+            .set_preferred_device(
+                gb_desktop::PreferredGamepadIdentity {
+                    path: None,
+                    name: Some("Overlay Pad".to_string()),
+                },
+                &mut harness.runtime.input_state,
+                &mut harness.machine,
+            );
+
+        let events = harness
+            .sdl
+            .event()
+            .expect("event subsystem should initialize for controller events");
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                &harness.machine,
+                &harness.session,
+            ));
+
+        for button in [Button::DPadDown, Button::DPadDown, Button::South] {
+            events
+                .push_event(Event::ControllerButtonDown {
+                    timestamp: 0,
+                    which: virtual_gamepad.joystick_id.0,
+                    button,
+                })
+                .expect("menu navigation event should be pushable");
+            harness
+                .process_events()
+                .expect("menu navigation should process");
+        }
+        assert!(harness.runtime.menu_state.is_open());
+
+        events
+            .push_event(Event::ControllerButtonDown {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                button: Button::Guide,
+            })
+            .expect("guide event should be pushable");
+        harness
+            .process_events()
+            .expect("guide button should back out of the submenu");
+        assert!(harness.runtime.menu_state.is_open());
+
+        events
+            .push_event(Event::ControllerButtonDown {
+                timestamp: 0,
+                which: virtual_gamepad.joystick_id.0,
+                button: Button::East,
+            })
+            .expect("cancel event should be pushable");
+        harness
+            .process_events()
+            .expect("cancel button should close the root menu");
+        assert!(!harness.runtime.menu_state.is_open());
+    }
+
+    #[test]
     fn frontend_harness_covers_keyboard_binding_capture_paths() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("keyboard-capture", true, false, false);
@@ -9133,6 +9302,39 @@ mod tests {
                 .execute_action(super::MenuAction::OpenRecentRom(99))
                 .unwrap()
                 .is_none()
+        );
+        harness
+            .settings_store
+            .remember_loaded_rom(&harness.root.join("Tetris DX.gb"))
+            .expect("recent ROM should persist for clear-list coverage");
+        harness.session.recent_roms = harness.settings_store.recent_roms().to_vec();
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                &harness.machine,
+                &harness.session,
+            ));
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ClearRecentList)
+                .unwrap()
+                .is_none()
+        );
+        assert!(harness.session.recent_roms().is_empty());
+        assert!(harness.settings_store.recent_roms().is_empty());
+        assert!(harness.runtime.menu_state.is_open());
+        assert_eq!(
+            super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                &harness.machine,
+                &harness.session,
+            )
+            .recent_rom_count,
+            0
         );
         assert!(
             harness
