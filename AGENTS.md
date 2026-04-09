@@ -81,6 +81,8 @@ Read only the `docs/` files relevant to the task at hand. Do not preload documen
 - Do not prefix pull request titles with `[codex]` or any other automation tag.
 - When asked to open a pull request, create it in ready-for-review state by default.
 - Only create a draft pull request when the user explicitly asks for a draft PR.
+- Before opening or updating a pull request, bring the branch up to date with `main`.
+- If syncing with `main` produces conflicts, resolve them before leaving the branch or opening the pull request.
 
 ## Final decision rule
 
