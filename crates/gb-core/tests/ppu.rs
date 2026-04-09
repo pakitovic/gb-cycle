@@ -1007,6 +1007,7 @@ fn lcd_off_releases_ppu_mode_restrictions_without_overriding_dma_hram_only_block
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
+    let initial_hram = machine.read_bus(0xFF80);
 
     machine.write_bus(0xFF40, 0x00);
     machine.write_bus(0x8000, 0x12);
@@ -1020,7 +1021,7 @@ fn lcd_off_releases_ppu_mode_restrictions_without_overriding_dma_hram_only_block
     assert_eq!(disabled.lcd_state, PpuLcdState::Disabled);
     assert_eq!(machine.read_bus(0x8000), 0xFF);
     assert_eq!(machine.read_bus(0xFE00), 0xFF);
-    assert_eq!(machine.read_bus(0xFF80), 0x00);
+    assert_eq!(machine.read_bus(0xFF80), initial_hram);
 }
 
 #[test]

@@ -135,6 +135,7 @@ pub fn expected_boot_rom_sha256(kind: BootRomKind) -> &'static str {
         BootRomKind::Dmg0 => "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e",
         BootRomKind::Dmg => "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7",
         BootRomKind::Mgb => "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2",
+        BootRomKind::Cgb => unreachable!("gb-test-runner does not verify CGB boot ROMs yet"),
     }
 }
 
@@ -184,6 +185,12 @@ mod tests {
             expected_boot_rom_sha256(BootRomKind::Mgb),
             "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2"
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "gb-test-runner does not verify CGB boot ROMs yet")]
+    fn expected_hashes_reject_cgb_kind_until_the_runner_gains_cgb_boot_support() {
+        let _ = expected_boot_rom_sha256(BootRomKind::Cgb);
     }
 
     #[test]

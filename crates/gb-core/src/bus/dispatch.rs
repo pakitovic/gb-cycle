@@ -1,4 +1,4 @@
-use crate::cartridge::CartridgeSlot;
+use crate::cartridge::{CartridgeExternalAccessInfo, CartridgeSlot};
 use crate::scheduler::TCycle;
 
 use super::{
@@ -8,33 +8,83 @@ use super::{
 };
 
 impl Bus {
+    // Public observability is CPU-visible. This surface is mapping-aware and
+    // layers live boot, DMA, PPU, MMIO-owner, and cartridge state on top of
+    // the static address-only `Bus::decode_address()` classification. The
+    // runtime still resolves other bus masters through the shared internal
+    // requester-aware arbitration path.
     pub fn resolve_access(
+        &self,
+        kind: BusAccessKind,
+        address: u16,
+        state: &BusArbitrationState,
+        cartridge: Option<&CartridgeSlot>,
+    ) -> BusAccessResolution {
+        self.resolve_requester_access(BusRequester::Cpu, kind, address, state, cartridge)
+    }
+
+    pub(crate) fn resolve_requester_access(
         &self,
         requester: BusRequester,
         kind: BusAccessKind,
         address: u16,
         state: &BusArbitrationState,
+        cartridge: Option<&CartridgeSlot>,
     ) -> BusAccessResolution {
-        let target = self.resolve_nominal_target(kind, address, state);
-        let disposition = self.evaluate_access_policy(requester, kind, target, state);
+        let nominal_target = self.resolve_nominal_target(kind, address, state);
+        let nominal_disposition =
+            self.evaluate_access_policy(requester, kind, nominal_target, state);
+        let nominal_cartridge_external =
+            self.describe_cartridge_external_access(nominal_target, cartridge);
 
-        BusAccessResolution::new(requester, kind, target, disposition)
+        if let Some(conflict_source_address) =
+            self.cpu_dma_conflict_source_address(requester, address, state)
+        {
+            let target = self.resolve_nominal_target(kind, conflict_source_address, state);
+            let cartridge_external = self.describe_cartridge_external_access(target, cartridge);
+            return BusAccessResolution::new(
+                requester,
+                kind,
+                address,
+                nominal_target,
+                target,
+                nominal_cartridge_external,
+                cartridge_external,
+                nominal_disposition,
+                BusAccessDisposition::Allowed,
+            );
+        }
+
+        BusAccessResolution::new(
+            requester,
+            kind,
+            address,
+            nominal_target,
+            nominal_target,
+            nominal_cartridge_external,
+            nominal_cartridge_external,
+            nominal_disposition,
+            nominal_disposition,
+        )
     }
 
-    pub fn read(&mut self, address: u16) -> u8 {
-        self.read_with(address, BusRequester::Cpu, &BusArbitrationState::default())
+    #[cfg(test)]
+    pub(crate) fn read(&mut self, address: u16) -> u8 {
+        self.read_with_context(
+            address,
+            BusRequester::Cpu,
+            &BusArbitrationState::default(),
+            None,
+            BusIoReadView::default(),
+        )
     }
 
-    pub fn read_with(
-        &mut self,
-        address: u16,
-        requester: BusRequester,
-        state: &BusArbitrationState,
-    ) -> u8 {
-        self.read_with_context(address, requester, state, None, BusIoReadView::default())
-    }
-
-    pub fn read_with_cartridge(
+    /// Limited partial-harness entry point for fixture setup and storage
+    /// inspection.
+    ///
+    /// This does not provide live MMIO owners, so public runtime access must
+    /// still go through `Machine::read_bus`.
+    pub fn read_partial_harness_with_cartridge(
         &mut self,
         address: u16,
         requester: BusRequester,
@@ -58,15 +108,13 @@ impl Bus {
         cartridge: Option<&CartridgeSlot>,
         io: BusIoReadView<'_>,
     ) -> u8 {
-        if let Some(conflict_source_address) =
-            self.cpu_dma_conflict_source_address(requester, address, state)
-        {
-            let target =
-                self.resolve_nominal_target(BusAccessKind::Read, conflict_source_address, state);
-            return self.perform_allowed_read(target, cartridge, io);
-        }
-
-        let resolution = self.resolve_access(requester, BusAccessKind::Read, address, state);
+        let resolution = self.resolve_requester_access(
+            requester,
+            BusAccessKind::Read,
+            address,
+            state,
+            cartridge,
+        );
 
         match resolution.disposition() {
             BusAccessDisposition::Allowed => {
@@ -88,15 +136,13 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoReadView<'_>,
     ) -> u8 {
-        if let Some(conflict_source_address) =
-            self.cpu_dma_conflict_source_address(requester, address, state)
-        {
-            let target =
-                self.resolve_nominal_target(BusAccessKind::Read, conflict_source_address, state);
-            return self.perform_allowed_read_timed(target, t_cycle, cartridge, io);
-        }
-
-        let resolution = self.resolve_access(requester, BusAccessKind::Read, address, state);
+        let resolution = self.resolve_requester_access(
+            requester,
+            BusAccessKind::Read,
+            address,
+            state,
+            cartridge.as_deref(),
+        );
 
         match resolution.disposition() {
             BusAccessDisposition::Allowed => {
@@ -109,33 +155,24 @@ impl Bus {
         }
     }
 
-    pub fn write(&mut self, address: u16, value: u8) {
-        self.write_with(
+    #[cfg(test)]
+    pub(crate) fn write(&mut self, address: u16, value: u8) {
+        self.write_with_context(
             address,
             value,
             BusRequester::Cpu,
             &BusArbitrationState::default(),
-        );
-    }
-
-    pub fn write_with(
-        &mut self,
-        address: u16,
-        value: u8,
-        requester: BusRequester,
-        state: &BusArbitrationState,
-    ) {
-        self.write_with_context(
-            address,
-            value,
-            requester,
-            state,
             None,
             BusIoWriteView::default(),
         );
     }
 
-    pub fn write_with_cartridge(
+    /// Limited partial-harness entry point for fixture setup and storage
+    /// inspection.
+    ///
+    /// This does not provide live MMIO owners, so public runtime access must
+    /// still go through `Machine::write_bus`.
+    pub fn write_partial_harness_with_cartridge(
         &mut self,
         address: u16,
         value: u8,
@@ -162,16 +199,13 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoWriteView<'_>,
     ) {
-        if let Some(conflict_source_address) =
-            self.cpu_dma_conflict_source_address(requester, address, state)
-        {
-            let target =
-                self.resolve_nominal_target(BusAccessKind::Write, conflict_source_address, state);
-            self.perform_allowed_write(target, value, cartridge, io);
-            return;
-        }
-
-        let resolution = self.resolve_access(requester, BusAccessKind::Write, address, state);
+        let resolution = self.resolve_requester_access(
+            requester,
+            BusAccessKind::Write,
+            address,
+            state,
+            cartridge.as_deref(),
+        );
 
         match resolution.disposition() {
             BusAccessDisposition::Allowed => {
@@ -195,16 +229,13 @@ impl Bus {
         cartridge: Option<&mut CartridgeSlot>,
         io: BusIoWriteView<'_>,
     ) {
-        if let Some(conflict_source_address) =
-            self.cpu_dma_conflict_source_address(requester, address, state)
-        {
-            let target =
-                self.resolve_nominal_target(BusAccessKind::Write, conflict_source_address, state);
-            self.perform_allowed_write_timed(target, value, t_cycle, cartridge, io);
-            return;
-        }
-
-        let resolution = self.resolve_access(requester, BusAccessKind::Write, address, state);
+        let resolution = self.resolve_requester_access(
+            requester,
+            BusAccessKind::Write,
+            address,
+            state,
+            cartridge.as_deref(),
+        );
 
         match resolution.disposition() {
             BusAccessDisposition::Allowed => {
@@ -253,5 +284,20 @@ impl Bus {
         state: &BusArbitrationState,
     ) -> BusAddressInfo {
         self.router.resolve_nominal_target(kind, address, state)
+    }
+
+    fn describe_cartridge_external_access(
+        &self,
+        target: BusAddressInfo,
+        cartridge: Option<&CartridgeSlot>,
+    ) -> Option<CartridgeExternalAccessInfo> {
+        if target.region() != BusRegion::CartridgeExternal {
+            return None;
+        }
+
+        Some(cartridge.map_or_else(
+            || CartridgeExternalAccessInfo::no_device(target.address()),
+            |cartridge| cartridge.describe_external_access(target.address()),
+        ))
     }
 }

@@ -27,16 +27,19 @@ pub use bus::{
     AddressRouter, BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution,
     BusAddressInfo, BusArbitrationState, BusBlockReason, BusDomain, BusMaster, BusRegion,
     BusRegionOwner, BusRequester, BusSnapshot, BusStatus, DmaBusState, DmaCpuAccessPolicy,
-    DmaMemoryRegionImpact, IoRegisterAccess, IoRegisterAvailability, IoRegisterInfo,
-    IoRegisterKind, IoRegisterOwner,
+    DmaMemoryRegionImpact, IoRegisterAccess, IoRegisterAvailability, IoRegisterImplementation,
+    IoRegisterInfo, IoRegisterKind, IoRegisterOwner, UnusableAreaInfo, UnusableAreaReadProfile,
+    UnusableAreaWriteProfile,
 };
 pub use cartridge::{
-    CartridgeClassification, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeHeader,
+    CartridgeClassification, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
+    CartridgeExternalAccessInfo, CartridgeExternalAvailability, CartridgeExternalReadBehavior,
+    CartridgeExternalTarget, CartridgeExternalWriteBehavior, CartridgeHeader,
     CartridgeHeaderParseError, CartridgeLoadError, CartridgeLoadReport,
     CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
-    CartridgeRamPayloadKind, CartridgeSelection, CartridgeSlot, CartridgeSlotState,
-    CartridgeSnapshot, CgbFlag, Mbc3RtcPersistentState, PersistentCartState, RamSizeInfo,
-    RomSizeInfo, SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
+    CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
+    CartridgeSlotState, CartridgeSnapshot, CgbFlag, Mbc3RtcPersistentState, PersistentCartState,
+    RamSizeInfo, RomSizeInfo, SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
 };
 pub use cpu::{
     CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,

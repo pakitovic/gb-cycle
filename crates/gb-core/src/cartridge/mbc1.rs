@@ -1,6 +1,38 @@
 use super::*;
 
 impl Mbc1Cartridge {
+    pub(in crate::cartridge) fn describe_external_access(
+        &self,
+        address: u16,
+    ) -> CartridgeExternalAccessInfo {
+        let has_ram = self.ram.is_some();
+        let available = self.ram_enabled && has_ram;
+
+        CartridgeExternalAccessInfo::new(
+            address,
+            CartridgeExternalTarget::BankedRam {
+                bank: self.effective_ram_bank(),
+            },
+            if available {
+                CartridgeExternalAvailability::Accessible
+            } else if self.ram_enabled {
+                CartridgeExternalAvailability::Absent
+            } else {
+                CartridgeExternalAvailability::Disabled
+            },
+            if available {
+                CartridgeExternalReadBehavior::Storage
+            } else {
+                CartridgeExternalReadBehavior::FallbackValue(RAM_ABSENT_READ_VALUE)
+            },
+            if available {
+                CartridgeExternalWriteBehavior::Storage
+            } else {
+                CartridgeExternalWriteBehavior::Ignored
+            },
+        )
+    }
+
     fn effective_ram_bank_count(&self) -> usize {
         self.ram
             .as_ref()
@@ -126,14 +158,27 @@ impl Mbc1Cartridge {
 
         match self.wiring {
             Mbc1Wiring::Standard => {
-                let bank = if self.banking_mode == 0 {
-                    0
-                } else {
-                    (self.secondary_bank & 0x03) as usize
-                };
+                let bank = self.effective_ram_bank() as usize;
                 (bank % ram_bank_count) * 0x2000 + base_offset
             }
             Mbc1Wiring::LargeRom => base_offset,
+        }
+    }
+
+    pub(in crate::cartridge) fn effective_ram_bank(&self) -> u8 {
+        if self.variant == Mbc1Variant::Mbc1M {
+            return 0;
+        }
+
+        match self.wiring {
+            Mbc1Wiring::Standard => {
+                if self.banking_mode == 0 {
+                    0
+                } else {
+                    self.secondary_bank & 0x03
+                }
+            }
+            Mbc1Wiring::LargeRom => 0,
         }
     }
 

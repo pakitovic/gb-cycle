@@ -348,6 +348,116 @@ struct Mbc5Cartridge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CartridgeSnapshot {
     pub state: CartridgeSlotState,
+    pub rtc_access_ready_at: Option<TCycle>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CartridgeRtcRegister {
+    Seconds,
+    Minutes,
+    Hours,
+    DayLow,
+    DayHigh,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CartridgeExternalTarget {
+    NoDevice,
+    LinearRam,
+    BankedRam { bank: u8 },
+    Mbc2InternalRam,
+    RtcRegister(CartridgeRtcRegister),
+    ReservedSelector(u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CartridgeExternalAvailability {
+    Accessible,
+    Disabled,
+    Absent,
+    Reserved,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CartridgeExternalReadBehavior {
+    Storage,
+    RtcLatched,
+    FallbackValue(u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CartridgeExternalWriteBehavior {
+    Storage,
+    RtcLive,
+    Ignored,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CartridgeExternalAccessInfo {
+    address: u16,
+    target: CartridgeExternalTarget,
+    availability: CartridgeExternalAvailability,
+    read_behavior: CartridgeExternalReadBehavior,
+    write_behavior: CartridgeExternalWriteBehavior,
+    rtc_access_ready_at: Option<TCycle>,
+}
+
+impl CartridgeExternalAccessInfo {
+    pub const fn new(
+        address: u16,
+        target: CartridgeExternalTarget,
+        availability: CartridgeExternalAvailability,
+        read_behavior: CartridgeExternalReadBehavior,
+        write_behavior: CartridgeExternalWriteBehavior,
+    ) -> Self {
+        Self {
+            address,
+            target,
+            availability,
+            read_behavior,
+            write_behavior,
+            rtc_access_ready_at: None,
+        }
+    }
+
+    pub const fn no_device(address: u16) -> Self {
+        Self::new(
+            address,
+            CartridgeExternalTarget::NoDevice,
+            CartridgeExternalAvailability::Absent,
+            CartridgeExternalReadBehavior::FallbackValue(RAM_ABSENT_READ_VALUE),
+            CartridgeExternalWriteBehavior::Ignored,
+        )
+    }
+
+    pub const fn address(self) -> u16 {
+        self.address
+    }
+
+    pub const fn target(self) -> CartridgeExternalTarget {
+        self.target
+    }
+
+    pub const fn availability(self) -> CartridgeExternalAvailability {
+        self.availability
+    }
+
+    pub const fn read_behavior(self) -> CartridgeExternalReadBehavior {
+        self.read_behavior
+    }
+
+    pub const fn write_behavior(self) -> CartridgeExternalWriteBehavior {
+        self.write_behavior
+    }
+
+    pub const fn rtc_access_ready_at(self) -> Option<TCycle> {
+        self.rtc_access_ready_at
+    }
+
+    pub const fn with_rtc_access_ready_at(mut self, rtc_access_ready_at: Option<TCycle>) -> Self {
+        self.rtc_access_ready_at = rtc_access_ready_at;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
