@@ -12,9 +12,10 @@ use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base
 use gb_core::{
     ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot, CartridgeDiagnostic,
     CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
-    CpuBusAccessKind, CpuBusActivitySnapshot, CpuSnapshot, ExecutionMode,
+    CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, CpuSnapshot, ExecutionMode,
     InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
-    MachineStepObserver, MachineStepRegion, PpuStepRegion, StartupMode, TraceSummaryBuffer,
+    MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuStepRegion, StartupMode,
+    TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel, DesktopKey,
@@ -299,7 +300,29 @@ struct FrameLoopTelemetry {
     ly_0_self_wrap_startup_mode0: u8,
     ly_0_self_wrap_blank_frame: u8,
     ly_0_to_1_transitions: u8,
+    ly_0_scanline_t_cycles: usize,
     ly_0_max_mode0_start_dot: u16,
+    ly_0_stall_t_cycles: usize,
+    ly_0_stall_hblank_t_cycles: usize,
+    ly_0_stall_oam_t_cycles: usize,
+    ly_0_stall_drawing_t_cycles: usize,
+    ly_0_stall_startup_mode0_t_cycles: usize,
+    ly_0_stall_blank_frame_t_cycles: usize,
+    ly_0_stall_runs: u16,
+    ly_0_max_stall_run_t_cycles: usize,
+    ly_0_max_stall_dot: u16,
+    ly_0_max_stall_mode_dot: u16,
+    cpu_stop_t_cycles: usize,
+    cpu_zombie_stop_t_cycles: usize,
+    ly_0_cpu_stop_t_cycles: usize,
+    ly_0_cpu_zombie_stop_t_cycles: usize,
+    ly_0_stall_cpu_stop_t_cycles: usize,
+    ly_0_stall_cpu_zombie_stop_t_cycles: usize,
+    lcd_disabled_t_cycles: usize,
+    lcd_disable_transitions: u8,
+    lcd_enable_transitions: u8,
+    ly_0_lcd_disabled_t_cycles: usize,
+    ly_0_stall_lcd_disabled_t_cycles: usize,
 }
 
 #[derive(Debug)]
@@ -1159,7 +1182,29 @@ struct FramePerformanceSample {
     ly_0_self_wrap_startup_mode0: Option<u8>,
     ly_0_self_wrap_blank_frame: Option<u8>,
     ly_0_to_1_transitions: Option<u8>,
+    ly_0_scanline_t_cycles: Option<usize>,
     ly_0_max_mode0_start_dot: Option<u16>,
+    ly_0_stall_t_cycles: Option<usize>,
+    ly_0_stall_hblank_t_cycles: Option<usize>,
+    ly_0_stall_oam_t_cycles: Option<usize>,
+    ly_0_stall_drawing_t_cycles: Option<usize>,
+    ly_0_stall_startup_mode0_t_cycles: Option<usize>,
+    ly_0_stall_blank_frame_t_cycles: Option<usize>,
+    ly_0_stall_runs: Option<u16>,
+    ly_0_max_stall_run_t_cycles: Option<usize>,
+    ly_0_max_stall_dot: Option<u16>,
+    ly_0_max_stall_mode_dot: Option<u16>,
+    cpu_stop_t_cycles: Option<usize>,
+    cpu_zombie_stop_t_cycles: Option<usize>,
+    ly_0_cpu_stop_t_cycles: Option<usize>,
+    ly_0_cpu_zombie_stop_t_cycles: Option<usize>,
+    ly_0_stall_cpu_stop_t_cycles: Option<usize>,
+    ly_0_stall_cpu_zombie_stop_t_cycles: Option<usize>,
+    lcd_disabled_t_cycles: Option<usize>,
+    lcd_disable_transitions: Option<u8>,
+    lcd_enable_transitions: Option<u8>,
+    ly_0_lcd_disabled_t_cycles: Option<usize>,
+    ly_0_stall_lcd_disabled_t_cycles: Option<usize>,
 }
 
 struct PerformanceCounter {
@@ -1233,8 +1278,52 @@ struct PerformanceCounter {
     sample_ly_0_self_wrap_blank_frame_observations: u32,
     sample_ly_0_to_1_transitions: u64,
     sample_ly_0_to_1_transitions_observations: u32,
+    sample_ly_0_scanline_t_cycles: u64,
+    sample_ly_0_scanline_t_cycles_observations: u32,
     sample_ly_0_max_mode0_start_dot: u64,
     sample_ly_0_max_mode0_start_dot_observations: u32,
+    sample_ly_0_stall_t_cycles: u64,
+    sample_ly_0_stall_t_cycles_observations: u32,
+    sample_ly_0_stall_hblank_t_cycles: u64,
+    sample_ly_0_stall_hblank_t_cycles_observations: u32,
+    sample_ly_0_stall_oam_t_cycles: u64,
+    sample_ly_0_stall_oam_t_cycles_observations: u32,
+    sample_ly_0_stall_drawing_t_cycles: u64,
+    sample_ly_0_stall_drawing_t_cycles_observations: u32,
+    sample_ly_0_stall_startup_mode0_t_cycles: u64,
+    sample_ly_0_stall_startup_mode0_t_cycles_observations: u32,
+    sample_ly_0_stall_blank_frame_t_cycles: u64,
+    sample_ly_0_stall_blank_frame_t_cycles_observations: u32,
+    sample_ly_0_stall_runs: u64,
+    sample_ly_0_stall_runs_observations: u32,
+    sample_ly_0_max_stall_run_t_cycles: u64,
+    sample_ly_0_max_stall_run_t_cycles_observations: u32,
+    sample_ly_0_max_stall_dot: u64,
+    sample_ly_0_max_stall_dot_observations: u32,
+    sample_ly_0_max_stall_mode_dot: u64,
+    sample_ly_0_max_stall_mode_dot_observations: u32,
+    sample_cpu_stop_t_cycles: u64,
+    sample_cpu_stop_t_cycles_observations: u32,
+    sample_cpu_zombie_stop_t_cycles: u64,
+    sample_cpu_zombie_stop_t_cycles_observations: u32,
+    sample_ly_0_cpu_stop_t_cycles: u64,
+    sample_ly_0_cpu_stop_t_cycles_observations: u32,
+    sample_ly_0_cpu_zombie_stop_t_cycles: u64,
+    sample_ly_0_cpu_zombie_stop_t_cycles_observations: u32,
+    sample_ly_0_stall_cpu_stop_t_cycles: u64,
+    sample_ly_0_stall_cpu_stop_t_cycles_observations: u32,
+    sample_ly_0_stall_cpu_zombie_stop_t_cycles: u64,
+    sample_ly_0_stall_cpu_zombie_stop_t_cycles_observations: u32,
+    sample_lcd_disabled_t_cycles: u64,
+    sample_lcd_disabled_t_cycles_observations: u32,
+    sample_lcd_disable_transitions: u64,
+    sample_lcd_disable_transitions_observations: u32,
+    sample_lcd_enable_transitions: u64,
+    sample_lcd_enable_transitions_observations: u32,
+    sample_ly_0_lcd_disabled_t_cycles: u64,
+    sample_ly_0_lcd_disabled_t_cycles_observations: u32,
+    sample_ly_0_stall_lcd_disabled_t_cycles: u64,
+    sample_ly_0_stall_lcd_disabled_t_cycles_observations: u32,
     hud_snapshot: Option<PerformanceHudSnapshot>,
 }
 
@@ -1320,8 +1409,52 @@ impl PerformanceCounter {
             sample_ly_0_self_wrap_blank_frame_observations: 0,
             sample_ly_0_to_1_transitions: 0,
             sample_ly_0_to_1_transitions_observations: 0,
+            sample_ly_0_scanline_t_cycles: 0,
+            sample_ly_0_scanline_t_cycles_observations: 0,
             sample_ly_0_max_mode0_start_dot: 0,
             sample_ly_0_max_mode0_start_dot_observations: 0,
+            sample_ly_0_stall_t_cycles: 0,
+            sample_ly_0_stall_t_cycles_observations: 0,
+            sample_ly_0_stall_hblank_t_cycles: 0,
+            sample_ly_0_stall_hblank_t_cycles_observations: 0,
+            sample_ly_0_stall_oam_t_cycles: 0,
+            sample_ly_0_stall_oam_t_cycles_observations: 0,
+            sample_ly_0_stall_drawing_t_cycles: 0,
+            sample_ly_0_stall_drawing_t_cycles_observations: 0,
+            sample_ly_0_stall_startup_mode0_t_cycles: 0,
+            sample_ly_0_stall_startup_mode0_t_cycles_observations: 0,
+            sample_ly_0_stall_blank_frame_t_cycles: 0,
+            sample_ly_0_stall_blank_frame_t_cycles_observations: 0,
+            sample_ly_0_stall_runs: 0,
+            sample_ly_0_stall_runs_observations: 0,
+            sample_ly_0_max_stall_run_t_cycles: 0,
+            sample_ly_0_max_stall_run_t_cycles_observations: 0,
+            sample_ly_0_max_stall_dot: 0,
+            sample_ly_0_max_stall_dot_observations: 0,
+            sample_ly_0_max_stall_mode_dot: 0,
+            sample_ly_0_max_stall_mode_dot_observations: 0,
+            sample_cpu_stop_t_cycles: 0,
+            sample_cpu_stop_t_cycles_observations: 0,
+            sample_cpu_zombie_stop_t_cycles: 0,
+            sample_cpu_zombie_stop_t_cycles_observations: 0,
+            sample_ly_0_cpu_stop_t_cycles: 0,
+            sample_ly_0_cpu_stop_t_cycles_observations: 0,
+            sample_ly_0_cpu_zombie_stop_t_cycles: 0,
+            sample_ly_0_cpu_zombie_stop_t_cycles_observations: 0,
+            sample_ly_0_stall_cpu_stop_t_cycles: 0,
+            sample_ly_0_stall_cpu_stop_t_cycles_observations: 0,
+            sample_ly_0_stall_cpu_zombie_stop_t_cycles: 0,
+            sample_ly_0_stall_cpu_zombie_stop_t_cycles_observations: 0,
+            sample_lcd_disabled_t_cycles: 0,
+            sample_lcd_disabled_t_cycles_observations: 0,
+            sample_lcd_disable_transitions: 0,
+            sample_lcd_disable_transitions_observations: 0,
+            sample_lcd_enable_transitions: 0,
+            sample_lcd_enable_transitions_observations: 0,
+            sample_ly_0_lcd_disabled_t_cycles: 0,
+            sample_ly_0_lcd_disabled_t_cycles_observations: 0,
+            sample_ly_0_stall_lcd_disabled_t_cycles: 0,
+            sample_ly_0_stall_lcd_disabled_t_cycles_observations: 0,
             hud_snapshot: None,
         }
     }
@@ -1451,9 +1584,97 @@ impl PerformanceCounter {
             self.sample_ly_0_to_1_transitions += u64::from(transitions);
             self.sample_ly_0_to_1_transitions_observations += 1;
         }
+        if let Some(t_cycles) = sample.ly_0_scanline_t_cycles {
+            self.sample_ly_0_scanline_t_cycles += t_cycles as u64;
+            self.sample_ly_0_scanline_t_cycles_observations += 1;
+        }
         if let Some(mode0_start_dot) = sample.ly_0_max_mode0_start_dot {
             self.sample_ly_0_max_mode0_start_dot += u64::from(mode0_start_dot);
             self.sample_ly_0_max_mode0_start_dot_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_stall_t_cycles {
+            self.sample_ly_0_stall_t_cycles += t_cycles as u64;
+            self.sample_ly_0_stall_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_stall_hblank_t_cycles {
+            self.sample_ly_0_stall_hblank_t_cycles += t_cycles as u64;
+            self.sample_ly_0_stall_hblank_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_stall_oam_t_cycles {
+            self.sample_ly_0_stall_oam_t_cycles += t_cycles as u64;
+            self.sample_ly_0_stall_oam_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_stall_drawing_t_cycles {
+            self.sample_ly_0_stall_drawing_t_cycles += t_cycles as u64;
+            self.sample_ly_0_stall_drawing_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_stall_startup_mode0_t_cycles {
+            self.sample_ly_0_stall_startup_mode0_t_cycles += t_cycles as u64;
+            self.sample_ly_0_stall_startup_mode0_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_stall_blank_frame_t_cycles {
+            self.sample_ly_0_stall_blank_frame_t_cycles += t_cycles as u64;
+            self.sample_ly_0_stall_blank_frame_t_cycles_observations += 1;
+        }
+        if let Some(stall_runs) = sample.ly_0_stall_runs {
+            self.sample_ly_0_stall_runs += u64::from(stall_runs);
+            self.sample_ly_0_stall_runs_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_max_stall_run_t_cycles {
+            self.sample_ly_0_max_stall_run_t_cycles += t_cycles as u64;
+            self.sample_ly_0_max_stall_run_t_cycles_observations += 1;
+        }
+        if let Some(dot) = sample.ly_0_max_stall_dot {
+            self.sample_ly_0_max_stall_dot += u64::from(dot);
+            self.sample_ly_0_max_stall_dot_observations += 1;
+        }
+        if let Some(mode_dot) = sample.ly_0_max_stall_mode_dot {
+            self.sample_ly_0_max_stall_mode_dot += u64::from(mode_dot);
+            self.sample_ly_0_max_stall_mode_dot_observations += 1;
+        }
+        if let Some(t_cycles) = sample.cpu_stop_t_cycles {
+            self.sample_cpu_stop_t_cycles += t_cycles as u64;
+            self.sample_cpu_stop_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.cpu_zombie_stop_t_cycles {
+            self.sample_cpu_zombie_stop_t_cycles += t_cycles as u64;
+            self.sample_cpu_zombie_stop_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_cpu_stop_t_cycles {
+            self.sample_ly_0_cpu_stop_t_cycles += t_cycles as u64;
+            self.sample_ly_0_cpu_stop_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_cpu_zombie_stop_t_cycles {
+            self.sample_ly_0_cpu_zombie_stop_t_cycles += t_cycles as u64;
+            self.sample_ly_0_cpu_zombie_stop_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_stall_cpu_stop_t_cycles {
+            self.sample_ly_0_stall_cpu_stop_t_cycles += t_cycles as u64;
+            self.sample_ly_0_stall_cpu_stop_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_stall_cpu_zombie_stop_t_cycles {
+            self.sample_ly_0_stall_cpu_zombie_stop_t_cycles += t_cycles as u64;
+            self.sample_ly_0_stall_cpu_zombie_stop_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.lcd_disabled_t_cycles {
+            self.sample_lcd_disabled_t_cycles += t_cycles as u64;
+            self.sample_lcd_disabled_t_cycles_observations += 1;
+        }
+        if let Some(transitions) = sample.lcd_disable_transitions {
+            self.sample_lcd_disable_transitions += u64::from(transitions);
+            self.sample_lcd_disable_transitions_observations += 1;
+        }
+        if let Some(transitions) = sample.lcd_enable_transitions {
+            self.sample_lcd_enable_transitions += u64::from(transitions);
+            self.sample_lcd_enable_transitions_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_lcd_disabled_t_cycles {
+            self.sample_ly_0_lcd_disabled_t_cycles += t_cycles as u64;
+            self.sample_ly_0_lcd_disabled_t_cycles_observations += 1;
+        }
+        if let Some(t_cycles) = sample.ly_0_stall_lcd_disabled_t_cycles {
+            self.sample_ly_0_stall_lcd_disabled_t_cycles += t_cycles as u64;
+            self.sample_ly_0_stall_lcd_disabled_t_cycles_observations += 1;
         }
 
         let elapsed = self.sample_started_at.elapsed();
@@ -1789,6 +2010,15 @@ impl PerformanceCounter {
         } else {
             "off".to_string()
         };
+        let ly_0_scanline_t_cycles = if self.sample_ly_0_scanline_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_scanline_t_cycles as f64
+                    / f64::from(self.sample_ly_0_scanline_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
         let ly_0_max_mode0_start_dot = if self.sample_ly_0_max_mode0_start_dot_observations > 0 {
             format!(
                 "{:.2}",
@@ -1798,9 +2028,208 @@ impl PerformanceCounter {
         } else {
             "off".to_string()
         };
+        let ly_0_stall_t_cycles = if self.sample_ly_0_stall_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_stall_t_cycles as f64
+                    / f64::from(self.sample_ly_0_stall_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_stall_hblank_t_cycles = if self.sample_ly_0_stall_hblank_t_cycles_observations > 0
+        {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_stall_hblank_t_cycles as f64
+                    / f64::from(self.sample_ly_0_stall_hblank_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_stall_oam_t_cycles = if self.sample_ly_0_stall_oam_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_stall_oam_t_cycles as f64
+                    / f64::from(self.sample_ly_0_stall_oam_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_stall_drawing_t_cycles =
+            if self.sample_ly_0_stall_drawing_t_cycles_observations > 0 {
+                format!(
+                    "{:.2}",
+                    self.sample_ly_0_stall_drawing_t_cycles as f64
+                        / f64::from(self.sample_ly_0_stall_drawing_t_cycles_observations)
+                )
+            } else {
+                "off".to_string()
+            };
+        let ly_0_stall_startup_mode0_t_cycles =
+            if self.sample_ly_0_stall_startup_mode0_t_cycles_observations > 0 {
+                format!(
+                    "{:.2}",
+                    self.sample_ly_0_stall_startup_mode0_t_cycles as f64
+                        / f64::from(self.sample_ly_0_stall_startup_mode0_t_cycles_observations)
+                )
+            } else {
+                "off".to_string()
+            };
+        let ly_0_stall_blank_frame_t_cycles =
+            if self.sample_ly_0_stall_blank_frame_t_cycles_observations > 0 {
+                format!(
+                    "{:.2}",
+                    self.sample_ly_0_stall_blank_frame_t_cycles as f64
+                        / f64::from(self.sample_ly_0_stall_blank_frame_t_cycles_observations)
+                )
+            } else {
+                "off".to_string()
+            };
+        let ly_0_stall_runs = if self.sample_ly_0_stall_runs_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_stall_runs as f64
+                    / f64::from(self.sample_ly_0_stall_runs_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_max_stall_run_t_cycles =
+            if self.sample_ly_0_max_stall_run_t_cycles_observations > 0 {
+                format!(
+                    "{:.2}",
+                    self.sample_ly_0_max_stall_run_t_cycles as f64
+                        / f64::from(self.sample_ly_0_max_stall_run_t_cycles_observations)
+                )
+            } else {
+                "off".to_string()
+            };
+        let ly_0_max_stall_dot = if self.sample_ly_0_max_stall_dot_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_max_stall_dot as f64
+                    / f64::from(self.sample_ly_0_max_stall_dot_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_max_stall_mode_dot = if self.sample_ly_0_max_stall_mode_dot_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_max_stall_mode_dot as f64
+                    / f64::from(self.sample_ly_0_max_stall_mode_dot_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let cpu_stop_t_cycles = if self.sample_cpu_stop_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_cpu_stop_t_cycles as f64
+                    / f64::from(self.sample_cpu_stop_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let cpu_zombie_stop_t_cycles = if self.sample_cpu_zombie_stop_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_cpu_zombie_stop_t_cycles as f64
+                    / f64::from(self.sample_cpu_zombie_stop_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_cpu_stop_t_cycles = if self.sample_ly_0_cpu_stop_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_cpu_stop_t_cycles as f64
+                    / f64::from(self.sample_ly_0_cpu_stop_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_cpu_zombie_stop_t_cycles =
+            if self.sample_ly_0_cpu_zombie_stop_t_cycles_observations > 0 {
+                format!(
+                    "{:.2}",
+                    self.sample_ly_0_cpu_zombie_stop_t_cycles as f64
+                        / f64::from(self.sample_ly_0_cpu_zombie_stop_t_cycles_observations)
+                )
+            } else {
+                "off".to_string()
+            };
+        let ly_0_stall_cpu_stop_t_cycles =
+            if self.sample_ly_0_stall_cpu_stop_t_cycles_observations > 0 {
+                format!(
+                    "{:.2}",
+                    self.sample_ly_0_stall_cpu_stop_t_cycles as f64
+                        / f64::from(self.sample_ly_0_stall_cpu_stop_t_cycles_observations)
+                )
+            } else {
+                "off".to_string()
+            };
+        let ly_0_stall_cpu_zombie_stop_t_cycles =
+            if self.sample_ly_0_stall_cpu_zombie_stop_t_cycles_observations > 0 {
+                format!(
+                    "{:.2}",
+                    self.sample_ly_0_stall_cpu_zombie_stop_t_cycles as f64
+                        / f64::from(self.sample_ly_0_stall_cpu_zombie_stop_t_cycles_observations)
+                )
+            } else {
+                "off".to_string()
+            };
+        let lcd_disabled_t_cycles = if self.sample_lcd_disabled_t_cycles_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_lcd_disabled_t_cycles as f64
+                    / f64::from(self.sample_lcd_disabled_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let lcd_disable_transitions = if self.sample_lcd_disable_transitions_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_lcd_disable_transitions as f64
+                    / f64::from(self.sample_lcd_disable_transitions_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let lcd_enable_transitions = if self.sample_lcd_enable_transitions_observations > 0 {
+            format!(
+                "{:.2}",
+                self.sample_lcd_enable_transitions as f64
+                    / f64::from(self.sample_lcd_enable_transitions_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_lcd_disabled_t_cycles = if self.sample_ly_0_lcd_disabled_t_cycles_observations > 0
+        {
+            format!(
+                "{:.2}",
+                self.sample_ly_0_lcd_disabled_t_cycles as f64
+                    / f64::from(self.sample_ly_0_lcd_disabled_t_cycles_observations)
+            )
+        } else {
+            "off".to_string()
+        };
+        let ly_0_stall_lcd_disabled_t_cycles =
+            if self.sample_ly_0_stall_lcd_disabled_t_cycles_observations > 0 {
+                format!(
+                    "{:.2}",
+                    self.sample_ly_0_stall_lcd_disabled_t_cycles as f64
+                        / f64::from(self.sample_ly_0_stall_lcd_disabled_t_cycles_observations)
+                )
+            } else {
+                "off".to_string()
+            };
 
         Some(format!(
-            "gb-desktop emu-profile fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            "gb-desktop emu-profile fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
             snapshot.fps,
             snapshot.speed_percent,
             snapshot.frame_time_ms,
@@ -1958,8 +2387,52 @@ impl PerformanceCounter {
         self.sample_ly_0_self_wrap_blank_frame_observations = 0;
         self.sample_ly_0_to_1_transitions = 0;
         self.sample_ly_0_to_1_transitions_observations = 0;
+        self.sample_ly_0_scanline_t_cycles = 0;
+        self.sample_ly_0_scanline_t_cycles_observations = 0;
         self.sample_ly_0_max_mode0_start_dot = 0;
         self.sample_ly_0_max_mode0_start_dot_observations = 0;
+        self.sample_ly_0_stall_t_cycles = 0;
+        self.sample_ly_0_stall_t_cycles_observations = 0;
+        self.sample_ly_0_stall_hblank_t_cycles = 0;
+        self.sample_ly_0_stall_hblank_t_cycles_observations = 0;
+        self.sample_ly_0_stall_oam_t_cycles = 0;
+        self.sample_ly_0_stall_oam_t_cycles_observations = 0;
+        self.sample_ly_0_stall_drawing_t_cycles = 0;
+        self.sample_ly_0_stall_drawing_t_cycles_observations = 0;
+        self.sample_ly_0_stall_startup_mode0_t_cycles = 0;
+        self.sample_ly_0_stall_startup_mode0_t_cycles_observations = 0;
+        self.sample_ly_0_stall_blank_frame_t_cycles = 0;
+        self.sample_ly_0_stall_blank_frame_t_cycles_observations = 0;
+        self.sample_ly_0_stall_runs = 0;
+        self.sample_ly_0_stall_runs_observations = 0;
+        self.sample_ly_0_max_stall_run_t_cycles = 0;
+        self.sample_ly_0_max_stall_run_t_cycles_observations = 0;
+        self.sample_ly_0_max_stall_dot = 0;
+        self.sample_ly_0_max_stall_dot_observations = 0;
+        self.sample_ly_0_max_stall_mode_dot = 0;
+        self.sample_ly_0_max_stall_mode_dot_observations = 0;
+        self.sample_cpu_stop_t_cycles = 0;
+        self.sample_cpu_stop_t_cycles_observations = 0;
+        self.sample_cpu_zombie_stop_t_cycles = 0;
+        self.sample_cpu_zombie_stop_t_cycles_observations = 0;
+        self.sample_ly_0_cpu_stop_t_cycles = 0;
+        self.sample_ly_0_cpu_stop_t_cycles_observations = 0;
+        self.sample_ly_0_cpu_zombie_stop_t_cycles = 0;
+        self.sample_ly_0_cpu_zombie_stop_t_cycles_observations = 0;
+        self.sample_ly_0_stall_cpu_stop_t_cycles = 0;
+        self.sample_ly_0_stall_cpu_stop_t_cycles_observations = 0;
+        self.sample_ly_0_stall_cpu_zombie_stop_t_cycles = 0;
+        self.sample_ly_0_stall_cpu_zombie_stop_t_cycles_observations = 0;
+        self.sample_lcd_disabled_t_cycles = 0;
+        self.sample_lcd_disabled_t_cycles_observations = 0;
+        self.sample_lcd_disable_transitions = 0;
+        self.sample_lcd_disable_transitions_observations = 0;
+        self.sample_lcd_enable_transitions = 0;
+        self.sample_lcd_enable_transitions_observations = 0;
+        self.sample_ly_0_lcd_disabled_t_cycles = 0;
+        self.sample_ly_0_lcd_disabled_t_cycles_observations = 0;
+        self.sample_ly_0_stall_lcd_disabled_t_cycles = 0;
+        self.sample_ly_0_stall_lcd_disabled_t_cycles_observations = 0;
     }
 
     fn collect_emulation_profile_results(&mut self) {
@@ -2447,7 +2920,41 @@ fn run_desktop_with_startup_fallback_persistence(
                 ),
                 ly_0_self_wrap_blank_frame: Some(frame_loop_telemetry.ly_0_self_wrap_blank_frame),
                 ly_0_to_1_transitions: Some(frame_loop_telemetry.ly_0_to_1_transitions),
+                ly_0_scanline_t_cycles: Some(frame_loop_telemetry.ly_0_scanline_t_cycles),
                 ly_0_max_mode0_start_dot: Some(frame_loop_telemetry.ly_0_max_mode0_start_dot),
+                ly_0_stall_t_cycles: Some(frame_loop_telemetry.ly_0_stall_t_cycles),
+                ly_0_stall_hblank_t_cycles: Some(frame_loop_telemetry.ly_0_stall_hblank_t_cycles),
+                ly_0_stall_oam_t_cycles: Some(frame_loop_telemetry.ly_0_stall_oam_t_cycles),
+                ly_0_stall_drawing_t_cycles: Some(frame_loop_telemetry.ly_0_stall_drawing_t_cycles),
+                ly_0_stall_startup_mode0_t_cycles: Some(
+                    frame_loop_telemetry.ly_0_stall_startup_mode0_t_cycles,
+                ),
+                ly_0_stall_blank_frame_t_cycles: Some(
+                    frame_loop_telemetry.ly_0_stall_blank_frame_t_cycles,
+                ),
+                ly_0_stall_runs: Some(frame_loop_telemetry.ly_0_stall_runs),
+                ly_0_max_stall_run_t_cycles: Some(frame_loop_telemetry.ly_0_max_stall_run_t_cycles),
+                ly_0_max_stall_dot: Some(frame_loop_telemetry.ly_0_max_stall_dot),
+                ly_0_max_stall_mode_dot: Some(frame_loop_telemetry.ly_0_max_stall_mode_dot),
+                cpu_stop_t_cycles: Some(frame_loop_telemetry.cpu_stop_t_cycles),
+                cpu_zombie_stop_t_cycles: Some(frame_loop_telemetry.cpu_zombie_stop_t_cycles),
+                ly_0_cpu_stop_t_cycles: Some(frame_loop_telemetry.ly_0_cpu_stop_t_cycles),
+                ly_0_cpu_zombie_stop_t_cycles: Some(
+                    frame_loop_telemetry.ly_0_cpu_zombie_stop_t_cycles,
+                ),
+                ly_0_stall_cpu_stop_t_cycles: Some(
+                    frame_loop_telemetry.ly_0_stall_cpu_stop_t_cycles,
+                ),
+                ly_0_stall_cpu_zombie_stop_t_cycles: Some(
+                    frame_loop_telemetry.ly_0_stall_cpu_zombie_stop_t_cycles,
+                ),
+                lcd_disabled_t_cycles: Some(frame_loop_telemetry.lcd_disabled_t_cycles),
+                lcd_disable_transitions: Some(frame_loop_telemetry.lcd_disable_transitions),
+                lcd_enable_transitions: Some(frame_loop_telemetry.lcd_enable_transitions),
+                ly_0_lcd_disabled_t_cycles: Some(frame_loop_telemetry.ly_0_lcd_disabled_t_cycles),
+                ly_0_stall_lcd_disabled_t_cycles: Some(
+                    frame_loop_telemetry.ly_0_stall_lcd_disabled_t_cycles,
+                ),
             },
         )?;
     }
@@ -2939,11 +3446,35 @@ fn step_until_next_frame(
     let mut ly_0_self_wrap_startup_mode0 = 0u8;
     let mut ly_0_self_wrap_blank_frame = 0u8;
     let mut ly_0_to_1_transitions = 0u8;
+    let mut ly_0_scanline_t_cycles = 0usize;
     let mut ly_0_max_mode0_start_dot = if frame_start_ly == 0 {
         max_mode0_start_dot
     } else {
         0
     };
+    let mut ly_0_stall_t_cycles = 0usize;
+    let mut ly_0_stall_hblank_t_cycles = 0usize;
+    let mut ly_0_stall_oam_t_cycles = 0usize;
+    let mut ly_0_stall_drawing_t_cycles = 0usize;
+    let mut ly_0_stall_startup_mode0_t_cycles = 0usize;
+    let mut ly_0_stall_blank_frame_t_cycles = 0usize;
+    let mut ly_0_stall_runs = 0u16;
+    let mut ly_0_current_stall_run_t_cycles = 0usize;
+    let mut ly_0_max_stall_run_t_cycles = 0usize;
+    let mut ly_0_max_stall_dot = 0u16;
+    let mut ly_0_max_stall_mode_dot = 0u16;
+    let mut cpu_stop_t_cycles = 0usize;
+    let mut cpu_zombie_stop_t_cycles = 0usize;
+    let mut ly_0_cpu_stop_t_cycles = 0usize;
+    let mut ly_0_cpu_zombie_stop_t_cycles = 0usize;
+    let mut ly_0_stall_cpu_stop_t_cycles = 0usize;
+    let mut ly_0_stall_cpu_zombie_stop_t_cycles = 0usize;
+    let mut lcd_disabled_t_cycles = 0usize;
+    let mut lcd_disable_transitions = 0u8;
+    let mut lcd_enable_transitions = 0u8;
+    let mut ly_0_lcd_disabled_t_cycles = 0usize;
+    let mut ly_0_stall_lcd_disabled_t_cycles = 0usize;
+    let mut previous_lcd_enabled = context.machine.ppu().lcd_state().is_enabled();
 
     loop {
         let process_events_started_at = profile_this_frame.then(Instant::now);
@@ -3000,6 +3531,43 @@ fn step_until_next_frame(
             let current_ly = context.machine.ppu().ly();
             let current_dot = context.machine.ppu().line_dot();
             let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
+            let current_access_mode = context.machine.ppu().access_mode();
+            let current_mode_dot = context.machine.ppu().mode_dot();
+            let startup_mode0_active = context.machine.ppu().is_startup_mode0_window_active();
+            let blank_frame_active = context.machine.ppu().is_blank_frame_active();
+            let current_lcd_enabled = context.machine.ppu().lcd_state().is_enabled();
+            let current_cpu_execution_state = context.machine.cpu().execution_state();
+            if !current_lcd_enabled {
+                lcd_disabled_t_cycles = lcd_disabled_t_cycles.saturating_add(1);
+                if current_ly == 0 {
+                    ly_0_lcd_disabled_t_cycles = ly_0_lcd_disabled_t_cycles.saturating_add(1);
+                }
+            }
+            match (previous_lcd_enabled, current_lcd_enabled) {
+                (true, false) => {
+                    lcd_disable_transitions = lcd_disable_transitions.saturating_add(1);
+                }
+                (false, true) => {
+                    lcd_enable_transitions = lcd_enable_transitions.saturating_add(1);
+                }
+                _ => {}
+            }
+            match current_cpu_execution_state {
+                CpuExecutionState::Stopped => {
+                    cpu_stop_t_cycles = cpu_stop_t_cycles.saturating_add(1);
+                    if current_ly == 0 {
+                        ly_0_cpu_stop_t_cycles = ly_0_cpu_stop_t_cycles.saturating_add(1);
+                    }
+                }
+                CpuExecutionState::ZombieStopped => {
+                    cpu_zombie_stop_t_cycles = cpu_zombie_stop_t_cycles.saturating_add(1);
+                    if current_ly == 0 {
+                        ly_0_cpu_zombie_stop_t_cycles =
+                            ly_0_cpu_zombie_stop_t_cycles.saturating_add(1);
+                    }
+                }
+                _ => {}
+            }
             if current_mode0_start_dot > max_mode0_start_dot {
                 max_mode0_start_dot = current_mode0_start_dot;
                 max_mode0_start_dot_ly = current_ly;
@@ -3007,9 +3575,56 @@ fn step_until_next_frame(
             if current_ly == 0 {
                 ly_0_max_mode0_start_dot = ly_0_max_mode0_start_dot.max(current_mode0_start_dot);
             }
+            if current_ly == 0 && current_ly == previous_ly && current_dot == previous_dot {
+                ly_0_stall_t_cycles = ly_0_stall_t_cycles.saturating_add(1);
+                match current_access_mode {
+                    PpuAccessMode::HBlank => {
+                        ly_0_stall_hblank_t_cycles = ly_0_stall_hblank_t_cycles.saturating_add(1);
+                    }
+                    PpuAccessMode::OamScan => {
+                        ly_0_stall_oam_t_cycles = ly_0_stall_oam_t_cycles.saturating_add(1);
+                    }
+                    PpuAccessMode::Drawing => {
+                        ly_0_stall_drawing_t_cycles = ly_0_stall_drawing_t_cycles.saturating_add(1);
+                    }
+                    PpuAccessMode::VBlank => {}
+                }
+                if startup_mode0_active {
+                    ly_0_stall_startup_mode0_t_cycles =
+                        ly_0_stall_startup_mode0_t_cycles.saturating_add(1);
+                }
+                if blank_frame_active {
+                    ly_0_stall_blank_frame_t_cycles =
+                        ly_0_stall_blank_frame_t_cycles.saturating_add(1);
+                }
+                if !current_lcd_enabled {
+                    ly_0_stall_lcd_disabled_t_cycles =
+                        ly_0_stall_lcd_disabled_t_cycles.saturating_add(1);
+                }
+                match current_cpu_execution_state {
+                    CpuExecutionState::Stopped => {
+                        ly_0_stall_cpu_stop_t_cycles =
+                            ly_0_stall_cpu_stop_t_cycles.saturating_add(1);
+                    }
+                    CpuExecutionState::ZombieStopped => {
+                        ly_0_stall_cpu_zombie_stop_t_cycles =
+                            ly_0_stall_cpu_zombie_stop_t_cycles.saturating_add(1);
+                    }
+                    _ => {}
+                }
+                if ly_0_current_stall_run_t_cycles == 0 {
+                    ly_0_stall_runs = ly_0_stall_runs.saturating_add(1);
+                }
+                ly_0_current_stall_run_t_cycles = ly_0_current_stall_run_t_cycles.saturating_add(1);
+                if ly_0_current_stall_run_t_cycles > ly_0_max_stall_run_t_cycles {
+                    ly_0_max_stall_run_t_cycles = ly_0_current_stall_run_t_cycles;
+                    ly_0_max_stall_dot = current_dot;
+                    ly_0_max_stall_mode_dot = current_mode_dot;
+                }
+            } else {
+                ly_0_current_stall_run_t_cycles = 0;
+            }
             if current_dot == 0 && previous_dot != 0 {
-                let startup_mode0_active = context.machine.ppu().is_startup_mode0_window_active();
-                let blank_frame_active = context.machine.ppu().is_blank_frame_active();
                 match (previous_ly, current_ly) {
                     (153, 0) => {
                         ly_153_to_0_transitions = ly_153_to_0_transitions.saturating_add(1);
@@ -3033,6 +3648,7 @@ fn step_until_next_frame(
                     }
                     (0, 1) => {
                         ly_0_to_1_transitions = ly_0_to_1_transitions.saturating_add(1);
+                        ly_0_scanline_t_cycles = current_scanline_t_cycles;
                     }
                     _ => {}
                 }
@@ -3051,6 +3667,7 @@ fn step_until_next_frame(
             }
             previous_ly = current_ly;
             previous_dot = current_dot;
+            previous_lcd_enabled = current_lcd_enabled;
 
             let now_at_frame_origin = current_ly == 0 && current_dot == 0;
             if now_at_frame_origin && !at_frame_origin {
@@ -3099,7 +3716,29 @@ fn step_until_next_frame(
                         ly_0_self_wrap_startup_mode0,
                         ly_0_self_wrap_blank_frame,
                         ly_0_to_1_transitions,
+                        ly_0_scanline_t_cycles,
                         ly_0_max_mode0_start_dot,
+                        ly_0_stall_t_cycles,
+                        ly_0_stall_hblank_t_cycles,
+                        ly_0_stall_oam_t_cycles,
+                        ly_0_stall_drawing_t_cycles,
+                        ly_0_stall_startup_mode0_t_cycles,
+                        ly_0_stall_blank_frame_t_cycles,
+                        ly_0_stall_runs,
+                        ly_0_max_stall_run_t_cycles,
+                        ly_0_max_stall_dot,
+                        ly_0_max_stall_mode_dot,
+                        cpu_stop_t_cycles,
+                        cpu_zombie_stop_t_cycles,
+                        ly_0_cpu_stop_t_cycles,
+                        ly_0_cpu_zombie_stop_t_cycles,
+                        ly_0_stall_cpu_stop_t_cycles,
+                        ly_0_stall_cpu_zombie_stop_t_cycles,
+                        lcd_disabled_t_cycles,
+                        lcd_disable_transitions,
+                        lcd_enable_transitions,
+                        ly_0_lcd_disabled_t_cycles,
+                        ly_0_stall_lcd_disabled_t_cycles,
                     },
                 });
             }
@@ -5536,8 +6175,52 @@ mod tests {
         counter.sample_ly_0_self_wrap_blank_frame_observations = 2;
         counter.sample_ly_0_to_1_transitions = 2;
         counter.sample_ly_0_to_1_transitions_observations = 2;
+        counter.sample_ly_0_scanline_t_cycles = 912;
+        counter.sample_ly_0_scanline_t_cycles_observations = 2;
         counter.sample_ly_0_max_mode0_start_dot = 508;
         counter.sample_ly_0_max_mode0_start_dot_observations = 2;
+        counter.sample_ly_0_stall_t_cycles = 24;
+        counter.sample_ly_0_stall_t_cycles_observations = 2;
+        counter.sample_ly_0_stall_hblank_t_cycles = 16;
+        counter.sample_ly_0_stall_hblank_t_cycles_observations = 2;
+        counter.sample_ly_0_stall_oam_t_cycles = 6;
+        counter.sample_ly_0_stall_oam_t_cycles_observations = 2;
+        counter.sample_ly_0_stall_drawing_t_cycles = 2;
+        counter.sample_ly_0_stall_drawing_t_cycles_observations = 2;
+        counter.sample_ly_0_stall_startup_mode0_t_cycles = 4;
+        counter.sample_ly_0_stall_startup_mode0_t_cycles_observations = 2;
+        counter.sample_ly_0_stall_blank_frame_t_cycles = 0;
+        counter.sample_ly_0_stall_blank_frame_t_cycles_observations = 2;
+        counter.sample_ly_0_stall_runs = 2;
+        counter.sample_ly_0_stall_runs_observations = 2;
+        counter.sample_ly_0_max_stall_run_t_cycles = 18;
+        counter.sample_ly_0_max_stall_run_t_cycles_observations = 2;
+        counter.sample_ly_0_max_stall_dot = 224;
+        counter.sample_ly_0_max_stall_dot_observations = 2;
+        counter.sample_ly_0_max_stall_mode_dot = 42;
+        counter.sample_ly_0_max_stall_mode_dot_observations = 2;
+        counter.sample_cpu_stop_t_cycles = 10;
+        counter.sample_cpu_stop_t_cycles_observations = 2;
+        counter.sample_cpu_zombie_stop_t_cycles = 4;
+        counter.sample_cpu_zombie_stop_t_cycles_observations = 2;
+        counter.sample_ly_0_cpu_stop_t_cycles = 8;
+        counter.sample_ly_0_cpu_stop_t_cycles_observations = 2;
+        counter.sample_ly_0_cpu_zombie_stop_t_cycles = 2;
+        counter.sample_ly_0_cpu_zombie_stop_t_cycles_observations = 2;
+        counter.sample_ly_0_stall_cpu_stop_t_cycles = 6;
+        counter.sample_ly_0_stall_cpu_stop_t_cycles_observations = 2;
+        counter.sample_ly_0_stall_cpu_zombie_stop_t_cycles = 2;
+        counter.sample_ly_0_stall_cpu_zombie_stop_t_cycles_observations = 2;
+        counter.sample_lcd_disabled_t_cycles = 14;
+        counter.sample_lcd_disabled_t_cycles_observations = 2;
+        counter.sample_lcd_disable_transitions = 2;
+        counter.sample_lcd_disable_transitions_observations = 2;
+        counter.sample_lcd_enable_transitions = 2;
+        counter.sample_lcd_enable_transitions_observations = 2;
+        counter.sample_ly_0_lcd_disabled_t_cycles = 12;
+        counter.sample_ly_0_lcd_disabled_t_cycles_observations = 2;
+        counter.sample_ly_0_stall_lcd_disabled_t_cycles = 10;
+        counter.sample_ly_0_stall_lcd_disabled_t_cycles_observations = 2;
         counter.sample_profiled_frames = 2;
         counter.sample_profiled_emulation_duration = Duration::from_millis(24);
         counter.sample_profiled_emulation_breakdown = super::EmulationBreakdownSample {
@@ -5605,7 +6288,29 @@ mod tests {
         assert!(summary.contains("ly0_self_wrap_startup=0.00"));
         assert!(summary.contains("ly0_self_wrap_blank=0.00"));
         assert!(summary.contains("ly0_to1=1.00"));
+        assert!(summary.contains("ly0_tcycles=456.00"));
         assert!(summary.contains("ly0_max_mode0_start_dot=254.00"));
+        assert!(summary.contains("ly0_stall_tcycles=12.00"));
+        assert!(summary.contains("ly0_stall_hb_tcycles=8.00"));
+        assert!(summary.contains("ly0_stall_oam_tcycles=3.00"));
+        assert!(summary.contains("ly0_stall_draw_tcycles=1.00"));
+        assert!(summary.contains("ly0_stall_startup_tcycles=2.00"));
+        assert!(summary.contains("ly0_stall_blank_tcycles=0.00"));
+        assert!(summary.contains("ly0_stall_runs=1.00"));
+        assert!(summary.contains("ly0_max_stall_tcycles=9.00"));
+        assert!(summary.contains("ly0_max_stall_dot=112.00"));
+        assert!(summary.contains("ly0_max_stall_mode_dot=21.00"));
+        assert!(summary.contains("cpu_stop_tcycles=5.00"));
+        assert!(summary.contains("cpu_zstop_tcycles=2.00"));
+        assert!(summary.contains("ly0_stop_tcycles=4.00"));
+        assert!(summary.contains("ly0_zstop_tcycles=1.00"));
+        assert!(summary.contains("ly0_stall_stop_tcycles=3.00"));
+        assert!(summary.contains("ly0_stall_zstop_tcycles=1.00"));
+        assert!(summary.contains("lcdoff_tcycles=7.00"));
+        assert!(summary.contains("lcdoff_transitions=1.00"));
+        assert!(summary.contains("lcdon_transitions=1.00"));
+        assert!(summary.contains("ly0_lcdoff_tcycles=6.00"));
+        assert!(summary.contains("ly0_stall_lcdoff_tcycles=5.00"));
         assert!(summary.contains("submit_samples=804.00"));
         assert!(summary.contains("submit_tcycles=70224.00"));
         assert!(summary.contains("submit_queue_before_ms=24.00"));
@@ -5905,7 +6610,29 @@ mod tests {
                     ly_0_self_wrap_startup_mode0: Some(0),
                     ly_0_self_wrap_blank_frame: Some(0),
                     ly_0_to_1_transitions: Some(1),
+                    ly_0_scanline_t_cycles: Some(456),
                     ly_0_max_mode0_start_dot: Some(254),
+                    ly_0_stall_t_cycles: Some(0),
+                    ly_0_stall_hblank_t_cycles: Some(0),
+                    ly_0_stall_oam_t_cycles: Some(0),
+                    ly_0_stall_drawing_t_cycles: Some(0),
+                    ly_0_stall_startup_mode0_t_cycles: Some(0),
+                    ly_0_stall_blank_frame_t_cycles: Some(0),
+                    ly_0_stall_runs: Some(0),
+                    ly_0_max_stall_run_t_cycles: Some(0),
+                    ly_0_max_stall_dot: Some(0),
+                    ly_0_max_stall_mode_dot: Some(0),
+                    cpu_stop_t_cycles: Some(0),
+                    cpu_zombie_stop_t_cycles: Some(0),
+                    ly_0_cpu_stop_t_cycles: Some(0),
+                    ly_0_cpu_zombie_stop_t_cycles: Some(0),
+                    ly_0_stall_cpu_stop_t_cycles: Some(0),
+                    ly_0_stall_cpu_zombie_stop_t_cycles: Some(0),
+                    lcd_disabled_t_cycles: Some(0),
+                    lcd_disable_transitions: Some(0),
+                    lcd_enable_transitions: Some(0),
+                    ly_0_lcd_disabled_t_cycles: Some(0),
+                    ly_0_stall_lcd_disabled_t_cycles: Some(0),
                 },
             )
             .expect("recording a sampled frame should succeed");
@@ -7403,7 +8130,29 @@ mod tests {
                     ly_0_self_wrap_startup_mode0: Some(0),
                     ly_0_self_wrap_blank_frame: Some(0),
                     ly_0_to_1_transitions: Some(1),
+                    ly_0_scanline_t_cycles: Some(456),
                     ly_0_max_mode0_start_dot: Some(254),
+                    ly_0_stall_t_cycles: Some(0),
+                    ly_0_stall_hblank_t_cycles: Some(0),
+                    ly_0_stall_oam_t_cycles: Some(0),
+                    ly_0_stall_drawing_t_cycles: Some(0),
+                    ly_0_stall_startup_mode0_t_cycles: Some(0),
+                    ly_0_stall_blank_frame_t_cycles: Some(0),
+                    ly_0_stall_runs: Some(0),
+                    ly_0_max_stall_run_t_cycles: Some(0),
+                    ly_0_max_stall_dot: Some(0),
+                    ly_0_max_stall_mode_dot: Some(0),
+                    cpu_stop_t_cycles: Some(0),
+                    cpu_zombie_stop_t_cycles: Some(0),
+                    ly_0_cpu_stop_t_cycles: Some(0),
+                    ly_0_cpu_zombie_stop_t_cycles: Some(0),
+                    ly_0_stall_cpu_stop_t_cycles: Some(0),
+                    ly_0_stall_cpu_zombie_stop_t_cycles: Some(0),
+                    lcd_disabled_t_cycles: Some(0),
+                    lcd_disable_transitions: Some(0),
+                    lcd_enable_transitions: Some(0),
+                    ly_0_lcd_disabled_t_cycles: Some(0),
+                    ly_0_stall_lcd_disabled_t_cycles: Some(0),
                 },
             )
             .expect("performance counter should record a frame");

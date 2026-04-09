@@ -860,6 +860,18 @@ impl Ppu {
         self.current_mode0_start_dot()
     }
 
+    pub fn access_mode(&self) -> PpuAccessMode {
+        self.current_access_mode()
+    }
+
+    pub fn mode_dot(&self) -> u16 {
+        self.current_raster_state().mode_dot()
+    }
+
+    pub fn lcd_state(&self) -> PpuLcdState {
+        self.lcd_state
+    }
+
     pub fn is_blank_frame_active(&self) -> bool {
         self.blank_frame_active
     }
