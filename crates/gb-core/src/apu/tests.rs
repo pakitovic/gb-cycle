@@ -516,7 +516,7 @@ fn frame_sequencer_advances_only_on_the_shared_div_apu_edge() {
 }
 
 #[test]
-fn powering_on_with_the_div_apu_source_high_keeps_waiting_for_the_next_live_edge() {
+fn powering_on_keeps_waiting_for_the_next_live_div_apu_edge() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.apply_startup_state(ApuStartupState {
         powered: false,
@@ -545,7 +545,7 @@ fn powering_on_with_the_div_apu_source_high_keeps_waiting_for_the_next_live_edge
         wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
     });
 
-    apu.write_register_with_div_apu_source(0xFF26, 0x80, true);
+    apu.write_register(0xFF26, 0x80);
     assert!(apu.snapshot().powered);
     assert_eq!(apu.snapshot().div_apu, 0x00);
 

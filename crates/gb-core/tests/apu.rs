@@ -314,7 +314,7 @@ fn div_write_can_advance_div_apu_immediately_when_it_resets_a_high_source_bit() 
 }
 
 #[test]
-fn powering_on_apu_while_the_div_apu_source_bit_is_high_keeps_the_next_live_frame_edge() {
+fn powering_on_apu_keeps_the_next_live_frame_edge() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );

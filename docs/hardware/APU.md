@@ -71,9 +71,6 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Because the shared `DIV-APU` source is not reset by `NR52`, the first
   post-power-on frame-sequencer event should remain a function of the preserved
   live divider phase rather than of a fixed fresh-delay assumption.
-- A source-high `DIV-APU` level at the instant `NR52` is enabled is not itself
-  a frame-sequencer event; implementations should keep waiting for the next real
-  shared-divider falling edge rather than synthesizing an extra skipped edge.
 - Applying direct-boot or startup audio state with `powered = false` should converge to that same observable powered-off contract, except for the configured wave-RAM startup contents and the preserved `DIV-APU` phase.
 - `NR52` bits `0..=3` should remain read-only live status bits that report whether each channel's generation circuit is active.
 - The low `NR52` bits must not be treated as DAC-enabled indicators; they report active channels, not DAC state.

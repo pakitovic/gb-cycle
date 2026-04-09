@@ -1928,15 +1928,6 @@ impl Apu {
     }
 
     pub fn write_register(&mut self, address: u16, value: u8) {
-        self.write_register_with_div_apu_source(address, value, false);
-    }
-
-    pub(crate) fn write_register_with_div_apu_source(
-        &mut self,
-        address: u16,
-        value: u8,
-        _div_apu_source_high: bool,
-    ) {
         self.last_register_write = None;
         if let Some(index) = self.wave_ram_index(address) {
             self.channel_3
