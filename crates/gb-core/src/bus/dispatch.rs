@@ -76,9 +76,11 @@ impl Bus {
         )
     }
 
-    // This is a limited partial-harness entry point for fixture setup and
-    // storage inspection. It does not provide live MMIO owners, so public
-    // runtime access must still go through Machine::read_bus.
+    /// Limited partial-harness entry point for fixture setup and storage
+    /// inspection.
+    ///
+    /// This does not provide live MMIO owners, so public runtime access must
+    /// still go through `Machine::read_bus`.
     pub fn read_partial_harness_with_cartridge(
         &mut self,
         address: u16,
@@ -162,9 +164,11 @@ impl Bus {
         );
     }
 
-    // This is a limited partial-harness entry point for fixture setup and
-    // storage inspection. It does not provide live MMIO owners, so public
-    // runtime access must still go through Machine::write_bus.
+    /// Limited partial-harness entry point for fixture setup and storage
+    /// inspection.
+    ///
+    /// This does not provide live MMIO owners, so public runtime access must
+    /// still go through `Machine::write_bus`.
     pub fn write_partial_harness_with_cartridge(
         &mut self,
         address: u16,
