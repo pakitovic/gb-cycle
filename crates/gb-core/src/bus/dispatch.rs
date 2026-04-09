@@ -8,8 +8,11 @@ use super::{
 };
 
 impl Bus {
-    // Public observability is CPU-visible. The runtime still resolves other
-    // bus masters through the shared internal arbitration path.
+    // Public observability is CPU-visible. This surface is mapping-aware and
+    // layers live boot, DMA, PPU, MMIO-owner, and cartridge state on top of
+    // the static address-only `Bus::decode_address()` classification. The
+    // runtime still resolves other bus masters through the shared internal
+    // requester-aware arbitration path.
     pub fn resolve_access(
         &self,
         kind: BusAccessKind,

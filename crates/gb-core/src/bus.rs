@@ -69,6 +69,10 @@ impl Bus {
         self.status
     }
 
+    /// Returns the static DMG memory-map classification for `address`.
+    ///
+    /// This is an address-only decode surface. It does not apply boot ROM
+    /// overlay windows or any other live arbitration state.
     pub fn decode_address(&self, address: u16) -> BusAddressInfo {
         self.router.decode_address(address)
     }
