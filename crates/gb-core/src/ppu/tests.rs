@@ -3003,6 +3003,280 @@ fn queue_from_push_preserves_the_same_tcycle_tilemap_refetch_window() {
 }
 
 #[test]
+fn flushing_bg_fill_tracks_cached_slice_in_fifo_sideband() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+    ppu.bg_pipeline_state.fill.pending = true;
+    ppu.bg_pipeline_state.fill.includes_real_tile_pixels = true;
+    ppu.bg_pipeline_state.fill.cached.source = PpuBgFetcherSource::Background;
+    ppu.bg_pipeline_state.fill.cached.origin =
+        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3);
+    ppu.bg_pipeline_state.fill.cached.fetch_x = BG_TILE_WIDTH as u16 * 2;
+    ppu.bg_pipeline_state.fill.cached.tile_low = 0x55;
+    ppu.bg_pipeline_state.fill.cached.tile_high = 0x33;
+
+    ppu.flush_pending_bg_fifo_fill();
+
+    assert_eq!(ppu.bg_pipeline_state.fifo.len(), BG_TILE_WIDTH as usize);
+    assert_eq!(
+        ppu.bg_pipeline_state.fifo_cached_pixels.len(),
+        BG_TILE_WIDTH as usize
+    );
+    assert!(
+        ppu.bg_pipeline_state
+            .fifo_cached_pixels
+            .iter()
+            .enumerate()
+            .all(|(pixel_index, cached)| {
+                let Some(cached) = cached else {
+                    return false;
+                };
+                cached.cached.origin
+                    == BgCachedSliceOrigin::StartupContinuation(
+                        BgStartupContinuationSlice::VisibleTile3,
+                    )
+                    && cached.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
+                    && cached.pixel_index == pixel_index as u8
+            })
+    );
+
+    let _ = ppu.bg_pipeline_state.pop_real_fifo_pixel();
+    assert_eq!(ppu.bg_pipeline_state.fifo_cached_pixels.len(), 7);
+}
+
+#[test]
+fn consuming_effective_fifo_pixel_keeps_the_visible_fifo_sideband_in_sync() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+    ppu.bg_pipeline_state.fifo.push_back(2);
+    ppu.bg_pipeline_state
+        .fifo_cached_pixels
+        .push_back(Some(BgFifoPixelCached::new(
+            BgCachedSlice {
+                source: PpuBgFetcherSource::Background,
+                origin: BgCachedSliceOrigin::StartupContinuation(
+                    BgStartupContinuationSlice::VisibleTile3,
+                ),
+                fetch_x: BG_TILE_WIDTH as u16 * 2,
+                tile_low: 0xAA,
+                tile_high: 0x00,
+                ..BgCachedSlice::default()
+            },
+            0,
+        )));
+
+    assert_eq!(
+        ppu.bg_pipeline_state.consume_effective_fifo_pixel(),
+        Some(2)
+    );
+    assert_eq!(ppu.bg_pipeline_state.startup_fifo_placeholders, 0);
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    assert!(ppu.bg_pipeline_state.fifo_cached_pixels.is_empty());
+}
+
+#[test]
+fn visible_fifo_sideband_keeps_full_cached_slice_metadata_for_future_closure_work() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+    ppu.bg_pipeline_state
+        .push_cached_slice_fifo_pixels(BgCachedSlice {
+            source: PpuBgFetcherSource::Background,
+            origin: BgCachedSliceOrigin::StartupContinuation(
+                BgStartupContinuationSlice::VisibleTile3,
+            ),
+            fetch_x: BG_TILE_WIDTH as u16 * 2,
+            tile_map_address: 0x1802,
+            tile_data_address: 0x0001,
+            tile_index: 3,
+            tile_low: 0x12,
+            tile_high: 0x34,
+            same_cycle_live_tilemap_refetch_window_open: true,
+            ..BgCachedSlice::default()
+        });
+
+    let cached = ppu.bg_pipeline_state.fifo_cached_pixels[3]
+        .expect("visible FIFO pixel should keep cached slice metadata");
+    assert_eq!(
+        cached.cached.origin,
+        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+    );
+    assert_eq!(cached.cached.fetch_x, BG_TILE_WIDTH as u16 * 2);
+    assert_eq!(cached.cached.tile_map_address, 0x1802);
+    assert_eq!(cached.cached.tile_data_address, 0x0001);
+    assert_eq!(cached.cached.tile_index, 3);
+    assert!(cached.cached.same_cycle_live_tilemap_refetch_window_open);
+    assert_eq!(cached.pixel_index, 3);
+}
+
+#[test]
+fn snapshot_exports_visible_fifo_cached_slice_metadata() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+    ppu.bg_pipeline_state.fifo.push_back(2);
+    ppu.bg_pipeline_state
+        .fifo_cached_pixels
+        .push_back(Some(BgFifoPixelCached::new(
+            BgCachedSlice {
+                source: PpuBgFetcherSource::Background,
+                origin: BgCachedSliceOrigin::StartupContinuation(
+                    BgStartupContinuationSlice::VisibleTile3,
+                ),
+                fetch_x: BG_TILE_WIDTH as u16 * 2,
+                tile_map_address: 0x1802,
+                tile_data_address: 0x0001,
+                tile_index: 3,
+                same_cycle_live_tilemap_refetch_window_open: true,
+                needs_live_tilemap_refetch: true,
+                tile_low: 0x12,
+                tile_high: 0x34,
+                ..BgCachedSlice::default()
+            },
+            5,
+        )));
+
+    let snapshot = ppu.snapshot();
+    let cached = snapshot.bg_fifo_cached_pixels[0]
+        .expect("snapshot should export visible FIFO sideband metadata");
+
+    assert_eq!(snapshot.bg_fifo_pixels, vec![2]);
+    assert_eq!(
+        cached.origin,
+        PpuBgCachedSliceOriginSnapshot::StartupContinuationVisibleTile3
+    );
+    assert_eq!(cached.fetch_x, BG_TILE_WIDTH as u16 * 2);
+    assert_eq!(cached.pixel_index, 5);
+    assert!(cached.same_cycle_live_tilemap_refetch_window_open);
+    assert!(cached.needs_live_tilemap_refetch);
+    assert_eq!(cached.tile_map_address, 0x1802);
+    assert_eq!(cached.tile_data_address, 0x0001);
+    assert_eq!(cached.tile_index, 3);
+}
+
+#[test]
+fn visible_fifo_third_startup_tile_marks_live_tilemap_refetch_on_lcdc3_write() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state
+        .fifo_cached_pixels
+        .push_back(Some(BgFifoPixelCached::new(
+            BgCachedSlice {
+                source: PpuBgFetcherSource::Background,
+                origin: BgCachedSliceOrigin::StartupContinuation(
+                    BgStartupContinuationSlice::VisibleTile3,
+                ),
+                fetch_x: BG_TILE_WIDTH as u16 * 2,
+                tile_map_address: 0x1802,
+                tile_data_address: 0x0001,
+                tile_low: 0x12,
+                tile_high: 0x34,
+                ..BgCachedSlice::default()
+            },
+            0,
+        )));
+
+    ppu.write_register(0xFF40, 0x99);
+
+    let cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+        .expect("visible FIFO pixel should keep cached slice metadata");
+    assert!(cached.cached.needs_live_tilemap_refetch);
+}
+
+#[test]
+fn visible_fifo_visible_output_recomputes_marked_tilemap_pixel_on_demand() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+    write_bg_tilemap_entry(&mut vram_bytes, 2, 0, 0);
+    write_window_tilemap_entry(&mut vram_bytes, 2, 0, 1);
+    write_bg_tile_row(&mut vram_bytes, 0, 0, 0x00, 0x00);
+    write_bg_tile_row(&mut vram_bytes, 1, 0, 0xFF, 0x00);
+    let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state
+        .fifo_cached_pixels
+        .push_back(Some(BgFifoPixelCached::new(
+            BgCachedSlice {
+                source: PpuBgFetcherSource::Background,
+                origin: BgCachedSliceOrigin::StartupContinuation(
+                    BgStartupContinuationSlice::VisibleTile3,
+                ),
+                fetch_x: BG_TILE_WIDTH as u16 * 2,
+                tile_map_address: 0x1802,
+                tile_data_address: 0x0001,
+                tile_index: 0,
+                tile_low: 0x00,
+                tile_high: 0x00,
+                ..BgCachedSlice::default()
+            },
+            0,
+        )));
+
+    ppu.write_register(0xFF40, 0x99);
+
+    let result =
+        ppu.advance_mode3_output_phase_with_vram(&VramBusView::new(BusMaster::Ppu, &mut vram));
+
+    assert_eq!(result.kind, Mode3TransferDotKind::ServedVisiblePixel);
+    assert_eq!(ppu.current_scanline_pixels[0], 1);
+}
+
+#[test]
+fn queued_fill_from_real_push_preserves_the_same_tcycle_tilemap_refetch_window() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+    ppu.bg_pipeline_state.push.pending = true;
+    ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+    ppu.bg_pipeline_state.push.entry_delay_remaining = 0;
+    ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+    ppu.bg_pipeline_state
+        .push
+        .cached
+        .same_cycle_live_tilemap_refetch_window_open = true;
+
+    assert_eq!(ppu.advance_bg_push(), BgPushDotResult::QueuedFill);
+    assert!(ppu.bg_pipeline_state.fill.pending);
+    assert!(
+        ppu.bg_pipeline_state
+            .fill
+            .cached
+            .same_cycle_live_tilemap_refetch_window_open
+    );
+}
+
+#[test]
 fn cached_background_fill_recomputes_tiledata_before_the_next_flush() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let mut vram_bytes = [0; TEST_VRAM_BYTES];
