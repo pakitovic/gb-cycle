@@ -7112,6 +7112,7 @@ mod tests {
             output: ApuOutputSnapshot {
                 channel_digital_outputs: [0x01, 0x02, 0x03, 0x04],
                 channel_dac_outputs: [0; 4],
+                vin_analog_output: ApuStereoOutputSnapshot::default(),
                 mixer_output: ApuStereoOutputSnapshot { left: 5, right: 6 },
                 master_output: ApuStereoOutputSnapshot::default(),
                 hpf_output: ApuStereoOutputSnapshot { left: 7, right: 8 },

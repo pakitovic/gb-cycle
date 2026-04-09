@@ -154,10 +154,6 @@ impl Timer {
         )
     }
 
-    pub(crate) fn div_apu_source_high(&self) -> bool {
-        self.current_div_apu_signal()
-    }
-
     pub(crate) fn tick_t_cycle(&mut self, context: &mut CycleContext) {
         self.reloaded_this_t_cycle = false;
         self.advance_overflow_pipeline(context);
