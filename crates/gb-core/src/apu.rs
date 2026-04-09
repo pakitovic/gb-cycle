@@ -25,6 +25,8 @@ const NR52_MASTER_POWER_BIT: u8 = 0x80;
 const NR30_DAC_POWER_BIT: u8 = 0x80;
 const CHANNEL_TRIGGER_BIT: u8 = 0x80;
 const LENGTH_ENABLE_BIT: u8 = 0x40;
+const NR50_VIN_LEFT_BIT: u8 = 0x80;
+const NR50_VIN_RIGHT_BIT: u8 = 0x08;
 const NRX4_WRITABLE_MASK: u8 = 0x47;
 const NR44_WRITABLE_MASK: u8 = 0x40;
 const PERIOD_HIGH_MASK: u8 = 0x07;
@@ -44,10 +46,11 @@ const WAVE_RAM_LEN: usize = 0x10;
 const WAVE_SAMPLE_COUNT: u8 = 32;
 const WAVE_RAM_INACCESSIBLE_READ_VALUE: u8 = 0xFF;
 const WAVE_TRIGGER_STARTUP_DELAY_T_CYCLES: u16 = 6;
-const NOISE_LFSR_INITIAL_STATE: u16 = 0x7FFF;
+const NOISE_LFSR_INITIAL_STATE: u16 = 0x0000;
 const ANALOG_ONE: i32 = 15_000_000;
 const DAC_ANALOG_STEP: i32 = 2_000_000;
-const HPF_CHARGE_FACTOR_NUMERATOR: i64 = 999_958;
+const DMG_FAMILY_HPF_CHARGE_FACTOR_NUMERATOR: i64 = 999_958;
+const MGB_CGB_HPF_CHARGE_FACTOR_NUMERATOR: i64 = 998_943;
 const HPF_CHARGE_FACTOR_DENOMINATOR: i64 = 1_000_000;
 pub const DMG_FAMILY_APU_CAPTURE_CLOCK_HZ: u32 = 4_194_304;
 pub const APU_HOST_MAX_ABS_SAMPLE: i32 = ANALOG_ONE * 4 * 8;
@@ -117,7 +120,6 @@ pub struct Apu {
     status: ApuStatus,
     master: MasterControlState,
     frame_sequencer: FrameSequencerState,
-    skip_next_div_apu_edge: bool,
     output_path: OutputPathState,
     channel_1: Channel1State,
     channel_2: Channel2State,
@@ -196,6 +198,7 @@ pub struct ApuHpfCapacitorSnapshot {
 pub struct ApuOutputSnapshot {
     pub channel_digital_outputs: [u8; 4],
     pub channel_dac_outputs: [i32; 4],
+    pub vin_analog_output: ApuStereoOutputSnapshot,
     pub mixer_output: ApuStereoOutputSnapshot,
     pub master_output: ApuStereoOutputSnapshot,
     pub hpf_output: ApuStereoOutputSnapshot,
@@ -207,10 +210,18 @@ struct MasterControlState {
     powered: bool,
     nr50: u8,
     nr51: u8,
+    vin_input: ApuStereoOutputSnapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HpfChargeModel {
+    Dmg0Dmg,
+    MgbCgb,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct OutputPathState {
+    hpf_charge_model: HpfChargeModel,
     hpf_capacitor: ApuHpfCapacitorSnapshot,
     current_output: ApuStereoOutputSnapshot,
 }
@@ -230,9 +241,53 @@ struct FrameSequencerClocks {
     envelope: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WaveRamMmioPolicy {
+    DmgCurrentByteDuringFetchOnly,
+    DeferredCgbActiveAccess,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExtraLengthClockingPolicy {
+    CurrentDmgBaseline,
+    DeferredCgbRevisionBehavior,
+}
+
 impl ApuStereoOutputSnapshot {
     const fn new(left: i32, right: i32) -> Self {
         Self { left, right }
+    }
+}
+
+fn wave_ram_mmio_policy(console_model: ConsoleModel) -> WaveRamMmioPolicy {
+    if console_model.is_dmg_family() {
+        WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly
+    } else {
+        WaveRamMmioPolicy::DeferredCgbActiveAccess
+    }
+}
+
+fn extra_length_clocking_policy(console_model: ConsoleModel) -> ExtraLengthClockingPolicy {
+    if console_model.is_cgb_family() {
+        ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior
+    } else {
+        ExtraLengthClockingPolicy::CurrentDmgBaseline
+    }
+}
+
+impl HpfChargeModel {
+    const fn for_console_model(console_model: ConsoleModel) -> Self {
+        match console_model {
+            ConsoleModel::Dmg0 | ConsoleModel::Dmg => Self::Dmg0Dmg,
+            ConsoleModel::Mgb | ConsoleModel::Cgb => Self::MgbCgb,
+        }
+    }
+
+    const fn numerator(self) -> i64 {
+        match self {
+            Self::Dmg0Dmg => DMG_FAMILY_HPF_CHARGE_FACTOR_NUMERATOR,
+            Self::MgbCgb => MGB_CGB_HPF_CHARGE_FACTOR_NUMERATOR,
+        }
     }
 }
 
@@ -289,15 +344,24 @@ impl ApuSampleCapture {
 }
 
 impl OutputPathState {
-    fn preview(&mut self, input: ApuStereoOutputSnapshot, any_dac_enabled: bool) {
-        if any_dac_enabled {
-            self.current_output = ApuStereoOutputSnapshot::new(
-                (input.left as i64 - self.hpf_capacitor.left) as i32,
-                (input.right as i64 - self.hpf_capacitor.right) as i32,
-            );
-        } else {
-            self.current_output = ApuStereoOutputSnapshot::default();
+    const fn new(console_model: ConsoleModel) -> Self {
+        Self {
+            hpf_charge_model: HpfChargeModel::for_console_model(console_model),
+            hpf_capacitor: ApuHpfCapacitorSnapshot { left: 0, right: 0 },
+            current_output: ApuStereoOutputSnapshot { left: 0, right: 0 },
         }
+    }
+
+    fn preview(&mut self, input: ApuStereoOutputSnapshot, any_dac_enabled: bool) {
+        if !any_dac_enabled {
+            self.current_output = ApuStereoOutputSnapshot::default();
+            return;
+        }
+
+        self.current_output = ApuStereoOutputSnapshot::new(
+            (input.left as i64 - self.hpf_capacitor.left) as i32,
+            (input.right as i64 - self.hpf_capacitor.right) as i32,
+        );
     }
 
     fn tick(&mut self, input: ApuStereoOutputSnapshot, any_dac_enabled: bool) {
@@ -308,12 +372,13 @@ impl OutputPathState {
 
         let left_output = input.left as i64 - self.hpf_capacitor.left;
         let right_output = input.right as i64 - self.hpf_capacitor.right;
+        let hpf_charge_factor_numerator = self.hpf_charge_model.numerator();
 
         self.current_output = ApuStereoOutputSnapshot::new(left_output as i32, right_output as i32);
         self.hpf_capacitor.left = input.left as i64
-            - (left_output * HPF_CHARGE_FACTOR_NUMERATOR) / HPF_CHARGE_FACTOR_DENOMINATOR;
+            - (left_output * hpf_charge_factor_numerator) / HPF_CHARGE_FACTOR_DENOMINATOR;
         self.hpf_capacitor.right = input.right as i64
-            - (right_output * HPF_CHARGE_FACTOR_NUMERATOR) / HPF_CHARGE_FACTOR_DENOMINATOR;
+            - (right_output * hpf_charge_factor_numerator) / HPF_CHARGE_FACTOR_DENOMINATOR;
     }
 }
 
@@ -399,6 +464,10 @@ const fn noise_timer_reload(clock_shift: u8, clock_divider_code: u8) -> u32 {
     noise_divisor_base(clock_divider_code) << (clock_shift & 0x0F)
 }
 
+const fn noise_clocking_suppressed(clock_shift: u8) -> bool {
+    clock_shift >= 14
+}
+
 const fn frame_sequencer_step_clocks_length(step: u8) -> bool {
     matches!(step & 0x07, 0 | 2 | 4 | 6)
 }
@@ -409,6 +478,20 @@ const fn frame_sequencer_step_clocks_envelope(step: u8) -> bool {
 
 const fn envelope_timer_reload(envelope_pace: u8) -> u8 {
     if envelope_pace == 0 { 8 } else { envelope_pace }
+}
+
+const fn envelope_write_uses_consistent_zombie_increment(value: u8) -> bool {
+    value & (ENVELOPE_DIRECTION_BIT | ENVELOPE_PACE_MASK) == ENVELOPE_DIRECTION_BIT
+}
+
+fn apply_consistent_zombie_mode_increment(active: bool, current_volume: &mut u8, value: u8) {
+    // Pan Docs only documents increase+pace=0 as consistent across tested units; the broader
+    // zombie-mode matrix remains revision-specific and is tracked separately.
+    if !active || !envelope_write_uses_consistent_zombie_increment(value) {
+        return;
+    }
+
+    *current_volume = (*current_volume + 1) & MAX_ENVELOPE_VOLUME;
 }
 
 const fn dac_analog_output(digital_output: u8) -> i32 {
@@ -482,6 +565,7 @@ struct PulseChannelState {
     initial_volume: u8,
     envelope_increase: bool,
     envelope_pace: u8,
+    envelope_automatic_updates_enabled: bool,
     envelope_timer: u8,
     current_volume: u8,
 }
@@ -523,12 +607,21 @@ impl PulseChannelState {
         self.envelope_pace = value & ENVELOPE_PACE_MASK;
     }
 
+    fn apply_live_envelope_write_effect(&mut self, value: u8) {
+        apply_consistent_zombie_mode_increment(
+            self.runtime.active,
+            &mut self.current_volume,
+            value,
+        );
+    }
+
     fn apply_length_enable(&mut self, value: u8) {
         self.length_enabled = value & LENGTH_ENABLE_BIT != 0;
     }
 
     fn apply_extra_length_clocking_on_enable(
         &mut self,
+        console_model: ConsoleModel,
         was_length_enabled: bool,
         next_step_clocks_length: bool,
         trigger: bool,
@@ -539,7 +632,19 @@ impl PulseChannelState {
         }
 
         let enabling_length = !was_length_enabled;
-        if !enabling_length && !trigger_reloaded_zero_length {
+        let should_extra_clock = match extra_length_clocking_policy(console_model) {
+            ExtraLengthClockingPolicy::CurrentDmgBaseline => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+            // Pan Docs documents a CGB-02-specific deviation here, but the
+            // current ConsoleModel surface does not distinguish CGB revisions.
+            // Keep the seam explicit until a revision-scoped oracle can close
+            // that gap.
+            ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+        };
+        if !should_extra_clock {
             return;
         }
 
@@ -560,20 +665,28 @@ impl PulseChannelState {
         self.apply_length_enable(startup.nrx4);
         self.first_trigger_after_power_on_pending = startup.first_trigger_after_power_on_pending;
         self.period_timer = pulse_timer_reload(startup.period_value);
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
         self.envelope_timer = envelope_timer_reload(self.envelope_pace);
         self.current_volume = self.initial_volume;
         self.runtime = startup.runtime;
     }
 
-    fn trigger(&mut self, period_value: u16, next_step_clocks_envelope: bool) -> bool {
+    fn trigger(
+        &mut self,
+        period_value: u16,
+        envelope_value: u8,
+        next_step_clocks_envelope: bool,
+    ) -> bool {
         let reloaded_zero_length = self.length_counter == 0;
         if self.length_counter == 0 {
             self.length_counter = PULSE_LENGTH_COUNTER_RELOAD;
             self.length_enabled = false;
         }
 
+        self.apply_envelope_write(envelope_value);
         let preserved_period_timer_low_bits = self.period_timer & 0x03;
         self.period_timer = pulse_timer_reload(period_value) | preserved_period_timer_low_bits;
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
         self.envelope_timer =
             envelope_timer_reload(self.envelope_pace) + u8::from(next_step_clocks_envelope);
         self.current_volume = self.initial_volume;
@@ -586,7 +699,7 @@ impl PulseChannelState {
     }
 
     fn tick_fast_timer(&mut self, period_value: u16) {
-        if !self.runtime.active {
+        if self.first_trigger_after_power_on_pending {
             return;
         }
 
@@ -613,7 +726,7 @@ impl PulseChannelState {
     }
 
     fn clock_envelope(&mut self) {
-        if self.envelope_pace == 0 || !self.runtime.active {
+        if self.envelope_pace == 0 || !self.envelope_automatic_updates_enabled {
             return;
         }
 
@@ -629,9 +742,13 @@ impl PulseChannelState {
         if self.envelope_increase {
             if self.current_volume < MAX_ENVELOPE_VOLUME {
                 self.current_volume += 1;
+            } else {
+                self.envelope_automatic_updates_enabled = false;
             }
         } else if self.current_volume > 0 {
             self.current_volume -= 1;
+        } else {
+            self.envelope_automatic_updates_enabled = false;
         }
     }
 
@@ -687,7 +804,6 @@ impl Channel1SweepState {
         if sweep_decreases_from_nr10(old_nr10)
             && !sweep_decreases_from_nr10(new_nr10)
             && self.negate_calculated_since_trigger
-            && self.shadow_period + self.completed_addend + 1 > PULSE_PERIOD_MAX
         {
             runtime.active = false;
         }
@@ -714,7 +830,7 @@ impl Channel1SweepState {
     }
 
     fn clock(&mut self, nr10: u8, nr13: &mut u8, nr14: &mut u8, runtime: &mut ChannelRuntimeState) {
-        if !self.enabled || !runtime.active {
+        if !self.enabled {
             return;
         }
 
@@ -735,7 +851,7 @@ impl Channel1SweepState {
         runtime: &mut ChannelRuntimeState,
     ) {
         let pace = sweep_pace_from_nr10(nr10);
-        if self.phase != 7 || pace == 0 || !self.enabled || !runtime.active {
+        if self.phase != 7 || pace == 0 || !self.enabled {
             return;
         }
 
@@ -840,8 +956,8 @@ impl Channel1State {
     }
 
     fn write_nr12(&mut self, value: u8) {
+        self.pulse.apply_live_envelope_write_effect(value);
         self.nr12 = value;
-        self.pulse.apply_envelope_write(value);
         self.pulse
             .runtime
             .set_dac_enabled(self.derived_dac_enabled());
@@ -851,7 +967,12 @@ impl Channel1State {
         self.nr13 = value;
     }
 
-    fn write_nr14(&mut self, value: u8, next_frame_sequencer_step: u8) {
+    fn write_nr14(
+        &mut self,
+        value: u8,
+        console_model: ConsoleModel,
+        next_frame_sequencer_step: u8,
+    ) {
         let trigger = value & CHANNEL_TRIGGER_BIT != 0;
         let next_step_clocks_length = frame_sequencer_step_clocks_length(next_frame_sequencer_step);
         let next_step_clocks_envelope =
@@ -867,6 +988,7 @@ impl Channel1State {
 
         self.pulse.apply_length_enable(self.nr14);
         self.pulse.apply_extra_length_clocking_on_enable(
+            console_model,
             was_length_enabled,
             next_step_clocks_length,
             trigger,
@@ -943,7 +1065,8 @@ impl Channel1State {
     fn trigger(&mut self, next_step_clocks_envelope: bool) -> bool {
         let period_value = self.period_value();
         let trigger_reloaded_zero_length =
-            self.pulse.trigger(period_value, next_step_clocks_envelope);
+            self.pulse
+                .trigger(period_value, self.nr12, next_step_clocks_envelope);
         self.sweep
             .trigger(self.nr10, period_value, &mut self.pulse.runtime);
         trigger_reloaded_zero_length
@@ -995,8 +1118,8 @@ impl Channel2State {
     }
 
     fn write_nr22(&mut self, value: u8) {
+        self.pulse.apply_live_envelope_write_effect(value);
         self.nr22 = value;
-        self.pulse.apply_envelope_write(value);
         self.pulse
             .runtime
             .set_dac_enabled(self.derived_dac_enabled());
@@ -1006,7 +1129,12 @@ impl Channel2State {
         self.nr23 = value;
     }
 
-    fn write_nr24(&mut self, value: u8, next_frame_sequencer_step: u8) {
+    fn write_nr24(
+        &mut self,
+        value: u8,
+        console_model: ConsoleModel,
+        next_frame_sequencer_step: u8,
+    ) {
         let trigger = value & CHANNEL_TRIGGER_BIT != 0;
         let next_step_clocks_length = frame_sequencer_step_clocks_length(next_frame_sequencer_step);
         let next_step_clocks_envelope =
@@ -1022,6 +1150,7 @@ impl Channel2State {
 
         self.pulse.apply_length_enable(self.nr24);
         self.pulse.apply_extra_length_clocking_on_enable(
+            console_model,
             was_length_enabled,
             next_step_clocks_length,
             trigger,
@@ -1082,7 +1211,7 @@ impl Channel2State {
 
     fn trigger(&mut self, next_step_clocks_envelope: bool) -> bool {
         self.pulse
-            .trigger(self.period_value(), next_step_clocks_envelope)
+            .trigger(self.period_value(), self.nr22, next_step_clocks_envelope)
     }
 
     fn tick_fast_timer(&mut self) {
@@ -1164,6 +1293,7 @@ impl Channel3State {
 
         self.length_enabled = self.nr34 & LENGTH_ENABLE_BIT != 0;
         self.apply_extra_length_clocking_on_enable(
+            console_model,
             was_length_enabled,
             next_step_clocks_length,
             trigger,
@@ -1239,6 +1369,7 @@ impl Channel3State {
 
     fn apply_extra_length_clocking_on_enable(
         &mut self,
+        console_model: ConsoleModel,
         was_length_enabled: bool,
         next_step_clocks_length: bool,
         trigger: bool,
@@ -1249,7 +1380,15 @@ impl Channel3State {
         }
 
         let enabling_length = !was_length_enabled;
-        if !enabling_length && !trigger_reloaded_zero_length {
+        let should_extra_clock = match extra_length_clocking_policy(console_model) {
+            ExtraLengthClockingPolicy::CurrentDmgBaseline => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+            ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+        };
+        if !should_extra_clock {
             return;
         }
 
@@ -1280,10 +1419,6 @@ impl Channel3State {
     }
 
     fn tick_fast_timer(&mut self) {
-        if !self.runtime.active {
-            return;
-        }
-
         if self.period_timer > 0 {
             self.period_timer -= 1;
         }
@@ -1312,8 +1447,16 @@ impl Channel3State {
             return self.wave_ram[active_wave_ram_byte_index];
         }
 
-        if self.runtime.active && console_model.is_dmg_family() {
-            return WAVE_RAM_INACCESSIBLE_READ_VALUE;
+        if self.runtime.active {
+            match wave_ram_mmio_policy(console_model) {
+                WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly => {
+                    return WAVE_RAM_INACCESSIBLE_READ_VALUE;
+                }
+                // The DMG-family fetch-window rule is the only active-wave-RAM
+                // MMIO contract modeled today. CGB-family redirection semantics
+                // are intentionally deferred until the CGB APU lane exists.
+                WaveRamMmioPolicy::DeferredCgbActiveAccess => {}
+            }
         }
 
         self.wave_ram[index]
@@ -1327,8 +1470,13 @@ impl Channel3State {
             return;
         }
 
-        if self.runtime.active && console_model.is_dmg_family() {
-            return;
+        if self.runtime.active {
+            match wave_ram_mmio_policy(console_model) {
+                WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly => return,
+                // See the read path above: this is a deliberately provisional
+                // fallback, not a claimed CGB-accurate active-access contract.
+                WaveRamMmioPolicy::DeferredCgbActiveAccess => {}
+            }
         }
 
         self.wave_ram[index] = value;
@@ -1417,6 +1565,7 @@ struct Channel4State {
     initial_volume: u8,
     envelope_increase: bool,
     envelope_pace: u8,
+    envelope_automatic_updates_enabled: bool,
     envelope_timer: u8,
     current_volume: u8,
     clock_shift: u8,
@@ -1437,17 +1586,27 @@ impl Channel4State {
     }
 
     fn write_nr42(&mut self, value: u8) {
+        self.apply_live_envelope_write_effect(value);
         self.nr42 = value;
-        self.apply_envelope_write(value);
         self.runtime.set_dac_enabled(self.derived_dac_enabled());
     }
 
     fn write_nr43(&mut self, value: u8) {
+        let was_clocking_suppressed = noise_clocking_suppressed(self.clock_shift);
         self.nr43 = value;
         self.decode_nr43(value);
+        let is_clocking_suppressed = noise_clocking_suppressed(self.clock_shift);
+        if was_clocking_suppressed != is_clocking_suppressed {
+            self.period_timer = self.noise_timer_reload();
+        }
     }
 
-    fn write_nr44(&mut self, value: u8, next_frame_sequencer_step: u8) {
+    fn write_nr44(
+        &mut self,
+        value: u8,
+        console_model: ConsoleModel,
+        next_frame_sequencer_step: u8,
+    ) {
         let trigger = value & CHANNEL_TRIGGER_BIT != 0;
         let next_step_clocks_length = frame_sequencer_step_clocks_length(next_frame_sequencer_step);
         let next_step_clocks_envelope =
@@ -1463,6 +1622,7 @@ impl Channel4State {
 
         self.length_enabled = self.nr44 & LENGTH_ENABLE_BIT != 0;
         self.apply_extra_length_clocking_on_enable(
+            console_model,
             was_length_enabled,
             next_step_clocks_length,
             trigger,
@@ -1479,6 +1639,7 @@ impl Channel4State {
         self.length_enabled = self.nr44 & LENGTH_ENABLE_BIT != 0;
         self.apply_envelope_write(self.nr42);
         self.decode_nr43(self.nr43);
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
         self.envelope_timer = envelope_timer_reload(self.envelope_pace);
         self.current_volume = self.initial_volume;
         self.period_timer = self.noise_timer_reload();
@@ -1498,6 +1659,7 @@ impl Channel4State {
         self.initial_volume = 0;
         self.envelope_increase = false;
         self.envelope_pace = 0;
+        self.envelope_automatic_updates_enabled = false;
         self.envelope_timer = 0;
         self.current_volume = 0;
         self.clock_shift = 0;
@@ -1532,6 +1694,14 @@ impl Channel4State {
         self.envelope_pace = value & ENVELOPE_PACE_MASK;
     }
 
+    fn apply_live_envelope_write_effect(&mut self, value: u8) {
+        apply_consistent_zombie_mode_increment(
+            self.runtime.active,
+            &mut self.current_volume,
+            value,
+        );
+    }
+
     fn decode_nr43(&mut self, value: u8) {
         self.clock_shift = (value >> 4) & 0x0F;
         self.short_width_mode = value & 0x08 != 0;
@@ -1544,6 +1714,7 @@ impl Channel4State {
 
     fn apply_extra_length_clocking_on_enable(
         &mut self,
+        console_model: ConsoleModel,
         was_length_enabled: bool,
         next_step_clocks_length: bool,
         trigger: bool,
@@ -1554,7 +1725,15 @@ impl Channel4State {
         }
 
         let enabling_length = !was_length_enabled;
-        if !enabling_length && !trigger_reloaded_zero_length {
+        let should_extra_clock = match extra_length_clocking_policy(console_model) {
+            ExtraLengthClockingPolicy::CurrentDmgBaseline => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+            ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+        };
+        if !should_extra_clock {
             return;
         }
 
@@ -1575,8 +1754,10 @@ impl Channel4State {
             self.length_enabled = false;
         }
 
+        self.apply_envelope_write(self.nr42);
         self.period_timer = self.noise_timer_reload();
         self.lfsr_state = NOISE_LFSR_INITIAL_STATE;
+        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
         self.envelope_timer =
             envelope_timer_reload(self.envelope_pace) + u8::from(next_step_clocks_envelope);
         self.current_volume = self.initial_volume;
@@ -1585,7 +1766,7 @@ impl Channel4State {
     }
 
     fn tick_fast_timer(&mut self) {
-        if !self.runtime.active || self.clock_shift >= 14 {
+        if noise_clocking_suppressed(self.clock_shift) {
             return;
         }
 
@@ -1600,12 +1781,12 @@ impl Channel4State {
     }
 
     fn step_lfsr(&mut self) {
-        let feedback_bit = ((self.lfsr_state & 0x01) ^ ((self.lfsr_state >> 1) & 0x01)) & 0x01;
+        let feedback_bit = u16::from((self.lfsr_state & 0x01) == ((self.lfsr_state >> 1) & 0x01));
         self.lfsr_state >>= 1;
         self.lfsr_state = (self.lfsr_state & !(1 << 14)) | (feedback_bit << 14);
         if self.short_width_mode {
             // In short mode the feedback path also overwrites bit 6, so a live
-            // 15-bit -> 7-bit switch can trap the active 7-bit window at zero
+            // 15-bit -> 7-bit switch can trap the active 7-bit window at ones
             // until a retrigger reloads the LFSR.
             self.lfsr_state = (self.lfsr_state & !(1 << 6)) | (feedback_bit << 6);
         }
@@ -1623,7 +1804,7 @@ impl Channel4State {
     }
 
     fn clock_envelope(&mut self) {
-        if self.envelope_pace == 0 || !self.runtime.active {
+        if self.envelope_pace == 0 || !self.envelope_automatic_updates_enabled {
             return;
         }
 
@@ -1639,9 +1820,13 @@ impl Channel4State {
         if self.envelope_increase {
             if self.current_volume < MAX_ENVELOPE_VOLUME {
                 self.current_volume += 1;
+            } else {
+                self.envelope_automatic_updates_enabled = false;
             }
         } else if self.current_volume > 0 {
             self.current_volume -= 1;
+        } else {
+            self.envelope_automatic_updates_enabled = false;
         }
     }
 
@@ -1650,7 +1835,7 @@ impl Channel4State {
             return 0;
         }
 
-        if self.lfsr_state & 0x01 != 0 {
+        if self.lfsr_state & 0x01 == 0 {
             self.current_volume
         } else {
             0
@@ -1667,8 +1852,7 @@ impl Apu {
             status: ApuStatus::Ready,
             master: MasterControlState::default(),
             frame_sequencer: FrameSequencerState::default(),
-            skip_next_div_apu_edge: false,
-            output_path: OutputPathState::default(),
+            output_path: OutputPathState::new(console_model),
             channel_1: Channel1State::default(),
             channel_2: Channel2State::default(),
             channel_3: Channel3State::default(),
@@ -1744,15 +1928,6 @@ impl Apu {
     }
 
     pub fn write_register(&mut self, address: u16, value: u8) {
-        self.write_register_with_div_apu_source(address, value, false);
-    }
-
-    pub(crate) fn write_register_with_div_apu_source(
-        &mut self,
-        address: u16,
-        value: u8,
-        div_apu_source_high: bool,
-    ) {
         self.last_register_write = None;
         if let Some(index) = self.wave_ram_index(address) {
             self.channel_3
@@ -1765,7 +1940,7 @@ impl Apu {
             Self::should_observe_register_write(address).then(|| self.register_write_state());
 
         if address == 0xFF26 {
-            self.write_nr52(value, div_apu_source_high);
+            self.write_nr52(value);
             self.preview_output_path();
             self.record_register_write_observation(address, value, before_register_write);
             return;
@@ -1791,12 +1966,18 @@ impl Apu {
             0xFF11 => self.channel_1.write_nr11(value),
             0xFF12 => self.channel_1.write_nr12(value),
             0xFF13 => self.channel_1.write_nr13(value),
-            0xFF14 => self.channel_1.write_nr14(value, self.frame_sequencer.step),
+            0xFF14 => {
+                self.channel_1
+                    .write_nr14(value, self.console_model, self.frame_sequencer.step)
+            }
             0xFF15 => {}
             0xFF16 => self.channel_2.write_nr21(value),
             0xFF17 => self.channel_2.write_nr22(value),
             0xFF18 => self.channel_2.write_nr23(value),
-            0xFF19 => self.channel_2.write_nr24(value, self.frame_sequencer.step),
+            0xFF19 => {
+                self.channel_2
+                    .write_nr24(value, self.console_model, self.frame_sequencer.step)
+            }
             0xFF1A => self.channel_3.write_nr30(value),
             0xFF1B => self.channel_3.write_nr31(value),
             0xFF1C => self.channel_3.write_nr32(value),
@@ -1809,7 +1990,10 @@ impl Apu {
             0xFF20 => self.channel_4.write_nr41(value),
             0xFF21 => self.channel_4.write_nr42(value),
             0xFF22 => self.channel_4.write_nr43(value),
-            0xFF23 => self.channel_4.write_nr44(value, self.frame_sequencer.step),
+            0xFF23 => {
+                self.channel_4
+                    .write_nr44(value, self.console_model, self.frame_sequencer.step)
+            }
             0xFF24 => self.master.nr50 = value,
             0xFF25 => self.master.nr51 = value,
             0xFF27..=0xFF3F => {}
@@ -1825,8 +2009,7 @@ impl Apu {
         self.wave_ram_startup_policy = startup_state.wave_ram_startup_policy;
         self.channel_3
             .initialize_wave_ram(startup_state.wave_ram_startup_policy.initial_bytes());
-        self.skip_next_div_apu_edge = false;
-        self.output_path = OutputPathState::default();
+        self.output_path = OutputPathState::new(self.console_model);
 
         if startup_state.powered {
             self.master.powered = true;
@@ -1925,7 +2108,7 @@ impl Apu {
             | self.channel_active_mask()
     }
 
-    fn write_nr52(&mut self, value: u8, div_apu_source_high: bool) {
+    fn write_nr52(&mut self, value: u8) {
         let next_powered = value & NR52_MASTER_POWER_BIT != 0;
 
         match (self.master.powered, next_powered) {
@@ -1933,7 +2116,6 @@ impl Apu {
             (false, true) => {
                 self.master.powered = true;
                 self.frame_sequencer.apply_startup_phase(0);
-                self.skip_next_div_apu_edge = div_apu_source_high;
                 self.channel_1.pulse.mark_powered_on();
                 self.channel_2.pulse.mark_powered_on();
             }
@@ -1943,7 +2125,6 @@ impl Apu {
 
     fn power_off(&mut self) {
         self.master.powered = false;
-        self.skip_next_div_apu_edge = false;
         self.master.nr50 = 0;
         self.master.nr51 = 0;
         self.channel_1.power_off_registers(self.console_model);
@@ -1958,6 +2139,10 @@ impl Apu {
 
     fn channel_dac_mask(&self) -> u8 {
         self.channel_mask_for_runtime(|runtime| runtime.dac_enabled)
+    }
+
+    fn any_dac_enabled(&self) -> bool {
+        self.channel_dac_mask() != 0
     }
 
     fn channel_mask_for_runtime(&self, select: impl Fn(ChannelRuntimeState) -> bool) -> u8 {
@@ -2050,8 +2235,9 @@ impl Apu {
     }
 
     fn mixer_output(&self, channel_dac_outputs: [i32; 4]) -> ApuStereoOutputSnapshot {
-        let mut left = 0;
-        let mut right = 0;
+        let vin_analog_output = self.vin_analog_output();
+        let mut left = vin_analog_output.left;
+        let mut right = vin_analog_output.right;
 
         if self.master.nr51 & 0x10 != 0 {
             left += channel_dac_outputs[0];
@@ -2082,7 +2268,26 @@ impl Apu {
         ApuStereoOutputSnapshot::new(left, right)
     }
 
+    fn vin_analog_output(&self) -> ApuStereoOutputSnapshot {
+        ApuStereoOutputSnapshot::new(
+            if self.master.nr50 & NR50_VIN_LEFT_BIT != 0 {
+                self.master.vin_input.left
+            } else {
+                0
+            },
+            if self.master.nr50 & NR50_VIN_RIGHT_BIT != 0 {
+                self.master.vin_input.right
+            } else {
+                0
+            },
+        )
+    }
+
     fn master_output(&self, mixer_output: ApuStereoOutputSnapshot) -> ApuStereoOutputSnapshot {
+        if !self.any_dac_enabled() {
+            return ApuStereoOutputSnapshot::default();
+        }
+
         ApuStereoOutputSnapshot::new(
             mixer_output.left * nr50_left_volume_factor(self.master.nr50),
             mixer_output.right * nr50_right_volume_factor(self.master.nr50),
@@ -2092,12 +2297,14 @@ impl Apu {
     fn output_snapshot(&self) -> ApuOutputSnapshot {
         let channel_digital_outputs = self.channel_digital_outputs();
         let channel_dac_outputs = self.channel_dac_outputs(channel_digital_outputs);
+        let vin_analog_output = self.vin_analog_output();
         let mixer_output = self.mixer_output(channel_dac_outputs);
         let master_output = self.master_output(mixer_output);
 
         ApuOutputSnapshot {
             channel_digital_outputs,
             channel_dac_outputs,
+            vin_analog_output,
             mixer_output,
             master_output,
             hpf_output: self.output_path.current_output,
@@ -2108,13 +2315,12 @@ impl Apu {
     fn preview_output_path(&mut self) {
         let master_output = self.output_snapshot().master_output;
         self.output_path
-            .preview(master_output, self.channel_dac_mask() != 0);
+            .preview(master_output, self.any_dac_enabled());
     }
 
     fn tick_output_path(&mut self) {
         let master_output = self.output_snapshot().master_output;
-        self.output_path
-            .tick(master_output, self.channel_dac_mask() != 0);
+        self.output_path.tick(master_output, self.any_dac_enabled());
     }
 
     fn wave_ram_index(&self, address: u16) -> Option<usize> {
@@ -2125,11 +2331,6 @@ impl Apu {
     }
 
     fn advance_frame_sequencer(&mut self) {
-        if self.skip_next_div_apu_edge {
-            self.skip_next_div_apu_edge = false;
-            return;
-        }
-
         let clocks = self.frame_sequencer.advance();
         if !self.master.powered {
             self.preview_output_path();

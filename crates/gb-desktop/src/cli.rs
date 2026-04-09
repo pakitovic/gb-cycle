@@ -222,6 +222,7 @@ pub fn help_text() -> &'static str {
         "  GB_CYCLE_DESKTOP_SETTINGS_PATH         Override the persisted desktop settings file location\n",
         "  GB_CYCLE_DESKTOP_AUDIO_LOG             Emit opt-in SDL audio telemetry to stderr (use 1 for events, verbose for per-submit logs)\n",
         "  GB_CYCLE_DESKTOP_AUDIO_DISABLE_AUTO_CLEAR Disable automatic oversized SDL audio queue clears for investigation\n",
+        "  GB_CYCLE_DESKTOP_EMU_PROFILE           Emit opt-in sampled emulation breakdowns to stderr (use 1/summary or summary:<frames>)\n",
         "  GB_CYCLE_DESKTOP_TRACE_PATH            Write a rolling per-T-cycle CPU/APU debug trace to this path on exit\n",
         "  GB_CYCLE_DESKTOP_TRACE_T_CYCLES        Override the rolling trace window length in T-cycles (default: 8192)\n",
         "\n",
@@ -589,6 +590,7 @@ mod tests {
         assert!(text.contains("GB_CYCLE_DESKTOP_SETTINGS_PATH"));
         assert!(text.contains("GB_CYCLE_DESKTOP_AUDIO_LOG"));
         assert!(text.contains("GB_CYCLE_DESKTOP_AUDIO_DISABLE_AUTO_CLEAR"));
+        assert!(text.contains("GB_CYCLE_DESKTOP_EMU_PROFILE"));
         assert!(text.contains("GB_CYCLE_DESKTOP_TRACE_PATH"));
         assert!(text.contains("GB_CYCLE_DESKTOP_TRACE_T_CYCLES"));
     }

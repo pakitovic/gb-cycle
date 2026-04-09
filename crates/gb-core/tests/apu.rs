@@ -202,6 +202,35 @@ fn nr51_bus_writes_retarget_the_live_analog_mix_immediately() {
 }
 
 #[test]
+fn nr50_vin_bus_bits_route_a_neutral_lane_without_perturbing_the_live_mix() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.write_bus(0xFF26, 0x00);
+    machine.write_bus(0xFF26, 0x80);
+    machine.write_bus(0xFF12, 0x08);
+    machine.write_bus(0xFF25, 0x11);
+    machine.write_bus(0xFF24, 0x00);
+
+    let baseline = machine.apu().snapshot().output;
+    assert_eq!(baseline.vin_analog_output.left, 0);
+    assert_eq!(baseline.vin_analog_output.right, 0);
+    assert_eq!(baseline.master_output.left, 15_000_000);
+    assert_eq!(baseline.master_output.right, 15_000_000);
+
+    machine.write_bus(0xFF24, 0x88);
+
+    let vin_routed = machine.apu().snapshot().output;
+    assert_eq!(vin_routed.vin_analog_output.left, 0);
+    assert_eq!(vin_routed.vin_analog_output.right, 0);
+    assert_eq!(vin_routed.master_output.left, baseline.master_output.left);
+    assert_eq!(vin_routed.master_output.right, baseline.master_output.right);
+    assert_eq!(vin_routed.hpf_output.left, baseline.hpf_output.left);
+    assert_eq!(vin_routed.hpf_output.right, baseline.hpf_output.right);
+}
+
+#[test]
 fn host_side_snapshot_capture_cadence_does_not_feed_back_into_apu_state() {
     let mut baseline = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -285,7 +314,7 @@ fn div_write_can_advance_div_apu_immediately_when_it_resets_a_high_source_bit() 
 }
 
 #[test]
-fn powering_on_apu_while_the_div_apu_source_bit_is_high_skips_the_next_frame_edge() {
+fn powering_on_apu_keeps_the_next_live_frame_edge() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
@@ -306,13 +335,13 @@ fn powering_on_apu_while_the_div_apu_source_bit_is_high_skips_the_next_frame_edg
         machine.step_t_cycle();
     }
 
-    assert_eq!(machine.apu().snapshot().div_apu, 0x00);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
 
     for _ in 0..0x2000 {
         machine.step_t_cycle();
     }
 
-    assert_eq!(machine.apu().snapshot().div_apu, 0x01);
+    assert_eq!(machine.apu().snapshot().div_apu, 0x02);
 }
 
 #[test]

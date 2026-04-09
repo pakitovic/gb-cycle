@@ -229,13 +229,9 @@ impl IoHramDomain {
                     }
                 }
                 IoRegisterOwner::Apu => {
-                    let BusIoWriteView { apu, timer, .. } = io;
+                    let BusIoWriteView { apu, .. } = io;
                     if let Some(apu) = apu {
-                        let div_apu_source_high = address == 0xFF26
-                            && timer
-                                .as_ref()
-                                .is_some_and(|timer| timer.div_apu_source_high());
-                        apu.write_register_with_div_apu_source(address, value, div_apu_source_high);
+                        apu.write_register(address, value);
                     }
                 }
                 IoRegisterOwner::MemoryController

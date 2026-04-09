@@ -30,7 +30,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 - an explicitly temporary repo-gated non-APU Blargg subset during early audio
   bring-up, followed by promotion of the full Blargg DMG family once the APU
   lane is green
-- direct-boot APU hidden-state synthesis coherent with the visible post-boot audio snapshot
+- direct-boot APU startup synthesis documented coherently with the visible post-boot audio snapshot, with any remaining hidden-state gaps tracked explicitly
 - final mixing
 - DAC control
 - power control
@@ -90,8 +90,9 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    cover trigger reloads, duty-step persistence across retrigger, period-write
    delay, envelope/length behavior, CH1 second-overflow sweep handling,
    trigger-time extra-length and envelope `+1` quirks, preserved low timer
-   bits on trigger, `NR52` power-on frame-sequencer reset plus the skip-when-
-   source-high rule, and `NR52` live-bit clearing on length expiry or sweep
+   bits on trigger, `NR52` power-on frame-sequencer reset plus the preserved-
+   divider-phase power-on behavior, and `NR52` live-bit clearing on length
+   expiry or sweep
    overflow. External evidence has also moved the remaining sweep-specific
    pulse ROMs out of the red set: `dmg_sound 03-trigger`, `04-sweep`, and
    `05-sweep_details` now pass alongside `dmg_sound 07-len sweep period sync`
@@ -99,7 +100,9 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    last documented hidden-state follow-up from this slice: the first
    post-power-on trigger on `CH1` / `CH2` suppresses the initial duty output
    until the first real duty-step advance, and `NR52` power cycles rearm that
-   latch explicitly.
+   latch explicitly. The remaining cross-model caveat in this lane is the
+   documented `CGB-02` extra-length-clocking exception, which remains deferred
+   until the model surface can distinguish CGB revisions.
 5. `Phase 7.4` — Wave channel (`CH3`)
    Scope: wave RAM ownership, sample buffer and sample index, output-level
    rules, active-wave-RAM policy, and the documented DMG retrigger-corruption
@@ -132,9 +135,13 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    `CH4` now owns explicit `NR43` decode, `noise_timer`, `lfsr_state`,
    envelope runtime, trigger-time timer/envelope/LFSR reload, shared
    extra-length-clock handling, and `NR52` bit `3` clearing on length expiry;
-   unit coverage now includes CH4 timer/LFSR/envelope seams, live `15-bit ->
-   7-bit` width-change lock-up, retrigger recovery from that lock-up, and DMG
-   powered-off `NR41` length writes, while machine integration coverage
+   unit coverage now includes CH4 timer/LFSR/envelope seams, the Pan Docs
+   zeroed trigger state, live `15-bit -> 7-bit` width-change lock-up, retrigger
+   recovery from that lock-up, explicit timer hand-off into / out of the
+   shift-`14` / `15` no-clocks state, inactive-channel slow-control clocking
+   for CH1 sweep and CH1 / CH2 / CH4 envelopes, inactive-channel fast-timer
+   continuation for CH1 / CH2 / CH3 / CH4, and DMG powered-off `NR41` length
+   writes, while machine integration coverage
    includes DMG `NR41` length persistence through an `NR52` power cycle.
 7. `Phase 7.6` — DAC, mixer, HPF, and host boundary
    Scope: channel digital-output ownership, per-channel DAC conversion,
@@ -203,7 +210,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Acceptance criteria: the pulse timer advances once every `4` dots on DMG, the waveform is `8` steps long, retrigger resets the timer but not duty step, and period writes take effect only after the current sample ends.
 3. Implement CH1 DAC state and general trigger behavior.
    Scope: `dac_enabled`, `channel_active`, trigger-time state reload, and `NR52` bit `0` integration.
-   Acceptance criteria: DAC-off disables CH1 immediately, trigger does nothing if DAC is off, and CH1 trigger resets the documented period/envelope/sweep state in one explicit path.
+   Acceptance criteria: DAC-off disables CH1 immediately, a DAC-off trigger does not activate CH1 but still runs the documented trigger-time reload path, and CH1 trigger resets the documented period/envelope/sweep state in one explicit path.
 4. Integrate CH1 length and envelope.
    Scope: `64`-step length counter, `256` Hz length clock, `64` Hz envelope clock, current-volume state, and immediate `NR14` length-enable behavior.
    Acceptance criteria: length expiry disables CH1, envelope changes current volume without mutating readable `NR12` bits, envelope volume reaching `0` does not disable CH1, and extra-length-clocking behavior is either implemented or isolated as explicit follow-up logic.
@@ -224,7 +231,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Acceptance criteria: the pulse timer advances once every `4` dots on DMG, the waveform is `8` steps long, retrigger resets the timer but not duty step, and period writes take effect only after the current sample ends.
 3. Implement CH2 DAC state and general trigger behavior.
    Scope: `dac_enabled`, `channel_active`, trigger-time state reload, and `NR52` bit `1` integration.
-   Acceptance criteria: DAC-off disables CH2 immediately, trigger does nothing if DAC is off, and CH2 trigger resets the documented period/envelope state in one explicit path.
+   Acceptance criteria: DAC-off disables CH2 immediately, a DAC-off trigger does not activate CH2 but still runs the documented trigger-time reload path, and CH2 trigger resets the documented period/envelope state in one explicit path.
 4. Integrate CH2 length and envelope.
    Scope: `64`-step length counter, `256` Hz length clock, `64` Hz envelope clock, current-volume state, and immediate `NR24` length-enable behavior.
    Acceptance criteria: length expiry disables CH2, envelope changes current volume without mutating readable `NR22` bits, envelope volume reaching `0` does not disable CH2, and extra-length-clocking behavior is either implemented or isolated as explicit follow-up logic using the same infrastructure as CH1.
@@ -242,7 +249,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Acceptance criteria: the timer advances once every `2` dots on DMG, the sample index traverses `32` logical samples, buffered output comes from fetched wave-RAM nibbles rather than direct live reads, and period writes take effect only after the next wave-RAM read boundary.
 3. Implement CH3 DAC state and general trigger behavior.
    Scope: `dac_enabled`, `channel_active`, trigger-time timer/index reload, sample-buffer preservation, and `NR52` bit `2` integration.
-   Acceptance criteria: DAC-off disables CH3 immediately, trigger does nothing if DAC is off, trigger resets the documented timer/index state in one explicit path, retrigger does not clear or refill the sample buffer automatically, and `NR52` bit `2` reflects live CH3 activity.
+   Acceptance criteria: DAC-off disables CH3 immediately, a DAC-off trigger does not activate CH3 but still runs the documented timer/index reload path, retrigger does not clear or refill the sample buffer automatically, and `NR52` bit `2` reflects live CH3 activity.
 4. Integrate CH3 length and output level.
    Scope: `256`-step length counter, `256` Hz length clock, `NR32` digital attenuation rules, and immediate `NR34` length-enable behavior.
    Acceptance criteria: length expiry disables CH3, `NR32` mute and shift semantics are correct, `NR32` mute is not confused with DAC-off, and trigger-with-length-0 behavior remains either implemented or isolated as explicit follow-up logic.
@@ -260,7 +267,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Acceptance criteria: the ordinary `15`-bit and `7`-bit paths are both correct, divider `0` is treated as `0.5`, clock-shift values `14` and `15` suppress CH4 clocks, and live `NR43` writes alter timer behavior without mutating CH4 into a texture-swap abstraction.
 3. Implement CH4 DAC state and general trigger behavior.
    Scope: `dac_enabled`, `channel_active`, trigger-time state reload, lock-up recovery on retrigger, and `NR52` bit `3` integration.
-   Acceptance criteria: DAC-off disables CH4 immediately, trigger does nothing if DAC is off, CH4 trigger resets the documented envelope/LFSR/timer state in one explicit path, retrigger exits LFSR lock-up, and `NR52` bit `3` reflects live CH4 activity rather than mere audibility.
+   Acceptance criteria: DAC-off disables CH4 immediately, a DAC-off trigger does not activate CH4 but still runs the documented envelope/LFSR/timer reload path, retrigger exits LFSR lock-up, and `NR52` bit `3` reflects live CH4 activity rather than mere audibility.
 4. Integrate CH4 length and envelope.
    Scope: `64`-step length counter, `256` Hz length clock, `64` Hz envelope clock, current-volume state, and immediate `NR44` length-enable behavior.
    Acceptance criteria: length expiry disables CH4, envelope changes current volume without mutating readable `NR42` bits, envelope volume reaching `0` does not disable CH4, and extra-length-clocking behavior is either implemented or isolated as explicit follow-up logic using the same infrastructure as CH1 / CH2.
@@ -278,10 +285,10 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Acceptance criteria: each channel can route to left, right, both, or neither; `NR51` writes are immediate; and routing is modeled as analog-bus inclusion rather than as an external mute shortcut.
 3. Integrate `NR50` master-volume scaling and output-side power-state coherence.
    Scope: per-output master-volume scaling, explicit `VIN` slot, and the effect of `NR52` power-off on active mix contributions.
-   Acceptance criteria: `NR50` level `0` does not mute, maximum volume follows the documented highest factor, and powering the APU off removes active channel contributions from the live mix while preserving wave RAM and `DIV-APU`.
+   Acceptance criteria: `NR50` level `0` does not mute, maximum volume follows the documented highest factor, the master path exposes an explicit routed `VIN` lane even if it is currently neutral, routed `VIN` still feeds the pre-master mixer stage without bypassing the documented all-DACs-off disconnect of `master_output` and later stages, and powering the APU off removes active channel contributions from the live mix while preserving wave RAM and `DIV-APU`.
 4. Add the output HPF and DC-offset / pop behavior.
    Scope: one stateful HPF per stereo output after routing and `NR50`, plus documented pop behavior from DAC-enable, `NR51`, and `NR50` changes.
-   Acceptance criteria: left/right HPF state persists across captured samples, output converges back toward neutral DC offset, documented pops emerge from the modeled signal path, and HPF absence remains at most a debug-only bypass.
+   Acceptance criteria: left/right HPF state persists across captured samples, output converges back toward neutral DC offset, HPF charge policy is selected from the active console model instead of one global constant, documented pops emerge from the modeled signal path, and HPF absence remains at most a debug-only bypass.
 5. Separate the T-cycle-accurate APU core from the host-facing sample/export boundary.
    Scope: explicit post-HPF analog-output exposure, sample-capture policy, host resampler/export boundary, and final normalization / format conversion outside the hardware model.
    Acceptance criteria: changing host sample rate does not change the core APU model, the core can run deterministically in tests without a real audio backend, and host-side conversion no longer owns hardware semantics such as mixing, HPF behavior, or pop generation.
@@ -294,11 +301,10 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 - each channel is independently verifiable
 - the frame sequencer coordinates the subsystem correctly
 - mixing and DACs are implemented on top of a stable channel base
-- direct-boot audio-visible state is backed by a coherent internal APU phase rather than by a disconnected visible-only snapshot
+- direct-boot audio-visible state plus the currently modeled hidden startup seams, especially `DIV-APU`, are documented coherently instead of pretending the whole APU startup path is already a verified handoff snapshot
 - the core does not depend on a concrete frontend audio backend
 
 #### Risks if introduced too early
 
 - effort dispersion while CPU/PPU/bus are not yet closed
 - difficulty isolating bugs if the base system is still unstable
-

@@ -62,7 +62,9 @@ pub use interrupts::{
     InterruptStartupState,
 };
 pub use joypad::{Joypad, JoypadButton, JoypadSnapshot, JoypadStartupState, JoypadStatus};
-pub use machine::{Machine, MachineParts};
+pub use machine::{
+    Machine, MachineParts, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver,
+};
 pub use model::{
     CompatibilityPolicy, ConsoleFamily, ConsoleModel, DiagnosticPolicy, ExecutionMode,
     HeuristicPolicy, MachineConfig, OverridePolicy, StartupMode, ValidationPolicy,
@@ -70,7 +72,7 @@ pub use model::{
 pub use ppu::{
     DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBgFetcherSource, PpuBgFetcherStage,
     PpuBusState, PpuLcdState, PpuObjFetcherStage, PpuSelectedSprite, PpuSnapshot, PpuStartupState,
-    PpuStatus, PpuVisibleOutputState,
+    PpuStatus, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
 };
 pub use scheduler::{
     BusOwner, CycleContext, DerivedEdge, ExternalEvent, GlobalScheduler, InterruptSource,
