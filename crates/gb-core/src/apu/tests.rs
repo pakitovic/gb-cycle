@@ -273,6 +273,26 @@ fn output_path_selects_the_expected_hpf_charge_model_per_console_model() {
 }
 
 #[test]
+fn extra_length_clocking_policy_is_explicitly_revision_deferred_for_cgb() {
+    assert_eq!(
+        extra_length_clocking_policy(ConsoleModel::Dmg0),
+        ExtraLengthClockingPolicy::CurrentDmgBaseline
+    );
+    assert_eq!(
+        extra_length_clocking_policy(ConsoleModel::Dmg),
+        ExtraLengthClockingPolicy::CurrentDmgBaseline
+    );
+    assert_eq!(
+        extra_length_clocking_policy(ConsoleModel::Mgb),
+        ExtraLengthClockingPolicy::CurrentDmgBaseline
+    );
+    assert_eq!(
+        extra_length_clocking_policy(ConsoleModel::Cgb),
+        ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior
+    );
+}
+
+#[test]
 fn cgb_hpf_settles_more_aggressively_than_dmg() {
     let mut dmg = Apu::new(ConsoleModel::Dmg);
     let mut cgb = Apu::new(ConsoleModel::Cgb);

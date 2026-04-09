@@ -247,6 +247,12 @@ enum WaveRamMmioPolicy {
     DeferredCgbActiveAccess,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExtraLengthClockingPolicy {
+    CurrentDmgBaseline,
+    DeferredCgbRevisionBehavior,
+}
+
 impl ApuStereoOutputSnapshot {
     const fn new(left: i32, right: i32) -> Self {
         Self { left, right }
@@ -258,6 +264,14 @@ fn wave_ram_mmio_policy(console_model: ConsoleModel) -> WaveRamMmioPolicy {
         WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly
     } else {
         WaveRamMmioPolicy::DeferredCgbActiveAccess
+    }
+}
+
+fn extra_length_clocking_policy(console_model: ConsoleModel) -> ExtraLengthClockingPolicy {
+    if console_model.is_cgb_family() {
+        ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior
+    } else {
+        ExtraLengthClockingPolicy::CurrentDmgBaseline
     }
 }
 
@@ -607,6 +621,7 @@ impl PulseChannelState {
 
     fn apply_extra_length_clocking_on_enable(
         &mut self,
+        console_model: ConsoleModel,
         was_length_enabled: bool,
         next_step_clocks_length: bool,
         trigger: bool,
@@ -617,7 +632,19 @@ impl PulseChannelState {
         }
 
         let enabling_length = !was_length_enabled;
-        if !enabling_length && !trigger_reloaded_zero_length {
+        let should_extra_clock = match extra_length_clocking_policy(console_model) {
+            ExtraLengthClockingPolicy::CurrentDmgBaseline => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+            // Pan Docs documents a CGB-02-specific deviation here, but the
+            // current ConsoleModel surface does not distinguish CGB revisions.
+            // Keep the seam explicit until a revision-scoped oracle can close
+            // that gap.
+            ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+        };
+        if !should_extra_clock {
             return;
         }
 
@@ -940,7 +967,12 @@ impl Channel1State {
         self.nr13 = value;
     }
 
-    fn write_nr14(&mut self, value: u8, next_frame_sequencer_step: u8) {
+    fn write_nr14(
+        &mut self,
+        value: u8,
+        console_model: ConsoleModel,
+        next_frame_sequencer_step: u8,
+    ) {
         let trigger = value & CHANNEL_TRIGGER_BIT != 0;
         let next_step_clocks_length = frame_sequencer_step_clocks_length(next_frame_sequencer_step);
         let next_step_clocks_envelope =
@@ -956,6 +988,7 @@ impl Channel1State {
 
         self.pulse.apply_length_enable(self.nr14);
         self.pulse.apply_extra_length_clocking_on_enable(
+            console_model,
             was_length_enabled,
             next_step_clocks_length,
             trigger,
@@ -1096,7 +1129,12 @@ impl Channel2State {
         self.nr23 = value;
     }
 
-    fn write_nr24(&mut self, value: u8, next_frame_sequencer_step: u8) {
+    fn write_nr24(
+        &mut self,
+        value: u8,
+        console_model: ConsoleModel,
+        next_frame_sequencer_step: u8,
+    ) {
         let trigger = value & CHANNEL_TRIGGER_BIT != 0;
         let next_step_clocks_length = frame_sequencer_step_clocks_length(next_frame_sequencer_step);
         let next_step_clocks_envelope =
@@ -1112,6 +1150,7 @@ impl Channel2State {
 
         self.pulse.apply_length_enable(self.nr24);
         self.pulse.apply_extra_length_clocking_on_enable(
+            console_model,
             was_length_enabled,
             next_step_clocks_length,
             trigger,
@@ -1254,6 +1293,7 @@ impl Channel3State {
 
         self.length_enabled = self.nr34 & LENGTH_ENABLE_BIT != 0;
         self.apply_extra_length_clocking_on_enable(
+            console_model,
             was_length_enabled,
             next_step_clocks_length,
             trigger,
@@ -1329,6 +1369,7 @@ impl Channel3State {
 
     fn apply_extra_length_clocking_on_enable(
         &mut self,
+        console_model: ConsoleModel,
         was_length_enabled: bool,
         next_step_clocks_length: bool,
         trigger: bool,
@@ -1339,7 +1380,15 @@ impl Channel3State {
         }
 
         let enabling_length = !was_length_enabled;
-        if !enabling_length && !trigger_reloaded_zero_length {
+        let should_extra_clock = match extra_length_clocking_policy(console_model) {
+            ExtraLengthClockingPolicy::CurrentDmgBaseline => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+            ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+        };
+        if !should_extra_clock {
             return;
         }
 
@@ -1552,7 +1601,12 @@ impl Channel4State {
         }
     }
 
-    fn write_nr44(&mut self, value: u8, next_frame_sequencer_step: u8) {
+    fn write_nr44(
+        &mut self,
+        value: u8,
+        console_model: ConsoleModel,
+        next_frame_sequencer_step: u8,
+    ) {
         let trigger = value & CHANNEL_TRIGGER_BIT != 0;
         let next_step_clocks_length = frame_sequencer_step_clocks_length(next_frame_sequencer_step);
         let next_step_clocks_envelope =
@@ -1568,6 +1622,7 @@ impl Channel4State {
 
         self.length_enabled = self.nr44 & LENGTH_ENABLE_BIT != 0;
         self.apply_extra_length_clocking_on_enable(
+            console_model,
             was_length_enabled,
             next_step_clocks_length,
             trigger,
@@ -1659,6 +1714,7 @@ impl Channel4State {
 
     fn apply_extra_length_clocking_on_enable(
         &mut self,
+        console_model: ConsoleModel,
         was_length_enabled: bool,
         next_step_clocks_length: bool,
         trigger: bool,
@@ -1669,7 +1725,15 @@ impl Channel4State {
         }
 
         let enabling_length = !was_length_enabled;
-        if !enabling_length && !trigger_reloaded_zero_length {
+        let should_extra_clock = match extra_length_clocking_policy(console_model) {
+            ExtraLengthClockingPolicy::CurrentDmgBaseline => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+            ExtraLengthClockingPolicy::DeferredCgbRevisionBehavior => {
+                enabling_length || trigger_reloaded_zero_length
+            }
+        };
+        if !should_extra_clock {
             return;
         }
 
@@ -1911,12 +1975,18 @@ impl Apu {
             0xFF11 => self.channel_1.write_nr11(value),
             0xFF12 => self.channel_1.write_nr12(value),
             0xFF13 => self.channel_1.write_nr13(value),
-            0xFF14 => self.channel_1.write_nr14(value, self.frame_sequencer.step),
+            0xFF14 => {
+                self.channel_1
+                    .write_nr14(value, self.console_model, self.frame_sequencer.step)
+            }
             0xFF15 => {}
             0xFF16 => self.channel_2.write_nr21(value),
             0xFF17 => self.channel_2.write_nr22(value),
             0xFF18 => self.channel_2.write_nr23(value),
-            0xFF19 => self.channel_2.write_nr24(value, self.frame_sequencer.step),
+            0xFF19 => {
+                self.channel_2
+                    .write_nr24(value, self.console_model, self.frame_sequencer.step)
+            }
             0xFF1A => self.channel_3.write_nr30(value),
             0xFF1B => self.channel_3.write_nr31(value),
             0xFF1C => self.channel_3.write_nr32(value),
@@ -1929,7 +1999,10 @@ impl Apu {
             0xFF20 => self.channel_4.write_nr41(value),
             0xFF21 => self.channel_4.write_nr42(value),
             0xFF22 => self.channel_4.write_nr43(value),
-            0xFF23 => self.channel_4.write_nr44(value, self.frame_sequencer.step),
+            0xFF23 => {
+                self.channel_4
+                    .write_nr44(value, self.console_model, self.frame_sequencer.step)
+            }
             0xFF24 => self.master.nr50 = value,
             0xFF25 => self.master.nr51 = value,
             0xFF27..=0xFF3F => {}

@@ -100,7 +100,9 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    last documented hidden-state follow-up from this slice: the first
    post-power-on trigger on `CH1` / `CH2` suppresses the initial duty output
    until the first real duty-step advance, and `NR52` power cycles rearm that
-   latch explicitly.
+   latch explicitly. The remaining cross-model caveat in this lane is the
+   documented `CGB-02` extra-length-clocking exception, which remains deferred
+   until the model surface can distinguish CGB revisions.
 5. `Phase 7.4` — Wave channel (`CH3`)
    Scope: wave RAM ownership, sample buffer and sample index, output-level
    rules, active-wave-RAM policy, and the documented DMG retrigger-corruption
