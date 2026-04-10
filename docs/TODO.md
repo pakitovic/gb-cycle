@@ -103,18 +103,23 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
   - Current re-entry state for `intr_2_mode0_timing_sprites.gb`:
     - testcase `0` (`1 sprite at X=0`) is locally closed again: the first `STAT` read after the IRQ sees `HBlank`, with `before_line_dot = 259` and `mode0_start_dot = 259`.
     - testcase `1` (`2 sprites at X=0`) is also locally closed: the first `STAT` read after the IRQ sees `HBlank`, with `before_line_dot = 267` and `mode0_start_dot = 267`.
-    - testcase `11` (`10 sprites at X=2`) is now effectively closed too. The real ROM round counts now match the expected `1,2` shape: round A reads `0xA0` immediately, and round B reads `0xA3 -> 0xA0`.
-    - the first remaining real ROM failure has therefore moved to testcase `13` (`10 sprites at X=4`).
+    - testcase `2` (`3 sprites at X=0`) is closed too: the first `STAT` read after the IRQ now sees `HBlank`, with `before_line_dot = 271` and `mode0_start_dot = 271`.
+    - testcase `11` (`10 sprites at X=2`) is effectively closed again. The real ROM round counts match the expected `1,2` shape: round A reads `0xA0` immediately, and round B reads `0xA3 -> 0xA0`.
+    - the latest left-edge slice restores `hacktix/strikethrough` while still moving the first remaining real ROM failure back to testcase `13` (`10 sprites at X=4`). The active runtime seam is now:
+      - shared `Startup(1)` dot for OBJ fetches
+      - shared `Push(1)` dot only while `current_transfer_x < 8`
+      - chained same-`X` post-`Push(1)` restart only while `current_transfer_x < 8`
+      - long-tail restart only while `current_transfer_x < 8`
   - The remaining testcase-`13` gap is narrower, but no longer looks like the old pre-visible same-`X` seam:
     - the current failure signature at `pc=0x4870` reports `testcase_index = 13`, `ly = 99`, `line_dot = 4`, `mode = OamScan`, and `mode0_start_dot = 252`.
-    - on the real `ly = 68` measurement line, testcase `13` runs through the hidden lane rather than the pre-visible lane: `current_transfer_x = 4`, the terminal sprite is already significantly overlapped, and the suspicious work sits in the hidden same-`X` restart chain.
-    - the runtime now has an explicit hidden-lane adjustment for late same-`X` clusters at `X mod 8 = 4`, and the corresponding unit oracle is green, but the full ROM still fails on testcase `13`.
-    - the cheap repo-local `X=4` mini-probe currently reports a `1,1` shape, not the expected `1,2`, so it is not yet a faithful replacement for the real testcase setup.
+    - on the real `ly = 68` measurement line, testcase `13` already reaches `HBlank` with `mode0_start_dot = 303`, so the remaining gap no longer appears to be on that measured line.
+    - the more useful real-oracle window is now testcase `13`, `ly = 66`, `line_dot 118..140`: there the PPU stays in the hidden lane at `current_transfer_x = 4` while `obj_pending_hit_len` drains from `4` to `0`, and `mode0_start_dot` climbs from `282` to `303`.
+    - the cheap repo-local `X=4` mini-probe still reports a `1,1` shape, not the expected `1,2`, so it is not yet a faithful replacement for the real testcase setup.
   - Do not retry these two directions first:
     - a one-dot-earlier CPU-visible `STAT` `Drawing -> HBlank` publication experiment did not move the earlier testcase-`2` oracle and regressed the local boundary unit test.
     - broader chained-fetch experiments that recurse into `advance_object_fetch()` from `Push1`, or that suppress chained `Push0` cost blindly, destabilized the local diagnostics and were reverted.
   - Highest-value next step from this checkpoint:
-    - keep testcase `13` as the active oracle and determine whether the remaining red is still in the hidden same-`X` restart cost itself or in testcase setup that the local `X=4` probe does not reproduce. The next useful move is a narrow local probe that matches testcase `13` setup more faithfully, not another blind `STAT` or bus-publication retune.
+    - keep testcase `13` as the active oracle and narrow the next probe around the real `ly = 66`, `x = 4` hidden-lane setup so it reproduces the chain that the local `X=4` mini-probe still misses. The next useful move is a more faithful repo-local probe for that setup, not another blind `STAT` or bus-publication retune.
 
 - [PPU][FF44-HBLANK-SEAM] The exact DMG `FF44` advance point inside late HBlank is still hypothesis-only. The docs prefer the "last machine cycle of HBlank" wording, but a direct retune of the current implementation threshold to later dots regressed `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` from green to red while leaving the rest of the model unchanged. Re-entry should start from a narrow trace or oracle comparison around the late-HBlank `LY/SCX` polling seam rather than from another blind constant change. Hard gate: `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` must stay green.
 

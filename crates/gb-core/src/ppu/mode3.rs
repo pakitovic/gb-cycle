@@ -56,10 +56,8 @@ impl Ppu {
     ) -> bool {
         self.sync_pending_obj_hit_ownership();
         self.latch_object_fetch_hits();
-        let started = self.try_start_object_fetch_from_current_dot(
-            ObjFetchStartSource::FifoBackedTransfer,
-            true,
-        );
+        let started = self
+            .try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer, true);
         if started && self.terminal_mode3_dot_started_shared_obj_fetch() {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
         }
@@ -132,10 +130,7 @@ impl Ppu {
         }
     }
 
-    fn previsible_same_x_chain_can_start_obj_fetch(
-        &self,
-        transfer: Mode3CurrentTransfer,
-    ) -> bool {
+    fn previsible_same_x_chain_can_start_obj_fetch(&self, transfer: Mode3CurrentTransfer) -> bool {
         matches!(
             (transfer.context.lane, transfer.readiness),
             (
@@ -932,8 +927,6 @@ impl Ppu {
             return false;
         }
 
-        let pending_nonterminal_same_x_cluster_pays_startup_dot =
-            self.pending_nonterminal_same_x_cluster_pays_startup_dot();
         let Some(sprite_slot) = self.obj_pipeline_state.pop_pending_fetch_hit() else {
             return false;
         };
@@ -942,8 +935,10 @@ impl Ppu {
         };
 
         self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
-        let overlap_current_dot = overlap_current_dot
-            && !pending_nonterminal_same_x_cluster_pays_startup_dot;
+        let pending_nonterminal_same_x_cluster_pays_startup_dot =
+            self.pending_nonterminal_same_x_cluster_pays_startup_dot();
+        let overlap_current_dot =
+            overlap_current_dot && !pending_nonterminal_same_x_cluster_pays_startup_dot;
         if overlap_current_dot {
             if matches!(
                 start_source,
@@ -974,13 +969,17 @@ impl Ppu {
     }
 
     fn bg_fetcher_ready_for_fifo_backed_obj_start(&self) -> bool {
-        let allow_same_x_cluster_tileindex_overlap = self.current_transfer_x_supports_early_same_x_obj_start()
+        let allow_same_x_cluster_tileindex_overlap = self
+            .current_transfer_x_supports_early_same_x_obj_start()
             && self.obj_pipeline_state.pending_sprite_slots.len() >= 2
             && self.obj_pipeline_state.pending_match_x
                 == Some(self.bg_pipeline_state.current_transfer_x);
         if self.bg_pipeline_state.current_transfer_x < 8 {
             allow_same_x_cluster_tileindex_overlap
-                || !matches!(self.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::TileIndex)
+                || !matches!(
+                    self.bg_pipeline_state.fetcher.stage,
+                    PpuBgFetcherStage::TileIndex
+                )
         } else {
             !matches!(
                 self.bg_pipeline_state.fetcher.stage,
@@ -1010,12 +1009,15 @@ impl Ppu {
         }
 
         let fetch = self.obj_pipeline_state.fetch;
-        let startup_dot_is_shared =
-            matches!((fetch.stage, fetch.stage_dot), (PpuObjFetcherStage::Startup, 1))
-                && !fetch.count_terminal_push_dot;
-        let push_dot_is_shared =
-            matches!((fetch.stage, fetch.stage_dot), (PpuObjFetcherStage::Push, 1))
-                && !fetch.count_terminal_push_dot;
+        let startup_dot_is_shared = matches!(
+            (fetch.stage, fetch.stage_dot),
+            (PpuObjFetcherStage::Startup, 1)
+        ) && !fetch.count_terminal_push_dot;
+        let push_dot_is_shared = matches!(
+            (fetch.stage, fetch.stage_dot),
+            (PpuObjFetcherStage::Push, 1)
+        ) && !fetch.count_terminal_push_dot
+            && self.bg_pipeline_state.current_transfer_x < 8;
         if !startup_dot_is_shared && !push_dot_is_shared {
             self.bg_pipeline_state.extend_mode3_by_one_dot();
         }
@@ -1087,50 +1089,47 @@ impl Ppu {
                 self.obj_pipeline_state.mark_fetched(fetch.sprite_slot);
                 self.obj_pipeline_state.fetch = ObjFetchState::default();
                 self.bg_pipeline_state.push.resume_after_object_fetch();
-                let pending_nonterminal_same_x_cluster_pays_startup_dot =
-                    self.pending_nonterminal_same_x_cluster_pays_startup_dot();
-                let started = self.try_start_object_fetch_from_current_dot(
-                    ObjFetchStartSource::FifoBackedTransfer,
-                    true,
-                );
-                if started && self.obj_fetch_startup_ready() {
-                    let started_on_terminal_mode3_dot =
-                        self.terminal_mode3_dot_started_shared_obj_fetch();
-                    let long_same_x_tail_restart =
-                        self.chained_same_x_obj_fetch_uses_long_tail_restart();
-                    if long_same_x_tail_restart {
-                        self.bg_pipeline_state.extend_mode3_by_one_dot();
-                    }
-                    let sprite = self
-                        .obj_pipeline_state
-                        .fetch
-                        .sprite
-                        .expect("chained OBJ fetch must keep sprite metadata");
-                    let resolved_sprite =
-                        self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict);
-                    self.obj_pipeline_state.fetch.resolved_sprite = Some(resolved_sprite);
-                    if long_same_x_tail_restart {
-                        self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
-                        self.obj_pipeline_state.fetch.stage_dot = 0;
-                        self.obj_pipeline_state.fetch.count_terminal_push_dot = true;
-                    } else {
-                        if pending_nonterminal_same_x_cluster_pays_startup_dot {
+                if self.bg_pipeline_state.current_transfer_x < 8 {
+                    let pending_nonterminal_same_x_cluster_pays_startup_dot =
+                        self.pending_nonterminal_same_x_cluster_pays_startup_dot();
+                    let started = self.try_start_object_fetch_from_current_dot(
+                        ObjFetchStartSource::FifoBackedTransfer,
+                        true,
+                    );
+                    if started && self.obj_fetch_startup_ready() {
+                        let long_same_x_tail_restart =
+                            self.chained_same_x_obj_fetch_uses_long_tail_restart();
+                        if long_same_x_tail_restart {
                             self.bg_pipeline_state.extend_mode3_by_one_dot();
                         }
-                        if self.terminal_previsible_same_x_chain_skips_obj_tile_data_low_byte() {
-                            self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
+                        let sprite = self
+                            .obj_pipeline_state
+                            .fetch
+                            .sprite
+                            .expect("chained OBJ fetch must keep sprite metadata");
+                        let resolved_sprite =
+                            self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict);
+                        self.obj_pipeline_state.fetch.resolved_sprite = Some(resolved_sprite);
+                        if long_same_x_tail_restart {
+                            self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
                             self.obj_pipeline_state.fetch.stage_dot = 0;
+                            self.obj_pipeline_state.fetch.count_terminal_push_dot = true;
                         } else {
-                            self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataLow;
-                            // Same-X chains overlap every second additional sprite with the
-                            // current shared-fetcher dot; the others still pay the full
-                            // first TileDataLow half-step.
-                            self.obj_pipeline_state.fetch.stage_dot = u8::from(
-                                self.chained_same_x_obj_fetch_skips_first_tile_data_low_half_step(),
-                            );
-                        }
-                        if started_on_terminal_mode3_dot {
-                            self.bg_pipeline_state.extend_mode3_by_one_dot();
+                            if pending_nonterminal_same_x_cluster_pays_startup_dot {
+                                self.bg_pipeline_state.extend_mode3_by_one_dot();
+                            }
+                            if self.terminal_previsible_same_x_chain_skips_obj_tile_data_low_byte()
+                            {
+                                self.obj_pipeline_state.fetch.stage =
+                                    PpuObjFetcherStage::TileDataHigh;
+                                self.obj_pipeline_state.fetch.stage_dot = 0;
+                            } else {
+                                self.obj_pipeline_state.fetch.stage =
+                                    PpuObjFetcherStage::TileDataLow;
+                                self.obj_pipeline_state.fetch.stage_dot = u8::from(
+                                    self.chained_same_x_obj_fetch_skips_first_tile_data_low_half_step(),
+                                );
+                            }
                         }
                     }
                 }

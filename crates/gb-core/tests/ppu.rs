@@ -3656,6 +3656,14 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case5_line68_changes() {
 }
 
 #[test]
+#[ignore = "diagnostic STAT read sample after testcase 5 irq of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case5_stat_reads_after_irq() {
+    let reads =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_stat_reads_after_irq_for_testcase(5, 4);
+    println!("case5_reads={reads:?}");
+}
+
+#[test]
 #[ignore = "diagnostic round-by-round STAT counts for testcase 10 of mooneye intr_2_mode0_timing_sprites"]
 fn real_mooneye_intr_2_mode0_timing_sprites_logs_case10_round_counts() {
     let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -4071,6 +4079,38 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case13_line68_changes() {
         sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(13, 68);
     for observation in observations {
         println!("case13_line68={observation:?}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic STAT read sample after testcase 13 irq of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case13_stat_reads_after_irq() {
+    let reads =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_stat_reads_after_irq_for_testcase(13, 4);
+    println!("case13_reads={reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic line68 window 240..330 for testcase 13 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case13_line68_window_240_330() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(13, 68);
+    for observation in observations {
+        if (240..=330).contains(&observation.line_dot) {
+            println!("case13_line68_window={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic line66 window 40..140 for testcase 13 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case13_line66_window_40_140() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(13, 66);
+    for observation in observations {
+        if (40..=140).contains(&observation.line_dot) {
+            println!("case13_line66_window={observation:?}");
+        }
     }
 }
 
@@ -5309,11 +5349,12 @@ fn disabling_lcdc1_during_live_object_fetch_keeps_the_timing_cost_but_drops_pixe
         let mut waited_t_cycles = 0;
         loop {
             let fetching = machine.ppu().snapshot();
-            if fetching.obj_fetcher_stage == PpuObjFetcherStage::Startup {
+            if fetching.obj_fetcher_stage != PpuObjFetcherStage::Idle {
                 assert_eq!(fetching.mode, PpuAccessMode::Drawing);
                 assert!(fetching.visible_pixels_output <= 1);
                 break;
             }
+
             machine.step_t_cycle();
             waited_t_cycles += 1;
             assert!(
@@ -5324,7 +5365,7 @@ fn disabling_lcdc1_during_live_object_fetch_keeps_the_timing_cost_but_drops_pixe
 
         let fetching = machine.ppu().snapshot();
         assert_eq!(fetching.mode, PpuAccessMode::Drawing);
-        assert_eq!(fetching.obj_fetcher_stage, PpuObjFetcherStage::Startup);
+        assert_ne!(fetching.obj_fetcher_stage, PpuObjFetcherStage::Idle);
 
         if disable_obj_during_fetch {
             machine.write_bus(0xFF40, 0x80);

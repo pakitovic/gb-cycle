@@ -1,8 +1,50 @@
 use super::*;
 use crate::bus::BusMaster;
 use crate::scheduler::TCycle;
+use crate::{ConsoleModel, Machine, MachineConfig, StartupMode, TraceSummaryBuffer};
 
 const TEST_VRAM_BYTES: usize = 0x2000;
+const DMG_BOOT_LOGO_TILE_VRAM_START: u16 = 0x8010;
+const DMG_BOOT_LOGO_MAP_VRAM_START: u16 = 0x9904;
+const DMG_BOOT_LOGO_TILE_BYTES: [u8; 200] = [
+    0xF0, 0xF0, 0xFC, 0xFC, 0xFC, 0xFC, 0xF3, 0xF3, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C, 0x3C,
+    0xF0, 0xF0, 0xF0, 0xF0, 0x00, 0x00, 0xF3, 0xF3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xCF, 0xCF,
+    0x00, 0x00, 0x0F, 0x0F, 0x3F, 0x3F, 0x0F, 0x0F, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0, 0x0F, 0x0F,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF3, 0xF3,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0xFF, 0xFF,
+    0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC3, 0xC3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFC, 0xFC,
+    0xF3, 0xF3, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x3C, 0x3C, 0xFC, 0xFC, 0xFC, 0xFC, 0x3C, 0x3C,
+    0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3,
+    0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0x3C, 0x3C, 0x3F, 0x3F, 0x3C, 0x3C, 0x0F, 0x0F,
+    0x3C, 0x3C, 0xFC, 0xFC, 0x00, 0x00, 0xFC, 0xFC, 0xFC, 0xFC, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+    0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF3, 0xF0, 0xF0, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF,
+    0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xCF, 0xC3, 0xC3, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0xFC, 0xFC,
+    0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C,
+];
+const DMG_BOOT_LOGO_MAP_BYTES: [u8; 44] = [
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x19, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HacktixStrikethroughLine68Observation {
+    t_cycle: u64,
+    line_dot: u16,
+    visible_pixels_output: u8,
+    mode0_start_dot: u16,
+    current_transfer_x: u8,
+    current_transfer_lane: Option<PpuMode3TransferLaneSnapshot>,
+    obj_fetcher_stage: PpuObjFetcherStage,
+    obj_fetcher_stage_dot: u8,
+    fetch_sprite_slot: u8,
+    fetch_sprite_oam_index: Option<u8>,
+    fetch_sprite_x: Option<u8>,
+    resolved_tile_index: Option<u8>,
+    resolved_attributes: Option<u8>,
+    late_metadata_word: Option<(u8, u8)>,
+    dma_byte_destination_address: Option<u16>,
+}
 
 fn sync_test_video_ownership(
     ppu: &Ppu,
@@ -61,6 +103,140 @@ fn tick_ppu_with_vram_and_dma(
 
 fn drain_ppu_interrupts(ppu: &mut Ppu) -> Vec<InterruptSource> {
     ppu.drain_pending_interrupt_requests()
+}
+
+fn seed_hacktix_dmg_boot_logo_vram(machine: &mut Machine<TraceSummaryBuffer>) {
+    for (index, byte) in DMG_BOOT_LOGO_TILE_BYTES.iter().copied().enumerate() {
+        machine.write_bus(DMG_BOOT_LOGO_TILE_VRAM_START + (index as u16 * 2), byte);
+    }
+    for (index, byte) in DMG_BOOT_LOGO_MAP_BYTES.iter().copied().enumerate() {
+        machine.write_bus(DMG_BOOT_LOGO_MAP_VRAM_START + index as u16, byte);
+    }
+}
+
+fn load_hacktix_strikethrough_machine() -> Machine<TraceSummaryBuffer> {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/hacktix/strikethrough.gb");
+    let rom = std::fs::read(&rom_path).expect("hacktix strikethrough ROM should be present");
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("hacktix ROM should load");
+    seed_hacktix_dmg_boot_logo_vram(&mut machine);
+    machine
+}
+
+fn sample_hacktix_strikethrough_line(
+    target_ly: u8,
+    max_events: usize,
+) -> (
+    Vec<PpuSelectedSprite>,
+    Vec<HacktixStrikethroughLine68Observation>,
+    [u8; 8],
+    [u8; 8],
+) {
+    let mut machine = load_hacktix_strikethrough_machine();
+    let mut current_selected_sprites = Vec::new();
+    let mut current_events = Vec::with_capacity(max_events);
+    let mut last_completed_line68 = None;
+
+    for _ in 0..3_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu();
+        if ppu.ly != target_ly {
+            if machine.cpu().execution_state() == crate::CpuExecutionState::Halted
+                && let Some(line68) = last_completed_line68
+            {
+                return line68;
+            }
+            continue;
+        }
+
+        if ppu.line_dot == MODE2_DOTS {
+            current_selected_sprites = ppu.mode2_scan_state.selected_sprites_snapshot();
+            current_events.clear();
+        }
+
+        let dma_progress = machine.dma().transfer_progress();
+        let dma_byte_destination_address = dma_progress
+            .filter(|progress| {
+                progress.completed_bytes() > 0 && progress.byte_phase_t_cycles() == 0
+            })
+            .map(|progress| {
+                progress
+                    .transfer()
+                    .destination_address_for_byte(progress.completed_bytes() - 1)
+            });
+
+        if (ppu.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle
+            || dma_byte_destination_address.is_some())
+            && current_events.len() < max_events
+        {
+            current_events.push(HacktixStrikethroughLine68Observation {
+                t_cycle: machine.next_t_cycle().get().saturating_sub(1),
+                line_dot: ppu.line_dot,
+                visible_pixels_output: ppu.bg_pipeline_state.visible_pixels_output,
+                mode0_start_dot: ppu.current_mode0_start_dot(),
+                current_transfer_x: ppu.bg_pipeline_state.current_transfer_x,
+                current_transfer_lane: ppu
+                    .current_transfer()
+                    .map(|transfer| snapshot_bg_transfer_lane(transfer.context.lane)),
+                obj_fetcher_stage: ppu.obj_pipeline_state.fetch.stage,
+                obj_fetcher_stage_dot: ppu.obj_pipeline_state.fetch.stage_dot,
+                fetch_sprite_slot: ppu.obj_pipeline_state.fetch.sprite_slot,
+                fetch_sprite_oam_index: ppu
+                    .obj_pipeline_state
+                    .fetch
+                    .sprite
+                    .map(|sprite| sprite.oam_index),
+                fetch_sprite_x: ppu.obj_pipeline_state.fetch.sprite.map(|sprite| sprite.x),
+                resolved_tile_index: ppu
+                    .obj_pipeline_state
+                    .fetch
+                    .resolved_sprite
+                    .map(|sprite| sprite.tile_index),
+                resolved_attributes: ppu
+                    .obj_pipeline_state
+                    .fetch
+                    .resolved_sprite
+                    .map(|sprite| sprite.attributes),
+                late_metadata_word: ppu.obj_pipeline_state.late_metadata_word,
+                dma_byte_destination_address,
+            });
+        }
+
+        if ppu.ly == target_ly && ppu.current_access_mode() == PpuAccessMode::HBlank {
+            let mut segment = [0_u8; 8];
+            segment.copy_from_slice(&ppu.current_scanline_pixels[71..79]);
+            let mut framebuffer_segment = [0_u8; 8];
+            let framebuffer_start = target_ly as usize * SCREEN_WIDTH + 71;
+            framebuffer_segment
+                .copy_from_slice(&ppu.framebuffer[framebuffer_start..framebuffer_start + 8]);
+            last_completed_line68 = Some((
+                current_selected_sprites.clone(),
+                current_events.clone(),
+                segment,
+                framebuffer_segment,
+            ));
+        }
+    }
+
+    if let Some(line68) = last_completed_line68 {
+        return line68;
+    }
+
+    panic!(
+        "hacktix strikethrough line sample did not reach the halted framebuffer; target_ly={} pc={:#06X} state={:?} ly={} line_dot={} mode={:?}",
+        target_ly,
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().ly,
+        machine.ppu().line_dot,
+        machine.ppu().current_access_mode()
+    );
 }
 
 fn write_oam_entry(oam_bytes: &mut [u8; 160], index: u8, y: u8, x: u8, tile_index: u8) {
@@ -2477,7 +2653,7 @@ fn fifo_backed_obj_start_waits_until_bg_fetcher_leaves_tile_data_low() {
 }
 
 #[test]
-fn abstract_previsible_obj_start_can_use_real_bg_pixels_behind_startup_placeholders() {
+fn abstract_previsible_obj_start_keeps_startup_placeholders_non_fifo_backed() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_registers.lcdc = 0x82;
     ppu.ly = 0;
@@ -2504,7 +2680,7 @@ fn abstract_previsible_obj_start_can_use_real_bg_pixels_behind_startup_placehold
 
     let arbitration = ppu.current_dot_arbitration();
     assert!(!arbitration.can_serve_bg_transfer());
-    assert!(arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+    assert!(!arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
 }
 
 #[test]
@@ -5338,6 +5514,25 @@ fn object_fetch_uses_the_current_dma_byte_for_even_conflict_word_reads() {
 }
 
 #[test]
+#[ignore = "diagnostic probe for hacktix strikethrough line 68 DMA/OBJ overlap"]
+fn sample_real_hacktix_strikethrough_line68_dma_obj_overlap() {
+    for target_ly in 64..=72 {
+        let (selected_sprites, events, segment, framebuffer_segment) =
+            sample_hacktix_strikethrough_line(target_ly, 64);
+
+        println!("ly={target_ly} selected_sprites={selected_sprites:#?}");
+        println!("ly={target_ly} line_pixels_71_79={segment:?}");
+        println!("ly={target_ly} framebuffer_71_79={framebuffer_segment:?}");
+        for event in &events {
+            println!("ly={target_ly} {event:?}");
+        }
+    }
+
+    let (selected_sprites, events, _, _) = sample_hacktix_strikethrough_line(68, 64);
+    assert!(!selected_sprites.is_empty() || !events.is_empty());
+}
+
+#[test]
 fn obj_priority_uses_oam_order_when_x_matches() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let mut oam_bytes = [0; 160];
@@ -5782,26 +5977,27 @@ fn turning_off_lcdc1_during_object_fetch_cancels_sprite_pixels_but_keeps_timing_
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
         });
 
-        for t_cycle in 0..80 {
-            tick_ppu_with_vram(&mut ppu, t_cycle, oam_bytes, vram_bytes);
-        }
-
-        let mut t_cycle = 80;
+        let mut t_cycle = 0;
         loop {
+            tick_ppu_with_vram(&mut ppu, t_cycle, oam_bytes, vram_bytes);
+            t_cycle += 1;
+
             let fetching = ppu.snapshot();
-            if fetching.obj_fetcher_stage == PpuObjFetcherStage::Startup {
+            if fetching.obj_fetcher_stage != PpuObjFetcherStage::Idle {
+                assert!(
+                    ppu.current_access_mode() == PpuAccessMode::Drawing,
+                    "left-edge OBJ fetch must still begin during Mode 3"
+                );
+                assert!(
+                    fetching.visible_pixels_output <= 1,
+                    "left-edge OBJ fetch should still begin around the left edge"
+                );
                 break;
             }
 
-            tick_ppu_with_vram(&mut ppu, t_cycle, oam_bytes, vram_bytes);
-            t_cycle += 1;
             assert!(
-                ppu.current_access_mode() == PpuAccessMode::Drawing,
-                "left-edge OBJ fetch must still begin during Mode 3"
-            );
-            assert!(
-                ppu.snapshot().visible_pixels_output <= 1,
-                "left-edge OBJ fetch should still begin around the left edge"
+                t_cycle < 160,
+                "sprite fetch should begin during early Mode 3"
             );
         }
 
@@ -5847,7 +6043,7 @@ fn smaller_raw_obj_x_values_start_fetch_earlier_during_mode3_startup() {
         for t_cycle in 0..160 {
             tick_ppu_with_vram(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);
             let snapshot = ppu.snapshot();
-            if snapshot.obj_fetcher_stage == PpuObjFetcherStage::Startup {
+            if snapshot.obj_fetcher_stage != PpuObjFetcherStage::Idle {
                 return snapshot.line_dot;
             }
         }
@@ -6169,7 +6365,7 @@ fn first_hidden_same_x_cluster_fetch_at_x_seven_keeps_the_full_low_byte() {
 }
 
 #[test]
-fn same_x_cluster_at_x_mod_8_eq_2_does_not_share_the_startup_dot() {
+fn same_x_cluster_at_x_mod_8_eq_2_waits_until_the_next_dot_for_startup() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 2;
@@ -6206,14 +6402,11 @@ fn same_x_cluster_at_x_mod_8_eq_2_does_not_share_the_startup_dot() {
     ppu.obj_pipeline_state.pending_sprite_slots.push_back(0);
     ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
 
-    assert!(
-        ppu.try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer, true,)
-    );
-    assert_eq!(
-        ppu.obj_pipeline_state.fetch.stage,
-        PpuObjFetcherStage::Startup
-    );
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert!(!ppu.try_start_object_fetch_from_current_dot(
+        ObjFetchStartSource::FifoBackedTransfer,
+        true,
+    ));
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
 }
 
 #[test]
@@ -6302,7 +6495,7 @@ fn current_mode2_oam_row_tracks_the_live_four_dot_slices() {
 }
 
 #[test]
-fn long_same_x_obj_chain_restarts_from_startup_and_counts_terminal_push_dot() {
+fn long_same_x_obj_chain_waits_one_dot_before_the_terminal_restart() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
@@ -6334,10 +6527,6 @@ fn long_same_x_obj_chain_restarts_from_startup_and_counts_terminal_push_dot() {
         .mode2_scan_state
         .selected_sprite(4)
         .expect("sprite slot 4 should exist");
-    let next_sprite = ppu
-        .mode2_scan_state
-        .selected_sprite(5)
-        .expect("sprite slot 5 should exist");
     ppu.obj_pipeline_state.pending_match_x = Some(0);
     ppu.obj_pipeline_state.pending_sprite_slots.push_back(5);
     ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
@@ -6360,37 +6549,22 @@ fn long_same_x_obj_chain_restarts_from_startup_and_counts_terminal_push_dot() {
     ));
     assert_eq!(
         ppu.bg_pipeline_state.mode0_start_dot,
-        MODE0_START_DOT + 1,
+        MODE0_START_DOT,
         "fetch={:?} pending={:?} match_x={:?}",
         ppu.obj_pipeline_state.fetch,
         ppu.obj_pipeline_state.pending_sprite_slots,
         ppu.obj_pipeline_state.pending_match_x
     );
-    assert_eq!(
-        ppu.obj_pipeline_state.fetch.stage,
-        PpuObjFetcherStage::Startup
-    );
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
-    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 5);
-    assert_eq!(ppu.obj_pipeline_state.fetch.sprite, Some(next_sprite));
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
+    assert_eq!(ppu.obj_pipeline_state.pending_match_x, Some(0));
     assert_eq!(
         ppu.obj_pipeline_state
-            .fetch
-            .resolved_sprite
-            .map(|sprite| sprite.oam_index),
-        Some(next_sprite.oam_index)
+            .pending_sprite_slots
+            .iter()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![5]
     );
-    assert!(ppu.obj_pipeline_state.fetch.count_terminal_push_dot);
-
-    while ppu.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle {
-        assert!(ppu.advance_object_fetch(
-            &OamBusView::new(BusMaster::Ppu, &mut oam),
-            &VramBusView::new(BusMaster::Ppu, &mut vram),
-            None,
-        ));
-    }
-
-    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 9);
 }
 
 #[test]
@@ -6462,7 +6636,7 @@ fn visible_same_x_obj_chain_with_early_start_does_not_use_long_tail_restart() {
 }
 
 #[test]
-fn x_mod_8_eq_2_same_x_obj_chain_restart_pays_one_extra_dot() {
+fn x_mod_8_eq_2_same_x_obj_chain_restart_reuses_the_current_dot() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 16;
@@ -6516,7 +6690,7 @@ fn x_mod_8_eq_2_same_x_obj_chain_restart_pays_one_extra_dot() {
         &VramBusView::new(BusMaster::Ppu, &mut vram),
         None,
     ));
-    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 11);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 10);
     assert_eq!(
         ppu.obj_pipeline_state.fetch.stage,
         PpuObjFetcherStage::TileDataLow
@@ -6526,7 +6700,7 @@ fn x_mod_8_eq_2_same_x_obj_chain_restart_pays_one_extra_dot() {
 }
 
 #[test]
-fn x_mod_8_eq_3_same_x_obj_chain_restart_pays_one_extra_dot() {
+fn x_mod_8_eq_3_same_x_obj_chain_restart_reuses_the_current_dot() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 16;
@@ -6580,7 +6754,7 @@ fn x_mod_8_eq_3_same_x_obj_chain_restart_pays_one_extra_dot() {
         &VramBusView::new(BusMaster::Ppu, &mut vram),
         None,
     ));
-    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 11);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 10);
     assert_eq!(
         ppu.obj_pipeline_state.fetch.stage,
         PpuObjFetcherStage::TileDataLow
@@ -6801,7 +6975,7 @@ fn x_mod_8_eq_2_count3_same_x_chain_logs_post_push1_restart_state() {
 }
 
 #[test]
-fn x_mod_8_eq_7_same_x_obj_chain_restart_keeps_the_full_low_byte() {
+fn x_mod_8_eq_7_same_x_obj_chain_restart_waits_before_reusing_the_full_low_byte() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 20;
@@ -6853,17 +7027,21 @@ fn x_mod_8_eq_7_same_x_obj_chain_restart_keeps_the_full_low_byte() {
         &VramBusView::new(BusMaster::Ppu, &mut vram),
         None,
     ));
-    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 11);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 10);
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
+    assert_eq!(ppu.obj_pipeline_state.pending_match_x, Some(7));
     assert_eq!(
-        ppu.obj_pipeline_state.fetch.stage,
-        PpuObjFetcherStage::TileDataLow
+        ppu.obj_pipeline_state
+            .pending_sprite_slots
+            .iter()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![1]
     );
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
-    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 1);
 }
 
 #[test]
-fn terminal_same_x_obj_chain_restart_extends_mode3_immediately() {
+fn terminal_same_x_obj_chain_restart_keeps_the_first_low_half_step() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE0_START_DOT;
@@ -6918,7 +7096,7 @@ fn terminal_same_x_obj_chain_restart_extends_mode3_immediately() {
         ppu.obj_pipeline_state.fetch.stage,
         PpuObjFetcherStage::TileDataLow
     );
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
     assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 1);
     assert_eq!(ppu.obj_pipeline_state.fetch.sprite, Some(next_sprite));
 }
