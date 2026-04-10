@@ -143,6 +143,24 @@ cargo run --release -p gb-desktop -- "/Users/pakitovic/workspace/gb-cycle/.roms/
 
 At the start of Phase 1, explicitly record which desktop buckets are currently hot and whether the slowdown looks PPU-side, pacing-side, or mixed.
 
+## Current Ladder Gate
+
+The DMG maturity ladder in `PPU.md` currently says the refactor state is not monotonic:
+
+- `order 2` `daid/ppu_scanline_bgp.gb` is still red.
+- `order 15` `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` is still red.
+- `order 16` `mooneye acceptance/ppu/lcdon_timing-GS.gb` is still red.
+- `order 17` `mooneye acceptance/ppu/lcdon_write_timing-GS.gb` is still red.
+
+That means the project already has later closures in harder but narrower areas, but it should not treat `27+` mealybug `Mode 3` hi-fi cases as the primary closure target until those earlier ladder blockers are closed or explicitly waived with stronger evidence.
+
+Practical interpretation:
+
+- keep the `Mode 3` seams and mealybug reds as sentinels and diagnostic oracles
+- prioritize the LCD restart lane first because it likely explains both the open `lcdon_*` mooneye cases and part of the remaining repeated left-edge debt
+- then close the sprite-coupled `intr_2_mode0_timing_sprites` case
+- promote `daid/ppu_scanline_bgp.gb` to an active gate so the refactor does not keep advancing while an earlier visible-raster baseline is still red
+
 ## Required Structural Constraints
 
 - Keep BG and window on one shared fetcher-plus-FIFO pipeline.

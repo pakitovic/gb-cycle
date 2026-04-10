@@ -61,6 +61,19 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 - A new sprite-coupled repo-local regression now locks the `ly = 10` left-edge signature seen in the ROM trace (`selected_sprites = 1`, `current_transfer_x = 1`, `startup_dummy_pixels = 7`, `startup_fifo_placeholders = 7`). The same test also shows that once panel blanking is lifted, the startup tail itself renders the correct signed tile-data pixel at `x = 0`; the internal `Mode 3` seam is green there.
 - Actual ROM traces still show `visible_output = ForcedBlank` deep into the restarted raster (`ly = 48` in the `153500` trace window), so the remaining `m3_lcdc_tile_sel_change` delta is now better explained by the LCD restart / panel-blank lane than by another cached-slice or visible-FIFO retargeting bug.
 - **Highest-value next step:** pivot the next re-entry from cached-slice live-write closure to the LCD restart lane. Use the repeated `FF40 0x83 -> 0x93` scanline writes only as a locator for the problematic restarted lines, then audit `blank_frame_active`, `visible_output`, and the restart-frame boundary before retrying any broader `LCDC.4` / `SCY` or visible-FIFO change.
+- The new DMG maturity ladder in `PPU.md` shows the current PPU state is not monotonic. Strictly, the first still-open step is `order 2` (`daid/ppu_scanline_bgp.gb`), so the ladder says the emulator cannot yet be treated as "past the early raster baseline" even though many later and narrower families are already green.
+- Current ladder snapshot:
+
+| order | case | current state | likely gap | next action |
+| --- | --- | --- | --- | --- |
+| 2 | `daid/ppu_scanline_bgp.gb` | red | visible raster / per-scanline `BGP` baseline still differs from the fixture set; the captured framebuffer keeps the global face silhouette but introduces scanline-dependent inner stripes, so this is not a gross post-boot VRAM seed failure like `hacktix/bully.gb` | promote this case to an active gate and compare the three fixture variants against local scanline output before resuming broader hi-fi work |
+| 15 | `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` | red | sprite-coupled `Mode 2 -> 0` timing still diverges even though `intr_2_mode0_timing.gb` is green; likely gap is OBJ stall / arbitration influence on variable `Mode 3` end and `mode0_start_dot` | treat this as the first sprite-coupled timing closure after the LCD restart lane, not as a generic `STAT` regression |
+| 16 | `mooneye acceptance/ppu/lcdon_timing-GS.gb` | red | LCD restart lane still mismatches the oracle on early restarted lines; rerun still ends in active raster with `visible_output=Driving`, consistent with the open `blank_frame_active` / restart-boundary debt | keep LCD restart / `visible_output` as the highest-value next re-entry |
+| 17 | `mooneye acceptance/ppu/lcdon_write_timing-GS.gb` | red | same restart-lane family as `lcdon_timing-GS`, but now through `LCDC.7` write chronology | close together with `lcdon_timing-GS`; do not split the restart lane into two unrelated tasks |
+- Practical maturity reading:
+  - Strict ladder maturity: blocked at `order 2`.
+  - Real subsystem maturity: already beyond the early raster baseline in several later areas (`bully`, `mem_oam`, `sprite_priority`, most mooneye `STAT`, `oam_bug`, `strikethrough`, `m2_win_en_toggle`), but with four earlier holes still open (`2`, `15`, `16`, `17`).
+  - Consequence: `27+` mealybug cases stay valuable as sentinels, but they should not be treated as the primary closure target until those four ladder blockers are closed or intentionally waived with evidence.
 
 #### Open TODOs
 
