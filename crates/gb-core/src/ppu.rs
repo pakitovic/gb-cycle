@@ -692,7 +692,15 @@ impl Ppu {
 
     pub(crate) fn cpu_write_bus_state(&self) -> PpuBusState {
         if self.is_lcd_enabled() {
-            PpuBusState::lcd_enabled(self.current_published_stat_access_mode())
+            PpuBusState::lcd_enabled(self.current_published_video_write_access_mode())
+        } else {
+            PpuBusState::lcd_disabled()
+        }
+    }
+
+    pub(crate) fn cpu_oam_read_bus_state(&self) -> PpuBusState {
+        if self.is_lcd_enabled() {
+            PpuBusState::lcd_enabled(self.current_published_oam_read_access_mode())
         } else {
             PpuBusState::lcd_disabled()
         }
@@ -914,8 +922,14 @@ impl Ppu {
         if !self.is_lcd_enabled() {
             if self.lcd_enable_pending_delay_tcycles > 0 {
                 self.lcd_enable_pending_delay_tcycles -= 1;
+                if self.lcd_enable_pending_delay_tcycles == 2 {
+                    self.refresh_stat_irq_line(false);
+                    return;
+                }
+
                 if self.lcd_enable_pending_delay_tcycles == 0 && self.lcdc & LCDC_ENABLE_BIT != 0 {
                     self.enter_lcd_enabled_restart_state();
+                    self.refresh_stat_irq_line(false);
                 } else {
                     return;
                 }

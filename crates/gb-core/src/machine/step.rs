@@ -348,25 +348,32 @@ impl MachinePhaseRunner<'_> {
             let pending_ppu_mmio_write = &mut self.pending_ppu_mmio_write;
 
             cpu.tick_t_cycle(|operation| match operation {
-                CpuBusOperation::Read { address } => Some(bus.read_with_t_cycle_context(
-                    address,
-                    BusRequester::Cpu,
-                    &cpu_read_arbitration_state,
-                    context.t_cycle(),
-                    Some(cartridge),
-                    BusIoReadView {
-                        apu: Some(apu),
-                        timer: Some(timer),
-                        serial: Some(serial),
-                        dma: Some(dma),
-                        boot: Some(boot),
-                        interrupts: Some(interrupts),
-                        interrupt_flag_pending_mask,
-                        joypad: Some(joypad),
-                        ppu: Some(ppu),
-                        ppu_cpu_visible_read: true,
-                    },
-                )),
+                CpuBusOperation::Read { address } => {
+                    let read_arbitration_state = if (0xFE00..=0xFE9F).contains(&address) {
+                        cpu_read_arbitration_state.with_ppu(ppu.cpu_oam_read_bus_state())
+                    } else {
+                        cpu_read_arbitration_state
+                    };
+                    Some(bus.read_with_t_cycle_context(
+                        address,
+                        BusRequester::Cpu,
+                        &read_arbitration_state,
+                        context.t_cycle(),
+                        Some(cartridge),
+                        BusIoReadView {
+                            apu: Some(apu),
+                            timer: Some(timer),
+                            serial: Some(serial),
+                            dma: Some(dma),
+                            boot: Some(boot),
+                            interrupts: Some(interrupts),
+                            interrupt_flag_pending_mask,
+                            joypad: Some(joypad),
+                            ppu: Some(ppu),
+                            ppu_cpu_visible_read: true,
+                        },
+                    ))
+                }
                 CpuBusOperation::Write { address, value } => {
                     if cpu_write_targets_ppu_mmio(bus, address) {
                         *pending_ppu_mmio_write = Some(PendingPpuMmioWrite { address, value });

@@ -1,6 +1,6 @@
 use gb_core::{
-    ConsoleModel, CpuAddressEventKind, CpuAddressUpdateDirection, Machine, MachineConfig,
-    PpuAccessMode, PpuBgFetcherSource, PpuLcdState, PpuObjFetcherStage, PpuSnapshot,
+    ConsoleModel, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, Machine,
+    MachineConfig, PpuAccessMode, PpuBgFetcherSource, PpuLcdState, PpuObjFetcherStage, PpuSnapshot,
     PpuVisibleOutputState, StartupMode,
 };
 
@@ -199,6 +199,116 @@ fn run_until_halted(machine: &mut Machine, max_t_cycles: usize) -> u8 {
     );
 }
 
+fn build_lcd_reenable_lyc_irq_probe_rom(
+    lyc_before_disable: u8,
+    lyc_while_off: Option<u8>,
+) -> Vec<u8> {
+    let mut program = Vec::new();
+
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+    program.push(0xF3); // di
+    program.extend_from_slice(&[0x06, 0x00]); // ld b,$00
+
+    let wait_ly_143_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x8F]); // cp $8F
+    emit_jr_nz(&mut program, wait_ly_143_pc); // jr nz,wait_ly_143
+
+    let wait_ly_144_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x90]); // cp $90
+    emit_jr_nz(&mut program, wait_ly_144_pc); // jr nz,wait_ly_144
+
+    program.extend_from_slice(&[0x3E, 0x40]); // ld a,$40
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+    program.extend_from_slice(&[0x3E, lyc_before_disable]); // ld a,lyc_before_disable
+    program.extend_from_slice(&[0xE0, 0x45]); // ldh ($45),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; disable LCD
+
+    if let Some(lyc_while_off) = lyc_while_off {
+        program.extend_from_slice(&[0x3E, lyc_while_off]); // ld a,lyc_while_off
+        program.extend_from_slice(&[0xE0, 0x45]); // ldh ($45),a
+    }
+
+    program.push(0xFB); // ei
+    program.push(0x00); // nop
+    program.extend_from_slice(&[0x3E, 0x80]); // ld a,$80
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a ; enable LCD
+    program.push(0xF3); // di
+    program.push(0xF3); // di
+    program.push(0x50); // ld d,b
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+
+    let mut rom = build_test_rom(&program, 0x00);
+    rom[0x0048] = 0x04; // inc b
+    rom[0x0049] = 0xC9; // ret
+    rom
+}
+
+fn observe_lcd_reenable_lyc_irq_service_window(
+    lyc_before_disable: u8,
+    lyc_while_off: Option<u8>,
+) -> bool {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_reenable_lyc_irq_probe_rom(
+            lyc_before_disable,
+            lyc_while_off,
+        ))
+        .expect("probe ROM should load");
+
+    let mut saw_enable_write = false;
+    let mut post_enable_tcycles = 0usize;
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        if !saw_enable_write {
+            let cpu_snapshot = machine.cpu().snapshot();
+            if let Some(activity) = cpu_snapshot.last_bus_activity
+                && activity.kind == CpuBusAccessKind::DataWrite
+                && activity.address == 0xFF40
+                && activity.value == 0x80
+            {
+                saw_enable_write = true;
+            }
+            continue;
+        }
+
+        if matches!(
+            machine.cpu().execution_state(),
+            gb_core::CpuExecutionState::ServiceInterrupt {
+                source: gb_core::InterruptSource::LcdStat,
+                ..
+            }
+        ) {
+            return true;
+        }
+
+        post_enable_tcycles += 1;
+        if post_enable_tcycles >= 24 {
+            return false;
+        }
+    }
+
+    panic!(
+        "lcd reenable lyc irq service probe did not observe the enable write; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LcdEnableWriteProbeObservation {
     observed_value: u8,
@@ -383,7 +493,7 @@ fn run_intr_2_0_probe(delay_nops: usize) -> Intr20ProbeObservation {
     let mut mode0_write = None;
     let mut second_irq = None;
 
-    for _ in 0..20_000_000 {
+    for _ in 0..1_200_000 {
         machine.step_t_cycle();
 
         if let Some(event) = machine.cpu().last_address_event()
@@ -433,6 +543,669 @@ fn run_intr_2_0_probe(delay_nops: usize) -> Intr20ProbeObservation {
 
     panic!(
         "probe ROM did not halt; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn build_intr_2_oam_ok_probe_rom(delay_nops: usize) -> Vec<u8> {
+    let mut program = Vec::new();
+
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+
+    program.extend_from_slice(&[0x21, 0x00, 0xFE]); // ld hl,$FE00
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+
+    program.push(0xCD); // call setup_and_wait_mode2
+    let setup_call_operand = program.len();
+    program.extend_from_slice(&[0x00, 0x00]);
+
+    program.extend(std::iter::repeat_n(0x00, delay_nops));
+
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let read_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.push(0x7E); // ld a,(hl)
+    program.extend_from_slice(&[0xE6, 0xFF]); // and $FF
+    emit_jr_nz(&mut program, read_loop_pc); // jr nz,read_loop
+
+    program.push(0xF3); // di
+    program.push(0x50); // ld d,b
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+
+    let setup_mode2_pc = 0x0100_u16 + program.len() as u16;
+
+    let wait_ly_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz(&mut program, wait_ly_loop_pc); // jr nz,wait_ly
+
+    let wait_mode0_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x00]); // cp $00
+    emit_jr_nz(&mut program, wait_mode0_loop_pc); // jr nz,wait_mode0
+
+    let wait_mode3_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x03]); // cp $03
+    emit_jr_nz(&mut program, wait_mode3_loop_pc); // jr nz,wait_mode3
+
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fail_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, fail_loop_pc); // jr .
+
+    patch_abs16(&mut program, setup_call_operand, setup_mode2_pc);
+
+    let mut rom = build_test_rom(&program, 0x00);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Intr2OamOkProbeObservation {
+    count: u8,
+    irq_ly: u8,
+    irq_line_dot: u16,
+    irq_mode: PpuAccessMode,
+    halt_ly: u8,
+    halt_line_dot: u16,
+    halt_mode: PpuAccessMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Intr2OamOkReadObservation {
+    value: u8,
+    pc: u16,
+    ly: u8,
+    line_dot: u16,
+    mode: PpuAccessMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StatLycOnOffAccessObservation {
+    kind: CpuBusAccessKind,
+    address: u16,
+    value: u8,
+    pc: u16,
+    ly: u8,
+    line_dot: u16,
+    mode: PpuAccessMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Intr2Mode0TimingSpritesFailureObservation {
+    testcase_index: u8,
+    pc: u16,
+    b: u8,
+    c: u8,
+    d: u8,
+    e: u8,
+    ly: u8,
+    line_dot: u16,
+    mode: PpuAccessMode,
+    mode0_start_dot: u16,
+    selected_sprites_len: usize,
+    visible_pixels_output: u8,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Intr2Mode0SpritesProbeObservation {
+    count: u8,
+    irq_ly: u8,
+    irq_line_dot: u16,
+    irq_mode: PpuAccessMode,
+    halt_ly: u8,
+    halt_line_dot: u16,
+    halt_mode: PpuAccessMode,
+}
+
+fn run_intr_2_oam_ok_probe(delay_nops: usize) -> Intr2OamOkProbeObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_oam_ok_probe_rom(delay_nops))
+        .expect("probe ROM should load");
+    machine.write_bus(0xFE00, 0x00);
+
+    let mut irq = None;
+
+    for _ in 0..20_000_000 {
+        machine.step_t_cycle();
+
+        if irq.is_none()
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            let snapshot = machine.ppu().snapshot();
+            irq = Some((snapshot.ly, snapshot.line_dot, snapshot.mode));
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            let snapshot = machine.ppu().snapshot();
+            let (irq_ly, irq_line_dot, irq_mode) =
+                irq.expect("probe should observe LCD STAT service");
+            return Intr2OamOkProbeObservation {
+                count: machine.cpu().registers().d,
+                irq_ly,
+                irq_line_dot,
+                irq_mode,
+                halt_ly: snapshot.ly,
+                halt_line_dot: snapshot.line_dot,
+                halt_mode: snapshot.mode,
+            };
+        }
+    }
+
+    panic!(
+        "oam_ok probe did not halt; delay_nops={delay_nops} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn sample_intr_2_oam_ok_reads(
+    delay_nops: usize,
+    max_reads: usize,
+) -> Vec<Intr2OamOkReadObservation> {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_oam_ok_probe_rom(delay_nops))
+        .expect("probe ROM should load");
+    machine.write_bus(0xFE00, 0x00);
+
+    let mut saw_irq = false;
+    let mut observations = Vec::with_capacity(max_reads);
+
+    for _ in 0..200_000 {
+        machine.step_t_cycle();
+
+        if !saw_irq
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq = true;
+        }
+
+        if !saw_irq {
+            continue;
+        }
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFE00
+        {
+            let ppu = machine.ppu().snapshot();
+            observations.push(Intr2OamOkReadObservation {
+                value: activity.value,
+                pc: cpu_snapshot.registers.pc,
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+            });
+
+            if observations.len() == max_reads {
+                return observations;
+            }
+        }
+    }
+
+    panic!(
+        "oam_ok read sample did not capture {max_reads} reads; delay_nops={delay_nops} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn sample_real_mooneye_oam_ok_reads(max_reads: usize) -> Vec<Intr2OamOkReadObservation> {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_oam_ok_timing.gb");
+    let rom = std::fs::read(&rom_path).expect("mooneye intr_2_oam_ok_timing ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut observations = Vec::with_capacity(max_reads);
+
+    for _ in 0..500_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFE00
+        {
+            let ppu = machine.ppu().snapshot();
+            observations.push(Intr2OamOkReadObservation {
+                value: activity.value,
+                pc: cpu_snapshot.registers.pc,
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+            });
+
+            if observations.len() == max_reads {
+                return observations;
+            }
+        }
+    }
+
+    panic!(
+        "real mooneye oam_ok read sample did not capture {max_reads} reads; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn sample_real_mooneye_stat_lyc_onoff_accesses(
+    max_events: usize,
+) -> Vec<StatLycOnOffAccessObservation> {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/stat_lyc_onoff.gb");
+    let rom = std::fs::read(&rom_path).expect("mooneye stat_lyc_onoff ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut observations = Vec::with_capacity(max_events);
+
+    for _ in 0..1_500_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && matches!(activity.address, 0xFF0F | 0xFF40 | 0xFF41 | 0xFF45 | 0xFFFF)
+        {
+            let ppu = machine.ppu().snapshot();
+            observations.push(StatLycOnOffAccessObservation {
+                kind: activity.kind,
+                address: activity.address,
+                value: activity.value,
+                pc: cpu_snapshot.registers.pc,
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+            });
+
+            if observations.len() == max_events {
+                return observations;
+            }
+        }
+    }
+
+    panic!(
+        "real mooneye stat_lyc_onoff access sample did not capture {max_events} events; captured={} accesses={observations:?} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        observations.len(),
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn sample_real_mooneye_intr_2_mode0_timing_sprites_failure()
+-> Intr2Mode0TimingSpritesFailureObservation {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let pc = machine.cpu().registers().pc;
+        if (0x484D..0x4870).contains(&pc) {
+            let registers = machine.cpu().registers();
+            let snapshot = machine.ppu().snapshot();
+            return Intr2Mode0TimingSpritesFailureObservation {
+                testcase_index: machine.read_bus(0xFF80),
+                pc,
+                b: registers.b,
+                c: registers.c,
+                d: registers.d,
+                e: registers.e,
+                ly: snapshot.ly,
+                line_dot: snapshot.line_dot,
+                mode: snapshot.mode,
+                mode0_start_dot: snapshot.mode0_start_dot,
+                selected_sprites_len: snapshot.selected_sprites.len(),
+                visible_pixels_output: snapshot.visible_pixels_output,
+            };
+        }
+    }
+
+    panic!(
+        "real mooneye intr_2_mode0_timing_sprites sample did not reach failure path; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn build_intr_2_stat_mode_probe_rom(delay_nops: usize, target_mode: u8) -> Vec<u8> {
+    let mut program = Vec::new();
+
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+
+    program.extend_from_slice(&[0x21, 0x41, 0xFF]); // ld hl,$FF41
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+
+    program.push(0xCD); // call setup_and_wait_mode2
+    let setup_call_operand = program.len();
+    program.extend_from_slice(&[0x00, 0x00]);
+
+    program.extend(std::iter::repeat_n(0x00, delay_nops));
+
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let read_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.push(0x7E); // ld a,(hl)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, target_mode]); // cp target_mode
+    emit_jr_nz(&mut program, read_loop_pc); // jr nz,read_loop
+
+    program.push(0xF3); // di
+    program.push(0x50); // ld d,b
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+
+    let setup_mode2_pc = 0x0100_u16 + program.len() as u16;
+
+    let wait_ly_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz(&mut program, wait_ly_loop_pc); // jr nz,wait_ly
+
+    let wait_mode0_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x00]); // cp $00
+    emit_jr_nz(&mut program, wait_mode0_loop_pc); // jr nz,wait_mode0
+
+    let wait_mode3_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x03]); // cp $03
+    emit_jr_nz(&mut program, wait_mode3_loop_pc); // jr nz,wait_mode3
+
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fail_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, fail_loop_pc); // jr .
+
+    patch_abs16(&mut program, setup_call_operand, setup_mode2_pc);
+
+    let mut rom = build_test_rom(&program, 0x00);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Intr2StatModeProbeObservation {
+    count: u8,
+    irq_ly: u8,
+    irq_line_dot: u16,
+    irq_mode: PpuAccessMode,
+    halt_ly: u8,
+    halt_line_dot: u16,
+    halt_mode: PpuAccessMode,
+}
+
+fn run_intr_2_stat_mode_probe(delay_nops: usize, target_mode: u8) -> Intr2StatModeProbeObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_stat_mode_probe_rom(delay_nops, target_mode))
+        .expect("probe ROM should load");
+
+    let mut irq = None;
+
+    for _ in 0..500_000 {
+        machine.step_t_cycle();
+
+        if irq.is_none()
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            let snapshot = machine.ppu().snapshot();
+            irq = Some((snapshot.ly, snapshot.line_dot, snapshot.mode));
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            let snapshot = machine.ppu().snapshot();
+            let (irq_ly, irq_line_dot, irq_mode) =
+                irq.expect("probe should observe LCD STAT service");
+            return Intr2StatModeProbeObservation {
+                count: machine.cpu().registers().d,
+                irq_ly,
+                irq_line_dot,
+                irq_mode,
+                halt_ly: snapshot.ly,
+                halt_line_dot: snapshot.line_dot,
+                halt_mode: snapshot.mode,
+            };
+        }
+    }
+
+    panic!(
+        "stat-mode probe did not halt; target_mode={target_mode:#04X} delay_nops={delay_nops} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn build_intr_2_mode0_sprites_probe_rom(delay_nops: usize, sprite_x: u8) -> Vec<u8> {
+    let mut program = Vec::new();
+
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+
+    program.extend_from_slice(&[0x3E, 0x52]); // ld a,$52 ; sprite y for LY=66
+    program.extend_from_slice(&[0xEA, 0x00, 0xFE]); // ld ($FE00),a
+    program.extend_from_slice(&[0x3E, sprite_x]); // ld a,sprite_x
+    program.extend_from_slice(&[0xEA, 0x01, 0xFE]); // ld ($FE01),a
+    program.extend_from_slice(&[0xAF]); // xor a
+    program.extend_from_slice(&[0xEA, 0x02, 0xFE]); // ld ($FE02),a
+    program.extend_from_slice(&[0xEA, 0x03, 0xFE]); // ld ($FE03),a
+
+    program.extend_from_slice(&[0x3E, 0x93]); // ld a,$93 ; LCDC on + OBJ on
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+
+    program.extend_from_slice(&[0x21, 0x00, 0xC0]); // ld hl,$C000
+    program.extend_from_slice(&[0x0E, delay_nops as u8]); // ld c,delay_nops
+    program.push(0xAF); // xor a
+    let stub_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x22); // ld (hli),a
+    program.push(0x0D); // dec c
+    emit_jr_nz(&mut program, stub_loop_pc); // jr nz,stub_loop
+    program.extend_from_slice(&[0x3E, 0xC9]); // ld a,$C9
+    program.push(0x22); // ld (hli),a
+
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+
+    program.extend_from_slice(&[0x21, 0x00, 0x00]); // ld hl,compare_addr
+    let compare_addr_operand = program.len() - 2;
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0x21, 0x00, 0xC0]); // ld hl,$C000
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0xC3, 0x00, 0x00]); // jp wait_irq
+    let wait_irq_operand = program.len() - 2;
+
+    let wait_ly_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz(&mut program, wait_ly_loop_pc); // jr nz,wait_ly
+
+    let wait_mode0_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x00]); // cp $00
+    emit_jr_nz(&mut program, wait_mode0_loop_pc); // jr nz,wait_mode0
+
+    let wait_mode3_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x03]); // cp $03
+    emit_jr_nz(&mut program, wait_mode3_loop_pc); // jr nz,wait_mode3
+
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20 ; mode0 STAT enable
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fail_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, fail_loop_pc); // jr .
+
+    let compare_addr = 0x0100_u16 + program.len() as u16;
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let mode0_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    emit_jr_nz(&mut program, mode0_loop_pc); // jr nz,mode0_loop
+
+    program.push(0x50); // ld d,b
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+
+    patch_abs16(&mut program, compare_addr_operand, compare_addr);
+    patch_abs16(&mut program, wait_irq_operand, wait_ly_loop_pc);
+
+    let mut rom = build_test_rom(&program, 0x00);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+fn run_intr_2_mode0_sprites_probe(
+    delay_nops: usize,
+    sprite_x: u8,
+) -> Intr2Mode0SpritesProbeObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_mode0_sprites_probe_rom(delay_nops, sprite_x))
+        .expect("probe ROM should load");
+
+    let mut irq = None;
+
+    for _ in 0..1_200_000 {
+        machine.step_t_cycle();
+
+        if irq.is_none()
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            let snapshot = machine.ppu().snapshot();
+            irq = Some((snapshot.ly, snapshot.line_dot, snapshot.mode));
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            let snapshot = machine.ppu().snapshot();
+            let (irq_ly, irq_line_dot, irq_mode) =
+                irq.expect("probe should observe LCD STAT service");
+            return Intr2Mode0SpritesProbeObservation {
+                count: machine.cpu().registers().d,
+                irq_ly,
+                irq_line_dot,
+                irq_mode,
+                halt_ly: snapshot.ly,
+                halt_line_dot: snapshot.line_dot,
+                halt_mode: snapshot.mode,
+            };
+        }
+    }
+
+    panic!(
+        "mode0-sprites probe did not halt; delay_nops={delay_nops} sprite_x={sprite_x:#04X} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
         machine.cpu().registers().pc,
         machine.cpu().execution_state(),
         machine.ppu().snapshot().ly,
@@ -660,6 +1433,19 @@ fn skip_boot_ppu_state_continues_from_the_published_snapshot_on_the_shared_timel
 }
 
 #[test]
+fn lcd_reenable_lyc_rise_services_lcd_stat_before_the_second_di_in_the_mooneye_round4_sequence() {
+    assert!(observe_lcd_reenable_lyc_irq_service_window(0x00, None));
+}
+
+#[test]
+fn lcd_reenable_retained_true_does_not_service_lcd_stat_in_the_same_sequence() {
+    assert!(!observe_lcd_reenable_lyc_irq_service_window(
+        0x90,
+        Some(0x00)
+    ));
+}
+
+#[test]
 fn mode2_to_mode0_stat_interrupt_probe_matches_mooneye_counts() {
     let delay4 = run_intr_2_0_probe(4);
     let delay3 = run_intr_2_0_probe(3);
@@ -668,6 +1454,86 @@ fn mode2_to_mode0_stat_interrupt_probe_matches_mooneye_counts() {
         (delay4.count, delay3.count),
         (0x07, 0x08),
         "delay4={delay4:?} delay3={delay3:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic probe for mooneye intr_2_oam_ok_timing seam"]
+fn mode2_to_oam_release_probe_matches_mooneye_counts() {
+    let delay46 = run_intr_2_oam_ok_probe(46);
+    let delay45 = run_intr_2_oam_ok_probe(45);
+
+    assert_eq!(
+        (delay46.count, delay45.count),
+        (0x01, 0x02),
+        "delay46={delay46:?} delay45={delay45:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic probe for first FE00 reads after intr_2_oam_ok_timing wake"]
+fn mode2_to_oam_release_probe_logs_first_reads() {
+    let delay46 = sample_intr_2_oam_ok_reads(46, 3);
+    let delay45 = sample_intr_2_oam_ok_reads(45, 3);
+    println!("delay46={delay46:?}");
+    println!("delay45={delay45:?}");
+}
+
+#[test]
+#[ignore = "diagnostic probe for FE00 reads in the real mooneye intr_2_oam_ok_timing ROM"]
+fn real_mooneye_oam_ok_logs_first_reads() {
+    let reads = sample_real_mooneye_oam_ok_reads(4);
+    println!("reads={reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic probe for the real mooneye stat_lyc_onoff ROM"]
+fn real_mooneye_stat_lyc_onoff_logs_first_accesses() {
+    let accesses = sample_real_mooneye_stat_lyc_onoff_accesses(48);
+    println!("accesses={accesses:?}");
+}
+
+#[test]
+#[ignore = "diagnostic probe for the real mooneye intr_2_mode0_timing_sprites ROM"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_failure_case() {
+    let failure = sample_real_mooneye_intr_2_mode0_timing_sprites_failure();
+    println!("failure={failure:?}");
+}
+
+#[test]
+#[ignore = "diagnostic probe for testcase 0 of mooneye intr_2_mode0_timing_sprites"]
+fn mode2_to_mode0_sprites_probe_case0_logs_counts() {
+    let x0_delay43 = run_intr_2_mode0_sprites_probe(43, 0x00);
+    let x0_delay42 = run_intr_2_mode0_sprites_probe(42, 0x00);
+    let x1_delay43 = run_intr_2_mode0_sprites_probe(43, 0x01);
+    let x1_delay42 = run_intr_2_mode0_sprites_probe(42, 0x01);
+    println!("x0_delay43={x0_delay43:?}");
+    println!("x0_delay42={x0_delay42:?}");
+    println!("x1_delay43={x1_delay43:?}");
+    println!("x1_delay42={x1_delay42:?}");
+}
+
+#[test]
+fn mode2_to_mode3_stat_probe_matches_mooneye_counts() {
+    let delay3 = run_intr_2_stat_mode_probe(3, 0x03);
+    let delay2 = run_intr_2_stat_mode_probe(2, 0x03);
+
+    assert_eq!(
+        (delay3.count, delay2.count),
+        (0x01, 0x02),
+        "delay3={delay3:?} delay2={delay2:?}"
+    );
+}
+
+#[test]
+fn mode2_to_mode0_stat_probe_matches_mooneye_counts() {
+    let delay46 = run_intr_2_stat_mode_probe(46, 0x00);
+    let delay45 = run_intr_2_stat_mode_probe(45, 0x00);
+
+    assert_eq!(
+        (delay46.count, delay45.count),
+        (0x01, 0x02),
+        "delay46={delay46:?} delay45={delay45:?}"
     );
 }
 

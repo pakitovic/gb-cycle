@@ -1,7 +1,7 @@
 use crate::cpu::{CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection};
-use crate::ppu::{OamCorruptionEventKind, Ppu};
+use crate::ppu::{OamCorruptionEventKind, Ppu, PpuAccessMode};
 
-use super::{Bus, BusArbitrationState};
+use super::{Bus, BusAccessKind, BusArbitrationState, BusBlockReason, BusRegion, BusRequester};
 
 impl Bus {
     pub(crate) fn route_cpu_address_event(
@@ -35,9 +35,34 @@ impl Bus {
             | CpuAddressEventKind::Write
             | CpuAddressEventKind::ReadWithIncDec
             | CpuAddressEventKind::WriteWithIncDec => {
-                let access_hits_corruption = event
-                    .access_address
-                    .is_some_and(cpu_address_event_access_reaches_oam_corruption);
+                let access_address = event.access_address?;
+                let access_kind = access_kind_for_cpu_address_event(event.kind);
+                let resolution =
+                    self.resolve_access(BusRequester::Cpu, access_kind, access_address, state);
+
+                let access_hits_corruption = match resolution.target().region() {
+                    BusRegion::Oam
+                        if resolution.disposition().blocked_reason()
+                            == Some(BusBlockReason::PpuOamBlockedDuringMode2) =>
+                    {
+                        true
+                    }
+                    BusRegion::Unusable
+                        if access_kind == BusAccessKind::Write
+                            && state.ppu.is_lcd_enabled()
+                            && state.ppu.mode() == PpuAccessMode::OamScan =>
+                    {
+                        true
+                    }
+                    BusRegion::Unusable
+                        if access_kind == BusAccessKind::Read
+                            && resolution.disposition().blocked_reason()
+                                == Some(BusBlockReason::UnusableRegionDuringOamBlock) =>
+                    {
+                        true
+                    }
+                    _ => false,
+                };
                 let idu_hits_corruption = matches!(
                     event.kind,
                     CpuAddressEventKind::ReadWithIncDec | CpuAddressEventKind::WriteWithIncDec
@@ -55,8 +80,17 @@ impl Bus {
 
     fn idu_event_reaches_oam(&self, address: u16, state: &BusArbitrationState) -> bool {
         let _ = state;
-        self.console_model.is_dmg_family()
-            && cpu_address_event_access_reaches_oam_corruption(address)
+        self.console_model.is_dmg_family() && (0xFE00..=0xFEFF).contains(&address)
+    }
+}
+
+fn access_kind_for_cpu_address_event(kind: CpuAddressEventKind) -> BusAccessKind {
+    match kind {
+        CpuAddressEventKind::Read | CpuAddressEventKind::ReadWithIncDec => BusAccessKind::Read,
+        CpuAddressEventKind::Write | CpuAddressEventKind::WriteWithIncDec => BusAccessKind::Write,
+        CpuAddressEventKind::IncDec => {
+            unreachable!("pure IDU events do not have an ordinary bus access kind")
+        }
     }
 }
 
@@ -76,8 +110,4 @@ fn idu_glitched_address(event: CpuAddressEvent) -> Option<u16> {
         CpuAddressUpdateDirection::Increment => Some(driven_address.wrapping_sub(1)),
         CpuAddressUpdateDirection::Decrement => Some(driven_address.wrapping_add(1)),
     }
-}
-
-fn cpu_address_event_access_reaches_oam_corruption(address: u16) -> bool {
-    (0xFE00..=0xFEFF).contains(&address)
 }

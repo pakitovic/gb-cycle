@@ -136,9 +136,41 @@ impl Ppu {
         self.bus_access_mode_for_line_dot(published_line_dot)
     }
 
+    fn current_published_video_write_access_mode(&self) -> PpuAccessMode {
+        if self.line_dot != 0 {
+            self.access_mode_for_line_dot(self.line_dot - 1)
+        } else if self.ly == 0 {
+            self.current_access_mode()
+        } else if self.ly > VISIBLE_SCANLINES {
+            PpuAccessMode::VBlank
+        } else {
+            PpuAccessMode::HBlank
+        }
+    }
+
     fn current_published_stat_access_mode(&self) -> PpuAccessMode {
         if self.line_dot != 0 {
-            return self.access_mode_for_line_dot(self.line_dot - 1);
+            let published_mode = self.access_mode_for_line_dot(self.line_dot - 1);
+
+            if published_mode == PpuAccessMode::OamScan
+                && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::Drawing
+                && !self.blank_frame_active
+                && self.ly < VISIBLE_SCANLINES
+                && self.line_dot == MODE2_DOTS
+            {
+                return PpuAccessMode::Drawing;
+            }
+
+            if published_mode == PpuAccessMode::Drawing
+                && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::HBlank
+                && !self.blank_frame_active
+                && self.ly < VISIBLE_SCANLINES
+                && self.line_dot == self.current_mode0_start_dot()
+            {
+                return PpuAccessMode::HBlank;
+            }
+
+            return published_mode;
         }
 
         if self.ly == 0 {
@@ -153,11 +185,30 @@ impl Ppu {
     }
 
     fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
-        let published_mode = self.current_published_stat_access_mode();
+        let published_mode = self.current_published_video_write_access_mode();
 
         if published_mode == PpuAccessMode::OamScan
             && self.ly < VISIBLE_SCANLINES
             && self.line_dot == MODE2_DOTS
+        {
+            PpuAccessMode::HBlank
+        } else {
+            published_mode
+        }
+    }
+
+    fn current_published_oam_read_access_mode(&self) -> PpuAccessMode {
+        let published_mode = self.current_published_bus_access_mode();
+
+        if published_mode == PpuAccessMode::Drawing
+            && !self.blank_frame_active
+            && self.ly < VISIBLE_SCANLINES
+            && ((self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::HBlank
+                && self.line_dot == self.current_mode0_start_dot())
+                || (self.line_dot != 0
+                    && self.access_mode_for_line_dot(self.line_dot - 1) == PpuAccessMode::OamScan
+                    && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::Drawing
+                    && self.line_dot == MODE2_DOTS))
         {
             PpuAccessMode::HBlank
         } else {
@@ -375,12 +426,19 @@ impl Ppu {
         }
     }
 
+    fn lcd_enable_pending_lyc_rise_source(&self) -> bool {
+        self.lcd_enable_pending_delay_tcycles == 2
+            && self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
+            && !self.stat_state.lcd_disabled_lyc_coincidence
+            && self.live_lyc_coincidence()
+    }
+
     fn ordinary_stat_irq_line(&self) -> bool {
         let coincidence_source = self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
             && self.effective_lyc_coincidence();
 
         if !self.is_lcd_enabled() {
-            return coincidence_source;
+            return coincidence_source || self.lcd_enable_pending_lyc_rise_source();
         }
 
         let mode0_start_dot = self.current_mode0_start_dot();
