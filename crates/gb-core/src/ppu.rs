@@ -914,9 +914,7 @@ impl Ppu {
         if !self.is_lcd_enabled() {
             if self.lcd_enable_pending_delay_tcycles > 0 {
                 self.lcd_enable_pending_delay_tcycles -= 1;
-                if self.lcd_enable_pending_delay_tcycles == 0
-                    && self.lcdc & LCDC_ENABLE_BIT != 0
-                {
+                if self.lcd_enable_pending_delay_tcycles == 0 && self.lcdc & LCDC_ENABLE_BIT != 0 {
                     self.enter_lcd_enabled_restart_state();
                 } else {
                     return;

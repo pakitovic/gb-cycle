@@ -852,7 +852,11 @@ fn lcd_reenable_first_line_skips_mode2_and_enters_mode3_late() {
     );
     assert_eq!(line0_mode0_tail.mode2_scanned_entries, 0);
 
-    tick_ppu(&mut ppu, u64::from(LCD_REENABLE_LINE0_MODE3_START_DOT - 1), &oam_bytes);
+    tick_ppu(
+        &mut ppu,
+        u64::from(LCD_REENABLE_LINE0_MODE3_START_DOT - 1),
+        &oam_bytes,
+    );
 
     let first_mode3_dot = ppu.snapshot();
     assert_eq!(first_mode3_dot.line_dot, LCD_REENABLE_LINE0_MODE3_START_DOT);

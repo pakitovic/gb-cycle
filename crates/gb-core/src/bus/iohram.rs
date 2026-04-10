@@ -120,16 +120,14 @@ impl IoHramDomain {
                     interrupts.read_if_with_pending_requests(io.interrupt_flag_pending_mask)
                 })
             }
-            IoRegisterKind::Lcd => io
-                .ppu
-                .map_or(BLOCKED_READ_VALUE, |ppu| {
-                    let source = if io.ppu_cpu_visible_read {
-                        crate::ppu::PpuRegisterReadSource::CpuBusOperation
-                    } else {
-                        crate::ppu::PpuRegisterReadSource::Immediate
-                    };
-                    ppu.read_register_with_source(address, source)
-                }),
+            IoRegisterKind::Lcd => io.ppu.map_or(BLOCKED_READ_VALUE, |ppu| {
+                let source = if io.ppu_cpu_visible_read {
+                    crate::ppu::PpuRegisterReadSource::CpuBusOperation
+                } else {
+                    crate::ppu::PpuRegisterReadSource::Immediate
+                };
+                ppu.read_register_with_source(address, source)
+            }),
             IoRegisterKind::OamDma => io.dma.map_or(BLOCKED_READ_VALUE, DmaController::read_ff46),
             IoRegisterKind::BootRomDisable => io
                 .boot

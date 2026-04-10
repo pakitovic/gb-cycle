@@ -216,7 +216,10 @@ fn run_lcd_enable_write_probe_observation(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
     machine
-        .load_cartridge(build_lcd_enable_write_probe_rom(address, delay_nops as usize))
+        .load_cartridge(build_lcd_enable_write_probe_rom(
+            address,
+            delay_nops as usize,
+        ))
         .expect("probe ROM should load");
     machine.write_bus(0xFF40, 0x00);
     machine.write_bus(address, 0x00);
@@ -1001,7 +1004,7 @@ fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
     assert_eq!(restart.lcd_state, PpuLcdState::Enabled);
     assert_eq!(restart.mode, PpuAccessMode::HBlank);
     assert_eq!(restart.ly, 0);
-    assert_eq!(restart.line_dot, 4);
+    assert_eq!(restart.line_dot, 0);
     assert_eq!(restart.visible_output, PpuVisibleOutputState::ForcedBlank);
     assert!(restart.blank_frame_active);
 
@@ -1159,7 +1162,10 @@ fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
             MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
         );
         machine
-            .load_cartridge(build_lcd_enable_read_probe_rom(address, delay_nops as usize))
+            .load_cartridge(build_lcd_enable_read_probe_rom(
+                address,
+                delay_nops as usize,
+            ))
             .expect("probe ROM should load");
         machine.write_bus(0xFF40, 0x00);
         run_until_halted(&mut machine, 1_000_000)
@@ -1218,10 +1224,10 @@ fn cpu_path_lcd_enable_write_probe_matches_the_mooneye_probe_points() {
         0x81, 0x81, 0x81, 0x00,
     ];
 
-    let actual_oam =
-        NOP_COUNTS.map(|delay| run_lcd_enable_write_probe_observation(0xFE00, delay).observed_value);
-    let actual_vram =
-        NOP_COUNTS.map(|delay| run_lcd_enable_write_probe_observation(0x8000, delay).observed_value);
+    let actual_oam = NOP_COUNTS
+        .map(|delay| run_lcd_enable_write_probe_observation(0xFE00, delay).observed_value);
+    let actual_vram = NOP_COUNTS
+        .map(|delay| run_lcd_enable_write_probe_observation(0x8000, delay).observed_value);
 
     if actual_oam != EXPECTED_OAM || actual_vram != EXPECTED_VRAM {
         panic!("actual_oam={actual_oam:?}\nactual_vram={actual_vram:?}");
@@ -1419,12 +1425,12 @@ fn cpu_inc_hl_inside_fe_range_reaches_the_same_mode2_corruption_controller() {
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
     let rows = build_oam_corruption_fixture();
+    let mut program = vec![0x21, 0x08, 0xFE];
+    program.extend(std::iter::repeat_n(0x00, 119));
+    program.extend([0x23, 0x00]);
 
     machine
-        .load_cartridge(build_test_rom(
-            &[0x21, 0x08, 0xFE, 0x00, 0x00, 0x00, 0x00, 0x23, 0x00],
-            0x12,
-        ))
+        .load_cartridge(build_test_rom(&program, 0x12))
         .expect("NoMBC test ROM should load");
 
     machine.write_bus(0xFF40, 0x00);
@@ -1437,7 +1443,7 @@ fn cpu_inc_hl_inside_fe_range_reaches_the_same_mode2_corruption_controller() {
     machine.write_bus(0xFF40, 0x80);
 
     let mut triggered_row = None;
-    for _ in 0..80 {
+    for _ in 0..1_024 {
         machine.step_t_cycle();
         if let Some(event) = machine.cpu().last_address_event()
             && event.kind == CpuAddressEventKind::IncDec

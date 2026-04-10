@@ -145,7 +145,7 @@ impl Ppu {
             return self.current_access_mode();
         }
 
-        if self.ly - 1 >= VISIBLE_SCANLINES {
+        if self.ly > VISIBLE_SCANLINES {
             PpuAccessMode::VBlank
         } else {
             PpuAccessMode::HBlank

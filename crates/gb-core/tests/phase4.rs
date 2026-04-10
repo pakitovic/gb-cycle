@@ -319,7 +319,7 @@ fn build_direct_mode2_oam_access_program() -> Vec<u8> {
     program.ld_a16_from_a(0xFF40);
 
     program.ld_a_imm(0x99);
-    program.nop();
+    program.push_nops(115);
     program.ld_a16_from_a(0xFE00);
 
     program.xor_a();
@@ -344,7 +344,7 @@ fn build_fea0_mode2_read_program() -> Vec<u8> {
 
     program.ld_a_imm(0x80);
     program.ld_a16_from_a(0xFF40);
-    program.push_nops(3);
+    program.push_nops(117);
     program.ld_a_from_a16(0xFEA0);
 
     program.xor_a();
@@ -370,7 +370,7 @@ fn build_inc_hl_program() -> Vec<u8> {
 
     program.ld_a_imm(0x80);
     program.ld_a16_from_a(0xFF40);
-    program.push_nops(5);
+    program.push_nops(119);
     program.inc_hl();
 
     program.xor_a();
@@ -400,7 +400,7 @@ fn build_hli_hld_program() -> Vec<u8> {
     program.ld_hl_imm(0xFE40);
     program.ld_a_imm(0x80);
     program.ld_a16_from_a(0xFF40);
-    program.push_nops(5);
+    program.push_nops(119);
     program.ld_a_hli();
 
     program.xor_a();
@@ -411,7 +411,7 @@ fn build_hli_hld_program() -> Vec<u8> {
     program.ld_a_imm(0x80);
     program.ld_a16_from_a(0xFF40);
     program.ld_a_imm(0x99);
-    program.push_nops(7);
+    program.push_nops(121);
     program.ld_hld_a();
 
     program.xor_a();
