@@ -34,9 +34,10 @@ impl Ppu {
             return;
         }
 
-        let output_dot = observe_ppu_step_region(observer, PpuStepRegion::Mode3PixelTransfer, || {
-            self.advance_mode3_output_phase_with_vram(vram)
-        });
+        let output_dot =
+            observe_ppu_step_region(observer, PpuStepRegion::Mode3PixelTransfer, || {
+                self.advance_mode3_output_phase_with_vram(vram)
+            });
         observe_ppu_step_region(observer, PpuStepRegion::Mode3WindowFetch, || {
             self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
             let _ = self.maybe_start_window_after_transfer_dot(output_dot);
@@ -269,6 +270,9 @@ impl Ppu {
                     self.bg_pipeline_state.fetcher.cached_origin = self
                         .bg_pipeline_state
                         .peek_startup_background_fetch_origin();
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tilemap_refetch_on_push = false;
                 }
                 let tile_map_address =
                     self.compute_fetch_tile_index_address(fetcher.source, fetcher.fetch_x);
@@ -672,7 +676,10 @@ impl Ppu {
         plan: Mode3TransferServicePlan,
         vram: &VramBusView<'_>,
     ) -> Mode3TransferDot {
-        let pixel = if matches!(plan.execution, Mode3TransferServiceExecution::EmitVisiblePixel) {
+        let pixel = if matches!(
+            plan.execution,
+            Mode3TransferServiceExecution::EmitVisiblePixel
+        ) {
             None
         } else if plan.requires_real_bg_fifo_pixel() {
             self.bg_pipeline_state.pop_real_fifo_pixel()
@@ -761,7 +768,11 @@ impl Ppu {
         };
 
         cached.cached = recomputed;
-        pixel.color = bg_tile_pixel_value(recomputed.tile_low, recomputed.tile_high, cached.pixel_index);
+        pixel.color = bg_tile_pixel_value(
+            recomputed.tile_low,
+            recomputed.tile_high,
+            cached.pixel_index,
+        );
         Some(pixel.color)
     }
 

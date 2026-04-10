@@ -151,29 +151,16 @@ impl Ppu {
         }
 
         let tile_index = self.bg_pipeline_state.fetcher.tile_index;
-        let reread_address = if previous_uses_unsigned && !current_uses_unsigned {
-            Some(self.compute_fetch_tile_data_address(
-                source,
-                self.bg_pipeline_state.fetcher.fetch_x,
-                tile_index,
-                plane,
-            ))
-        } else {
-            None
-        };
-        let tile_byte = if let Some(tile_data_address) = reread_address {
-            vram.read(tile_data_address as usize).unwrap_or(0)
-        } else {
-            match plane {
-                0 => self.last_unsigned_tile_data_low_fetch,
-                _ => self.last_unsigned_tile_data_high_fetch,
-            }
-        };
+        let tile_data_address = self.compute_fetch_tile_data_address(
+            source,
+            self.bg_pipeline_state.fetcher.fetch_x,
+            tile_index,
+            plane,
+        );
+        let tile_byte = vram.read(tile_data_address as usize).unwrap_or(0);
 
         let fetcher = &mut self.bg_pipeline_state.fetcher;
-        if let Some(tile_data_address) = reread_address {
-            fetcher.tile_data_address = tile_data_address;
-        }
+        fetcher.tile_data_address = tile_data_address;
 
         if plane == 0 {
             fetcher.tile_low = tile_byte;

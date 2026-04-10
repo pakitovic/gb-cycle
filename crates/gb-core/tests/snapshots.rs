@@ -58,3 +58,22 @@ fn machine_snapshot_rendering_matches_the_golden_fixture() {
 
     assert_eq!(snapshot.render_text(), expected);
 }
+
+#[test]
+fn machine_snapshot_rendering_includes_mode3_startup_observability_fields() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.step_t_cycle();
+    machine.step_t_cycle();
+
+    let rendered = machine.snapshot().render_text();
+
+    assert!(rendered.contains("ppu.bg_startup_source_state="));
+    assert!(rendered.contains("ppu.bg_startup_fetch_seam="));
+    assert!(rendered.contains("ppu.bg_transfer_phase="));
+    assert!(rendered.contains("ppu.bg_current_transfer_lane="));
+    assert!(rendered.contains("ppu.bg_current_transfer_backing="));
+    assert!(rendered.contains("ppu.bg_fifo_cached_pixels="));
+}

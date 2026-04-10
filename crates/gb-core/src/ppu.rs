@@ -415,6 +415,19 @@ pub struct PpuSnapshot {
     pub bg_fill_pending: bool,
     pub bg_fifo_pixels: Vec<u8>,
     pub bg_fifo_cached_pixels: Vec<Option<PpuBgFifoCachedPixelSnapshot>>,
+    pub bg_startup_source_state: PpuMode3StartupSourceStateSnapshot,
+    pub bg_startup_fetch_seam: PpuBgStartupFetchSeamSnapshot,
+    pub bg_startup_fifo_placeholders: u8,
+    pub bg_push_entry_delay_remaining: u8,
+    pub bg_fill_startup_dummy_pixels: u8,
+    pub bg_fetcher_post_alignment_restart_delay_dots: u8,
+    pub bg_transfer_phase: PpuMode3TransferPhaseSnapshot,
+    pub bg_current_transfer_x: u8,
+    pub bg_current_transfer_lane: Option<PpuMode3TransferLaneSnapshot>,
+    pub bg_current_transfer_source_window: Option<PpuMode3TransferSourceWindowSnapshot>,
+    pub bg_current_transfer_backing: Option<PpuMode3TransferBackingSnapshot>,
+    pub bg_current_transfer_readiness: Option<PpuMode3TransferReadinessSnapshot>,
+    pub bg_current_transfer_kind: Option<PpuMode3TransferDotKindSnapshot>,
     pub obj_fetcher_stage: PpuObjFetcherStage,
     pub obj_fetcher_stage_dot: u8,
     pub obj_fifo_pixels: Vec<Option<u8>>,
@@ -471,6 +484,73 @@ pub struct PpuBgFifoCachedPixelSnapshot {
     pub tile_map_address: u16,
     pub tile_data_address: u16,
     pub tile_index: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuMode3TransferPhaseSnapshot {
+    Priming,
+    Output,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuMode3TransferLaneSnapshot {
+    PreVisible,
+    Hidden,
+    Visible,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuMode3TransferSourceWindowSnapshot {
+    AbstractStartup,
+    FifoBacked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuMode3TransferBackingSnapshot {
+    Abstract,
+    FifoBacked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuMode3TransferReadinessSnapshot {
+    WaitingForFifo,
+    Ready,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuMode3TransferDotKindSnapshot {
+    NotServed,
+    ServedPreVisibleTransfer,
+    ServedHiddenTransfer,
+    ServedVisiblePixel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuMode3StartupSourceStateSnapshot {
+    EntryDelay { remaining: u8 },
+    Abstract { remaining: u8 },
+    FifoBacked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuBgStartupContinuationSliceSnapshot {
+    None,
+    VisibleTile2,
+    VisibleTile3,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuBgStartupFetchSeamSnapshot {
+    Inactive,
+    AlignmentSeedPending,
+    PostAlignment {
+        first_real_push_skips_entry_delay: bool,
+        next_startup_continuation_slice: PpuBgStartupContinuationSliceSnapshot,
+        startup_continuation_visible_tiles_remaining: u8,
+        delayed_background_tileindex_read_tiles_remaining: u8,
+        delayed_background_tilemap_tiles_remaining: u8,
+        delayed_background_tiledata_tiles_remaining: u8,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -647,6 +727,9 @@ impl Ppu {
             if address == 0xFF40 {
                 self.bg_pipeline_state
                     .mark_live_lcdc3_write_while_fifo_visible(previous_lcdc, self.lcdc);
+                self.bg_pipeline_state
+                    .fetcher
+                    .mark_live_lcdc3_write_for_current_background_fetch(previous_lcdc, self.lcdc);
             }
         }
 
@@ -809,6 +892,8 @@ impl Ppu {
     pub fn snapshot(&self) -> PpuSnapshot {
         let raster_state = self.current_raster_state();
         let mode = raster_state.access_mode();
+        let current_transfer = self.current_transfer();
+        let current_transfer_plan = current_transfer.map(Mode3CurrentTransfer::service_plan);
 
         PpuSnapshot {
             console_model: self.console_model,
@@ -845,6 +930,31 @@ impl Ppu {
                 .copied()
                 .map(snapshot_bg_fifo_cached_pixel)
                 .collect(),
+            bg_startup_source_state: snapshot_bg_startup_source_state(
+                self.bg_pipeline_state.startup_source_state,
+            ),
+            bg_startup_fetch_seam: snapshot_bg_startup_fetch_seam(
+                self.bg_pipeline_state.startup_fetch_seam,
+            ),
+            bg_startup_fifo_placeholders: self.bg_pipeline_state.startup_fifo_placeholders,
+            bg_push_entry_delay_remaining: self.bg_pipeline_state.push.entry_delay_remaining,
+            bg_fill_startup_dummy_pixels: self.bg_pipeline_state.fill.startup_dummy_pixels,
+            bg_fetcher_post_alignment_restart_delay_dots: self
+                .bg_pipeline_state
+                .fetcher
+                .post_alignment_fetch_restart_delay_dots,
+            bg_transfer_phase: snapshot_bg_transfer_phase(self.bg_pipeline_state.transfer_phase),
+            bg_current_transfer_x: self.bg_pipeline_state.current_transfer_x,
+            bg_current_transfer_lane: current_transfer
+                .map(|transfer| snapshot_bg_transfer_lane(transfer.context.lane)),
+            bg_current_transfer_source_window: current_transfer
+                .map(|transfer| snapshot_bg_transfer_source_window(transfer.context.source_window)),
+            bg_current_transfer_backing: current_transfer_plan
+                .map(|plan| snapshot_bg_transfer_backing(plan.backing)),
+            bg_current_transfer_readiness: current_transfer
+                .map(|transfer| snapshot_bg_transfer_readiness(transfer.readiness)),
+            bg_current_transfer_kind: current_transfer_plan
+                .map(|plan| snapshot_bg_transfer_kind(plan.result_kind)),
             obj_fetcher_stage: self.obj_pipeline_state.fetch.stage,
             obj_fetcher_stage_dot: self.obj_pipeline_state.fetch.stage_dot,
             obj_fifo_pixels: self
@@ -935,11 +1045,31 @@ impl Ppu {
     }
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
+        let bg_fifo_front_cached = self
+            .bg_pipeline_state
+            .fifo_cached_pixels
+            .iter()
+            .flatten()
+            .next()
+            .copied();
+        let current_transfer = self.current_transfer();
+        let current_transfer_plan = current_transfer.map(Mode3CurrentTransfer::service_plan);
         format!(
             concat!(
                 "t_cycle={} phase={} console_model={:?} status={:?} ",
                 "lcd_state={:?} visible_output={:?} ly={} lyc={} coincidence={} ",
-                "line_dot={} mode={:?} stat_irq_line={} mode2_scanned_entries={} selected_sprites={}"
+                "line_dot={} mode={:?} stat_irq_line={} mode2_scanned_entries={} selected_sprites={} ",
+                "bg_source={:?} bg_stage={:?} bg_stage_dot={} bg_fetch_origin={:?} ",
+                "bg_push_pending={} bg_push_entry_delay_remaining={} bg_push_origin={:?} ",
+                "bg_fill_pending={} bg_fill_startup_dummy_pixels={} bg_fill_origin={:?} ",
+                "bg_fifo_len={} bg_startup_fifo_placeholders={} bg_fifo_front_cached_origin={:?} ",
+                "bg_fifo_front_cached_fetch_x={:?} bg_fifo_front_cached_pixel_index={:?} ",
+                "bg_startup_source_state={:?} bg_startup_fetch_seam={:?} ",
+                "bg_fetcher_post_alignment_restart_delay_dots={} bg_transfer_phase={:?} ",
+                "bg_current_transfer_x={} bg_current_transfer_lane={:?} ",
+                "bg_current_transfer_source_window={:?} bg_current_transfer_backing={:?} ",
+                "bg_current_transfer_readiness={:?} bg_current_transfer_kind={:?} ",
+                "visible_pixels_output={}"
             ),
             context.t_cycle().get(),
             context.phase(),
@@ -955,6 +1085,34 @@ impl Ppu {
             self.stat_state.irq_line,
             self.mode2_scan_state.scanned_entries(),
             self.mode2_scan_state.selected_sprite_count(),
+            self.bg_pipeline_state.fetcher.source,
+            self.bg_pipeline_state.fetcher.stage,
+            self.bg_pipeline_state.fetcher.stage_dot,
+            self.bg_pipeline_state.fetcher.cached_origin,
+            self.bg_pipeline_state.push.pending,
+            self.bg_pipeline_state.push.entry_delay_remaining,
+            self.bg_pipeline_state.push.cached.origin,
+            self.bg_pipeline_state.fill.pending,
+            self.bg_pipeline_state.fill.startup_dummy_pixels,
+            self.bg_pipeline_state.fill.cached.origin,
+            self.bg_pipeline_state.fifo.len(),
+            self.bg_pipeline_state.startup_fifo_placeholders,
+            bg_fifo_front_cached.map(|pixel| pixel.cached.origin),
+            bg_fifo_front_cached.map(|pixel| pixel.cached.fetch_x),
+            bg_fifo_front_cached.map(|pixel| pixel.pixel_index),
+            self.bg_pipeline_state.startup_source_state,
+            self.bg_pipeline_state.startup_fetch_seam,
+            self.bg_pipeline_state
+                .fetcher
+                .post_alignment_fetch_restart_delay_dots,
+            self.bg_pipeline_state.transfer_phase,
+            self.bg_pipeline_state.current_transfer_x,
+            current_transfer.map(|transfer| transfer.context.lane),
+            current_transfer.map(|transfer| transfer.context.source_window),
+            current_transfer_plan.map(|plan| plan.backing),
+            current_transfer.map(|transfer| snapshot_bg_transfer_readiness(transfer.readiness)),
+            current_transfer_plan.map(|plan| snapshot_bg_transfer_kind(plan.result_kind)),
+            self.bg_pipeline_state.visible_pixels_output,
         )
     }
 
@@ -1064,6 +1222,123 @@ fn snapshot_bg_fifo_cached_pixel(
         tile_data_address: cached.cached.tile_data_address,
         tile_index: cached.cached.tile_index,
     })
+}
+
+const fn snapshot_bg_transfer_phase(phase: Mode3TransferPhase) -> PpuMode3TransferPhaseSnapshot {
+    match phase {
+        Mode3TransferPhase::Priming => PpuMode3TransferPhaseSnapshot::Priming,
+        Mode3TransferPhase::Output => PpuMode3TransferPhaseSnapshot::Output,
+    }
+}
+
+const fn snapshot_bg_transfer_lane(lane: Mode3TransferLane) -> PpuMode3TransferLaneSnapshot {
+    match lane {
+        Mode3TransferLane::PreVisible => PpuMode3TransferLaneSnapshot::PreVisible,
+        Mode3TransferLane::Hidden => PpuMode3TransferLaneSnapshot::Hidden,
+        Mode3TransferLane::Visible => PpuMode3TransferLaneSnapshot::Visible,
+    }
+}
+
+const fn snapshot_bg_transfer_source_window(
+    source_window: Mode3TransferSourceWindow,
+) -> PpuMode3TransferSourceWindowSnapshot {
+    match source_window {
+        Mode3TransferSourceWindow::AbstractStartup => {
+            PpuMode3TransferSourceWindowSnapshot::AbstractStartup
+        }
+        Mode3TransferSourceWindow::FifoBacked => PpuMode3TransferSourceWindowSnapshot::FifoBacked,
+    }
+}
+
+const fn snapshot_bg_transfer_backing(
+    backing: Mode3TransferBacking,
+) -> PpuMode3TransferBackingSnapshot {
+    match backing {
+        Mode3TransferBacking::Abstract => PpuMode3TransferBackingSnapshot::Abstract,
+        Mode3TransferBacking::FifoBacked => PpuMode3TransferBackingSnapshot::FifoBacked,
+    }
+}
+
+const fn snapshot_bg_transfer_readiness(
+    readiness: Mode3TransferReadiness,
+) -> PpuMode3TransferReadinessSnapshot {
+    match readiness {
+        Mode3TransferReadiness::WaitingForFifo(_) => {
+            PpuMode3TransferReadinessSnapshot::WaitingForFifo
+        }
+        Mode3TransferReadiness::Ready(_) => PpuMode3TransferReadinessSnapshot::Ready,
+    }
+}
+
+const fn snapshot_bg_transfer_kind(kind: Mode3TransferDotKind) -> PpuMode3TransferDotKindSnapshot {
+    match kind {
+        Mode3TransferDotKind::NotServed => PpuMode3TransferDotKindSnapshot::NotServed,
+        Mode3TransferDotKind::ServedPreVisibleTransfer => {
+            PpuMode3TransferDotKindSnapshot::ServedPreVisibleTransfer
+        }
+        Mode3TransferDotKind::ServedHiddenTransfer => {
+            PpuMode3TransferDotKindSnapshot::ServedHiddenTransfer
+        }
+        Mode3TransferDotKind::ServedVisiblePixel => {
+            PpuMode3TransferDotKindSnapshot::ServedVisiblePixel
+        }
+    }
+}
+
+const fn snapshot_bg_startup_source_state(
+    state: Mode3StartupSourceState,
+) -> PpuMode3StartupSourceStateSnapshot {
+    match state {
+        Mode3StartupSourceState::EntryDelay { remaining } => {
+            PpuMode3StartupSourceStateSnapshot::EntryDelay { remaining }
+        }
+        Mode3StartupSourceState::Abstract { remaining } => {
+            PpuMode3StartupSourceStateSnapshot::Abstract { remaining }
+        }
+        Mode3StartupSourceState::FifoBacked => PpuMode3StartupSourceStateSnapshot::FifoBacked,
+    }
+}
+
+const fn snapshot_bg_startup_continuation_slice(
+    slice: BgStartupContinuationSlice,
+) -> PpuBgStartupContinuationSliceSnapshot {
+    match slice {
+        BgStartupContinuationSlice::None => PpuBgStartupContinuationSliceSnapshot::None,
+        BgStartupContinuationSlice::VisibleTile2 => {
+            PpuBgStartupContinuationSliceSnapshot::VisibleTile2
+        }
+        BgStartupContinuationSlice::VisibleTile3 => {
+            PpuBgStartupContinuationSliceSnapshot::VisibleTile3
+        }
+    }
+}
+
+const fn snapshot_bg_startup_fetch_seam(
+    seam: BgStartupFetchSeamState,
+) -> PpuBgStartupFetchSeamSnapshot {
+    match seam {
+        BgStartupFetchSeamState::Inactive => PpuBgStartupFetchSeamSnapshot::Inactive,
+        BgStartupFetchSeamState::AlignmentSeedPending => {
+            PpuBgStartupFetchSeamSnapshot::AlignmentSeedPending
+        }
+        BgStartupFetchSeamState::PostAlignment {
+            first_real_push_skips_entry_delay,
+            next_startup_continuation_slice,
+            startup_continuation_visible_tiles_remaining,
+            delayed_background_tileindex_read_tiles_remaining,
+            delayed_background_tilemap_tiles_remaining,
+            delayed_background_tiledata_tiles_remaining,
+        } => PpuBgStartupFetchSeamSnapshot::PostAlignment {
+            first_real_push_skips_entry_delay,
+            next_startup_continuation_slice: snapshot_bg_startup_continuation_slice(
+                next_startup_continuation_slice,
+            ),
+            startup_continuation_visible_tiles_remaining,
+            delayed_background_tileindex_read_tiles_remaining,
+            delayed_background_tilemap_tiles_remaining,
+            delayed_background_tiledata_tiles_remaining,
+        },
+    }
 }
 
 const fn lcd_state_from_lcdc(lcdc: u8) -> PpuLcdState {
