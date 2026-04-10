@@ -457,12 +457,59 @@ For PPU work, this order is weighted by usefulness for DMG pixel FIFO, window ti
 
 ## Tests
 
-External ROM suites, in recommended closure order:
-- `dmg-acid2`
-- Blargg `oam_bug`
-- Mooneye LCD/STAT/LCDC timing tests
-- `mealybug-tearoom-tests`
-- `cgb-acid2` when the CGB rendering path is under validation
+For DMG bring-up and PPU refactor closure, use the following finer-grained maturity ladder as the practical test-order guideline:
+
+| order | maturity stage | family | ROM | domain | complexity | PPU ownership | original # |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Base raster / smoke | acid | `dmg-acid2.gb` | PPU | VERY LOW | general Mode 3 raster, BG/WIN/OBJ mixing, left edge / startup | 2 |
+| 2 | Visible raster and post-boot state | daid | `ppu_scanline_bgp.gb` | PPU | MEDIUM | per-scanline `BGP`, visible raster | 41 |
+| 3 | Visible raster and post-boot state | hacktix | `bully.gb` | PPU | HIGH | visible VRAM / tilemap seed after boot | 139 |
+| 4 | Base OAM / bus visibility | mooneye | `acceptance/bits/mem_oam.gb` | PPU / OAM | MEDIUM | OAM bus access, visible blocking / reads | 45 |
+| 5 | Base sprites / priority | mooneye | `manual-only/sprite_priority.gb` | PPU | HIGH | OBJ priority, X / OAM order, BG / OBJ mixing | 138 |
+| 6 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/intr_1_2_timing-GS.gb` | PPU | HIGH | `STAT`, Mode `1 -> 2` transition | 78 |
+| 7 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/intr_2_0_timing.gb` | PPU | HIGH | `STAT`, Mode `2 -> 0` transition | 79 |
+| 8 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/intr_2_mode3_timing.gb` | PPU | HIGH | `STAT`, Mode `2 -> 3` transition | 82 |
+| 9 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/intr_2_oam_ok_timing.gb` | PPU | HIGH | `STAT` and OAM release at the mode edge | 83 |
+| 10 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/vblank_stat_intr-GS.gb` | PPU | HIGH | Mode `1`, VBlank `STAT` IRQ timing | 88 |
+| 11 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/stat_irq_blocking.gb` | PPU | HIGH | `STAT` IRQ line blocking, edge detection | 86 |
+| 12 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/stat_lyc_onoff.gb` | PPU | HIGH | `LYC == LY`, LCD off/on, `STAT` | 87 |
+| 13 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/hblank_ly_scx_timing-GS.gb` | PPU | VERY HIGH | late Mode `0` / HBlank, `LY` / `SCX` seam | 77 |
+| 14 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/intr_2_mode0_timing.gb` | PPU | VERY HIGH | `STAT` Mode `0` versus variable Mode `3` end | 80 |
+| 15 | STAT / LY / LYC / IRQs | mooneye | `acceptance/ppu/intr_2_mode0_timing_sprites.gb` | PPU | VERY HIGH | `STAT` Mode `2 -> 0` with sprite stalls | 81 |
+| 16 | LCD off/on and restart | mooneye | `acceptance/ppu/lcdon_timing-GS.gb` | PPU | VERY HIGH | LCD on, raster restart, initial `LY` / `STAT` | 84 |
+| 17 | LCD off/on and restart | mooneye | `acceptance/ppu/lcdon_write_timing-GS.gb` | PPU | VERY HIGH | `LCDC.7` write timing, restart, `LY` / `STAT` | 85 |
+| 18 | DMG OAM quirks | blargg | `oam_bug/1-lcd_sync.gb` | PPU / OAM | HIGH | Mode `2` OAM corruption, LCD synchrony | 22 |
+| 19 | DMG OAM quirks | blargg | `oam_bug/2-causes.gb` | PPU / OAM | HIGH | Mode `2` OAM corruption, valid causes | 23 |
+| 20 | DMG OAM quirks | blargg | `oam_bug/3-non_causes.gb` | PPU / OAM | HIGH | Mode `2` OAM corruption, exclusions | 24 |
+| 21 | DMG OAM quirks | blargg | `oam_bug/4-scanline_timing.gb` | PPU / OAM | HIGH | Mode `2` OAM corruption, per-scanline timing | 25 |
+| 22 | DMG OAM quirks | blargg | `oam_bug/5-timing_bug.gb` | PPU / OAM | VERY HIGH | Mode `2` OAM corruption, bug window | 26 |
+| 23 | DMG OAM quirks | blargg | `oam_bug/6-timing_no_bug.gb` | PPU / OAM | VERY HIGH | Mode `2` OAM corruption, non-bug window | 27 |
+| 24 | DMG OAM quirks | blargg | `oam_bug/8-instr_effect.gb` | PPU / OAM | VERY HIGH | Mode `2` OAM corruption, CPU-access-dependent effects | 28 |
+| 25 | DMA quirks + sprite metadata | hacktix | `strikethrough.gb` | PPU | VERY HIGH | Mode `3` OBJ metadata, OAM DMA conflict | 140 |
+| 26 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m2_win_en_toggle.gb` | PPU | VERY HIGH | Mode `2`, window-enable latch, `LCDC.5` | 144 |
+| 27 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_bgp_change.gb` | PPU | VERY HIGH | Mode `3`, live `BGP`, palette conflict | 145 |
+| 28 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_bgp_change_sprites.gb` | PPU | VERY HIGH | Mode `3`, live `BGP` with OBJ interaction | 146 |
+| 29 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_bg_en_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.0` BG enable | 147 |
+| 30 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_bg_map_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.3` BG map | 148 |
+| 31 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_obj_en_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.1` OBJ enable | 149 |
+| 32 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_obj_en_change_variant.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.1` OBJ enable, timing variant | 150 |
+| 33 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_obj_size_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.2` OBJ size change | 151 |
+| 34 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_obj_size_change_scx.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.2` size change with `SCX` discard | 152 |
+| 35 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_tile_sel_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.4` tile-data select | 153 |
+| 36 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_tile_sel_win_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.4` with window fetch | 154 |
+| 37 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_win_en_change_multiple.gb` | PPU | VERY HIGH | Mode `3`, `LCDC.5` toggles, window restart | 155 |
+| 38 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_win_en_change_multiple_wx.gb` | PPU | VERY HIGH | Mode `3`, `LCDC.5` plus `WX` retarget | 156 |
+| 39 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_lcdc_win_map_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.6` window map | 157 |
+| 40 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_obp0_change.gb` | PPU | VERY HIGH | Mode `3`, live `OBP0`, OBJ palette conflict | 158 |
+| 41 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_scx_high_5_bits.gb` | PPU | VERY HIGH | Mode `3`, `SCX` high bits, BG fetch origin | 159 |
+| 42 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_scx_low_3_bits.gb` | PPU | VERY HIGH | Mode `3`, `SCX` low bits, pixel discard | 160 |
+| 43 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_scy_change.gb` | PPU | VERY HIGH | Mode `3`, live `SCY`, BG row selection | 161 |
+| 44 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_window_timing.gb` | PPU | VERY HIGH | Mode `3`, window start, fetcher restart | 162 |
+| 45 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_window_timing_wx_0.gb` | PPU | VERY HIGH | Mode `3`, window start with `WX = 0` edge case | 163 |
+| 46 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_wx_4_change.gb` | PPU | VERY HIGH | Mode `3`, live `WX`, edge case | 164 |
+| 47 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_wx_4_change_sprites.gb` | PPU | VERY HIGH | Mode `3`, live `WX` with OBJ interaction | 165 |
+| 48 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_wx_5_change.gb` | PPU | VERY HIGH | Mode `3`, live `WX` timing | 166 |
+| 49 | Mode 3 hi-fi / live writes | mealybug-tearoom-tests | `ppu/m3_wx_6_change.gb` | PPU | VERY HIGH | Mode `3`, live `WX` timing | 167 |
 
 Project-owned tests:
 - tests for variable Mode 3 timing, `SCX` discard behavior, and sprite-induced stalls
