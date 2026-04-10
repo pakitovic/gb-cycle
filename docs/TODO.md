@@ -41,7 +41,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
-- Work stopped before closing the main oracle debt. Still-open families: `Mode 3` live-write cases (`m3_lcdc_bg_map_change`, `m3_lcdc_tile_sel_change`, `m3_lcdc_tile_sel_win_change`, `m3_scy_change`), mooneye LCD restart lane, and one sprite-coupled `STAT` timing case.
+- Work stopped before closing the main oracle debt. Still-open families: early visible-raster baseline (`daid/ppu_scanline_bgp.gb`), one sprite-coupled `STAT` timing case, and the remaining `Mode 3` live-write families (`m3_lcdc_bg_map_change`, `m3_lcdc_tile_sel_change`, `m3_lcdc_tile_sel_win_change`, `m3_scy_change`).
 - Last stable measurements: `m3_lcdc_bg_map_change: 674`, `m3_lcdc_tile_sel_change: 1410`, `m3_lcdc_tile_sel_win_change: 1232`, `m3_scy_change: 7819`.
 - Visible-FIFO cached-slice ownership is now explicit too, via a per-pixel sideband that survives `fill.pending -> FIFO` and startup placeholders. A first broad activation of live-write recompute on that visible FIFO regressed `m3_lcdc_tile_sel_change` (`1410 -> 1694`) while leaving `m3_lcdc_bg_map_change` at `674`, so keep the sideband but do not re-enable broad visible-FIFO retargeting without a narrower same-T-cycle oracle.
 - A narrower follow-up path now exists for `LCDC.3` only: mark eligible visible-FIFO cached pixels and retarget on visible pop, with unit coverage for third-tile metadata and on-demand recompute. External oracle did not move (`m3_lcdc_bg_map_change` stayed `674`, `m3_lcdc_tile_sel_change` stayed `1410`), so do not keep pushing this seam blindly without a stronger trace showing the write lands after `fill.pending` and before visible pop.
@@ -62,6 +62,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 - Actual ROM traces still show `visible_output = ForcedBlank` deep into the restarted raster (`ly = 48` in the `153500` trace window), so the remaining `m3_lcdc_tile_sel_change` delta is now better explained by the LCD restart / panel-blank lane than by another cached-slice or visible-FIFO retargeting bug.
 - **Highest-value next step:** with the mooneye LCD restart lane now green (`stat_lyc_onoff`, `lcdon_timing-GS`, `lcdon_write_timing-GS`), pivot the next re-entry to the sprite-coupled `Mode 2 -> 0` seam in `intr_2_mode0_timing_sprites.gb`, while promoting `daid/ppu_scanline_bgp.gb` to an active raster gate before resuming broader hi-fi `Mode 3` closure.
 - The new DMG maturity ladder in `PPU.md` shows the current PPU state is not monotonic. Strictly, the first still-open step is `order 2` (`daid/ppu_scanline_bgp.gb`), so the ladder says the emulator cannot yet be treated as "past the early raster baseline" even though many later and narrower families are already green.
+- The DMG OAM-corruption path now matches the hardware/document baseline more closely too: trigger classification is address-family / trigger-family based, while the PPU remains the owner of the live `Mode 2` mode-and-row gate. That restores the last-row and first-scanline windows in `blargg oam_bug/4-scanline_timing.gb` and `oam_bug/5-timing_bug.gb` without reopening the phase-4 synthetic OAM-corruption fixtures.
 - Current ladder snapshot:
 
 | order | case | current state | likely gap | next action |
@@ -72,8 +73,8 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 | 17 | `mooneye acceptance/ppu/lcdon_write_timing-GS.gb` | green | the dedicated CPU-path `LCDC.7` write probe is now green and the external mooneye case passes after splitting CPU-visible OAM-write publication from the owner bus state and opening the OAM-only write window only at scanline start and the exact `Mode 2 -> 3` boundary | keep the new OAM-write publication seam fixed and use `lcdon_timing-GS` as the remaining LCD-restart oracle |
 - Practical maturity reading:
   - Strict ladder maturity: blocked at `order 2`.
-  - Real subsystem maturity: already beyond the early raster baseline in several later areas (`bully`, `mem_oam`, `sprite_priority`, most mooneye `STAT`, `oam_bug`, `strikethrough`, `m2_win_en_toggle`), but with four earlier holes still open (`2`, `15`, `16`, `17`).
-  - Consequence: `27+` mealybug cases stay valuable as sentinels, but they should not be treated as the primary closure target until those four ladder blockers are closed or intentionally waived with evidence.
+  - Real subsystem maturity: already beyond the early raster baseline in several later areas (`bully`, `mem_oam`, `sprite_priority`, most mooneye `STAT`, `oam_bug`, `strikethrough`, `m2_win_en_toggle`), but with two earlier holes still open (`2`, `15`).
+  - Consequence: `27+` mealybug cases stay valuable as sentinels, but they should not be treated as the primary closure target until those earlier ladder blockers are closed or intentionally waived with evidence.
 
 #### Open TODOs
 
@@ -94,7 +95,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 - [PPU][LCDC2-8X16-ARTIFACTS] Core `8x16` rules and mid-frame `LCDC.2` shrink crash are fixed, but finer DMG-visible artifacts from mid-frame size changes remain open. Needs targeted ROM or oracle coverage. Does not block Phase `5`; needed for Phase `9`.
 
-- [PPU][OAM-CORRUPTION-ORACLE] Deterministic unit/integration coverage is shipped for Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]`/`[hld]`, stack/interrupt paths, DMG variants, and CGB negative path. Still lacks independent oracle comparison. Curated `oam_bug` subset excludes `oam_bug.gb` multi-ROM and `7-timing_effect.gb`. Needed for Phase `9`.
+- [PPU][OAM-CORRUPTION-ORACLE] Deterministic unit/integration coverage is shipped for Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]`/`[hld]`, stack/interrupt paths, DMG variants, and CGB negative path. The last-row and first-scanline blargg windows (`oam_bug/4`, `oam_bug/5`) are green again after moving trigger classification away from the coarse blocked-access flag and back to live `Mode 2` ownership in the PPU. Still lacks independent oracle comparison. Curated `oam_bug` subset excludes `oam_bug.gb` multi-ROM and `7-timing_effect.gb`. Needed for Phase `9`.
 
 - [PPU][MOONEYE-LCD-RESTART] `stat_lyc_onoff`, `lcdon_timing-GS`, and `lcdon_write_timing-GS` are closed. The dedicated CPU-path LCD-enable read probe is now green for `LY`, `STAT` with `LYC=0/1`, OAM, and VRAM, and the dedicated CPU-path `LCDC.7` write probe is green too. The remaining restart-lane relevance is no longer an open mooneye blocker, but a possible explanatory seam for some repeated left-edge / visible-output debt if mealybug follow-up still points there.
 
