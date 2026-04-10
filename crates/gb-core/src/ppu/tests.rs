@@ -10,7 +10,7 @@ fn sync_test_video_ownership(
     vram: &mut crate::bus::VramDomain,
     dma_oam_active: bool,
 ) {
-    let bus_state = ppu.bus_state();
+    let bus_state = ppu.owner_bus_state();
     let ppu_vram = bus_state.is_lcd_enabled() && bus_state.mode() == PpuAccessMode::Drawing;
     let ppu_oam = bus_state.is_lcd_enabled()
         && matches!(
@@ -535,6 +535,73 @@ fn skip_boot_mode_latch_preserves_the_published_stat_mode_until_the_first_dot() 
 }
 
 #[test]
+fn cpu_oam_write_bus_state_only_opens_the_restart_probe_window_at_line_start_and_mode2_end() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 1;
+    ppu.line_dot = 0;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    assert_eq!(ppu.cpu_oam_write_bus_state().mode(), PpuAccessMode::HBlank);
+
+    ppu.line_dot = 4;
+    assert_eq!(ppu.cpu_oam_write_bus_state().mode(), PpuAccessMode::OamScan);
+
+    ppu.line_dot = MODE2_DOTS;
+    assert_eq!(ppu.cpu_write_bus_state().mode(), PpuAccessMode::OamScan);
+    assert_eq!(ppu.cpu_oam_write_bus_state().mode(), PpuAccessMode::HBlank);
+
+    ppu.line_dot = MODE2_DOTS + 4;
+    assert_eq!(ppu.cpu_oam_write_bus_state().mode(), PpuAccessMode::Drawing);
+}
+
+#[test]
+fn cpu_stat_read_suppresses_lyc_coincidence_on_the_first_dot_of_a_new_line() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 1;
+    ppu.lyc = 1;
+    ppu.line_dot = 0;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x07,
+        0x00
+    );
+
+    ppu.line_dot = 4;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x07,
+        0x06
+    );
+}
+
+#[test]
 fn visible_mode3_registers_lag_enabled_writes_until_the_next_t_cycle() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let oam_bytes = [0; 160];
@@ -744,7 +811,7 @@ fn lcd_disable_resets_the_live_pipeline_and_reenable_starts_with_mode0_readback(
 }
 
 #[test]
-fn lcd_reenable_startup_window_keeps_mode2_idle_until_the_ordinary_raster_resumes() {
+fn lcd_reenable_first_line_skips_mode2_and_enters_mode3_late() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let oam_bytes = [0; 160];
 
@@ -769,23 +836,41 @@ fn lcd_reenable_startup_window_keeps_mode2_idle_until_the_ordinary_raster_resume
     assert_eq!(restart.mode_dot, 0);
     assert_eq!(restart.mode2_scanned_entries, 0);
 
-    for t_cycle in 0..15 {
-        tick_ppu(&mut ppu, t_cycle, &oam_bytes);
+    for t_cycle in 0..LCD_REENABLE_LINE0_MODE3_START_DOT - 1 {
+        tick_ppu(&mut ppu, u64::from(t_cycle), &oam_bytes);
     }
 
-    let startup_window_end = ppu.snapshot();
-    assert_eq!(startup_window_end.line_dot, 19);
-    assert_eq!(startup_window_end.mode, PpuAccessMode::HBlank);
-    assert_eq!(startup_window_end.mode_dot, 15);
-    assert_eq!(startup_window_end.mode2_scanned_entries, 0);
+    let line0_mode0_tail = ppu.snapshot();
+    assert_eq!(
+        line0_mode0_tail.line_dot,
+        LCD_REENABLE_LINE0_MODE3_START_DOT - 1
+    );
+    assert_eq!(line0_mode0_tail.mode, PpuAccessMode::HBlank);
+    assert_eq!(
+        line0_mode0_tail.mode_dot,
+        LCD_REENABLE_LINE0_MODE3_START_DOT - 1
+    );
+    assert_eq!(line0_mode0_tail.mode2_scanned_entries, 0);
 
-    tick_ppu(&mut ppu, 15, &oam_bytes);
+    tick_ppu(&mut ppu, u64::from(LCD_REENABLE_LINE0_MODE3_START_DOT - 1), &oam_bytes);
 
-    let first_mode2_dot = ppu.snapshot();
-    assert_eq!(first_mode2_dot.line_dot, 20);
-    assert_eq!(first_mode2_dot.mode, PpuAccessMode::OamScan);
-    assert_eq!(first_mode2_dot.mode_dot, 20);
-    assert_eq!(first_mode2_dot.mode2_scanned_entries, 1);
+    let first_mode3_dot = ppu.snapshot();
+    assert_eq!(first_mode3_dot.line_dot, LCD_REENABLE_LINE0_MODE3_START_DOT);
+    assert_eq!(first_mode3_dot.mode, PpuAccessMode::Drawing);
+    assert_eq!(first_mode3_dot.mode_dot, 0);
+    assert_eq!(first_mode3_dot.mode2_scanned_entries, 0);
+
+    let mut t_cycle = u64::from(LCD_REENABLE_LINE0_MODE3_START_DOT);
+    while !(ppu.snapshot().ly == 1 && ppu.snapshot().line_dot == 2) {
+        tick_ppu(&mut ppu, t_cycle, &oam_bytes);
+        t_cycle += 1;
+        assert!(t_cycle < 2 * DOTS_PER_SCANLINE as u64);
+    }
+
+    let first_normal_mode2_dot = ppu.snapshot();
+    assert_eq!(first_normal_mode2_dot.mode, PpuAccessMode::OamScan);
+    assert_eq!(first_normal_mode2_dot.mode_dot, 2);
+    assert_eq!(first_normal_mode2_dot.mode2_scanned_entries, 1);
 }
 
 #[test]
@@ -965,7 +1050,7 @@ fn first_frame_after_lcd_reenable_stays_visibly_blank_while_the_raster_runs() {
         PpuVisibleOutputState::ForcedBlank
     );
     assert!(first_blank_line.blank_frame_active);
-    assert_eq!(first_blank_line.visible_pixels_output, 160);
+    assert_eq!(first_blank_line.visible_pixels_output, 153);
     assert_eq!(&first_blank_line.current_scanline_pixels[..8], &[0; 8]);
 
     t_cycle = tick_until_next_frame_start(&mut ppu, t_cycle, &oam_bytes, &vram_bytes);

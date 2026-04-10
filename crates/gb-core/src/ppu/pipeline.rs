@@ -442,7 +442,7 @@ impl Ppu {
                 ..
             } if mode_dot < 4 => Some(retroactive_pixels.saturating_sub(1)),
             PpuRasterState::Disabled
-            | PpuRasterState::LcdRestartStartupMode0 { .. }
+            | PpuRasterState::LcdRestartFirstLine { .. }
             | PpuRasterState::Active { .. } => None,
         }
     }

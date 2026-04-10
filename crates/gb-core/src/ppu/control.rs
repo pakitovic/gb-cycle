@@ -24,14 +24,20 @@ impl Ppu {
         self.lcdc
     }
 
-    fn write_lcdc(&mut self, value: u8) {
-        let was_lcd_enabled = self.is_lcd_enabled();
+    fn write_lcdc(&mut self, value: u8, source: PpuRegisterWriteSource) {
+        let was_lcd_enabled = self.is_lcd_enabled() || self.lcd_enable_pending_delay_tcycles != 0;
         self.lcdc = value;
         self.startup_mode_latch = None;
 
         match (was_lcd_enabled, value & LCDC_ENABLE_BIT != 0) {
             (true, false) => self.enter_lcd_disabled_state(),
-            (false, true) => self.enter_lcd_enabled_restart_state(),
+            (false, true) => {
+                if source == PpuRegisterWriteSource::CpuMmioCommit {
+                    self.enter_lcd_enable_pending_state(CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES);
+                } else {
+                    self.enter_lcd_enabled_restart_state();
+                }
+            }
             _ => {
                 self.lcd_state = lcd_state_from_lcdc(value);
                 self.refresh_visible_output();
@@ -41,19 +47,34 @@ impl Ppu {
         self.refresh_stat_irq_line(false);
     }
 
-    fn read_stat(&self) -> u8 {
+    fn read_stat(&self, source: PpuRegisterReadSource) -> u8 {
         STAT_FORCED_HIGH_BIT
             | self.stat_interrupt_enable
-            | if self.effective_lyc_coincidence() {
+            | if self.read_stat_lyc_coincidence(source) {
                 0x04
             } else {
                 0x00
             }
             | if self.is_lcd_enabled() {
-                self.current_access_mode().stat_bits()
+                match source {
+                    PpuRegisterReadSource::Immediate => self.current_cpu_visible_access_mode(),
+                    PpuRegisterReadSource::CpuBusOperation => self.current_published_stat_access_mode(),
+                }
+                .stat_bits()
             } else {
                 PpuAccessMode::HBlank.stat_bits()
             }
+    }
+
+    fn read_stat_lyc_coincidence(&self, source: PpuRegisterReadSource) -> bool {
+        if source == PpuRegisterReadSource::CpuBusOperation
+            && self.is_lcd_enabled()
+            && self.line_dot == 0
+        {
+            false
+        } else {
+            self.effective_lyc_coincidence()
+        }
     }
 
     fn write_stat(&mut self, value: u8) {
@@ -64,7 +85,7 @@ impl Ppu {
     fn read_ly(&self) -> u8 {
         if self.is_lcd_enabled()
             && !self.blank_frame_active
-            && self.line_dot >= LY_READ_ADVANCE_START_DOT
+            && self.line_dot >= self.current_ly_read_advance_start_dot()
             && self.ly + 1 < TOTAL_SCANLINES
         {
             self.ly + 1
@@ -75,6 +96,106 @@ impl Ppu {
 
     fn current_access_mode(&self) -> PpuAccessMode {
         self.current_raster_state().access_mode()
+    }
+
+    fn access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
+        if !self.is_lcd_enabled() {
+            return PpuAccessMode::HBlank;
+        }
+
+        if let Some(raster_state) = self.lcd_restart_phase.raster_state(self.ly, line_dot) {
+            return raster_state.access_mode();
+        }
+
+        access_mode_from_raster(self.ly, line_dot, self.current_mode0_start_dot())
+    }
+
+    fn bus_access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
+        let current_mode = self.access_mode_for_line_dot(line_dot);
+
+        if !self.is_lcd_enabled() || self.ly >= VISIBLE_SCANLINES {
+            return current_mode;
+        }
+
+        if current_mode == PpuAccessMode::HBlank
+            && self.ly + 1 < VISIBLE_SCANLINES
+            && line_dot + 4 >= self.current_scanline_length()
+        {
+            return PpuAccessMode::OamScan;
+        }
+
+        if current_mode == PpuAccessMode::OamScan && line_dot + 4 >= MODE2_DOTS {
+            return PpuAccessMode::Drawing;
+        }
+
+        current_mode
+    }
+
+    fn current_published_bus_access_mode(&self) -> PpuAccessMode {
+        let published_line_dot = self.line_dot.saturating_sub(1);
+        self.bus_access_mode_for_line_dot(published_line_dot)
+    }
+
+    fn current_published_stat_access_mode(&self) -> PpuAccessMode {
+        if self.line_dot != 0 {
+            return self.access_mode_for_line_dot(self.line_dot - 1);
+        }
+
+        if self.ly == 0 {
+            return self.current_access_mode();
+        }
+
+        if self.ly - 1 >= VISIBLE_SCANLINES {
+            PpuAccessMode::VBlank
+        } else {
+            PpuAccessMode::HBlank
+        }
+    }
+
+    fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
+        let published_mode = self.current_published_stat_access_mode();
+
+        if published_mode == PpuAccessMode::OamScan
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot == MODE2_DOTS
+        {
+            PpuAccessMode::HBlank
+        } else {
+            published_mode
+        }
+    }
+
+    fn current_bus_access_mode(&self) -> PpuAccessMode {
+        let current_mode = self.current_access_mode();
+
+        if !self.is_lcd_enabled() || self.ly >= VISIBLE_SCANLINES {
+            return current_mode;
+        }
+
+        if current_mode == PpuAccessMode::HBlank
+            && self.ly + 1 < VISIBLE_SCANLINES
+            && self.line_dot + 4 >= self.current_scanline_length()
+        {
+            return PpuAccessMode::OamScan;
+        }
+
+        if current_mode == PpuAccessMode::OamScan && self.line_dot + 4 >= MODE2_DOTS {
+            return PpuAccessMode::Drawing;
+        }
+
+        current_mode
+    }
+
+    fn current_cpu_visible_access_mode(&self) -> PpuAccessMode {
+        if self.blank_frame_active && self.is_lcd_enabled() && self.line_dot != 0 {
+            return self
+                .lcd_restart_phase
+                .raster_state(self.ly, self.line_dot - 1)
+                .map(PpuRasterState::access_mode)
+                .unwrap_or_else(|| self.current_access_mode());
+        }
+
+        self.current_access_mode()
     }
 
     fn current_raster_state(&self) -> PpuRasterState {
@@ -271,7 +392,7 @@ impl Ppu {
         let mode2_pretrigger_source = self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT
             != 0
             && self.ly + 1 < VISIBLE_SCANLINES
-            && self.line_dot + 4 >= DOTS_PER_SCANLINE;
+            && self.line_dot + 4 >= self.current_scanline_length();
         let dmg_mode2_vblank_entry_source = self.console_model.is_dmg_family()
             && self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
             && self.current_access_mode() == PpuAccessMode::VBlank
@@ -358,6 +479,7 @@ impl Ppu {
 
     fn enter_lcd_disabled_state(&mut self) {
         self.lcd_state = PpuLcdState::Disabled;
+        self.lcd_enable_pending_delay_tcycles = 0;
         self.blank_frame_active = false;
         self.stat_state.lcd_disabled_lyc_coincidence = self.live_lyc_coincidence();
         self.ly = 0;
@@ -372,15 +494,23 @@ impl Ppu {
 
     fn enter_lcd_enabled_restart_state(&mut self) {
         self.lcd_state = PpuLcdState::Enabled;
+        self.lcd_enable_pending_delay_tcycles = 0;
         self.blank_frame_active = true;
         self.ly = 0;
         self.line_dot = LCD_REENABLE_INITIAL_LINE_DOT;
-        self.lcd_restart_phase = PpuLcdRestartPhase::startup_mode0_window();
+        self.lcd_restart_phase = PpuLcdRestartPhase::first_line_after_enable();
         self.stat_state.lcd_disabled_lyc_coincidence = false;
         self.reset_runtime_pipeline_state();
         self.sync_visible_registers();
         self.sync_pipeline_registers();
         self.clear_visible_buffers();
+        self.refresh_visible_output();
+    }
+
+    fn enter_lcd_enable_pending_state(&mut self, delay_tcycles: u8) {
+        self.lcd_state = PpuLcdState::Disabled;
+        self.lcd_enable_pending_delay_tcycles = delay_tcycles;
+        self.startup_mode_latch = None;
         self.refresh_visible_output();
     }
 }

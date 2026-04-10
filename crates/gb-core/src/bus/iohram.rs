@@ -24,6 +24,7 @@ pub(crate) struct BusIoReadView<'a> {
     pub interrupt_flag_pending_mask: u8,
     pub joypad: Option<&'a Joypad>,
     pub ppu: Option<&'a Ppu>,
+    pub ppu_cpu_visible_read: bool,
 }
 
 #[derive(Default)]
@@ -121,7 +122,14 @@ impl IoHramDomain {
             }
             IoRegisterKind::Lcd => io
                 .ppu
-                .map_or(BLOCKED_READ_VALUE, |ppu| ppu.read_register(address)),
+                .map_or(BLOCKED_READ_VALUE, |ppu| {
+                    let source = if io.ppu_cpu_visible_read {
+                        crate::ppu::PpuRegisterReadSource::CpuBusOperation
+                    } else {
+                        crate::ppu::PpuRegisterReadSource::Immediate
+                    };
+                    ppu.read_register_with_source(address, source)
+                }),
             IoRegisterKind::OamDma => io.dma.map_or(BLOCKED_READ_VALUE, DmaController::read_ff46),
             IoRegisterKind::BootRomDisable => io
                 .boot

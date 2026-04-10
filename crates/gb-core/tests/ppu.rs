@@ -136,6 +136,130 @@ where
     sample(machine)
 }
 
+fn build_lcd_enable_read_probe_rom(address: u16, delay_nops: usize) -> Vec<u8> {
+    let mut program = Vec::new();
+    program.push(0xF3); // di
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.extend_from_slice(&[0xEA, 0xFF, 0xFF]); // ld ($FFFF),a
+    program.extend_from_slice(&[0x11, address as u8, (address >> 8) as u8]); // ld de,addr
+    program.extend_from_slice(&[0x3E, 0x81]); // ld a,$81
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+    program.extend(std::iter::repeat_n(0x00, delay_nops)); // nops
+    program.push(0x1A); // ld a,(de)
+    program.push(0x47); // ld b,a
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+    build_test_rom(&program, 0x00)
+}
+
+fn build_lcd_enable_write_probe_rom(address: u16, delay_nops: usize) -> Vec<u8> {
+    let mut program = Vec::new();
+    program.push(0xF3); // di
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.extend_from_slice(&[0xEA, 0xFF, 0xFF]); // ld ($FFFF),a
+    program.extend_from_slice(&[0x11, address as u8, (address >> 8) as u8]); // ld de,addr
+    program.extend_from_slice(&[0x3E, 0x81]); // ld a,$81
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+    program.extend(std::iter::repeat_n(0x00, delay_nops)); // nops
+    program.push(0x12); // ld (de),a
+
+    let wait_ly_144_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x90]); // cp $90
+    emit_jr_nz(&mut program, wait_ly_144_pc); // jr nz,wait_ly_144
+
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+    program.push(0x1A); // ld a,(de)
+    program.push(0x47); // ld b,a
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+    build_test_rom(&program, 0x00)
+}
+
+fn run_until_halted(machine: &mut Machine, max_t_cycles: usize) -> u8 {
+    for _ in 0..max_t_cycles {
+        machine.step_t_cycle();
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted {
+            return machine.cpu().registers().b;
+        }
+    }
+
+    panic!(
+        "probe ROM did not halt; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LcdEnableWriteProbeObservation {
+    observed_value: u8,
+    write_ly: u8,
+    write_line_dot: u16,
+    write_mode: PpuAccessMode,
+    write_visible_pixels_output: u8,
+}
+
+fn run_lcd_enable_write_probe_observation(
+    address: u16,
+    delay_nops: u16,
+) -> LcdEnableWriteProbeObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_lcd_enable_write_probe_rom(address, delay_nops as usize))
+        .expect("probe ROM should load");
+    machine.write_bus(0xFF40, 0x00);
+    machine.write_bus(address, 0x00);
+
+    let mut write_snapshot = None;
+
+    for _ in 0..10_000_000 {
+        machine.step_t_cycle();
+
+        if write_snapshot.is_none()
+            && let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(address)
+        {
+            let snapshot = machine.ppu().snapshot();
+            write_snapshot = Some((
+                snapshot.ly,
+                snapshot.line_dot,
+                snapshot.mode,
+                snapshot.visible_pixels_output,
+            ));
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted {
+            let (write_ly, write_line_dot, write_mode, write_visible_pixels_output) =
+                write_snapshot.expect("probe should observe the target write");
+            return LcdEnableWriteProbeObservation {
+                observed_value: machine.cpu().registers().b,
+                write_ly,
+                write_line_dot,
+                write_mode,
+                write_visible_pixels_output,
+            };
+        }
+    }
+
+    panic!(
+        "write probe did not halt; address={address:#06X} delay_nops={delay_nops} pc={:#06X} state={:?}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state()
+    );
+}
+
 fn emit_jr_nz(program: &mut Vec<u8>, target_pc: u16) {
     let next_pc = 0x0100_u16 + program.len() as u16 + 2;
     let offset = target_pc as i32 - next_pc as i32;
@@ -999,6 +1123,118 @@ fn lcd_reenable_initial_readback_matches_the_mooneye_lcdon_timing_probe_points()
         panic!(
             "actual_ly={actual_ly:?}\nactual_stat_lyc0={actual_stat_lyc0:?}\nactual_stat_lyc1={actual_stat_lyc1:?}\nactual_oam={actual_oam:?}\nactual_vram={actual_vram:?}"
         );
+    }
+}
+
+#[test]
+#[ignore = "investigating CPU-path LCD enable chronology"]
+fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
+    const PROBE_M_CYCLES: [u16; 24] = [
+        0, 17, 60, 110, 130, 174, 224, 244, 1, 18, 61, 111, 131, 175, 225, 245, 2, 19, 62, 112,
+        132, 176, 226, 246,
+    ];
+    const EXPECTED_LY: [u8; 24] = [
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02,
+        0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x02,
+    ];
+    const EXPECTED_STAT_LYC0: [u8; 24] = [
+        0x84, 0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x84, 0x87, 0x84, 0x80, 0x82, 0x80, 0x80,
+        0x82, 0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x83,
+    ];
+    const EXPECTED_STAT_LYC1: [u8; 24] = [
+        0x80, 0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x80, 0x83, 0x80, 0x80, 0x86, 0x84, 0x80,
+        0x82, 0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x83,
+    ];
+    const EXPECTED_OAM: [u8; 24] = [
+        0x00, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF,
+        0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF,
+    ];
+    const EXPECTED_VRAM: [u8; 24] = [
+        0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00,
+        0xFF, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
+    ];
+
+    let run_probe = |address: u16, delay_nops: u16| -> u8 {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_lcd_enable_read_probe_rom(address, delay_nops as usize))
+            .expect("probe ROM should load");
+        machine.write_bus(0xFF40, 0x00);
+        run_until_halted(&mut machine, 1_000_000)
+    };
+
+    let actual_ly = PROBE_M_CYCLES.map(|delay| run_probe(0xFF44, delay));
+    let actual_stat_lyc0 = PROBE_M_CYCLES.map(|delay| {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_lcd_enable_read_probe_rom(0xFF41, delay as usize))
+            .expect("probe ROM should load");
+        machine.write_bus(0xFF40, 0x00);
+        machine.write_bus(0xFF45, 0x00);
+        run_until_halted(&mut machine, 1_000_000)
+    });
+    let actual_stat_lyc1 = PROBE_M_CYCLES.map(|delay| {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_lcd_enable_read_probe_rom(0xFF41, delay as usize))
+            .expect("probe ROM should load");
+        machine.write_bus(0xFF40, 0x00);
+        machine.write_bus(0xFF45, 0x01);
+        run_until_halted(&mut machine, 1_000_000)
+    });
+    let actual_oam = PROBE_M_CYCLES.map(|delay| run_probe(0xFE00, delay));
+    let actual_vram = PROBE_M_CYCLES.map(|delay| run_probe(0x8000, delay));
+
+    if actual_ly != EXPECTED_LY
+        || actual_stat_lyc0 != EXPECTED_STAT_LYC0
+        || actual_stat_lyc1 != EXPECTED_STAT_LYC1
+        || actual_oam != EXPECTED_OAM
+        || actual_vram != EXPECTED_VRAM
+    {
+        panic!(
+            "actual_ly={actual_ly:?}\nactual_stat_lyc0={actual_stat_lyc0:?}\nactual_stat_lyc1={actual_stat_lyc1:?}\nactual_oam={actual_oam:?}\nactual_vram={actual_vram:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "investigating CPU-path LCDC.7 write chronology"]
+fn cpu_path_lcd_enable_write_probe_matches_the_mooneye_probe_points() {
+    const NOP_COUNTS: [u16; 19] = [
+        0, 17, 18, 60, 61, 110, 111, 112, 130, 131, 132, 174, 175, 224, 225, 226, 244, 245, 246,
+    ];
+    const EXPECTED_OAM: [u8; 19] = [
+        0x81, 0x81, 0x00, 0x00, 0x81, 0x81, 0x81, 0x00, 0x00, 0x81, 0x00, 0x00, 0x81, 0x81, 0x81,
+        0x00, 0x00, 0x81, 0x00,
+    ];
+    const EXPECTED_VRAM: [u8; 19] = [
+        0x81, 0x81, 0x00, 0x00, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x00, 0x00, 0x81, 0x81, 0x81,
+        0x81, 0x81, 0x81, 0x00,
+    ];
+
+    let actual_oam =
+        NOP_COUNTS.map(|delay| run_lcd_enable_write_probe_observation(0xFE00, delay).observed_value);
+    let actual_vram =
+        NOP_COUNTS.map(|delay| run_lcd_enable_write_probe_observation(0x8000, delay).observed_value);
+
+    if actual_oam != EXPECTED_OAM || actual_vram != EXPECTED_VRAM {
+        panic!("actual_oam={actual_oam:?}\nactual_vram={actual_vram:?}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic probe for lcd enable write chronology"]
+fn cpu_path_lcd_enable_write_probe_logs_boundary_snapshots() {
+    for delay in [111_u16, 112, 131, 132, 225, 226, 245, 246] {
+        let oam = run_lcd_enable_write_probe_observation(0xFE00, delay);
+        let vram = run_lcd_enable_write_probe_observation(0x8000, delay);
+        println!("delay={delay} oam={oam:?} vram={vram:?}");
     }
 }
 

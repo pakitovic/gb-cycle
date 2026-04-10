@@ -21,8 +21,13 @@ const SCREEN_HEIGHT: usize = 144;
 const FRAMEBUFFER_PIXELS: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
 const DOTS_PER_SCANLINE: u16 = 456;
 const LY_READ_ADVANCE_START_DOT: u16 = 449;
-const LCD_REENABLE_INITIAL_LINE_DOT: u16 = 4;
-const LCD_REENABLE_STARTUP_HBLANK_END_DOT: u16 = 20;
+const LCD_REENABLE_INITIAL_LINE_DOT: u16 = 0;
+const LCD_REENABLE_LINE0_TOTAL_DOTS: u16 = DOTS_PER_SCANLINE - 8;
+const LCD_REENABLE_LINE0_LY_READ_ADVANCE_START_DOT: u16 = LCD_REENABLE_LINE0_TOTAL_DOTS - 4;
+const LCD_REENABLE_LINE0_MODE3_START_DOT: u16 = MODE2_DOTS - 8;
+const LCD_REENABLE_LINE0_MODE0_RESTORE_DOT: u16 =
+    LCD_REENABLE_LINE0_MODE3_START_DOT + MODE3_BASELINE_DOTS;
+const CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES: u8 = 5;
 const VISIBLE_SCANLINES: u8 = 144;
 const TOTAL_SCANLINES: u8 = 154;
 const MODE2_DOTS: u16 = 80;
@@ -103,13 +108,14 @@ pub enum PpuAccessMode {
 enum PpuLcdRestartPhase {
     #[default]
     Inactive,
-    StartupMode0Window,
+    FirstLineAfterEnable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum PpuRasterState {
     Disabled,
-    LcdRestartStartupMode0 {
+    LcdRestartFirstLine {
+        mode: PpuAccessMode,
         mode_dot: u16,
     },
     Active {
@@ -122,15 +128,15 @@ enum PpuRasterState {
 impl PpuRasterState {
     const fn access_mode(self) -> PpuAccessMode {
         match self {
-            Self::Disabled | Self::LcdRestartStartupMode0 { .. } => PpuAccessMode::HBlank,
-            Self::Active { mode, .. } => mode,
+            Self::Disabled => PpuAccessMode::HBlank,
+            Self::LcdRestartFirstLine { mode, .. } | Self::Active { mode, .. } => mode,
         }
     }
 
     const fn mode_dot(self) -> u16 {
         match self {
             Self::Disabled => 0,
-            Self::LcdRestartStartupMode0 { mode_dot } | Self::Active { mode_dot, .. } => mode_dot,
+            Self::LcdRestartFirstLine { mode_dot, .. } | Self::Active { mode_dot, .. } => mode_dot,
         }
     }
 
@@ -146,28 +152,37 @@ impl PpuRasterState {
 }
 
 impl PpuLcdRestartPhase {
-    const fn startup_mode0_window() -> Self {
-        Self::StartupMode0Window
+    const fn first_line_after_enable() -> Self {
+        Self::FirstLineAfterEnable
     }
 
-    const fn is_startup_mode0_window_active(self, ly: u8, line_dot: u16) -> bool {
-        matches!(self, Self::StartupMode0Window)
-            && ly == 0
-            && line_dot < LCD_REENABLE_STARTUP_HBLANK_END_DOT
+    const fn is_first_line_after_enable_active(self, ly: u8) -> bool {
+        matches!(self, Self::FirstLineAfterEnable) && ly == 0
     }
 
     const fn raster_state(self, ly: u8, line_dot: u16) -> Option<PpuRasterState> {
-        if self.is_startup_mode0_window_active(ly, line_dot) {
-            Some(PpuRasterState::LcdRestartStartupMode0 {
-                mode_dot: line_dot.saturating_sub(LCD_REENABLE_INITIAL_LINE_DOT),
-            })
+        if self.is_first_line_after_enable_active(ly) {
+            let (mode, mode_dot) = if line_dot < LCD_REENABLE_LINE0_MODE3_START_DOT {
+                (PpuAccessMode::HBlank, line_dot)
+            } else if line_dot < LCD_REENABLE_LINE0_MODE0_RESTORE_DOT {
+                (
+                    PpuAccessMode::Drawing,
+                    line_dot.saturating_sub(LCD_REENABLE_LINE0_MODE3_START_DOT),
+                )
+            } else {
+                (
+                    PpuAccessMode::HBlank,
+                    line_dot.saturating_sub(LCD_REENABLE_LINE0_MODE0_RESTORE_DOT),
+                )
+            };
+            Some(PpuRasterState::LcdRestartFirstLine { mode, mode_dot })
         } else {
             None
         }
     }
 
-    const fn advance(self, ly: u8, line_dot: u16) -> Self {
-        if self.is_startup_mode0_window_active(ly, line_dot) {
+    const fn advance(self, ly: u8, _line_dot: u16) -> Self {
+        if self.is_first_line_after_enable_active(ly) {
             self
         } else {
             Self::Inactive
@@ -317,6 +332,18 @@ pub enum PpuStatus {
     RegistersReady,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum PpuRegisterWriteSource {
+    Immediate,
+    CpuMmioCommit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum PpuRegisterReadSource {
+    Immediate,
+    CpuBusOperation,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DmgObjPaletteReadPolicy {
     #[default]
@@ -352,6 +379,7 @@ pub struct Ppu {
     lcdc: u8,
     stat_interrupt_enable: u8,
     lcd_state: PpuLcdState,
+    lcd_enable_pending_delay_tcycles: u8,
     visible_output: PpuVisibleOutputState,
     scy: u8,
     scx: u8,
@@ -603,6 +631,7 @@ impl Ppu {
             lcdc: 0,
             stat_interrupt_enable: 0,
             lcd_state: PpuLcdState::Disabled,
+            lcd_enable_pending_delay_tcycles: 0,
             visible_output: PpuVisibleOutputState::ForcedBlank,
             scy: 0,
             scx: 0,
@@ -647,16 +676,56 @@ impl Ppu {
 
     pub fn bus_state(&self) -> PpuBusState {
         if self.is_lcd_enabled() {
-            PpuBusState::lcd_enabled(self.current_access_mode())
+            PpuBusState::lcd_enabled(self.current_bus_access_mode())
+        } else {
+            PpuBusState::lcd_disabled()
+        }
+    }
+
+    pub(crate) fn cpu_bus_state(&self) -> PpuBusState {
+        if self.is_lcd_enabled() {
+            PpuBusState::lcd_enabled(self.current_published_bus_access_mode())
+        } else {
+            PpuBusState::lcd_disabled()
+        }
+    }
+
+    pub(crate) fn cpu_write_bus_state(&self) -> PpuBusState {
+        if self.is_lcd_enabled() {
+            PpuBusState::lcd_enabled(self.current_published_stat_access_mode())
+        } else {
+            PpuBusState::lcd_disabled()
+        }
+    }
+
+    pub(crate) fn cpu_oam_write_bus_state(&self) -> PpuBusState {
+        if self.is_lcd_enabled() {
+            PpuBusState::lcd_enabled(self.current_published_oam_write_access_mode())
+        } else {
+            PpuBusState::lcd_disabled()
+        }
+    }
+
+    pub(crate) fn owner_bus_state(&self) -> PpuBusState {
+        if self.is_lcd_enabled() {
+            PpuBusState::lcd_enabled(self.current_bus_access_mode())
         } else {
             PpuBusState::lcd_disabled()
         }
     }
 
     pub fn read_register(&self, address: u16) -> u8 {
+        self.read_register_with_source(address, PpuRegisterReadSource::Immediate)
+    }
+
+    pub(crate) fn read_register_with_source(
+        &self,
+        address: u16,
+        source: PpuRegisterReadSource,
+    ) -> u8 {
         match address {
             0xFF40 => self.read_lcdc(),
-            0xFF41 => self.read_stat(),
+            0xFF41 => self.read_stat(source),
             0xFF42 => self.scy,
             0xFF43 => self.scx,
             0xFF44 => self.read_ly(),
@@ -675,9 +744,18 @@ impl Ppu {
     }
 
     pub fn write_register(&mut self, address: u16, value: u8) {
+        self.write_register_with_source(address, value, PpuRegisterWriteSource::Immediate);
+    }
+
+    pub(crate) fn write_register_with_source(
+        &mut self,
+        address: u16,
+        value: u8,
+        source: PpuRegisterWriteSource,
+    ) {
         let previous_lcdc = self.lcdc;
         match address {
-            0xFF40 => self.write_lcdc(value),
+            0xFF40 => self.write_lcdc(value, source),
             0xFF41 => self.write_stat(value),
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
@@ -743,6 +821,7 @@ impl Ppu {
         self.lcdc = startup_state.lcdc;
         self.stat_interrupt_enable = startup_state.stat & STAT_WRITABLE_ENABLE_MASK;
         self.lcd_state = lcd_state_from_lcdc(self.lcdc);
+        self.lcd_enable_pending_delay_tcycles = 0;
         self.visible_output = visible_output_for_lcd_state(self.lcd_state);
         self.scy = startup_state.scy;
         self.scx = startup_state.scx;
@@ -819,7 +898,7 @@ impl Ppu {
             oam.is_acquired_by_master(),
             self.is_lcd_enabled()
                 && matches!(
-                    self.current_access_mode(),
+                    self.current_bus_access_mode(),
                     PpuAccessMode::OamScan | PpuAccessMode::Drawing
                 )
         );
@@ -829,11 +908,22 @@ impl Ppu {
         );
         debug_assert_eq!(
             vram.is_acquired_by_master(),
-            self.is_lcd_enabled() && self.current_access_mode() == PpuAccessMode::Drawing
+            self.is_lcd_enabled() && self.current_bus_access_mode() == PpuAccessMode::Drawing
         );
 
         if !self.is_lcd_enabled() {
-            return;
+            if self.lcd_enable_pending_delay_tcycles > 0 {
+                self.lcd_enable_pending_delay_tcycles -= 1;
+                if self.lcd_enable_pending_delay_tcycles == 0
+                    && self.lcdc & LCDC_ENABLE_BIT != 0
+                {
+                    self.enter_lcd_enabled_restart_state();
+                } else {
+                    return;
+                }
+            } else {
+                return;
+            }
         }
 
         let step_region = self.current_step_region_after_line_advance();
@@ -853,7 +943,7 @@ impl Ppu {
         self.advance_mode3_pipeline(&oam, &vram, dma_oam_conflict, observer);
 
         observe_ppu_step_region(observer, step_region, || {
-            if self.line_dot == DOTS_PER_SCANLINE {
+            if self.line_dot == self.current_scanline_length() {
                 let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
                 if self.bg_pipeline_state.window_started_this_line {
                     self.window_state.window_line_counter =
@@ -1023,9 +1113,29 @@ impl Ppu {
         self.blank_frame_active
     }
 
-    pub fn is_startup_mode0_window_active(&self) -> bool {
+    pub fn is_restart_first_line_active(&self) -> bool {
         self.lcd_restart_phase
-            .is_startup_mode0_window_active(self.ly, self.line_dot)
+            .is_first_line_after_enable_active(self.ly)
+    }
+
+    pub fn is_startup_mode0_window_active(&self) -> bool {
+        self.is_restart_first_line_active()
+    }
+
+    fn current_scanline_length(&self) -> u16 {
+        if self.is_restart_first_line_active() {
+            LCD_REENABLE_LINE0_TOTAL_DOTS
+        } else {
+            DOTS_PER_SCANLINE
+        }
+    }
+
+    fn current_ly_read_advance_start_dot(&self) -> u16 {
+        if self.is_restart_first_line_active() {
+            LCD_REENABLE_LINE0_LY_READ_ADVANCE_START_DOT
+        } else {
+            LY_READ_ADVANCE_START_DOT
+        }
     }
 
     pub fn framebuffer(&self) -> &[u8] {

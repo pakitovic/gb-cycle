@@ -9,7 +9,7 @@ mod map;
 mod view;
 
 fn sync_test_video_ownership(ppu: &Ppu, oam: &mut OamDomain, vram: &mut VramDomain) {
-    let bus_state = ppu.bus_state();
+    let bus_state = ppu.owner_bus_state();
     let ppu_vram = bus_state.is_lcd_enabled() && bus_state.mode() == PpuAccessMode::Drawing;
     let ppu_oam = bus_state.is_lcd_enabled()
         && matches!(

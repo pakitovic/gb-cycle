@@ -446,10 +446,15 @@ impl Ppu {
     fn current_step_region_after_line_advance(&self) -> PpuStepRegion {
         let next_line_dot = self.line_dot + 1;
         let next_lcd_restart_phase = self.lcd_restart_phase.advance(self.ly, next_line_dot);
-        if next_lcd_restart_phase.is_startup_mode0_window_active(self.ly, next_line_dot)
-            || self.ly >= VISIBLE_SCANLINES
-            || next_line_dot >= self.current_mode0_start_dot()
-        {
+        if let Some(raster_state) = next_lcd_restart_phase.raster_state(self.ly, next_line_dot) {
+            return match raster_state.access_mode() {
+                PpuAccessMode::Drawing => PpuStepRegion::Mode3Startup,
+                PpuAccessMode::HBlank | PpuAccessMode::VBlank => PpuStepRegion::Mode0Or1,
+                PpuAccessMode::OamScan => PpuStepRegion::Mode2Scan,
+            };
+        }
+
+        if self.ly >= VISIBLE_SCANLINES || next_line_dot >= self.current_mode0_start_dot() {
             return PpuStepRegion::Mode0Or1;
         }
 
