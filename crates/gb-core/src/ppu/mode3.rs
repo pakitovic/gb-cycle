@@ -56,10 +56,13 @@ impl Ppu {
     ) -> bool {
         self.sync_pending_obj_hit_ownership();
         self.latch_object_fetch_hits();
-        self.try_start_object_fetch_from_current_dot(
+        let started = self.try_start_object_fetch_from_current_dot(
             ObjFetchStartSource::FifoBackedTransfer,
-            false,
+            true,
         );
+        if started && self.terminal_mode3_dot_started_shared_obj_fetch() {
+            self.bg_pipeline_state.extend_mode3_by_one_dot();
+        }
         self.advance_object_fetch(oam, vram, dma_oam_conflict)
     }
 
@@ -115,9 +118,10 @@ impl Ppu {
             && self.obj_enabled()
             && has_pending_obj_hit;
         let current_transfer_is_fifo_backed = self.current_transfer().is_some_and(|transfer| {
-            transfer.can_start_obj_fetch_from_fifo_backed_transfer(
-                !self.bg_pipeline_state.fifo.is_empty(),
-            ) && self.bg_fetcher_ready_for_fifo_backed_obj_start()
+            (transfer.can_start_obj_fetch_from_fifo_backed_transfer(
+                self.bg_pipeline_state.fifo_contains_real_pixels(),
+            ) || self.previsible_same_x_chain_can_start_obj_fetch(transfer))
+                && self.bg_fetcher_ready_for_fifo_backed_obj_start()
         });
 
         Mode3DotArbitration {
@@ -126,6 +130,44 @@ impl Ppu {
                 && current_transfer_is_fifo_backed,
             obj_fetch_can_start_from_queued_bg_fill: obj_fetch_can_start,
         }
+    }
+
+    fn previsible_same_x_chain_can_start_obj_fetch(
+        &self,
+        transfer: Mode3CurrentTransfer,
+    ) -> bool {
+        matches!(
+            (transfer.context.lane, transfer.readiness),
+            (
+                Mode3TransferLane::PreVisible,
+                Mode3TransferReadiness::Ready(Mode3TransferServicePlan {
+                    execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
+                    ..
+                }),
+            )
+        ) && !self.bg_pipeline_state.effective_fifo_is_empty()
+            && self.obj_pipeline_state.pending_match_x
+                == Some(self.bg_pipeline_state.current_transfer_x)
+            && !self.obj_pipeline_state.pending_sprite_slots.is_empty()
+            && match transfer.context.source_window {
+                Mode3TransferSourceWindow::AbstractStartup => {
+                    self.fetched_same_x_obj_sprite_count_for_pending_match_x() > 0
+                }
+                Mode3TransferSourceWindow::FifoBacked => {
+                    self.previsible_fifo_backed_same_x_chain_can_start_obj_fetch()
+                }
+            }
+    }
+
+    fn previsible_fifo_backed_same_x_chain_can_start_obj_fetch(&self) -> bool {
+        if !self.current_transfer_x_supports_early_same_x_obj_start() {
+            return false;
+        }
+
+        let fetched_same_x_count = self.fetched_same_x_obj_sprite_count_for_pending_match_x();
+        matches!(fetched_same_x_count, 1 | 3)
+            || (fetched_same_x_count >= 2 && fetched_same_x_count.is_multiple_of(2))
+            || self.terminal_previsible_same_x_chain_can_start_obj_fetch()
     }
 
     fn current_transfer_context(&self) -> Option<Mode3TransferContext> {
@@ -890,6 +932,8 @@ impl Ppu {
             return false;
         }
 
+        let pending_nonterminal_same_x_cluster_pays_startup_dot =
+            self.pending_nonterminal_same_x_cluster_pays_startup_dot();
         let Some(sprite_slot) = self.obj_pipeline_state.pop_pending_fetch_hit() else {
             return false;
         };
@@ -898,6 +942,8 @@ impl Ppu {
         };
 
         self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
+        let overlap_current_dot = overlap_current_dot
+            && !pending_nonterminal_same_x_cluster_pays_startup_dot;
         if overlap_current_dot {
             if matches!(
                 start_source,
@@ -905,7 +951,6 @@ impl Ppu {
             ) {
                 self.bg_pipeline_state.push.interrupt_for_object_fetch();
             }
-            self.bg_pipeline_state.extend_mode3_by_one_dot();
             self.obj_pipeline_state.fetch.stage_dot = 1;
         }
         true
@@ -929,10 +974,19 @@ impl Ppu {
     }
 
     fn bg_fetcher_ready_for_fifo_backed_obj_start(&self) -> bool {
-        !matches!(
-            self.bg_pipeline_state.fetcher.stage,
-            PpuBgFetcherStage::TileIndex | PpuBgFetcherStage::TileDataLow
-        )
+        let allow_same_x_cluster_tileindex_overlap = self.current_transfer_x_supports_early_same_x_obj_start()
+            && self.obj_pipeline_state.pending_sprite_slots.len() >= 2
+            && self.obj_pipeline_state.pending_match_x
+                == Some(self.bg_pipeline_state.current_transfer_x);
+        if self.bg_pipeline_state.current_transfer_x < 8 {
+            allow_same_x_cluster_tileindex_overlap
+                || !matches!(self.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::TileIndex)
+        } else {
+            !matches!(
+                self.bg_pipeline_state.fetcher.stage,
+                PpuBgFetcherStage::TileIndex | PpuBgFetcherStage::TileDataLow
+            )
+        }
     }
 
     fn advance_object_fetch(
@@ -951,12 +1005,20 @@ impl Ppu {
             return false;
         }
 
-        self.bg_pipeline_state.extend_mode3_by_one_dot();
         if !self.obj_enabled() {
             self.obj_pipeline_state.fetch.cancelled = true;
         }
 
         let fetch = self.obj_pipeline_state.fetch;
+        let startup_dot_is_shared =
+            matches!((fetch.stage, fetch.stage_dot), (PpuObjFetcherStage::Startup, 1))
+                && !fetch.count_terminal_push_dot;
+        let push_dot_is_shared =
+            matches!((fetch.stage, fetch.stage_dot), (PpuObjFetcherStage::Push, 1))
+                && !fetch.count_terminal_push_dot;
+        if !startup_dot_is_shared && !push_dot_is_shared {
+            self.bg_pipeline_state.extend_mode3_by_one_dot();
+        }
         match (fetch.stage, fetch.stage_dot) {
             (PpuObjFetcherStage::Startup, 0) => {
                 self.obj_pipeline_state.fetch.stage_dot = 1;
@@ -965,9 +1027,23 @@ impl Ppu {
                 let resolved_sprite = fetch
                     .sprite
                     .map(|sprite| self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict));
+                let first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte =
+                    self.first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte();
+                let first_fast_same_x_cluster_fetch_skips_first_tile_data_low_half_step =
+                    !first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte
+                        && self.initial_nonterminal_same_x_cluster_skips_first_low_half_step()
+                        && !self.obj_pipeline_state.pending_sprite_slots.is_empty()
+                        && self.fetched_same_x_obj_sprite_count_for_active_fetch() == 0;
                 self.obj_pipeline_state.fetch.resolved_sprite = resolved_sprite;
-                self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataLow;
-                self.obj_pipeline_state.fetch.stage_dot = 0;
+                if first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte {
+                    self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
+                    self.obj_pipeline_state.fetch.stage_dot = 0;
+                } else {
+                    self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataLow;
+                    self.obj_pipeline_state.fetch.stage_dot = u8::from(
+                        first_fast_same_x_cluster_fetch_skips_first_tile_data_low_half_step,
+                    );
+                }
             }
             (PpuObjFetcherStage::TileDataLow, 0) => {
                 self.obj_pipeline_state.fetch.stage_dot = 1;
@@ -1011,6 +1087,53 @@ impl Ppu {
                 self.obj_pipeline_state.mark_fetched(fetch.sprite_slot);
                 self.obj_pipeline_state.fetch = ObjFetchState::default();
                 self.bg_pipeline_state.push.resume_after_object_fetch();
+                let pending_nonterminal_same_x_cluster_pays_startup_dot =
+                    self.pending_nonterminal_same_x_cluster_pays_startup_dot();
+                let started = self.try_start_object_fetch_from_current_dot(
+                    ObjFetchStartSource::FifoBackedTransfer,
+                    true,
+                );
+                if started && self.obj_fetch_startup_ready() {
+                    let started_on_terminal_mode3_dot =
+                        self.terminal_mode3_dot_started_shared_obj_fetch();
+                    let long_same_x_tail_restart =
+                        self.chained_same_x_obj_fetch_uses_long_tail_restart();
+                    if long_same_x_tail_restart {
+                        self.bg_pipeline_state.extend_mode3_by_one_dot();
+                    }
+                    let sprite = self
+                        .obj_pipeline_state
+                        .fetch
+                        .sprite
+                        .expect("chained OBJ fetch must keep sprite metadata");
+                    let resolved_sprite =
+                        self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict);
+                    self.obj_pipeline_state.fetch.resolved_sprite = Some(resolved_sprite);
+                    if long_same_x_tail_restart {
+                        self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
+                        self.obj_pipeline_state.fetch.stage_dot = 0;
+                        self.obj_pipeline_state.fetch.count_terminal_push_dot = true;
+                    } else {
+                        if pending_nonterminal_same_x_cluster_pays_startup_dot {
+                            self.bg_pipeline_state.extend_mode3_by_one_dot();
+                        }
+                        if self.terminal_previsible_same_x_chain_skips_obj_tile_data_low_byte() {
+                            self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
+                            self.obj_pipeline_state.fetch.stage_dot = 0;
+                        } else {
+                            self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataLow;
+                            // Same-X chains overlap every second additional sprite with the
+                            // current shared-fetcher dot; the others still pay the full
+                            // first TileDataLow half-step.
+                            self.obj_pipeline_state.fetch.stage_dot = u8::from(
+                                self.chained_same_x_obj_fetch_skips_first_tile_data_low_half_step(),
+                            );
+                        }
+                        if started_on_terminal_mode3_dot {
+                            self.bg_pipeline_state.extend_mode3_by_one_dot();
+                        }
+                    }
+                }
             }
             (PpuObjFetcherStage::Idle, _) => unreachable!(
                 "idle OBJ fetch must have returned before entering the explicit dot automaton"
@@ -1056,6 +1179,148 @@ impl Ppu {
             attributes,
             ..sprite
         }
+    }
+
+    fn chained_same_x_obj_fetch_skips_first_tile_data_low_half_step(&self) -> bool {
+        let fetched_same_x_count = self.fetched_same_x_obj_sprite_count_for_active_fetch();
+        (fetched_same_x_count >= 2 && fetched_same_x_count.is_multiple_of(2))
+            || (matches!(fetched_same_x_count, 1 | 3)
+                && self.nonterminal_same_x_cluster_restart_skips_first_low_half_step())
+            || (fetched_same_x_count >= 5
+                && fetched_same_x_count % 2 == 1
+                && self.hidden_same_x_cluster_restart_skips_first_low_half_step())
+            || self.terminal_previsible_same_x_chain_skips_first_low_half_step()
+    }
+
+    fn chained_same_x_obj_fetch_uses_long_tail_restart(&self) -> bool {
+        let fetched_same_x_count = self.fetched_same_x_obj_sprite_count_for_active_fetch();
+        fetched_same_x_count >= 5
+            && fetched_same_x_count % 2 == 1
+            && !self.current_transfer_x_supports_early_same_x_obj_start()
+    }
+
+    fn first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte(&self) -> bool {
+        self.bg_pipeline_state.current_transfer_x < 167
+            && (self.bg_pipeline_state.current_transfer_x & 0x07) < 6
+            && self.current_transfer_x_supports_early_same_x_obj_start()
+            && !self.obj_pipeline_state.pending_sprite_slots.is_empty()
+            && self.fetched_same_x_obj_sprite_count_for_active_fetch() == 0
+            && matches!(
+                (
+                    self.bg_pipeline_state.fetcher.stage,
+                    self.bg_pipeline_state.fetcher.stage_dot,
+                ),
+                (PpuBgFetcherStage::TileDataHigh, 1)
+            )
+    }
+
+    fn initial_nonterminal_same_x_cluster_skips_first_low_half_step(&self) -> bool {
+        self.bg_pipeline_state.current_transfer_x < 167
+            && (self.bg_pipeline_state.current_transfer_x & 0x07) < 7
+            && self.current_transfer_x_supports_early_same_x_obj_start()
+    }
+
+    fn nonterminal_same_x_cluster_restart_skips_first_low_half_step(&self) -> bool {
+        self.bg_pipeline_state.current_transfer_x < 167
+            && (self.bg_pipeline_state.current_transfer_x & 0x07) < 7
+            && self.current_transfer_x_supports_early_same_x_obj_start()
+    }
+
+    fn hidden_same_x_cluster_restart_skips_first_low_half_step(&self) -> bool {
+        matches!(
+            self.current_transfer(),
+            Some(Mode3CurrentTransfer {
+                context: Mode3TransferContext {
+                    lane: Mode3TransferLane::Hidden,
+                    source_window: Mode3TransferSourceWindow::FifoBacked,
+                },
+                ..
+            })
+        ) && matches!(
+            (
+                self.bg_pipeline_state.fetcher.stage,
+                self.bg_pipeline_state.fetcher.stage_dot,
+            ),
+            (PpuBgFetcherStage::TileDataHigh, 1)
+        )
+    }
+
+    fn terminal_previsible_same_x_chain_can_start_obj_fetch(&self) -> bool {
+        self.bg_pipeline_state.current_transfer_x < 8
+            && self.obj_pipeline_state.pending_match_x
+                == Some(self.bg_pipeline_state.current_transfer_x)
+            && self.obj_pipeline_state.pending_sprite_slots.len() == 1
+            && self.fetched_same_x_obj_sprite_count_for_pending_match_x() > 0
+    }
+
+    fn terminal_previsible_same_x_chain_skips_first_low_half_step(&self) -> bool {
+        self.bg_pipeline_state.current_transfer_x < 8
+            && self.current_transfer_x_supports_early_same_x_obj_start()
+            && self.obj_pipeline_state.pending_match_x.is_none()
+            && self.obj_pipeline_state.pending_sprite_slots.is_empty()
+            && self.fetched_same_x_obj_sprite_count_for_active_fetch() > 0
+    }
+
+    fn terminal_previsible_same_x_chain_skips_obj_tile_data_low_byte(&self) -> bool {
+        self.terminal_previsible_same_x_chain_skips_first_low_half_step()
+            && self.fetched_same_x_obj_sprite_count_for_active_fetch() >= 9
+    }
+
+    fn current_transfer_x_supports_early_same_x_obj_start(&self) -> bool {
+        matches!(self.bg_pipeline_state.current_transfer_x & 0x07, 2..=7)
+    }
+
+    fn terminal_mode3_dot_started_shared_obj_fetch(&self) -> bool {
+        matches!(
+            (
+                self.obj_pipeline_state.fetch.stage,
+                self.obj_pipeline_state.fetch.stage_dot,
+            ),
+            (PpuObjFetcherStage::Startup, 1)
+        ) && self.line_dot.saturating_add(1) == self.current_mode0_start_dot()
+    }
+
+    fn pending_nonterminal_same_x_cluster_pays_startup_dot(&self) -> bool {
+        self.bg_pipeline_state.current_transfer_x < 167
+            && self.current_transfer_x_supports_early_same_x_obj_start()
+            && self.obj_pipeline_state.pending_match_x
+                == Some(self.bg_pipeline_state.current_transfer_x)
+            && self.obj_pipeline_state.pending_sprite_slots.len() >= 2
+    }
+
+    fn fetched_same_x_obj_sprite_count_for_active_fetch(&self) -> usize {
+        let Some(sprite) = self.obj_pipeline_state.fetch.sprite else {
+            return 0;
+        };
+        let Some(trigger_x) = sprite_trigger_x(sprite) else {
+            return 0;
+        };
+
+        self.fetched_same_x_obj_sprite_count_for_trigger_x(trigger_x)
+    }
+
+    fn fetched_same_x_obj_sprite_count_for_pending_match_x(&self) -> usize {
+        let Some(trigger_x) = self.obj_pipeline_state.pending_match_x else {
+            return 0;
+        };
+
+        self.fetched_same_x_obj_sprite_count_for_trigger_x(trigger_x)
+    }
+
+    fn fetched_same_x_obj_sprite_count_for_trigger_x(&self, trigger_x: u8) -> usize {
+        let mut fetched_same_x_count = 0_usize;
+        for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
+            if !self.obj_pipeline_state.has_fetched(sprite_slot) {
+                continue;
+            }
+            let Some(selected_sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
+                continue;
+            };
+            if sprite_trigger_x(selected_sprite) == Some(trigger_x) {
+                fetched_same_x_count += 1;
+            }
+        }
+        fetched_same_x_count
     }
 
     fn window_trigger_x_for_current_line(&self) -> Option<u8> {

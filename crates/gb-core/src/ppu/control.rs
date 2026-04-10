@@ -151,6 +151,8 @@ impl Ppu {
     fn current_published_stat_access_mode(&self) -> PpuAccessMode {
         if self.line_dot != 0 {
             let published_mode = self.access_mode_for_line_dot(self.line_dot - 1);
+            let sprite_extended_mode3 =
+                self.current_mode0_start_dot() > self.baseline_mode0_start_dot();
 
             if published_mode == PpuAccessMode::OamScan
                 && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::Drawing
@@ -166,8 +168,18 @@ impl Ppu {
                 && !self.blank_frame_active
                 && self.ly < VISIBLE_SCANLINES
                 && self.line_dot == self.current_mode0_start_dot()
+                && !sprite_extended_mode3
             {
                 return PpuAccessMode::HBlank;
+            }
+
+            if published_mode == PpuAccessMode::HBlank
+                && !self.blank_frame_active
+                && self.ly < VISIBLE_SCANLINES
+                && sprite_extended_mode3
+                && self.line_dot == self.current_mode0_start_dot().saturating_add(2)
+            {
+                return PpuAccessMode::Drawing;
             }
 
             return published_mode;
@@ -282,6 +294,10 @@ impl Ppu {
         } else {
             MODE0_START_DOT + u16::from(self.visible_registers.scx & 0x07)
         }
+    }
+
+    fn baseline_mode0_start_dot(&self) -> u16 {
+        MODE0_START_DOT + u16::from(self.visible_registers.scx & 0x07)
     }
 
     pub(crate) fn current_mode2_oam_row(&self) -> Option<u8> {

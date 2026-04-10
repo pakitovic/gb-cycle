@@ -458,6 +458,9 @@ pub struct PpuSnapshot {
     pub bg_current_transfer_kind: Option<PpuMode3TransferDotKindSnapshot>,
     pub obj_fetcher_stage: PpuObjFetcherStage,
     pub obj_fetcher_stage_dot: u8,
+    pub obj_pending_hit_match_x: Option<u8>,
+    pub obj_pending_hit_len: usize,
+    pub obj_pending_hit_front_sprite_slot: Option<u8>,
     pub obj_fifo_pixels: Vec<Option<u8>>,
     pub scx_discard_remaining: u8,
     pub visible_pixels_output: u8,
@@ -1059,6 +1062,13 @@ impl Ppu {
                 .map(|plan| snapshot_bg_transfer_kind(plan.result_kind)),
             obj_fetcher_stage: self.obj_pipeline_state.fetch.stage,
             obj_fetcher_stage_dot: self.obj_pipeline_state.fetch.stage_dot,
+            obj_pending_hit_match_x: self.obj_pipeline_state.pending_match_x,
+            obj_pending_hit_len: self.obj_pipeline_state.pending_sprite_slots.len(),
+            obj_pending_hit_front_sprite_slot: self
+                .obj_pipeline_state
+                .pending_sprite_slots
+                .front()
+                .copied(),
             obj_fifo_pixels: self
                 .obj_pipeline_state
                 .fifo

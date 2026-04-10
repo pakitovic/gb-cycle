@@ -1286,6 +1286,7 @@ impl ObjPipelineState {
         self.fetch.sprite = Some(sprite);
         self.fetch.resolved_sprite = None;
         self.fetch.cancelled = false;
+        self.fetch.count_terminal_push_dot = false;
         self.fetch.tile_low = 0;
         self.fetch.tile_high = 0;
     }
@@ -1367,6 +1368,7 @@ struct ObjFetchState {
     sprite: Option<PpuSelectedSprite>,
     resolved_sprite: Option<PpuSelectedSprite>,
     cancelled: bool,
+    count_terminal_push_dot: bool,
     tile_low: u8,
     tile_high: u8,
 }

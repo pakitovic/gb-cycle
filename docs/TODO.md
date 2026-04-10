@@ -100,6 +100,21 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 - [PPU][MOONEYE-LCD-RESTART] `stat_lyc_onoff`, `lcdon_timing-GS`, and `lcdon_write_timing-GS` are closed. The dedicated CPU-path LCD-enable read probe is now green for `LY`, `STAT` with `LYC=0/1`, OAM, and VRAM, and the dedicated CPU-path `LCDC.7` write probe is green too. The remaining restart-lane relevance is no longer an open mooneye blocker, but a possible explanatory seam for some repeated left-edge / visible-output debt if mealybug follow-up still points there.
 
 - [PPU][MOONEYE-STAT-TIMING] `hblank_ly_scx_timing-GS`, `intr_2_0_timing`, `vblank_stat_intr-GS` are now green. Remaining open case: `ppu/intr_2_mode0_timing_sprites` — sprite-coupled Mode `2 -> 0` timing is not fully closed.
+  - Current re-entry state for `intr_2_mode0_timing_sprites.gb`:
+    - testcase `0` (`1 sprite at X=0`) is locally closed again: the first `STAT` read after the IRQ sees `HBlank`, with `before_line_dot = 259` and `mode0_start_dot = 259`.
+    - testcase `1` (`2 sprites at X=0`) is also locally closed: the first `STAT` read after the IRQ sees `HBlank`, with `before_line_dot = 267` and `mode0_start_dot = 267`.
+    - testcase `11` (`10 sprites at X=2`) is now effectively closed too. The real ROM round counts now match the expected `1,2` shape: round A reads `0xA0` immediately, and round B reads `0xA3 -> 0xA0`.
+    - the first remaining real ROM failure has therefore moved to testcase `13` (`10 sprites at X=4`).
+  - The remaining testcase-`13` gap is narrower, but no longer looks like the old pre-visible same-`X` seam:
+    - the current failure signature at `pc=0x4870` reports `testcase_index = 13`, `ly = 99`, `line_dot = 4`, `mode = OamScan`, and `mode0_start_dot = 252`.
+    - on the real `ly = 68` measurement line, testcase `13` runs through the hidden lane rather than the pre-visible lane: `current_transfer_x = 4`, the terminal sprite is already significantly overlapped, and the suspicious work sits in the hidden same-`X` restart chain.
+    - the runtime now has an explicit hidden-lane adjustment for late same-`X` clusters at `X mod 8 = 4`, and the corresponding unit oracle is green, but the full ROM still fails on testcase `13`.
+    - the cheap repo-local `X=4` mini-probe currently reports a `1,1` shape, not the expected `1,2`, so it is not yet a faithful replacement for the real testcase setup.
+  - Do not retry these two directions first:
+    - a one-dot-earlier CPU-visible `STAT` `Drawing -> HBlank` publication experiment did not move the earlier testcase-`2` oracle and regressed the local boundary unit test.
+    - broader chained-fetch experiments that recurse into `advance_object_fetch()` from `Push1`, or that suppress chained `Push0` cost blindly, destabilized the local diagnostics and were reverted.
+  - Highest-value next step from this checkpoint:
+    - keep testcase `13` as the active oracle and determine whether the remaining red is still in the hidden same-`X` restart cost itself or in testcase setup that the local `X=4` probe does not reproduce. The next useful move is a narrow local probe that matches testcase `13` setup more faithfully, not another blind `STAT` or bus-publication retune.
 
 - [PPU][FF44-HBLANK-SEAM] The exact DMG `FF44` advance point inside late HBlank is still hypothesis-only. The docs prefer the "last machine cycle of HBlank" wording, but a direct retune of the current implementation threshold to later dots regressed `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` from green to red while leaving the rest of the model unchanged. Re-entry should start from a narrow trace or oracle comparison around the late-HBlank `LY/SCX` polling seam rather than from another blind constant change. Hard gate: `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` must stay green.
 

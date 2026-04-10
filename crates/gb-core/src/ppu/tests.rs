@@ -708,6 +708,129 @@ fn cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot() {
 }
 
 #[test]
+fn cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot_for_offscreen_right_sprites() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 1;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 168,
+        tile_index: 0,
+        attributes: 0,
+    });
+
+    ppu.line_dot = MODE0_START_DOT - 1;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+
+    ppu.line_dot = MODE0_START_DOT;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+#[ignore = "diagnostic direct-read experiment for offscreen-right mode0 publication"]
+fn cpu_stat_read_switches_to_hblank_one_dot_before_mode0_start_for_offscreen_right_sprites() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    for oam_index in 0..10 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 168,
+            tile_index: 0,
+            attributes: 0,
+        });
+    }
+
+    ppu.line_dot = MODE0_START_DOT - 1;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_one_more_published_dot_after_sprite_extended_mode0_start() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 1;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 58;
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 8,
+        tile_index: 0,
+        attributes: 0,
+    });
+
+    ppu.line_dot = ppu.bg_pipeline_state.mode0_start_dot + 2;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+
+    ppu.line_dot = ppu.bg_pipeline_state.mode0_start_dot + 3;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
 fn cpu_stat_read_suppresses_lyc_coincidence_on_the_first_dot_of_a_new_line() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
@@ -2351,6 +2474,37 @@ fn fifo_backed_obj_start_waits_until_bg_fetcher_leaves_tile_data_low() {
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
     let tile_data_high = ppu.current_dot_arbitration();
     assert!(tile_data_high.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+}
+
+#[test]
+fn abstract_previsible_obj_start_can_use_real_bg_pixels_behind_startup_placeholders() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.ly = 0;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 4 };
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 0;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 8;
+    for _ in 0..16 {
+        ppu.bg_pipeline_state.fifo.push_back(0);
+    }
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 0,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.obj_pipeline_state
+        .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+    let arbitration = ppu.current_dot_arbitration();
+    assert!(!arbitration.can_serve_bg_transfer());
+    assert!(arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
 }
 
 #[test]
@@ -5817,6 +5971,302 @@ fn overlapped_obj_fetch_uses_explicit_one_dot_stage_progression() {
 }
 
 #[test]
+fn first_hidden_same_x_cluster_fetch_can_skip_obj_tile_data_low_byte_when_bg_fetcher_is_on_tile_data_high_1()
+ {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut oam_bytes = [0; 160];
+    let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+    write_oam_entry(&mut oam_bytes, 0, 16, 12, 0);
+    write_oam_entry(&mut oam_bytes, 1, 16, 12, 1);
+    write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+    let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+    oam.set_acquired(BusMaster::Ppu, true);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 8;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.current_transfer_x = 4;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 12));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+
+    let current_sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 12,
+        tile_index: 0,
+        attributes: 0,
+    };
+    let next_sprite = PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 12,
+        tile_index: 1,
+        attributes: 0,
+    };
+    ppu.mode2_scan_state.push(current_sprite);
+    ppu.mode2_scan_state.push(next_sprite);
+    ppu.obj_pipeline_state.pending_match_x = Some(4);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+    ppu.obj_pipeline_state.start_fetch(0, current_sprite);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataHigh
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+}
+
+#[test]
+fn first_hidden_same_x_cluster_fetch_at_x_six_keeps_the_low_byte_half_step() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut oam_bytes = [0; 160];
+    let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+    write_oam_entry(&mut oam_bytes, 0, 16, 14, 0);
+    write_oam_entry(&mut oam_bytes, 1, 16, 14, 1);
+    write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+    let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+    oam.set_acquired(BusMaster::Ppu, true);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 12;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.current_transfer_x = 6;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 2;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 10));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+
+    let current_sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 14,
+        tile_index: 0,
+        attributes: 0,
+    };
+    let next_sprite = PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 14,
+        tile_index: 1,
+        attributes: 0,
+    };
+    ppu.mode2_scan_state.push(current_sprite);
+    ppu.mode2_scan_state.push(next_sprite);
+    ppu.obj_pipeline_state.pending_match_x = Some(6);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+    ppu.obj_pipeline_state.start_fetch(0, current_sprite);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite, Some(current_sprite));
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.resolved_sprite,
+        Some(current_sprite)
+    );
+}
+
+#[test]
+fn first_hidden_same_x_cluster_fetch_at_x_seven_keeps_the_full_low_byte() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut oam_bytes = [0; 160];
+    let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+    write_oam_entry(&mut oam_bytes, 0, 16, 15, 0);
+    write_oam_entry(&mut oam_bytes, 1, 16, 15, 1);
+    write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+    let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+    oam.set_acquired(BusMaster::Ppu, true);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 14;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.current_transfer_x = 7;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+
+    let current_sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 15,
+        tile_index: 0,
+        attributes: 0,
+    };
+    let next_sprite = PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 15,
+        tile_index: 1,
+        attributes: 0,
+    };
+    ppu.mode2_scan_state.push(current_sprite);
+    ppu.mode2_scan_state.push(next_sprite);
+    ppu.obj_pipeline_state.pending_match_x = Some(7);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+    ppu.obj_pipeline_state.start_fetch(0, current_sprite);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite, Some(current_sprite));
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.resolved_sprite,
+        Some(current_sprite)
+    );
+}
+
+#[test]
+fn same_x_cluster_at_x_mod_8_eq_2_does_not_share_the_startup_dot() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 2;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 4 };
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 2;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 6;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 14));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    let current_sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 2,
+        tile_index: 0,
+        attributes: 0,
+    };
+    let next_sprite = PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 2,
+        tile_index: 1,
+        attributes: 0,
+    };
+    ppu.mode2_scan_state.push(current_sprite);
+    ppu.mode2_scan_state.push(next_sprite);
+    ppu.obj_pipeline_state.pending_match_x = Some(2);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(0);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+
+    assert!(
+        ppu.try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer, true,)
+    );
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::Startup
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+}
+
+#[test]
+fn terminal_fifo_backed_obj_start_extends_mode3_immediately_to_keep_fetch_alive() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut oam_bytes = [0; 160];
+    let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+    write_oam_entry(&mut oam_bytes, 0, 16, 167, 0);
+    write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+    let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+    oam.set_acquired(BusMaster::Ppu, true);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.ly = 68;
+    ppu.line_dot = MODE0_START_DOT - 1;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 167;
+    ppu.bg_pipeline_state.visible_pixels_output = 159;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 167,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.obj_pipeline_state
+        .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+    assert!(ppu.advance_mode3_object_phase(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+}
+
+#[test]
 fn current_mode2_oam_row_tracks_the_live_four_dot_slices() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let oam_bytes = [0; 160];
@@ -5849,6 +6299,628 @@ fn current_mode2_oam_row_tracks_the_live_four_dot_slices() {
     let drawing = ppu.snapshot();
     assert_eq!(drawing.mode, PpuAccessMode::Drawing);
     assert_eq!(drawing.current_oam_scan_row, None);
+}
+
+#[test]
+fn long_same_x_obj_chain_restarts_from_startup_and_counts_terminal_push_dot() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.current_transfer_x = 0;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 8;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 16));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    for sprite_slot in 0..6_u8 {
+        let sprite = PpuSelectedSprite {
+            oam_index: sprite_slot,
+            y: 16,
+            x: 8,
+            tile_index: sprite_slot,
+            attributes: 0,
+        };
+        ppu.mode2_scan_state.push(sprite);
+        if sprite_slot < 5 {
+            ppu.obj_pipeline_state.mark_fetched(sprite_slot);
+        }
+    }
+
+    let current_sprite = ppu
+        .mode2_scan_state
+        .selected_sprite(4)
+        .expect("sprite slot 4 should exist");
+    let next_sprite = ppu
+        .mode2_scan_state
+        .selected_sprite(5)
+        .expect("sprite slot 5 should exist");
+    ppu.obj_pipeline_state.pending_match_x = Some(0);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(5);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+    ppu.obj_pipeline_state.fetch.sprite_slot = 4;
+    ppu.obj_pipeline_state.fetch.sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.resolved_sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
+    ppu.obj_pipeline_state.fetch.tile_high = 0x00;
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&[0; 160]);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(
+        ppu.bg_pipeline_state.mode0_start_dot,
+        MODE0_START_DOT + 1,
+        "fetch={:?} pending={:?} match_x={:?}",
+        ppu.obj_pipeline_state.fetch,
+        ppu.obj_pipeline_state.pending_sprite_slots,
+        ppu.obj_pipeline_state.pending_match_x
+    );
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::Startup
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 5);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite, Some(next_sprite));
+    assert_eq!(
+        ppu.obj_pipeline_state
+            .fetch
+            .resolved_sprite
+            .map(|sprite| sprite.oam_index),
+        Some(next_sprite.oam_index)
+    );
+    assert!(ppu.obj_pipeline_state.fetch.count_terminal_push_dot);
+
+    while ppu.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle {
+        assert!(ppu.advance_object_fetch(
+            &OamBusView::new(BusMaster::Ppu, &mut oam),
+            &VramBusView::new(BusMaster::Ppu, &mut vram),
+            None,
+        ));
+    }
+
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 9);
+}
+
+#[test]
+fn visible_same_x_obj_chain_with_early_start_does_not_use_long_tail_restart() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 1;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 167;
+    ppu.bg_pipeline_state.visible_pixels_output = 159;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    for sprite_slot in 0..10_u8 {
+        let sprite = PpuSelectedSprite {
+            oam_index: sprite_slot,
+            y: 16,
+            x: 167,
+            tile_index: sprite_slot,
+            attributes: 0,
+        };
+        ppu.mode2_scan_state.push(sprite);
+        if sprite_slot < 9 {
+            ppu.obj_pipeline_state.mark_fetched(sprite_slot);
+        }
+    }
+
+    let current_sprite = ppu
+        .mode2_scan_state
+        .selected_sprite(8)
+        .expect("sprite slot 8 should exist");
+    let next_sprite = ppu
+        .mode2_scan_state
+        .selected_sprite(9)
+        .expect("sprite slot 9 should exist");
+    ppu.obj_pipeline_state.pending_match_x = Some(167);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(9);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+    ppu.obj_pipeline_state.fetch.sprite_slot = 8;
+    ppu.obj_pipeline_state.fetch.sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.resolved_sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
+    ppu.obj_pipeline_state.fetch.tile_high = 0x00;
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&[0; 160]);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 2);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 9);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite, Some(next_sprite));
+    assert!(!ppu.obj_pipeline_state.fetch.count_terminal_push_dot);
+}
+
+#[test]
+fn x_mod_8_eq_2_same_x_obj_chain_restart_pays_one_extra_dot() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 16;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 10;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 4 };
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 2;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 6;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 14));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    let current_sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 2,
+        tile_index: 0,
+        attributes: 0,
+    };
+    let next_sprite = PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 2,
+        tile_index: 1,
+        attributes: 0,
+    };
+    ppu.mode2_scan_state.push(current_sprite);
+    ppu.mode2_scan_state.push(next_sprite);
+    ppu.obj_pipeline_state.pending_match_x = Some(2);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+    ppu.obj_pipeline_state.fetch.sprite_slot = 0;
+    ppu.obj_pipeline_state.fetch.sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.resolved_sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
+    ppu.obj_pipeline_state.fetch.tile_high = 0x00;
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&[0; 160]);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 11);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 1);
+}
+
+#[test]
+fn x_mod_8_eq_3_same_x_obj_chain_restart_pays_one_extra_dot() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 16;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 10;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 4 };
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 3;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 5;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 14));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    let current_sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 3,
+        tile_index: 0,
+        attributes: 0,
+    };
+    let next_sprite = PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 3,
+        tile_index: 1,
+        attributes: 0,
+    };
+    ppu.mode2_scan_state.push(current_sprite);
+    ppu.mode2_scan_state.push(next_sprite);
+    ppu.obj_pipeline_state.pending_match_x = Some(3);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+    ppu.obj_pipeline_state.fetch.sprite_slot = 0;
+    ppu.obj_pipeline_state.fetch.sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.resolved_sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
+    ppu.obj_pipeline_state.fetch.tile_high = 0x00;
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&[0; 160]);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 11);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 1);
+}
+
+#[test]
+fn terminal_previsible_x_mod_8_eq_2_same_x_chain_skips_startup_and_low_byte() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 20;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 20;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 2;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 6;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 14));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    for sprite_slot in 0..10_u8 {
+        let sprite = PpuSelectedSprite {
+            oam_index: sprite_slot,
+            y: 16,
+            x: 2,
+            tile_index: sprite_slot,
+            attributes: 0,
+        };
+        ppu.mode2_scan_state.push(sprite);
+        if sprite_slot < 8 {
+            ppu.obj_pipeline_state.mark_fetched(sprite_slot);
+        }
+    }
+
+    let current_sprite = ppu
+        .mode2_scan_state
+        .selected_sprite(8)
+        .expect("sprite slot 8 should exist");
+    ppu.obj_pipeline_state.pending_match_x = Some(2);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(9);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+    ppu.obj_pipeline_state.fetch.sprite_slot = 8;
+    ppu.obj_pipeline_state.fetch.sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.resolved_sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
+    ppu.obj_pipeline_state.fetch.tile_high = 0x00;
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&[0; 160]);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 20);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataHigh
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 9);
+}
+
+#[test]
+fn hidden_x_mod_8_eq_4_late_same_x_chain_skips_first_low_half_step() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 24;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 20;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 4;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 12));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+
+    for sprite_slot in 0..10_u8 {
+        let sprite = PpuSelectedSprite {
+            oam_index: sprite_slot,
+            y: 16,
+            x: 4,
+            tile_index: sprite_slot,
+            attributes: 0,
+        };
+        ppu.mode2_scan_state.push(sprite);
+        if sprite_slot < 5 {
+            ppu.obj_pipeline_state.mark_fetched(sprite_slot);
+        }
+    }
+
+    let current_sprite = ppu
+        .mode2_scan_state
+        .selected_sprite(5)
+        .expect("sprite slot 5 should exist");
+    ppu.obj_pipeline_state.pending_match_x = Some(4);
+    for sprite_slot in 6..10_u8 {
+        ppu.obj_pipeline_state
+            .pending_sprite_slots
+            .push_back(sprite_slot);
+    }
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+    ppu.obj_pipeline_state.fetch.sprite_slot = 5;
+    ppu.obj_pipeline_state.fetch.sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.resolved_sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
+    ppu.obj_pipeline_state.fetch.tile_high = 0x00;
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&[0; 160]);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 21);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 6);
+}
+
+#[test]
+#[ignore = "diagnostic count=3 same-x push1 restart for x mod 8 == 2"]
+fn x_mod_8_eq_2_count3_same_x_chain_logs_post_push1_restart_state() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 20;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 20;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 2;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 6;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 14));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    for sprite_slot in 0..10_u8 {
+        let sprite = PpuSelectedSprite {
+            oam_index: sprite_slot,
+            y: 16,
+            x: 2,
+            tile_index: sprite_slot,
+            attributes: 0,
+        };
+        ppu.mode2_scan_state.push(sprite);
+        if sprite_slot < 2 {
+            ppu.obj_pipeline_state.mark_fetched(sprite_slot);
+        }
+    }
+
+    let current_sprite = ppu
+        .mode2_scan_state
+        .selected_sprite(2)
+        .expect("sprite slot 2 should exist");
+    ppu.obj_pipeline_state.pending_match_x = Some(2);
+    for sprite_slot in 3..10_u8 {
+        ppu.obj_pipeline_state
+            .pending_sprite_slots
+            .push_back(sprite_slot);
+    }
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+    ppu.obj_pipeline_state.fetch.sprite_slot = 2;
+    ppu.obj_pipeline_state.fetch.sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.resolved_sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
+    ppu.obj_pipeline_state.fetch.tile_high = 0x00;
+
+    let transfer = ppu.current_transfer().expect("transfer should exist");
+    println!("count3_before_transfer={transfer:?}");
+    println!(
+        "count3_before_previsible_can_start={} count3_before_arbitration={:?}",
+        ppu.previsible_same_x_chain_can_start_obj_fetch(transfer),
+        ppu.current_dot_arbitration()
+    );
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&[0; 160]);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+
+    println!(
+        "count3_after_fetch_stage={:?} stage_dot={} pending_match_x={:?} pending_len={} mode0_start_dot={}",
+        ppu.obj_pipeline_state.fetch.stage,
+        ppu.obj_pipeline_state.fetch.stage_dot,
+        ppu.obj_pipeline_state.pending_match_x,
+        ppu.obj_pipeline_state.pending_sprite_slots.len(),
+        ppu.bg_pipeline_state.mode0_start_dot
+    );
+}
+
+#[test]
+fn x_mod_8_eq_7_same_x_obj_chain_restart_keeps_the_full_low_byte() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 20;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 10;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 4 };
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 7;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    let current_sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 15,
+        tile_index: 0,
+        attributes: 0,
+    };
+    let next_sprite = PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 15,
+        tile_index: 1,
+        attributes: 0,
+    };
+    ppu.mode2_scan_state.push(current_sprite);
+    ppu.mode2_scan_state.push(next_sprite);
+    ppu.obj_pipeline_state.pending_match_x = Some(7);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+    ppu.obj_pipeline_state.fetch.sprite_slot = 0;
+    ppu.obj_pipeline_state.fetch.sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.resolved_sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
+    ppu.obj_pipeline_state.fetch.tile_high = 0x00;
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&[0; 160]);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 11);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 1);
+}
+
+#[test]
+fn terminal_same_x_obj_chain_restart_extends_mode3_immediately() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 1;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 167;
+    ppu.bg_pipeline_state.visible_pixels_output = 159;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    let current_sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 167,
+        tile_index: 0,
+        attributes: 0,
+    };
+    let next_sprite = PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 167,
+        tile_index: 1,
+        attributes: 0,
+    };
+    ppu.mode2_scan_state.push(current_sprite);
+    ppu.mode2_scan_state.push(next_sprite);
+    ppu.obj_pipeline_state.pending_match_x = Some(167);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+    ppu.obj_pipeline_state.fetch.sprite_slot = 0;
+    ppu.obj_pipeline_state.fetch.sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.resolved_sprite = Some(current_sprite);
+    ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
+    ppu.obj_pipeline_state.fetch.tile_high = 0x00;
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&[0; 160]);
+    oam.set_acquired(BusMaster::Ppu, true);
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    assert!(ppu.advance_object_fetch(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 2);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.sprite, Some(next_sprite));
 }
 
 #[test]
