@@ -696,6 +696,15 @@ struct Intr2Mode0SpritesProbeObservation {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Intr2Mode0SpritesTwoRoundObservation {
+    round_a_count: u8,
+    round_b_count: u8,
+    halt_ly: u8,
+    halt_line_dot: u16,
+    halt_mode: PpuAccessMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Intr2Mode0SpritesSingleReadObservation {
     value: u8,
     irq_ly: u8,
@@ -1118,6 +1127,100 @@ fn sample_real_mooneye_intr_2_mode0_timing_sprites_accesses(
 
     panic!(
         "real mooneye intr_2_mode0_timing_sprites access sample did not reach failure path; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn sample_real_mooneye_intr_2_mode0_timing_sprites_tail_accesses_before_current_failure(
+    max_tail_events: usize,
+) -> (
+    Intr2Mode0TimingSpritesFailureObservation,
+    Vec<Intr2Mode0TimingSpritesAccessObservation>,
+) {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut tail_events = Vec::with_capacity(max_tail_events);
+    let mut last_ff44_read_value = None;
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && matches!(activity.address, 0xFE00..=0xFE27 | 0xFF40..=0xFF44)
+        {
+            let snapshot = machine.ppu().snapshot();
+            let observation = Intr2Mode0TimingSpritesAccessObservation {
+                testcase_index,
+                kind: activity.kind,
+                address: activity.address,
+                value: activity.value,
+                pc: cpu_snapshot.registers.pc,
+                ly: snapshot.ly,
+                line_dot: snapshot.line_dot,
+                mode: snapshot.mode,
+                mode0_start_dot: snapshot.mode0_start_dot,
+                selected_sprites_len: snapshot.selected_sprites.len(),
+                visible_pixels_output: snapshot.visible_pixels_output,
+            };
+
+            let is_ff44_poll =
+                activity.kind == CpuBusAccessKind::DataRead && activity.address == 0xFF44;
+            if !is_ff44_poll {
+                if tail_events.len() == max_tail_events {
+                    tail_events.remove(0);
+                }
+                tail_events.push(observation);
+            } else {
+                let value_changed = last_ff44_read_value != Some(activity.value);
+                last_ff44_read_value = Some(activity.value);
+                if value_changed {
+                    if tail_events.len() == max_tail_events {
+                        tail_events.remove(0);
+                    }
+                    tail_events.push(observation);
+                }
+            }
+        }
+
+        let registers = machine.cpu().registers();
+        if registers.pc == 0x486E {
+            let snapshot = machine.ppu().snapshot();
+            return (
+                Intr2Mode0TimingSpritesFailureObservation {
+                    testcase_index,
+                    pc: registers.pc,
+                    b: registers.b,
+                    c: registers.c,
+                    d: registers.d,
+                    e: registers.e,
+                    ly: snapshot.ly,
+                    line_dot: snapshot.line_dot,
+                    mode: snapshot.mode,
+                    mode0_start_dot: snapshot.mode0_start_dot,
+                    selected_sprites_len: snapshot.selected_sprites.len(),
+                    visible_pixels_output: snapshot.visible_pixels_output,
+                },
+                tail_events,
+            );
+        }
+    }
+
+    panic!(
+        "real mooneye intr_2_mode0_timing_sprites tail-access sample did not reach current failure; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
         machine.cpu().registers().pc,
         machine.cpu().execution_state(),
         machine.ppu().snapshot().ly,
@@ -1700,13 +1803,29 @@ fn build_intr_2_mode0_sprites_probe_rom(delay_nops: usize, sprite_x: u8) -> Vec<
     rom
 }
 
-fn build_intr_2_mode0_sprites_multi_probe_rom(delay_nops: usize, sprite_xs: &[u8]) -> Vec<u8> {
+fn build_intr_2_mode0_sprites_multi_probe_rom_with_scx(
+    delay_nops: usize,
+    sprite_xs: &[u8],
+    scx: u8,
+) -> Vec<u8> {
+    build_intr_2_mode0_sprites_multi_probe_rom_with_setup(delay_nops, sprite_xs, scx, 0x91, 0x93)
+}
+
+fn build_intr_2_mode0_sprites_multi_probe_rom_with_setup(
+    delay_nops: usize,
+    sprite_xs: &[u8],
+    scx: u8,
+    initial_lcdc: u8,
+    second_lcdc: u8,
+) -> Vec<u8> {
     let mut program = Vec::new();
 
     program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
 
     program.extend_from_slice(&[0x3E, 0x11]); // ld a,$11 ; LCD off, baseline bits
     program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+    program.extend_from_slice(&[0x3E, scx]); // ld a,scx
+    program.extend_from_slice(&[0xE0, 0x43]); // ldh ($43),a
 
     for (sprite_index, sprite_x) in sprite_xs.iter().copied().enumerate() {
         let entry_address = 0xFE00_u16 + sprite_index as u16 * 4;
@@ -1723,10 +1842,10 @@ fn build_intr_2_mode0_sprites_multi_probe_rom(delay_nops: usize, sprite_xs: &[u8
         program.extend_from_slice(&(entry_address + 3).to_le_bytes());
     }
 
-    program.extend_from_slice(&[0x3E, 0x91]); // ld a,$91 ; enable LCD without OBJ
+    program.extend_from_slice(&[0x3E, initial_lcdc]); // ld a,initial_lcdc
     program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
     program.extend(std::iter::repeat_n(0x00, 6)); // 24 dots
-    program.extend_from_slice(&[0x3E, 0x93]); // ld a,$93 ; enable OBJ on live LCD
+    program.extend_from_slice(&[0x3E, second_lcdc]); // ld a,second_lcdc
     program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
 
     program.extend_from_slice(&[0x21, 0x00, 0xC0]); // ld hl,$C000
@@ -1799,6 +1918,10 @@ fn build_intr_2_mode0_sprites_multi_probe_rom(delay_nops: usize, sprite_xs: &[u8
     rom[0x0049] = 0x02;
     rom[0x004A] = 0xC9; // ret
     rom
+}
+
+fn build_intr_2_mode0_sprites_multi_probe_rom(delay_nops: usize, sprite_xs: &[u8]) -> Vec<u8> {
+    build_intr_2_mode0_sprites_multi_probe_rom_with_scx(delay_nops, sprite_xs, 0)
 }
 
 fn build_intr_2_mode0_sprites_single_read_probe_rom(
@@ -2122,13 +2245,29 @@ fn sample_intr_2_mode0_sprites_multi_probe_stat_reads(
     sprite_xs: &[u8],
     max_reads: usize,
 ) -> Vec<Intr2Mode0TimingSpritesStatReadObservation> {
+    sample_intr_2_mode0_sprites_multi_probe_stat_reads_with_setup(
+        delay_nops, sprite_xs, max_reads, 0x91, 0x93,
+    )
+}
+
+fn sample_intr_2_mode0_sprites_multi_probe_stat_reads_with_setup(
+    delay_nops: usize,
+    sprite_xs: &[u8],
+    max_reads: usize,
+    initial_lcdc: u8,
+    second_lcdc: u8,
+) -> Vec<Intr2Mode0TimingSpritesStatReadObservation> {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
 
     machine
-        .load_cartridge(build_intr_2_mode0_sprites_multi_probe_rom(
-            delay_nops, sprite_xs,
+        .load_cartridge(build_intr_2_mode0_sprites_multi_probe_rom_with_setup(
+            delay_nops,
+            sprite_xs,
+            0,
+            initial_lcdc,
+            second_lcdc,
         ))
         .expect("probe ROM should load");
 
@@ -2263,6 +2402,1369 @@ fn sample_intr_2_mode0_sprites_multi_probe_line68_changes(
     panic!(
         "mode0-sprites multi probe line68 sample did not terminate; delay_nops={delay_nops} sprite_count={} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
         sprite_xs.len(),
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn run_intr_2_mode0_sprites_multi_probe_with_scx(
+    delay_nops: usize,
+    sprite_xs: &[u8],
+    scx: u8,
+) -> Intr2Mode0SpritesProbeObservation {
+    run_intr_2_mode0_sprites_multi_probe_with_setup(delay_nops, sprite_xs, scx, 0x91, 0x93)
+}
+
+fn run_intr_2_mode0_sprites_multi_probe_with_setup(
+    delay_nops: usize,
+    sprite_xs: &[u8],
+    scx: u8,
+    initial_lcdc: u8,
+    second_lcdc: u8,
+) -> Intr2Mode0SpritesProbeObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_mode0_sprites_multi_probe_rom_with_setup(
+            delay_nops,
+            sprite_xs,
+            scx,
+            initial_lcdc,
+            second_lcdc,
+        ))
+        .expect("probe ROM should load");
+
+    let mut irq = None;
+
+    for _ in 0..1_200_000 {
+        machine.step_t_cycle();
+
+        if irq.is_none()
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            let snapshot = machine.ppu().snapshot();
+            irq = Some((snapshot.ly, snapshot.line_dot, snapshot.mode));
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            let snapshot = machine.ppu().snapshot();
+            let (irq_ly, irq_line_dot, irq_mode) =
+                irq.expect("probe should observe LCD STAT service");
+            return Intr2Mode0SpritesProbeObservation {
+                count: machine.cpu().registers().d,
+                irq_ly,
+                irq_line_dot,
+                irq_mode,
+                halt_ly: snapshot.ly,
+                halt_line_dot: snapshot.line_dot,
+                halt_mode: snapshot.mode,
+            };
+        }
+    }
+
+    panic!(
+        "mode0-sprites multi probe with scx did not halt; delay_nops={delay_nops} sprite_count={} scx={scx:#04X} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        sprite_xs.len(),
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+#[allow(dead_code)]
+fn sample_intr_2_mode0_sprites_multi_probe_line_changes_with_scx(
+    delay_nops: usize,
+    sprite_xs: &[u8],
+    scx: u8,
+    target_ly: u8,
+) -> Vec<Intr2Mode0TimingSpritesLine68Observation> {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_mode0_sprites_multi_probe_rom_with_scx(
+            delay_nops, sprite_xs, scx,
+        ))
+        .expect("probe ROM should load");
+
+    let mut saw_irq = false;
+    let mut observations = Vec::new();
+    let mut previous = None;
+
+    for _ in 0..1_200_000 {
+        machine.step_t_cycle();
+
+        if !saw_irq
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq = true;
+        }
+
+        if saw_irq {
+            let ppu = machine.ppu().snapshot();
+            if ppu.ly == target_ly {
+                let current = Intr2Mode0TimingSpritesLine68Observation {
+                    line_dot: ppu.line_dot,
+                    mode: ppu.mode,
+                    mode0_start_dot: ppu.mode0_start_dot,
+                    current_transfer_x: ppu.bg_current_transfer_x,
+                    current_transfer_lane: ppu.bg_current_transfer_lane,
+                    current_transfer_source_window: ppu.bg_current_transfer_source_window,
+                    current_transfer_backing: ppu.bg_current_transfer_backing,
+                    current_transfer_readiness: ppu.bg_current_transfer_readiness,
+                    bg_fifo_len: ppu.bg_fifo_pixels.len(),
+                    startup_fifo_placeholders: ppu.bg_startup_fifo_placeholders,
+                    obj_fetcher_stage: ppu.obj_fetcher_stage,
+                    obj_fetcher_stage_dot: ppu.obj_fetcher_stage_dot,
+                    obj_pending_hit_match_x: ppu.obj_pending_hit_match_x,
+                    obj_pending_hit_len: ppu.obj_pending_hit_len,
+                    obj_pending_hit_front_sprite_slot: ppu.obj_pending_hit_front_sprite_slot,
+                    bg_fetcher_stage: ppu.bg_fetcher_stage,
+                    bg_fetcher_stage_dot: ppu.bg_fetcher_stage_dot,
+                    selected_sprites_len: ppu.selected_sprites.len(),
+                };
+                if previous.as_ref() != Some(&current) {
+                    observations.push(current.clone());
+                    previous = Some(current);
+                }
+            } else if !observations.is_empty() && ppu.ly > target_ly {
+                return observations;
+            }
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            return observations;
+        }
+    }
+
+    panic!(
+        "mode0-sprites multi probe with scx line sample did not terminate; delay_nops={delay_nops} sprite_count={} scx={scx:#04X} target_ly={} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        sprite_xs.len(),
+        target_ly,
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_scx(
+    delay_nops: usize,
+    sprite_xs: &[u8],
+    scx: u8,
+    target_ly: u8,
+) -> Vec<Intr2Mode0TimingSpritesLine68Observation> {
+    sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        delay_nops, sprite_xs, scx, 0x91, 0x93, target_ly,
+    )
+}
+
+fn sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+    delay_nops: usize,
+    sprite_xs: &[u8],
+    scx: u8,
+    initial_lcdc: u8,
+    second_lcdc: u8,
+    target_ly: u8,
+) -> Vec<Intr2Mode0TimingSpritesLine68Observation> {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_mode0_sprites_multi_probe_rom_with_setup(
+            delay_nops,
+            sprite_xs,
+            scx,
+            initial_lcdc,
+            second_lcdc,
+        ))
+        .expect("probe ROM should load");
+
+    let mut observations = Vec::new();
+    let mut previous = None;
+
+    for _ in 0..1_200_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        if ppu.ly == target_ly {
+            let current = Intr2Mode0TimingSpritesLine68Observation {
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                mode0_start_dot: ppu.mode0_start_dot,
+                current_transfer_x: ppu.bg_current_transfer_x,
+                current_transfer_lane: ppu.bg_current_transfer_lane,
+                current_transfer_source_window: ppu.bg_current_transfer_source_window,
+                current_transfer_backing: ppu.bg_current_transfer_backing,
+                current_transfer_readiness: ppu.bg_current_transfer_readiness,
+                bg_fifo_len: ppu.bg_fifo_pixels.len(),
+                startup_fifo_placeholders: ppu.bg_startup_fifo_placeholders,
+                obj_fetcher_stage: ppu.obj_fetcher_stage,
+                obj_fetcher_stage_dot: ppu.obj_fetcher_stage_dot,
+                obj_pending_hit_match_x: ppu.obj_pending_hit_match_x,
+                obj_pending_hit_len: ppu.obj_pending_hit_len,
+                obj_pending_hit_front_sprite_slot: ppu.obj_pending_hit_front_sprite_slot,
+                bg_fetcher_stage: ppu.bg_fetcher_stage,
+                bg_fetcher_stage_dot: ppu.bg_fetcher_stage_dot,
+                selected_sprites_len: ppu.selected_sprites.len(),
+            };
+            if previous.as_ref() != Some(&current) {
+                observations.push(current.clone());
+                previous = Some(current);
+            }
+        } else if !observations.is_empty() && ppu.ly > target_ly {
+            return observations;
+        }
+    }
+
+    panic!(
+        "mode0-sprites multi probe pre-irq line sample did not terminate; delay_nops={delay_nops} sprite_count={} scx={scx:#04X} target_ly={} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        sprite_xs.len(),
+        target_ly,
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn build_intr_2_mode0_sprites_real_setup_probe_rom(delay_nops: usize, sprite_x: u8) -> Vec<u8> {
+    build_intr_2_mode0_sprites_real_setup_probe_rom_with_scx(delay_nops, sprite_x, 0)
+}
+
+fn build_intr_2_mode0_sprites_real_setup_probe_rom_with_scx(
+    delay_nops: usize,
+    sprite_x: u8,
+    scx: u8,
+) -> Vec<u8> {
+    let mut program = Vec::new();
+
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+
+    program.extend_from_slice(&[0x3E, 0x13]); // ld a,$13 ; LCD off, OBJ enabled like the real testcase
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+    program.extend_from_slice(&[0x3E, scx]); // ld a,scx
+    program.extend_from_slice(&[0xE0, 0x43]); // ldh ($43),a
+
+    for byte_offset in 0..0x28_u16 {
+        program.push(0xAF); // xor a
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(0xFE00_u16 + byte_offset).to_le_bytes());
+    }
+
+    for sprite_index in 0..10_u8 {
+        let entry_address = 0xFE00_u16 + sprite_index as u16 * 4;
+        let tile_index = 0x30_u8 + sprite_index;
+        program.extend_from_slice(&[0x3E, 0x52]); // ld a,$52 ; sprite y for LY=66
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&entry_address.to_le_bytes());
+        program.extend_from_slice(&[0x3E, sprite_x]); // ld a,sprite_x
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 1).to_le_bytes());
+        program.extend_from_slice(&[0x3E, tile_index]); // ld a,tile_index
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 2).to_le_bytes());
+        program.push(0xAF); // xor a
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 3).to_le_bytes());
+    }
+
+    program.extend_from_slice(&[0x3E, 0x93]); // ld a,$93 ; enable LCD with OBJ already on
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+    program.extend(std::iter::repeat_n(0x00, 6)); // 24 dots
+    program.extend_from_slice(&[0x3E, 0x93]); // ld a,$93 ; rewrite same value like the real testcase
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+
+    program.extend_from_slice(&[0x21, 0x00, 0xC0]); // ld hl,$C000
+    program.extend_from_slice(&[0x0E, delay_nops as u8]); // ld c,delay_nops
+    program.push(0xAF); // xor a
+    let stub_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x22); // ld (hli),a
+    program.push(0x0D); // dec c
+    emit_jr_nz(&mut program, stub_loop_pc); // jr nz,stub_loop
+    program.extend_from_slice(&[0x3E, 0xC9]); // ld a,$C9
+    program.push(0x22); // ld (hli),a
+
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+
+    program.extend_from_slice(&[0x21, 0x00, 0x00]); // ld hl,compare_addr
+    let compare_addr_operand = program.len() - 2;
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0x21, 0x00, 0xC0]); // ld hl,$C000
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0xC3, 0x00, 0x00]); // jp wait_irq
+    let wait_irq_operand = program.len() - 2;
+
+    let wait_ly_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz(&mut program, wait_ly_loop_pc); // jr nz,wait_ly
+
+    let wait_mode0_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x00]); // cp $00
+    emit_jr_nz(&mut program, wait_mode0_loop_pc); // jr nz,wait_mode0
+
+    let wait_mode3_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x03]); // cp $03
+    emit_jr_nz(&mut program, wait_mode3_loop_pc); // jr nz,wait_mode3
+
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20 ; mode0 STAT enable
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fail_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, fail_loop_pc); // jr .
+
+    let compare_addr = 0x0100_u16 + program.len() as u16;
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let mode0_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    emit_jr_nz(&mut program, mode0_loop_pc); // jr nz,mode0_loop
+
+    program.push(0x50); // ld d,b
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+
+    patch_abs16(&mut program, compare_addr_operand, compare_addr);
+    patch_abs16(&mut program, wait_irq_operand, wait_ly_loop_pc);
+
+    let mut rom = build_test_rom(&program, 0x00);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+#[allow(dead_code)]
+fn build_intr_2_mode0_sprites_case13_real_probe_rom(delay_nops: usize) -> Vec<u8> {
+    build_intr_2_mode0_sprites_real_setup_probe_rom(delay_nops, 4)
+}
+
+fn build_intr_2_mode0_sprites_two_round_real_setup_probe_rom(
+    sprite_x: u8,
+    delay_a_nops: usize,
+    delay_b_nops: usize,
+) -> Vec<u8> {
+    build_intr_2_mode0_sprites_multi_two_round_real_setup_probe_rom(
+        &std::iter::repeat_n(sprite_x, 10).collect::<Vec<_>>(),
+        delay_a_nops,
+        delay_b_nops,
+    )
+}
+
+fn build_intr_2_mode0_sprites_multi_two_round_real_setup_probe_rom(
+    sprite_xs: &[u8],
+    delay_a_nops: usize,
+    delay_b_nops: usize,
+) -> Vec<u8> {
+    let mut program = Vec::new();
+
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+
+    program.extend_from_slice(&[0x3E, 0x13]); // ld a,$13 ; LCD off, OBJ bit preserved
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+
+    for byte_offset in 0..0x28_u16 {
+        program.push(0xAF); // xor a
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(0xFE00_u16 + byte_offset).to_le_bytes());
+    }
+
+    for (sprite_index, sprite_x) in sprite_xs.iter().copied().enumerate() {
+        let entry_address = 0xFE00_u16 + sprite_index as u16 * 4;
+        let tile_index = 0x30_u8 + sprite_index as u8;
+        program.extend_from_slice(&[0x3E, 0x52]); // ld a,$52 ; sprite y for LY=66
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&entry_address.to_le_bytes());
+        program.extend_from_slice(&[0x3E, sprite_x]); // ld a,sprite_x
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 1).to_le_bytes());
+        program.extend_from_slice(&[0x3E, tile_index]); // ld a,tile_index
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 2).to_le_bytes());
+        program.push(0xAF); // xor a
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 3).to_le_bytes());
+    }
+
+    for &(base, delay_nops) in &[(0xC000_u16, delay_a_nops), (0xC080_u16, delay_b_nops)] {
+        program.extend_from_slice(&[0x21, (base & 0xFF) as u8, (base >> 8) as u8]); // ld hl,base
+        program.extend_from_slice(&[0x0E, delay_nops as u8]); // ld c,delay_nops
+        program.push(0xAF); // xor a
+        let stub_loop_pc = 0x0100_u16 + program.len() as u16;
+        program.push(0x22); // ld (hli),a
+        program.push(0x0D); // dec c
+        emit_jr_nz(&mut program, stub_loop_pc); // jr nz,stub_loop
+        program.extend_from_slice(&[0x3E, 0xC9]); // ld a,$C9
+        program.push(0x22); // ld (hli),a
+    }
+
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+
+    program.extend_from_slice(&[0x3E, 0x93]); // ld a,$93 ; enable LCD with OBJ preserved
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+    program.extend(std::iter::repeat_n(0x00, 6)); // observed gap between the two live writes
+    program.extend_from_slice(&[0x3E, 0x93]); // ld a,$93 ; live LCDC.1 write
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+
+    program.extend_from_slice(&[0x21, 0x00, 0x00]); // ld hl,round_a_ret
+    let round_a_ret_operand = program.len() - 2;
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0x21, 0x00, 0xC0]); // ld hl,$C000
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0xC3, 0x00, 0x00]); // jp setup_and_wait_mode2
+    let setup_and_wait_operand_a = program.len() - 2;
+
+    let round_a_ret = 0x0100_u16 + program.len() as u16;
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let round_a_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    emit_jr_nz(&mut program, round_a_loop_pc); // jr nz,loop
+    program.push(0x78); // ld a,b
+    program.extend_from_slice(&[0xEA, 0x00, 0xC1]); // ld ($C100),a
+
+    program.extend_from_slice(&[0x21, 0x00, 0x00]); // ld hl,round_b_ret
+    let round_b_ret_operand = program.len() - 2;
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0x21, 0x80, 0xC0]); // ld hl,$C080
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0xC3, 0x00, 0x00]); // jp setup_and_wait_mode2
+    let setup_and_wait_operand_b = program.len() - 2;
+
+    let round_b_ret = 0x0100_u16 + program.len() as u16;
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let round_b_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    emit_jr_nz(&mut program, round_b_loop_pc); // jr nz,loop
+    program.push(0x78); // ld a,b
+    program.extend_from_slice(&[0xEA, 0x01, 0xC1]); // ld ($C101),a
+
+    program.extend_from_slice(&[0xFA, 0x00, 0xC1]); // ld a,($C100)
+    program.push(0x47); // ld b,a
+    program.extend_from_slice(&[0xFA, 0x01, 0xC1]); // ld a,($C101)
+    program.push(0x4F); // ld c,a
+    program.extend_from_slice(&[0x16, 0x01]); // ld d,$01
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+
+    let setup_and_wait_mode2 = 0x0100_u16 + program.len() as u16;
+    let wait_ly_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz(&mut program, wait_ly_loop_pc); // jr nz,wait_ly
+
+    let wait_mode0_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x00]); // cp $00
+    emit_jr_nz(&mut program, wait_mode0_loop_pc); // jr nz,wait_mode0
+
+    let wait_mode3_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x03]); // cp $03
+    emit_jr_nz(&mut program, wait_mode3_loop_pc); // jr nz,wait_mode3
+
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20 ; mode0 STAT enable
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fail_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, fail_loop_pc); // jr .
+
+    patch_abs16(&mut program, round_a_ret_operand, round_a_ret);
+    patch_abs16(&mut program, round_b_ret_operand, round_b_ret);
+    patch_abs16(&mut program, setup_and_wait_operand_a, setup_and_wait_mode2);
+    patch_abs16(&mut program, setup_and_wait_operand_b, setup_and_wait_mode2);
+
+    let mut rom = build_test_rom(&program, 0x00);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+fn run_intr_2_mode0_sprites_two_round_real_setup_probe_with_delays(
+    sprite_x: u8,
+    delay_a_nops: usize,
+    delay_b_nops: usize,
+) -> Intr2Mode0SpritesTwoRoundObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_mode0_sprites_two_round_real_setup_probe_rom(
+            sprite_x,
+            delay_a_nops,
+            delay_b_nops,
+        ))
+        .expect("probe ROM should load");
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            let snapshot = machine.ppu().snapshot();
+            return Intr2Mode0SpritesTwoRoundObservation {
+                round_a_count: machine.cpu().registers().b,
+                round_b_count: machine.cpu().registers().c,
+                halt_ly: snapshot.ly,
+                halt_line_dot: snapshot.line_dot,
+                halt_mode: snapshot.mode,
+            };
+        }
+    }
+
+    panic!(
+        "mode0-sprites two-round real setup probe did not halt; sprite_x={sprite_x} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn run_intr_2_mode0_sprites_two_round_real_setup_probe(
+    sprite_x: u8,
+) -> Intr2Mode0SpritesTwoRoundObservation {
+    run_intr_2_mode0_sprites_two_round_real_setup_probe_with_delays(sprite_x, 56, 55)
+}
+
+fn run_intr_2_mode0_sprites_multi_two_round_real_setup_probe(
+    sprite_xs: &[u8],
+    delay_a_nops: usize,
+    delay_b_nops: usize,
+) -> Intr2Mode0SpritesTwoRoundObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(
+            build_intr_2_mode0_sprites_multi_two_round_real_setup_probe_rom(
+                sprite_xs,
+                delay_a_nops,
+                delay_b_nops,
+            ),
+        )
+        .expect("probe ROM should load");
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            let snapshot = machine.ppu().snapshot();
+            return Intr2Mode0SpritesTwoRoundObservation {
+                round_a_count: machine.cpu().registers().b,
+                round_b_count: machine.cpu().registers().c,
+                halt_ly: snapshot.ly,
+                halt_line_dot: snapshot.line_dot,
+                halt_mode: snapshot.mode,
+            };
+        }
+    }
+
+    panic!(
+        "mode0-sprites multi two-round real setup probe did not halt; sprite_count={} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        sprite_xs.len(),
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn build_intr_2_mode0_sprites_two_round_source_setup_probe_rom(
+    sprite_x: u8,
+    delay_a_nops: usize,
+    delay_b_nops: usize,
+) -> Vec<u8> {
+    let mut program = Vec::new();
+
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+    program.extend_from_slice(&[0x3E, 0x11]); // ld a,$11 ; LCD off, OBJ off like disable_ppu_safe from 0x91
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+
+    for byte_offset in 0..0x28_u16 {
+        program.push(0xAF); // xor a
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(0xFE00_u16 + byte_offset).to_le_bytes());
+    }
+
+    for sprite_index in 0..10_u8 {
+        let entry_address = 0xFE00_u16 + sprite_index as u16 * 4;
+        let tile_index = 0x30_u8 + sprite_index;
+        program.extend_from_slice(&[0x3E, 0x52]); // ld a,$52 ; sprite y for LY=66
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&entry_address.to_le_bytes());
+        program.extend_from_slice(&[0x3E, sprite_x]); // ld a,sprite_x
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 1).to_le_bytes());
+        program.extend_from_slice(&[0x3E, tile_index]); // ld a,tile_index
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 2).to_le_bytes());
+        program.push(0xAF); // xor a
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 3).to_le_bytes());
+    }
+
+    for &(base, delay_nops) in &[(0xC000_u16, delay_a_nops), (0xC080_u16, delay_b_nops)] {
+        program.extend_from_slice(&[0x21, (base & 0xFF) as u8, (base >> 8) as u8]); // ld hl,base
+        program.extend_from_slice(&[0x0E, delay_nops as u8]); // ld c,delay_nops
+        program.push(0xAF); // xor a
+        let stub_loop_pc = 0x0100_u16 + program.len() as u16;
+        program.push(0x22); // ld (hli),a
+        program.push(0x0D); // dec c
+        emit_jr_nz(&mut program, stub_loop_pc); // jr nz,stub_loop
+        program.extend_from_slice(&[0x3E, 0xC9]); // ld a,$C9
+        program.push(0x22); // ld (hli),a
+    }
+
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+
+    program.extend_from_slice(&[0x21, 0x40, 0xFF]); // ld hl,$FF40 ; LCDC
+    program.extend_from_slice(&[0xCB, 0xFE]); // set 7,(hl) ; enable_ppu
+    program.extend_from_slice(&[0xCB, 0xCE]); // set 1,(hl) ; enable sprites live
+
+    program.extend_from_slice(&[0x21, 0x00, 0x00]); // ld hl,round_a_ret
+    let round_a_ret_operand = program.len() - 2;
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0x21, 0x00, 0xC0]); // ld hl,$C000
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0xC3, 0x00, 0x00]); // jp setup_and_wait_mode2
+    let setup_and_wait_operand_a = program.len() - 2;
+
+    let round_a_ret = 0x0100_u16 + program.len() as u16;
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let round_a_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    emit_jr_nz(&mut program, round_a_loop_pc); // jr nz,loop
+    program.push(0x78); // ld a,b
+    program.extend_from_slice(&[0xEA, 0x00, 0xC1]); // ld ($C100),a
+
+    program.extend_from_slice(&[0x21, 0x00, 0x00]); // ld hl,round_b_ret
+    let round_b_ret_operand = program.len() - 2;
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0x21, 0x80, 0xC0]); // ld hl,$C080
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0xC3, 0x00, 0x00]); // jp setup_and_wait_mode2
+    let setup_and_wait_operand_b = program.len() - 2;
+
+    let round_b_ret = 0x0100_u16 + program.len() as u16;
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let round_b_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    emit_jr_nz(&mut program, round_b_loop_pc); // jr nz,loop
+    program.push(0x78); // ld a,b
+    program.extend_from_slice(&[0xEA, 0x01, 0xC1]); // ld ($C101),a
+
+    program.extend_from_slice(&[0xFA, 0x00, 0xC1]); // ld a,($C100)
+    program.push(0x47); // ld b,a
+    program.extend_from_slice(&[0xFA, 0x01, 0xC1]); // ld a,($C101)
+    program.push(0x4F); // ld c,a
+    program.extend_from_slice(&[0x16, 0x01]); // ld d,$01
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+
+    let setup_and_wait_mode2 = 0x0100_u16 + program.len() as u16;
+    let wait_ly_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz(&mut program, wait_ly_loop_pc); // jr nz,wait_ly
+
+    let wait_mode0_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x00]); // cp $00
+    emit_jr_nz(&mut program, wait_mode0_loop_pc); // jr nz,wait_mode0
+
+    let wait_mode3_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x03]); // cp $03
+    emit_jr_nz(&mut program, wait_mode3_loop_pc); // jr nz,wait_mode3
+
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20 ; mode0 STAT enable
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fail_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, fail_loop_pc); // jr .
+
+    patch_abs16(&mut program, round_a_ret_operand, round_a_ret);
+    patch_abs16(&mut program, round_b_ret_operand, round_b_ret);
+    patch_abs16(&mut program, setup_and_wait_operand_a, setup_and_wait_mode2);
+    patch_abs16(&mut program, setup_and_wait_operand_b, setup_and_wait_mode2);
+
+    let mut rom = build_test_rom(&program, 0x00);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+fn build_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_rom(
+    sprite_x: u8,
+    delay_a_nops: usize,
+    delay_b_nops: usize,
+) -> Vec<u8> {
+    let mut program = Vec::new();
+
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+    program.extend_from_slice(&[0x3E, 0x11]); // ld a,$11 ; LCD off, OBJ off like disable_ppu_safe from 0x91
+    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
+
+    for byte_offset in 0..0x28_u16 {
+        program.push(0xAF); // xor a
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(0xFE00_u16 + byte_offset).to_le_bytes());
+    }
+
+    for sprite_index in 0..10_u8 {
+        let entry_address = 0xFE00_u16 + sprite_index as u16 * 4;
+        let tile_index = 0x30_u8 + sprite_index;
+        program.extend_from_slice(&[0x3E, 0x52]); // ld a,$52 ; sprite y for LY=66
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&entry_address.to_le_bytes());
+        program.extend_from_slice(&[0x3E, sprite_x]); // ld a,sprite_x
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 1).to_le_bytes());
+        program.extend_from_slice(&[0x3E, tile_index]); // ld a,tile_index
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 2).to_le_bytes());
+        program.push(0xAF); // xor a
+        program.push(0xEA); // ld (a16),a
+        program.extend_from_slice(&(entry_address + 3).to_le_bytes());
+    }
+
+    for &(base, delay_nops) in &[(0xC000_u16, delay_a_nops), (0xC080_u16, delay_b_nops)] {
+        program.extend_from_slice(&[0x21, (base & 0xFF) as u8, (base >> 8) as u8]); // ld hl,base
+        program.extend_from_slice(&[0x0E, delay_nops as u8]); // ld c,delay_nops
+        program.push(0xAF); // xor a
+        let stub_loop_pc = 0x0100_u16 + program.len() as u16;
+        program.push(0x22); // ld (hli),a
+        program.push(0x0D); // dec c
+        emit_jr_nz(&mut program, stub_loop_pc); // jr nz,stub_loop
+        program.extend_from_slice(&[0x3E, 0xC9]); // ld a,$C9
+        program.push(0x22); // ld (hli),a
+    }
+
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,$02
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh ($FF),a ; IE = STAT
+
+    program.extend_from_slice(&[0x21, 0x40, 0xFF]); // ld hl,$FF40 ; LCDC
+    program.extend_from_slice(&[0x3E, 0x91]); // ld a,$91 ; enable LCD without OBJ
+    program.push(0x77); // ld (hl),a ; same first-write timing as SET 7,(hl)
+    program.extend_from_slice(&[0x3E, 0x93]); // ld a,$93 ; enable sprites live
+    program.push(0x77); // ld (hl),a ; same second-write timing as SET 1,(hl)
+
+    program.extend_from_slice(&[0x21, 0x00, 0x00]); // ld hl,round_a_ret
+    let round_a_ret_operand = program.len() - 2;
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0x21, 0x00, 0xC0]); // ld hl,$C000
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0xC3, 0x00, 0x00]); // jp setup_and_wait_mode2
+    let setup_and_wait_operand_a = program.len() - 2;
+
+    let round_a_ret = 0x0100_u16 + program.len() as u16;
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let round_a_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    emit_jr_nz(&mut program, round_a_loop_pc); // jr nz,loop
+    program.push(0x78); // ld a,b
+    program.extend_from_slice(&[0xEA, 0x00, 0xC1]); // ld ($C100),a
+
+    program.extend_from_slice(&[0x21, 0x00, 0x00]); // ld hl,round_b_ret
+    let round_b_ret_operand = program.len() - 2;
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0x21, 0x80, 0xC0]); // ld hl,$C080
+    program.push(0xE5); // push hl
+    program.extend_from_slice(&[0xC3, 0x00, 0x00]); // jp setup_and_wait_mode2
+    let setup_and_wait_operand_b = program.len() - 2;
+
+    let round_b_ret = 0x0100_u16 + program.len() as u16;
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let round_b_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.push(0x04); // inc b
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    emit_jr_nz(&mut program, round_b_loop_pc); // jr nz,loop
+    program.push(0x78); // ld a,b
+    program.extend_from_slice(&[0xEA, 0x01, 0xC1]); // ld ($C101),a
+
+    program.extend_from_slice(&[0xFA, 0x00, 0xC1]); // ld a,($C100)
+    program.push(0x47); // ld b,a
+    program.extend_from_slice(&[0xFA, 0x01, 0xC1]); // ld a,($C101)
+    program.push(0x4F); // ld c,a
+    program.extend_from_slice(&[0x16, 0x01]); // ld d,$01
+    program.push(0x76); // halt
+    let done_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, done_loop_pc); // jr .
+
+    let setup_and_wait_mode2 = 0x0100_u16 + program.len() as u16;
+    let wait_ly_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz(&mut program, wait_ly_loop_pc); // jr nz,wait_ly
+
+    let wait_mode0_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x00]); // cp $00
+    emit_jr_nz(&mut program, wait_mode0_loop_pc); // jr nz,wait_mode0
+
+    let wait_mode3_loop_pc = 0x0100_u16 + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]); // ldh a,($41)
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.extend_from_slice(&[0xFE, 0x03]); // cp $03
+    emit_jr_nz(&mut program, wait_mode3_loop_pc); // jr nz,wait_mode3
+
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20 ; mode0 STAT enable
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh ($41),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fail_loop_pc = 0x0100_u16 + program.len() as u16;
+    emit_jr(&mut program, fail_loop_pc); // jr .
+
+    patch_abs16(&mut program, round_a_ret_operand, round_a_ret);
+    patch_abs16(&mut program, round_b_ret_operand, round_b_ret);
+    patch_abs16(&mut program, setup_and_wait_operand_a, setup_and_wait_mode2);
+    patch_abs16(&mut program, setup_and_wait_operand_b, setup_and_wait_mode2);
+
+    let mut rom = build_test_rom(&program, 0x00);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+fn run_intr_2_mode0_sprites_two_round_source_setup_probe_with_delays(
+    sprite_x: u8,
+    delay_a_nops: usize,
+    delay_b_nops: usize,
+) -> Intr2Mode0SpritesTwoRoundObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_mode0_sprites_two_round_source_setup_probe_rom(
+            sprite_x,
+            delay_a_nops,
+            delay_b_nops,
+        ))
+        .expect("probe ROM should load");
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            let snapshot = machine.ppu().snapshot();
+            return Intr2Mode0SpritesTwoRoundObservation {
+                round_a_count: machine.cpu().registers().b,
+                round_b_count: machine.cpu().registers().c,
+                halt_ly: snapshot.ly,
+                halt_line_dot: snapshot.line_dot,
+                halt_mode: snapshot.mode,
+            };
+        }
+    }
+
+    panic!(
+        "mode0-sprites two-round source setup probe did not halt; sprite_x={sprite_x} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+#[allow(dead_code)]
+fn run_intr_2_mode0_sprites_two_round_source_setup_probe(
+    sprite_x: u8,
+) -> Intr2Mode0SpritesTwoRoundObservation {
+    run_intr_2_mode0_sprites_two_round_source_setup_probe_with_delays(sprite_x, 56, 55)
+}
+
+fn run_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_with_delays(
+    sprite_x: u8,
+    delay_a_nops: usize,
+    delay_b_nops: usize,
+) -> Intr2Mode0SpritesTwoRoundObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(
+            build_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_rom(
+                sprite_x,
+                delay_a_nops,
+                delay_b_nops,
+            ),
+        )
+        .expect("probe ROM should load");
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            let snapshot = machine.ppu().snapshot();
+            return Intr2Mode0SpritesTwoRoundObservation {
+                round_a_count: machine.cpu().registers().b,
+                round_b_count: machine.cpu().registers().c,
+                halt_ly: snapshot.ly,
+                halt_line_dot: snapshot.line_dot,
+                halt_mode: snapshot.mode,
+            };
+        }
+    }
+
+    panic!(
+        "mode0-sprites two-round timed direct setup probe did not halt; sprite_x={sprite_x} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+#[allow(dead_code)]
+fn run_intr_2_mode0_sprites_two_round_timed_direct_setup_probe(
+    sprite_x: u8,
+) -> Intr2Mode0SpritesTwoRoundObservation {
+    run_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_with_delays(sprite_x, 56, 55)
+}
+
+fn sample_intr_2_mode0_sprites_stat_reads_after_irq_from_rom(
+    rom: Vec<u8>,
+    max_reads: usize,
+) -> Vec<Intr2Mode0TimingSpritesStatReadObservation> {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut reads = Vec::new();
+    let mut saw_irq = false;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        if !saw_irq
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq = true;
+        }
+
+        if saw_irq
+            && let Some(activity) = machine.cpu().snapshot().last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            let ppu = machine.ppu().snapshot();
+            reads.push(Intr2Mode0TimingSpritesStatReadObservation {
+                pc: machine.cpu().registers().pc,
+                value: activity.value,
+                before_ly: previous_ppu.ly,
+                before_line_dot: previous_ppu.line_dot,
+                before_mode: previous_ppu.mode,
+                before_mode0_start_dot: previous_ppu.mode0_start_dot,
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                mode0_start_dot: ppu.mode0_start_dot,
+            });
+            if reads.len() >= max_reads {
+                return reads;
+            }
+        }
+
+        previous_ppu = machine.ppu().snapshot();
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            return reads;
+        }
+    }
+
+    panic!(
+        "intr_2_mode0_sprites STAT read sample did not terminate; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn sample_intr_2_mode0_sprites_line_changes_from_rom(
+    rom: Vec<u8>,
+    target_ly: u8,
+) -> Vec<Intr2Mode0TimingSpritesLine68Observation> {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut saw_irq = false;
+    let mut observations = Vec::new();
+    let mut previous = None;
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        if !saw_irq
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq = true;
+        }
+
+        if saw_irq {
+            let ppu = machine.ppu().snapshot();
+            if ppu.ly == target_ly {
+                let current = Intr2Mode0TimingSpritesLine68Observation {
+                    line_dot: ppu.line_dot,
+                    mode: ppu.mode,
+                    mode0_start_dot: ppu.mode0_start_dot,
+                    current_transfer_x: ppu.bg_current_transfer_x,
+                    current_transfer_lane: ppu.bg_current_transfer_lane,
+                    current_transfer_source_window: ppu.bg_current_transfer_source_window,
+                    current_transfer_backing: ppu.bg_current_transfer_backing,
+                    current_transfer_readiness: ppu.bg_current_transfer_readiness,
+                    bg_fifo_len: ppu.bg_fifo_pixels.len(),
+                    startup_fifo_placeholders: ppu.bg_startup_fifo_placeholders,
+                    obj_fetcher_stage: ppu.obj_fetcher_stage,
+                    obj_fetcher_stage_dot: ppu.obj_fetcher_stage_dot,
+                    obj_pending_hit_match_x: ppu.obj_pending_hit_match_x,
+                    obj_pending_hit_len: ppu.obj_pending_hit_len,
+                    obj_pending_hit_front_sprite_slot: ppu.obj_pending_hit_front_sprite_slot,
+                    bg_fetcher_stage: ppu.bg_fetcher_stage,
+                    bg_fetcher_stage_dot: ppu.bg_fetcher_stage_dot,
+                    selected_sprites_len: ppu.selected_sprites.len(),
+                };
+                if previous.as_ref() != Some(&current) {
+                    observations.push(current.clone());
+                    previous = Some(current);
+                }
+            } else if !observations.is_empty() && ppu.ly > target_ly {
+                return observations;
+            }
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            return observations;
+        }
+    }
+
+    panic!(
+        "intr_2_mode0_sprites line sample did not terminate; target_ly={target_ly} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn sample_intr_2_mode0_sprites_irq_after_stat_arm_from_rom(
+    rom: Vec<u8>,
+) -> Option<Intr2Mode0TimingSpritesIrqObservation> {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut armed = None;
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        if armed.is_none()
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            let ppu = machine.ppu().snapshot();
+            armed = Some((ppu.ly, ppu.line_dot, ppu.mode));
+        }
+
+        if let Some((armed_ly, armed_line_dot, armed_mode)) = armed
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            let ppu = machine.ppu().snapshot();
+            return Some(Intr2Mode0TimingSpritesIrqObservation {
+                armed_ly,
+                armed_line_dot,
+                armed_mode,
+                irq_ly: ppu.ly,
+                irq_line_dot: ppu.line_dot,
+                irq_mode: ppu.mode,
+                irq_pc: machine.cpu().registers().pc,
+            });
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            return None;
+        }
+    }
+
+    panic!(
+        "intr_2_mode0_sprites IRQ sample did not terminate; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn run_intr_2_mode0_sprites_real_setup_probe(
+    delay_nops: usize,
+    sprite_x: u8,
+) -> Intr2Mode0SpritesProbeObservation {
+    run_intr_2_mode0_sprites_real_setup_probe_with_scx(delay_nops, sprite_x, 0)
+}
+
+fn run_intr_2_mode0_sprites_real_setup_probe_with_scx(
+    delay_nops: usize,
+    sprite_x: u8,
+    scx: u8,
+) -> Intr2Mode0SpritesProbeObservation {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_mode0_sprites_real_setup_probe_rom_with_scx(
+            delay_nops, sprite_x, scx,
+        ))
+        .expect("probe ROM should load");
+
+    let mut irq = None;
+
+    for _ in 0..1_200_000 {
+        machine.step_t_cycle();
+
+        if irq.is_none()
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            let snapshot = machine.ppu().snapshot();
+            irq = Some((snapshot.ly, snapshot.line_dot, snapshot.mode));
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            let snapshot = machine.ppu().snapshot();
+            let (irq_ly, irq_line_dot, irq_mode) =
+                irq.expect("probe should observe LCD STAT service");
+            return Intr2Mode0SpritesProbeObservation {
+                count: machine.cpu().registers().d,
+                irq_ly,
+                irq_line_dot,
+                irq_mode,
+                halt_ly: snapshot.ly,
+                halt_line_dot: snapshot.line_dot,
+                halt_mode: snapshot.mode,
+            };
+        }
+    }
+
+    panic!(
+        "mode0-sprites case13 real probe did not halt; delay_nops={delay_nops} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        machine.cpu().registers().pc,
+        machine.cpu().execution_state(),
+        machine.ppu().snapshot().ly,
+        machine.ppu().snapshot().line_dot,
+        machine.read_bus(0xFF41)
+    );
+}
+
+fn run_intr_2_mode0_sprites_case13_real_probe(
+    delay_nops: usize,
+) -> Intr2Mode0SpritesProbeObservation {
+    run_intr_2_mode0_sprites_real_setup_probe(delay_nops, 4)
+}
+
+fn sample_intr_2_mode0_sprites_case13_real_probe_line_changes_pre_irq(
+    delay_nops: usize,
+    target_ly: u8,
+) -> Vec<Intr2Mode0TimingSpritesLine68Observation> {
+    sample_intr_2_mode0_sprites_real_setup_probe_line_changes_pre_irq(delay_nops, 4, target_ly)
+}
+
+fn sample_intr_2_mode0_sprites_real_setup_probe_line_changes_pre_irq(
+    delay_nops: usize,
+    sprite_x: u8,
+    target_ly: u8,
+) -> Vec<Intr2Mode0TimingSpritesLine68Observation> {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(build_intr_2_mode0_sprites_real_setup_probe_rom(
+            delay_nops, sprite_x,
+        ))
+        .expect("probe ROM should load");
+
+    let mut observations = Vec::new();
+    let mut previous = None;
+
+    for _ in 0..1_200_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        if ppu.ly == target_ly {
+            let current = Intr2Mode0TimingSpritesLine68Observation {
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                mode0_start_dot: ppu.mode0_start_dot,
+                current_transfer_x: ppu.bg_current_transfer_x,
+                current_transfer_lane: ppu.bg_current_transfer_lane,
+                current_transfer_source_window: ppu.bg_current_transfer_source_window,
+                current_transfer_backing: ppu.bg_current_transfer_backing,
+                current_transfer_readiness: ppu.bg_current_transfer_readiness,
+                bg_fifo_len: ppu.bg_fifo_pixels.len(),
+                startup_fifo_placeholders: ppu.bg_startup_fifo_placeholders,
+                obj_fetcher_stage: ppu.obj_fetcher_stage,
+                obj_fetcher_stage_dot: ppu.obj_fetcher_stage_dot,
+                obj_pending_hit_match_x: ppu.obj_pending_hit_match_x,
+                obj_pending_hit_len: ppu.obj_pending_hit_len,
+                obj_pending_hit_front_sprite_slot: ppu.obj_pending_hit_front_sprite_slot,
+                bg_fetcher_stage: ppu.bg_fetcher_stage,
+                bg_fetcher_stage_dot: ppu.bg_fetcher_stage_dot,
+                selected_sprites_len: ppu.selected_sprites.len(),
+            };
+            if previous.as_ref() != Some(&current) {
+                observations.push(current.clone());
+                previous = Some(current);
+            }
+        } else if !observations.is_empty() && ppu.ly > target_ly {
+            return observations;
+        }
+    }
+
+    panic!(
+        "mode0-sprites case13 real probe pre-irq line sample did not terminate; delay_nops={delay_nops} target_ly={} pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
+        target_ly,
         machine.cpu().registers().pc,
         machine.cpu().execution_state(),
         machine.ppu().snapshot().ly,
@@ -2774,6 +4276,45 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_failure_signature_at_pc_4870() 
 }
 
 #[test]
+#[ignore = "diagnostic probe that stops at the current full-ROM failure signature for mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_current_full_rom_failure_signature() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let registers = machine.cpu().registers();
+        let snapshot = machine.ppu().snapshot();
+        if registers.pc == 0x486E {
+            println!(
+                "current_failure testcase_index={} b={} c={} d={} e={} ly={} line_dot={} mode={:?} mode0_start_dot={} selected_sprites_len={} visible_pixels_output={}",
+                machine.read_bus(0xFF80),
+                registers.b,
+                registers.c,
+                registers.d,
+                registers.e,
+                snapshot.ly,
+                snapshot.line_dot,
+                snapshot.mode,
+                snapshot.mode0_start_dot,
+                snapshot.selected_sprites.len(),
+                snapshot.visible_pixels_output
+            );
+            return;
+        }
+    }
+
+    panic!("probe did not reach the current full-ROM failure signature");
+}
+
+#[test]
 #[ignore = "diagnostic x-range table for lcd-restart probe of mooneye intr_2_mode0_timing_sprites"]
 fn mode2_to_mode0_sprites_lcd_restart_probe_logs_x_table() {
     for sprite_x in 0_u8..=17 {
@@ -2811,6 +4352,27 @@ fn mode2_to_mode0_sprites_multi_probe_logs_offscreen_right_same_x_cases() {
         let round_b =
             run_intr_2_mode0_sprites_multi_probe(40 + expected_cycles as usize, &sprite_xs);
         println!("sprite_x={sprite_x} round_a={round_a:?} round_b={round_b:?}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic right-edge ladder for same-x mooneye intr_2_mode0_timing_sprites cases"]
+fn mode2_to_mode0_sprites_multi_probe_logs_right_edge_same_x_ladder() {
+    for sprite_x in 160_u8..=167 {
+        let sprite_xs = [sprite_x; 10];
+        let pair_57 = (
+            run_intr_2_mode0_sprites_multi_probe(57, &sprite_xs),
+            run_intr_2_mode0_sprites_multi_probe(56, &sprite_xs),
+        );
+        let pair_56 = (
+            run_intr_2_mode0_sprites_multi_probe(56, &sprite_xs),
+            run_intr_2_mode0_sprites_multi_probe(55, &sprite_xs),
+        );
+        let pair_55 = (
+            run_intr_2_mode0_sprites_multi_probe(55, &sprite_xs),
+            run_intr_2_mode0_sprites_multi_probe(54, &sprite_xs),
+        );
+        println!("sprite_x={sprite_x} pair57={pair_57:?} pair56={pair_56:?} pair55={pair_55:?}");
     }
 }
 
@@ -2859,6 +4421,85 @@ fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case11_shape() {
 }
 
 #[test]
+#[ignore = "diagnostic STAT reads for the local case1 shape (2 sprites at X=0)"]
+fn mode2_to_mode0_sprites_multi_probe_logs_case1_stat_reads() {
+    let round_a_reads = sample_intr_2_mode0_sprites_multi_probe_stat_reads(45, &[0_u8, 0_u8], 4);
+    let round_b_reads = sample_intr_2_mode0_sprites_multi_probe_stat_reads(44, &[0_u8, 0_u8], 4);
+    println!("case1_round_a_reads={round_a_reads:?}");
+    println!("case1_round_b_reads={round_b_reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic ly66 pre-IRQ window for the local case1 shape (2 sprites at X=0)"]
+fn mode2_to_mode0_sprites_multi_probe_logs_case1_line66_pre_irq_window() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        45,
+        &[0_u8, 0_u8],
+        0,
+        0x91,
+        0x93,
+        66,
+    );
+    for observation in observations {
+        if (90..=170).contains(&observation.line_dot) {
+            println!("case1_line66_pre_irq={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic IRQ timing after STAT arm for the local case1 shape (2 sprites at X=0)"]
+fn mode2_to_mode0_sprites_multi_probe_logs_case1_irq_after_stat_arm() {
+    for delay_nops in [45_usize, 44_usize] {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_intr_2_mode0_sprites_multi_probe_rom(
+                delay_nops,
+                &[0_u8, 0_u8],
+            ))
+            .expect("probe ROM should load");
+
+        let mut saw_irq = false;
+        for _ in 0..1_200_000 {
+            machine.step_t_cycle();
+
+            if !saw_irq
+                && matches!(
+                    machine.cpu().execution_state(),
+                    gb_core::CpuExecutionState::ServiceInterrupt {
+                        source: gb_core::InterruptSource::LcdStat,
+                        ..
+                    }
+                )
+            {
+                let ppu = machine.ppu().snapshot();
+                println!(
+                    "case1_delay{delay_nops}_irq ly={} line_dot={} mode={:?}",
+                    ppu.ly, ppu.line_dot, ppu.mode
+                );
+                saw_irq = true;
+                break;
+            }
+        }
+
+        if !saw_irq {
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case1_delay{delay_nops}_no_irq pc={:#06X} state={:?} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                machine.cpu().registers().pc,
+                machine.cpu().execution_state(),
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+            );
+        }
+    }
+}
+
+#[test]
 #[ignore = "diagnostic same-x mini-probe for mooneye testcase 13 shape (10 sprites at X=4)"]
 fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case13_shape() {
     let sprite_xs = [4_u8; 10];
@@ -2866,6 +4507,1020 @@ fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case13_shape() {
     let round_b = run_intr_2_mode0_sprites_multi_probe(55, &sprite_xs);
     println!("case13_shape_round_a={round_a:?}");
     println!("case13_shape_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic same-x mini-probe for mooneye testcase 13 shape with scx=4"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case13_shape_with_scx4() {
+    let sprite_xs = [4_u8; 10];
+    let round_a = run_intr_2_mode0_sprites_multi_probe_with_scx(56, &sprite_xs, 4);
+    let round_b = run_intr_2_mode0_sprites_multi_probe_with_scx(55, &sprite_xs, 4);
+    println!("case13_shape_scx4_round_a={round_a:?}");
+    println!("case13_shape_scx4_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for mooneye testcase 13 shape with scx=4"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case13_shape_line66_with_scx4() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_scx(
+        56,
+        &[4_u8; 10],
+        4,
+        66,
+    );
+    for observation in observations {
+        if (110..=140).contains(&observation.line_dot) {
+            println!("case13_shape_scx4_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic same-x mini-probe for mooneye testcase 29 shape (10 sprites at X=160)"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case29_shape() {
+    let sprite_xs = [160_u8; 10];
+    let round_a = run_intr_2_mode0_sprites_multi_probe(57, &sprite_xs);
+    let round_b = run_intr_2_mode0_sprites_multi_probe(56, &sprite_xs);
+    println!("case29_shape_round_a={round_a:?}");
+    println!("case29_shape_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for mooneye testcase 29 shape"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case29_shape_line66() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_scx(
+        57,
+        &[160_u8; 10],
+        0,
+        66,
+    );
+    for observation in observations {
+        if (90..=320).contains(&observation.line_dot) {
+            println!("case29_shape_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for mooneye testcase 29 shape round-b"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case29_shape_line66_round_b() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_scx(
+        56,
+        &[160_u8; 10],
+        0,
+        66,
+    );
+    for observation in observations {
+        if (240..=320).contains(&observation.line_dot) {
+            println!("case29_shape_round_b_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic STAT reads for mooneye testcase 29 shape"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case29_stat_reads() {
+    let round_a_reads = sample_intr_2_mode0_sprites_multi_probe_stat_reads(57, &[160_u8; 10], 4);
+    let round_b_reads = sample_intr_2_mode0_sprites_multi_probe_stat_reads(56, &[160_u8; 10], 4);
+    println!("case29_shape_round_a_reads={round_a_reads:?}");
+    println!("case29_shape_round_b_reads={round_b_reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic same-x mini-probe for right-edge X=161 shape"]
+fn mode2_to_mode0_sprites_multi_probe_logs_right_edge_x161_shape() {
+    let sprite_xs = [161_u8; 10];
+    let round_a = run_intr_2_mode0_sprites_multi_probe(56, &sprite_xs);
+    let round_b = run_intr_2_mode0_sprites_multi_probe(55, &sprite_xs);
+    println!("x161_shape_round_a={round_a:?}");
+    println!("x161_shape_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for right-edge X=161 shape round-b"]
+fn mode2_to_mode0_sprites_multi_probe_logs_right_edge_x161_shape_line66_round_b() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_scx(
+        55,
+        &[161_u8; 10],
+        0,
+        66,
+    );
+    for observation in observations {
+        if (240..=320).contains(&observation.line_dot) {
+            println!("x161_shape_round_b_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic same-x mini-probe for mooneye testcase 13 real setup shape"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case13_real_setup_shape() {
+    let sprite_xs = [4_u8; 10];
+    let round_a = run_intr_2_mode0_sprites_multi_probe_with_setup(56, &sprite_xs, 0, 0x93, 0x93);
+    let round_b = run_intr_2_mode0_sprites_multi_probe_with_setup(55, &sprite_xs, 0, 0x93, 0x93);
+    println!("case13_real_setup_round_a={round_a:?}");
+    println!("case13_real_setup_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic same-x mini-probe for x=32 with real-style setup and scx=0"]
+fn mode2_to_mode0_sprites_multi_probe_logs_x32_real_setup_shape() {
+    let sprite_xs = [32_u8; 10];
+    let round_a = run_intr_2_mode0_sprites_multi_probe_with_setup(57, &sprite_xs, 0, 0x13, 0x93);
+    let round_b = run_intr_2_mode0_sprites_multi_probe_with_setup(56, &sprite_xs, 0, 0x13, 0x93);
+    println!("x32_real_setup_round_a={round_a:?}");
+    println!("x32_real_setup_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic same-x mini-probe for x=32 with real-style setup and scx=4"]
+fn mode2_to_mode0_sprites_multi_probe_logs_x32_real_setup_shape_with_scx4() {
+    let sprite_xs = [32_u8; 10];
+    let round_a = run_intr_2_mode0_sprites_multi_probe_with_setup(57, &sprite_xs, 4, 0x13, 0x93);
+    let round_b = run_intr_2_mode0_sprites_multi_probe_with_setup(56, &sprite_xs, 4, 0x13, 0x93);
+    println!("x32_real_setup_scx4_round_a={round_a:?}");
+    println!("x32_real_setup_scx4_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic same-x mini-probe for x=34 with real-style setup and scx=0"]
+fn mode2_to_mode0_sprites_multi_probe_logs_x34_real_setup_shape() {
+    let sprite_xs = [34_u8; 10];
+    let round_a = run_intr_2_mode0_sprites_multi_probe_with_setup(57, &sprite_xs, 0, 0x13, 0x93);
+    let round_b = run_intr_2_mode0_sprites_multi_probe_with_setup(56, &sprite_xs, 0, 0x13, 0x93);
+    println!("x34_real_setup_round_a={round_a:?}");
+    println!("x34_real_setup_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic same-x mini-probe for x=34 with real-style setup and scx=4"]
+fn mode2_to_mode0_sprites_multi_probe_logs_x34_real_setup_shape_with_scx4() {
+    let sprite_xs = [34_u8; 10];
+    let round_a = run_intr_2_mode0_sprites_multi_probe_with_setup(57, &sprite_xs, 4, 0x13, 0x93);
+    let round_b = run_intr_2_mode0_sprites_multi_probe_with_setup(56, &sprite_xs, 4, 0x13, 0x93);
+    println!("x34_real_setup_scx4_round_a={round_a:?}");
+    println!("x34_real_setup_scx4_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic split-group mini-probe for mooneye testcase 36 real setup shape"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case36_real_setup_shape() {
+    let sprite_xs = [0_u8, 0, 0, 0, 0, 160, 160, 160, 160, 160];
+    let round_a = run_intr_2_mode0_sprites_multi_probe_with_setup(58, &sprite_xs, 0, 0x91, 0x93);
+    let round_b = run_intr_2_mode0_sprites_multi_probe_with_setup(57, &sprite_xs, 0, 0x91, 0x93);
+    println!("case36_real_setup_round_a={round_a:?}");
+    println!("case36_real_setup_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic two-round split-group probe for mooneye testcase 36 real setup shape"]
+fn mode2_to_mode0_sprites_multi_two_round_real_setup_probe_logs_case36_shape() {
+    let observation = run_intr_2_mode0_sprites_multi_two_round_real_setup_probe(
+        &[0_u8, 0, 0, 0, 0, 160, 160, 160, 160, 160],
+        58,
+        57,
+    );
+    println!("case36_two_round_real_setup={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic round-b STAT reads for the local two-round case36 real-setup probe"]
+fn mode2_to_mode0_sprites_multi_two_round_real_setup_probe_logs_case36_round_b_reads() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(
+            build_intr_2_mode0_sprites_multi_two_round_real_setup_probe_rom(
+                &[0_u8, 0, 0, 0, 0, 160, 160, 160, 160, 160],
+                58,
+                57,
+            ),
+        )
+        .expect("probe ROM should load");
+
+    let mut arm_count = 0_u8;
+    let mut saw_irq_for_arm = false;
+    let mut read_count = 0_u8;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+            saw_irq_for_arm = false;
+            read_count = 0;
+        }
+
+        if arm_count == 2
+            && !saw_irq_for_arm
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq_for_arm = true;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case36_local_round_b_irq ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count == 2
+            && saw_irq_for_arm
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            read_count += 1;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case36_local_round_b_read{read_count} value={:#04X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                activity.value,
+                previous_ppu.ly,
+                previous_ppu.line_dot,
+                previous_ppu.mode,
+                previous_ppu.mode0_start_dot,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+            if read_count >= 2 {
+                return;
+            }
+        }
+
+        previous_ppu = machine.ppu().snapshot();
+    }
+
+    panic!("local case36 two-round probe did not reach round-b reads");
+}
+
+#[test]
+#[ignore = "diagnostic ly68 window 280..320 for the local two-round case36 real-setup probe"]
+fn mode2_to_mode0_sprites_multi_two_round_real_setup_probe_logs_case36_round_b_line68_window() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(
+            build_intr_2_mode0_sprites_multi_two_round_real_setup_probe_rom(
+                &[0_u8, 0, 0, 0, 0, 160, 160, 160, 160, 160],
+                58,
+                57,
+            ),
+        )
+        .expect("probe ROM should load");
+
+    let mut arm_count = 0_u8;
+    let mut previous = None;
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+        }
+
+        if arm_count == 2 {
+            let ppu = machine.ppu().snapshot();
+            if ppu.ly == 68 && (280..=320).contains(&ppu.line_dot) {
+                let current = Intr2Mode0TimingSpritesLine68Observation {
+                    line_dot: ppu.line_dot,
+                    mode: ppu.mode,
+                    mode0_start_dot: ppu.mode0_start_dot,
+                    current_transfer_x: ppu.bg_current_transfer_x,
+                    current_transfer_lane: ppu.bg_current_transfer_lane,
+                    current_transfer_source_window: ppu.bg_current_transfer_source_window,
+                    current_transfer_backing: ppu.bg_current_transfer_backing,
+                    current_transfer_readiness: ppu.bg_current_transfer_readiness,
+                    bg_fifo_len: ppu.bg_fifo_pixels.len(),
+                    startup_fifo_placeholders: ppu.bg_startup_fifo_placeholders,
+                    obj_fetcher_stage: ppu.obj_fetcher_stage,
+                    obj_fetcher_stage_dot: ppu.obj_fetcher_stage_dot,
+                    obj_pending_hit_match_x: ppu.obj_pending_hit_match_x,
+                    obj_pending_hit_len: ppu.obj_pending_hit_len,
+                    obj_pending_hit_front_sprite_slot: ppu.obj_pending_hit_front_sprite_slot,
+                    bg_fetcher_stage: ppu.bg_fetcher_stage,
+                    bg_fetcher_stage_dot: ppu.bg_fetcher_stage_dot,
+                    selected_sprites_len: ppu.selected_sprites.len(),
+                };
+                if previous.as_ref() != Some(&current) {
+                    println!("case36_local_round_b_line68={current:?}");
+                    previous = Some(current);
+                }
+            } else if previous.is_some() && ppu.ly > 68 {
+                return;
+            }
+        }
+    }
+
+    panic!("local case36 two-round probe did not reach line68 window");
+}
+
+#[test]
+#[ignore = "diagnostic STAT reads for mooneye testcase 36 real setup shape"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case36_real_setup_stat_reads() {
+    let sprite_xs = [0_u8, 0, 0, 0, 0, 160, 160, 160, 160, 160];
+    let round_a_reads = sample_intr_2_mode0_sprites_multi_probe_stat_reads_with_setup(
+        58, &sprite_xs, 4, 0x91, 0x93,
+    );
+    let round_b_reads = sample_intr_2_mode0_sprites_multi_probe_stat_reads_with_setup(
+        57, &sprite_xs, 4, 0x91, 0x93,
+    );
+    println!("case36_real_setup_round_a_reads={round_a_reads:?}");
+    println!("case36_real_setup_round_b_reads={round_b_reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic ly68 window 240..320 for mooneye testcase 36 real setup shape round B"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case36_real_setup_line68_round_b() {
+    let sprite_xs = [0_u8, 0, 0, 0, 0, 160, 160, 160, 160, 160];
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        57, &sprite_xs, 0, 0x91, 0x93, 68,
+    );
+    for observation in observations {
+        if (240..=320).contains(&observation.line_dot) {
+            println!("case36_real_setup_round_b_line68={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for mooneye testcase 13 real setup shape"]
+fn mode2_to_mode0_sprites_multi_probe_logs_mooneye_case13_real_setup_line66() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        56,
+        &[4_u8; 10],
+        0,
+        0x93,
+        0x93,
+        66,
+    );
+    for observation in observations {
+        if (90..=140).contains(&observation.line_dot) {
+            println!("case13_real_setup_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic exact case13 local probe built from the observed real setup"]
+fn mode2_to_mode0_sprites_case13_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_case13_real_probe(56);
+    let round_b = run_intr_2_mode0_sprites_case13_real_probe(55);
+    println!("case13_exact_round_a={round_a:?}");
+    println!("case13_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=5 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x5_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(56, 5);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(55, 5);
+    println!("x5_exact_round_a={round_a:?}");
+    println!("x5_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=6 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x6_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(56, 6);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(55, 6);
+    println!("x6_exact_round_a={round_a:?}");
+    println!("x6_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=10 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x10_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(56, 10);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(55, 10);
+    println!("x10_exact_round_a={round_a:?}");
+    println!("x10_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=15 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x15_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(56, 15);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(55, 15);
+    println!("x15_exact_round_a={round_a:?}");
+    println!("x15_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=16 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x16_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(57, 16);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(56, 16);
+    println!("x16_exact_round_a={round_a:?}");
+    println!("x16_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=17 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x17_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(57, 17);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(56, 17);
+    println!("x17_exact_round_a={round_a:?}");
+    println!("x17_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=32 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x32_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(57, 32);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(56, 32);
+    println!("x32_exact_round_a={round_a:?}");
+    println!("x32_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=32 local probe with SCX=4"]
+fn mode2_to_mode0_sprites_x32_real_probe_logs_shape_with_scx4() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe_with_scx(57, 32, 4);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe_with_scx(56, 32, 4);
+    println!("x32_exact_scx4_round_a={round_a:?}");
+    println!("x32_exact_scx4_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=33 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x33_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(57, 33);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(56, 33);
+    println!("x33_exact_round_a={round_a:?}");
+    println!("x33_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=34 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x34_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(57, 34);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(56, 34);
+    println!("x34_exact_round_a={round_a:?}");
+    println!("x34_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=34 local probe with SCX=4"]
+fn mode2_to_mode0_sprites_x34_real_probe_logs_shape_with_scx4() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe_with_scx(57, 34, 4);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe_with_scx(56, 34, 4);
+    println!("x34_exact_scx4_round_a={round_a:?}");
+    println!("x34_exact_scx4_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=35 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x35_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(57, 35);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(56, 35);
+    println!("x35_exact_round_a={round_a:?}");
+    println!("x35_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=39 local probe built from the observed real setup pattern"]
+fn mode2_to_mode0_sprites_x39_real_probe_logs_shape() {
+    let round_a = run_intr_2_mode0_sprites_real_setup_probe(57, 39);
+    let round_b = run_intr_2_mode0_sprites_real_setup_probe(56, 39);
+    println!("x39_exact_round_a={round_a:?}");
+    println!("x39_exact_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=4 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x4_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe(4);
+    println!("x4_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=5 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x5_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe(5);
+    println!("x5_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=6 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x6_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe(6);
+    println!("x6_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=7 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x7_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe(7);
+    println!("x7_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=8 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x8_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe(8);
+    println!("x8_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=9 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x9_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe(9);
+    println!("x9_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=10 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x10_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe(10);
+    println!("x10_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=160 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x160_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe_with_delays(160, 57, 56);
+    println!("x160_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=161 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x161_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe_with_delays(161, 57, 56);
+    println!("x161_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=167 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x167_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe(167);
+    println!("x167_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=168 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x168_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe_with_delays(168, 41, 40);
+    println!("x168_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=169 local probe built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x169_two_round_real_probe_logs_shape() {
+    let observation = run_intr_2_mode0_sprites_two_round_real_setup_probe_with_delays(169, 41, 40);
+    println!("x169_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=168 local probe STAT reads built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x168_two_round_real_probe_logs_stat_reads() {
+    let reads = sample_intr_2_mode0_sprites_stat_reads_after_irq_from_rom(
+        build_intr_2_mode0_sprites_two_round_real_setup_probe_rom(168, 41, 40),
+        4,
+    );
+    println!("x168_two_round_reads={reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact x=168 local probe line68 window 240..260 built from the real mooneye setup"]
+fn mode2_to_mode0_sprites_x168_two_round_real_probe_logs_line68_window_240_260() {
+    let observations = sample_intr_2_mode0_sprites_line_changes_from_rom(
+        build_intr_2_mode0_sprites_two_round_real_setup_probe_rom(168, 41, 40),
+        68,
+    );
+    for observation in observations {
+        if (240..=260).contains(&observation.line_dot) {
+            println!("x168_two_round_line68={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=160 local probe built from the mooneye source setup"]
+fn mode2_to_mode0_sprites_x160_two_round_source_setup_probe_logs_shape() {
+    let observation =
+        run_intr_2_mode0_sprites_two_round_source_setup_probe_with_delays(160, 57, 56);
+    println!("x160_source_setup_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=160 local probe with timed direct FF40 writes"]
+fn mode2_to_mode0_sprites_x160_two_round_timed_direct_setup_probe_logs_shape() {
+    let observation =
+        run_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_with_delays(160, 57, 56);
+    println!("x160_timed_direct_setup_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic compare x=160 post-IRQ STAT reads between baseline mini-probe and timed direct setup"]
+fn mode2_to_mode0_sprites_x160_compare_baseline_and_timed_direct_setup_stat_reads() {
+    let baseline_reads = sample_intr_2_mode0_sprites_multi_probe_stat_reads(56, &[160; 10], 4);
+    let timed_direct_reads = sample_intr_2_mode0_sprites_stat_reads_after_irq_from_rom(
+        build_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_rom(160, 57, 56),
+        4,
+    );
+    println!("x160_baseline_reads={baseline_reads:?}");
+    println!("x160_timed_direct_reads={timed_direct_reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic line68 window 300..324 for x=160 timed direct setup"]
+fn mode2_to_mode0_sprites_x160_timed_direct_setup_logs_line68_window_300_324() {
+    let observations = sample_intr_2_mode0_sprites_line_changes_from_rom(
+        build_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_rom(160, 57, 56),
+        68,
+    );
+    for observation in observations {
+        if (300..=324).contains(&observation.line_dot) {
+            println!("x160_timed_direct_line68={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic compare x=160 STAT arm to IRQ timing between baseline mini-probe and timed direct setup"]
+fn mode2_to_mode0_sprites_x160_compare_baseline_and_timed_direct_irq_timing() {
+    let baseline_irq = sample_intr_2_mode0_sprites_irq_after_stat_arm_from_rom(
+        build_intr_2_mode0_sprites_multi_probe_rom(56, &[160; 10]),
+    );
+    let timed_direct_irq = sample_intr_2_mode0_sprites_irq_after_stat_arm_from_rom(
+        build_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_rom(160, 57, 56),
+    );
+    println!("x160_baseline_irq={baseline_irq:?}");
+    println!("x160_timed_direct_irq={timed_direct_irq:?}");
+}
+
+#[test]
+#[ignore = "diagnostic round-by-round arm, IRQ, and STAT reads for x=160 timed direct setup"]
+fn mode2_to_mode0_sprites_x160_timed_direct_setup_logs_round_events() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(
+            build_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_rom(160, 56, 55),
+        )
+        .expect("probe ROM should load");
+
+    let mut arm_count = 0_u8;
+    let mut saw_irq_for_arm = false;
+    let mut read_count = 0_u8;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+            saw_irq_for_arm = false;
+            read_count = 0;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "x160_timed_direct_round{arm_count}_armed ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && !saw_irq_for_arm
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq_for_arm = true;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "x160_timed_direct_round{arm_count}_irq ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && saw_irq_for_arm
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            read_count += 1;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "x160_timed_direct_round{arm_count}_read{read_count} value={:#04X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                activity.value,
+                previous_ppu.ly,
+                previous_ppu.line_dot,
+                previous_ppu.mode,
+                previous_ppu.mode0_start_dot,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+        }
+
+        previous_ppu = machine.ppu().snapshot();
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            break;
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic round-by-round line68 window 290..324 for x=160 timed direct setup"]
+fn mode2_to_mode0_sprites_x160_timed_direct_setup_logs_line68_window_per_round() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine
+        .load_cartridge(
+            build_intr_2_mode0_sprites_two_round_timed_direct_setup_probe_rom(160, 56, 55),
+        )
+        .expect("probe ROM should load");
+
+    let mut arm_count = 0_u8;
+    let mut previous = None;
+
+    for _ in 0..2_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+            previous = None;
+        }
+
+        let ppu = machine.ppu().snapshot();
+        if arm_count > 0 && ppu.ly == 68 && (290..=324).contains(&ppu.line_dot) {
+            let current = Intr2Mode0TimingSpritesLine68Observation {
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                mode0_start_dot: ppu.mode0_start_dot,
+                current_transfer_x: ppu.bg_current_transfer_x,
+                current_transfer_lane: ppu.bg_current_transfer_lane,
+                current_transfer_source_window: ppu.bg_current_transfer_source_window,
+                current_transfer_backing: ppu.bg_current_transfer_backing,
+                current_transfer_readiness: ppu.bg_current_transfer_readiness,
+                bg_fifo_len: ppu.bg_fifo_pixels.len(),
+                startup_fifo_placeholders: ppu.bg_startup_fifo_placeholders,
+                obj_fetcher_stage: ppu.obj_fetcher_stage,
+                obj_fetcher_stage_dot: ppu.obj_fetcher_stage_dot,
+                obj_pending_hit_match_x: ppu.obj_pending_hit_match_x,
+                obj_pending_hit_len: ppu.obj_pending_hit_len,
+                obj_pending_hit_front_sprite_slot: ppu.obj_pending_hit_front_sprite_slot,
+                bg_fetcher_stage: ppu.bg_fetcher_stage,
+                bg_fetcher_stage_dot: ppu.bg_fetcher_stage_dot,
+                selected_sprites_len: ppu.selected_sprites.len(),
+            };
+            if previous.as_ref() != Some(&current) {
+                println!("x160_timed_direct_round{arm_count}_line68={current:?}");
+                previous = Some(current);
+            }
+        }
+
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d != 0
+        {
+            break;
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic exact two-round x=161 local probe built from the mooneye source setup"]
+fn mode2_to_mode0_sprites_x161_two_round_source_setup_probe_logs_shape() {
+    let observation =
+        run_intr_2_mode0_sprites_two_round_source_setup_probe_with_delays(161, 57, 56);
+    println!("x161_source_setup_two_round={observation:?}");
+}
+
+#[test]
+#[ignore = "diagnostic same-x x=160 mini-probe with both live writes using LCDC=0x93"]
+fn mode2_to_mode0_sprites_x160_multi_probe_logs_shape_with_obj_enabled_from_first_live_write() {
+    let sprite_xs = [160; 10];
+    let round_a = run_intr_2_mode0_sprites_multi_probe_with_setup(56, &sprite_xs, 0, 0x93, 0x93);
+    let round_b = run_intr_2_mode0_sprites_multi_probe_with_setup(55, &sprite_xs, 0, 0x93, 0x93);
+    println!("x160_obj_on_first_live_write_round_a={round_a:?}");
+    println!("x160_obj_on_first_live_write_round_b={round_b:?}");
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for same-x x=160 mini-probe with both live writes using LCDC=0x93"]
+fn mode2_to_mode0_sprites_x160_multi_probe_logs_line66_with_obj_enabled_from_first_live_write() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        55, &[160; 10], 0, 0x93, 0x93, 66,
+    );
+    for observation in observations {
+        if (240..=320).contains(&observation.line_dot) {
+            println!("x160_obj_on_first_live_write_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic first line66 divergence between baseline x160 case29 probe and LCDC=0x93/0x93 variant"]
+fn mode2_to_mode0_sprites_x160_multi_probe_logs_first_round_line66_divergence_for_obj_enabled_from_first_live_write()
+ {
+    let baseline = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        56, &[160; 10], 0, 0x91, 0x93, 66,
+    );
+    let obj_enabled_from_first_live_write =
+        sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+            56, &[160; 10], 0, 0x93, 0x93, 66,
+        );
+
+    for (index, (baseline, obj_enabled_from_first_live_write)) in baseline
+        .iter()
+        .zip(obj_enabled_from_first_live_write.iter())
+        .enumerate()
+    {
+        if baseline != obj_enabled_from_first_live_write
+            && ((240..=320).contains(&baseline.line_dot)
+                || (240..=320).contains(&obj_enabled_from_first_live_write.line_dot))
+        {
+            println!("case29_round_a_diff_index={index}");
+            println!("case29_round_a_baseline={baseline:?}");
+            println!(
+                "case29_round_a_obj_on_first_live_write={obj_enabled_from_first_live_write:?}"
+            );
+            return;
+        }
+    }
+
+    println!("case29_round_a_no_diff_in_window");
+}
+
+#[test]
+#[ignore = "diagnostic STAT reads for x160 case29 probe with LCDC=0x93 on both live writes"]
+fn mode2_to_mode0_sprites_x160_multi_probe_logs_stat_reads_with_obj_enabled_from_first_live_write()
+{
+    let reads = sample_intr_2_mode0_sprites_multi_probe_stat_reads_with_setup(
+        56,
+        &[160_u8; 10],
+        4,
+        0x93,
+        0x93,
+    );
+    println!("x160_obj_on_first_live_write_reads={reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for the exact case13 local probe"]
+fn mode2_to_mode0_sprites_case13_real_probe_logs_line66() {
+    let observations = sample_intr_2_mode0_sprites_case13_real_probe_line_changes_pre_irq(56, 66);
+    for observation in observations {
+        if (90..=140).contains(&observation.line_dot) {
+            println!("case13_exact_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for the exact x=5 local probe"]
+fn mode2_to_mode0_sprites_x5_real_probe_logs_line66() {
+    let observations = sample_intr_2_mode0_sprites_real_setup_probe_line_changes_pre_irq(56, 5, 66);
+    for observation in observations {
+        if (90..=140).contains(&observation.line_dot) {
+            println!("x5_exact_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for the exact x=10 local probe"]
+fn mode2_to_mode0_sprites_x10_real_probe_logs_line66() {
+    let observations =
+        sample_intr_2_mode0_sprites_real_setup_probe_line_changes_pre_irq(56, 10, 66);
+    for observation in observations {
+        if (90..=140).contains(&observation.line_dot) {
+            println!("x10_exact_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly67 window for the exact x=10 local probe"]
+fn mode2_to_mode0_sprites_x10_real_probe_logs_line67() {
+    let observations =
+        sample_intr_2_mode0_sprites_real_setup_probe_line_changes_pre_irq(56, 10, 67);
+    for observation in observations {
+        if (118..=140).contains(&observation.line_dot) {
+            println!("x10_exact_line67={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for the exact x=16 local probe"]
+fn mode2_to_mode0_sprites_x16_real_probe_logs_line66() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        57, &[16; 10], 0, 0x13, 0x93, 66,
+    );
+    for observation in observations {
+        if (90..=160).contains(&observation.line_dot) {
+            println!("x16_exact_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly67 window for the exact x=16 local probe"]
+fn mode2_to_mode0_sprites_x16_real_probe_logs_line67() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        57, &[16; 10], 0, 0x13, 0x93, 67,
+    );
+    for observation in observations {
+        if (90..=160).contains(&observation.line_dot) {
+            println!("x16_exact_line67={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for the exact x=34 local probe"]
+fn mode2_to_mode0_sprites_x34_real_probe_logs_line66() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        57, &[34; 10], 0, 0x13, 0x93, 66,
+    );
+    for observation in observations {
+        if (90..=160).contains(&observation.line_dot) {
+            println!("x34_exact_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly67 window for the exact x=34 local probe"]
+fn mode2_to_mode0_sprites_x34_real_probe_logs_line67() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        57, &[34; 10], 0, 0x13, 0x93, 67,
+    );
+    for observation in observations {
+        if (90..=160).contains(&observation.line_dot) {
+            println!("x34_exact_line67={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for the x=34 real-style setup mini-probe with scx=0"]
+fn mode2_to_mode0_sprites_x34_real_setup_logs_line66() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        57, &[34; 10], 0, 0x13, 0x93, 66,
+    );
+    for observation in observations {
+        if (90..=160).contains(&observation.line_dot) {
+            println!("x34_real_setup_line66={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly66 window for the x=34 real-style setup mini-probe with scx=4"]
+fn mode2_to_mode0_sprites_x34_real_setup_logs_line66_with_scx4() {
+    let observations = sample_intr_2_mode0_sprites_multi_probe_line_changes_pre_irq_with_setup(
+        57, &[34; 10], 4, 0x13, 0x93, 66,
+    );
+    for observation in observations {
+        if (90..=160).contains(&observation.line_dot) {
+            println!("x34_real_setup_scx4_line66={observation:?}");
+        }
+    }
 }
 
 #[test]
@@ -2920,6 +5575,17 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_setup_accesses() {
     for access in setup_events {
         println!("setup={access:?}");
     }
+    for access in tail_events {
+        println!("tail={access:?}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic tail accesses before the current full-ROM failure of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_tail_accesses_before_current_failure() {
+    let (failure, tail_events) =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_tail_accesses_before_current_failure(64);
+    println!("failure={failure:?}");
     for access in tail_events {
         println!("tail={access:?}");
     }
@@ -3223,6 +5889,185 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case1_round_counts() {
 fn real_mooneye_intr_2_mode0_timing_sprites_logs_case1_irq_after_stat_arm() {
     let irq = sample_real_mooneye_intr_2_mode0_timing_sprites_irq_after_stat_arm_for_testcase(1);
     println!("case1_irq={irq:?}");
+}
+
+#[test]
+#[ignore = "diagnostic round-2 STAT reads for testcase 1 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case1_round2_reads_only() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut arm_count = 0_u8;
+    let mut saw_irq_for_arm = false;
+    let mut read_count = 0_u8;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+
+        if testcase_index == 1
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+            saw_irq_for_arm = false;
+            read_count = 0;
+        }
+
+        if arm_count == 2
+            && !saw_irq_for_arm
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq_for_arm = true;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case1_round2_irq ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count == 2
+            && saw_irq_for_arm
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            read_count += 1;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case1_round2_read{read_count} value={:#04X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                activity.value,
+                previous_ppu.ly,
+                previous_ppu.line_dot,
+                previous_ppu.mode,
+                previous_ppu.mode0_start_dot,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+        }
+
+        previous_ppu = machine.ppu().snapshot();
+
+        let pc = machine.cpu().registers().pc;
+        if testcase_index == 1 && (0x484D..0x4871).contains(&pc) {
+            let registers = machine.cpu().registers();
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case1_fail arm_count={} read_count={} pc={:#06X} b={} c={} d={} e={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                arm_count,
+                read_count,
+                pc,
+                registers.b,
+                registers.c,
+                registers.d,
+                registers.e,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+            );
+            return;
+        }
+
+        if testcase_index > 1 {
+            break;
+        }
+    }
+
+    panic!("probe did not reach case1 round 2 progression");
+}
+
+#[test]
+#[ignore = "diagnostic tail MMIO/OAM accesses before the testcase 1 fail path of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case1_tail_accesses_before_fail() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut tail_events = Vec::with_capacity(64);
+    for _ in 0..10_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+
+        if testcase_index == 1
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && matches!(activity.address, 0xFE00..=0xFE27 | 0xFF40..=0xFF43)
+        {
+            let ppu = machine.ppu().snapshot();
+            let observation = Intr2Mode0TimingSpritesAccessObservation {
+                testcase_index,
+                kind: activity.kind,
+                address: activity.address,
+                value: activity.value,
+                pc: cpu_snapshot.registers.pc,
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                mode0_start_dot: ppu.mode0_start_dot,
+                selected_sprites_len: ppu.selected_sprites.len(),
+                visible_pixels_output: ppu.visible_pixels_output,
+            };
+
+            if tail_events.len() == 64 {
+                tail_events.remove(0);
+            }
+            tail_events.push(observation);
+        }
+
+        let pc = machine.cpu().registers().pc;
+        if testcase_index == 1 && (0x484D..0x4871).contains(&pc) {
+            let registers = machine.cpu().registers();
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case1_fail_tail arm_pc={:#06X} b={} c={} d={} e={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                pc,
+                registers.b,
+                registers.c,
+                registers.d,
+                registers.e,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+            for access in tail_events {
+                println!("case1_tail={access:?}");
+            }
+            return;
+        }
+
+        if testcase_index > 1 {
+            break;
+        }
+    }
+
+    panic!("probe did not reach testcase 1 fail tail");
 }
 
 #[test]
@@ -4091,6 +6936,977 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case13_stat_reads_after_irq() {
 }
 
 #[test]
+#[ignore = "diagnostic round arm/irq/read sequence for testcase 14 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case14_rounds_and_reads() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut arm_count = 0_u8;
+    let mut saw_irq_for_arm = false;
+    let mut read_count = 0_u8;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+
+        if testcase_index == 14
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+            saw_irq_for_arm = false;
+            read_count = 0;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case14_round{arm_count}_armed ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && !saw_irq_for_arm
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq_for_arm = true;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case14_round{arm_count}_irq ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && saw_irq_for_arm
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            read_count += 1;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case14_round{arm_count}_read{read_count} value={:#04X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                activity.value,
+                previous_ppu.ly,
+                previous_ppu.line_dot,
+                previous_ppu.mode,
+                previous_ppu.mode0_start_dot,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+        }
+
+        previous_ppu = machine.ppu().snapshot();
+
+        let pc = machine.cpu().registers().pc;
+        if (0x484D..0x4871).contains(&pc) {
+            break;
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic line68 state changes for testcase 14 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case14_line68_changes() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(14, 68);
+    for observation in observations {
+        println!("case14_line68={observation:?}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic STAT read sample after testcase 14 irq of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case14_stat_reads_after_irq() {
+    let reads =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_stat_reads_after_irq_for_testcase(14, 4);
+    println!("case14_reads={reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic STAT read sample after testcase 19 irq of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case19_stat_reads_after_irq() {
+    let reads =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_stat_reads_after_irq_for_testcase(19, 4);
+    println!("case19_reads={reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic irq delivery after arming testcase 19 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case19_irq_delivery() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut armed = false;
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        let ppu = machine.ppu().snapshot();
+
+        if !armed
+            && testcase_index == 19
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            armed = true;
+            println!(
+                "case19_armed ly={} line_dot={} mode={:?} mode0_start_dot={} current_transfer_x={} obj_stage={:?} obj_stage_dot={} obj_pending_hit_len={}",
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                ppu.bg_current_transfer_x,
+                ppu.obj_fetcher_stage,
+                ppu.obj_fetcher_stage_dot,
+                ppu.obj_pending_hit_len
+            );
+        }
+
+        if armed
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            println!(
+                "case19_irq ly={} line_dot={} mode={:?} mode0_start_dot={} pc={:#06X}",
+                ppu.ly, ppu.line_dot, ppu.mode, ppu.mode0_start_dot, cpu_snapshot.registers.pc
+            );
+            return;
+        }
+
+        if armed && machine.cpu().registers().pc == 0x4870 {
+            println!(
+                "case19_failed_without_irq ly={} line_dot={} mode={:?} mode0_start_dot={} stat={:#04X}",
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                machine.read_bus(0xFF41)
+            );
+            return;
+        }
+    }
+
+    panic!("case19 irq-delivery probe did not terminate");
+}
+
+#[test]
+#[ignore = "diagnostic real STAT reads after IRQ for testcase 19 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case19_reads_after_irq() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut armed = false;
+    let mut saw_irq = false;
+    let mut read_count = 0_u8;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        let ppu = machine.ppu().snapshot();
+
+        if !armed
+            && testcase_index == 19
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            armed = true;
+            println!(
+                "case19_reads_armed ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                ppu.ly, ppu.line_dot, ppu.mode, ppu.mode0_start_dot
+            );
+        }
+
+        if armed
+            && !saw_irq
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq = true;
+            println!(
+                "case19_reads_irq ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                ppu.ly, ppu.line_dot, ppu.mode, ppu.mode0_start_dot
+            );
+        }
+
+        if saw_irq
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            read_count += 1;
+            println!(
+                "case19_reads_read{read_count} value={:#04X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                activity.value,
+                previous_ppu.ly,
+                previous_ppu.line_dot,
+                previous_ppu.mode,
+                previous_ppu.mode0_start_dot,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+            if read_count == 4 {
+                return;
+            }
+        }
+
+        previous_ppu = ppu.clone();
+
+        if saw_irq && machine.cpu().registers().pc == 0x4870 {
+            println!(
+                "case19_reads_failed pc=0x4870 ly={} line_dot={} mode={:?} mode0_start_dot={} stat={:#04X}",
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                machine.read_bus(0xFF41)
+            );
+            return;
+        }
+    }
+
+    panic!("case19 read-after-irq probe did not terminate");
+}
+
+#[test]
+#[ignore = "diagnostic line68 window 240..330 for testcase 14 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case14_line68_window_240_330() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(14, 68);
+    for observation in observations {
+        if (240..=330).contains(&observation.line_dot) {
+            println!("case14_line68_window={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic line66 window 40..140 for testcase 14 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case14_line66_window_40_140() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(14, 66);
+    for observation in observations {
+        if (40..=140).contains(&observation.line_dot) {
+            println!("case14_line66_window={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic STAT-arm progression before the current full-ROM failure of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_stat_arm_progression_to_current_failure() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut last_arm = None;
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+            && last_arm != Some(testcase_index)
+        {
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "arm testcase_index={} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                testcase_index,
+                cpu_snapshot.registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+            last_arm = Some(testcase_index);
+        }
+
+        let registers = machine.cpu().registers();
+        if registers.pc == 0x486E {
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "failure testcase_index={} b={} c={} d={} e={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                testcase_index,
+                registers.b,
+                registers.c,
+                registers.d,
+                registers.e,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+            return;
+        }
+    }
+
+    panic!("probe did not reach the current full-ROM failure signature");
+}
+
+#[test]
+#[ignore = "diagnostic tail MMIO/OAM accesses before the run_rom_suite failure signature of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_tail_before_runner_failure_signature() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut tail_events = Vec::with_capacity(64);
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if let Some(activity) = cpu_snapshot.last_bus_activity
+            && matches!(activity.address, 0xFE00..=0xFE27 | 0xFF40..=0xFF43)
+        {
+            let ppu = machine.ppu().snapshot();
+            let observation = Intr2Mode0TimingSpritesAccessObservation {
+                testcase_index,
+                kind: activity.kind,
+                address: activity.address,
+                value: activity.value,
+                pc: cpu_snapshot.registers.pc,
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                mode0_start_dot: ppu.mode0_start_dot,
+                selected_sprites_len: ppu.selected_sprites.len(),
+                visible_pixels_output: ppu.visible_pixels_output,
+            };
+            if tail_events.len() == 64 {
+                tail_events.remove(0);
+            }
+            tail_events.push(observation);
+        }
+
+        let ppu = machine.ppu().snapshot();
+        let registers = machine.cpu().registers();
+        if registers.pc == 0x486F
+            && ppu.ly == 41
+            && ppu.line_dot == 48
+            && ppu.mode == PpuAccessMode::OamScan
+        {
+            println!(
+                "runner_failure testcase_index={} b={} c={} d={} e={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                testcase_index,
+                registers.b,
+                registers.c,
+                registers.d,
+                registers.e,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+            for access in tail_events {
+                println!("runner_tail={access:?}");
+            }
+            return;
+        }
+    }
+
+    panic!("probe did not reach the run_rom_suite failure signature");
+}
+
+#[test]
+#[ignore = "diagnostic FF40/FF41/FF44 progression after the testcase 1 second restart of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case1_second_restart_progression() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut second_restart_seen = false;
+    let mut saw_ff40_11 = false;
+    let mut last_ff44_read_value = None;
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index != 1 {
+            continue;
+        }
+
+        if let Some(activity) = cpu_snapshot.last_bus_activity {
+            if activity.kind == CpuBusAccessKind::DataWrite
+                && activity.address == 0xFF40
+                && activity.value == 0x11
+            {
+                saw_ff40_11 = true;
+            }
+
+            if saw_ff40_11
+                && activity.kind == CpuBusAccessKind::DataWrite
+                && activity.address == 0xFF40
+                && activity.value == 0x91
+            {
+                second_restart_seen = true;
+                let ppu = machine.ppu().snapshot();
+                println!(
+                    "case1_second_restart_seen pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                    cpu_snapshot.registers.pc, ppu.ly, ppu.line_dot, ppu.mode, ppu.mode0_start_dot
+                );
+            }
+
+            if second_restart_seen && matches!(activity.address, 0xFF40 | 0xFF41 | 0xFF44) {
+                let is_ff44_poll =
+                    activity.kind == CpuBusAccessKind::DataRead && activity.address == 0xFF44;
+                if !is_ff44_poll || last_ff44_read_value != Some(activity.value) {
+                    if is_ff44_poll {
+                        last_ff44_read_value = Some(activity.value);
+                    }
+                    let ppu = machine.ppu().snapshot();
+                    println!(
+                        "case1_second_restart_access kind={:?} address={:#06X} value={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                        activity.kind,
+                        activity.address,
+                        activity.value,
+                        cpu_snapshot.registers.pc,
+                        ppu.ly,
+                        ppu.line_dot,
+                        ppu.mode,
+                        ppu.mode0_start_dot
+                    );
+                }
+
+                if activity.kind == CpuBusAccessKind::DataWrite
+                    && activity.address == 0xFF41
+                    && activity.value == 0x20
+                {
+                    return;
+                }
+            }
+        }
+
+        let ppu = machine.ppu().snapshot();
+        let registers = machine.cpu().registers();
+        if second_restart_seen
+            && registers.pc == 0x486F
+            && ppu.ly == 41
+            && ppu.line_dot == 48
+            && ppu.mode == PpuAccessMode::OamScan
+        {
+            println!(
+                "case1_second_restart_failure testcase_index={} b={} c={} d={} e={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                testcase_index,
+                registers.b,
+                registers.c,
+                registers.d,
+                registers.e,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+            return;
+        }
+    }
+
+    panic!("probe did not reach the testcase 1 second restart progression");
+}
+
+#[test]
+#[ignore = "diagnostic D-register transitions after the testcase 1 second restart of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case1_second_restart_d_transitions() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut second_restart_seen = false;
+    let mut saw_ff40_11 = false;
+    let mut previous_d = None;
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index != 1 {
+            continue;
+        }
+
+        if let Some(activity) = cpu_snapshot.last_bus_activity {
+            if activity.kind == CpuBusAccessKind::DataWrite
+                && activity.address == 0xFF40
+                && activity.value == 0x11
+            {
+                saw_ff40_11 = true;
+            }
+
+            if saw_ff40_11
+                && activity.kind == CpuBusAccessKind::DataWrite
+                && activity.address == 0xFF40
+                && activity.value == 0x91
+            {
+                second_restart_seen = true;
+                previous_d = Some(cpu_snapshot.registers.d);
+                let ppu = machine.ppu().snapshot();
+                println!(
+                    "case1_second_restart_d_start d={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                    cpu_snapshot.registers.d,
+                    cpu_snapshot.registers.pc,
+                    ppu.ly,
+                    ppu.line_dot,
+                    ppu.mode,
+                    ppu.mode0_start_dot
+                );
+            }
+        }
+
+        if second_restart_seen {
+            let d = cpu_snapshot.registers.d;
+            if previous_d != Some(d) {
+                let ppu = machine.ppu().snapshot();
+                println!(
+                    "case1_second_restart_d_change from={:#04X} to={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                    previous_d.unwrap_or(0),
+                    d,
+                    cpu_snapshot.registers.pc,
+                    ppu.ly,
+                    ppu.line_dot,
+                    ppu.mode,
+                    ppu.mode0_start_dot
+                );
+                previous_d = Some(d);
+            }
+        }
+
+        let ppu = machine.ppu().snapshot();
+        let registers = machine.cpu().registers();
+        if second_restart_seen
+            && registers.pc == 0x486F
+            && ppu.ly == 41
+            && ppu.line_dot == 48
+            && ppu.mode == PpuAccessMode::OamScan
+        {
+            println!(
+                "case1_second_restart_d_failure d={:#04X} b={:#04X} c={:#04X} e={:#04X} pc={:#06X} ly={} line_dot={} mode={:?}",
+                registers.d,
+                registers.b,
+                registers.c,
+                registers.e,
+                registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode
+            );
+            return;
+        }
+    }
+
+    panic!("probe did not reach the testcase 1 second restart D-transition window");
+}
+
+#[test]
+#[ignore = "diagnostic first D-register transition during testcase 1 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case1_first_d_transition() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut in_case1 = false;
+    let mut previous_d = None;
+
+    for _ in 0..20_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index == 1 {
+            in_case1 = true;
+        } else if in_case1 && testcase_index > 1 {
+            break;
+        }
+
+        if !in_case1 {
+            continue;
+        }
+
+        let d = cpu_snapshot.registers.d;
+        if let Some(previous_d) = previous_d
+            && previous_d != d
+        {
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case1_d_change from={:#04X} to={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={} last_bus_activity={:?}",
+                previous_d,
+                d,
+                cpu_snapshot.registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                cpu_snapshot.last_bus_activity
+            );
+            return;
+        }
+
+        previous_d = Some(d);
+    }
+
+    panic!("probe did not observe a D transition during testcase 1");
+}
+
+#[test]
+#[ignore = "diagnostic first transition of D to 0x42 during testcase 1 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case1_transition_to_fail_marker() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut in_case1 = false;
+    let mut previous_d = None;
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index == 1 {
+            in_case1 = true;
+        } else if in_case1 && testcase_index > 1 {
+            break;
+        }
+
+        if !in_case1 {
+            continue;
+        }
+
+        let d = cpu_snapshot.registers.d;
+        if previous_d != Some(d) && d == 0x42 {
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case1_d_to_fail_marker from={:#04X} to={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={} last_bus_activity={:?}",
+                previous_d.unwrap_or(0),
+                d,
+                cpu_snapshot.registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                cpu_snapshot.last_bus_activity
+            );
+            return;
+        }
+
+        previous_d = Some(d);
+    }
+
+    panic!("probe did not observe D transitioning to 0x42 during testcase 1");
+}
+
+#[test]
+#[ignore = "diagnostic setup MMIO/OAM access window for testcase 14 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case14_setup_access_window() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    for _ in 0..10_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index == 14
+            && (65..=67).contains(&ppu.ly)
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && (matches!(activity.address, 0xFF40 | 0xFF41 | 0xFF43 | 0xFF44)
+                || (0xFE00..=0xFE27).contains(&activity.address))
+        {
+            println!(
+                "case14_setup_access kind={:?} address={:#06X} value={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={} current_transfer_x={} lane={:?} source_window={:?} backing={:?} readiness={:?} startup_fifo_placeholders={} obj_stage={:?} obj_stage_dot={} obj_pending_hit_match_x={:?} obj_pending_hit_len={} obj_pending_hit_front_sprite_slot={:?} selected_sprites_len={}",
+                activity.kind,
+                activity.address,
+                activity.value,
+                cpu_snapshot.registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                ppu.bg_current_transfer_x,
+                ppu.bg_current_transfer_lane,
+                ppu.bg_current_transfer_source_window,
+                ppu.bg_current_transfer_backing,
+                ppu.bg_current_transfer_readiness,
+                ppu.bg_startup_fifo_placeholders,
+                ppu.obj_fetcher_stage,
+                ppu.obj_fetcher_stage_dot,
+                ppu.obj_pending_hit_match_x,
+                ppu.obj_pending_hit_len,
+                ppu.obj_pending_hit_front_sprite_slot,
+                ppu.selected_sprites.len()
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic setup writes for testcase 19 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case19_setup_writes() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut in_case19 = false;
+
+    for _ in 0..10_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index == 19 {
+            in_case19 = true;
+        }
+
+        if in_case19
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && (matches!(activity.address, 0xFF40 | 0xFF41 | 0xFF43)
+                || (0xFE00..=0xFE27).contains(&activity.address))
+        {
+            println!(
+                "case19_setup_write address={:#06X} value={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={} startup_fifo_placeholders={} current_transfer_x={} lane={:?} obj_stage={:?} obj_stage_dot={} obj_pending_hit_len={} selected_sprites_len={}",
+                activity.address,
+                activity.value,
+                cpu_snapshot.registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                ppu.bg_startup_fifo_placeholders,
+                ppu.bg_current_transfer_x,
+                ppu.bg_current_transfer_lane,
+                ppu.obj_fetcher_stage,
+                ppu.obj_fetcher_stage_dot,
+                ppu.obj_pending_hit_len,
+                ppu.selected_sprites.len(),
+            );
+
+            if activity.address == 0xFF41 && activity.value == 0x20 {
+                break;
+            }
+        }
+
+        if in_case19 && testcase_index > 19 {
+            break;
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic setup MMIO/OAM access window for testcase 27 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case27_setup_access_window() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    for _ in 0..10_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index == 27
+            && (65..=67).contains(&ppu.ly)
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && (matches!(activity.address, 0xFF40 | 0xFF41 | 0xFF43 | 0xFF44)
+                || (0xFE00..=0xFE27).contains(&activity.address))
+        {
+            println!(
+                "case27_setup_access kind={:?} address={:#06X} value={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={} current_transfer_x={} lane={:?} source_window={:?} backing={:?} readiness={:?} startup_fifo_placeholders={} obj_stage={:?} obj_stage_dot={} obj_pending_hit_match_x={:?} obj_pending_hit_len={} obj_pending_hit_front_sprite_slot={:?} selected_sprites_len={}",
+                activity.kind,
+                activity.address,
+                activity.value,
+                cpu_snapshot.registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                ppu.bg_current_transfer_x,
+                ppu.bg_current_transfer_lane,
+                ppu.bg_current_transfer_source_window,
+                ppu.bg_current_transfer_backing,
+                ppu.bg_current_transfer_readiness,
+                ppu.bg_startup_fifo_placeholders,
+                ppu.obj_fetcher_stage,
+                ppu.obj_fetcher_stage_dot,
+                ppu.obj_pending_hit_match_x,
+                ppu.obj_pending_hit_len,
+                ppu.obj_pending_hit_front_sprite_slot,
+                ppu.selected_sprites.len(),
+            );
+        }
+
+        if testcase_index > 27 {
+            break;
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic setup writes for testcase 27 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case27_setup_writes() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut in_case27 = false;
+
+    for _ in 0..10_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index == 27 {
+            in_case27 = true;
+        }
+
+        if in_case27
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && (matches!(activity.address, 0xFF40 | 0xFF41 | 0xFF43)
+                || (0xFE00..=0xFE27).contains(&activity.address))
+        {
+            println!(
+                "case27_setup_write address={:#06X} value={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={} startup_fifo_placeholders={} current_transfer_x={} lane={:?} obj_stage={:?} obj_stage_dot={} obj_pending_hit_len={} selected_sprites_len={}",
+                activity.address,
+                activity.value,
+                cpu_snapshot.registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                ppu.bg_startup_fifo_placeholders,
+                ppu.bg_current_transfer_x,
+                ppu.bg_current_transfer_lane,
+                ppu.obj_fetcher_stage,
+                ppu.obj_fetcher_stage_dot,
+                ppu.obj_pending_hit_len,
+                ppu.selected_sprites.len(),
+            );
+
+            if activity.address == 0xFF41 && activity.value == 0x20 {
+                break;
+            }
+        }
+
+        if in_case27 && testcase_index > 27 {
+            break;
+        }
+    }
+}
+
+#[test]
 #[ignore = "diagnostic line68 window 240..330 for testcase 13 of mooneye intr_2_mode0_timing_sprites"]
 fn real_mooneye_intr_2_mode0_timing_sprites_logs_case13_line68_window_240_330() {
     let observations =
@@ -4110,6 +7926,120 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case13_line66_window_40_140() {
     for observation in observations {
         if (40..=140).contains(&observation.line_dot) {
             println!("case13_line66_window={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic setup MMIO/OAM access window for testcase 13 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case13_setup_access_window() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    for _ in 0..10_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index == 13
+            && (65..=67).contains(&ppu.ly)
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && (matches!(activity.address, 0xFF40 | 0xFF41 | 0xFF43 | 0xFF44)
+                || (0xFE00..=0xFE27).contains(&activity.address))
+        {
+            println!(
+                "case13_setup_access kind={:?} address={:#06X} value={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={} current_transfer_x={} lane={:?} source_window={:?} backing={:?} readiness={:?} startup_fifo_placeholders={} obj_stage={:?} obj_stage_dot={} obj_pending_hit_match_x={:?} obj_pending_hit_len={} obj_pending_hit_front_sprite_slot={:?} selected_sprites_len={}",
+                activity.kind,
+                activity.address,
+                activity.value,
+                cpu_snapshot.registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                ppu.bg_current_transfer_x,
+                ppu.bg_current_transfer_lane,
+                ppu.bg_current_transfer_source_window,
+                ppu.bg_current_transfer_backing,
+                ppu.bg_current_transfer_readiness,
+                ppu.bg_startup_fifo_placeholders,
+                ppu.obj_fetcher_stage,
+                ppu.obj_fetcher_stage_dot,
+                ppu.obj_pending_hit_match_x,
+                ppu.obj_pending_hit_len,
+                ppu.obj_pending_hit_front_sprite_slot,
+                ppu.selected_sprites.len(),
+            );
+        }
+
+        if testcase_index > 13 {
+            break;
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic setup writes for testcase 13 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case13_setup_writes() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut in_case13 = false;
+
+    for _ in 0..10_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+        if testcase_index == 13 {
+            in_case13 = true;
+        }
+
+        if in_case13
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && (matches!(activity.address, 0xFF40 | 0xFF41 | 0xFF43)
+                || (0xFE00..=0xFE27).contains(&activity.address))
+        {
+            println!(
+                "case13_setup_write address={:#06X} value={:#04X} pc={:#06X} ly={} line_dot={} mode={:?} mode0_start_dot={} startup_fifo_placeholders={} current_transfer_x={} lane={:?} obj_stage={:?} obj_stage_dot={} obj_pending_hit_len={} selected_sprites_len={}",
+                activity.address,
+                activity.value,
+                cpu_snapshot.registers.pc,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot,
+                ppu.bg_startup_fifo_placeholders,
+                ppu.bg_current_transfer_x,
+                ppu.bg_current_transfer_lane,
+                ppu.obj_fetcher_stage,
+                ppu.obj_fetcher_stage_dot,
+                ppu.obj_pending_hit_len,
+                ppu.selected_sprites.len(),
+            );
+
+            if activity.address == 0xFF41 && activity.value == 0x20 {
+                break;
+            }
+        }
+
+        if in_case13 && testcase_index > 13 {
+            break;
         }
     }
 }
@@ -4203,6 +8133,94 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case15_round_counts() {
 }
 
 #[test]
+#[ignore = "diagnostic round-by-round STAT counts for testcase 19 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case19_round_counts() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut arm_count = 0_u8;
+    let mut saw_irq_for_arm = false;
+    let mut read_count = 0_u8;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+
+        if testcase_index == 19
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+            saw_irq_for_arm = false;
+            read_count = 0;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case19_round{arm_count}_armed ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && !saw_irq_for_arm
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq_for_arm = true;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case19_round{arm_count}_irq ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && saw_irq_for_arm
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            read_count += 1;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case19_round{arm_count}_read{read_count} value={:#04X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                activity.value,
+                previous_ppu.ly,
+                previous_ppu.line_dot,
+                previous_ppu.mode,
+                previous_ppu.mode0_start_dot,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+        }
+
+        previous_ppu = machine.ppu().snapshot();
+
+        let pc = machine.cpu().registers().pc;
+        if (0x484D..0x4871).contains(&pc) {
+            break;
+        }
+    }
+}
+
+#[test]
 #[ignore = "diagnostic line68 state changes for testcase 15 of mooneye intr_2_mode0_timing_sprites"]
 fn real_mooneye_intr_2_mode0_timing_sprites_logs_case15_line68_changes() {
     let observations =
@@ -4210,6 +8228,90 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case15_line68_changes() {
     for observation in observations {
         println!("case15_line68={observation:?}");
     }
+}
+
+#[test]
+#[ignore = "diagnostic line66 window 40..140 for testcase 19 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case19_line66_window_40_140() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(19, 66);
+    for observation in observations {
+        if (40..=140).contains(&observation.line_dot) {
+            println!("case19_line66_window={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic line66 window 90..140 for testcase 19 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case19_line66_window_90_140() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(19, 66);
+    for observation in observations {
+        if (90..=140).contains(&observation.line_dot) {
+            println!("case19_line66_focus={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic line67 window 118..140 for testcase 19 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case19_line67_window_118_140() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(19, 67);
+    for observation in observations {
+        if (118..=140).contains(&observation.line_dot) {
+            println!("case19_line67_focus={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic line66 window 90..160 for testcase 25 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case25_line66_window_90_160() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(25, 66);
+    for observation in observations {
+        if (90..=160).contains(&observation.line_dot) {
+            println!("case25_line66_focus={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic line66 window 240..320 for testcase 29 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case29_line66_window_240_320() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(29, 66);
+    for observation in observations {
+        if (240..=320).contains(&observation.line_dot) {
+            println!("case29_line66_window={observation:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic real STAT reads after IRQ for testcase 25 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case25_reads_after_irq() {
+    let reads =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_stat_reads_after_irq_for_testcase(25, 4);
+    println!("case25_reads={reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic real STAT reads after IRQ for testcase 29 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case29_reads_after_irq() {
+    let reads =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_stat_reads_after_irq_for_testcase(29, 24);
+    println!("case29_reads={reads:?}");
+}
+
+#[test]
+#[ignore = "diagnostic real STAT reads after IRQ for testcase 27 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case27_reads_after_irq() {
+    let reads =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_stat_reads_after_irq_for_testcase(27, 4);
+    println!("case27_reads={reads:?}");
 }
 
 #[test]
@@ -4487,6 +8589,94 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case31_round_counts() {
 }
 
 #[test]
+#[ignore = "diagnostic round-by-round STAT counts for testcase 27 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case27_round_counts() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut arm_count = 0_u16;
+    let mut saw_irq_for_arm = false;
+    let mut read_count = 0_u16;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+
+        if testcase_index == 27
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+            saw_irq_for_arm = false;
+            read_count = 0;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case27_round{arm_count}_armed ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && !saw_irq_for_arm
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq_for_arm = true;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case27_round{arm_count}_irq ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && saw_irq_for_arm
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            read_count += 1;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case27_round{arm_count}_read{read_count} value={:#04X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                activity.value,
+                previous_ppu.ly,
+                previous_ppu.line_dot,
+                previous_ppu.mode,
+                previous_ppu.mode0_start_dot,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+        }
+
+        previous_ppu = machine.ppu().snapshot();
+
+        let pc = machine.cpu().registers().pc;
+        if arm_count > 0 && (0x484D..0x48F3).contains(&pc) {
+            break;
+        }
+    }
+}
+
+#[test]
 #[ignore = "diagnostic round-by-round STAT counts for testcase 32 of mooneye intr_2_mode0_timing_sprites"]
 fn real_mooneye_intr_2_mode0_timing_sprites_logs_case32_round_counts() {
     let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -4569,6 +8759,94 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case32_round_counts() {
 
         let pc = machine.cpu().registers().pc;
         if (0x484D..0x4871).contains(&pc) {
+            break;
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic round-by-round STAT counts for testcase 29 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case29_round_counts() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut arm_count = 0_u16;
+    let mut saw_irq_for_arm = false;
+    let mut read_count = 0_u16;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+
+        if testcase_index == 29
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+            saw_irq_for_arm = false;
+            read_count = 0;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case29_round{arm_count}_armed ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && !saw_irq_for_arm
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq_for_arm = true;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case29_round{arm_count}_irq ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && saw_irq_for_arm
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            read_count += 1;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case29_round{arm_count}_read{read_count} value={:#04X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                activity.value,
+                previous_ppu.ly,
+                previous_ppu.line_dot,
+                previous_ppu.mode,
+                previous_ppu.mode0_start_dot,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+        }
+
+        previous_ppu = machine.ppu().snapshot();
+
+        let pc = machine.cpu().registers().pc;
+        if arm_count > 0 && (0x484D..0x4871).contains(&pc) {
             break;
         }
     }
@@ -4663,6 +8941,146 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case34_round_counts() {
 }
 
 #[test]
+#[ignore = "diagnostic round-by-round STAT counts for testcase 36 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case36_round_counts() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut arm_count = 0_u16;
+    let mut saw_irq_for_arm = false;
+    let mut read_count = 0_u16;
+    let mut previous_ppu = machine.ppu().snapshot();
+
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        let testcase_index = machine.read_bus(0xFF80);
+
+        if testcase_index == 36
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataWrite
+            && activity.address == 0xFF41
+            && activity.value == 0x20
+        {
+            arm_count += 1;
+            saw_irq_for_arm = false;
+            read_count = 0;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case36_round{arm_count}_armed ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && !saw_irq_for_arm
+            && matches!(
+                machine.cpu().execution_state(),
+                gb_core::CpuExecutionState::ServiceInterrupt {
+                    source: gb_core::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq_for_arm = true;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case36_round{arm_count}_irq ly={} line_dot={} mode={:?}",
+                ppu.ly, ppu.line_dot, ppu.mode
+            );
+        }
+
+        if arm_count > 0
+            && saw_irq_for_arm
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            read_count += 1;
+            let ppu = machine.ppu().snapshot();
+            println!(
+                "case36_round{arm_count}_read{read_count} value={:#04X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} ly={} line_dot={} mode={:?} mode0_start_dot={}",
+                activity.value,
+                previous_ppu.ly,
+                previous_ppu.line_dot,
+                previous_ppu.mode,
+                previous_ppu.mode0_start_dot,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                ppu.mode0_start_dot
+            );
+        }
+
+        previous_ppu = machine.ppu().snapshot();
+
+        let pc = machine.cpu().registers().pc;
+        if arm_count > 0 && (0x484D..0x4871).contains(&pc) {
+            break;
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic ly68 window 240..320 for testcase 36 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case36_line68_window_240_320() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut previous = None;
+    for _ in 0..50_000_000 {
+        machine.step_t_cycle();
+
+        if machine.read_bus(0xFF80) != 36 {
+            continue;
+        }
+
+        let ppu = machine.ppu().snapshot();
+        if ppu.ly == 68 && (240..=320).contains(&ppu.line_dot) {
+            let current = Intr2Mode0TimingSpritesLine68Observation {
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                mode0_start_dot: ppu.mode0_start_dot,
+                current_transfer_x: ppu.bg_current_transfer_x,
+                current_transfer_lane: ppu.bg_current_transfer_lane,
+                current_transfer_source_window: ppu.bg_current_transfer_source_window,
+                current_transfer_backing: ppu.bg_current_transfer_backing,
+                current_transfer_readiness: ppu.bg_current_transfer_readiness,
+                bg_fifo_len: ppu.bg_fifo_pixels.len(),
+                startup_fifo_placeholders: ppu.bg_startup_fifo_placeholders,
+                obj_fetcher_stage: ppu.obj_fetcher_stage,
+                obj_fetcher_stage_dot: ppu.obj_fetcher_stage_dot,
+                obj_pending_hit_match_x: ppu.obj_pending_hit_match_x,
+                obj_pending_hit_len: ppu.obj_pending_hit_len,
+                obj_pending_hit_front_sprite_slot: ppu.obj_pending_hit_front_sprite_slot,
+                bg_fetcher_stage: ppu.bg_fetcher_stage,
+                bg_fetcher_stage_dot: ppu.bg_fetcher_stage_dot,
+                selected_sprites_len: ppu.selected_sprites.len(),
+            };
+            if previous.as_ref() != Some(&current) {
+                println!("case36_line68_window={current:?}");
+                previous = Some(current);
+            }
+        } else if previous.is_some() && ppu.ly > 68 {
+            break;
+        }
+    }
+}
+
+#[test]
 #[ignore = "diagnostic irq timing after STAT arm for testcase 34 of mooneye intr_2_mode0_timing_sprites"]
 fn real_mooneye_intr_2_mode0_timing_sprites_logs_case34_irq_after_stat_arm() {
     let irq = sample_real_mooneye_intr_2_mode0_timing_sprites_irq_after_stat_arm_for_testcase(34);
@@ -4676,6 +9094,16 @@ fn real_mooneye_intr_2_mode0_timing_sprites_logs_case34_stat_reads_after_irq() {
         sample_real_mooneye_intr_2_mode0_timing_sprites_stat_reads_after_irq_for_testcase(34, 8);
     for read in reads {
         println!("case34_read={read:?}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic line68 state changes for testcase 29 of mooneye intr_2_mode0_timing_sprites"]
+fn real_mooneye_intr_2_mode0_timing_sprites_logs_case29_line68_changes() {
+    let observations =
+        sample_real_mooneye_intr_2_mode0_timing_sprites_line_changes_for_testcase(29, 68);
+    for observation in observations {
+        println!("case29_line68={observation:?}");
     }
 }
 

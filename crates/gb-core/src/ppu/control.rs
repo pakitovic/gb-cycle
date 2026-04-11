@@ -289,11 +289,36 @@ impl Ppu {
             return MODE0_START_DOT;
         }
 
-        if self.bg_pipeline_state.mode3_started {
-            self.bg_pipeline_state.mode0_start_dot
+        let mut mode0_start_dot = if self.bg_pipeline_state.mode3_started {
+            let shortens_for_all_offscreen_right_sprites =
+                self.bg_pipeline_state.mode0_start_dot == self.baseline_mode0_start_dot()
+                    && self.visible_registers.obj_enabled()
+                    && self.mode2_scan_state.selected_sprite_count() > 0
+                    && (0..self.mode2_scan_state.selected_sprite_count()).all(|slot| {
+                        self.mode2_scan_state
+                            .selected_sprite(slot)
+                            .is_some_and(|sprite| sprite.x >= 168)
+                    });
+            self.bg_pipeline_state
+                .mode0_start_dot
+                .saturating_sub(u16::from(shortens_for_all_offscreen_right_sprites))
         } else {
             MODE0_START_DOT + u16::from(self.visible_registers.scx & 0x07)
+        };
+
+        let pending_obj_hit_owns_current_transfer_x = self.obj_pipeline_state.pending_match_x
+            == Some(self.bg_pipeline_state.current_transfer_x)
+            && !self.obj_pipeline_state.pending_sprite_slots.is_empty();
+        let live_transfer_still_owned_by_mode3 = self.current_transfer().is_some();
+        if self.bg_pipeline_state.mode3_started
+            && (self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle
+                || pending_obj_hit_owns_current_transfer_x
+                || live_transfer_still_owned_by_mode3)
+        {
+            mode0_start_dot = mode0_start_dot.max(self.line_dot.saturating_add(1));
         }
+
+        mode0_start_dot
     }
 
     fn baseline_mode0_start_dot(&self) -> u16 {

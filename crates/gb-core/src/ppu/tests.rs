@@ -6460,6 +6460,68 @@ fn terminal_fifo_backed_obj_start_extends_mode3_immediately_to_keep_fetch_alive(
 }
 
 #[test]
+fn late_visible_x160_obj_start_can_still_begin_from_fifo_backed_transfer() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    let mut oam_bytes = [0; 160];
+    let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+    write_oam_entry(&mut oam_bytes, 0, 16, 160, 0);
+    write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+
+    let mut oam = crate::bus::OamDomain::from_bytes(&oam_bytes);
+    let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+    oam.set_acquired(BusMaster::Ppu, true);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.ly = 66;
+    ppu.line_dot = MODE0_START_DOT - 1;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 160;
+    ppu.bg_pipeline_state.visible_pixels_output = 152;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 8));
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 2;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 160,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.obj_pipeline_state
+        .queue_fetch_hit(0, ppu.current_obj_hit_ownership());
+
+    let transfer = ppu
+        .current_transfer()
+        .expect("late visible x160 should still have a transfer");
+    assert_eq!(transfer.context.lane, Mode3TransferLane::Visible);
+    assert!(transfer.can_start_obj_fetch_from_fifo_backed_transfer(
+        ppu.bg_pipeline_state.fifo_contains_real_pixels()
+    ));
+
+    let arbitration = ppu.current_dot_arbitration();
+    assert!(arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+
+    assert!(ppu.advance_mode3_object_phase(
+        &OamBusView::new(BusMaster::Ppu, &mut oam),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        None,
+    ));
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+}
+
+#[test]
 fn current_mode2_oam_row_tracks_the_live_four_dot_slices() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let oam_bytes = [0; 160];
