@@ -1007,6 +1007,70 @@ fn cpu_stat_read_keeps_mode3_for_one_more_published_dot_after_sprite_extended_mo
 }
 
 #[test]
+#[ignore = "diagnostic state for the sprite-extended post-visible publication seam without startup placeholders"]
+fn cpu_stat_read_logs_sprite_extended_post_visible_tail_without_startup_placeholders() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 1;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 58;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 167;
+    ppu.bg_pipeline_state.visible_pixels_output = 159;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 8,
+        tile_index: 0,
+        attributes: 0,
+    });
+
+    for line_dot in [
+        ppu.bg_pipeline_state.mode0_start_dot + 2,
+        ppu.bg_pipeline_state.mode0_start_dot + 3,
+    ] {
+        ppu.line_dot = line_dot;
+        let stat = ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation);
+        println!(
+            "x8_tail line_dot={} stat_mode={} current_mode={:?} current_mode0_start_dot={} bg_base_mode0_start_dot={} current_transfer_x={} bg_lane={:?} bg_source_window={:?} bg_readiness={:?} startup_fifo_placeholders={} bg_fifo_len={} obj_stage={:?} obj_pending_hit_match_x={:?} obj_pending_hit_len={}",
+            line_dot,
+            stat & 0x03,
+            ppu.current_access_mode(),
+            ppu.current_mode0_start_dot(),
+            ppu.bg_pipeline_state.mode0_start_dot,
+            ppu.bg_pipeline_state.current_transfer_x,
+            ppu.current_transfer().map(|transfer| transfer.context.lane),
+            ppu.current_transfer()
+                .map(|transfer| transfer.context.source_window),
+            ppu.current_transfer().map(|transfer| transfer.readiness),
+            ppu.bg_pipeline_state.startup_fifo_placeholders,
+            ppu.bg_pipeline_state.fifo.len(),
+            ppu.obj_pipeline_state.fetch.stage,
+            ppu.obj_pipeline_state.pending_match_x,
+            ppu.obj_pipeline_state.pending_sprite_slots.len(),
+        );
+    }
+}
+
+#[test]
 fn cpu_stat_read_suppresses_lyc_coincidence_on_the_first_dot_of_a_new_line() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
