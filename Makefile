@@ -80,15 +80,15 @@ run-daid:
 
 run-mooneye:
 	$(MAKE) fetch-test-roms FAMILIES=mooneye
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_curated_suite_updates_report_from_repo_store --no-capture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mooneye_curated_suite_passes_from_repo_store --no-capture
 
 run-hacktix:
 	$(MAKE) fetch-test-roms FAMILIES=hacktix
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact hacktix_curated_suite_updates_report_from_repo_store --no-capture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact hacktix_curated_suite_passes_from_repo_store --no-capture
 
 run-cpp:
 	$(MAKE) fetch-test-roms FAMILIES=cpp
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact cpp_curated_suite_updates_report_from_repo_store --no-capture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact cpp_curated_suite_passes_from_repo_store --no-capture
 
 run-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
