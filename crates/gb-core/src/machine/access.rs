@@ -14,37 +14,28 @@ use crate::scheduler::{CycleContext, SchedulerPhase, TCycle};
 use crate::serial::Serial;
 use crate::timer::Timer;
 
-const JOYP_SELECT_MASK: u8 = 0x30;
-
 impl<S: TraceSink> Machine<S> {
     pub fn read_bus(&mut self, address: u16) -> u8 {
         let state = self.current_bus_arbitration_state();
-        let value = if address == 0xFF00 {
-            joypad_read_with_pressed_mask(
-                &self.joypad,
-                self.pending_external_events.joypad_pressed_mask(),
-            )
-        } else {
-            self.bus.read_with_t_cycle_context(
-                address,
-                BusRequester::Cpu,
-                &state,
-                self.next_t_cycle(),
-                Some(&mut self.cartridge),
-                BusIoReadView {
-                    apu: Some(&self.apu),
-                    timer: Some(&self.timer),
-                    serial: Some(&self.serial),
-                    dma: Some(&self.dma),
-                    boot: Some(&self.boot),
-                    interrupts: Some(&self.interrupts),
-                    interrupt_flag_pending_mask: 0,
-                    joypad: Some(&self.joypad),
-                    ppu: Some(&self.ppu),
-                    ppu_cpu_visible_read: false,
-                },
-            )
-        };
+        let value = self.bus.read_with_t_cycle_context(
+            address,
+            BusRequester::Cpu,
+            &state,
+            self.next_t_cycle(),
+            Some(&mut self.cartridge),
+            BusIoReadView {
+                apu: Some(&self.apu),
+                timer: Some(&self.timer),
+                serial: Some(&self.serial),
+                dma: Some(&self.dma),
+                boot: Some(&self.boot),
+                interrupts: Some(&self.interrupts),
+                interrupt_flag_pending_mask: 0,
+                joypad: Some(&self.joypad),
+                ppu: Some(&self.ppu),
+                ppu_cpu_visible_read: false,
+            },
+        );
         self.bus.route_cpu_address_event(
             CpuAddressEvent {
                 kind: CpuAddressEventKind::Read,
@@ -193,42 +184,4 @@ impl<S: TraceSink> Machine<S> {
         self.pending_external_events
             .reset_for_startup(host_joypad_pressed_mask, self.joypad.pressed_mask());
     }
-}
-
-fn joypad_read_with_pressed_mask(joypad: &Joypad, pressed_mask: u8) -> u8 {
-    let selection_bits = joypad.snapshot().selection_bits & JOYP_SELECT_MASK;
-    let mut low = 0x0F;
-
-    if selection_bits & 0x20 == 0 {
-        low &= !button_row_low_bits(pressed_mask);
-    }
-
-    if selection_bits & 0x10 == 0 {
-        low &= !dpad_row_low_bits(pressed_mask);
-    }
-
-    0xC0 | selection_bits | low
-}
-
-const fn button_row_low_bits(pressed_mask: u8) -> u8 {
-    let mut low = 0;
-
-    if pressed_mask & 0x10 != 0 {
-        low |= 0x01;
-    }
-    if pressed_mask & 0x20 != 0 {
-        low |= 0x02;
-    }
-    if pressed_mask & 0x40 != 0 {
-        low |= 0x04;
-    }
-    if pressed_mask & 0x80 != 0 {
-        low |= 0x08;
-    }
-
-    low
-}
-
-const fn dpad_row_low_bits(pressed_mask: u8) -> u8 {
-    pressed_mask & 0x0F
 }
