@@ -425,50 +425,11 @@ impl BootController {
             return None;
         }
 
-        let header_checksum = cartridge
-            .and_then(CartridgeSlot::header)
-            .map(|header| header.header_checksum);
-        let cpu = build_skip_boot_cpu_state(self.console_model, header_checksum);
         let io = verified_boot_entry_io_snapshot(self.console_model);
         let system_counter = verified_boot_entry_system_counter(self.console_model);
+        let apu = build_verified_boot_entry_apu_state(self.console_model, io);
 
-        Some(BootDirectBootState {
-            cpu,
-            io,
-            apu: build_verified_boot_entry_apu_state(self.console_model, io),
-            ppu: PpuStartupState {
-                lcdc: io.lcdc,
-                stat: io.stat,
-                scy: io.scy,
-                scx: io.scx,
-                ly: io.ly,
-                lyc: io.lyc,
-                bgp: io.bgp,
-                wy: io.wy,
-                wx: io.wx,
-                obj_palette_read_policy: crate::ppu::DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
-            },
-            serial: SerialStartupState::from_registers(io.sb, io.sc)
-                .with_clock_counter(DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER),
-            timer: TimerStartupState {
-                system_counter,
-                tima: io.tima,
-                tma: io.tma,
-                tac: io.tac & 0x07,
-            },
-            dma: DmaStartupState {
-                source_page_latch: io.dma,
-            },
-            interrupts: InterruptStartupState {
-                interrupt_flags: io.interrupt_flag & 0x1F,
-                interrupt_enable: io.interrupt_enable,
-            },
-            joypad: JoypadStartupState {
-                selection_bits: io.p1 & 0x30,
-                pressed_mask: 0,
-            },
-            startup_memory_policy: self.startup_memory_policy(),
-        })
+        Some(self.build_skip_boot_state(cartridge, io, apu, system_counter))
     }
 
     pub(crate) fn machine_skip_boot_state(
@@ -479,51 +440,12 @@ impl BootController {
             return None;
         }
 
-        let header_checksum = cartridge
-            .and_then(CartridgeSlot::header)
-            .map(|header| header.header_checksum);
-        let cpu = build_skip_boot_cpu_state(self.console_model, header_checksum);
         let io = synthetic_skip_boot_io_snapshot();
-        let dmg_family_skip_boot_system_counter =
+        let system_counter =
             (u16::from(io.div) << 8) | u16::from(DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW);
+        let apu = build_skip_boot_apu_state(system_counter, io);
 
-        Some(BootDirectBootState {
-            cpu,
-            io,
-            apu: build_skip_boot_apu_state(dmg_family_skip_boot_system_counter, io),
-            ppu: PpuStartupState {
-                lcdc: io.lcdc,
-                stat: io.stat,
-                scy: io.scy,
-                scx: io.scx,
-                ly: io.ly,
-                lyc: io.lyc,
-                bgp: io.bgp,
-                wy: io.wy,
-                wx: io.wx,
-                obj_palette_read_policy: crate::ppu::DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
-            },
-            serial: SerialStartupState::from_registers(io.sb, io.sc)
-                .with_clock_counter(DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER),
-            timer: TimerStartupState {
-                system_counter: dmg_family_skip_boot_system_counter,
-                tima: io.tima,
-                tma: io.tma,
-                tac: io.tac & 0x07,
-            },
-            dma: DmaStartupState {
-                source_page_latch: io.dma,
-            },
-            interrupts: InterruptStartupState {
-                interrupt_flags: io.interrupt_flag & 0x1F,
-                interrupt_enable: io.interrupt_enable,
-            },
-            joypad: JoypadStartupState {
-                selection_bits: io.p1 & 0x30,
-                pressed_mask: 0,
-            },
-            startup_memory_policy: self.startup_memory_policy(),
-        })
+        Some(self.build_skip_boot_state(cartridge, io, apu, system_counter))
     }
 
     pub fn snapshot(&self) -> BootSnapshot {
@@ -549,6 +471,65 @@ impl BootController {
             self.boot_rom_kind,
             self.boot_rom_mapped,
         )
+    }
+
+    fn build_skip_boot_state(
+        &self,
+        cartridge: Option<&CartridgeSlot>,
+        io: BootIoSnapshot,
+        apu: ApuStartupState,
+        system_counter: u16,
+    ) -> BootDirectBootState {
+        BootDirectBootState {
+            cpu: build_skip_boot_cpu_state(
+                self.console_model,
+                skip_boot_header_checksum(cartridge),
+            ),
+            io,
+            apu,
+            ppu: build_skip_boot_ppu_state(io),
+            serial: SerialStartupState::from_registers(io.sb, io.sc)
+                .with_clock_counter(DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER),
+            timer: TimerStartupState {
+                system_counter,
+                tima: io.tima,
+                tma: io.tma,
+                tac: io.tac & 0x07,
+            },
+            dma: DmaStartupState {
+                source_page_latch: io.dma,
+            },
+            interrupts: InterruptStartupState {
+                interrupt_flags: io.interrupt_flag & 0x1F,
+                interrupt_enable: io.interrupt_enable,
+            },
+            joypad: JoypadStartupState {
+                selection_bits: io.p1 & 0x30,
+                pressed_mask: 0,
+            },
+            startup_memory_policy: self.startup_memory_policy(),
+        }
+    }
+}
+
+fn skip_boot_header_checksum(cartridge: Option<&CartridgeSlot>) -> Option<u8> {
+    cartridge
+        .and_then(CartridgeSlot::header)
+        .map(|header| header.header_checksum)
+}
+
+const fn build_skip_boot_ppu_state(io: BootIoSnapshot) -> PpuStartupState {
+    PpuStartupState {
+        lcdc: io.lcdc,
+        stat: io.stat,
+        scy: io.scy,
+        scx: io.scx,
+        ly: io.ly,
+        lyc: io.lyc,
+        bgp: io.bgp,
+        wy: io.wy,
+        wx: io.wx,
+        obj_palette_read_policy: crate::ppu::DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
     }
 }
 

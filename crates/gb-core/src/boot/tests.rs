@@ -161,6 +161,39 @@ fn direct_boot_state_uses_model_specific_verified_entry_presets() {
 }
 
 #[test]
+fn direct_boot_helpers_share_the_common_skip_boot_builder() {
+    let boot = BootController::new(ConsoleModel::Dmg, StartupMode::SkipBoot, empty_assets());
+
+    let direct_boot = boot
+        .direct_boot_state(None)
+        .expect("SkipBoot should expose a direct-boot state");
+    let machine_skip_boot = boot
+        .machine_skip_boot_state(None)
+        .expect("SkipBoot should expose the machine skip-boot state");
+
+    assert_eq!(direct_boot.cpu, machine_skip_boot.cpu);
+    assert_eq!(direct_boot.serial, machine_skip_boot.serial);
+    assert_eq!(direct_boot.dma, machine_skip_boot.dma);
+    assert_eq!(direct_boot.interrupts, machine_skip_boot.interrupts);
+    assert_eq!(
+        direct_boot.startup_memory_policy,
+        machine_skip_boot.startup_memory_policy
+    );
+
+    assert_eq!(direct_boot.io.div, 0xBD);
+    assert_eq!(machine_skip_boot.io.div, 0xAB);
+    assert_eq!(direct_boot.timer.system_counter, 0xBD04);
+    assert_eq!(machine_skip_boot.timer.system_counter, 0xABC8);
+    assert_eq!(direct_boot.ppu.ly, 153);
+    assert_eq!(machine_skip_boot.ppu.ly, 0);
+    assert_eq!(direct_boot.joypad.selection_bits, direct_boot.io.p1 & 0x30);
+    assert_eq!(
+        machine_skip_boot.joypad.selection_bits,
+        machine_skip_boot.io.p1 & 0x30
+    );
+}
+
+#[test]
 fn patterned_startup_memory_policy_is_deterministic_without_zero_filling_wram_or_hram() {
     let mut first_wram = [0; 8];
     let mut second_wram = [0; 8];
