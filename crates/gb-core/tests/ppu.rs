@@ -10,7 +10,10 @@ use gb_core::{
 
 include!("ppu/ppu_setup.rs");
 include!("ppu/ppu_probe_lcd.rs");
-include!("ppu/ppu_probe_mode_edges.rs");
+include!("ppu/ppu_probe_intr20.rs");
+include!("ppu/ppu_probe_oam_ok.rs");
+include!("ppu/ppu_probe_stat_mode.rs");
+include!("ppu/ppu_probe_hblank_scx.rs");
 include!("ppu/ppu_probe_sprite_mode0.rs");
 
 #[path = "ppu/ppu_diag.rs"]

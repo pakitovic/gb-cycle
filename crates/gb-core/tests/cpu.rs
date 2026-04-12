@@ -36,7 +36,11 @@ fn build_boot_rom_image(first_opcode: u8) -> Vec<u8> {
 mod cpu_bus_address_events;
 #[path = "cpu/cpu_fetch_decode.rs"]
 mod cpu_fetch_decode;
-#[path = "cpu/cpu_halt_stop.rs"]
-mod cpu_halt_stop;
+#[path = "cpu/cpu_halt.rs"]
+mod cpu_halt;
+#[path = "cpu/cpu_halt_bug.rs"]
+mod cpu_halt_bug;
 #[path = "cpu/cpu_interrupts_ime.rs"]
 mod cpu_interrupts_ime;
+#[path = "cpu/cpu_stop.rs"]
+mod cpu_stop;
