@@ -1,7 +1,14 @@
+//! Diagnostic-only PPU probes.
+//!
+//! Policy:
+//! - stable, cheap oracles stay active in the owning family module
+//! - ignored ad-hoc probes live here and use `#[ignore = "diag: ..."]`
+//! - stale probes should be deleted instead of preserved as historical noise
+
 use super::*;
 
 #[test]
-#[ignore = "diagnostic probe for mooneye intr_2_oam_ok_timing seam"]
+#[ignore = "diag: mooneye intr_2_oam_ok_timing seam"]
 fn mode2_to_oam_release_probe_matches_mooneye_counts() {
     let delay46 = run_intr_2_oam_ok_probe(46);
     let delay45 = run_intr_2_oam_ok_probe(45);
@@ -14,7 +21,7 @@ fn mode2_to_oam_release_probe_matches_mooneye_counts() {
 }
 
 #[test]
-#[ignore = "diagnostic probe for first FE00 reads after intr_2_oam_ok_timing wake"]
+#[ignore = "diag: first FE00 reads after intr_2_oam_ok_timing wake"]
 fn mode2_to_oam_release_probe_logs_first_reads() {
     let delay46 = sample_intr_2_oam_ok_reads(46, 3);
     let delay45 = sample_intr_2_oam_ok_reads(45, 3);
@@ -23,21 +30,21 @@ fn mode2_to_oam_release_probe_logs_first_reads() {
 }
 
 #[test]
-#[ignore = "diagnostic probe for FE00 reads in the real mooneye intr_2_oam_ok_timing ROM"]
+#[ignore = "diag: FE00 reads in the real mooneye intr_2_oam_ok_timing ROM"]
 fn real_mooneye_oam_ok_logs_first_reads() {
     let reads = sample_real_mooneye_oam_ok_reads(4);
     println!("reads={reads:?}");
 }
 
 #[test]
-#[ignore = "diagnostic probe for the real mooneye stat_lyc_onoff ROM"]
+#[ignore = "diag: real mooneye stat_lyc_onoff access trace"]
 fn real_mooneye_stat_lyc_onoff_logs_first_accesses() {
     let accesses = sample_real_mooneye_stat_lyc_onoff_accesses(48);
     println!("accesses={accesses:?}");
 }
 
 #[test]
-#[ignore = "diagnostic reduced caller matrix for the ten-sprite staggered mooneye cases"]
+#[ignore = "diag: reduced caller matrix for ten-sprite staggered mooneye cases"]
 fn intr_2_mode0_timing_sprites_ten_sprite_staggered_real_caller_matrix() {
     for (label, sprite_xs, delay_a, delay_b) in [
         (
@@ -155,7 +162,7 @@ fn intr_2_mode0_timing_sprites_ten_sprite_staggered_real_caller_matrix() {
 }
 
 #[test]
-#[ignore = "diagnostic copied ROM-path probe for case1 arm/read signature"]
+#[ignore = "diag: copied ROM-path probe for case1 arm/read signature"]
 fn mode2_to_mode0_sprites_case1_rom_path_probe_logs_arm_and_first_read() {
     let sample = sample_intr_2_mode0_sprites_case1_rom_path_probe_reads_after_arm(2);
     let Intr2Mode0SpritesCase1RomPathArmObservation {
@@ -170,7 +177,7 @@ fn mode2_to_mode0_sprites_case1_rom_path_probe_logs_arm_and_first_read() {
 }
 
 #[test]
-#[ignore = "diagnostic stat-mode probe no longer matches the current external mode0 oracle"]
+#[ignore = "diag: stale stat-mode probe that no longer matches the external mode0 oracle"]
 fn mode2_to_mode0_stat_probe_matches_mooneye_counts() {
     let delay46 = run_intr_2_stat_mode_probe(46, 0x00);
     let delay45 = run_intr_2_stat_mode_probe(45, 0x00);
@@ -183,7 +190,7 @@ fn mode2_to_mode0_stat_probe_matches_mooneye_counts() {
 }
 
 #[test]
-#[ignore = "diagnostic first-frame FF47 writes for daid ppu_scanline_bgp"]
+#[ignore = "diag: first-frame FF47 writes for daid ppu_scanline_bgp"]
 fn daid_ppu_scanline_bgp_logs_first_frame_ff47_writes() {
     let rom_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../.roms/test/daid/ppu_scanline_bgp.gb");
@@ -277,4 +284,14 @@ fn daid_ppu_scanline_bgp_logs_first_frame_ff47_writes() {
         saw_progress,
         "diagnostic should advance past the initial dot"
     );
+}
+
+#[test]
+#[ignore = "diag: lcd enable write chronology boundary snapshots"]
+fn cpu_path_lcd_enable_write_probe_logs_boundary_snapshots() {
+    for delay in [111_u16, 112, 131, 132, 225, 226, 245, 246] {
+        let oam = run_lcd_enable_write_probe_observation(0xFE00, delay);
+        let vram = run_lcd_enable_write_probe_observation(0x8000, delay);
+        println!("delay={delay} oam={oam:?} vram={vram:?}");
+    }
 }

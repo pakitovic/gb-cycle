@@ -119,16 +119,6 @@ fn step_until_next_frame_start(machine: &mut Machine) {
     }
 }
 
-fn sample_after_lcd_enable<F>(machine: &mut Machine, target_m_cycle: u16, sample: F) -> u8
-where
-    F: Fn(&mut Machine) -> u8,
-{
-    for _ in 0..u32::from(target_m_cycle) * 4 {
-        machine.step_t_cycle();
-    }
-    sample(machine)
-}
-
 fn build_lcd_enable_read_probe_rom(address: u16, delay_nops: usize) -> Vec<u8> {
     let mut program = Vec::new();
     program.push(0xF3); // di

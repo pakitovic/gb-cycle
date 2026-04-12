@@ -113,99 +113,6 @@ fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
 }
 
 #[test]
-#[ignore = "pending Mooneye lcdon timing closure"]
-fn lcd_reenable_initial_readback_matches_the_mooneye_lcdon_timing_probe_points() {
-    const PROBE_M_CYCLES: [u16; 24] = [
-        0, 17, 60, 110, 130, 174, 224, 244, 1, 18, 61, 111, 131, 175, 225, 245, 2, 19, 62, 112,
-        132, 176, 226, 246,
-    ];
-    const EXPECTED_LY: [u8; 24] = [
-        0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02,
-        0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x02, 0x02,
-    ];
-    const EXPECTED_STAT_LYC0: [u8; 24] = [
-        0x84, 0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x84, 0x87, 0x84, 0x80, 0x82, 0x80, 0x80,
-        0x82, 0x84, 0x87, 0x84, 0x82, 0x83, 0x80, 0x82, 0x83,
-    ];
-    const EXPECTED_STAT_LYC1: [u8; 24] = [
-        0x80, 0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x80, 0x83, 0x80, 0x80, 0x86, 0x84, 0x80,
-        0x82, 0x80, 0x83, 0x80, 0x86, 0x87, 0x84, 0x82, 0x83,
-    ];
-    const EXPECTED_OAM: [u8; 24] = [
-        0x00, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF,
-        0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF,
-    ];
-    const EXPECTED_VRAM: [u8; 24] = [
-        0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00,
-        0xFF, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF,
-    ];
-
-    let build_machine = || {
-        let mut machine = Machine::new(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
-        );
-        machine.write_bus(0xFF40, 0x00);
-        machine.write_bus(0x8000, 0x00);
-        machine.write_bus(0xFE00, 0x00);
-        machine
-    };
-
-    let actual_ly = PROBE_M_CYCLES.map(|target_m_cycle| {
-        let mut machine = build_machine();
-        machine.write_bus(0xFF40, 0x81);
-        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
-            machine.read_bus(0xFF44)
-        })
-    });
-
-    let actual_stat_lyc0 = PROBE_M_CYCLES.map(|target_m_cycle| {
-        let mut machine = build_machine();
-        machine.write_bus(0xFF45, 0x00);
-        machine.write_bus(0xFF40, 0x81);
-        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
-            machine.read_bus(0xFF41)
-        })
-    });
-
-    let actual_stat_lyc1 = PROBE_M_CYCLES.map(|target_m_cycle| {
-        let mut machine = build_machine();
-        machine.write_bus(0xFF45, 0x01);
-        machine.write_bus(0xFF40, 0x81);
-        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
-            machine.read_bus(0xFF41)
-        })
-    });
-
-    let actual_oam = PROBE_M_CYCLES.map(|target_m_cycle| {
-        let mut machine = build_machine();
-        machine.write_bus(0xFF40, 0x81);
-        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
-            machine.read_bus(0xFE00)
-        })
-    });
-
-    let actual_vram = PROBE_M_CYCLES.map(|target_m_cycle| {
-        let mut machine = build_machine();
-        machine.write_bus(0xFF40, 0x81);
-        sample_after_lcd_enable(&mut machine, target_m_cycle, |machine| {
-            machine.read_bus(0x8000)
-        })
-    });
-
-    if actual_ly != EXPECTED_LY
-        || actual_stat_lyc0 != EXPECTED_STAT_LYC0
-        || actual_stat_lyc1 != EXPECTED_STAT_LYC1
-        || actual_oam != EXPECTED_OAM
-        || actual_vram != EXPECTED_VRAM
-    {
-        panic!(
-            "actual_ly={actual_ly:?}\nactual_stat_lyc0={actual_stat_lyc0:?}\nactual_stat_lyc1={actual_stat_lyc1:?}\nactual_oam={actual_oam:?}\nactual_vram={actual_vram:?}"
-        );
-    }
-}
-
-#[test]
-#[ignore = "investigating CPU-path LCD enable chronology"]
 fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
     const PROBE_M_CYCLES: [u16; 24] = [
         0, 17, 60, 110, 130, 174, 224, 244, 1, 18, 61, 111, 131, 175, 225, 245, 2, 19, 62, 112,
@@ -285,7 +192,7 @@ fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
 }
 
 #[test]
-#[ignore = "investigating CPU-path LCDC.7 write chronology"]
+#[ignore = "diag: CPU-path LCDC.7 write chronology probe is retained only for re-entry work"]
 fn cpu_path_lcd_enable_write_probe_matches_the_mooneye_probe_points() {
     const NOP_COUNTS: [u16; 19] = [
         0, 17, 18, 60, 61, 110, 111, 112, 130, 131, 132, 174, 175, 224, 225, 226, 244, 245, 246,
@@ -306,16 +213,6 @@ fn cpu_path_lcd_enable_write_probe_matches_the_mooneye_probe_points() {
 
     if actual_oam != EXPECTED_OAM || actual_vram != EXPECTED_VRAM {
         panic!("actual_oam={actual_oam:?}\nactual_vram={actual_vram:?}");
-    }
-}
-
-#[test]
-#[ignore = "diagnostic probe for lcd enable write chronology"]
-fn cpu_path_lcd_enable_write_probe_logs_boundary_snapshots() {
-    for delay in [111_u16, 112, 131, 132, 225, 226, 245, 246] {
-        let oam = run_lcd_enable_write_probe_observation(0xFE00, delay);
-        let vram = run_lcd_enable_write_probe_observation(0x8000, delay);
-        println!("delay={delay} oam={oam:?} vram={vram:?}");
     }
 }
 
