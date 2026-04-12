@@ -2,10 +2,7 @@ use crate::boot::StartupMemoryPolicy;
 use crate::cartridge::CartridgeSlot;
 use crate::scheduler::TCycle;
 
-use super::{
-    BLOCKED_READ_VALUE, Bus, BusAddressInfo, BusIoReadView, BusIoWriteView, BusRegion,
-    DMG_UNUSABLE_READ_VALUE,
-};
+use super::{BLOCKED_READ_VALUE, Bus, BusAddressInfo, BusIoReadView, BusIoWriteView, BusRegion};
 
 impl Bus {
     pub(super) fn perform_allowed_read(
@@ -26,7 +23,7 @@ impl Bus {
                 self.wram.read(target.address())
             }
             BusRegion::Oam => self.oam.read(target.region_offset() as usize),
-            BusRegion::Unusable => self.read_unusable_placeholder(),
+            BusRegion::Unusable => self.read_unusable_placeholder(target.address()),
             BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
                 self.iohram
                     .read(&self.router, self.console_model, target, io)
@@ -56,7 +53,7 @@ impl Bus {
                 self.wram.read(target.address())
             }
             BusRegion::Oam => self.oam.read(target.region_offset() as usize),
-            BusRegion::Unusable => self.read_unusable_placeholder(),
+            BusRegion::Unusable => self.read_unusable_placeholder(target.address()),
             BusRegion::Mmio | BusRegion::InterruptEnable | BusRegion::Hram => {
                 self.iohram
                     .read(&self.router, self.console_model, target, io)
@@ -207,12 +204,10 @@ impl Bus {
         }
     }
 
-    fn read_unusable_placeholder(&self) -> u8 {
-        if self.console_model.is_dmg_family() {
-            DMG_UNUSABLE_READ_VALUE
-        } else {
-            BLOCKED_READ_VALUE
-        }
+    fn read_unusable_placeholder(&self, address: u16) -> u8 {
+        self.describe_unusable_area(address)
+            .map(|info| info.runtime_fallback_read_value())
+            .unwrap_or(BLOCKED_READ_VALUE)
     }
 
     #[cfg(test)]

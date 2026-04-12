@@ -211,3 +211,27 @@ fn route_cpu_address_event_does_not_turn_mode3_oam_blocking_into_corruption() {
 
     assert_eq!(bus.oam, before);
 }
+
+#[test]
+fn route_cpu_address_event_does_not_turn_dma_video_bus_unusable_reads_into_corruption() {
+    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    seed_oam_corruption_rows(bus.oam.bytes_mut());
+    let before = bus.oam.clone();
+
+    let state = BusArbitrationState::default().with_dma(DmaBusState::video_bus_blocked(Some(
+        DmaMemoryRegionImpact::Oam,
+    )));
+    bus.route_cpu_address_event(
+        CpuAddressEvent {
+            kind: CpuAddressEventKind::Read,
+            access_address: Some(0xFEA0),
+            idu_address: None,
+            update_direction: None,
+        },
+        &state,
+        &mut ppu,
+    );
+
+    assert_eq!(bus.oam, before);
+}

@@ -34,6 +34,16 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - `FF50` boot ROM disable behavior
 - future CGB boot ROM overlays across `0000-00FF` and `0200-08FF`
 
+## Bus-facing mapping baseline
+
+- The boot subsystem should publish boot-ROM visibility to the bus as active overlay windows, not as one DMG-only "`0000-00FF` mapped" boolean.
+- In the current DMG-family baseline, that published state enables only the low window at `0000-00FF`.
+- Future CGB work should be able to publish both the low window and the upper boot-ROM window at `0200-08FF` through the same contract, without forcing a new bus-state shape.
+- The bus may still decode those windows into one `BootRom` routed owner; the important constraint is that the mapping state itself remains window-oriented and model-aware.
+- Bus-facing structured snapshots and bus-arbitration traces should expose those low and upper boot-overlay windows explicitly so tooling can observe the same routing state that the decode path is using.
+- The boot-ROM asset contract must stay aligned with that mapping contract too: a `CGB` model must not silently reuse a DMG-family boot image just because the current functional target is still DMG-first.
+- In the current repo baseline, CGB boot assets may be provided either as a compact `0x800`-byte image containing the two executable windows back-to-back, or as a sparse `0x900`-byte address-space image that keeps the visible cartridge gap at `0x0100-0x01FF`. The boot subsystem should interpret either form through the same split-window routing contract.
+
 ## Boot mode baseline
 
 - The project should support two explicit startup modes: `RealBoot` and `SkipBoot`.
@@ -106,9 +116,10 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 ## Uninitialized and cartridge-dependent startup state
 
 - `SkipBoot` must distinguish between values that are fixed by model, values derived from the cartridge header, and values that are genuinely unreliable after power-up.
-- WRAM and HRAM should not be treated as fixed zero-filled memory in the direct post-boot snapshot.
+- Pan Docs and hardware research do not support treating WRAM and HRAM as fixed zero-filled memory in the direct post-boot snapshot; they remain unreliable or effectively random across power-up.
 - Cartridge RAM, whether external or mapper-local to the cartridge controller, should not be assumed clean on first power-up when a direct post-boot path is used.
 - A direct-boot path should use an explicit policy for uninitialized memory and unreliable registers, such as seeded pseudo-random data, a documented pattern, or a debug-oriented deterministic startup policy.
+- In the current repo baseline, `SkipBoot` uses an explicit deterministic patterned policy for WRAM and HRAM so continuity tests stay reproducible without claiming those bytes are hardware constants.
 - That uninitialized-state policy must not overwrite values that are deterministic in the documented post-boot snapshot.
 
 ## Post-boot visible map baseline
@@ -187,6 +198,7 @@ Priority order:
 - Boot ROM loading should be configurable so the emulator can use real dumps, custom firmware, or no boot ROM at all.
 - A dedicated `BootRom` component with bytes, selected kind, and mapped/unmapped state is the intended baseline.
 - Keep boot-ROM asset ownership and boot enable/disable state in the boot subsystem even if the bus performs the actual address routing.
+- Keep boot-ROM asset selection model-aware too: DMG-family models may keep their `0x100`-byte images, but `ConsoleModel::Cgb` should select an explicit `CGB` boot image kind rather than aliasing to `DMG`.
 - Keep real-boot and skip-boot as explicit modes such as `RealBoot` and `SkipBoot`; the rest of the emulator should see only the resulting machine state and bus mapping.
 - A `SkipBoot` or equivalent explicit direct-boot mode is useful for tests, tooling, and differential validation, but it must remain distinct from verified boot ROM execution.
 - DMG-family observable differences should initially be assumed to come from firmware and startup state unless a proven hardware-level difference matters to the emulator.
@@ -200,6 +212,7 @@ Priority order:
 - Cartridge-derived post-boot fields such as DMG/MGB `F` should be computed from the loaded header at initialization time rather than hard-coded into one static table.
 - Uninitialized-state policy for WRAM, HRAM, cartridge RAM whether external or mapper-local, `OBP0`, and `OBP1` should be explicit and testable.
 - Do not hard-code boot ROM support around a fixed 256-byte assumption; CGB boot ROM is larger and uses a split mapped layout.
+- Keep the bus-facing boot mapping state aligned with that split-layout requirement: the contract should stay able to express multiple active windows even while the current functional target is still DMG-only.
 - When CGB is implemented, boot should be able to inspect cartridge header compatibility information and choose CGB mode or DMG-compatibility mode accordingly.
 - In the current Phase `2.8` baseline for this repo, the boot trace should make
   the `FF50` mapping state visible at phase `6` on the same timeline as the

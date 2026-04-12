@@ -43,10 +43,7 @@ impl Bus {
         match state.dma.cpu_access_policy() {
             DmaCpuAccessPolicy::Unrestricted => None,
             DmaCpuAccessPolicy::ExternalBusBlocked => {
-                if target.region() == BusRegion::Hram
-                    || target.region() == BusRegion::Vram
-                    || target.address() == 0xFF46
-                {
+                if target.region() == BusRegion::Hram || target.address() == 0xFF46 {
                     return None;
                 }
 
@@ -87,9 +84,23 @@ impl Bus {
             return None;
         }
 
-        if kind == BusAccessKind::Write {
+        if kind == BusAccessKind::Write
+            && self
+                .describe_unusable_area(target.address())
+                .map(|info| info.runtime_fallback_writes_ignored())
+                .unwrap_or(true)
+        {
             return Some(BusAccessDisposition::IgnoredWrite {
                 reason: BusBlockReason::UnusableRegion,
+            });
+        }
+
+        if requester == BusRequester::Cpu
+            && state.dma.cpu_access_policy() == DmaCpuAccessPolicy::VideoBusBlocked
+        {
+            return Some(BusAccessDisposition::BlockedRead {
+                value: BLOCKED_READ_VALUE,
+                reason: BusBlockReason::UnusableRegionDuringDmaVideoBusConflict,
             });
         }
 

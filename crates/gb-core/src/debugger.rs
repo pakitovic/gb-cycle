@@ -567,7 +567,7 @@ impl MachineSnapshot {
                 "debug.breakpoint_count={} debug.enabled_breakpoint_count={}\n",
                 "debug.watchpoint_count={} debug.enabled_watchpoint_count={}\n",
                 "cpu.console_model={:?} cpu.status={:?} cpu.startup_pc={:#06X} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?}\n",
-                "bus.console_model={:?} bus.status={:?}\n",
+                "bus.console_model={:?} bus.status={:?} bus.boot_low_window_mapped={} bus.boot_cgb_upper_window_mapped={} bus.ppu_lcd_enabled={} bus.ppu_mode={:?} bus.dma_cpu_access_policy={:?} bus.dma_active_region={:?} bus.dma_cpu_conflict_source_address={:?}\n",
                 "apu.console_model={:?} apu.status={:?} apu.powered={} apu.div_apu={}\n",
                 "ppu.console_model={:?} ppu.status={:?} ppu.lcd_state={:?} ppu.mode={:?} ppu.visible_output={:?} ppu.ly={} ppu.line_dot={} ppu.mode_dot={} ppu.mode0_start_dot={} ppu.visible_pixels_output={} ppu.scx_discard_remaining={}\n",
                 "ppu.bg_fetcher_source={:?} ppu.bg_fetcher_stage={:?} ppu.bg_fetcher_stage_dot={} ppu.bg_fetcher_tile_map_address={:#06X} ppu.bg_fetcher_tile_data_address={:#06X} ppu.bg_push_pending={} ppu.bg_fill_pending={}\n",
@@ -581,7 +581,7 @@ impl MachineSnapshot {
                 "boot.console_model={:?} boot.startup_mode={:?} boot.status={:?} boot.boot_rom_kind={:?} boot.boot_rom_mapped={} boot.asset_configured={} boot.memory_policy={:?}\n",
                 "interrupts.console_model={:?} interrupts.status={:?}\n",
                 "joypad.console_model={:?} joypad.status={:?}\n",
-                "cartridge.state={:?}\n"
+                "cartridge.state={:?} cartridge.rtc_access_ready_at={:?}\n"
             ),
             self.config.console_model,
             self.config.startup_mode,
@@ -601,6 +601,13 @@ impl MachineSnapshot {
             self.cpu.current_opcode,
             self.bus.console_model,
             self.bus.status,
+            self.bus.arbitration.boot_rom.maps_low_window(),
+            self.bus.arbitration.boot_rom.maps_cgb_upper_window(),
+            self.bus.arbitration.ppu.is_lcd_enabled(),
+            self.bus.arbitration.ppu.mode(),
+            self.bus.arbitration.dma.cpu_access_policy(),
+            self.bus.arbitration.dma.active_region(),
+            self.bus.arbitration.dma.cpu_conflict_source_address(),
             self.apu.console_model,
             self.apu.status,
             self.apu.powered,
@@ -662,6 +669,7 @@ impl MachineSnapshot {
             self.joypad.console_model,
             self.joypad.status,
             self.cartridge.state,
+            self.cartridge.rtc_access_ready_at,
         )
     }
 }

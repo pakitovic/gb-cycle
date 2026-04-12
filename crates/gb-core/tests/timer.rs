@@ -248,6 +248,7 @@ fn same_cycle_if_read_observes_a_timer_request_before_interrupt_aggregation() {
     machine
         .load_cartridge(build_header_jump_rom(&program))
         .expect("NoMBC test ROM should load");
+    machine.write_bus(0xC000, 0x00);
 
     for _ in 0..20_000 {
         machine.step_t_cycle();

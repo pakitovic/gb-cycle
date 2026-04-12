@@ -75,11 +75,15 @@ fn lcd_reenable_restarts_immediately_but_keeps_the_first_frame_visibly_blank() {
     machine.write_bus(0xFF40, 0x00);
     machine.write_bus(0xFF40, 0x91);
 
+    while machine.ppu().snapshot().lcd_state != PpuLcdState::Enabled {
+        machine.step_t_cycle();
+    }
+
     let restart = machine.ppu().snapshot();
     assert_eq!(restart.lcd_state, PpuLcdState::Enabled);
     assert_eq!(restart.mode, PpuAccessMode::HBlank);
     assert_eq!(restart.ly, 0);
-    assert_eq!(restart.line_dot, 0);
+    assert_eq!(restart.line_dot, 1);
     assert_eq!(restart.visible_output, PpuVisibleOutputState::ForcedBlank);
     assert!(restart.blank_frame_active);
 
@@ -221,6 +225,7 @@ fn lcd_off_releases_ppu_mode_restrictions_without_overriding_dma_hram_only_block
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
+    let initial_hram = machine.read_bus(0xFF80);
 
     machine.write_bus(0xFF40, 0x00);
     machine.write_bus(0x8000, 0x12);
@@ -234,5 +239,5 @@ fn lcd_off_releases_ppu_mode_restrictions_without_overriding_dma_hram_only_block
     assert_eq!(disabled.lcd_state, PpuLcdState::Disabled);
     assert_eq!(machine.read_bus(0x8000), 0xFF);
     assert_eq!(machine.read_bus(0xFE00), 0xFF);
-    assert_eq!(machine.read_bus(0xFF80), 0x00);
+    assert_eq!(machine.read_bus(0xFF80), initial_hram);
 }

@@ -21,6 +21,38 @@ impl Mbc5Variant {
 }
 
 impl Mbc5Cartridge {
+    pub(in crate::cartridge) fn describe_external_access(
+        &self,
+        address: u16,
+    ) -> CartridgeExternalAccessInfo {
+        let has_ram = self.ram.is_some();
+        let available = self.ram_enabled && has_ram;
+
+        CartridgeExternalAccessInfo::new(
+            address,
+            CartridgeExternalTarget::BankedRam {
+                bank: self.effective_ram_bank(),
+            },
+            if available {
+                CartridgeExternalAvailability::Accessible
+            } else if self.ram_enabled {
+                CartridgeExternalAvailability::Absent
+            } else {
+                CartridgeExternalAvailability::Disabled
+            },
+            if available {
+                CartridgeExternalReadBehavior::Storage
+            } else {
+                CartridgeExternalReadBehavior::FallbackValue(RAM_ABSENT_READ_VALUE)
+            },
+            if available {
+                CartridgeExternalWriteBehavior::Storage
+            } else {
+                CartridgeExternalWriteBehavior::Ignored
+            },
+        )
+    }
+
     pub(in crate::cartridge) fn read_rom(&self, address: u16) -> u8 {
         let address = address as usize;
         let bank_count = self.header.rom_size.bank_count.unwrap_or(0);
@@ -96,9 +128,13 @@ impl Mbc5Cartridge {
 
     pub(in crate::cartridge) fn effective_ram_offset(&self, address: u16) -> usize {
         let base_offset = (address - 0xA000) as usize;
-        let bank_count = self.header.ram_size.bank_count.unwrap_or(0).max(1);
-        let bank = (self.ram_bank_raw as usize) % bank_count;
+        let bank = self.effective_ram_bank() as usize;
         bank * 0x2000 + base_offset
+    }
+
+    pub(in crate::cartridge) fn effective_ram_bank(&self) -> u8 {
+        let bank_count = self.header.ram_size.bank_count.unwrap_or(0).max(1);
+        (self.ram_bank_raw as usize % bank_count) as u8
     }
 
     pub(in crate::cartridge) fn rumble_on(&self) -> bool {
