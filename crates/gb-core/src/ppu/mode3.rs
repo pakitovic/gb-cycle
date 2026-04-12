@@ -569,6 +569,11 @@ impl Ppu {
             BgPushDotOwnership::EntryDelay => {
                 debug_assert!(self.bg_pipeline_state.push.entry_delay_remaining > 0);
                 self.bg_pipeline_state.push.entry_delay_remaining -= 1;
+                if self.bg_pipeline_state.push.entry_delay_remaining == 0
+                    && self.saturated_placeholder_backed_terminal_bg_tail_can_hold_one_post_push_dot()
+                {
+                    self.bg_pipeline_state.push.terminal_placeholder_tail_extra_hold_remaining = 2;
+                }
                 self.bg_pipeline_state
                     .push
                     .cached
@@ -576,6 +581,9 @@ impl Ppu {
                 BgPushDotResult::EntryDelay
             }
             BgPushDotOwnership::WaitingForEmptyFifo => {
+                if self.bg_pipeline_state.push.terminal_placeholder_tail_extra_hold_remaining > 0 {
+                    self.bg_pipeline_state.push.terminal_placeholder_tail_extra_hold_remaining -= 1;
+                }
                 self.bg_pipeline_state
                     .push
                     .cached
@@ -1363,10 +1371,17 @@ impl Ppu {
             self.pending_nonterminal_same_x_cluster_pays_startup_dot();
         let right_edge_visible_same_x_cluster_pays_startup_dot =
             self.right_edge_visible_same_x_cluster_pays_startup_dot();
+        let right_edge_visible_same_x_cluster =
+            right_edge_visible_same_x_cluster_pays_startup_dot
+                || self.right_edge_visible_same_x_cluster_continues_after_push();
         let started =
             self.try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer, true);
         if !started || !self.obj_fetch_startup_ready() {
             return started;
+        }
+        if right_edge_visible_same_x_cluster {
+            self.bg_pipeline_state
+                .saw_right_edge_visible_same_x_cluster_this_line = true;
         }
 
         let long_same_x_tail_restart = self.chained_same_x_obj_fetch_uses_long_tail_restart();
@@ -1419,6 +1434,28 @@ impl Ppu {
             && self.obj_pipeline_state.pending_match_x
                 == Some(self.bg_pipeline_state.current_transfer_x)
             && self.fetched_same_x_obj_sprite_count_for_pending_match_x() >= 5
+    }
+
+    fn saturated_placeholder_backed_terminal_bg_tail_can_hold_one_post_push_dot(&self) -> bool {
+        self.bg_pipeline_state.mode3_started
+            && self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
+            && self.bg_pipeline_state.current_transfer_x >= 168
+            && (160..=161).any(|sprite_x| {
+                (0..self.mode2_scan_state.selected_sprite_count()).filter(|&slot| {
+                    self.mode2_scan_state
+                        .selected_sprite(slot)
+                        .is_some_and(|sprite| sprite.x == sprite_x)
+                })
+                .count()
+                    >= 5
+            })
+            && usize::from(self.mode2_scan_state.selected_sprite_count())
+                == MAX_SELECTED_SPRITES_PER_LINE
+            && self.bg_pipeline_state.startup_fifo_placeholders == 4
+            && self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
+            && self.obj_pipeline_state.pending_match_x.is_none()
+            && self.obj_pipeline_state.pending_sprite_slots.is_empty()
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
     }
 
     fn terminal_previsible_same_x_chain_can_start_obj_fetch(&self) -> bool {

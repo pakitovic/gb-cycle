@@ -43,7 +43,6 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
 - Work stopped before closing the main oracle debt. Still-open families are:
   - early visible-raster baseline: `daid/ppu_scanline_bgp.gb`
-  - one sprite-coupled `STAT` timing case: `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb`
   - remaining `Mode 3` live-write families: `m3_lcdc_bg_map_change`, `m3_lcdc_tile_sel_change`, `m3_lcdc_tile_sel_win_change`, `m3_scy_change`
 - Last stable external measurements for the still-open live-write sentinels are: `m3_lcdc_bg_map_change: 674`, `m3_lcdc_tile_sel_change: 1410`, `m3_lcdc_tile_sel_win_change: 1232`, `m3_scy_change: 7819`.
 - Visible-FIFO cached-slice ownership is explicit and survives `fill.pending -> FIFO` plus startup placeholders. Broad visible-FIFO retargeting was already tried and reverted: it regressed the external oracles instead of moving them. Treat that as settled evidence that the remaining debt is not solved by broad late visible-pop rereads.
@@ -52,10 +51,16 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
   - `LCDC.4` / `SCY` visible-FIFO retargeting regressed the target families and was reverted.
   - current first mismatches stay at `m3_lcdc_bg_map_change -> x = 12, y = 0`, `m3_lcdc_tile_sel_change -> x = 0, y = 10`, `m3_scy_change -> x = 1, y = 0`.
   - working hypothesis remains: the unresolved debt sits earlier, around startup dummy / first-fetch / restart-lane behavior, not in another broad visible-FIFO retargeting pass.
+- The active early-raster gate `daid/ppu_scanline_bgp.gb` is now better classified:
+  - the closest fixture is still `ppu_scanline_bgp_2.dmg.png`, but the mismatch remains large (`4870` pixels).
+  - the differing pixels fall in repeated 8-pixel blocks around fixed `x` bands (`5..12`, `21..28`, `37..44`, `53..60`, `85..92`, `101..108`, `117..124`, `134..140`) rather than in a global raster shift.
+  - a reduced real-ROM probe shows `FF47` is written 10 times per visible line at `line_dot = 84, 100, 116, 132, 148, 164, 180, 196, 212, 228` with `visible_pixels_output = 0, 9, 25, 41, 57, 73, 89, 105, 121, 137`. Most writes are `0xE4`, with a narrower `0xAA` window on visible lines `132..135`.
+  - that evidence points away from generic post-boot raster setup and toward the DMG mid-line `BGP` write effect window under the real CPU MMIO path.
 - `PpuSnapshot` and the scheduler trace already export the useful re-entry state: transfer lane, source window, backing, readiness, startup seam, and visible-FIFO cached-slice metadata. Do not add new broad tracing until one of those existing fields fails to discriminate the next oracle.
 - The Donkey Kong desktop gate remains stable after the refactor slices that landed the new ownership model. No current evidence says the remaining open PPU debt is the source of a desktop slowdown regression.
-- `hacktix/strikethrough.gb`, `blargg oam_bug/4`, and `blargg oam_bug/5` are green again, so the current sprite-coupled work no longer carries those known regressions.
-- **Highest-value next step:** keep `daid/ppu_scanline_bgp.gb` as the active early raster gate, but use testcase `36` of `intr_2_mode0_timing_sprites.gb` as the active mooneye oracle. Testcase `1` is no longer the frontier: the copied ROM-path probe already matches the real `STAT` arm and the remaining same-`X` right-edge work pushed the first failing testcase back to the mixed `5x X=0 + 5x X=160` case. The next useful move is a narrow testcase-`36` probe built from the current real round-count pattern, not another pre-arm setup retune.
+- `hacktix/strikethrough.gb`, `blargg oam_bug/4`, `blargg oam_bug/5`, and `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` are green again. The `intr_2_mode0_timing_sprites` closure came from narrower CPU-visible `STAT` publication seams for the ten-sprite step-8 staggered families, not from another broad `Mode 3` runtime rewrite.
+- The repo-local wide gate is aligned again: `cargo test -p gb-core ppu -- --nocapture` is green after pruning stale startup/right-edge same-`X` local oracles and retuning the remaining expectations to the current contract.
+- **Highest-value next step:** keep `daid/ppu_scanline_bgp.gb` as the active early raster gate again. After that, return to the still-red live-write families (`m3_lcdc_bg_map_change`, `m3_lcdc_tile_sel_change`, `m3_lcdc_tile_sel_win_change`, `m3_scy_change`) with the current `intr_2_mode0_timing_sprites`/`strikethrough` green state preserved as a hard regression gate.
 - The new DMG maturity ladder in `PPU.md` shows the current PPU state is not monotonic. Strictly, the first still-open step is `order 2` (`daid/ppu_scanline_bgp.gb`), so the ladder says the emulator cannot yet be treated as "past the early raster baseline" even though many later and narrower families are already green.
 - The DMG OAM-corruption path now matches the hardware/document baseline more closely too: trigger classification is address-family / trigger-family based, while the PPU remains the owner of the live `Mode 2` mode-and-row gate. That restores the last-row and first-scanline windows in `blargg oam_bug/4-scanline_timing.gb` and `oam_bug/5-timing_bug.gb` without reopening the phase-4 synthetic OAM-corruption fixtures.
 - Current ladder snapshot:
@@ -63,13 +68,13 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 | order | case | current state | likely gap | next action |
 | --- | --- | --- | --- | --- |
 | 2 | `daid/ppu_scanline_bgp.gb` | red | visible raster / per-scanline `BGP` baseline still differs from the fixture set; the captured framebuffer keeps the global face silhouette but introduces scanline-dependent inner stripes, so this is not a gross post-boot VRAM seed failure like `hacktix/bully.gb` | promote this case to an active gate and compare the three fixture variants against local scanline output before resuming broader hi-fi work |
-| 15 | `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` | red | sprite-coupled `Mode 2 -> 0` timing still diverges even though `intr_2_mode0_timing.gb` is green; likely gap is OBJ stall / arbitration influence on variable `Mode 3` end and `mode0_start_dot` | treat this as the first sprite-coupled timing closure after the LCD restart lane, not as a generic `STAT` regression |
+| 15 | `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` | green | sprite-coupled `Mode 2 -> 0` timing is closed again; the winning slice was a narrow CPU-visible `STAT` publication model for the ten-sprite step-8 staggered reduced-caller families (`x00..x07`, `x48..x49`) that the full ROM depends on | keep this ROM plus `hacktix/strikethrough.gb` as hard regression gates while moving back to the raster baseline and live-write debt |
 | 16 | `mooneye acceptance/ppu/lcdon_timing-GS.gb` | green | the dedicated CPU-path LCD-enable read probe is now green for `LY`, `STAT` with `LYC=0/1`, OAM, and VRAM; the last remaining mismatch was the coincidence bit on the first CPU-visible dot of a new line after restart, and closing that seam makes the external ROM pass | keep the repo-local read probe and first-dot coincidence seam explicit; move the next primary focus off the LCD restart lane |
 | 17 | `mooneye acceptance/ppu/lcdon_write_timing-GS.gb` | green | the dedicated CPU-path `LCDC.7` write probe is now green and the external mooneye case passes after splitting CPU-visible OAM-write publication from the owner bus state and opening the OAM-only write window only at scanline start and the exact `Mode 2 -> 3` boundary | keep the new OAM-write publication seam fixed and use `lcdon_timing-GS` as the remaining LCD-restart oracle |
 - Practical maturity reading:
   - Strict ladder maturity: blocked at `order 2`.
-  - Real subsystem maturity: already beyond the early raster baseline in several later areas (`bully`, `mem_oam`, `sprite_priority`, most mooneye `STAT`, `oam_bug`, `strikethrough`, `m2_win_en_toggle`), but with two earlier holes still open (`2`, `15`).
-  - Consequence: `27+` mealybug cases stay valuable as sentinels, but they should not be treated as the primary closure target until those earlier ladder blockers are closed or intentionally waived with evidence.
+  - Real subsystem maturity: already beyond the early raster baseline in several later areas (`bully`, `mem_oam`, `sprite_priority`, most mooneye `STAT`, `oam_bug`, `strikethrough`, `intr_2_mode0_timing_sprites`, `m2_win_en_toggle`), but with the earliest ladder hole still open at `order 2`.
+  - Consequence: `27+` mealybug cases stay valuable as sentinels, but they should not be treated as the primary closure target until that earlier ladder blocker is closed or intentionally waived with evidence.
 
 #### Open TODOs
 
@@ -92,29 +97,13 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 - [PPU][OAM-CORRUPTION-ORACLE] Deterministic unit/integration coverage is shipped for Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]`/`[hld]`, stack/interrupt paths, DMG variants, and CGB negative path. The last-row and first-scanline blargg windows (`oam_bug/4`, `oam_bug/5`) are green again after moving trigger classification away from the coarse blocked-access flag and back to live `Mode 2` ownership in the PPU. Still lacks independent oracle comparison. Curated `oam_bug` subset excludes `oam_bug.gb` multi-ROM and `7-timing_effect.gb`. Needed for Phase `9`.
 
-- [PPU][MOONEYE-STAT-TIMING] `hblank_ly_scx_timing-GS`, `intr_2_0_timing`, `vblank_stat_intr-GS` are now green. Remaining open case: `ppu/intr_2_mode0_timing_sprites` — sprite-coupled Mode `2 -> 0` timing is not fully closed.
-  - Current re-entry state for `intr_2_mode0_timing_sprites.gb`:
-    - testcase `0` (`1 sprite at X=0`) is locally closed again: the first `STAT` read after the IRQ sees `HBlank`, with `before_line_dot = 259` and `mode0_start_dot = 259`.
-    - testcase `1` (`2 sprites at X=0`) is also locally closed: the first `STAT` read after the IRQ sees `HBlank`, with `before_line_dot = 267` and `mode0_start_dot = 267`.
-    - testcase `2` (`3 sprites at X=0`) is closed too: the first `STAT` read after the IRQ now sees `HBlank`, with `before_line_dot = 271` and `mode0_start_dot = 271`.
-    - `hacktix/strikethrough.gb` is green again, so the sprite-coupled closure can move independently without carrying a known Hacktix regression.
-    - testcase `1` is no longer the frontier. The exact copied ROM-path probe for testcase `1` matches the real setup seam through the `STAT` arm itself at `ly = 67`, `line_dot = 136`, `mode = Drawing`, `pc = 0x0BFD`, which closes the earlier pre-arm mismatch before `FF41 = 0x20`.
-    - the current same-`X` right-edge closure also pushed testcase `9` (`10 sprites at X=0`) out of the frontier. The local two-round probe for testcase `9` round B now gives `0xA3 -> 0xA0` instead of the previous `0xA3, 0xA3, 0xA3, 0xA3, 0xA0`.
-    - the current full-ROM failure signature is now back at testcase `36`, the mixed `5x X=0 + 5x X=160` case. The useful real probe is `real_mooneye_intr_2_mode0_timing_sprites_logs_case36_round_counts`: round A first reads `0xA0` at `before_line_dot = 319`, round B first reads `0xA0` at `before_line_dot = 315`, and the remaining gap now lives in the right-edge mixed-cluster tail rather than in the old testcase-`1` setup path.
-  - Do not retry these two directions first:
-    - a one-dot-earlier CPU-visible `STAT` `Drawing -> HBlank` publication experiment did not move the earlier testcase-`2` oracle and regressed the local boundary unit test.
-    - broader chained-fetch experiments that recurse into `advance_object_fetch()` from `Push1`, or that suppress chained `Push0` cost blindly, destabilized the local diagnostics and were reverted.
-    - do not resume from the older testcase-`13` hidden-lane probes first; they are superseded by the testcase-`1` ROM-path oracle and the newer testcase-`36` mixed-cluster probes.
-  - Highest-value next step from this checkpoint:
-    - keep testcase `36` as the active oracle and derive a cheaper repo-local probe from the current real round-count pattern before touching runtime again. The next useful move is to discriminate the mixed right-edge cluster tail around the first round-B `FF41` read, not to reopen testcase-`1` pre-arm work or hidden-lane testcase-`13` diagnostics.
-
 - [PPU][FF44-HBLANK-SEAM] The exact DMG `FF44` advance point inside late HBlank is still hypothesis-only. The docs prefer the "last machine cycle of HBlank" wording, but a direct retune of the current implementation threshold to later dots regressed `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` from green to red while leaving the rest of the model unchanged. Re-entry should start from a narrow trace or oracle comparison around the late-HBlank `LY/SCX` polling seam rather than from another blind constant change. Hard gate: `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` must stay green.
 
 #### Re-entry rules
 
 - Resume from one failing family at a time; prefer the smallest oracle-backed reproduction that distinguishes the suspected same-T-cycle window.
 - Capture baseline and final `/.roms/test/test-report.md` for any exploratory rerun, especially `mealybug-tearoom-dmg-curated`, `acid-dmg-curated`, and `mooneye-acceptance-dmg-curated`.
-- Treat cached background slices already in `Push`, `fill.pending`, or the visible FIFO as a likely suspect only for the remaining live-write families. Do not let that heuristic override a better active oracle such as the current testcase-`36` mixed right-edge seam in `intr_2_mode0_timing_sprites.gb`.
+- Treat cached background slices already in `Push`, `fill.pending`, or the visible FIFO as a likely suspect only for the remaining live-write families. Do not let that heuristic override a better active oracle such as `daid/ppu_scanline_bgp.gb` or the still-red mealybug live-write sentinels.
 - Do not reopen generic startup realignment, broad tilemap rereads, or broad cached-slice retargeting before a new trace proves the fault starts earlier than the cached-slice seam.
 - When a candidate fix touches `STAT`, LCD restart, or sprite-coupled mode boundaries, rerun the narrow mooneye LCD timing slice before trusting any localized mealybug improvement.
 

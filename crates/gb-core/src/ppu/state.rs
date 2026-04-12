@@ -324,6 +324,7 @@ struct BgPipelineState {
     transfer_phase: Mode3TransferPhase,
     current_transfer_x: u8,
     visible_pixels_output: u8,
+    saw_right_edge_visible_same_x_cluster_this_line: bool,
     window_wy_latch: bool,
     window_force_x0_this_line: bool,
     window_started_this_line: bool,
@@ -349,6 +350,7 @@ impl BgPipelineState {
         self.transfer_phase = Mode3TransferPhase::Priming;
         self.current_transfer_x = 0;
         self.visible_pixels_output = 0;
+        self.saw_right_edge_visible_same_x_cluster_this_line = false;
         self.window_wy_latch = false;
         self.window_force_x0_this_line = false;
         self.window_started_this_line = false;
@@ -371,6 +373,7 @@ impl BgPipelineState {
         self.startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
         self.transfer_phase = Mode3TransferPhase::Priming;
         self.current_transfer_x = 0;
+        self.saw_right_edge_visible_same_x_cluster_this_line = false;
         self.push.reset();
         self.fill.reset();
         self.fetcher.start_background();
@@ -696,6 +699,7 @@ impl Default for BgPipelineState {
             transfer_phase: Mode3TransferPhase::Priming,
             current_transfer_x: 0,
             visible_pixels_output: 0,
+            saw_right_edge_visible_same_x_cluster_this_line: false,
             window_wy_latch: false,
             window_force_x0_this_line: false,
             window_started_this_line: false,
@@ -847,6 +851,7 @@ struct BgPushState {
     pending: bool,
     disposition: BgPushDisposition,
     entry_delay_remaining: u8,
+    terminal_placeholder_tail_extra_hold_remaining: u8,
     just_activated_window_tile: bool,
     next_fetch_pixel: u16,
     cached: BgCachedSlice,
@@ -860,6 +865,7 @@ impl BgPushState {
     fn queue_from_fetcher(&mut self, fetcher: BgFetcherState) {
         self.pending = true;
         self.disposition = BgPushDisposition::Ready;
+        self.terminal_placeholder_tail_extra_hold_remaining = 0;
         self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
         self.entry_delay_remaining = if self.just_activated_window_tile {
             0
@@ -873,6 +879,7 @@ impl BgPushState {
     fn queue_startup_alignment_seed_from_fetcher(&mut self, fetcher: BgFetcherState) {
         self.pending = true;
         self.disposition = BgPushDisposition::Ready;
+        self.terminal_placeholder_tail_extra_hold_remaining = 0;
         self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
         self.entry_delay_remaining = 0;
         self.next_fetch_pixel = fetcher.fetch_x.wrapping_add(BG_TILE_WIDTH as u16);
