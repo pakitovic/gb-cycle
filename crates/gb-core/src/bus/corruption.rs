@@ -80,10 +80,8 @@ impl Bus {
     }
 
     fn idu_event_reaches_oam(&self, address: u16, state: &BusArbitrationState) -> bool {
-        self.console_model.is_dmg_family()
-            && state.ppu.is_lcd_enabled()
-            && state.ppu.mode() == PpuAccessMode::OamScan
-            && (0xFE00..=0xFEFF).contains(&address)
+        let _ = state;
+        self.console_model.is_dmg_family() && (0xFE00..=0xFEFF).contains(&address)
     }
 }
 

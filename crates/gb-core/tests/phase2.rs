@@ -1,18 +1,16 @@
 mod common;
 
-use std::env;
-use std::fs;
-use std::path::Path;
-
+use common::machine_driver::{step_machine_t_cycles, step_machine_until};
+use common::synthetic_cartridge::{
+    HEADER_MINIMUM_ROM_LEN, PROGRAM_ENTRY_ADDRESS, build_nom_bc_test_rom_with_program_entry,
+};
 use gb_core::{
     BootRomAssets, BootRomKind, ConsoleModel, CpuExecutionState, JoypadButton, Machine,
     MachineConfig, StartupMode,
 };
 
-const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_PHASE2_FIXTURES";
-const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
+const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PHASE2;
 const BOOT_ROM_LEN: usize = 0x0100;
-const PROGRAM_ENTRY_ADDRESS: usize = 0x0150;
 const TEST_ROM_BOOT_OPCODE: u8 = 0x12;
 const PHASE_2_ENTRY_OPCODE: u8 = 0xD3;
 const SENTINEL_ADDRESS: u16 = 0xC010;
@@ -28,22 +26,6 @@ const HALT_STOP_AND_HALT_BUG_ROM_NAME: &str = "phase2_halt_stop_and_halt_bug.gb"
 const HALT_STOP_AND_HALT_BUG_TRACE_NAME: &str = "phase2_halt_stop_and_halt_bug.trace";
 const TIMER_IF_VISIBILITY_ROM_NAME: &str = "phase2_timer_if_visibility_and_service.gb";
 const TIMER_IF_VISIBILITY_TRACE_NAME: &str = "phase2_timer_if_visibility_and_service.trace";
-
-fn build_test_rom(program: &[u8], boot_opcode: u8, extra_segments: &[(usize, &[u8])]) -> Vec<u8> {
-    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
-    rom[0x0000] = boot_opcode;
-    rom[0x0100..0x0103].copy_from_slice(&[0xC3, 0x50, 0x01]);
-    for (offset, byte) in program.iter().copied().enumerate() {
-        rom[PROGRAM_ENTRY_ADDRESS + offset] = byte;
-    }
-    for &(address, bytes) in extra_segments {
-        rom[address..address + bytes.len()].copy_from_slice(bytes);
-    }
-    rom[0x0147] = 0x00;
-    rom[0x0148] = 0x00;
-    rom[0x0149] = 0x00;
-    rom
-}
 
 fn build_phase_2_trace_boot_rom() -> Vec<u8> {
     let mut rom = vec![0x00; BOOT_ROM_LEN];
@@ -169,43 +151,17 @@ impl ProgramBuilder {
     }
 }
 
-fn fixture_accept_writes_enabled() -> bool {
-    env::var_os(FIXTURE_ACCEPT_ENV).is_some()
-}
-
-fn ensure_binary_fixture(path: &Path, expected: &[u8]) -> Vec<u8> {
-    if fixture_accept_writes_enabled() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("fixture directory should be creatable");
-        }
-        fs::write(path, expected).expect("binary fixture should be writable");
-    }
-
-    let fixture = common::read_binary_fixture(path).expect("binary fixture should be readable");
-    assert_eq!(fixture, expected);
-    fixture
-}
-
-fn ensure_text_fixture(path: &Path, expected: &str) -> String {
-    if fixture_accept_writes_enabled() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("fixture directory should be creatable");
-        }
-        fs::write(path, expected).expect("text fixture should be writable");
-    }
-
-    let fixture = common::read_text_fixture(path).expect("text fixture should be readable");
-    assert_eq!(fixture, expected);
-    fixture
-}
-
 fn load_fixture_machine(
     rom_name: &str,
     expected_rom: &[u8],
     console_model: ConsoleModel,
 ) -> Machine {
-    let rom_fixture_path = common::rom_fixtures_dir().join("phase2").join(rom_name);
-    let rom_fixture = ensure_binary_fixture(&rom_fixture_path, expected_rom);
+    let rom_fixture = common::fixtures::ensure_suite_binary_fixture(
+        "phase2",
+        rom_name,
+        expected_rom,
+        FIXTURE_ACCEPT_ENV,
+    );
     let mut machine =
         Machine::new(MachineConfig::new(console_model).with_startup_mode(StartupMode::SkipBoot));
     machine
@@ -215,32 +171,7 @@ fn load_fixture_machine(
 }
 
 fn assert_trace_fixture(trace_name: &str, trace: &str) {
-    let trace_fixture_path = common::trace_fixtures_dir().join("phase2").join(trace_name);
-    ensure_text_fixture(&trace_fixture_path, trace);
-}
-
-fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
-    for _ in 0..steps {
-        machine.step_t_cycle();
-    }
-}
-
-fn step_machine_until(
-    machine: &mut Machine,
-    max_steps: usize,
-    predicate: impl Fn(&Machine) -> bool,
-) {
-    for _ in 0..max_steps {
-        if predicate(machine) {
-            return;
-        }
-        machine.step_t_cycle();
-    }
-
-    assert!(
-        predicate(machine),
-        "predicate was not satisfied within {max_steps} T-cycles"
-    );
+    common::fixtures::ensure_suite_text_fixture("phase2", trace_name, trace, FIXTURE_ACCEPT_ENV);
 }
 
 fn step_until_wram_sentinel_with_driver<F>(
@@ -248,32 +179,17 @@ fn step_until_wram_sentinel_with_driver<F>(
     address: u16,
     value: u8,
     max_steps: usize,
-    mut driver: F,
+    driver: F,
 ) where
     F: FnMut(&mut Machine),
 {
-    for _ in 0..max_steps {
-        if machine.read_bus(address) == value {
-            return;
-        }
-        driver(machine);
-        if machine.read_bus(address) == value {
-            return;
-        }
-        machine.step_t_cycle();
-    }
-
-    panic!(
-        "sentinel was not reached: observed={:#04X} pc={:#06X} state={:?} opcode={:?}",
-        machine.read_bus(address),
-        machine.cpu().registers().pc,
-        machine.cpu().execution_state(),
-        machine.cpu().current_opcode()
+    common::machine_driver::step_until_wram_sentinel_with_driver(
+        machine, address, value, max_steps, driver,
     );
 }
 
 fn step_until_wram_sentinel(machine: &mut Machine, address: u16, value: u8, max_steps: usize) {
-    step_until_wram_sentinel_with_driver(machine, address, value, max_steps, |_| {});
+    common::machine_driver::step_until_wram_sentinel(machine, address, value, max_steps);
 }
 
 fn assert_trace_fragments_in_order(trace: &str, fragments: &[&str]) {
@@ -455,213 +371,11 @@ fn build_timer_if_visibility_and_service_vector() -> [u8; 17] {
     ]
 }
 
-#[test]
-fn phase_2_fetch_immediate_order_rom_fixture_matches_expected_trace_and_state() {
-    let expected_rom = build_test_rom(
-        &build_fetch_immediate_order_program(),
-        TEST_ROM_BOOT_OPCODE,
-        &[],
-    );
-    let mut machine =
-        load_fixture_machine(FETCH_IMMEDIATE_ROM_NAME, &expected_rom, ConsoleModel::Dmg);
-
-    step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 512);
-
-    assert_eq!(machine.cpu().registers().sp, 0x1234);
-    assert_eq!(machine.read_bus(0xC011), 0x10);
-    assert_eq!(machine.cpu().registers().f, 0x20);
-    assert_trace_fixture(
-        FETCH_IMMEDIATE_TRACE_NAME,
-        &machine.tracer().sink().render_text(),
-    );
-}
-
-#[test]
-fn phase_2_control_flow_stack_cb_rom_fixture_matches_expected_trace_and_state() {
-    let expected_rom = build_test_rom(
-        &build_control_flow_stack_cb_program(),
-        TEST_ROM_BOOT_OPCODE,
-        &[],
-    );
-    let mut machine = load_fixture_machine(
-        CONTROL_FLOW_STACK_CB_ROM_NAME,
-        &expected_rom,
-        ConsoleModel::Dmg,
-    );
-
-    step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 1_024);
-
-    assert_eq!(machine.read_bus(0xC011), 0x27);
-    assert_eq!(machine.cpu().registers().c, 0x27);
-    assert_eq!(machine.cpu().registers().sp, 0xFFFE);
-    assert_eq!(machine.cpu().registers().f, 0x00);
-    assert_trace_fixture(
-        CONTROL_FLOW_STACK_CB_TRACE_NAME,
-        &machine.tracer().sink().render_text(),
-    );
-}
-
-#[test]
-fn phase_2_ei_delay_priority_rom_fixture_matches_expected_trace_and_state() {
-    let vector = build_ei_delay_priority_vector();
-    let expected_rom = build_test_rom(
-        &build_ei_delay_priority_program(),
-        TEST_ROM_BOOT_OPCODE,
-        &[(0x0040, &vector)],
-    );
-    let mut machine =
-        load_fixture_machine(EI_DELAY_PRIORITY_ROM_NAME, &expected_rom, ConsoleModel::Dmg);
-
-    step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 1_024);
-
-    assert_eq!(machine.read_bus(0xC011), 0xE4);
-    assert_eq!(machine.cpu().registers().sp, 0xFFFC);
-    assert_eq!(machine.read_bus(0xFFFD), 0x01);
-    assert_eq!(machine.read_bus(0xFFFC), 0x59);
-    assert_trace_fixture(
-        EI_DELAY_PRIORITY_TRACE_NAME,
-        &machine.tracer().sink().render_text(),
-    );
-}
-
-#[test]
-fn phase_2_halt_stop_and_halt_bug_rom_fixture_matches_expected_trace_and_state() {
-    let (program, phase_two_address) = build_halt_stop_and_halt_bug_program();
-    let timer_vector = build_jump_vector(phase_two_address);
-    let vblank_vector = build_halt_stop_and_halt_bug_vblank_vector();
-    let expected_rom = build_test_rom(
-        &program,
-        TEST_ROM_BOOT_OPCODE,
-        &[(0x0040, &vblank_vector), (0x0050, &timer_vector)],
-    );
-    let mut machine = load_fixture_machine(
-        HALT_STOP_AND_HALT_BUG_ROM_NAME,
-        &expected_rom,
-        ConsoleModel::Dmg,
-    );
-    let mut stop_wake_injected = false;
-    let mut stop_irq_injected = false;
-
-    step_until_wram_sentinel_with_driver(
-        &mut machine,
-        SENTINEL_ADDRESS,
-        SENTINEL_VALUE,
-        2_048,
-        |machine| {
-            if !stop_wake_injected
-                && matches!(machine.cpu().execution_state(), CpuExecutionState::Stopped)
-            {
-                machine.set_joypad_button_pressed(JoypadButton::A, true);
-                stop_wake_injected = true;
-            } else if stop_wake_injected
-                && !stop_irq_injected
-                && !matches!(machine.cpu().execution_state(), CpuExecutionState::Stopped)
-            {
-                machine.write_bus(0xFF0F, 0x01);
-                stop_irq_injected = true;
-            }
-        },
-    );
-
-    assert!(stop_wake_injected);
-    assert!(stop_irq_injected);
-    assert_eq!(machine.read_bus(0xC011), 0x03);
-    assert_eq!(machine.read_bus(0xC012), 0xE0);
-    assert_trace_fixture(
-        HALT_STOP_AND_HALT_BUG_TRACE_NAME,
-        &machine.tracer().sink().render_text(),
-    );
-}
-
-#[test]
-fn phase_2_timer_if_visibility_and_service_rom_fixture_matches_expected_trace_and_state() {
-    let vector = build_timer_if_visibility_and_service_vector();
-    let expected_rom = build_test_rom(
-        &build_timer_if_visibility_and_service_program(),
-        TEST_ROM_BOOT_OPCODE,
-        &[(0x0050, &vector)],
-    );
-    let mut machine = load_fixture_machine(
-        TIMER_IF_VISIBILITY_ROM_NAME,
-        &expected_rom,
-        ConsoleModel::Dmg,
-    );
-
-    step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, 1_024);
-
-    assert_eq!(machine.read_bus(0xC011), 0x68);
-    assert_eq!(machine.read_bus(0xC012), 0xE0);
-    assert_eq!(machine.cpu().registers().sp, 0xFFFC);
-    assert_eq!(machine.read_bus(0xFFFD), 0x01);
-    assert_eq!(machine.read_bus(0xFFFC), 0x66);
-    assert_trace_fixture(
-        TIMER_IF_VISIBILITY_TRACE_NAME,
-        &machine.tracer().sink().render_text(),
-    );
-}
-
-#[test]
-fn phase_2_trace_shows_fetch_operand_if_visibility_and_interrupt_acceptance() {
-    let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
-    );
-
-    machine
-        .load_cartridge(build_phase_2_fragment_rom(&[0x3E, 0x12, 0xFB, 0x00], 0x12))
-        .expect("NoMBC test ROM should load");
-
-    machine.write_bus(0xFFFF, 0x01);
-    machine.write_bus(0xFF0F, 0x01);
-
-    step_machine_t_cycles(&mut machine, 16);
-
-    let trace = machine.tracer().sink().render_text();
-
-    assert_trace_fragments_in_order(
-        &trace,
-        &[
-            "subsystem=cpu level=trace message=\"t_cycle=3 phase=cpu_micro_operation",
-            "last_bus_activity=opcode_fetch@0x0100=0x3E",
-            "subsystem=cpu level=trace message=\"t_cycle=7 phase=cpu_micro_operation",
-            "last_bus_activity=operand_read@0x0101=0x12",
-            "subsystem=interrupts level=trace message=\"t_cycle=15 phase=interrupt_aggregation console_model=Dmg status=Ready if=0xE1 ie=0x01\"",
-            "subsystem=interrupts level=trace message=\"t_cycle=15 phase=cpu_wake_interrupt_evaluation console_model=Dmg status=Ready if=0xE0 ie=0x01\"",
-            "subsystem=cpu level=trace message=\"t_cycle=15 phase=cpu_wake_interrupt_evaluation",
-            "execution_state=ServiceInterrupt { source: VBlank, step: 0, t_cycle: 0 }",
-        ],
-    );
-}
-
-#[test]
-fn phase_2_trace_shows_boot_handoff_before_the_first_cartridge_fetch() {
-    let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg)
-            .with_startup_mode(StartupMode::RealBoot)
-            .with_boot_rom_assets(
-                BootRomAssets::none()
-                    .with_bytes(BootRomKind::Dmg, build_phase_2_trace_boot_rom())
-                    .expect("phase 2 boot-trace ROM should validate"),
-            ),
-    );
-
-    machine
-        .load_cartridge(build_phase_2_real_boot_rom(PHASE_2_ENTRY_OPCODE))
-        .expect("NoMBC test ROM should load");
-
-    step_machine_until(&mut machine, 48, |machine| {
-        machine.cpu().current_opcode() == Some(PHASE_2_ENTRY_OPCODE)
-    });
-
-    let trace = machine.tracer().sink().render_text();
-
-    assert_trace_fragments_in_order(
-        &trace,
-        &[
-            "subsystem=cpu level=trace message=\"t_cycle=39 phase=cpu_micro_operation",
-            "last_bus_activity=data_write@0xFF50=",
-            "subsystem=boot level=trace message=\"t_cycle=39 phase=mmio_side_effect_commit console_model=Dmg startup_mode=RealBoot status=Ready boot_rom_kind=Dmg boot_rom_mapped=false\"",
-            "subsystem=cpu level=trace message=\"t_cycle=43 phase=cpu_micro_operation",
-            "last_bus_activity=opcode_fetch@0x0100=0xD3",
-        ],
-    );
-}
+#[path = "phase2/phase2_control_flow.rs"]
+mod phase2_control_flow;
+#[path = "phase2/phase2_fetch_decode.rs"]
+mod phase2_fetch_decode;
+#[path = "phase2/phase2_halt_stop.rs"]
+mod phase2_halt_stop;
+#[path = "phase2/phase2_interrupts.rs"]
+mod phase2_interrupts;

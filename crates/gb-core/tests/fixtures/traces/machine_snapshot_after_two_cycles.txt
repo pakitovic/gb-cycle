@@ -9,7 +9,12 @@ debug.watchpoint_count=0 debug.enabled_watchpoint_count=0
 cpu.console_model=Dmg cpu.status=Ready cpu.startup_pc=0x0100 cpu.pc=0x0100 cpu.execution_state=FetchOpcode { t_cycle: 2 } cpu.current_opcode=None
 bus.console_model=Dmg bus.status=Ready bus.boot_low_window_mapped=false bus.boot_cgb_upper_window_mapped=false bus.ppu_lcd_enabled=true bus.ppu_mode=OamScan bus.dma_cpu_access_policy=Unrestricted bus.dma_active_region=None bus.dma_cpu_conflict_source_address=None
 apu.console_model=Dmg apu.status=Ready apu.powered=true apu.div_apu=5
-ppu.console_model=Dmg ppu.status=RegistersReady
+ppu.console_model=Dmg ppu.status=RegistersReady ppu.lcd_state=Enabled ppu.mode=OamScan ppu.visible_output=Driving ppu.ly=0 ppu.line_dot=2 ppu.mode_dot=2 ppu.mode0_start_dot=252 ppu.visible_pixels_output=0 ppu.scx_discard_remaining=0
+ppu.bg_fetcher_source=Background ppu.bg_fetcher_stage=Idle ppu.bg_fetcher_stage_dot=0 ppu.bg_fetcher_tile_map_address=0x0000 ppu.bg_fetcher_tile_data_address=0x0000 ppu.bg_push_pending=false ppu.bg_fill_pending=false
+ppu.bg_startup_source_state=FifoBacked ppu.bg_startup_fetch_seam=Inactive ppu.bg_startup_fifo_placeholders=0 ppu.bg_push_entry_delay_remaining=0 ppu.bg_fill_startup_dummy_pixels=0 ppu.bg_fetcher_post_alignment_restart_delay_dots=0 ppu.bg_transfer_phase=Priming ppu.bg_current_transfer_x=0 ppu.bg_current_transfer_lane=None ppu.bg_current_transfer_source_window=None ppu.bg_current_transfer_backing=None ppu.bg_current_transfer_readiness=None ppu.bg_current_transfer_kind=None
+ppu.bg_fifo_pixels=[]
+ppu.bg_fifo_cached_pixels=[]
+ppu.window_wy_latch=true ppu.window_started_this_line=false ppu.window_line_counter=0
 dma.console_model=Dmg dma.status=Ready
 timer.console_model=Dmg timer.status=Ready
 serial.console_model=Dmg serial.status=Ready serial.sb=0x00 serial.clock_mode=External serial.transfer_state=Idle

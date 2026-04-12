@@ -33,6 +33,7 @@ impl<S: TraceSink> Machine<S> {
                 interrupt_flag_pending_mask: 0,
                 joypad: Some(&self.joypad),
                 ppu: Some(&self.ppu),
+                ppu_cpu_visible_read: false,
             },
         );
         self.bus.route_cpu_address_event(

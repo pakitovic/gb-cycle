@@ -550,7 +550,7 @@ fn mealybug_curated_suite_updates_report_from_repo_store() {
 
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
-fn mooneye_curated_suite_updates_report_from_repo_store() {
+fn mooneye_curated_suite_passes_from_repo_store() {
     let suite = mooneye_acceptance_dmg_curated_suite();
     let expected_case_count = suite.cases.len();
     let Some(report) = run_curated_suite(&suite, "curated mooneye suite", true) else {
@@ -558,6 +558,7 @@ fn mooneye_curated_suite_updates_report_from_repo_store() {
     };
     assert_eq!(report.family.as_deref(), Some("mooneye"), "{report:#?}");
     assert_eq!(report.cases.len(), expected_case_count, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
 }
 
 #[test]
@@ -573,18 +574,19 @@ fn daid_curated_suite_updates_report_from_repo_store() {
 
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
-fn cpp_curated_suite_updates_report_from_repo_store() {
+fn cpp_curated_suite_passes_from_repo_store() {
     let Some(report) = run_curated_suite(&cpp_dmg_curated_suite(), "curated cpp suite", true)
     else {
         return;
     };
     assert_eq!(report.family.as_deref(), Some("cpp"), "{report:#?}");
     assert_eq!(report.cases.len(), 3, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
 }
 
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
-fn hacktix_curated_suite_updates_report_from_repo_store() {
+fn hacktix_curated_suite_passes_from_repo_store() {
     let Some(report) =
         run_curated_suite(&hacktix_dmg_curated_suite(), "curated hacktix suite", true)
     else {
@@ -592,6 +594,7 @@ fn hacktix_curated_suite_updates_report_from_repo_store() {
     };
     assert_eq!(report.family.as_deref(), Some("hacktix"), "{report:#?}");
     assert_eq!(report.cases.len(), 2, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
 }
 
 #[test]

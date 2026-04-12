@@ -58,7 +58,11 @@ pub(super) fn commit_pending_ppu_mmio_write(
     pending: &mut Option<PendingPpuMmioWrite>,
 ) -> Option<PendingPpuMmioWrite> {
     if let Some(write) = pending.take() {
-        ppu.write_register(write.address, write.value);
+        ppu.write_register_with_source(
+            write.address,
+            write.value,
+            crate::ppu::PpuRegisterWriteSource::CpuMmioCommit,
+        );
         Some(write)
     } else {
         None
@@ -235,6 +239,7 @@ impl MachinePhaseRunner<'_> {
                                 interrupt_flag_pending_mask: 0,
                                 joypad: Some(self.joypad),
                                 ppu: Some(self.ppu),
+                                ppu_cpu_visible_read: false,
                             },
                         )
                     })
@@ -252,7 +257,7 @@ impl MachinePhaseRunner<'_> {
 
             observer.begin_region(MachineStepRegion::Ppu);
             self.bus
-                .sync_video_domain_ownership(self.ppu.bus_state(), self.dma.bus_state());
+                .sync_video_domain_ownership(self.ppu.owner_bus_state(), self.dma.bus_state());
             let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
             self.ppu.tick_t_cycle_with_observer(
                 context,
@@ -263,7 +268,7 @@ impl MachinePhaseRunner<'_> {
                 observer,
             );
             self.bus
-                .sync_video_domain_ownership(self.ppu.bus_state(), self.dma.bus_state());
+                .sync_video_domain_ownership(self.ppu.owner_bus_state(), self.dma.bus_state());
             observer.end_region(MachineStepRegion::Ppu);
             observe_machine_step_region(observer, MachineStepRegion::Serial, || {
                 self.serial.tick_t_cycle(context);
@@ -322,6 +327,9 @@ impl MachinePhaseRunner<'_> {
         O: MachineStepObserver,
     {
         let arbitration_state = self.current_bus_arbitration_state();
+        let cpu_read_arbitration_state = arbitration_state.with_ppu(self.ppu.cpu_bus_state());
+        let cpu_write_arbitration_state =
+            arbitration_state.with_ppu(self.ppu.cpu_write_bus_state());
         let interrupt_flag_pending_mask =
             current_cycle_interrupt_read_mask(context, self.ppu, self.joypad);
 
@@ -340,34 +348,47 @@ impl MachinePhaseRunner<'_> {
             let pending_ppu_mmio_write = &mut self.pending_ppu_mmio_write;
 
             cpu.tick_t_cycle(|operation| match operation {
-                CpuBusOperation::Read { address } => Some(bus.read_with_t_cycle_context(
-                    address,
-                    BusRequester::Cpu,
-                    &arbitration_state,
-                    context.t_cycle(),
-                    Some(cartridge),
-                    BusIoReadView {
-                        apu: Some(apu),
-                        timer: Some(timer),
-                        serial: Some(serial),
-                        dma: Some(dma),
-                        boot: Some(boot),
-                        interrupts: Some(interrupts),
-                        interrupt_flag_pending_mask,
-                        joypad: Some(joypad),
-                        ppu: Some(ppu),
-                    },
-                )),
+                CpuBusOperation::Read { address } => {
+                    let read_arbitration_state = if (0xFE00..=0xFE9F).contains(&address) {
+                        cpu_read_arbitration_state.with_ppu(ppu.cpu_oam_read_bus_state())
+                    } else {
+                        cpu_read_arbitration_state
+                    };
+                    Some(bus.read_with_t_cycle_context(
+                        address,
+                        BusRequester::Cpu,
+                        &read_arbitration_state,
+                        context.t_cycle(),
+                        Some(cartridge),
+                        BusIoReadView {
+                            apu: Some(apu),
+                            timer: Some(timer),
+                            serial: Some(serial),
+                            dma: Some(dma),
+                            boot: Some(boot),
+                            interrupts: Some(interrupts),
+                            interrupt_flag_pending_mask,
+                            joypad: Some(joypad),
+                            ppu: Some(ppu),
+                            ppu_cpu_visible_read: true,
+                        },
+                    ))
+                }
                 CpuBusOperation::Write { address, value } => {
                     if cpu_write_targets_ppu_mmio(bus, address) {
                         *pending_ppu_mmio_write = Some(PendingPpuMmioWrite { address, value });
                         context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
                     } else {
+                        let write_arbitration_state = if (0xFE00..=0xFE9F).contains(&address) {
+                            cpu_write_arbitration_state.with_ppu(ppu.cpu_oam_write_bus_state())
+                        } else {
+                            cpu_write_arbitration_state
+                        };
                         bus.write_with_t_cycle_context(
                             address,
                             value,
                             BusRequester::Cpu,
-                            &arbitration_state,
+                            &write_arbitration_state,
                             context.t_cycle(),
                             Some(cartridge),
                             BusIoWriteView {
