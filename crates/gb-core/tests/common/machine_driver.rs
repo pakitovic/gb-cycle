@@ -8,6 +8,23 @@ pub fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
     }
 }
 
+pub fn step_machine_until<F>(machine: &mut Machine, max_steps: usize, mut predicate: F)
+where
+    F: FnMut(&Machine) -> bool,
+{
+    for _ in 0..max_steps {
+        if predicate(machine) {
+            return;
+        }
+        machine.step_t_cycle();
+    }
+
+    assert!(
+        predicate(machine),
+        "predicate was not satisfied within {max_steps} T-cycles"
+    );
+}
+
 pub fn step_until_wram_sentinel(machine: &mut Machine, address: u16, value: u8, max_steps: usize) {
     step_until_wram_sentinel_with_driver(machine, address, value, max_steps, |_| {});
 }
