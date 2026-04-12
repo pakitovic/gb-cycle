@@ -9,7 +9,9 @@ use gb_core::{
 };
 
 include!("ppu/ppu_setup.rs");
-include!("ppu/ppu_probe_support.rs");
+include!("ppu/ppu_probe_lcd.rs");
+include!("ppu/ppu_probe_mode_edges.rs");
+include!("ppu/ppu_probe_sprite_mode0.rs");
 
 #[path = "ppu/ppu_diag.rs"]
 mod ppu_diag;
