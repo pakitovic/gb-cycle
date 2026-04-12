@@ -440,6 +440,7 @@ pub struct PpuSnapshot {
     pub bg_fetcher_tile_map_address: u16,
     pub bg_fetcher_tile_data_address: u16,
     pub bg_push_pending: bool,
+    pub bg_push_disposition: PpuBgPushDispositionSnapshot,
     pub bg_fill_pending: bool,
     pub bg_fifo_pixels: Vec<u8>,
     pub bg_fifo_cached_pixels: Vec<Option<PpuBgFifoCachedPixelSnapshot>>,
@@ -461,6 +462,8 @@ pub struct PpuSnapshot {
     pub obj_pending_hit_match_x: Option<u8>,
     pub obj_pending_hit_len: usize,
     pub obj_pending_hit_front_sprite_slot: Option<u8>,
+    pub obj_fetched_same_x_active_count: usize,
+    pub obj_fetched_same_x_pending_count: usize,
     pub obj_fifo_pixels: Vec<Option<u8>>,
     pub scx_discard_remaining: u8,
     pub visible_pixels_output: u8,
@@ -515,6 +518,12 @@ pub struct PpuBgFifoCachedPixelSnapshot {
     pub tile_map_address: u16,
     pub tile_data_address: u16,
     pub tile_index: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PpuBgPushDispositionSnapshot {
+    Ready,
+    InterruptedByObjectFetch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1026,6 +1035,9 @@ impl Ppu {
             bg_fetcher_tile_map_address: self.bg_pipeline_state.fetcher.tile_map_address,
             bg_fetcher_tile_data_address: self.bg_pipeline_state.fetcher.tile_data_address,
             bg_push_pending: self.bg_pipeline_state.push.pending,
+            bg_push_disposition: snapshot_bg_push_disposition(
+                self.bg_pipeline_state.push.disposition,
+            ),
             bg_fill_pending: self.bg_pipeline_state.fill.pending,
             bg_fifo_pixels: self.bg_pipeline_state.fifo.iter().copied().collect(),
             bg_fifo_cached_pixels: self
@@ -1069,6 +1081,10 @@ impl Ppu {
                 .pending_sprite_slots
                 .front()
                 .copied(),
+            obj_fetched_same_x_active_count: self
+                .fetched_same_x_obj_sprite_count_for_active_fetch(),
+            obj_fetched_same_x_pending_count: self
+                .fetched_same_x_obj_sprite_count_for_pending_match_x(),
             obj_fifo_pixels: self
                 .obj_pipeline_state
                 .fifo
@@ -1399,6 +1415,17 @@ const fn snapshot_bg_transfer_readiness(
             PpuMode3TransferReadinessSnapshot::WaitingForFifo
         }
         Mode3TransferReadiness::Ready(_) => PpuMode3TransferReadinessSnapshot::Ready,
+    }
+}
+
+const fn snapshot_bg_push_disposition(
+    disposition: BgPushDisposition,
+) -> PpuBgPushDispositionSnapshot {
+    match disposition {
+        BgPushDisposition::Ready => PpuBgPushDispositionSnapshot::Ready,
+        BgPushDisposition::InterruptedByObjectFetch => {
+            PpuBgPushDispositionSnapshot::InterruptedByObjectFetch
+        }
     }
 }
 

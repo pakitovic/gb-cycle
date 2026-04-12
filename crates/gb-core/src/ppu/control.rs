@@ -164,6 +164,13 @@ impl Ppu {
             }
 
             if published_mode == PpuAccessMode::Drawing
+                && self.terminal_visible_tail_should_publish_hblank_early()
+                && !self.saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3()
+            {
+                return PpuAccessMode::HBlank;
+            }
+
+            if published_mode == PpuAccessMode::Drawing
                 && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::HBlank
                 && !self.blank_frame_active
                 && self.ly < VISIBLE_SCANLINES
@@ -194,6 +201,71 @@ impl Ppu {
         } else {
             PpuAccessMode::HBlank
         }
+    }
+
+    fn terminal_visible_tail_should_publish_hblank_early(&self) -> bool {
+        let mode0_interrupt_enabled =
+            self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0;
+        let saturated_sprite_line =
+            usize::from(self.mode2_scan_state.selected_sprite_count())
+                == MAX_SELECTED_SPRITES_PER_LINE;
+        let saturated_sprite_line_uses_earlier_terminal_hblank =
+            saturated_sprite_line && self.bg_pipeline_state.current_transfer_x == 163;
+        let saturated_sprite_line_placeholder_backed_visible_tail_can_publish_hblank =
+            saturated_sprite_line
+                && self.bg_pipeline_state.startup_fifo_placeholders > 0
+                && if self.blank_frame_active {
+                    self.bg_pipeline_state.current_transfer_x >= 162
+                } else {
+                    matches!(self.bg_pipeline_state.current_transfer_x, 162 | 163)
+                };
+        let saturated_sprite_line_exact_x151_ready_tail_can_publish_hblank =
+            saturated_sprite_line
+                && self.bg_pipeline_state.current_transfer_x == 151
+                && self.bg_pipeline_state.fifo.len() == 1
+                && self.bg_pipeline_state.startup_fifo_placeholders == 0;
+        let saturated_sprite_line_exact_x159_ready_tail_can_publish_hblank =
+            saturated_sprite_line
+                && self.bg_pipeline_state.current_transfer_x == 159
+                && self.bg_pipeline_state.fifo.len() == 1
+                && self.bg_pipeline_state.startup_fifo_placeholders == 0
+                && self.current_mode0_start_dot() >= MODE0_START_DOT + 65;
+        let saturated_sprite_line_placeholder_tail_can_publish_hblank =
+            mode0_interrupt_enabled
+                && saturated_sprite_line
+                && self.bg_pipeline_state.current_transfer_x >= 164;
+        let saturated_sprite_line_waiting_for_fifo_tail_can_publish_hblank =
+            saturated_sprite_line
+                && self.bg_pipeline_state.current_transfer_x >= 152
+                && self.bg_pipeline_state.fifo.is_empty()
+                && self.bg_pipeline_state.startup_fifo_placeholders == 0;
+
+        self.ly < VISIBLE_SCANLINES
+            && self.line_dot + 1 == self.current_mode0_start_dot()
+            && self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
+            && self.obj_pipeline_state.pending_match_x.is_none()
+            && self.obj_pipeline_state.pending_sprite_slots.is_empty()
+            && (((self.blank_frame_active && self.bg_pipeline_state.current_transfer_x >= 165)
+                || self.bg_pipeline_state.current_transfer_x >= 167)
+                || saturated_sprite_line_uses_earlier_terminal_hblank
+                || saturated_sprite_line_placeholder_backed_visible_tail_can_publish_hblank
+                || saturated_sprite_line_exact_x151_ready_tail_can_publish_hblank
+                || saturated_sprite_line_exact_x159_ready_tail_can_publish_hblank
+                || saturated_sprite_line_waiting_for_fifo_tail_can_publish_hblank)
+            && (self.bg_pipeline_state.fifo_contains_real_pixels()
+                || saturated_sprite_line_placeholder_backed_visible_tail_can_publish_hblank
+                || saturated_sprite_line_placeholder_tail_can_publish_hblank
+                || saturated_sprite_line_waiting_for_fifo_tail_can_publish_hblank)
+            && self.current_transfer().is_some_and(|transfer| {
+                matches!(transfer.context.lane, Mode3TransferLane::Visible)
+                    && transfer.context.source_window == Mode3TransferSourceWindow::FifoBacked
+                    && (matches!(transfer.readiness, Mode3TransferReadiness::Ready(_))
+                        || (saturated_sprite_line_waiting_for_fifo_tail_can_publish_hblank
+                            && matches!(
+                                transfer.readiness,
+                                Mode3TransferReadiness::WaitingForFifo(_)
+                            )))
+            })
     }
 
     fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
@@ -313,7 +385,8 @@ impl Ppu {
         if self.bg_pipeline_state.mode3_started
             && (self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle
                 || pending_obj_hit_owns_current_transfer_x
-                || live_transfer_still_owned_by_mode3)
+                || live_transfer_still_owned_by_mode3
+                || self.saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3())
         {
             mode0_start_dot = mode0_start_dot.max(self.line_dot.saturating_add(1));
         }
@@ -323,6 +396,24 @@ impl Ppu {
 
     fn baseline_mode0_start_dot(&self) -> u16 {
         MODE0_START_DOT + u16::from(self.visible_registers.scx & 0x07)
+    }
+
+    fn saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3(&self) -> bool {
+        let terminal_bg_tail_has_unfinished_fetch_work = matches!(
+            self.bg_pipeline_state.fetcher.stage,
+            PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
+        ) || (self.bg_pipeline_state.push.pending
+            && self.bg_pipeline_state.push.entry_delay_remaining > 0);
+        self.bg_pipeline_state.mode3_started
+            && self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
+            && self.bg_pipeline_state.current_transfer_x >= 168
+            && usize::from(self.mode2_scan_state.selected_sprite_count())
+                == MAX_SELECTED_SPRITES_PER_LINE
+            && self.bg_pipeline_state.startup_fifo_placeholders > 0
+            && self.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
+            && self.obj_pipeline_state.pending_match_x.is_none()
+            && self.obj_pipeline_state.pending_sprite_slots.is_empty()
+            && terminal_bg_tail_has_unfinished_fetch_work
     }
 
     pub(crate) fn current_mode2_oam_row(&self) -> Option<u8> {

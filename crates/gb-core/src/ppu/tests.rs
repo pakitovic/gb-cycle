@@ -371,7 +371,7 @@ fn startup_state_recreates_the_documented_post_boot_lcd_snapshot() {
 
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
-        stat: 0x85,
+        stat: 0x08,
         scy: 0x00,
         scx: 0x00,
         ly: 0x00,
@@ -664,7 +664,7 @@ fn ly_is_read_only_and_obj_palettes_keep_an_explicit_uninitialized_policy() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
-        stat: 0x85,
+        stat: 0x08,
         scy: 0x00,
         scx: 0x00,
         ly: 0x22,
@@ -687,7 +687,7 @@ fn skip_boot_mode_latch_preserves_the_published_stat_mode_until_the_first_dot() 
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
-        stat: 0x85,
+        stat: 0x08,
         scy: 0x00,
         scx: 0x00,
         ly: 0x00,
@@ -715,7 +715,7 @@ fn cpu_oam_write_bus_state_only_opens_the_restart_probe_window_at_line_start_and
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
-        stat: 0x85,
+        stat: 0x08,
         scy: 0x00,
         scx: 0x00,
         ly: 0x00,
@@ -748,7 +748,7 @@ fn cpu_oam_read_bus_state_only_opens_the_mode2_end_probe_window() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
-        stat: 0x85,
+        stat: 0x08,
         scy: 0x00,
         scx: 0x00,
         ly: 0x00,
@@ -780,7 +780,7 @@ fn cpu_oam_read_bus_state_switches_to_hblank_on_the_exact_mode0_start_dot() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
-        stat: 0x85,
+        stat: 0x08,
         scy: 0x00,
         scx: 0x00,
         ly: 0x00,
@@ -810,7 +810,7 @@ fn cpu_stat_read_switches_to_mode3_on_the_exact_mode2_end_dot() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
-        stat: 0x85,
+        stat: 0x08,
         scy: 0x00,
         scx: 0x00,
         ly: 0x00,
@@ -849,7 +849,7 @@ fn cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
-        stat: 0x85,
+        stat: 0x08,
         scy: 0x00,
         scx: 0x00,
         ly: 0x00,
@@ -888,7 +888,7 @@ fn cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot_for_offscreen_r
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
-        stat: 0x85,
+        stat: 0x08,
         scy: 0x00,
         scx: 0x00,
         ly: 0x00,
@@ -1068,6 +1068,1394 @@ fn cpu_stat_read_logs_sprite_extended_post_visible_tail_without_startup_placehol
             ppu.obj_pipeline_state.pending_sprite_slots.len(),
         );
     }
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_without_obj_work() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 15;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 167;
+    ppu.bg_pipeline_state.visible_pixels_output = 159;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+    ppu.line_dot = MODE0_START_DOT + 16;
+
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 0,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 0,
+        tile_index: 1,
+        attributes: 0,
+    });
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 17,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_while_blank_frame_is_active() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 15;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 167;
+    ppu.bg_pipeline_state.visible_pixels_output = 159;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+    ppu.line_dot = MODE0_START_DOT + 16;
+
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 0,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 0,
+        tile_index: 1,
+        attributes: 0,
+    });
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 17,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x165_visible_tail_while_blank_frame_is_active() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 54;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 165;
+    ppu.bg_pipeline_state.visible_pixels_output = 157;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+    ppu.line_dot = MODE0_START_DOT + 56;
+
+    for oam_index in 0..9 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 0,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 57,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_terminal_x166_visible_tail_without_blank_frame() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x93,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 59;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 166;
+    ppu.bg_pipeline_state.visible_pixels_output = 158;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 2));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+    ppu.line_dot = MODE0_START_DOT + 59;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 160,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 60,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_terminal_placeholder_only_visible_tail() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 24;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 164;
+    ppu.bg_pipeline_state.visible_pixels_output = 156;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 4));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 24;
+
+    for oam_index in 0..4 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 0,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 25,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_terminal_x163_visible_tail_even_with_one_real_fifo_pixel() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x85,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 28;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 163;
+    ppu.bg_pipeline_state.visible_pixels_output = 155;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 5));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 28;
+
+    for oam_index in 0..5 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 0,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 29,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x163_visible_tail_on_saturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 163;
+    ppu.bg_pipeline_state.visible_pixels_output = 155;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 5));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 2,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x163_visible_tail_on_saturated_sprite_lines_with_mode2_enable()
+ {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 163;
+    ppu.bg_pipeline_state.visible_pixels_output = 155;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 5));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 2,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x162_placeholder_backed_tail_on_saturated_sprite_lines()
+ {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 162;
+    ppu.bg_pipeline_state.visible_pixels_output = 154;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 6));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 2,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+#[ignore = "diagnostic terminal x162 placeholder-backed tail with blank_frame_active on saturated sprite lines"]
+fn cpu_stat_read_logs_terminal_x162_placeholder_backed_tail_with_blank_frame_active_on_saturated_sprite_lines()
+ {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 162;
+    ppu.bg_pipeline_state.visible_pixels_output = 154;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 6));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 2,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    println!(
+        "blank_frame_active_case read={:#04X} mode0_start_dot={} current_transfer_x={} fifo_len={} placeholders={}",
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        ppu.current_mode0_start_dot(),
+        ppu.bg_pipeline_state.current_transfer_x,
+        ppu.bg_pipeline_state.fifo.len(),
+        ppu.bg_pipeline_state.startup_fifo_placeholders
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x164_placeholder_only_visible_tail_on_saturated_sprite_lines()
+ {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 24;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 164;
+    ppu.bg_pipeline_state.visible_pixels_output = 156;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 4));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 24;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 2,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 25,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_terminal_x161_placeholder_backed_tail_on_saturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 161;
+    ppu.bg_pipeline_state.visible_pixels_output = 153;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 7));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 2,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "internal raster still stretches one more dot from the live transfer"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_terminal_x165_placeholder_backed_tail_on_saturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 70;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 63;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 165;
+    ppu.bg_pipeline_state.visible_pixels_output = 157;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state
+        .fifo
+        .extend(std::iter::repeat_n(0, 11));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+    ppu.line_dot = MODE0_START_DOT + 64;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 0,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT + 65);
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_waiting_for_fifo_tail_on_saturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 152;
+    ppu.bg_pipeline_state.visible_pixels_output = 144;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 19,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "live transfer still stretches one more dot while the FIFO is refilling"
+    );
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::WaitingForFifo(_))
+    ));
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_waiting_for_fifo_tail_on_saturated_sprite_lines_with_mode2_enable()
+ {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 152;
+    ppu.bg_pipeline_state.visible_pixels_output = 144;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 19,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "live transfer still stretches one more dot while the FIFO is refilling"
+    );
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::WaitingForFifo(_))
+    ));
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x151_ready_tail_on_saturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 151;
+    ppu.bg_pipeline_state.visible_pixels_output = 143;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 24,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "live transfer still stretches one more dot from the ready tail"
+    );
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::Ready(_))
+    ));
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x151_ready_tail_on_saturated_sprite_lines_with_mode2_enable()
+ {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 151;
+    ppu.bg_pipeline_state.visible_pixels_output = 143;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 24,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "live transfer still stretches one more dot from the ready tail"
+    );
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::Ready(_))
+    ));
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x159_ready_tail_on_saturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 64;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 159;
+    ppu.bg_pipeline_state.visible_pixels_output = 151;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 64;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 17,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 65,
+        "live transfer still stretches one more dot from the ready tail"
+    );
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::Ready(_))
+    ));
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_publishes_hblank_for_terminal_x159_ready_tail_on_saturated_sprite_lines_with_mode2_enable()
+ {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 64;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 159;
+    ppu.bg_pipeline_state.visible_pixels_output = 151;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 64;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 17,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 65,
+        "live transfer still stretches one more dot from the ready tail"
+    );
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::Ready(_))
+    ));
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_terminal_x159_ready_tail_on_shorter_saturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 159;
+    ppu.bg_pipeline_state.visible_pixels_output = 151;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 17,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "live transfer still stretches one more dot from the shorter ready tail"
+    );
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_terminal_x151_ready_tail_on_unsaturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 151;
+    ppu.bg_pipeline_state.visible_pixels_output = 143;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..5 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 24,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "live transfer still stretches one more dot from the ready tail"
+    );
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::Ready(_))
+    ));
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_terminal_x158_ready_tail_on_saturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 158;
+    ppu.bg_pipeline_state.visible_pixels_output = 150;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE as u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 17,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "live transfer still stretches one more dot from the ready tail"
+    );
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::Ready(_))
+    ));
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+}
+
+#[test]
+fn cpu_stat_read_keeps_mode3_for_terminal_waiting_for_fifo_tail_on_unsaturated_sprite_lines() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 68;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 152;
+    ppu.bg_pipeline_state.visible_pixels_output = 144;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..5 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index,
+            y: 16,
+            x: 19,
+            tile_index: oam_index,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(
+        ppu.current_mode0_start_dot(),
+        MODE0_START_DOT + 61,
+        "live transfer still stretches one more dot while the FIFO is refilling"
+    );
+    assert!(matches!(
+        ppu.current_transfer().map(|transfer| transfer.readiness),
+        Some(Mode3TransferReadiness::WaitingForFifo(_))
+    ));
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x03
+    );
+}
+
+#[test]
+#[ignore = "diagnostic case1 pre-read cpu-visible stat probe against the real mooneye ROM"]
+fn cpu_stat_read_logs_case1_pre_read_state_against_real_rom() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    for _ in 0..10_000_000 {
+        let cpu_before = machine.cpu().snapshot();
+        if machine.read_bus(0xFF80) == 1
+            && cpu_before.registers.pc == 0x0B9C
+            && matches!(
+                cpu_before.execution_state,
+                crate::CpuExecutionState::Execute {
+                    opcode: 0xF0,
+                    step: 2,
+                    ..
+                }
+            )
+        {
+            let ppu_before = machine.ppu().snapshot();
+            let stat_before = machine
+                .ppu()
+                .read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation);
+            machine.step_t_cycle();
+            let cpu_after = machine.cpu().snapshot();
+            let ppu_after = machine.ppu().snapshot();
+            let activity = cpu_after
+                .last_bus_activity
+                .expect("the next t-cycle should perform the FF41 read");
+            println!(
+                "case1_pre_read_probe stat_before={:#04X} before_pc={:#06X} before_ly={} before_line_dot={} before_mode={:?} before_mode0_start_dot={} before_x={} before_vpo={} after_value={:#04X} after_pc={:#06X} after_ly={} after_line_dot={} after_mode={:?} after_mode0_start_dot={} after_x={} after_vpo={}",
+                stat_before,
+                cpu_before.registers.pc,
+                ppu_before.ly,
+                ppu_before.line_dot,
+                ppu_before.mode,
+                ppu_before.mode0_start_dot,
+                ppu_before.bg_current_transfer_x,
+                ppu_before.visible_pixels_output,
+                activity.value,
+                cpu_after.registers.pc,
+                ppu_after.ly,
+                ppu_after.line_dot,
+                ppu_after.mode,
+                ppu_after.mode0_start_dot,
+                ppu_after.bg_current_transfer_x,
+                ppu_after.visible_pixels_output,
+            );
+            assert_eq!(activity.address, 0xFF41);
+            return;
+        }
+
+        machine.step_t_cycle();
+    }
+
+    panic!("probe did not reach the testcase 1 pre-read state");
+}
+
+#[test]
+#[ignore = "diagnostic helper conditions at the real first FF41 read for testcase 1"]
+fn cpu_stat_read_logs_case1_first_read_helper_conditions_against_real_rom() {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mooneye intr_2_mode0_timing_sprites ROM should be present");
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine.load_cartridge(rom).expect("probe ROM should load");
+
+    let mut saw_irq_for_case1 = false;
+
+    for _ in 0..10_000_000 {
+        machine.step_t_cycle();
+
+        if machine.read_bus(0xFF80) != 1 {
+            continue;
+        }
+
+        if !saw_irq_for_case1
+            && matches!(
+                machine.cpu().execution_state(),
+                crate::CpuExecutionState::ServiceInterrupt {
+                    source: crate::InterruptSource::LcdStat,
+                    ..
+                }
+            )
+        {
+            saw_irq_for_case1 = true;
+        }
+
+        let cpu_snapshot = machine.cpu().snapshot();
+        if saw_irq_for_case1
+            && let Some(activity) = cpu_snapshot.last_bus_activity
+            && activity.kind == crate::CpuBusAccessKind::DataRead
+            && activity.address == 0xFF41
+        {
+            let ppu = machine.ppu();
+            let published_mode = ppu.access_mode_for_line_dot(ppu.line_dot - 1);
+            let current_mode = ppu.access_mode_for_line_dot(ppu.line_dot);
+            let helper = ppu.terminal_visible_tail_should_publish_hblank_early();
+            let current_transfer = ppu.current_transfer();
+            let transfer_lane = current_transfer.map(|transfer| transfer.context.lane);
+            let transfer_source_window =
+                current_transfer.map(|transfer| transfer.context.source_window);
+            println!(
+                "case1_first_read_helper value={:#04X} pc={:#06X} line_dot={} ly={} published_mode={:?} current_mode={:?} current_mode0_start_dot={} helper={} blank_frame_active={} obj_stage={:?} pending_match_x={:?} pending_hit_len={} transfer_lane={:?} transfer_source_window={:?} current_transfer_x={} visible_pixels_output={} startup_fifo_placeholders={} fifo_len={} line_dot_plus_one_eq_mode0={} ly_visible={} obj_idle={} no_pending_match={} no_pending_hits={}",
+                activity.value,
+                cpu_snapshot.registers.pc,
+                ppu.line_dot,
+                ppu.ly,
+                published_mode,
+                current_mode,
+                ppu.current_mode0_start_dot(),
+                helper,
+                ppu.blank_frame_active,
+                ppu.obj_pipeline_state.fetch.stage,
+                ppu.obj_pipeline_state.pending_match_x,
+                ppu.obj_pipeline_state.pending_sprite_slots.len(),
+                transfer_lane,
+                transfer_source_window,
+                ppu.bg_pipeline_state.current_transfer_x,
+                ppu.bg_pipeline_state.visible_pixels_output,
+                ppu.bg_pipeline_state.startup_fifo_placeholders,
+                ppu.bg_pipeline_state.fifo.len(),
+                ppu.line_dot + 1 == ppu.current_mode0_start_dot(),
+                ppu.ly < VISIBLE_SCANLINES,
+                ppu.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle,
+                ppu.obj_pipeline_state.pending_match_x.is_none(),
+                ppu.obj_pipeline_state.pending_sprite_slots.is_empty(),
+            );
+            return;
+        }
+    }
+
+    panic!("probe did not reach the testcase 1 first FF41 read");
 }
 
 #[test]
@@ -7225,6 +8613,121 @@ fn terminal_same_x_obj_chain_restart_keeps_the_first_low_half_step() {
     assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
     assert_eq!(ppu.obj_pipeline_state.fetch.sprite_slot, 1);
     assert_eq!(ppu.obj_pipeline_state.fetch.sprite, Some(next_sprite));
+}
+
+#[test]
+#[ignore = "diagnostic case1 terminal x167 no-obj seam from intr_2_mode0_timing_sprites"]
+fn terminal_visible_bg_transfer_without_obj_work_does_not_extend_mode3_past_x167() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.ly = 68;
+    ppu.line_dot = MODE0_START_DOT + 16;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 15;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 167;
+    ppu.bg_pipeline_state.visible_pixels_output = 159;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 0,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 0,
+        tile_index: 1,
+        attributes: 0,
+    });
+
+    let transfer = ppu
+        .current_transfer()
+        .expect("terminal visible x167 should still expose the live transfer context");
+    assert_eq!(transfer.context.lane, Mode3TransferLane::Visible);
+    assert_eq!(
+        transfer.context.source_window,
+        Mode3TransferSourceWindow::FifoBacked
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
+    assert_eq!(ppu.obj_pipeline_state.pending_match_x, None);
+    assert!(ppu.obj_pipeline_state.pending_sprite_slots.is_empty());
+    assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT + 16);
+}
+
+#[test]
+fn saturated_placeholder_backed_terminal_bg_tail_stays_in_mode3_during_tile_data_high() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.ly = 68;
+    ppu.line_dot = 313;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = 303;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 168;
+    ppu.bg_pipeline_state.visible_pixels_output = 160;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 8));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+
+    for sprite_slot in 0..10_u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: sprite_slot,
+            y: 16,
+            x: if sprite_slot < 5 { 0 } else { 160 },
+            tile_index: sprite_slot,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
+    assert_eq!(ppu.obj_pipeline_state.pending_match_x, None);
+    assert!(ppu.obj_pipeline_state.pending_sprite_slots.is_empty());
+    assert_eq!(ppu.current_mode0_start_dot(), 314);
+}
+
+#[test]
+fn saturated_placeholder_backed_terminal_bg_tail_stays_in_mode3_during_push() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.ly = 68;
+    ppu.line_dot = 315;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = 303;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 168;
+    ppu.bg_pipeline_state.visible_pixels_output = 160;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 8));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.bg_pipeline_state.push.pending = true;
+    ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
+
+    for sprite_slot in 0..10_u8 {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: sprite_slot,
+            y: 16,
+            x: if sprite_slot < 5 { 0 } else { 160 },
+            tile_index: sprite_slot,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
+    assert_eq!(ppu.obj_pipeline_state.pending_match_x, None);
+    assert!(ppu.obj_pipeline_state.pending_sprite_slots.is_empty());
+    assert_eq!(ppu.current_mode0_start_dot(), 316);
 }
 
 #[test]
