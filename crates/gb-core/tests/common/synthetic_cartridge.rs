@@ -1,5 +1,44 @@
 pub const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 pub const PROGRAM_ENTRY_ADDRESS: usize = 0x0150;
+const TEST_ROM_SIZE: usize = 32 * 1024;
+
+fn build_nom_bc_test_rom_base(boot_opcode: u8) -> Vec<u8> {
+    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(TEST_ROM_SIZE)];
+    rom[0x0000] = boot_opcode;
+    rom[0x0147] = 0x00;
+    rom[0x0148] = 0x00;
+    rom[0x0149] = 0x00;
+    rom
+}
+
+pub fn build_nom_bc_test_rom(
+    program: &[u8],
+    boot_opcode: u8,
+    extra_segments: &[(usize, &[u8])],
+) -> Vec<u8> {
+    let mut rom = build_nom_bc_test_rom_base(boot_opcode);
+    rom[0x0100..0x0100 + program.len()].copy_from_slice(program);
+    for &(address, bytes) in extra_segments {
+        rom[address..address + bytes.len()].copy_from_slice(bytes);
+    }
+    rom
+}
+
+pub fn build_nom_bc_test_rom_with_program_entry(
+    program: &[u8],
+    boot_opcode: u8,
+    program_entry_address: usize,
+    extra_segments: &[(usize, &[u8])],
+) -> Vec<u8> {
+    let mut rom = build_nom_bc_test_rom_base(boot_opcode);
+    let [entry_low, entry_high] = (program_entry_address as u16).to_le_bytes();
+    rom[0x0100..0x0103].copy_from_slice(&[0xC3, entry_low, entry_high]);
+    rom[program_entry_address..program_entry_address + program.len()].copy_from_slice(program);
+    for &(address, bytes) in extra_segments {
+        rom[address..address + bytes.len()].copy_from_slice(bytes);
+    }
+    rom
+}
 
 pub fn rom_size_bytes_from_standard_code(rom_size_code: u8) -> usize {
     match rom_size_code {

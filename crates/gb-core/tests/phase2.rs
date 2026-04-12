@@ -1,18 +1,15 @@
 mod common;
 
-use std::env;
-use std::fs;
-use std::path::Path;
-
+use common::synthetic_cartridge::{
+    HEADER_MINIMUM_ROM_LEN, PROGRAM_ENTRY_ADDRESS, build_nom_bc_test_rom_with_program_entry,
+};
 use gb_core::{
     BootRomAssets, BootRomKind, ConsoleModel, CpuExecutionState, JoypadButton, Machine,
     MachineConfig, StartupMode,
 };
 
 const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_PHASE2_FIXTURES";
-const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const BOOT_ROM_LEN: usize = 0x0100;
-const PROGRAM_ENTRY_ADDRESS: usize = 0x0150;
 const TEST_ROM_BOOT_OPCODE: u8 = 0x12;
 const PHASE_2_ENTRY_OPCODE: u8 = 0xD3;
 const SENTINEL_ADDRESS: u16 = 0xC010;
@@ -28,22 +25,6 @@ const HALT_STOP_AND_HALT_BUG_ROM_NAME: &str = "phase2_halt_stop_and_halt_bug.gb"
 const HALT_STOP_AND_HALT_BUG_TRACE_NAME: &str = "phase2_halt_stop_and_halt_bug.trace";
 const TIMER_IF_VISIBILITY_ROM_NAME: &str = "phase2_timer_if_visibility_and_service.gb";
 const TIMER_IF_VISIBILITY_TRACE_NAME: &str = "phase2_timer_if_visibility_and_service.trace";
-
-fn build_test_rom(program: &[u8], boot_opcode: u8, extra_segments: &[(usize, &[u8])]) -> Vec<u8> {
-    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
-    rom[0x0000] = boot_opcode;
-    rom[0x0100..0x0103].copy_from_slice(&[0xC3, 0x50, 0x01]);
-    for (offset, byte) in program.iter().copied().enumerate() {
-        rom[PROGRAM_ENTRY_ADDRESS + offset] = byte;
-    }
-    for &(address, bytes) in extra_segments {
-        rom[address..address + bytes.len()].copy_from_slice(bytes);
-    }
-    rom[0x0147] = 0x00;
-    rom[0x0148] = 0x00;
-    rom[0x0149] = 0x00;
-    rom
-}
 
 fn build_phase_2_trace_boot_rom() -> Vec<u8> {
     let mut rom = vec![0x00; BOOT_ROM_LEN];
@@ -169,43 +150,14 @@ impl ProgramBuilder {
     }
 }
 
-fn fixture_accept_writes_enabled() -> bool {
-    env::var_os(FIXTURE_ACCEPT_ENV).is_some()
-}
-
-fn ensure_binary_fixture(path: &Path, expected: &[u8]) -> Vec<u8> {
-    if fixture_accept_writes_enabled() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("fixture directory should be creatable");
-        }
-        fs::write(path, expected).expect("binary fixture should be writable");
-    }
-
-    let fixture = common::read_binary_fixture(path).expect("binary fixture should be readable");
-    assert_eq!(fixture, expected);
-    fixture
-}
-
-fn ensure_text_fixture(path: &Path, expected: &str) -> String {
-    if fixture_accept_writes_enabled() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("fixture directory should be creatable");
-        }
-        fs::write(path, expected).expect("text fixture should be writable");
-    }
-
-    let fixture = common::read_text_fixture(path).expect("text fixture should be readable");
-    assert_eq!(fixture, expected);
-    fixture
-}
-
 fn load_fixture_machine(
     rom_name: &str,
     expected_rom: &[u8],
     console_model: ConsoleModel,
 ) -> Machine {
     let rom_fixture_path = common::rom_fixtures_dir().join("phase2").join(rom_name);
-    let rom_fixture = ensure_binary_fixture(&rom_fixture_path, expected_rom);
+    let rom_fixture =
+        common::ensure_binary_fixture(&rom_fixture_path, expected_rom, FIXTURE_ACCEPT_ENV);
     let mut machine =
         Machine::new(MachineConfig::new(console_model).with_startup_mode(StartupMode::SkipBoot));
     machine
@@ -216,7 +168,7 @@ fn load_fixture_machine(
 
 fn assert_trace_fixture(trace_name: &str, trace: &str) {
     let trace_fixture_path = common::trace_fixtures_dir().join("phase2").join(trace_name);
-    ensure_text_fixture(&trace_fixture_path, trace);
+    common::ensure_text_fixture(&trace_fixture_path, trace, FIXTURE_ACCEPT_ENV);
 }
 
 fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
@@ -457,9 +409,10 @@ fn build_timer_if_visibility_and_service_vector() -> [u8; 17] {
 
 #[test]
 fn phase_2_fetch_immediate_order_rom_fixture_matches_expected_trace_and_state() {
-    let expected_rom = build_test_rom(
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
         &build_fetch_immediate_order_program(),
         TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
         &[],
     );
     let mut machine =
@@ -478,9 +431,10 @@ fn phase_2_fetch_immediate_order_rom_fixture_matches_expected_trace_and_state() 
 
 #[test]
 fn phase_2_control_flow_stack_cb_rom_fixture_matches_expected_trace_and_state() {
-    let expected_rom = build_test_rom(
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
         &build_control_flow_stack_cb_program(),
         TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
         &[],
     );
     let mut machine = load_fixture_machine(
@@ -504,9 +458,10 @@ fn phase_2_control_flow_stack_cb_rom_fixture_matches_expected_trace_and_state() 
 #[test]
 fn phase_2_ei_delay_priority_rom_fixture_matches_expected_trace_and_state() {
     let vector = build_ei_delay_priority_vector();
-    let expected_rom = build_test_rom(
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
         &build_ei_delay_priority_program(),
         TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
         &[(0x0040, &vector)],
     );
     let mut machine =
@@ -529,9 +484,10 @@ fn phase_2_halt_stop_and_halt_bug_rom_fixture_matches_expected_trace_and_state()
     let (program, phase_two_address) = build_halt_stop_and_halt_bug_program();
     let timer_vector = build_jump_vector(phase_two_address);
     let vblank_vector = build_halt_stop_and_halt_bug_vblank_vector();
-    let expected_rom = build_test_rom(
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
         &program,
         TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
         &[(0x0040, &vblank_vector), (0x0050, &timer_vector)],
     );
     let mut machine = load_fixture_machine(
@@ -576,9 +532,10 @@ fn phase_2_halt_stop_and_halt_bug_rom_fixture_matches_expected_trace_and_state()
 #[test]
 fn phase_2_timer_if_visibility_and_service_rom_fixture_matches_expected_trace_and_state() {
     let vector = build_timer_if_visibility_and_service_vector();
-    let expected_rom = build_test_rom(
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
         &build_timer_if_visibility_and_service_program(),
         TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
         &[(0x0050, &vector)],
     );
     let mut machine = load_fixture_machine(

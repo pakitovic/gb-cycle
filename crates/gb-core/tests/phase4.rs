@@ -1,14 +1,11 @@
 mod common;
 
-use std::env;
-use std::fs;
-use std::path::Path;
-
+use common::synthetic_cartridge::{
+    PROGRAM_ENTRY_ADDRESS, build_nom_bc_test_rom_with_program_entry,
+};
 use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 
 const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_PHASE4_FIXTURES";
-const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
-const PROGRAM_ENTRY_ADDRESS: usize = 0x0150;
 const SENTINEL_ADDRESS: u16 = 0xC010;
 const SENTINEL_VALUE: u8 = 0xA5;
 const TEST_ROM_BOOT_OPCODE: u8 = 0x12;
@@ -26,22 +23,6 @@ const HLI_HLD_ROM_NAME: &str = "phase4_oam_bug_hli_hld.gb";
 const HLI_HLD_TRACE_NAME: &str = "phase4_oam_bug_hli_hld.trace";
 const STACK_AND_INTERRUPT_ROM_NAME: &str = "phase4_oam_bug_stack_and_interrupt_service.gb";
 const STACK_AND_INTERRUPT_TRACE_NAME: &str = "phase4_oam_bug_stack_and_interrupt_service.trace";
-
-fn build_test_rom(program: &[u8], boot_opcode: u8, extra_segments: &[(usize, &[u8])]) -> Vec<u8> {
-    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
-    rom[0x0000] = boot_opcode;
-    rom[0x0100..0x0103].copy_from_slice(&[0xC3, 0x50, 0x01]);
-    for (offset, byte) in program.iter().copied().enumerate() {
-        rom[PROGRAM_ENTRY_ADDRESS + offset] = byte;
-    }
-    for &(address, bytes) in extra_segments {
-        rom[address..address + bytes.len()].copy_from_slice(bytes);
-    }
-    rom[0x0147] = 0x00;
-    rom[0x0148] = 0x00;
-    rom[0x0149] = 0x00;
-    rom
-}
 
 #[derive(Default)]
 struct ProgramBuilder {
@@ -123,36 +104,6 @@ impl ProgramBuilder {
             self.nop();
         }
     }
-}
-
-fn fixture_accept_writes_enabled() -> bool {
-    env::var_os(FIXTURE_ACCEPT_ENV).is_some()
-}
-
-fn ensure_binary_fixture(path: &Path, expected: &[u8]) -> Vec<u8> {
-    if fixture_accept_writes_enabled() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("fixture directory should be creatable");
-        }
-        fs::write(path, expected).expect("binary fixture should be writable");
-    }
-
-    let fixture = common::read_binary_fixture(path).expect("binary fixture should be readable");
-    assert_eq!(fixture, expected);
-    fixture
-}
-
-fn ensure_text_fixture(path: &Path, expected: &str) -> String {
-    if fixture_accept_writes_enabled() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("fixture directory should be creatable");
-        }
-        fs::write(path, expected).expect("text fixture should be writable");
-    }
-
-    let fixture = common::read_text_fixture(path).expect("text fixture should be readable");
-    assert_eq!(fixture, expected);
-    fixture
 }
 
 fn step_until_wram_sentinel(machine: &mut Machine, address: u16, value: u8, max_steps: usize) {
@@ -287,7 +238,8 @@ fn run_fixture_rom(
 ) -> Machine {
     let rom_fixture_path = common::rom_fixtures_dir().join("phase4").join(rom_name);
     let trace_fixture_path = common::trace_fixtures_dir().join("phase4").join(trace_name);
-    let rom_fixture = ensure_binary_fixture(&rom_fixture_path, expected_rom);
+    let rom_fixture =
+        common::ensure_binary_fixture(&rom_fixture_path, expected_rom, FIXTURE_ACCEPT_ENV);
 
     let mut machine =
         Machine::new(MachineConfig::new(console_model).with_startup_mode(StartupMode::SkipBoot));
@@ -299,7 +251,7 @@ fn run_fixture_rom(
     step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, max_steps);
 
     let trace = machine.tracer().sink().render_text();
-    ensure_text_fixture(&trace_fixture_path, &trace);
+    common::ensure_text_fixture(&trace_fixture_path, &trace, FIXTURE_ACCEPT_ENV);
 
     machine
 }
@@ -480,9 +432,10 @@ fn build_stack_and_interrupt_service_vector() -> [u8; 11] {
 
 #[test]
 fn phase_4_direct_mode2_oam_access_rom_fixture_matches_expected_oam_state_and_trace() {
-    let expected_rom = build_test_rom(
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
         &build_direct_mode2_oam_access_program(),
         TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
         &[],
     );
     let mut machine = run_fixture_rom(
@@ -511,7 +464,12 @@ fn phase_4_direct_mode2_oam_access_rom_fixture_matches_expected_oam_state_and_tr
 
 #[test]
 fn phase_4_fea0_mode2_read_rom_fixture_matches_expected_oam_state_and_trace() {
-    let expected_rom = build_test_rom(&build_fea0_mode2_read_program(), TEST_ROM_BOOT_OPCODE, &[]);
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
+        &build_fea0_mode2_read_program(),
+        TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
+        &[],
+    );
     let mut machine = run_fixture_rom(
         FEA0_MODE2_ROM_NAME,
         FEA0_MODE2_TRACE_NAME,
@@ -538,7 +496,12 @@ fn phase_4_fea0_mode2_read_rom_fixture_matches_expected_oam_state_and_trace() {
 
 #[test]
 fn phase_4_inc_hl_rom_fixture_matches_expected_oam_state_and_traces_for_all_models() {
-    let expected_rom = build_test_rom(&build_inc_hl_program(), TEST_ROM_BOOT_OPCODE, &[]);
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
+        &build_inc_hl_program(),
+        TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
+        &[],
+    );
     let trace_cases = [
         (ConsoleModel::Dmg0, INC_HL_DMG0_TRACE_NAME, true),
         (ConsoleModel::Dmg, INC_HL_DMG_TRACE_NAME, true),
@@ -576,7 +539,12 @@ fn phase_4_inc_hl_rom_fixture_matches_expected_oam_state_and_traces_for_all_mode
 
 #[test]
 fn phase_4_hli_hld_rom_fixture_matches_expected_oam_state_and_trace() {
-    let expected_rom = build_test_rom(&build_hli_hld_program(), TEST_ROM_BOOT_OPCODE, &[]);
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
+        &build_hli_hld_program(),
+        TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
+        &[],
+    );
     let mut machine = run_fixture_rom(
         HLI_HLD_ROM_NAME,
         HLI_HLD_TRACE_NAME,
@@ -621,9 +589,10 @@ fn phase_4_hli_hld_rom_fixture_matches_expected_oam_state_and_trace() {
 #[test]
 fn phase_4_stack_and_interrupt_service_rom_fixture_matches_expected_oam_state_and_trace() {
     let vector = build_stack_and_interrupt_service_vector();
-    let expected_rom = build_test_rom(
+    let expected_rom = build_nom_bc_test_rom_with_program_entry(
         &build_stack_and_interrupt_service_program(),
         TEST_ROM_BOOT_OPCODE,
+        PROGRAM_ENTRY_ADDRESS,
         &[(0x0040, &vector)],
     );
     let machine = run_fixture_rom(

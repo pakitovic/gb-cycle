@@ -1,9 +1,5 @@
 mod common;
 
-use std::env;
-use std::fs;
-use std::path::Path;
-
 use common::synthetic_cartridge::{BankedCartridgeBuilder, ProgramBuilder};
 use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 
@@ -29,26 +25,10 @@ const MBC3_SENTINEL_ADDRESS: u16 = 0xC13F;
 const MBC5_SENTINEL_ADDRESS: u16 = 0xC14F;
 const SENTINEL_VALUE: u8 = 0xA5;
 
-fn fixture_accept_writes_enabled() -> bool {
-    env::var_os(FIXTURE_ACCEPT_ENV).is_some()
-}
-
-fn ensure_binary_fixture(path: &Path, expected: &[u8]) -> Vec<u8> {
-    if fixture_accept_writes_enabled() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("fixture directory should be creatable");
-        }
-        fs::write(path, expected).expect("binary fixture should be writable");
-    }
-
-    let fixture = common::read_binary_fixture(path).expect("binary fixture should be readable");
-    assert_eq!(fixture, expected);
-    fixture
-}
-
 fn load_fixture_machine(rom_name: &str, expected_rom: &[u8]) -> Machine {
     let rom_fixture_path = common::rom_fixtures_dir().join("phase6").join(rom_name);
-    let rom_fixture = ensure_binary_fixture(&rom_fixture_path, expected_rom);
+    let rom_fixture =
+        common::ensure_binary_fixture(&rom_fixture_path, expected_rom, FIXTURE_ACCEPT_ENV);
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );

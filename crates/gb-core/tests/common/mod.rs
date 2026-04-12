@@ -46,6 +46,19 @@ pub fn ensure_text_fixture(path: &Path, expected: &str, accept_env_var: &str) ->
     fixture
 }
 
+pub fn ensure_binary_fixture(path: &Path, expected: &[u8], accept_env_var: &str) -> Vec<u8> {
+    if fixture_accept_writes_enabled(accept_env_var) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("fixture directory should be creatable");
+        }
+        fs::write(path, expected).expect("binary fixture should be writable");
+    }
+
+    let fixture = read_binary_fixture(path).expect("binary fixture should be readable");
+    assert_eq!(fixture, expected);
+    fixture
+}
+
 #[track_caller]
 pub fn assert_directory_exists(path: &Path) {
     assert!(
