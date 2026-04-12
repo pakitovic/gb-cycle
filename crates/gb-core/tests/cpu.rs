@@ -1,22 +1,15 @@
+mod common;
+
+use common::synthetic_cartridge::build_nom_bc_test_rom;
 use gb_core::{
     BootRomAssets, BootRomKind, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
     CpuAddressUpdateDirection, CpuDiagnosticTrap, CpuExecutionState, JoypadButton, Machine,
     MachineConfig, SerialTransferState, StartupMode,
 };
-
-const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 const BOOT_ROM_LEN: usize = 0x0100;
 
 fn build_test_rom(program: &[u8], boot_opcode: u8) -> Vec<u8> {
-    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
-    rom[0x0000] = boot_opcode;
-    for (offset, byte) in program.iter().copied().enumerate() {
-        rom[0x0100 + offset] = byte;
-    }
-    rom[0x0147] = 0x00;
-    rom[0x0148] = 0x00;
-    rom[0x0149] = 0x00;
-    rom
+    build_nom_bc_test_rom(program, boot_opcode, &[])
 }
 
 fn build_test_rom_with_patches(

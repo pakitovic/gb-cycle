@@ -1,16 +1,12 @@
+mod common;
+
+use common::synthetic_cartridge::build_nom_bc_test_rom;
 use gb_core::{ConsoleModel, CpuExecutionState, Machine, MachineConfig, StartupMode};
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 
 fn build_test_rom(program: &[u8]) -> Vec<u8> {
-    let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
-    for (offset, byte) in program.iter().copied().enumerate() {
-        rom[0x0100 + offset] = byte;
-    }
-    rom[0x0147] = 0x00;
-    rom[0x0148] = 0x00;
-    rom[0x0149] = 0x00;
-    rom
+    build_nom_bc_test_rom(program, 0xFF, &[])
 }
 
 fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {

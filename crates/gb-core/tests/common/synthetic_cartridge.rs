@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 pub const PROGRAM_ENTRY_ADDRESS: usize = 0x0150;
 const TEST_ROM_SIZE: usize = 32 * 1024;

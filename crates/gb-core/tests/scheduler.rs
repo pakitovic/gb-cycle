@@ -51,8 +51,9 @@ fn scheduler_trace_output_matches_the_phase_order_fixture() {
 
     scheduler.step_with_trace(&mut tracer, |_, _| {});
 
-    let fixture_path = common::trace_fixtures_dir().join("scheduler_cycle_trace.txt");
-    let expected = common::read_text_fixture(&fixture_path).expect("fixture should be readable");
+    let fixture_path = common::paths::trace_fixture_path("scheduler_cycle_trace.txt");
+    let expected =
+        common::fixtures::read_text_fixture(&fixture_path).expect("fixture should be readable");
 
     assert_eq!(tracer.sink().render_text(), expected);
 }

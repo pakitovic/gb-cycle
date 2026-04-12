@@ -8,7 +8,7 @@ use gb_core::{
     MachineConfig, StartupMode,
 };
 
-const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_PHASE2_FIXTURES";
+const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PHASE2;
 const BOOT_ROM_LEN: usize = 0x0100;
 const TEST_ROM_BOOT_OPCODE: u8 = 0x12;
 const PHASE_2_ENTRY_OPCODE: u8 = 0xD3;
@@ -155,9 +155,12 @@ fn load_fixture_machine(
     expected_rom: &[u8],
     console_model: ConsoleModel,
 ) -> Machine {
-    let rom_fixture_path = common::rom_fixtures_dir().join("phase2").join(rom_name);
-    let rom_fixture =
-        common::ensure_binary_fixture(&rom_fixture_path, expected_rom, FIXTURE_ACCEPT_ENV);
+    let rom_fixture = common::fixtures::ensure_suite_binary_fixture(
+        "phase2",
+        rom_name,
+        expected_rom,
+        FIXTURE_ACCEPT_ENV,
+    );
     let mut machine =
         Machine::new(MachineConfig::new(console_model).with_startup_mode(StartupMode::SkipBoot));
     machine
@@ -167,8 +170,7 @@ fn load_fixture_machine(
 }
 
 fn assert_trace_fixture(trace_name: &str, trace: &str) {
-    let trace_fixture_path = common::trace_fixtures_dir().join("phase2").join(trace_name);
-    common::ensure_text_fixture(&trace_fixture_path, trace, FIXTURE_ACCEPT_ENV);
+    common::fixtures::ensure_suite_text_fixture("phase2", trace_name, trace, FIXTURE_ACCEPT_ENV);
 }
 
 fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {

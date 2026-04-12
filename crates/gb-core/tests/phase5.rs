@@ -3,7 +3,7 @@ mod common;
 use common::synthetic_cartridge::build_nom_bc_test_rom;
 use gb_core::{ConsoleModel, CpuExecutionState, Machine, MachineConfig, SerialPeer, StartupMode};
 
-const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_PHASE5_FIXTURES";
+const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PHASE5;
 const JOYPAD_STOP_TRACE_NAME: &str = "phase5_joypad_stop_wake_and_irq.trace";
 const SERIAL_EXTERNAL_CLOCK_TRACE_NAME: &str = "phase5_serial_external_clock_progress.trace";
 
@@ -34,10 +34,12 @@ fn phase_5_joypad_stop_wake_and_irq_trace_fixture_matches() {
     step_machine_t_cycles(&mut machine, 9);
 
     let trace = machine.tracer().sink().render_text();
-    let fixture_path = common::trace_fixtures_dir()
-        .join("phase5")
-        .join(JOYPAD_STOP_TRACE_NAME);
-    common::ensure_text_fixture(&fixture_path, &trace, FIXTURE_ACCEPT_ENV);
+    common::fixtures::ensure_suite_text_fixture(
+        "phase5",
+        JOYPAD_STOP_TRACE_NAME,
+        &trace,
+        FIXTURE_ACCEPT_ENV,
+    );
 }
 
 #[test]
@@ -57,8 +59,10 @@ fn phase_5_serial_external_clock_progress_trace_fixture_matches() {
     }
 
     let trace = machine.tracer().sink().render_text();
-    let fixture_path = common::trace_fixtures_dir()
-        .join("phase5")
-        .join(SERIAL_EXTERNAL_CLOCK_TRACE_NAME);
-    common::ensure_text_fixture(&fixture_path, &trace, FIXTURE_ACCEPT_ENV);
+    common::fixtures::ensure_suite_text_fixture(
+        "phase5",
+        SERIAL_EXTERNAL_CLOCK_TRACE_NAME,
+        &trace,
+        FIXTURE_ACCEPT_ENV,
+    );
 }

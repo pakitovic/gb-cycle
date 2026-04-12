@@ -5,7 +5,7 @@ use gb_core::{
     StartupMode, TCycle,
 };
 
-const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_MACHINE_FIXTURES";
+const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::MACHINE;
 
 #[test]
 fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
@@ -52,9 +52,12 @@ fn machine_snapshot_rendering_matches_the_golden_fixture() {
     machine.step_t_cycle();
 
     let snapshot = machine.snapshot();
-    let fixture_path = common::trace_fixtures_dir().join("machine_snapshot_after_two_cycles.txt");
-    let expected =
-        common::ensure_text_fixture(&fixture_path, &snapshot.render_text(), FIXTURE_ACCEPT_ENV);
+    let fixture_path = common::paths::trace_fixture_path("machine_snapshot_after_two_cycles.txt");
+    let expected = common::fixtures::ensure_text_fixture(
+        &fixture_path,
+        &snapshot.render_text(),
+        FIXTURE_ACCEPT_ENV,
+    );
 
     assert_eq!(snapshot.render_text(), expected);
 }

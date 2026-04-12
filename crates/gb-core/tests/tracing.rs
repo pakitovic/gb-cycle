@@ -15,8 +15,9 @@ fn in_memory_tracer_matches_the_minimal_text_fixture() {
     );
     tracer.emit(TraceSubsystem::Cpu, TraceLevel::Trace, "cpu hook reserved");
 
-    let fixture_path = common::trace_fixtures_dir().join("minimal_trace.txt");
-    let expected = common::read_text_fixture(&fixture_path).expect("fixture should be readable");
+    let fixture_path = common::paths::trace_fixture_path("minimal_trace.txt");
+    let expected =
+        common::fixtures::read_text_fixture(&fixture_path).expect("fixture should be readable");
 
     assert_eq!(tracer.sink().render_text(), expected);
 }

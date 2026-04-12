@@ -5,7 +5,7 @@ use common::synthetic_cartridge::{
 };
 use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 
-const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_PHASE4_FIXTURES";
+const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PHASE4;
 const SENTINEL_ADDRESS: u16 = 0xC010;
 const SENTINEL_VALUE: u8 = 0xA5;
 const TEST_ROM_BOOT_OPCODE: u8 = 0x12;
@@ -236,10 +236,12 @@ fn run_fixture_rom(
     console_model: ConsoleModel,
     max_steps: usize,
 ) -> Machine {
-    let rom_fixture_path = common::rom_fixtures_dir().join("phase4").join(rom_name);
-    let trace_fixture_path = common::trace_fixtures_dir().join("phase4").join(trace_name);
-    let rom_fixture =
-        common::ensure_binary_fixture(&rom_fixture_path, expected_rom, FIXTURE_ACCEPT_ENV);
+    let rom_fixture = common::fixtures::ensure_suite_binary_fixture(
+        "phase4",
+        rom_name,
+        expected_rom,
+        FIXTURE_ACCEPT_ENV,
+    );
 
     let mut machine =
         Machine::new(MachineConfig::new(console_model).with_startup_mode(StartupMode::SkipBoot));
@@ -251,7 +253,7 @@ fn run_fixture_rom(
     step_until_wram_sentinel(&mut machine, SENTINEL_ADDRESS, SENTINEL_VALUE, max_steps);
 
     let trace = machine.tracer().sink().render_text();
-    common::ensure_text_fixture(&trace_fixture_path, &trace, FIXTURE_ACCEPT_ENV);
+    common::fixtures::ensure_suite_text_fixture("phase4", trace_name, &trace, FIXTURE_ACCEPT_ENV);
 
     machine
 }

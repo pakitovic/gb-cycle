@@ -2,7 +2,7 @@ mod common;
 
 use gb_core::{ConsoleModel, Machine, MachineConfig, SchedulerPhase, StartupMode, TCycle};
 
-const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_MACHINE_FIXTURES";
+const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::MACHINE;
 
 #[test]
 fn machine_uses_a_single_step_t_cycle_entry_point() {
@@ -25,8 +25,8 @@ fn machine_trace_includes_phase_aligned_subsystem_hooks() {
 
     machine.step_t_cycle();
 
-    let fixture_path = common::trace_fixtures_dir().join("machine_single_cycle_trace.txt");
-    let expected = common::ensure_text_fixture(
+    let fixture_path = common::paths::trace_fixture_path("machine_single_cycle_trace.txt");
+    let expected = common::fixtures::ensure_text_fixture(
         &fixture_path,
         &machine.tracer().sink().render_text(),
         FIXTURE_ACCEPT_ENV,
@@ -46,8 +46,8 @@ fn two_identical_machines_produce_the_same_two_cycle_trace() {
     right.step_t_cycle();
     right.step_t_cycle();
 
-    let fixture_path = common::trace_fixtures_dir().join("machine_two_cycle_trace.txt");
-    let expected = common::ensure_text_fixture(
+    let fixture_path = common::paths::trace_fixture_path("machine_two_cycle_trace.txt");
+    let expected = common::fixtures::ensure_text_fixture(
         &fixture_path,
         &left.tracer().sink().render_text(),
         FIXTURE_ACCEPT_ENV,

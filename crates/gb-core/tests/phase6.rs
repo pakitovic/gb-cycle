@@ -3,7 +3,7 @@ mod common;
 use common::synthetic_cartridge::{BankedCartridgeBuilder, ProgramBuilder};
 use gb_core::{ConsoleModel, Machine, MachineConfig, StartupMode};
 
-const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_PHASE6_FIXTURES";
+const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PHASE6;
 const MBC1_STANDARD_ROM_NAME: &str = "phase6_mbc1_standard_banking.gb";
 const MBC1_STANDARD_SERIAL: &[u8] = &[b'M', b'1', b'S', b':', 0x01, 0x1F, 0x11, 0x22];
 const MBC1_SMALL_ROM_NAME: &str = "phase6_mbc1_small_rom_mask_and_ram.gb";
@@ -26,9 +26,12 @@ const MBC5_SENTINEL_ADDRESS: u16 = 0xC14F;
 const SENTINEL_VALUE: u8 = 0xA5;
 
 fn load_fixture_machine(rom_name: &str, expected_rom: &[u8]) -> Machine {
-    let rom_fixture_path = common::rom_fixtures_dir().join("phase6").join(rom_name);
-    let rom_fixture =
-        common::ensure_binary_fixture(&rom_fixture_path, expected_rom, FIXTURE_ACCEPT_ENV);
+    let rom_fixture = common::fixtures::ensure_suite_binary_fixture(
+        "phase6",
+        rom_name,
+        expected_rom,
+        FIXTURE_ACCEPT_ENV,
+    );
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
