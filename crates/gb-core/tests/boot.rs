@@ -1,3 +1,6 @@
+mod common;
+
+use common::machine_driver::step_machine_t_cycles;
 use gb_core::{
     BootRomAssets, BootRomKind, CartridgeSlotState, ConsoleModel, CpuDiagnosticTrap,
     CpuExecutionState, Machine, MachineConfig, StartupMemoryPolicy, StartupMode,
@@ -108,12 +111,6 @@ fn unique_temp_dir() -> PathBuf {
             .expect("system clock should be after unix epoch")
             .as_nanos()
     ))
-}
-
-fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
-    for _ in 0..steps {
-        machine.step_t_cycle();
-    }
 }
 
 fn step_machine_until(

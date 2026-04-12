@@ -1,5 +1,6 @@
 mod common;
 
+use common::machine_driver::run_until_halted;
 use common::synthetic_cartridge::{HEADER_MINIMUM_ROM_LEN, build_nom_bc_test_rom};
 use gb_core::{
     ConsoleModel, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, Machine,
@@ -162,24 +163,6 @@ fn build_lcd_enable_write_probe_rom(address: u16, delay_nops: usize) -> Vec<u8> 
     let done_loop_pc = 0x0100_u16 + program.len() as u16;
     emit_jr(&mut program, done_loop_pc); // jr .
     build_test_rom(&program, 0x00)
-}
-
-fn run_until_halted(machine: &mut Machine, max_t_cycles: usize) -> u8 {
-    for _ in 0..max_t_cycles {
-        machine.step_t_cycle();
-        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted {
-            return machine.cpu().registers().b;
-        }
-    }
-
-    panic!(
-        "probe ROM did not halt; pc={:#06X} state={:?} ly={} line_dot={} stat={:#04X}",
-        machine.cpu().registers().pc,
-        machine.cpu().execution_state(),
-        machine.ppu().snapshot().ly,
-        machine.ppu().snapshot().line_dot,
-        machine.read_bus(0xFF41)
-    );
 }
 
 fn build_lcd_reenable_lyc_irq_probe_rom(

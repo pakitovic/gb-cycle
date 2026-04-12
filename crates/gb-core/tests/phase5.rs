@@ -1,17 +1,12 @@
 mod common;
 
+use common::machine_driver::step_machine_t_cycles;
 use common::synthetic_cartridge::build_nom_bc_test_rom;
 use gb_core::{ConsoleModel, CpuExecutionState, Machine, MachineConfig, SerialPeer, StartupMode};
 
 const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PHASE5;
 const JOYPAD_STOP_TRACE_NAME: &str = "phase5_joypad_stop_wake_and_irq.trace";
 const SERIAL_EXTERNAL_CLOCK_TRACE_NAME: &str = "phase5_serial_external_clock_progress.trace";
-
-fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
-    for _ in 0..steps {
-        machine.step_t_cycle();
-    }
-}
 
 #[test]
 fn phase_5_joypad_stop_wake_and_irq_trace_fixture_matches() {

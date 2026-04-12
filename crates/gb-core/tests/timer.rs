@@ -1,5 +1,6 @@
 mod common;
 
+use common::machine_driver::step_machine_t_cycles;
 use common::synthetic_cartridge::build_nom_bc_test_rom;
 use gb_core::{ConsoleModel, CpuExecutionState, Machine, MachineConfig, StartupMode};
 
@@ -7,12 +8,6 @@ const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
 
 fn build_test_rom(program: &[u8]) -> Vec<u8> {
     build_nom_bc_test_rom(program, 0xFF, &[])
-}
-
-fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
-    for _ in 0..steps {
-        machine.step_t_cycle();
-    }
 }
 
 fn build_boot_div_probe_rom() -> Vec<u8> {

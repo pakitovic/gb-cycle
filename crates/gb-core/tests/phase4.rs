@@ -107,20 +107,7 @@ impl ProgramBuilder {
 }
 
 fn step_until_wram_sentinel(machine: &mut Machine, address: u16, value: u8, max_steps: usize) {
-    for _ in 0..max_steps {
-        if machine.read_bus(address) == value {
-            return;
-        }
-        machine.step_t_cycle();
-    }
-
-    panic!(
-        "sentinel was not reached: observed={:#04X} pc={:#06X} state={:?} opcode={:?}",
-        machine.read_bus(address),
-        machine.cpu().registers().pc,
-        machine.cpu().execution_state(),
-        machine.cpu().current_opcode()
-    );
+    common::machine_driver::step_until_wram_sentinel(machine, address, value, max_steps);
 }
 
 fn seed_oam_bytes(program: &mut ProgramBuilder, start_address: u16, bytes: &[u8]) {

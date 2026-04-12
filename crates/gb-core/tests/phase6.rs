@@ -42,14 +42,7 @@ fn load_fixture_machine(rom_name: &str, expected_rom: &[u8]) -> Machine {
 }
 
 fn step_until_wram_sentinel(machine: &mut Machine, address: u16) {
-    for _ in 0..80_000 {
-        if machine.read_bus(address) == SENTINEL_VALUE {
-            return;
-        }
-        machine.step_t_cycle();
-    }
-
-    panic!("sentinel at {address:#06X} was not reached within 80000 T-cycles");
+    common::machine_driver::step_until_wram_sentinel(machine, address, SENTINEL_VALUE, 80_000);
 }
 
 fn assert_serial_output(machine: &mut Machine, expected: &[u8]) {

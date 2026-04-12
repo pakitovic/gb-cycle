@@ -1,5 +1,6 @@
 mod common;
 
+use common::machine_driver::step_machine_t_cycles;
 use common::synthetic_cartridge::{
     HEADER_MINIMUM_ROM_LEN, PROGRAM_ENTRY_ADDRESS, build_nom_bc_test_rom_with_program_entry,
 };
@@ -173,12 +174,6 @@ fn assert_trace_fixture(trace_name: &str, trace: &str) {
     common::fixtures::ensure_suite_text_fixture("phase2", trace_name, trace, FIXTURE_ACCEPT_ENV);
 }
 
-fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
-    for _ in 0..steps {
-        machine.step_t_cycle();
-    }
-}
-
 fn step_machine_until(
     machine: &mut Machine,
     max_steps: usize,
@@ -202,32 +197,17 @@ fn step_until_wram_sentinel_with_driver<F>(
     address: u16,
     value: u8,
     max_steps: usize,
-    mut driver: F,
+    driver: F,
 ) where
     F: FnMut(&mut Machine),
 {
-    for _ in 0..max_steps {
-        if machine.read_bus(address) == value {
-            return;
-        }
-        driver(machine);
-        if machine.read_bus(address) == value {
-            return;
-        }
-        machine.step_t_cycle();
-    }
-
-    panic!(
-        "sentinel was not reached: observed={:#04X} pc={:#06X} state={:?} opcode={:?}",
-        machine.read_bus(address),
-        machine.cpu().registers().pc,
-        machine.cpu().execution_state(),
-        machine.cpu().current_opcode()
+    common::machine_driver::step_until_wram_sentinel_with_driver(
+        machine, address, value, max_steps, driver,
     );
 }
 
 fn step_until_wram_sentinel(machine: &mut Machine, address: u16, value: u8, max_steps: usize) {
-    step_until_wram_sentinel_with_driver(machine, address, value, max_steps, |_| {});
+    common::machine_driver::step_until_wram_sentinel(machine, address, value, max_steps);
 }
 
 fn assert_trace_fragments_in_order(trace: &str, fragments: &[&str]) {

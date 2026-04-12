@@ -1,13 +1,8 @@
 mod common;
 
+use common::machine_driver::step_machine_t_cycles;
 use common::synthetic_cartridge::build_nom_bc_test_rom;
 use gb_core::{ConsoleModel, Machine, MachineConfig, SerialPeer, SerialTransferState, StartupMode};
-
-fn step_machine_t_cycles(machine: &mut Machine, steps: usize) {
-    for _ in 0..steps {
-        machine.step_t_cycle();
-    }
-}
 
 fn build_test_rom(program: &[u8], patches: &[(usize, u8)]) -> Vec<u8> {
     let mut rom = build_nom_bc_test_rom(program, 0xFF, &[]);
