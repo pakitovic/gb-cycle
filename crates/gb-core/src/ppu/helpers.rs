@@ -87,8 +87,17 @@ impl PpuLcdRestartPhase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PpuDmgBgpCpuCommitEffectKind {
+    PipelineDelayed,
+    RetroactivePanel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PpuDmgBgpCpuCommitWrite {
-    pub(super) visible_pixels_output: u8,
+    pub(super) effect_kind: PpuDmgBgpCpuCommitEffectKind,
+    pub(super) transient_visible_x: u8,
+    pub(super) transient_palette: u8,
+    pub(super) repaint_visible_x: u8,
     pub(super) value: u8,
 }
 

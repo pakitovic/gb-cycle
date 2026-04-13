@@ -61,6 +61,7 @@ Nothing in this file overrides those documents.
 
 - Keep the DMG BG palette-output model split from the raw current-scanline color pipeline.
 - Keep the narrow CPU-path `BGP` previous-line boundary repaint seam explicit, panel-only, and DMG-only.
+- Keep the DMG CPU-path `BGP` live-write seam explicitly bifurcated: retroactive panel recolor only when the already-visible BG tail is all color `0`, and previous-line boundary repaint only for the delayed pipeline-visible write class.
 - Keep DMG palette-conflict handling asymmetric where repo-local evidence requires it; do not assume `BGP` and `OBP*` share the same retroactive span.
 
 ## Known Unstable Areas
