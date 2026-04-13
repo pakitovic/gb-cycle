@@ -1,0 +1,291 @@
+use super::*;
+
+#[test]
+fn framebuffer_applies_bgp_without_changing_logical_scanline_colors() {
+    let mut vram_bytes = [0; TEST_VRAM_BYTES];
+
+    write_bg_tile_row(&mut vram_bytes, 0, 0, 0x55, 0x33);
+    write_bg_tilemap_entry(&mut vram_bytes, 0, 0, 0);
+
+    let mut ppu = PpuTestRig::dmg()
+        .with_oam([0; 160])
+        .with_vram(vram_bytes)
+        .with_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x1B,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+
+    ppu.advance_until_hblank();
+
+    let snapshot = ppu.snapshot();
+    assert_eq!(
+        &snapshot.current_scanline_pixels[..8],
+        &[0, 1, 2, 3, 0, 1, 2, 3]
+    );
+    assert_eq!(&ppu.framebuffer()[..8], &[3, 2, 1, 0, 3, 2, 1, 0]);
+}
+
+#[test]
+fn dmg_pixel_output_uses_or_of_current_and_previous_bgp_for_one_dot() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.visible_registers.bgp = 0x1B;
+    ppu.pipeline_registers.bgp = 0xE4;
+    ppu.bgp = 0xE4;
+    ppu.bg_pipeline_state.scx_discard_remaining = 0;
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[0], 1);
+    assert_eq!(ppu.framebuffer()[0], 3);
+}
+
+#[test]
+fn first_visible_pixel_uses_live_lcdc_instead_of_the_delayed_copy() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers.lcdc = 0x91;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+    ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+        color: 2,
+        palette_obp1: false,
+        bg_over_obj: false,
+        sprite_x: 8,
+        oam_index: 0,
+    });
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[0], 2);
+}
+
+#[test]
+fn later_visible_pixels_use_the_delayed_lcdc_copy() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers.lcdc = 0x91;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 1;
+    ppu.bg_pipeline_state.current_transfer_x = 9;
+    ppu.bg_pipeline_state.visible_pixels_output = 1;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+    ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+        color: 2,
+        palette_obp1: false,
+        bg_over_obj: false,
+        sprite_x: 9,
+        oam_index: 0,
+    });
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[1], 1);
+}
+
+#[test]
+fn framebuffer_applies_obj_palette_selection_without_changing_logical_obj_colors() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.write_oam_entry_with_attributes(0, 16, 8, 0, 0x10);
+    ppu.write_bg_tile_row(0, 0, 0xFF, 0x00);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x92,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.write_register(0xFF48, 0xE4);
+    ppu.write_register(0xFF49, 0x0C);
+
+    ppu.advance_until_hblank();
+
+    let snapshot = ppu.snapshot();
+    assert_eq!(&snapshot.current_scanline_pixels[..8], &[1; 8]);
+    assert_eq!(&ppu.framebuffer()[..8], &[3; 8]);
+}
+
+#[test]
+fn dmg_bgp_write_during_mode3_recolors_recent_bg_pixels_with_transient_then_final_palette() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0x01,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = 200;
+    ppu.bg_pipeline_state.visible_pixels_output = 8;
+    ppu.current_scanline_mixed_pixels[4..8].fill(MixedPixel::background(0));
+    ppu.framebuffer[4..8].fill(1);
+
+    ppu.write_register(0xFF47, 0x00);
+
+    assert_eq!(&ppu.framebuffer()[4..8], &[1, 0, 0, 0]);
+}
+
+#[test]
+fn cpu_mmio_bgp_write_during_mode3_keeps_the_previous_palette_for_four_visible_pixels() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = 200;
+    ppu.bg_pipeline_state.visible_pixels_output = 25;
+    ppu.bg_pipeline_state.current_transfer_x = 33;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    for _ in 0..5 {
+        ppu.bg_pipeline_state.fifo.push_back(1);
+    }
+    ppu.current_scanline_mixed_pixels[21..25].fill(MixedPixel::background(1));
+    ppu.framebuffer[21..25].fill(1);
+
+    ppu.write_register_with_source(0xFF47, 0xAA, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(&ppu.framebuffer()[21..25], &[1, 1, 1, 1]);
+
+    for _ in 0..5 {
+        ppu.sync_pipeline_registers();
+        ppu.sync_visible_registers();
+        let _ = ppu.advance_mode3_output_phase();
+    }
+
+    assert_eq!(&ppu.framebuffer()[25..30], &[1, 1, 1, 1, 2]);
+}
+
+#[test]
+fn dmg_bgp_row_family_change_recolors_the_previous_boundary_scanline() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.previous_scanline_ly = Some(7);
+    ppu.previous_scanline_mixed_pixels
+        .fill(MixedPixel::background(1));
+    ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0xE4;
+    ppu.dmg_bgp_cpu_commit_current_line_writes = vec![
+        PpuDmgBgpCpuCommitWrite {
+            visible_pixels_output: 0,
+            value: 0xE4,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            visible_pixels_output: 9,
+            value: 0xE4,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            visible_pixels_output: 25,
+            value: 0xAA,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            visible_pixels_output: 121,
+            value: 0xE4,
+        },
+    ];
+
+    ppu.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(7);
+
+    let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
+    assert!(row[..29].iter().all(|&shade| shade == 1));
+    assert!(row[29..125].iter().all(|&shade| shade == 2));
+    assert!(row[125..].iter().all(|&shade| shade == 1));
+}
+
+#[test]
+fn dmg_bgp_write_in_early_hblank_recolors_only_last_three_visible_bg_pixels() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x80,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0x01,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.visible_pixels_output = SCREEN_WIDTH as u8;
+    ppu.current_scanline_mixed_pixels[156..160].fill(MixedPixel::background(0));
+    ppu.framebuffer[156..160].fill(1);
+
+    ppu.write_register(0xFF47, 0x00);
+
+    assert_eq!(&ppu.framebuffer()[156..160], &[1, 1, 0, 0]);
+}
+
+#[test]
+fn dmg_obp0_write_during_mode3_recolors_five_recent_obj_pixels() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x82,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = 200;
+    ppu.bg_pipeline_state.visible_pixels_output = 8;
+    ppu.current_scanline_mixed_pixels[3..8].fill(MixedPixel::object(1, false));
+    ppu.framebuffer[3..8].fill(3);
+
+    ppu.write_register(0xFF48, 0x04);
+
+    assert_eq!(&ppu.framebuffer()[3..8], &[3, 1, 1, 1, 1]);
+}

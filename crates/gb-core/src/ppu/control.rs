@@ -1,9 +1,11 @@
+use super::*;
+
 impl Ppu {
-    fn is_lcd_enabled(&self) -> bool {
+    pub(super) fn is_lcd_enabled(&self) -> bool {
         self.lcd_state.is_enabled()
     }
 
-    fn sync_visible_registers(&mut self) {
+    pub(super) fn sync_visible_registers(&mut self) {
         self.visible_registers = PpuVisibleRegisters {
             lcdc: self.lcdc,
             scy: self.scy,
@@ -16,15 +18,15 @@ impl Ppu {
         };
     }
 
-    fn sync_pipeline_registers(&mut self) {
+    pub(super) fn sync_pipeline_registers(&mut self) {
         self.pipeline_registers = self.visible_registers;
     }
 
-    fn read_lcdc(&self) -> u8 {
+    pub(super) fn read_lcdc(&self) -> u8 {
         self.lcdc
     }
 
-    fn write_lcdc(&mut self, value: u8, source: PpuRegisterWriteSource) {
+    pub(super) fn write_lcdc(&mut self, value: u8, source: PpuRegisterWriteSource) {
         let was_lcd_enabled = self.is_lcd_enabled() || self.lcd_enable_pending_delay_tcycles != 0;
         self.lcdc = value;
         self.startup_mode_latch = None;
@@ -47,7 +49,7 @@ impl Ppu {
         self.refresh_stat_irq_line(false);
     }
 
-    fn read_stat(&self, source: PpuRegisterReadSource) -> u8 {
+    pub(super) fn read_stat(&self, source: PpuRegisterReadSource) -> u8 {
         STAT_FORCED_HIGH_BIT
             | self.stat_interrupt_enable
             | if self.read_stat_lyc_coincidence(source) {
@@ -58,7 +60,9 @@ impl Ppu {
             | if self.is_lcd_enabled() {
                 match source {
                     PpuRegisterReadSource::Immediate => self.current_cpu_visible_access_mode(),
-                    PpuRegisterReadSource::CpuBusOperation => self.current_published_stat_access_mode(),
+                    PpuRegisterReadSource::CpuBusOperation => {
+                        self.current_published_stat_access_mode()
+                    }
                 }
                 .stat_bits()
             } else {
@@ -66,7 +70,7 @@ impl Ppu {
             }
     }
 
-    fn read_stat_lyc_coincidence(&self, source: PpuRegisterReadSource) -> bool {
+    pub(super) fn read_stat_lyc_coincidence(&self, source: PpuRegisterReadSource) -> bool {
         if source == PpuRegisterReadSource::CpuBusOperation
             && self.is_lcd_enabled()
             && self.line_dot == 0
@@ -77,12 +81,12 @@ impl Ppu {
         }
     }
 
-    fn write_stat(&mut self, value: u8) {
+    pub(super) fn write_stat(&mut self, value: u8) {
         self.stat_interrupt_enable = value & STAT_WRITABLE_ENABLE_MASK;
         self.refresh_stat_irq_line(self.stat_write_quirk_active());
     }
 
-    fn read_ly(&self) -> u8 {
+    pub(super) fn read_ly(&self) -> u8 {
         if self.is_lcd_enabled()
             && !self.blank_frame_active
             && self.line_dot >= self.current_ly_read_advance_start_dot()
@@ -94,11 +98,11 @@ impl Ppu {
         }
     }
 
-    fn current_access_mode(&self) -> PpuAccessMode {
+    pub(super) fn current_access_mode(&self) -> PpuAccessMode {
         self.current_raster_state().access_mode()
     }
 
-    fn access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
+    pub(super) fn access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
         if !self.is_lcd_enabled() {
             return PpuAccessMode::HBlank;
         }
@@ -110,7 +114,7 @@ impl Ppu {
         access_mode_from_raster(self.ly, line_dot, self.current_mode0_start_dot())
     }
 
-    fn bus_access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
+    pub(super) fn bus_access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
         let current_mode = self.access_mode_for_line_dot(line_dot);
 
         if !self.is_lcd_enabled() || self.ly >= VISIBLE_SCANLINES {
@@ -131,12 +135,12 @@ impl Ppu {
         current_mode
     }
 
-    fn current_published_bus_access_mode(&self) -> PpuAccessMode {
+    pub(super) fn current_published_bus_access_mode(&self) -> PpuAccessMode {
         let published_line_dot = self.line_dot.saturating_sub(1);
         self.bus_access_mode_for_line_dot(published_line_dot)
     }
 
-    fn current_published_video_write_access_mode(&self) -> PpuAccessMode {
+    pub(super) fn current_published_video_write_access_mode(&self) -> PpuAccessMode {
         if self.line_dot != 0 {
             self.access_mode_for_line_dot(self.line_dot - 1)
         } else if self.ly == 0 {
@@ -148,7 +152,7 @@ impl Ppu {
         }
     }
 
-    fn current_published_stat_access_mode(&self) -> PpuAccessMode {
+    pub(super) fn current_published_stat_access_mode(&self) -> PpuAccessMode {
         if self.line_dot != 0 {
             let published_mode = self.access_mode_for_line_dot(self.line_dot - 1);
             let sprite_extended_mode3 =
@@ -249,7 +253,8 @@ impl Ppu {
 
             if published_mode == PpuAccessMode::Drawing
                 && self.terminal_visible_tail_should_publish_hblank_early()
-                && !self.two_sprite_staggered_x8_to_x9_preterminal_tail_should_keep_published_drawing()
+                && !self
+                    .two_sprite_staggered_x8_to_x9_preterminal_tail_should_keep_published_drawing()
                 && !self.saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3()
             {
                 return PpuAccessMode::HBlank;
@@ -306,12 +311,11 @@ impl Ppu {
         }
     }
 
-    fn terminal_visible_tail_should_publish_hblank_early(&self) -> bool {
+    pub(super) fn terminal_visible_tail_should_publish_hblank_early(&self) -> bool {
         let mode0_interrupt_enabled =
             self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0;
-        let saturated_sprite_line =
-            usize::from(self.mode2_scan_state.selected_sprite_count())
-                == MAX_SELECTED_SPRITES_PER_LINE;
+        let saturated_sprite_line = usize::from(self.mode2_scan_state.selected_sprite_count())
+            == MAX_SELECTED_SPRITES_PER_LINE;
         let saturated_sprite_line_uses_earlier_terminal_hblank =
             saturated_sprite_line && self.bg_pipeline_state.current_transfer_x == 163;
         let saturated_sprite_line_placeholder_backed_visible_tail_can_publish_hblank =
@@ -322,47 +326,46 @@ impl Ppu {
                 } else {
                     matches!(self.bg_pipeline_state.current_transfer_x, 162 | 163)
                 };
-        let saturated_sprite_line_exact_x151_ready_tail_can_publish_hblank =
-            saturated_sprite_line
-                && self.bg_pipeline_state.current_transfer_x == 151
-                && self.bg_pipeline_state.fifo.len() == 1
-                && self.bg_pipeline_state.startup_fifo_placeholders == 0
-                && (0..self.mode2_scan_state.selected_sprite_count()).filter(|&slot| {
+        let saturated_sprite_line_exact_x151_ready_tail_can_publish_hblank = saturated_sprite_line
+            && self.bg_pipeline_state.current_transfer_x == 151
+            && self.bg_pipeline_state.fifo.len() == 1
+            && self.bg_pipeline_state.startup_fifo_placeholders == 0
+            && (0..self.mode2_scan_state.selected_sprite_count())
+                .filter(|&slot| {
                     self.mode2_scan_state
                         .selected_sprite(slot)
                         .is_some_and(|sprite| sprite.x >= 15)
                 })
                 .count()
-                    >= 5;
-        let saturated_sprite_line_exact_x159_ready_tail_can_publish_hblank =
-            saturated_sprite_line
-                && self.bg_pipeline_state.current_transfer_x == 159
-                && self.bg_pipeline_state.fifo.len() == 1
-                && self.bg_pipeline_state.startup_fifo_placeholders == 0
-                && (0..self.mode2_scan_state.selected_sprite_count()).filter(|&slot| {
+                >= 5;
+        let saturated_sprite_line_exact_x159_ready_tail_can_publish_hblank = saturated_sprite_line
+            && self.bg_pipeline_state.current_transfer_x == 159
+            && self.bg_pipeline_state.fifo.len() == 1
+            && self.bg_pipeline_state.startup_fifo_placeholders == 0
+            && (0..self.mode2_scan_state.selected_sprite_count())
+                .filter(|&slot| {
                     self.mode2_scan_state
                         .selected_sprite(slot)
                         .is_some_and(|sprite| sprite.x >= 16)
                 })
                 .count()
-                    >= 5
-                && self.current_mode0_start_dot() >= MODE0_START_DOT + 65;
-        let saturated_sprite_line_placeholder_tail_can_publish_hblank =
-            mode0_interrupt_enabled
-                && saturated_sprite_line
-                && self.bg_pipeline_state.current_transfer_x >= 164;
-        let saturated_sprite_line_waiting_for_fifo_tail_can_publish_hblank =
-            saturated_sprite_line
-                && self.bg_pipeline_state.current_transfer_x >= 152
-                && self.bg_pipeline_state.fifo.is_empty()
-                && self.bg_pipeline_state.startup_fifo_placeholders == 0
-                && (0..self.mode2_scan_state.selected_sprite_count()).filter(|&slot| {
+                >= 5
+            && self.current_mode0_start_dot() >= MODE0_START_DOT + 65;
+        let saturated_sprite_line_placeholder_tail_can_publish_hblank = mode0_interrupt_enabled
+            && saturated_sprite_line
+            && self.bg_pipeline_state.current_transfer_x >= 164;
+        let saturated_sprite_line_waiting_for_fifo_tail_can_publish_hblank = saturated_sprite_line
+            && self.bg_pipeline_state.current_transfer_x >= 152
+            && self.bg_pipeline_state.fifo.is_empty()
+            && self.bg_pipeline_state.startup_fifo_placeholders == 0
+            && (0..self.mode2_scan_state.selected_sprite_count())
+                .filter(|&slot| {
                     self.mode2_scan_state
                         .selected_sprite(slot)
                         .is_some_and(|sprite| sprite.x >= 10)
                 })
                 .count()
-                    >= 5;
+                >= 5;
 
         self.ly < VISIBLE_SCANLINES
             && self.line_dot + 1 == self.current_mode0_start_dot()
@@ -392,7 +395,7 @@ impl Ppu {
             })
     }
 
-    fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_two_dots_early(
+    pub(super) fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_two_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -400,12 +403,13 @@ impl Ppu {
             && [164_u8, 167].into_iter().any(|sprite_x| {
                 usize::from(self.bg_pipeline_state.startup_fifo_placeholders)
                     == 168_usize.saturating_sub(sprite_x as usize)
-                    && (0..self.mode2_scan_state.selected_sprite_count()).filter(|&slot| {
-                        self.mode2_scan_state
-                            .selected_sprite(slot)
-                            .is_some_and(|sprite| sprite.x == sprite_x)
-                    })
-                    .count()
+                    && (0..self.mode2_scan_state.selected_sprite_count())
+                        .filter(|&slot| {
+                            self.mode2_scan_state
+                                .selected_sprite(slot)
+                                .is_some_and(|sprite| sprite.x == sprite_x)
+                        })
+                        .count()
                         >= 5
             })
             && usize::from(self.mode2_scan_state.selected_sprite_count())
@@ -419,7 +423,7 @@ impl Ppu {
             && self.bg_pipeline_state.push.entry_delay_remaining == 0
     }
 
-    fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_one_dot_early(
+    pub(super) fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_one_dot_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -427,12 +431,13 @@ impl Ppu {
             && [165_u8, 166].into_iter().any(|sprite_x| {
                 usize::from(self.bg_pipeline_state.startup_fifo_placeholders)
                     == 168_usize.saturating_sub(sprite_x as usize)
-                    && (0..self.mode2_scan_state.selected_sprite_count()).filter(|&slot| {
-                        self.mode2_scan_state
-                            .selected_sprite(slot)
-                            .is_some_and(|sprite| sprite.x == sprite_x)
-                    })
-                    .count()
+                    && (0..self.mode2_scan_state.selected_sprite_count())
+                        .filter(|&slot| {
+                            self.mode2_scan_state
+                                .selected_sprite(slot)
+                                .is_some_and(|sprite| sprite.x == sprite_x)
+                        })
+                        .count()
                         >= 5
             })
             && usize::from(self.mode2_scan_state.selected_sprite_count())
@@ -446,7 +451,9 @@ impl Ppu {
             && self.bg_pipeline_state.push.entry_delay_remaining == 0
     }
 
-    fn terminal_x167_visible_same_x_cluster_should_publish_hblank_two_dots_early(&self) -> bool {
+    pub(super) fn terminal_x167_visible_same_x_cluster_should_publish_hblank_two_dots_early(
+        &self,
+    ) -> bool {
         self.ly < VISIBLE_SCANLINES
             && self.line_dot + 2 == self.current_mode0_start_dot()
             && usize::from(self.mode2_scan_state.selected_sprite_count())
@@ -456,12 +463,13 @@ impl Ppu {
             && self.bg_pipeline_state.visible_pixels_output == 159
             && self.obj_pipeline_state.pending_match_x.is_none()
             && self.obj_pipeline_state.pending_sprite_slots.is_empty()
-            && (0..self.mode2_scan_state.selected_sprite_count()).filter(|&slot| {
-                self.mode2_scan_state
-                    .selected_sprite(slot)
-                    .is_some_and(|sprite| sprite.x == 167)
-            })
-            .count()
+            && (0..self.mode2_scan_state.selected_sprite_count())
+                .filter(|&slot| {
+                    self.mode2_scan_state
+                        .selected_sprite(slot)
+                        .is_some_and(|sprite| sprite.x == 167)
+                })
+                .count()
                 >= 5
             && self.current_transfer().is_some_and(|transfer| {
                 matches!(
@@ -477,7 +485,9 @@ impl Ppu {
             })
     }
 
-    fn terminal_x167_visible_same_x_cluster_should_publish_hblank_one_dot_early(&self) -> bool {
+    pub(super) fn terminal_x167_visible_same_x_cluster_should_publish_hblank_one_dot_early(
+        &self,
+    ) -> bool {
         self.ly < VISIBLE_SCANLINES
             && self.line_dot + 1 == self.current_mode0_start_dot()
             && usize::from(self.mode2_scan_state.selected_sprite_count())
@@ -492,12 +502,13 @@ impl Ppu {
             && self.obj_pipeline_state.pending_match_x == Some(167)
             && self.obj_pipeline_state.pending_sprite_slots.len() == 1
             && self.fetched_same_x_obj_sprite_count_for_pending_match_x() >= 4
-            && (0..self.mode2_scan_state.selected_sprite_count()).filter(|&slot| {
-                self.mode2_scan_state
-                    .selected_sprite(slot)
-                    .is_some_and(|sprite| sprite.x == 167)
-            })
-            .count()
+            && (0..self.mode2_scan_state.selected_sprite_count())
+                .filter(|&slot| {
+                    self.mode2_scan_state
+                        .selected_sprite(slot)
+                        .is_some_and(|sprite| sprite.x == 167)
+                })
+                .count()
                 >= 5
             && self.current_transfer().is_some_and(|transfer| {
                 matches!(
@@ -513,7 +524,9 @@ impl Ppu {
             })
     }
 
-    fn single_left_sprite_placeholder_backed_tail_should_publish_hblank_early(&self) -> bool {
+    pub(super) fn single_left_sprite_placeholder_backed_tail_should_publish_hblank_early(
+        &self,
+    ) -> bool {
         let Some(selected_sprite) = self.mode2_scan_state.selected_sprite(0) else {
             return false;
         };
@@ -554,7 +567,7 @@ impl Ppu {
             })
     }
 
-    fn single_left_sprite_x4_placeholder_backed_preterminal_tail_should_publish_hblank_five_dots_early(
+    pub(super) fn single_left_sprite_x4_placeholder_backed_preterminal_tail_should_publish_hblank_five_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -587,7 +600,7 @@ impl Ppu {
             })
     }
 
-    fn single_left_sprite_x5_placeholder_backed_preterminal_tail_should_publish_hblank_four_dots_early(
+    pub(super) fn single_left_sprite_x5_placeholder_backed_preterminal_tail_should_publish_hblank_four_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -620,7 +633,7 @@ impl Ppu {
             })
     }
 
-    fn single_left_sprite_x6_to_x7_placeholder_backed_preterminal_tail_should_publish_hblank_from_fifo_tail(
+    pub(super) fn single_left_sprite_x6_to_x7_placeholder_backed_preterminal_tail_should_publish_hblank_from_fifo_tail(
         &self,
     ) -> bool {
         let Some(selected_sprite) = self.mode2_scan_state.selected_sprite(0) else {
@@ -657,7 +670,7 @@ impl Ppu {
             })
     }
 
-    fn single_left_sprite_x12_to_x16_terminal_tail_with_entry_delay_should_publish_hblank_two_dots_early(
+    pub(super) fn single_left_sprite_x12_to_x16_terminal_tail_with_entry_delay_should_publish_hblank_two_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -666,7 +679,9 @@ impl Ppu {
             && self
                 .mode2_scan_state
                 .selected_sprite(0)
-                .is_some_and(|sprite| (12..=16).contains(&sprite.x) || (0xA4..=0xA6).contains(&sprite.x))
+                .is_some_and(|sprite| {
+                    (12..=16).contains(&sprite.x) || (0xA4..=0xA6).contains(&sprite.x)
+                })
             && self.bg_pipeline_state.current_transfer_x == 166
             && self.bg_pipeline_state.visible_pixels_output == 158
             && self.bg_pipeline_state.startup_fifo_placeholders == 0
@@ -690,7 +705,7 @@ impl Ppu {
             })
     }
 
-    fn single_offscreen_right_sprite_xa0_terminal_tail_without_entry_delay_should_publish_hblank_two_dots_early(
+    pub(super) fn single_offscreen_right_sprite_xa0_terminal_tail_without_entry_delay_should_publish_hblank_two_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -723,7 +738,7 @@ impl Ppu {
             })
     }
 
-    fn single_offscreen_right_sprite_xa7_terminal_tail_should_publish_hblank_two_dots_early(
+    pub(super) fn single_offscreen_right_sprite_xa7_terminal_tail_should_publish_hblank_two_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -756,7 +771,9 @@ impl Ppu {
             })
     }
 
-    fn single_offscreen_right_sprite_xa2_mode0_boundary_should_publish_hblank(&self) -> bool {
+    pub(super) fn single_offscreen_right_sprite_xa2_mode0_boundary_should_publish_hblank(
+        &self,
+    ) -> bool {
         self.ly < VISIBLE_SCANLINES
             && self.line_dot == self.current_mode0_start_dot()
             && usize::from(self.mode2_scan_state.selected_sprite_count()) == 1
@@ -774,7 +791,9 @@ impl Ppu {
             && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::HBlank
     }
 
-    fn two_sprite_staggered_fifo_tail_should_publish_hblank_from_fifo_tail(&self) -> bool {
+    pub(super) fn two_sprite_staggered_fifo_tail_should_publish_hblank_from_fifo_tail(
+        &self,
+    ) -> bool {
         if self.ly >= VISIBLE_SCANLINES
             || usize::from(self.mode2_scan_state.selected_sprite_count()) != 2
             || self.bg_pipeline_state.fifo.is_empty()
@@ -830,7 +849,7 @@ impl Ppu {
             })
     }
 
-    fn two_sprite_staggered_x8_to_x9_preterminal_tail_should_keep_published_drawing(
+    pub(super) fn two_sprite_staggered_x8_to_x9_preterminal_tail_should_keep_published_drawing(
         &self,
     ) -> bool {
         if self.ly >= VISIBLE_SCANLINES
@@ -877,7 +896,9 @@ impl Ppu {
             })
     }
 
-    fn two_sprite_staggered_x0_to_x1_terminal_tail_should_keep_published_drawing(&self) -> bool {
+    pub(super) fn two_sprite_staggered_x0_to_x1_terminal_tail_should_keep_published_drawing(
+        &self,
+    ) -> bool {
         if self.ly >= VISIBLE_SCANLINES
             || usize::from(self.mode2_scan_state.selected_sprite_count()) != 2
         {
@@ -915,7 +936,9 @@ impl Ppu {
             && self.current_transfer().is_none()
     }
 
-    fn two_sprite_staggered_x9_terminal_boundary_should_keep_published_drawing(&self) -> bool {
+    pub(super) fn two_sprite_staggered_x9_terminal_boundary_should_keep_published_drawing(
+        &self,
+    ) -> bool {
         if self.ly >= VISIBLE_SCANLINES
             || usize::from(self.mode2_scan_state.selected_sprite_count()) != 2
         {
@@ -948,7 +971,7 @@ impl Ppu {
             && self.current_transfer().is_none()
     }
 
-    fn ten_sprite_step8_terminal_tail_should_keep_published_drawing(&self) -> bool {
+    pub(super) fn ten_sprite_step8_terminal_tail_should_keep_published_drawing(&self) -> bool {
         let Some(min_x) = self.selected_sprite_step8_ramp_min_x() else {
             return false;
         };
@@ -984,7 +1007,7 @@ impl Ppu {
             && self.current_transfer().is_none()
     }
 
-    fn ten_sprite_step8_preterminal_tail_should_publish_hblank_early(&self) -> bool {
+    pub(super) fn ten_sprite_step8_preterminal_tail_should_publish_hblank_early(&self) -> bool {
         let Some(min_x) = self.selected_sprite_step8_ramp_min_x() else {
             return false;
         };
@@ -993,8 +1016,8 @@ impl Ppu {
         }
 
         let expected_placeholders = 8_u8.saturating_sub(min_x);
-        let transfer_plus_fifo =
-            usize::from(self.bg_pipeline_state.current_transfer_x) + self.bg_pipeline_state.fifo.len();
+        let transfer_plus_fifo = usize::from(self.bg_pipeline_state.current_transfer_x)
+            + self.bg_pipeline_state.fifo.len();
         let matches_transfer_sum = if min_x == 4 {
             matches!(transfer_plus_fifo, 136 | 168)
         } else {
@@ -1024,7 +1047,7 @@ impl Ppu {
             && self.obj_pipeline_state.pending_sprite_slots.is_empty()
     }
 
-    fn selected_sprite_step8_ramp_min_x(&self) -> Option<u8> {
+    pub(super) fn selected_sprite_step8_ramp_min_x(&self) -> Option<u8> {
         let sprite_count = usize::from(self.mode2_scan_state.selected_sprite_count());
         if sprite_count != MAX_SELECTED_SPRITES_PER_LINE {
             return None;
@@ -1036,14 +1059,17 @@ impl Ppu {
             *x = sprite.x;
         }
         xs.sort_unstable();
-        if xs.windows(2).all(|pair| pair[1] == pair[0].saturating_add(8)) {
+        if xs
+            .windows(2)
+            .all(|pair| pair[1] == pair[0].saturating_add(8))
+        {
             Some(xs[0])
         } else {
             None
         }
     }
 
-    fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
+    pub(super) fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
         let published_mode = self.current_published_video_write_access_mode();
 
         if published_mode == PpuAccessMode::OamScan
@@ -1056,7 +1082,7 @@ impl Ppu {
         }
     }
 
-    fn current_published_oam_read_access_mode(&self) -> PpuAccessMode {
+    pub(super) fn current_published_oam_read_access_mode(&self) -> PpuAccessMode {
         let published_mode = self.current_published_bus_access_mode();
 
         if published_mode == PpuAccessMode::Drawing
@@ -1075,7 +1101,7 @@ impl Ppu {
         }
     }
 
-    fn current_bus_access_mode(&self) -> PpuAccessMode {
+    pub(super) fn current_bus_access_mode(&self) -> PpuAccessMode {
         let current_mode = self.current_access_mode();
 
         if !self.is_lcd_enabled() || self.ly >= VISIBLE_SCANLINES {
@@ -1096,7 +1122,7 @@ impl Ppu {
         current_mode
     }
 
-    fn current_cpu_visible_access_mode(&self) -> PpuAccessMode {
+    pub(super) fn current_cpu_visible_access_mode(&self) -> PpuAccessMode {
         if self.blank_frame_active && self.is_lcd_enabled() && self.line_dot != 0 {
             return self
                 .lcd_restart_phase
@@ -1108,7 +1134,7 @@ impl Ppu {
         self.current_access_mode()
     }
 
-    fn current_raster_state(&self) -> PpuRasterState {
+    pub(super) fn current_raster_state(&self) -> PpuRasterState {
         if !self.is_lcd_enabled() {
             return PpuRasterState::Disabled;
         }
@@ -1131,21 +1157,21 @@ impl Ppu {
         }
     }
 
-    fn current_mode0_start_dot(&self) -> u16 {
+    pub(super) fn current_mode0_start_dot(&self) -> u16 {
         if self.ly >= VISIBLE_SCANLINES {
             return MODE0_START_DOT;
         }
 
         let mut mode0_start_dot = if self.bg_pipeline_state.mode3_started {
-            let shortens_for_all_offscreen_right_sprites =
-                self.bg_pipeline_state.mode0_start_dot == self.baseline_mode0_start_dot()
-                    && self.visible_registers.obj_enabled()
-                    && self.mode2_scan_state.selected_sprite_count() > 0
-                    && (0..self.mode2_scan_state.selected_sprite_count()).all(|slot| {
-                        self.mode2_scan_state
-                            .selected_sprite(slot)
-                            .is_some_and(|sprite| sprite.x >= 168)
-                    });
+            let shortens_for_all_offscreen_right_sprites = self.bg_pipeline_state.mode0_start_dot
+                == self.baseline_mode0_start_dot()
+                && self.visible_registers.obj_enabled()
+                && self.mode2_scan_state.selected_sprite_count() > 0
+                && (0..self.mode2_scan_state.selected_sprite_count()).all(|slot| {
+                    self.mode2_scan_state
+                        .selected_sprite(slot)
+                        .is_some_and(|sprite| sprite.x >= 168)
+                });
             self.bg_pipeline_state
                 .mode0_start_dot
                 .saturating_sub(u16::from(shortens_for_all_offscreen_right_sprites))
@@ -1169,17 +1195,23 @@ impl Ppu {
         mode0_start_dot
     }
 
-    fn baseline_mode0_start_dot(&self) -> u16 {
+    pub(super) fn baseline_mode0_start_dot(&self) -> u16 {
         MODE0_START_DOT + u16::from(self.visible_registers.scx & 0x07)
     }
 
-    fn saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3(&self) -> bool {
+    pub(super) fn saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3(
+        &self,
+    ) -> bool {
         let terminal_bg_tail_has_unfinished_fetch_work = matches!(
             self.bg_pipeline_state.fetcher.stage,
             PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
         ) || (self.bg_pipeline_state.push.pending
             && (self.bg_pipeline_state.push.entry_delay_remaining > 0
-                || self.bg_pipeline_state.push.terminal_placeholder_tail_extra_hold_remaining > 0));
+                || self
+                    .bg_pipeline_state
+                    .push
+                    .terminal_placeholder_tail_extra_hold_remaining
+                    > 0));
         self.bg_pipeline_state.mode3_started
             && self.bg_pipeline_state.visible_pixels_output as usize >= SCREEN_WIDTH
             && self.bg_pipeline_state.current_transfer_x >= 168
@@ -1216,7 +1248,7 @@ impl Ppu {
             .apply(self.console_model, row, event, oam_bytes)
     }
 
-    fn advance_mode2_scan(&mut self, oam: &OamBusView<'_>, dma_oam_active: bool) {
+    pub(super) fn advance_mode2_scan(&mut self, oam: &OamBusView<'_>, dma_oam_active: bool) {
         let raster_state = self.current_raster_state();
 
         if self.ly >= VISIBLE_SCANLINES
@@ -1265,11 +1297,11 @@ impl Ppu {
         }
     }
 
-    fn current_obj_height(&self) -> u8 {
+    pub(super) fn current_obj_height(&self) -> u8 {
         self.visible_registers.obj_height()
     }
 
-    fn window_activation_registers(&self) -> PpuVisibleRegisters {
+    pub(super) fn window_activation_registers(&self) -> PpuVisibleRegisters {
         if self.console_model.is_dmg_family() {
             self.pipeline_registers
         } else {
@@ -1277,7 +1309,7 @@ impl Ppu {
         }
     }
 
-    fn pixel_pipeline_lcdc(&self) -> u8 {
+    pub(super) fn pixel_pipeline_lcdc(&self) -> u8 {
         if !self.console_model.is_dmg_family() {
             return self.visible_registers.lcdc;
         }
@@ -1289,7 +1321,7 @@ impl Ppu {
         }
     }
 
-    fn pixel_pipeline_bgp(&self) -> u8 {
+    pub(super) fn pixel_pipeline_bgp(&self) -> u8 {
         if self.console_model.is_dmg_family() {
             if let Some(override_palette) = self.dmg_bgp_cpu_commit_output_palette_override {
                 return override_palette;
@@ -1300,15 +1332,15 @@ impl Ppu {
         }
     }
 
-    fn pixel_transfer_bg_enabled(&self) -> bool {
+    pub(super) fn pixel_transfer_bg_enabled(&self) -> bool {
         self.pixel_pipeline_lcdc() & LCDC_BG_ENABLE_BIT != 0
     }
 
-    fn pixel_transfer_obj_enabled(&self) -> bool {
+    pub(super) fn pixel_transfer_obj_enabled(&self) -> bool {
         self.pixel_pipeline_lcdc() & LCDC_OBJ_ENABLE_BIT != 0
     }
 
-    fn prepare_visible_scanline_state(&mut self) {
+    pub(super) fn prepare_visible_scanline_state(&mut self) {
         if self.line_dot != 1 || self.ly >= VISIBLE_SCANLINES {
             return;
         }
@@ -1325,11 +1357,11 @@ impl Ppu {
             .prepare_window_line(wy_latch, force_x0_this_line);
     }
 
-    fn live_lyc_coincidence(&self) -> bool {
+    pub(super) fn live_lyc_coincidence(&self) -> bool {
         self.ly == self.lyc
     }
 
-    fn effective_lyc_coincidence(&self) -> bool {
+    pub(super) fn effective_lyc_coincidence(&self) -> bool {
         if self.is_lcd_enabled() {
             self.live_lyc_coincidence()
         } else {
@@ -1337,14 +1369,14 @@ impl Ppu {
         }
     }
 
-    fn lcd_enable_pending_lyc_rise_source(&self) -> bool {
+    pub(super) fn lcd_enable_pending_lyc_rise_source(&self) -> bool {
         self.lcd_enable_pending_delay_tcycles == 2
             && self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
             && !self.stat_state.lcd_disabled_lyc_coincidence
             && self.live_lyc_coincidence()
     }
 
-    fn ordinary_stat_irq_line(&self) -> bool {
+    pub(super) fn ordinary_stat_irq_line(&self) -> bool {
         let coincidence_source = self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
             && self.effective_lyc_coincidence();
 
@@ -1387,11 +1419,11 @@ impl Ppu {
             || dmg_mode2_vblank_entry_source
     }
 
-    fn compute_stat_irq_line(&self, quirk_active: bool) -> bool {
+    pub(super) fn compute_stat_irq_line(&self, quirk_active: bool) -> bool {
         self.ordinary_stat_irq_line() || quirk_active
     }
 
-    fn refresh_stat_irq_line(&mut self, quirk_active: bool) {
+    pub(super) fn refresh_stat_irq_line(&mut self, quirk_active: bool) {
         let new_line = self.compute_stat_irq_line(quirk_active);
         if !self.stat_state.irq_line && new_line {
             self.queue_interrupt_request(InterruptSource::LcdStat);
@@ -1399,7 +1431,7 @@ impl Ppu {
         self.stat_state.irq_line = new_line;
     }
 
-    fn queue_interrupt_request(&mut self, source: InterruptSource) {
+    pub(super) fn queue_interrupt_request(&mut self, source: InterruptSource) {
         let bit = match source {
             InterruptSource::VBlank => PPU_PENDING_VBLANK_INTERRUPT_BIT,
             InterruptSource::LcdStat => PPU_PENDING_LCD_STAT_INTERRUPT_BIT,
@@ -1410,17 +1442,16 @@ impl Ppu {
         self.pending_interrupts |= bit;
     }
 
-    fn stat_write_quirk_active(&self) -> bool {
+    pub(super) fn stat_write_quirk_active(&self) -> bool {
         self.console_model.is_dmg_family()
             && self.is_lcd_enabled()
             && (matches!(
                 self.current_access_mode(),
                 PpuAccessMode::HBlank | PpuAccessMode::VBlank | PpuAccessMode::OamScan
-            )
-                || self.live_lyc_coincidence())
+            ) || self.live_lyc_coincidence())
     }
 
-    fn refresh_visible_output(&mut self) {
+    pub(super) fn refresh_visible_output(&mut self) {
         self.visible_output =
             if self.is_lcd_enabled() && !self.blank_frame_active && !self.system_stop_active {
                 PpuVisibleOutputState::Driving
@@ -1429,11 +1460,11 @@ impl Ppu {
             };
     }
 
-    fn advance_lcd_restart_phase(&mut self) {
+    pub(super) fn advance_lcd_restart_phase(&mut self) {
         self.lcd_restart_phase = self.lcd_restart_phase.advance(self.ly, self.line_dot);
     }
 
-    fn reset_runtime_pipeline_state(&mut self) {
+    pub(super) fn reset_runtime_pipeline_state(&mut self) {
         self.startup_mode_latch = None;
         self.mode2_scan_state.reset();
         self.window_state.reset();
@@ -1444,12 +1475,12 @@ impl Ppu {
             .fill(MixedPixel::background(0));
     }
 
-    fn clear_visible_buffers(&mut self) {
+    pub(super) fn clear_visible_buffers(&mut self) {
         self.current_scanline_pixels.fill(0);
         self.framebuffer.fill(0);
     }
 
-    fn enter_lcd_disabled_state(&mut self) {
+    pub(super) fn enter_lcd_disabled_state(&mut self) {
         self.lcd_state = PpuLcdState::Disabled;
         self.lcd_enable_pending_delay_tcycles = 0;
         self.blank_frame_active = false;
@@ -1464,7 +1495,7 @@ impl Ppu {
         self.refresh_visible_output();
     }
 
-    fn enter_lcd_enabled_restart_state(&mut self) {
+    pub(super) fn enter_lcd_enabled_restart_state(&mut self) {
         self.lcd_state = PpuLcdState::Enabled;
         self.lcd_enable_pending_delay_tcycles = 0;
         self.blank_frame_active = true;
@@ -1479,7 +1510,7 @@ impl Ppu {
         self.refresh_visible_output();
     }
 
-    fn enter_lcd_enable_pending_state(&mut self, delay_tcycles: u8) {
+    pub(super) fn enter_lcd_enable_pending_state(&mut self, delay_tcycles: u8) {
         self.lcd_state = PpuLcdState::Disabled;
         self.lcd_enable_pending_delay_tcycles = delay_tcycles;
         self.startup_mode_latch = None;
