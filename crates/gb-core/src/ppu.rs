@@ -397,6 +397,9 @@ pub struct Ppu {
     pipeline_registers: PpuVisibleRegisters,
     dmg_bgp_cpu_commit_output_palette_override: Option<u8>,
     dmg_bgp_cpu_commit_output_delay_pixels_remaining: u8,
+    dmg_bgp_cpu_commit_current_line_start_palette: u8,
+    dmg_bgp_cpu_commit_current_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
+    dmg_bgp_cpu_commit_previous_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
     last_unsigned_tile_data_fetch: u8,
     last_unsigned_tile_data_low_fetch: u8,
     last_unsigned_tile_data_high_fetch: u8,
@@ -412,7 +415,15 @@ pub struct Ppu {
     obj_pipeline_state: ObjPipelineState,
     current_scanline_pixels: [u8; SCREEN_WIDTH],
     current_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
+    previous_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
+    previous_scanline_ly: Option<u8>,
     framebuffer: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PpuDmgBgpCpuCommitWrite {
+    visible_pixels_output: u8,
+    value: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -666,6 +677,9 @@ impl Ppu {
             pipeline_registers: PpuVisibleRegisters::default(),
             dmg_bgp_cpu_commit_output_palette_override: None,
             dmg_bgp_cpu_commit_output_delay_pixels_remaining: 0,
+            dmg_bgp_cpu_commit_current_line_start_palette: 0,
+            dmg_bgp_cpu_commit_current_line_writes: Vec::new(),
+            dmg_bgp_cpu_commit_previous_line_writes: Vec::new(),
             last_unsigned_tile_data_fetch: 0,
             last_unsigned_tile_data_low_fetch: 0,
             last_unsigned_tile_data_high_fetch: 0,
@@ -681,6 +695,8 @@ impl Ppu {
             obj_pipeline_state: ObjPipelineState::default(),
             current_scanline_pixels: [0; SCREEN_WIDTH],
             current_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            previous_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            previous_scanline_ly: None,
             framebuffer: vec![0; FRAMEBUFFER_PIXELS],
         }
     }
@@ -864,6 +880,9 @@ impl Ppu {
         self.obj_palette_read_policy = startup_state.obj_palette_read_policy;
         self.dmg_bgp_cpu_commit_output_palette_override = None;
         self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 0;
+        self.dmg_bgp_cpu_commit_current_line_start_palette = startup_state.bgp;
+        self.dmg_bgp_cpu_commit_current_line_writes.clear();
+        self.dmg_bgp_cpu_commit_previous_line_writes.clear();
         self.blank_frame_active = false;
         self.oam_corruption_controller = OamCorruptionController;
         self.mode2_scan_state.reset();
@@ -875,6 +894,9 @@ impl Ppu {
         self.current_scanline_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
+        self.previous_scanline_mixed_pixels
+            .fill(MixedPixel::background(0));
+        self.previous_scanline_ly = None;
         self.framebuffer.fill(0);
         self.sync_visible_registers();
         self.sync_pipeline_registers();
@@ -978,6 +1000,7 @@ impl Ppu {
         observe_ppu_step_region(observer, step_region, || {
             if self.line_dot == self.current_scanline_length() {
                 let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
+                self.finalize_dmg_bgp_cpu_commit_scanline();
                 if self.bg_pipeline_state.window_started_this_line {
                     self.window_state.window_line_counter =
                         self.window_state.window_line_counter.wrapping_add(1);
@@ -995,6 +1018,8 @@ impl Ppu {
                 self.mode2_scan_state.reset_scanline();
                 self.bg_pipeline_state.reset();
                 self.obj_pipeline_state.reset();
+                self.dmg_bgp_cpu_commit_current_line_start_palette = self.bgp;
+                self.dmg_bgp_cpu_commit_current_line_writes.clear();
                 self.current_scanline_pixels.fill(0);
                 self.current_scanline_mixed_pixels
                     .fill(MixedPixel::background(0));

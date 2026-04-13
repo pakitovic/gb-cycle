@@ -8292,6 +8292,41 @@ fn cpu_mmio_bgp_write_during_mode3_keeps_the_previous_palette_for_four_visible_p
 }
 
 #[test]
+fn dmg_bgp_row_family_change_recolors_the_previous_boundary_scanline() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.previous_scanline_ly = Some(7);
+    ppu.previous_scanline_mixed_pixels
+        .fill(MixedPixel::background(1));
+    ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0xE4;
+    ppu.dmg_bgp_cpu_commit_current_line_writes = vec![
+        PpuDmgBgpCpuCommitWrite {
+            visible_pixels_output: 0,
+            value: 0xE4,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            visible_pixels_output: 9,
+            value: 0xE4,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            visible_pixels_output: 25,
+            value: 0xAA,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            visible_pixels_output: 121,
+            value: 0xE4,
+        },
+    ];
+
+    ppu.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(7);
+
+    let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
+    assert!(row[..29].iter().all(|&shade| shade == 1));
+    assert!(row[29..125].iter().all(|&shade| shade == 2));
+    assert!(row[125..].iter().all(|&shade| shade == 1));
+}
+
+#[test]
 fn dmg_bgp_write_in_early_hblank_recolors_only_last_three_visible_bg_pixels() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
