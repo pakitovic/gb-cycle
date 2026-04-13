@@ -96,8 +96,10 @@ Priority order:
 ## Implementation notes for this repo
 
 - Model capabilities should be centralized, not spread as random conditionals.
+- The public model surface should distinguish at least `ConsoleModel`, `OperatingMode`, and `HostPlatform` so CGB silicon, CGB native mode, CGB DMG-compatibility mode, and future SGB hosting are not conflated.
 - Shared subsystems should expose clean extension points for CGB-only behavior.
 - DMG-family behavior should remain the baseline shared path where possible, with CGB-specific features layered on through explicit model capabilities.
+- `ConsoleModel::Cgb` plus `OperatingMode::CgbCompatibility` should mean "CGB-family silicon running monochrome software-visible mode", not "pretend this machine is a DMG".
 - CGB readiness today should focus on architecture seams for banked memory, palette state, extra I/O, HDMA, and speed switching, not on partial functional implementation.
 - The shared CPU execution model should already be based on in-flight fetch/read/write/internal steps so future double-speed behavior can scale the same engine instead of replacing an opcode-duration-based core.
 - CPU `STOP` should already be represented separately from `HALT`, because future CGB speed-switch behavior should attach to an existing explicit control state rather than force a later CPU-state redesign.
@@ -112,7 +114,7 @@ Priority order:
 - Even before functional CGB work starts, routed MMIO metadata should already classify `KEY0` / `FF4C` as an explicit CGB-only register rather than as a reserved shared-model hole.
 - Even before functional CGB work starts, the routed MMIO metadata should keep nominal future ownership for stubbed CGB registers, such as PPU-owned palettes, DMA-owned `HDMA*`, and system-owned `KEY0` / `KEY1`, rather than collapsing all of them into one generic "CGB-only owner".
 - Even before functional CGB work starts, the routed MMIO metadata should keep `FF72`, `FF73`, `FF74`, and `FF75` as distinct per-address register identities. In the current descriptor baseline, `FF72-FF74` should publish nominal `ReadWrite` access, while `FF75` should remain `Mixed` because only bits `4-6` are writable in CGB mode.
-- Until the machine has an explicit CGB operating-mode state, descriptors such as `BGP` / `OBP*` may publish nominal `DMG-compatible` availability without trying to decide at runtime whether the active CGB mode is full-color or DMG-compatibility mode.
+- The public model surface may already expose an explicit `OperatingMode`, but routed MMIO and subsystem behavior may still stage runtime consultation incrementally; until a specific register path consumes that mode directly, descriptors such as `BGP` / `OBP*` may continue to publish nominal `DMG-compatible` availability without claiming full runtime mode routing.
 - Future CGB boot flow should be able to branch into full CGB mode or DMG-compatibility mode based on cartridge header information, without requiring a separate emulator core.
 - When CGB work begins, prefer a single standard CGB model entry point before considering hardware revision variants.
 - A CGB running a DMG title should be treated as the shared core operating with CGB-only features disabled by mode, not as a separate emulator path.
