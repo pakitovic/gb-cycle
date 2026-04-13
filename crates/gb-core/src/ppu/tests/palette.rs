@@ -372,6 +372,7 @@ fn dmg_bgp_row_family_change_recolors_the_previous_boundary_scanline() {
     ppu.previous_scanline_mixed_pixels
         .fill(MixedPixel::background(0));
     ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_previous_line_start_palette = 0x10;
     ppu.dmg_bgp_cpu_commit_current_line_writes = vec![
         PpuDmgBgpCpuCommitWrite {
             effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
@@ -407,6 +408,7 @@ fn dmg_bgp_row_family_change_can_optionally_consume_retroactive_panel_writes() {
     ppu.previous_scanline_mixed_pixels
         .fill(MixedPixel::background(0));
     ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_previous_line_start_palette = 0x10;
     ppu.dmg_bgp_cpu_commit_current_line_writes = vec![
         PpuDmgBgpCpuCommitWrite {
             effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
@@ -443,12 +445,39 @@ fn dmg_bgp_row_family_change_uses_transient_x_for_optional_retroactive_panel_rep
     ppu.previous_scanline_mixed_pixels
         .fill(MixedPixel::background(0));
     ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_previous_line_start_palette = 0x10;
     ppu.dmg_bgp_cpu_commit_current_line_writes = vec![PpuDmgBgpCpuCommitWrite {
         effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
         transient_visible_x: 2,
         transient_palette: 0x13,
         repaint_visible_x: 10,
         transfer_lead_pixels: 0,
+        value: 0x12,
+    }];
+
+    ppu.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(7, true);
+
+    let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
+    assert!(row[..2].iter().all(|&shade| shade == 0));
+    assert_eq!(row[2], 3);
+    assert!(row[3..].iter().all(|&shade| shade == 2));
+}
+
+#[test]
+fn dmg_bgp_row_family_change_ignores_transfer_lead_for_optional_retroactive_repaint() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.previous_scanline_ly = Some(7);
+    ppu.previous_scanline_mixed_pixels
+        .fill(MixedPixel::background(0));
+    ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_previous_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_current_line_writes = vec![PpuDmgBgpCpuCommitWrite {
+        effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+        transient_visible_x: 2,
+        transient_palette: 0x13,
+        repaint_visible_x: 10,
+        transfer_lead_pixels: 4,
         value: 0x12,
     }];
 
@@ -468,6 +497,7 @@ fn dmg_bgp_row_family_change_allows_zero_start_optional_retroactive_repaint_for_
     ppu.previous_scanline_mixed_pixels
         .fill(MixedPixel::background(0));
     ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_previous_line_start_palette = 0x10;
     ppu.dmg_bgp_cpu_commit_current_line_writes = vec![PpuDmgBgpCpuCommitWrite {
         effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
         transient_visible_x: 0,
@@ -492,6 +522,7 @@ fn dmg_bgp_row_family_change_skips_zero_start_optional_retroactive_repaint_for_o
         .fill(MixedPixel::background(0));
     ppu.previous_scanline_mixed_pixels[..4].fill(MixedPixel::object(1, false));
     ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_previous_line_start_palette = 0x10;
     ppu.dmg_bgp_cpu_commit_current_line_writes = vec![PpuDmgBgpCpuCommitWrite {
         effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
         transient_visible_x: 0,
@@ -515,6 +546,7 @@ fn dmg_bgp_row_family_change_skips_optional_retroactive_repaint_that_precedes_de
     ppu.previous_scanline_mixed_pixels
         .fill(MixedPixel::background(0));
     ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_previous_line_start_palette = 0x10;
     ppu.dmg_bgp_cpu_commit_current_line_writes = vec![
         PpuDmgBgpCpuCommitWrite {
             effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
@@ -539,6 +571,32 @@ fn dmg_bgp_row_family_change_skips_optional_retroactive_repaint_that_precedes_de
     let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
     assert!(row[..4].iter().all(|&shade| shade == 0));
     assert!(row[4..].iter().all(|&shade| shade == 1));
+}
+
+#[test]
+fn dmg_bgp_row_family_change_uses_previous_line_start_palette() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.previous_scanline_ly = Some(7);
+    ppu.previous_scanline_mixed_pixels
+        .fill(MixedPixel::background(0));
+    ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0x01;
+    ppu.dmg_bgp_cpu_commit_previous_line_start_palette = 0xFC;
+    ppu.dmg_bgp_cpu_commit_current_line_writes = vec![PpuDmgBgpCpuCommitWrite {
+        effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+        transient_visible_x: 4,
+        transient_palette: 0xFD,
+        repaint_visible_x: 12,
+        transfer_lead_pixels: 0,
+        value: 0xFC,
+    }];
+
+    ppu.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(7, true);
+
+    let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
+    assert!(row[..4].iter().all(|&shade| shade == 0));
+    assert_eq!(row[4], 1);
+    assert!(row[5..].iter().all(|&shade| shade == 0));
 }
 
 #[test]

@@ -74,6 +74,7 @@ impl Ppu {
             .bg_pipeline_state
             .consume_startup_transfer_entry_delay_dot()
         {
+            self.consume_dmg_bgp_cpu_commit_output_delay();
             return Mode3TransferDot::not_served();
         }
 
@@ -82,7 +83,7 @@ impl Ppu {
             Mode3TransferDot::not_served()
         } else {
             match self.current_transfer() {
-                None => return Mode3TransferDot::not_served(),
+                None => Mode3TransferDot::not_served(),
                 Some(Mode3CurrentTransfer {
                     readiness: Mode3TransferReadiness::WaitingForFifo(_),
                     ..
@@ -98,6 +99,10 @@ impl Ppu {
         };
 
         self.bg_pipeline_state.consume_startup_source_window_dot();
+        if transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel {
+            self.repeat_last_dmg_recent_panel_dot();
+        }
+        self.consume_dmg_bgp_cpu_commit_output_delay();
         transfer_dot
     }
 
@@ -813,15 +818,10 @@ impl Ppu {
                 self.current_scanline_mixed_pixels[visible_x] = output_pixel;
                 self.current_scanline_pixels[visible_x] = scanline_pixel;
                 self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+                self.record_dmg_recent_panel_dot(visible_x as u8, output_pixel);
                 self.bg_pipeline_state.current_transfer_x =
                     self.bg_pipeline_state.current_transfer_x.saturating_add(1);
                 self.bg_pipeline_state.visible_pixels_output += 1;
-                if self.dmg_bgp_cpu_commit_output_delay_pixels_remaining > 0 {
-                    self.dmg_bgp_cpu_commit_output_delay_pixels_remaining -= 1;
-                    if self.dmg_bgp_cpu_commit_output_delay_pixels_remaining == 0 {
-                        self.dmg_bgp_cpu_commit_output_palette_override = None;
-                    }
-                }
                 Mode3TransferDot::served(plan.result_kind, false)
             }
         }

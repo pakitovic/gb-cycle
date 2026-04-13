@@ -28,8 +28,10 @@ impl Ppu {
             dmg_bgp_cpu_commit_output_palette_override: None,
             dmg_bgp_cpu_commit_output_delay_pixels_remaining: 0,
             dmg_bgp_cpu_commit_current_line_start_palette: 0,
+            dmg_bgp_cpu_commit_previous_line_start_palette: 0,
             dmg_bgp_cpu_commit_current_line_writes: Vec::new(),
             dmg_bgp_cpu_commit_previous_line_writes: Vec::new(),
+            dmg_recent_panel_dots: VecDeque::with_capacity(DMG_PALETTE_RETROACTIVE_DOT_HISTORY),
             last_unsigned_tile_data_fetch: 0,
             last_unsigned_tile_data_low_fetch: 0,
             last_unsigned_tile_data_high_fetch: 0,
@@ -231,8 +233,10 @@ impl Ppu {
         self.dmg_bgp_cpu_commit_output_palette_override = None;
         self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 0;
         self.dmg_bgp_cpu_commit_current_line_start_palette = startup_state.bgp;
+        self.dmg_bgp_cpu_commit_previous_line_start_palette = startup_state.bgp;
         self.dmg_bgp_cpu_commit_current_line_writes.clear();
         self.dmg_bgp_cpu_commit_previous_line_writes.clear();
+        self.dmg_recent_panel_dots.clear();
         self.blank_frame_active = false;
         self.oam_corruption_controller = OamCorruptionController;
         self.mode2_scan_state.reset();
@@ -370,6 +374,7 @@ impl Ppu {
                 self.obj_pipeline_state.reset();
                 self.dmg_bgp_cpu_commit_current_line_start_palette = self.bgp;
                 self.dmg_bgp_cpu_commit_current_line_writes.clear();
+                self.dmg_recent_panel_dots.clear();
                 self.current_scanline_pixels.fill(0);
                 self.current_scanline_mixed_pixels
                     .fill(MixedPixel::background(0));

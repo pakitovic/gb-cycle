@@ -102,6 +102,18 @@ pub(super) struct PpuDmgBgpCpuCommitWrite {
     pub(super) value: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PpuDmgBgpBoundaryRepaintWrite {
+    pub(super) write: PpuDmgBgpCpuCommitWrite,
+    pub(super) selected_current: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PpuRecentPanelDot {
+    pub(super) visible_x: u8,
+    pub(super) pixel: MixedPixel,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub(super) struct PpuVisibleRegisters {
     pub(super) lcdc: u8,
