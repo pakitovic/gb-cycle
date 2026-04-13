@@ -1326,6 +1326,10 @@ impl Ppu {
             if let Some(override_palette) = self.dmg_bgp_cpu_commit_output_palette_override {
                 return override_palette;
             }
+            if let Some(override_palette) = self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override
+            {
+                return override_palette;
+            }
             self.visible_registers.bgp | self.pipeline_registers.bgp
         } else {
             self.visible_registers.bgp

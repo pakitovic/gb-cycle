@@ -365,6 +365,167 @@ fn cpu_mmio_bgp_write_stays_delayed_when_recent_affected_bg_pixel_is_nonzero_eve
 }
 
 #[test]
+fn cpu_mmio_bgp_write_before_first_visible_bg_pixel_uses_the_visible_obj_prefix_as_delay() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x93,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 20;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state.current_transfer_x = 6;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
+    for _ in 0..8 {
+        ppu.bg_pipeline_state.fifo.push_back(0);
+    }
+
+    let sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 4,
+        tile_index: 0,
+        attributes: 0,
+    };
+    ppu.push_obj_pixels(sprite, 0x3C, 0x00, 0);
+
+    ppu.write_register_with_source(0xFF47, 0x03, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_delay_pixels_remaining, 2);
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_palette_override, Some(0xFC));
+}
+
+#[test]
+fn cpu_mmio_bgp_write_after_four_leading_obj_pixels_uses_the_committed_palette_on_the_current_dot()
+{
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x93,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0x03,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 32;
+    ppu.bg_pipeline_state.visible_pixels_output = 12;
+    ppu.bg_pipeline_state.current_transfer_x = 20;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.current_scanline_mixed_pixels[..4].fill(MixedPixel::object(1, false));
+    ppu.current_scanline_mixed_pixels[4..12].fill(MixedPixel::background(0));
+    ppu.framebuffer[4..12].fill(3);
+    ppu.dmg_bgp_cpu_commit_current_line_writes = vec![PpuDmgBgpCpuCommitWrite {
+        effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+        transient_visible_x: 0,
+        transient_palette: 0x03,
+        repaint_visible_x: 4,
+        transfer_lead_pixels: 0,
+        value: 0x03,
+    }];
+
+    ppu.write_register_with_source(0xFF47, 0x01, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_delay_pixels_remaining, 1);
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_palette_override, Some(0x01));
+
+    ppu.sync_pipeline_registers();
+    ppu.sync_visible_registers();
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.framebuffer()[12], 1);
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_delay_pixels_remaining, 0);
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_palette_override, None);
+}
+
+#[test]
+fn cpu_mmio_bgp_write_after_the_first_selected_retroactive_write_keeps_the_recent_tail_and_flips_on_the_current_dot()
+ {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x93,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0x01,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 96;
+    ppu.bg_pipeline_state.visible_pixels_output = 50;
+    ppu.bg_pipeline_state.current_transfer_x = 58;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.current_scanline_mixed_pixels[..2].fill(MixedPixel::object(1, false));
+    ppu.current_scanline_mixed_pixels[2..50].fill(MixedPixel::background(0));
+    ppu.framebuffer[46..50].fill(1);
+    ppu.dmg_bgp_cpu_commit_current_line_writes = vec![
+        PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+            transient_visible_x: 0,
+            transient_palette: 0x03,
+            repaint_visible_x: 4,
+            transfer_lead_pixels: 0,
+            value: 0x03,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+            transient_visible_x: 6,
+            transient_palette: 0x03,
+            repaint_visible_x: 14,
+            transfer_lead_pixels: 0,
+            value: 0x01,
+        },
+    ];
+
+    ppu.write_register_with_source(0xFF47, 0x03, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(&ppu.framebuffer()[46..50], &[1, 1, 1, 1]);
+    assert_eq!(
+        ppu.dmg_bgp_cpu_commit_current_line_writes.last().copied(),
+        Some(PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::CurrentDotTransient,
+            transient_visible_x: 50,
+            transient_palette: 0x03,
+            repaint_visible_x: 51,
+            transfer_lead_pixels: 0,
+            value: 0x03,
+        })
+    );
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_delay_pixels_remaining, 1);
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_palette_override, Some(0x03));
+
+    ppu.sync_pipeline_registers();
+    ppu.sync_visible_registers();
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(&ppu.framebuffer()[46..50], &[1, 1, 1, 1]);
+    assert_eq!(ppu.framebuffer()[50], 3);
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_delay_pixels_remaining, 0);
+    assert_eq!(ppu.dmg_bgp_cpu_commit_output_palette_override, None);
+}
+
+#[test]
 fn dmg_bgp_row_family_change_recolors_the_previous_boundary_scanline() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_output = PpuVisibleOutputState::Driving;
@@ -626,7 +787,7 @@ fn dmg_bgp_write_in_early_hblank_recolors_only_last_three_visible_bg_pixels() {
 }
 
 #[test]
-fn dmg_obp0_write_during_mode3_recolors_five_recent_obj_pixels() {
+fn dmg_obp0_write_before_visible_x10_does_not_retroactively_recolor_obj_pixels() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x82,
@@ -648,5 +809,70 @@ fn dmg_obp0_write_during_mode3_recolors_five_recent_obj_pixels() {
 
     ppu.write_register(0xFF48, 0x04);
 
-    assert_eq!(&ppu.framebuffer()[3..8], &[3, 1, 1, 1, 1]);
+    assert_eq!(&ppu.framebuffer()[3..8], &[3, 3, 3, 3, 3]);
+}
+
+#[test]
+fn dmg_obp0_write_during_mode3_skips_background_gaps_and_recolors_four_recent_obj_pixels() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x82,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = 200;
+    ppu.bg_pipeline_state.visible_pixels_output = 10;
+    ppu.obp0 = Some(0x00);
+    ppu.visible_registers.obp0 = Some(0x00);
+    ppu.current_scanline_mixed_pixels[2..6].fill(MixedPixel::object(1, false));
+    ppu.current_scanline_mixed_pixels[6..10].fill(MixedPixel::background(0));
+    ppu.framebuffer[2..6].fill(0);
+    ppu.framebuffer[6..10].fill(0);
+
+    ppu.write_register(0xFF48, 0x04);
+
+    assert_eq!(&ppu.framebuffer()[2..10], &[1, 1, 1, 1, 0, 0, 0, 0]);
+}
+
+#[test]
+fn dmg_obp0_write_at_visible_x10_skips_a_leading_isolated_obj_pixel() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x82,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = 200;
+    ppu.bg_pipeline_state.visible_pixels_output = 10;
+    ppu.obp0 = Some(0x00);
+    ppu.visible_registers.obp0 = Some(0x00);
+    ppu.current_scanline_mixed_pixels[5] = MixedPixel::object(1, false);
+    ppu.current_scanline_mixed_pixels[7] = MixedPixel::object(1, false);
+    ppu.current_scanline_mixed_pixels[..10]
+        .iter_mut()
+        .enumerate()
+        .filter(|(x, _)| !matches!(x, 5 | 7))
+        .for_each(|(_, pixel)| *pixel = MixedPixel::background(0));
+    ppu.framebuffer[5] = 0;
+    ppu.framebuffer[7] = 0;
+
+    ppu.write_register(0xFF48, 0x04);
+
+    assert_eq!(&ppu.framebuffer()[5..8], &[0, 0, 1]);
 }

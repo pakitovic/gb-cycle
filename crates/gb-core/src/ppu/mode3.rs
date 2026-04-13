@@ -819,6 +819,7 @@ impl Ppu {
                 self.current_scanline_pixels[visible_x] = scanline_pixel;
                 self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
                 self.record_dmg_recent_panel_dot(visible_x as u8, output_pixel);
+                self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
                 self.bg_pipeline_state.current_transfer_x =
                     self.bg_pipeline_state.current_transfer_x.saturating_add(1);
                 self.bg_pipeline_state.visible_pixels_output += 1;
