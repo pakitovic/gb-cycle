@@ -168,7 +168,6 @@ mod tests {
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -181,11 +180,6 @@ mod tests {
                 .expect("system clock should be after unix epoch")
                 .as_nanos()
         ))
-    }
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
@@ -363,7 +357,7 @@ root_env_var = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT"
         let default_root = external_rom_store_root(&workspace_root).join("retrio-gb-test-roms");
         fs::create_dir_all(&default_root).expect("default root should be creatable");
 
-        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+        let _guard = crate::test_support::lock_env();
         let key = "GB_CYCLE_RETRIO_GB_TEST_ROMS_ROOT";
         let previous = env::var_os(key);
         remove_env_var(key);

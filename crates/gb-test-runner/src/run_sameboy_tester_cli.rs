@@ -278,7 +278,6 @@ mod tests {
     use std::io;
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::{
@@ -302,11 +301,6 @@ mod tests {
                 .expect("system clock should be after unix epoch")
                 .as_nanos()
         ))
-    }
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
@@ -448,7 +442,7 @@ mod tests {
 
     #[test]
     fn run_command_executes_suite_and_renders_report_lines() {
-        let _guard = env_lock().lock().expect("env lock should be lockable");
+        let _guard = crate::test_support::lock_env();
         let temp_dir = unique_temp_dir("run-command");
         let oracle_root = temp_dir.join("oracle");
         let rom_root = temp_dir.join("test-rom-store");
