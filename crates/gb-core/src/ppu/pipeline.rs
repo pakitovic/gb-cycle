@@ -1,5 +1,7 @@
+use super::*;
+
 impl Ppu {
-    fn compute_fetch_tile_index_address(
+    pub(super) fn compute_fetch_tile_index_address(
         &self,
         source: PpuBgFetcherSource,
         next_fetch_pixel: u16,
@@ -40,7 +42,7 @@ impl Ppu {
         (tile_map_base + tile_y * BG_TILE_MAP_WIDTH as usize + tile_x) as u16
     }
 
-    fn compute_fetch_tile_data_address(
+    pub(super) fn compute_fetch_tile_data_address(
         &self,
         source: PpuBgFetcherSource,
         fetch_x: u16,
@@ -65,7 +67,7 @@ impl Ppu {
         tile_data_base + tile_row * TILE_ROW_BYTES + plane
     }
 
-    fn bg_fetch_tilemap_uses_pipeline_snapshot(&self, next_fetch_pixel: u16) -> bool {
+    pub(super) fn bg_fetch_tilemap_uses_pipeline_snapshot(&self, next_fetch_pixel: u16) -> bool {
         let _ = next_fetch_pixel;
         self.console_model.is_dmg_family()
             && self
@@ -73,7 +75,7 @@ impl Ppu {
                 .startup_background_tilemap_uses_pipeline_snapshot()
     }
 
-    fn bg_fetch_tiledata_uses_pipeline_snapshot(&self, next_fetch_pixel: u16) -> bool {
+    pub(super) fn bg_fetch_tiledata_uses_pipeline_snapshot(&self, next_fetch_pixel: u16) -> bool {
         let _ = next_fetch_pixel;
         self.console_model.is_dmg_family()
             && self
@@ -81,7 +83,7 @@ impl Ppu {
                 .startup_background_tiledata_uses_pipeline_snapshot()
     }
 
-    fn bg_fetch_tilemap_lcdc(&self, next_fetch_pixel: u16) -> u8 {
+    pub(super) fn bg_fetch_tilemap_lcdc(&self, next_fetch_pixel: u16) -> u8 {
         if self.bg_fetch_tilemap_uses_pipeline_snapshot(next_fetch_pixel) {
             self.pipeline_registers.lcdc
         } else {
@@ -89,7 +91,7 @@ impl Ppu {
         }
     }
 
-    fn bg_fetch_tiledata_lcdc(&self, next_fetch_pixel: u16) -> u8 {
+    pub(super) fn bg_fetch_tiledata_lcdc(&self, next_fetch_pixel: u16) -> u8 {
         if self.bg_fetch_tiledata_uses_pipeline_snapshot(next_fetch_pixel) {
             self.pipeline_registers.lcdc
         } else {
@@ -97,7 +99,7 @@ impl Ppu {
         }
     }
 
-    fn bg_fetch_scy(&self, next_fetch_pixel: u16) -> u8 {
+    pub(super) fn bg_fetch_scy(&self, next_fetch_pixel: u16) -> u8 {
         if self.bg_fetch_tiledata_uses_pipeline_snapshot(next_fetch_pixel) {
             self.pipeline_registers.scy
         } else {
@@ -105,11 +107,11 @@ impl Ppu {
         }
     }
 
-    fn window_fetch_lcdc(&self) -> u8 {
+    pub(super) fn window_fetch_lcdc(&self) -> u8 {
         self.visible_registers.lcdc
     }
 
-    fn maybe_cache_unsigned_bgwin_tile_data_fetch(
+    pub(super) fn maybe_cache_unsigned_bgwin_tile_data_fetch(
         &mut self,
         source: PpuBgFetcherSource,
         next_fetch_pixel: u16,
@@ -133,7 +135,7 @@ impl Ppu {
         }
     }
 
-    fn maybe_apply_bgwin_tile_data_selector_glitch(
+    pub(super) fn maybe_apply_bgwin_tile_data_selector_glitch(
         &mut self,
         vram: &VramBusView<'_>,
         source: PpuBgFetcherSource,
@@ -169,7 +171,7 @@ impl Ppu {
         }
     }
 
-    fn maybe_apply_bgwin_tilemap_selector_glitch(
+    pub(super) fn maybe_apply_bgwin_tilemap_selector_glitch(
         &mut self,
         vram: &VramBusView<'_>,
         source: PpuBgFetcherSource,
@@ -196,7 +198,7 @@ impl Ppu {
         fetcher.tile_index = tile_index;
     }
 
-    fn read_obj_tile_data_byte(
+    pub(super) fn read_obj_tile_data_byte(
         &mut self,
         vram: &VramBusView<'_>,
         sprite: PpuSelectedSprite,
@@ -212,7 +214,7 @@ impl Ppu {
         tile_data
     }
 
-    fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> Option<(u8, u8)> {
+    pub(super) fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> Option<(u8, u8)> {
         let sprite_top = sprite.y.wrapping_sub(16);
         let height = self.current_obj_height();
         let mut row = self.ly.wrapping_sub(sprite_top);
@@ -235,7 +237,7 @@ impl Ppu {
         }
     }
 
-    fn push_obj_pixels(
+    pub(super) fn push_obj_pixels(
         &mut self,
         sprite: PpuSelectedSprite,
         tile_low: u8,
@@ -286,14 +288,14 @@ impl Ppu {
         }
     }
 
-    fn pop_obj_fifo_pixel(&mut self) -> ObjPixel {
+    pub(super) fn pop_obj_fifo_pixel(&mut self) -> ObjPixel {
         self.obj_pipeline_state
             .fifo
             .pop_front()
             .unwrap_or_else(ObjPixel::transparent)
     }
 
-    fn mix_bg_and_obj(&self, bg_pixel: u8, obj_pixel: ObjPixel) -> MixedPixel {
+    pub(super) fn mix_bg_and_obj(&self, bg_pixel: u8, obj_pixel: ObjPixel) -> MixedPixel {
         if !self.pixel_transfer_obj_enabled() || obj_pixel.is_transparent() {
             return MixedPixel::background(bg_pixel);
         }
@@ -305,7 +307,7 @@ impl Ppu {
         }
     }
 
-    fn map_mixed_pixel_to_panel_shade(&self, pixel: MixedPixel) -> u8 {
+    pub(super) fn map_mixed_pixel_to_panel_shade(&self, pixel: MixedPixel) -> u8 {
         match pixel.source {
             MixedPixelSource::Background => {
                 self.apply_dmg_palette(self.pixel_pipeline_bgp(), pixel.color)
@@ -319,11 +321,11 @@ impl Ppu {
         }
     }
 
-    fn apply_dmg_palette(&self, palette: u8, color: u8) -> u8 {
+    pub(super) fn apply_dmg_palette(&self, palette: u8, color: u8) -> u8 {
         (palette >> (u32::from(color & 0x03) * 2)) & 0x03
     }
 
-    fn write_dmg_palette_register(
+    pub(super) fn write_dmg_palette_register(
         &mut self,
         register: PpuPaletteRegister,
         value: u8,
@@ -373,7 +375,7 @@ impl Ppu {
         }
     }
 
-    fn retroactively_recolor_recent_pixels(
+    pub(super) fn retroactively_recolor_recent_pixels(
         &mut self,
         register: PpuPaletteRegister,
         transient_palette: u8,
@@ -410,7 +412,7 @@ impl Ppu {
         }
     }
 
-    fn map_mixed_pixel_to_panel_shade_with_palette_override(
+    pub(super) fn map_mixed_pixel_to_panel_shade_with_palette_override(
         &self,
         pixel: MixedPixel,
         register: PpuPaletteRegister,
@@ -439,7 +441,7 @@ impl Ppu {
         }
     }
 
-    fn dmg_palette_conflict_retroactive_pixels(
+    pub(super) fn dmg_palette_conflict_retroactive_pixels(
         &self,
         register: PpuPaletteRegister,
     ) -> Option<usize> {
@@ -470,7 +472,7 @@ impl Ppu {
         }
     }
 
-    fn record_dmg_bgp_cpu_commit_visible_write(&mut self, value: u8) {
+    pub(super) fn record_dmg_bgp_cpu_commit_visible_write(&mut self, value: u8) {
         if !self.console_model.is_dmg_family()
             || self.ly >= VISIBLE_SCANLINES
             || self.visible_output != PpuVisibleOutputState::Driving
@@ -485,7 +487,7 @@ impl Ppu {
             });
     }
 
-    fn finalize_dmg_bgp_cpu_commit_scanline(&mut self) {
+    pub(super) fn finalize_dmg_bgp_cpu_commit_scanline(&mut self) {
         if self.console_model.is_dmg_family()
             && self.ly < VISIBLE_SCANLINES
             && self.visible_output == PpuVisibleOutputState::Driving
@@ -511,21 +513,31 @@ impl Ppu {
         }
     }
 
-    fn recolor_previous_scanline_from_current_bgp_cpu_commit_writes(&mut self, previous_ly: u8) {
+    pub(super) fn recolor_previous_scanline_from_current_bgp_cpu_commit_writes(
+        &mut self,
+        previous_ly: u8,
+    ) {
         let row_start = previous_ly as usize * SCREEN_WIDTH;
         for x in 0..SCREEN_WIDTH {
-            let palette = self
-                .dmg_bgp_cpu_commit_palette_for_visible_x(self.dmg_bgp_cpu_commit_current_line_start_palette, x);
-            let mixed_pixel = self.previous_scanline_mixed_pixels[x];
-            self.framebuffer[row_start + x] = self.map_mixed_pixel_to_panel_shade_with_palette_override(
-                mixed_pixel,
-                PpuPaletteRegister::Bgp,
-                palette,
+            let palette = self.dmg_bgp_cpu_commit_palette_for_visible_x(
+                self.dmg_bgp_cpu_commit_current_line_start_palette,
+                x,
             );
+            let mixed_pixel = self.previous_scanline_mixed_pixels[x];
+            self.framebuffer[row_start + x] = self
+                .map_mixed_pixel_to_panel_shade_with_palette_override(
+                    mixed_pixel,
+                    PpuPaletteRegister::Bgp,
+                    palette,
+                );
         }
     }
 
-    fn dmg_bgp_cpu_commit_palette_for_visible_x(&self, start_palette: u8, x: usize) -> u8 {
+    pub(super) fn dmg_bgp_cpu_commit_palette_for_visible_x(
+        &self,
+        start_palette: u8,
+        x: usize,
+    ) -> u8 {
         let mut palette = start_palette;
         for write in &self.dmg_bgp_cpu_commit_current_line_writes {
             let effective_x = usize::from(write.visible_pixels_output).saturating_add(4);

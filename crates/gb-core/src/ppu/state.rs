@@ -1,12 +1,13 @@
+use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PpuPaletteRegister {
+pub(super) enum PpuPaletteRegister {
     Bgp,
     Obp0,
     Obp1,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode3TransferDotKind {
+pub(super) enum Mode3TransferDotKind {
     NotServed,
     ServedPreVisibleTransfer,
     ServedHiddenTransfer,
@@ -14,31 +15,31 @@ enum Mode3TransferDotKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Mode3TransferDot {
-    kind: Mode3TransferDotKind,
-    consumed_scx_discard: bool,
+pub(super) struct Mode3TransferDot {
+    pub(super) kind: Mode3TransferDotKind,
+    pub(super) consumed_scx_discard: bool,
 }
 
 impl Mode3TransferDot {
-    const fn not_served() -> Self {
+    pub(super) const fn not_served() -> Self {
         Self {
             kind: Mode3TransferDotKind::NotServed,
             consumed_scx_discard: false,
         }
     }
 
-    const fn served(kind: Mode3TransferDotKind, consumed_scx_discard: bool) -> Self {
+    pub(super) const fn served(kind: Mode3TransferDotKind, consumed_scx_discard: bool) -> Self {
         Self {
             kind,
             consumed_scx_discard,
         }
     }
 
-    fn is_served(self) -> bool {
+    pub(super) fn is_served(self) -> bool {
         !matches!(self.kind, Mode3TransferDotKind::NotServed)
     }
 
-    fn can_start_window_after_x0_service(self) -> bool {
+    pub(super) fn can_start_window_after_x0_service(self) -> bool {
         matches!(
             self.kind,
             Mode3TransferDotKind::ServedHiddenTransfer | Mode3TransferDotKind::ServedVisiblePixel
@@ -47,21 +48,21 @@ impl Mode3TransferDot {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum Mode3TransferPhase {
+pub(super) enum Mode3TransferPhase {
     #[default]
     Priming,
     Output,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode3TransferLane {
+pub(super) enum Mode3TransferLane {
     PreVisible,
     Hidden,
     Visible,
 }
 
 impl Mode3TransferLane {
-    const fn dot_kind(self) -> Mode3TransferDotKind {
+    pub(super) const fn dot_kind(self) -> Mode3TransferDotKind {
         match self {
             Self::PreVisible => Mode3TransferDotKind::ServedPreVisibleTransfer,
             Self::Hidden => Mode3TransferDotKind::ServedHiddenTransfer,
@@ -71,32 +72,32 @@ impl Mode3TransferLane {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode3TransferSourceWindow {
+pub(super) enum Mode3TransferSourceWindow {
     AbstractStartup,
     FifoBacked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Mode3TransferContext {
-    lane: Mode3TransferLane,
-    source_window: Mode3TransferSourceWindow,
+pub(super) struct Mode3TransferContext {
+    pub(super) lane: Mode3TransferLane,
+    pub(super) source_window: Mode3TransferSourceWindow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Mode3TransferServicePlan {
-    result_kind: Mode3TransferDotKind,
-    execution: Mode3TransferServiceExecution,
-    backing: Mode3TransferBacking,
+pub(super) struct Mode3TransferServicePlan {
+    pub(super) result_kind: Mode3TransferDotKind,
+    pub(super) execution: Mode3TransferServiceExecution,
+    pub(super) backing: Mode3TransferBacking,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Mode3CurrentTransfer {
-    context: Mode3TransferContext,
-    readiness: Mode3TransferReadiness,
+pub(super) struct Mode3CurrentTransfer {
+    pub(super) context: Mode3TransferContext,
+    pub(super) readiness: Mode3TransferReadiness,
 }
 
 impl Mode3CurrentTransfer {
-    const fn service_plan(self) -> Mode3TransferServicePlan {
+    pub(super) const fn service_plan(self) -> Mode3TransferServicePlan {
         match self.readiness {
             Mode3TransferReadiness::WaitingForFifo(plan) | Mode3TransferReadiness::Ready(plan) => {
                 plan
@@ -104,7 +105,7 @@ impl Mode3CurrentTransfer {
         }
     }
 
-    const fn can_start_obj_fetch_from_fifo_backed_transfer(
+    pub(super) const fn can_start_obj_fetch_from_fifo_backed_transfer(
         self,
         real_bg_fifo_pixel_ready: bool,
     ) -> bool {
@@ -114,13 +115,13 @@ impl Mode3CurrentTransfer {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode3TransferReadiness {
+pub(super) enum Mode3TransferReadiness {
     WaitingForFifo(Mode3TransferServicePlan),
     Ready(Mode3TransferServicePlan),
 }
 
 impl Mode3TransferReadiness {
-    const fn can_start_obj_fetch_from_fifo_backed_transfer(
+    pub(super) const fn can_start_obj_fetch_from_fifo_backed_transfer(
         self,
         real_bg_fifo_pixel_ready: bool,
     ) -> bool {
@@ -134,7 +135,7 @@ impl Mode3TransferReadiness {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode3TransferServiceExecution {
+pub(super) enum Mode3TransferServiceExecution {
     ConsumeScxDiscard,
     AdvancePreVisibleWithBgPop,
     AdvanceHiddenWithBgAndObjPop,
@@ -142,14 +143,14 @@ enum Mode3TransferServiceExecution {
 }
 
 impl Mode3TransferServiceExecution {
-    const fn can_start_obj_fetch_from_fifo_backed_transfer(self) -> bool {
+    pub(super) const fn can_start_obj_fetch_from_fifo_backed_transfer(self) -> bool {
         matches!(
             self,
             Self::AdvanceHiddenWithBgAndObjPop | Self::EmitVisiblePixel
         )
     }
 
-    const fn requires_effective_bg_fifo_pixel(self) -> bool {
+    pub(super) const fn requires_effective_bg_fifo_pixel(self) -> bool {
         matches!(
             self,
             Self::ConsumeScxDiscard
@@ -158,23 +159,23 @@ impl Mode3TransferServiceExecution {
         )
     }
 
-    const fn requires_real_bg_fifo_pixel(self) -> bool {
+    pub(super) const fn requires_real_bg_fifo_pixel(self) -> bool {
         matches!(self, Self::EmitVisiblePixel)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode3TransferBacking {
+pub(super) enum Mode3TransferBacking {
     Abstract,
     FifoBacked,
 }
 
 impl Mode3TransferServicePlan {
-    const fn requires_effective_bg_fifo_pixel(self) -> bool {
+    pub(super) const fn requires_effective_bg_fifo_pixel(self) -> bool {
         self.execution.requires_effective_bg_fifo_pixel() && !self.requires_real_bg_fifo_pixel()
     }
 
-    const fn requires_real_bg_fifo_pixel(self) -> bool {
+    pub(super) const fn requires_real_bg_fifo_pixel(self) -> bool {
         self.execution.requires_real_bg_fifo_pixel()
             || (matches!(self.backing, Mode3TransferBacking::FifoBacked)
                 && matches!(
@@ -184,7 +185,7 @@ impl Mode3TransferServicePlan {
                 ))
     }
 
-    const fn can_start_obj_fetch_from_fifo_backed_transfer(
+    pub(super) const fn can_start_obj_fetch_from_fifo_backed_transfer(
         self,
         real_bg_fifo_pixel_ready: bool,
     ) -> bool {
@@ -197,13 +198,16 @@ impl Mode3TransferServicePlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode3StartupSourceState {
+pub(super) enum Mode3StartupSourceState {
     EntryDelay { remaining: u8 },
     Abstract { remaining: u8 },
     FifoBacked,
 }
 
-const fn register_affects_pixel(register: PpuPaletteRegister, pixel: MixedPixel) -> bool {
+pub(super) const fn register_affects_pixel(
+    register: PpuPaletteRegister,
+    pixel: MixedPixel,
+) -> bool {
     matches!(
         (register, pixel.source),
         (PpuPaletteRegister::Bgp, MixedPixelSource::Background)
@@ -229,10 +233,10 @@ pub(crate) enum OamCorruptionEventKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct OamCorruptionController;
+pub(super) struct OamCorruptionController;
 
 impl OamCorruptionController {
-    fn apply(
+    pub(super) fn apply(
         self,
         console_model: ConsoleModel,
         current_row: u8,
@@ -259,7 +263,7 @@ impl OamCorruptionController {
         true
     }
 
-    fn apply_write_corruption(self, current_row: u8, oam_bytes: &mut [u8]) {
+    pub(super) fn apply_write_corruption(self, current_row: u8, oam_bytes: &mut [u8]) {
         if current_row == 0 {
             return;
         }
@@ -273,7 +277,7 @@ impl OamCorruptionController {
         copy_previous_row_tail(oam_bytes, current_row);
     }
 
-    fn apply_read_corruption(self, current_row: u8, oam_bytes: &mut [u8]) {
+    pub(super) fn apply_read_corruption(self, current_row: u8, oam_bytes: &mut [u8]) {
         if current_row == 0 {
             return;
         }
@@ -286,7 +290,7 @@ impl OamCorruptionController {
         copy_previous_row_tail(oam_bytes, current_row);
     }
 
-    fn apply_read_with_incdec_corruption(self, current_row: u8, oam_bytes: &mut [u8]) {
+    pub(super) fn apply_read_with_incdec_corruption(self, current_row: u8, oam_bytes: &mut [u8]) {
         if (4..(OAM_CORRUPTION_ROW_COUNT - 1)).contains(&current_row) {
             let row_minus_two = current_row - 2;
             let previous_row = current_row - 1;
@@ -307,33 +311,33 @@ impl OamCorruptionController {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct BgPipelineState {
-    fetcher: BgFetcherState,
-    push: BgPushState,
-    fill: BgFifoFillState,
-    fifo: VecDeque<u8>,
-    fifo_cached_pixels: VecDeque<Option<BgFifoPixelCached>>,
-    startup_fetch_seam: BgStartupFetchSeamState,
-    startup_fifo_placeholders: u8,
-    mode3_started: bool,
-    mode0_start_dot: u16,
-    initial_scx_discard: u8,
-    scx_discard_remaining: u8,
-    startup_source_state: Mode3StartupSourceState,
-    startup_pre_visible_transfer_dots_remaining: u8,
-    transfer_phase: Mode3TransferPhase,
-    current_transfer_x: u8,
-    visible_pixels_output: u8,
-    saw_right_edge_visible_same_x_cluster_this_line: bool,
-    window_wy_latch: bool,
-    window_force_x0_this_line: bool,
-    window_started_this_line: bool,
-    wx0_scx_shortening_applied: bool,
-    wx166_armed_this_line: bool,
+pub(super) struct BgPipelineState {
+    pub(super) fetcher: BgFetcherState,
+    pub(super) push: BgPushState,
+    pub(super) fill: BgFifoFillState,
+    pub(super) fifo: VecDeque<u8>,
+    pub(super) fifo_cached_pixels: VecDeque<Option<BgFifoPixelCached>>,
+    pub(super) startup_fetch_seam: BgStartupFetchSeamState,
+    pub(super) startup_fifo_placeholders: u8,
+    pub(super) mode3_started: bool,
+    pub(super) mode0_start_dot: u16,
+    pub(super) initial_scx_discard: u8,
+    pub(super) scx_discard_remaining: u8,
+    pub(super) startup_source_state: Mode3StartupSourceState,
+    pub(super) startup_pre_visible_transfer_dots_remaining: u8,
+    pub(super) transfer_phase: Mode3TransferPhase,
+    pub(super) current_transfer_x: u8,
+    pub(super) visible_pixels_output: u8,
+    pub(super) saw_right_edge_visible_same_x_cluster_this_line: bool,
+    pub(super) window_wy_latch: bool,
+    pub(super) window_force_x0_this_line: bool,
+    pub(super) window_started_this_line: bool,
+    pub(super) wx0_scx_shortening_applied: bool,
+    pub(super) wx166_armed_this_line: bool,
 }
 
 impl BgPipelineState {
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.fetcher.reset();
         self.push.reset();
         self.fill.reset();
@@ -358,7 +362,7 @@ impl BgPipelineState {
         self.wx166_armed_this_line = false;
     }
 
-    fn start_line(&mut self, scx: u8) {
+    pub(super) fn start_line(&mut self, scx: u8) {
         self.mode3_started = true;
         self.initial_scx_discard = scx & 0x07;
         self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
@@ -379,7 +383,7 @@ impl BgPipelineState {
         self.fetcher.start_background();
     }
 
-    fn prepare_window_line(&mut self, wy_latch: bool, force_x0_this_line: bool) {
+    pub(super) fn prepare_window_line(&mut self, wy_latch: bool, force_x0_this_line: bool) {
         self.window_wy_latch = wy_latch;
         self.window_force_x0_this_line = force_x0_this_line;
         self.window_started_this_line = false;
@@ -387,11 +391,11 @@ impl BgPipelineState {
         self.wx166_armed_this_line = false;
     }
 
-    fn extend_mode3_by_one_dot(&mut self) {
+    pub(super) fn extend_mode3_by_one_dot(&mut self) {
         self.mode0_start_dot += 1;
     }
 
-    fn startup_transfer_window_open(&self, mode3_dot: u16) -> bool {
+    pub(super) fn startup_transfer_window_open(&self, mode3_dot: u16) -> bool {
         if !self.mode3_started {
             return mode3_dot >= MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
         }
@@ -402,7 +406,7 @@ impl BgPipelineState {
         )
     }
 
-    fn consume_startup_transfer_entry_delay_dot(&mut self) -> bool {
+    pub(super) fn consume_startup_transfer_entry_delay_dot(&mut self) -> bool {
         if !self.mode3_started {
             return false;
         }
@@ -428,7 +432,10 @@ impl BgPipelineState {
         }
     }
 
-    fn current_startup_source_window(&self, mode3_dot: u16) -> Mode3TransferSourceWindow {
+    pub(super) fn current_startup_source_window(
+        &self,
+        mode3_dot: u16,
+    ) -> Mode3TransferSourceWindow {
         if !self.mode3_started {
             if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS {
                 return Mode3TransferSourceWindow::AbstractStartup;
@@ -446,7 +453,7 @@ impl BgPipelineState {
         }
     }
 
-    fn current_startup_transfer_lane(&self) -> Mode3TransferLane {
+    pub(super) fn current_startup_transfer_lane(&self) -> Mode3TransferLane {
         if self.startup_pre_visible_transfer_dots_remaining > 0 {
             Mode3TransferLane::PreVisible
         } else {
@@ -454,7 +461,7 @@ impl BgPipelineState {
         }
     }
 
-    fn consume_startup_source_window_dot(&mut self) {
+    pub(super) fn consume_startup_source_window_dot(&mut self) {
         if !self.mode3_started {
             return;
         }
@@ -477,21 +484,21 @@ impl BgPipelineState {
         }
     }
 
-    fn consume_startup_pre_visible_transfer_dot(&mut self) {
+    pub(super) fn consume_startup_pre_visible_transfer_dot(&mut self) {
         if self.startup_pre_visible_transfer_dots_remaining > 0 {
             self.startup_pre_visible_transfer_dots_remaining -= 1;
         }
     }
 
-    fn effective_fifo_is_empty(&self) -> bool {
+    pub(super) fn effective_fifo_is_empty(&self) -> bool {
         self.startup_fifo_placeholders == 0 && self.fifo.is_empty()
     }
 
-    fn fifo_contains_real_pixels(&self) -> bool {
+    pub(super) fn fifo_contains_real_pixels(&self) -> bool {
         self.fifo.len() > self.startup_fifo_placeholders as usize
     }
 
-    fn consume_effective_fifo_pixel(&mut self) -> Option<u8> {
+    pub(super) fn consume_effective_fifo_pixel(&mut self) -> Option<u8> {
         if self.startup_fifo_placeholders > 0 {
             self.startup_fifo_placeholders -= 1;
             self.pop_fifo_pixel().map(BgFifoPixel::color).or(Some(0))
@@ -500,22 +507,22 @@ impl BgPipelineState {
         }
     }
 
-    fn pop_real_fifo_pixel(&mut self) -> Option<u8> {
+    pub(super) fn pop_real_fifo_pixel(&mut self) -> Option<u8> {
         self.pop_fifo_pixel().map(BgFifoPixel::color)
     }
 
-    fn pop_fifo_pixel(&mut self) -> Option<BgFifoPixel> {
+    pub(super) fn pop_fifo_pixel(&mut self) -> Option<BgFifoPixel> {
         let color = self.fifo.pop_front()?;
         debug_assert!(self.fifo_cached_pixels.len() <= self.fifo.len() + 1);
         let cached = self.fifo_cached_pixels.pop_front().unwrap_or(None);
         Some(BgFifoPixel { color, cached })
     }
 
-    fn pop_visible_fifo_pixel(&mut self) -> Option<BgFifoPixel> {
+    pub(super) fn pop_visible_fifo_pixel(&mut self) -> Option<BgFifoPixel> {
         self.pop_fifo_pixel()
     }
 
-    fn mark_live_lcdc3_write_while_fifo_visible(&mut self, previous_lcdc: u8, lcdc: u8) {
+    pub(super) fn mark_live_lcdc3_write_while_fifo_visible(&mut self, previous_lcdc: u8, lcdc: u8) {
         for cached in self.fifo_cached_pixels.iter_mut().flatten() {
             cached
                 .cached
@@ -523,13 +530,13 @@ impl BgPipelineState {
         }
     }
 
-    fn push_dummy_fifo_pixels(&mut self, count: u8) {
+    pub(super) fn push_dummy_fifo_pixels(&mut self, count: u8) {
         self.fifo.extend(std::iter::repeat_n(0, count as usize));
         self.fifo_cached_pixels
             .extend(std::iter::repeat_n(None, count as usize));
     }
 
-    fn push_cached_slice_fifo_pixels(&mut self, cached: BgCachedSlice) {
+    pub(super) fn push_cached_slice_fifo_pixels(&mut self, cached: BgCachedSlice) {
         for pixel_index in 0..BG_TILE_WIDTH {
             self.fifo.push_back(bg_tile_pixel_value(
                 cached.tile_low,
@@ -541,7 +548,7 @@ impl BgPipelineState {
         }
     }
 
-    fn apply_wx0_scx_shortening(&mut self) {
+    pub(super) fn apply_wx0_scx_shortening(&mut self) {
         if self.wx0_scx_shortening_applied || self.mode0_start_dot == 0 {
             return;
         }
@@ -550,7 +557,7 @@ impl BgPipelineState {
         self.mode0_start_dot -= 1;
     }
 
-    fn peek_startup_background_fetch_origin(&self) -> BgCachedSliceOrigin {
+    pub(super) fn peek_startup_background_fetch_origin(&self) -> BgCachedSliceOrigin {
         match self.startup_fetch_seam {
             BgStartupFetchSeamState::PostAlignment {
                 next_startup_continuation_slice,
@@ -567,14 +574,14 @@ impl BgPipelineState {
         }
     }
 
-    fn startup_alignment_seed_pending(&self) -> bool {
+    pub(super) fn startup_alignment_seed_pending(&self) -> bool {
         matches!(
             self.startup_fetch_seam,
             BgStartupFetchSeamState::AlignmentSeedPending
         )
     }
 
-    fn startup_background_tilemap_uses_pipeline_snapshot(&self) -> bool {
+    pub(super) fn startup_background_tilemap_uses_pipeline_snapshot(&self) -> bool {
         match self.startup_fetch_seam {
             BgStartupFetchSeamState::Inactive => false,
             BgStartupFetchSeamState::AlignmentSeedPending => true,
@@ -585,7 +592,7 @@ impl BgPipelineState {
         }
     }
 
-    fn startup_background_tiledata_uses_pipeline_snapshot(&self) -> bool {
+    pub(super) fn startup_background_tiledata_uses_pipeline_snapshot(&self) -> bool {
         match self.startup_fetch_seam {
             BgStartupFetchSeamState::Inactive => false,
             BgStartupFetchSeamState::AlignmentSeedPending => true,
@@ -597,7 +604,7 @@ impl BgPipelineState {
         }
     }
 
-    fn startup_background_tileindex_reads_on_stage_one(&self) -> bool {
+    pub(super) fn startup_background_tileindex_reads_on_stage_one(&self) -> bool {
         match self.startup_fetch_seam {
             BgStartupFetchSeamState::Inactive | BgStartupFetchSeamState::AlignmentSeedPending => {
                 false
@@ -609,7 +616,7 @@ impl BgPipelineState {
         }
     }
 
-    fn begin_post_alignment_followup(&mut self) {
+    pub(super) fn begin_post_alignment_followup(&mut self) {
         self.startup_fetch_seam = BgStartupFetchSeamState::PostAlignment {
             first_real_push_skips_entry_delay: true,
             next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile2,
@@ -620,7 +627,7 @@ impl BgPipelineState {
         };
     }
 
-    fn take_startup_first_real_push_skip_entry_delay(&mut self) -> bool {
+    pub(super) fn take_startup_first_real_push_skip_entry_delay(&mut self) -> bool {
         let skip_entry_delay = match &mut self.startup_fetch_seam {
             BgStartupFetchSeamState::PostAlignment {
                 first_real_push_skips_entry_delay,
@@ -638,7 +645,7 @@ impl BgPipelineState {
         skip_entry_delay
     }
 
-    fn advance_startup_background_fetch_tile(&mut self) {
+    pub(super) fn advance_startup_background_fetch_tile(&mut self) {
         if let BgStartupFetchSeamState::PostAlignment {
             next_startup_continuation_slice,
             startup_continuation_visible_tiles_remaining,
@@ -665,7 +672,7 @@ impl BgPipelineState {
         self.maybe_finish_startup_fetch_seam();
     }
 
-    fn maybe_finish_startup_fetch_seam(&mut self) {
+    pub(super) fn maybe_finish_startup_fetch_seam(&mut self) {
         if let BgStartupFetchSeamState::PostAlignment {
             first_real_push_skips_entry_delay: false,
             next_startup_continuation_slice: _,
@@ -710,7 +717,7 @@ impl Default for BgPipelineState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum BgStartupFetchSeamState {
+pub(super) enum BgStartupFetchSeamState {
     #[default]
     Inactive,
     AlignmentSeedPending,
@@ -725,7 +732,7 @@ enum BgStartupFetchSeamState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum BgStartupContinuationSlice {
+pub(super) enum BgStartupContinuationSlice {
     #[default]
     None,
     VisibleTile2,
@@ -733,7 +740,7 @@ enum BgStartupContinuationSlice {
 }
 
 impl BgStartupContinuationSlice {
-    const fn next(self) -> Self {
+    pub(super) const fn next(self) -> Self {
         match self {
             Self::None => Self::None,
             Self::VisibleTile2 => Self::VisibleTile3,
@@ -743,37 +750,37 @@ impl BgStartupContinuationSlice {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct BgFetcherState {
-    source: PpuBgFetcherSource,
-    stage: PpuBgFetcherStage,
-    stage_dot: u8,
-    cached_origin: BgCachedSliceOrigin,
-    needs_live_tilemap_refetch_on_push: bool,
-    fetch_x: u16,
-    next_fetch_pixel: u16,
-    post_alignment_fetch_restart_delay_dots: u8,
-    window_tilemap_x: u8,
-    bg_resume_fetch_pixel: u16,
-    rewind_bg_resume_after_first_tile_index_dot: bool,
-    first_window_tile_after_activation: bool,
-    tile_map_address: u16,
-    tile_data_address: u16,
-    tile_index: u8,
-    tile_low: u8,
-    tile_high: u8,
+pub(super) struct BgFetcherState {
+    pub(super) source: PpuBgFetcherSource,
+    pub(super) stage: PpuBgFetcherStage,
+    pub(super) stage_dot: u8,
+    pub(super) cached_origin: BgCachedSliceOrigin,
+    pub(super) needs_live_tilemap_refetch_on_push: bool,
+    pub(super) fetch_x: u16,
+    pub(super) next_fetch_pixel: u16,
+    pub(super) post_alignment_fetch_restart_delay_dots: u8,
+    pub(super) window_tilemap_x: u8,
+    pub(super) bg_resume_fetch_pixel: u16,
+    pub(super) rewind_bg_resume_after_first_tile_index_dot: bool,
+    pub(super) first_window_tile_after_activation: bool,
+    pub(super) tile_map_address: u16,
+    pub(super) tile_data_address: u16,
+    pub(super) tile_index: u8,
+    pub(super) tile_low: u8,
+    pub(super) tile_high: u8,
 }
 
 impl BgFetcherState {
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         *self = Self::default();
     }
 
-    fn start_background(&mut self) {
+    pub(super) fn start_background(&mut self) {
         self.source = PpuBgFetcherSource::Background;
         self.start_common(0);
     }
 
-    fn start_window(&mut self, bg_resume_fetch_pixel: u16) {
+    pub(super) fn start_window(&mut self, bg_resume_fetch_pixel: u16) {
         self.source = PpuBgFetcherSource::Window;
         self.stage = PpuBgFetcherStage::WindowActivating;
         self.stage_dot = 0;
@@ -793,7 +800,7 @@ impl BgFetcherState {
         self.tile_high = 0;
     }
 
-    fn start_common(&mut self, bg_resume_fetch_pixel: u16) {
+    pub(super) fn start_common(&mut self, bg_resume_fetch_pixel: u16) {
         self.stage = PpuBgFetcherStage::TileIndex;
         self.stage_dot = 0;
         self.cached_origin = BgCachedSliceOrigin::Ordinary;
@@ -812,7 +819,7 @@ impl BgFetcherState {
         self.tile_high = 0;
     }
 
-    fn abort_window_to_background(&mut self) {
+    pub(super) fn abort_window_to_background(&mut self) {
         if self.source != PpuBgFetcherSource::Window {
             return;
         }
@@ -827,7 +834,11 @@ impl BgFetcherState {
         self.first_window_tile_after_activation = false;
     }
 
-    fn mark_live_lcdc3_write_for_current_background_fetch(&mut self, previous_lcdc: u8, lcdc: u8) {
+    pub(super) fn mark_live_lcdc3_write_for_current_background_fetch(
+        &mut self,
+        previous_lcdc: u8,
+        lcdc: u8,
+    ) {
         if self.source != PpuBgFetcherSource::Background
             || (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT == 0
             || !matches!(
@@ -847,22 +858,22 @@ impl BgFetcherState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct BgPushState {
-    pending: bool,
-    disposition: BgPushDisposition,
-    entry_delay_remaining: u8,
-    terminal_placeholder_tail_extra_hold_remaining: u8,
-    just_activated_window_tile: bool,
-    next_fetch_pixel: u16,
-    cached: BgCachedSlice,
+pub(super) struct BgPushState {
+    pub(super) pending: bool,
+    pub(super) disposition: BgPushDisposition,
+    pub(super) entry_delay_remaining: u8,
+    pub(super) terminal_placeholder_tail_extra_hold_remaining: u8,
+    pub(super) just_activated_window_tile: bool,
+    pub(super) next_fetch_pixel: u16,
+    pub(super) cached: BgCachedSlice,
 }
 
 impl BgPushState {
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         *self = Self::default();
     }
 
-    fn queue_from_fetcher(&mut self, fetcher: BgFetcherState) {
+    pub(super) fn queue_from_fetcher(&mut self, fetcher: BgFetcherState) {
         self.pending = true;
         self.disposition = BgPushDisposition::Ready;
         self.terminal_placeholder_tail_extra_hold_remaining = 0;
@@ -876,7 +887,7 @@ impl BgPushState {
         self.cached = BgCachedSlice::from_fetcher(fetcher);
     }
 
-    fn queue_startup_alignment_seed_from_fetcher(&mut self, fetcher: BgFetcherState) {
+    pub(super) fn queue_startup_alignment_seed_from_fetcher(&mut self, fetcher: BgFetcherState) {
         self.pending = true;
         self.disposition = BgPushDisposition::Ready;
         self.terminal_placeholder_tail_extra_hold_remaining = 0;
@@ -887,7 +898,7 @@ impl BgPushState {
             .with_origin(BgCachedSliceOrigin::StartupAlignmentSeed);
     }
 
-    fn interrupt_for_object_fetch(&mut self) {
+    pub(super) fn interrupt_for_object_fetch(&mut self) {
         if !self.pending {
             return;
         }
@@ -895,7 +906,7 @@ impl BgPushState {
         self.disposition = BgPushDisposition::InterruptedByObjectFetch;
     }
 
-    fn resume_after_object_fetch(&mut self) {
+    pub(super) fn resume_after_object_fetch(&mut self) {
         if self.pending && self.disposition == BgPushDisposition::InterruptedByObjectFetch {
             self.disposition = BgPushDisposition::Ready;
         }
@@ -903,26 +914,30 @@ impl BgPushState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct BgFifoFillState {
-    pending: bool,
-    startup_dummy_pixels: u8,
-    includes_real_tile_pixels: bool,
-    cached: BgCachedSlice,
+pub(super) struct BgFifoFillState {
+    pub(super) pending: bool,
+    pub(super) startup_dummy_pixels: u8,
+    pub(super) includes_real_tile_pixels: bool,
+    pub(super) cached: BgCachedSlice,
 }
 
 impl BgFifoFillState {
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         *self = Self::default();
     }
 
-    fn queue_from_push(&mut self, push: BgPushState) {
+    pub(super) fn queue_from_push(&mut self, push: BgPushState) {
         self.pending = true;
         self.startup_dummy_pixels = 0;
         self.includes_real_tile_pixels = true;
         self.cached = push.cached;
     }
 
-    fn queue_startup_alignment_from_push(&mut self, push: BgPushState, startup_dummy_pixels: u8) {
+    pub(super) fn queue_startup_alignment_from_push(
+        &mut self,
+        push: BgPushState,
+        startup_dummy_pixels: u8,
+    ) {
         self.pending = true;
         self.startup_dummy_pixels = startup_dummy_pixels;
         self.includes_real_tile_pixels = true;
@@ -931,7 +946,7 @@ impl BgFifoFillState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum BgCachedSliceOrigin {
+pub(super) enum BgCachedSliceOrigin {
     #[default]
     Ordinary,
     StartupAlignmentSeed,
@@ -940,14 +955,14 @@ enum BgCachedSliceOrigin {
 }
 
 impl BgCachedSliceOrigin {
-    const fn from_startup_continuation_slice(slice: BgStartupContinuationSlice) -> Self {
+    pub(super) const fn from_startup_continuation_slice(slice: BgStartupContinuationSlice) -> Self {
         match slice {
             BgStartupContinuationSlice::None => Self::Ordinary,
             slice => Self::StartupContinuation(slice),
         }
     }
 
-    const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
+    pub(super) const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
         match self {
             Self::StartupContinuation(slice) => slice,
             Self::Ordinary | Self::StartupAlignmentSeed | Self::StartupAlignmentFill => {
@@ -958,24 +973,24 @@ impl BgCachedSliceOrigin {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct BgCachedSlice {
-    source: PpuBgFetcherSource,
-    origin: BgCachedSliceOrigin,
-    fetch_x: u16,
-    same_cycle_live_tilemap_refetch_window_open: bool,
-    needs_live_tilemap_refetch: bool,
-    needs_live_tile_data_refetch: bool,
-    needs_live_tile_data_current_row_refetch: bool,
-    needs_live_tile_data_unsigned_reuse: bool,
-    tile_map_address: u16,
-    tile_data_address: u16,
-    tile_index: u8,
-    tile_low: u8,
-    tile_high: u8,
+pub(super) struct BgCachedSlice {
+    pub(super) source: PpuBgFetcherSource,
+    pub(super) origin: BgCachedSliceOrigin,
+    pub(super) fetch_x: u16,
+    pub(super) same_cycle_live_tilemap_refetch_window_open: bool,
+    pub(super) needs_live_tilemap_refetch: bool,
+    pub(super) needs_live_tile_data_refetch: bool,
+    pub(super) needs_live_tile_data_current_row_refetch: bool,
+    pub(super) needs_live_tile_data_unsigned_reuse: bool,
+    pub(super) tile_map_address: u16,
+    pub(super) tile_data_address: u16,
+    pub(super) tile_index: u8,
+    pub(super) tile_low: u8,
+    pub(super) tile_high: u8,
 }
 
 impl BgCachedSlice {
-    fn from_fetcher(fetcher: BgFetcherState) -> Self {
+    pub(super) fn from_fetcher(fetcher: BgFetcherState) -> Self {
         Self {
             source: fetcher.source,
             origin: fetcher.cached_origin,
@@ -993,31 +1008,31 @@ impl BgCachedSlice {
         }
     }
 
-    fn with_origin(mut self, origin: BgCachedSliceOrigin) -> Self {
+    pub(super) fn with_origin(mut self, origin: BgCachedSliceOrigin) -> Self {
         self.origin = origin;
         self
     }
 
-    const fn is_background(self) -> bool {
+    pub(super) const fn is_background(self) -> bool {
         matches!(self.source, PpuBgFetcherSource::Background)
     }
 
-    const fn is_startup_alignment_seed(self) -> bool {
+    pub(super) const fn is_startup_alignment_seed(self) -> bool {
         matches!(self.origin, BgCachedSliceOrigin::StartupAlignmentSeed)
     }
 
-    const fn queued_fill_origin(self) -> BgCachedSliceOrigin {
+    pub(super) const fn queued_fill_origin(self) -> BgCachedSliceOrigin {
         match self.origin {
             BgCachedSliceOrigin::StartupAlignmentSeed => BgCachedSliceOrigin::StartupAlignmentFill,
             origin => origin,
         }
     }
 
-    const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
+    pub(super) const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
         self.origin.startup_continuation_slice()
     }
 
-    const fn is_second_or_third_visible_post_startup_push(self) -> bool {
+    pub(super) const fn is_second_or_third_visible_post_startup_push(self) -> bool {
         matches!(
             (self.startup_continuation_slice(), self.fetch_x),
             (BgStartupContinuationSlice::VisibleTile2, x) if x == BG_TILE_WIDTH as u16
@@ -1027,7 +1042,7 @@ impl BgCachedSlice {
         )
     }
 
-    fn mark_live_register_write_while_push_pending(
+    pub(super) fn mark_live_register_write_while_push_pending(
         &mut self,
         address: u16,
         previous_lcdc: u8,
@@ -1044,15 +1059,15 @@ impl BgCachedSlice {
             && (entry_delay_active
                 || self.same_cycle_live_tilemap_refetch_window_open
                 || self.is_second_or_third_visible_post_startup_push());
-        let needs_tile_data_refetch = address == 0xFF40 && tile_data_selector_changed
-            || address == 0xFF42;
+        let needs_tile_data_refetch =
+            address == 0xFF40 && tile_data_selector_changed || address == 0xFF42;
 
         self.needs_live_tilemap_refetch |= needs_tilemap_refetch;
         self.needs_live_tile_data_refetch |= needs_tile_data_refetch;
         self.needs_live_tile_data_current_row_refetch |= address == 0xFF42;
     }
 
-    fn mark_live_register_write_while_fill_pending(
+    pub(super) fn mark_live_register_write_while_fill_pending(
         &mut self,
         address: u16,
         previous_lcdc: u8,
@@ -1074,14 +1089,14 @@ impl BgCachedSlice {
         }
 
         let tile_data_selector_changed = (previous_lcdc ^ lcdc) & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
-        let needs_tile_data_refetch = address == 0xFF40 && tile_data_selector_changed
-            || address == 0xFF42;
+        let needs_tile_data_refetch =
+            address == 0xFF40 && tile_data_selector_changed || address == 0xFF42;
 
         self.needs_live_tile_data_refetch |= needs_tile_data_refetch;
         self.needs_live_tile_data_current_row_refetch |= address == 0xFF42;
     }
 
-    fn mark_live_lcdc3_write_while_fifo_visible(&mut self, previous_lcdc: u8, lcdc: u8) {
+    pub(super) fn mark_live_lcdc3_write_while_fifo_visible(&mut self, previous_lcdc: u8, lcdc: u8) {
         if !self.is_background()
             || (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT == 0
             || !self.is_second_or_third_visible_post_startup_push()
@@ -1094,13 +1109,13 @@ impl BgCachedSlice {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct BgFifoPixelCached {
-    cached: BgCachedSlice,
-    pixel_index: u8,
+pub(super) struct BgFifoPixelCached {
+    pub(super) cached: BgCachedSlice,
+    pub(super) pixel_index: u8,
 }
 
 impl BgFifoPixelCached {
-    const fn new(cached: BgCachedSlice, pixel_index: u8) -> Self {
+    pub(super) const fn new(cached: BgCachedSlice, pixel_index: u8) -> Self {
         Self {
             cached,
             pixel_index,
@@ -1109,18 +1124,18 @@ impl BgFifoPixelCached {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct BgFifoPixel {
-    color: u8,
-    cached: Option<BgFifoPixelCached>,
+pub(super) struct BgFifoPixel {
+    pub(super) color: u8,
+    pub(super) cached: Option<BgFifoPixelCached>,
 }
 
 impl BgFifoPixel {
-    const fn color(self) -> u8 {
+    pub(super) const fn color(self) -> u8 {
         self.color
     }
 }
 
-fn recompute_live_background_cached_slice(
+pub(super) fn recompute_live_background_cached_slice(
     mut cached: BgCachedSlice,
     vram: &VramBusView<'_>,
     lcdc: u8,
@@ -1188,14 +1203,14 @@ fn recompute_live_background_cached_slice(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum BgPushDisposition {
+pub(super) enum BgPushDisposition {
     #[default]
     Ready,
     InterruptedByObjectFetch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BgPushDotResult {
+pub(super) enum BgPushDotResult {
     NotReady,
     EntryDelay,
     WaitingForEmptyFifo,
@@ -1205,7 +1220,7 @@ enum BgPushDotResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BgPushDotOwnership {
+pub(super) enum BgPushDotOwnership {
     NotReady,
     EntryDelay,
     WaitingForEmptyFifo,
@@ -1215,18 +1230,18 @@ enum BgPushDotOwnership {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Mode3DotArbitration {
-    bg_transfer_can_advance: bool,
-    obj_fetch_can_start_from_fifo_backed_transfer: bool,
-    obj_fetch_can_start_from_queued_bg_fill: bool,
+pub(super) struct Mode3DotArbitration {
+    pub(super) bg_transfer_can_advance: bool,
+    pub(super) obj_fetch_can_start_from_fifo_backed_transfer: bool,
+    pub(super) obj_fetch_can_start_from_queued_bg_fill: bool,
 }
 
 impl Mode3DotArbitration {
-    const fn can_serve_bg_transfer(self) -> bool {
+    pub(super) const fn can_serve_bg_transfer(self) -> bool {
         self.bg_transfer_can_advance
     }
 
-    const fn can_start_obj_fetch(self, start_source: ObjFetchStartSource) -> bool {
+    pub(super) const fn can_start_obj_fetch(self, start_source: ObjFetchStartSource) -> bool {
         match start_source {
             ObjFetchStartSource::FifoBackedTransfer => {
                 self.obj_fetch_can_start_from_fifo_backed_transfer
@@ -1239,21 +1254,21 @@ impl Mode3DotArbitration {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ObjFetchStartSource {
+pub(super) enum ObjFetchStartSource {
     FifoBackedTransfer,
     PushCachedBgFetch,
     QueuedBgFill,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct WindowState {
-    wy_triggered: bool,
-    pending_wx166_next_line: bool,
-    window_line_counter: u8,
+pub(super) struct WindowState {
+    pub(super) wy_triggered: bool,
+    pub(super) pending_wx166_next_line: bool,
+    pub(super) window_line_counter: u8,
 }
 
 impl WindowState {
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.wy_triggered = false;
         self.pending_wx166_next_line = false;
         self.window_line_counter = 0;
@@ -1261,23 +1276,23 @@ impl WindowState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct StatState {
-    irq_line: bool,
-    lcd_disabled_lyc_coincidence: bool,
+pub(super) struct StatState {
+    pub(super) irq_line: bool,
+    pub(super) lcd_disabled_lyc_coincidence: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct ObjPipelineState {
-    fifo: VecDeque<ObjPixel>,
-    fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
-    pending_sprite_slots: VecDeque<u8>,
-    pending_match_x: Option<u8>,
-    late_metadata_word: Option<(u8, u8)>,
-    fetch: ObjFetchState,
+pub(super) struct ObjPipelineState {
+    pub(super) fifo: VecDeque<ObjPixel>,
+    pub(super) fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
+    pub(super) pending_sprite_slots: VecDeque<u8>,
+    pub(super) pending_match_x: Option<u8>,
+    pub(super) late_metadata_word: Option<(u8, u8)>,
+    pub(super) fetch: ObjFetchState,
 }
 
 impl ObjPipelineState {
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.fifo.clear();
         self.fetched_sprite_slots.fill(false);
         self.pending_sprite_slots.clear();
@@ -1286,7 +1301,7 @@ impl ObjPipelineState {
         self.fetch = ObjFetchState::default();
     }
 
-    fn start_fetch(&mut self, sprite_slot: u8, sprite: PpuSelectedSprite) {
+    pub(super) fn start_fetch(&mut self, sprite_slot: u8, sprite: PpuSelectedSprite) {
         self.fetch.stage = PpuObjFetcherStage::Startup;
         self.fetch.stage_dot = 0;
         self.fetch.sprite_slot = sprite_slot;
@@ -1298,15 +1313,15 @@ impl ObjPipelineState {
         self.fetch.tile_high = 0;
     }
 
-    fn mark_fetched(&mut self, sprite_slot: u8) {
+    pub(super) fn mark_fetched(&mut self, sprite_slot: u8) {
         self.fetched_sprite_slots[sprite_slot as usize] = true;
     }
 
-    fn has_fetched(&self, sprite_slot: u8) -> bool {
+    pub(super) fn has_fetched(&self, sprite_slot: u8) -> bool {
         self.fetched_sprite_slots[sprite_slot as usize]
     }
 
-    fn queue_fetch_hit(&mut self, sprite_slot: u8, owner: ObjHitOwnership) {
+    pub(super) fn queue_fetch_hit(&mut self, sprite_slot: u8, owner: ObjHitOwnership) {
         if self.has_fetched(sprite_slot)
             || self
                 .pending_sprite_slots
@@ -1326,7 +1341,7 @@ impl ObjPipelineState {
         self.pending_sprite_slots.push_back(sprite_slot);
     }
 
-    fn pop_pending_fetch_hit(&mut self) -> Option<u8> {
+    pub(super) fn pop_pending_fetch_hit(&mut self) -> Option<u8> {
         let sprite_slot = self.pending_sprite_slots.pop_front();
         if self.pending_sprite_slots.is_empty() {
             self.pending_match_x = None;
@@ -1334,16 +1349,16 @@ impl ObjPipelineState {
         sprite_slot
     }
 
-    fn pending_hits_own_current_dot(&self, current_owner: ObjHitOwnership) -> bool {
+    pub(super) fn pending_hits_own_current_dot(&self, current_owner: ObjHitOwnership) -> bool {
         self.pending_match_x == Some(current_owner.match_x) && !self.pending_sprite_slots.is_empty()
     }
 
-    fn clear_pending_fetch_hits(&mut self) {
+    pub(super) fn clear_pending_fetch_hits(&mut self) {
         self.pending_sprite_slots.clear();
         self.pending_match_x = None;
     }
 
-    fn clear_pending_fetch_hits_if_stale(&mut self, current_owner: ObjHitOwnership) {
+    pub(super) fn clear_pending_fetch_hits_if_stale(&mut self, current_owner: ObjHitOwnership) {
         if self.fetch.stage != PpuObjFetcherStage::Idle {
             return;
         }
@@ -1355,42 +1370,42 @@ impl ObjPipelineState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ObjHitOwnership {
-    match_x: u8,
-    phase: ObjHitPhase,
+pub(super) struct ObjHitOwnership {
+    pub(super) match_x: u8,
+    pub(super) phase: ObjHitPhase,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ObjHitPhase {
+pub(super) enum ObjHitPhase {
     PreVisible,
     Hidden,
     Visible,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct ObjFetchState {
-    stage: PpuObjFetcherStage,
-    stage_dot: u8,
-    sprite_slot: u8,
-    sprite: Option<PpuSelectedSprite>,
-    resolved_sprite: Option<PpuSelectedSprite>,
-    cancelled: bool,
-    count_terminal_push_dot: bool,
-    tile_low: u8,
-    tile_high: u8,
+pub(super) struct ObjFetchState {
+    pub(super) stage: PpuObjFetcherStage,
+    pub(super) stage_dot: u8,
+    pub(super) sprite_slot: u8,
+    pub(super) sprite: Option<PpuSelectedSprite>,
+    pub(super) resolved_sprite: Option<PpuSelectedSprite>,
+    pub(super) cancelled: bool,
+    pub(super) count_terminal_push_dot: bool,
+    pub(super) tile_low: u8,
+    pub(super) tile_high: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ObjPixel {
-    color: u8,
-    palette_obp1: bool,
-    bg_over_obj: bool,
-    sprite_x: u8,
-    oam_index: u8,
+pub(super) struct ObjPixel {
+    pub(super) color: u8,
+    pub(super) palette_obp1: bool,
+    pub(super) bg_over_obj: bool,
+    pub(super) sprite_x: u8,
+    pub(super) oam_index: u8,
 }
 
 impl ObjPixel {
-    const fn transparent() -> Self {
+    pub(super) const fn transparent() -> Self {
         Self {
             color: 0,
             palette_obp1: false,
@@ -1400,26 +1415,26 @@ impl ObjPixel {
         }
     }
 
-    const fn is_transparent(self) -> bool {
+    pub(super) const fn is_transparent(self) -> bool {
         self.color == 0
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MixedPixel {
-    color: u8,
-    source: MixedPixelSource,
+pub(super) struct MixedPixel {
+    pub(super) color: u8,
+    pub(super) source: MixedPixelSource,
 }
 
 impl MixedPixel {
-    const fn background(color: u8) -> Self {
+    pub(super) const fn background(color: u8) -> Self {
         Self {
             color,
             source: MixedPixelSource::Background,
         }
     }
 
-    const fn object(color: u8, palette_obp1: bool) -> Self {
+    pub(super) const fn object(color: u8, palette_obp1: bool) -> Self {
         Self {
             color,
             source: MixedPixelSource::Object { palette_obp1 },
@@ -1428,56 +1443,56 @@ impl MixedPixel {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MixedPixelSource {
+pub(super) enum MixedPixelSource {
     Background,
     Object { palette_obp1: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Mode2ScanState {
-    scanned_entries: u8,
-    selected_sprite_count: u8,
-    selected_sprites: [Option<PpuSelectedSprite>; MAX_SELECTED_SPRITES_PER_LINE],
-    latched_mode2_yx_word: Option<(u8, u8)>,
+pub(super) struct Mode2ScanState {
+    pub(super) scanned_entries: u8,
+    pub(super) selected_sprite_count: u8,
+    pub(super) selected_sprites: [Option<PpuSelectedSprite>; MAX_SELECTED_SPRITES_PER_LINE],
+    pub(super) latched_mode2_yx_word: Option<(u8, u8)>,
 }
 
 impl Mode2ScanState {
-    fn reset_scanline(&mut self) {
+    pub(super) fn reset_scanline(&mut self) {
         self.scanned_entries = 0;
         self.selected_sprite_count = 0;
         self.selected_sprites.fill(None);
     }
 
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.reset_scanline();
         self.latched_mode2_yx_word = None;
     }
 
-    fn scanned_entries(&self) -> u8 {
+    pub(super) fn scanned_entries(&self) -> u8 {
         self.scanned_entries
     }
 
-    fn increment_scanned_entries(&mut self) {
+    pub(super) fn increment_scanned_entries(&mut self) {
         self.scanned_entries += 1;
     }
 
-    fn latch_mode2_yx_word(&mut self, y: u8, x: u8) {
+    pub(super) fn latch_mode2_yx_word(&mut self, y: u8, x: u8) {
         self.latched_mode2_yx_word = Some((y, x));
     }
 
-    fn latched_mode2_yx_word(&self) -> Option<(u8, u8)> {
+    pub(super) fn latched_mode2_yx_word(&self) -> Option<(u8, u8)> {
         self.latched_mode2_yx_word
     }
 
-    fn selected_sprite_count(&self) -> u8 {
+    pub(super) fn selected_sprite_count(&self) -> u8 {
         self.selected_sprite_count
     }
 
-    fn is_full(&self) -> bool {
+    pub(super) fn is_full(&self) -> bool {
         self.selected_sprite_count as usize == MAX_SELECTED_SPRITES_PER_LINE
     }
 
-    fn push(&mut self, sprite: PpuSelectedSprite) {
+    pub(super) fn push(&mut self, sprite: PpuSelectedSprite) {
         if self.is_full() {
             return;
         }
@@ -1487,7 +1502,7 @@ impl Mode2ScanState {
         self.selected_sprite_count += 1;
     }
 
-    fn selected_sprites_snapshot(&self) -> Vec<PpuSelectedSprite> {
+    pub(super) fn selected_sprites_snapshot(&self) -> Vec<PpuSelectedSprite> {
         self.selected_sprites
             .iter()
             .take(self.selected_sprite_count as usize)
@@ -1496,7 +1511,7 @@ impl Mode2ScanState {
             .collect()
     }
 
-    fn selected_sprite(&self, slot: u8) -> Option<PpuSelectedSprite> {
+    pub(super) fn selected_sprite(&self, slot: u8) -> Option<PpuSelectedSprite> {
         self.selected_sprites
             .get(slot as usize)
             .and_then(|sprite| *sprite)
