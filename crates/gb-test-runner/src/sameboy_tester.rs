@@ -407,7 +407,6 @@ mod tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -420,11 +419,6 @@ mod tests {
                 .expect("system clock should be after unix epoch")
                 .as_nanos()
         ))
-    }
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
@@ -519,7 +513,7 @@ mod tests {
 
     #[test]
     fn ensure_tester_binary_reports_missing_root_and_missing_explicit_binary() {
-        let _guard = env_lock().lock().expect("env lock should be lockable");
+        let _guard = crate::test_support::lock_env();
         let old_sameboy_root = env::var_os(SAMEBOY_ROOT_ENV_VAR);
         let old_tester_binary = env::var_os(SAMEBOY_TESTER_BIN_ENV_VAR);
         remove_env_var(SAMEBOY_ROOT_ENV_VAR);
@@ -552,7 +546,7 @@ mod tests {
 
     #[test]
     fn ensure_tester_binary_can_use_env_and_build_if_missing() {
-        let _guard = env_lock().lock().expect("env lock should be lockable");
+        let _guard = crate::test_support::lock_env();
         let temp_dir = unique_temp_dir("ensure-binary");
         fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
 
@@ -806,7 +800,7 @@ mod tests {
 
     #[test]
     fn ensure_tester_binary_reports_make_failures() {
-        let _guard = env_lock().lock().expect("env lock should be lockable");
+        let _guard = crate::test_support::lock_env();
         let temp_dir = unique_temp_dir("build-failure");
         let sameboy_root = temp_dir.join("SameBoy");
         let tester_path = sameboy_root.join(default_sameboy_tester_relative_path());

@@ -365,7 +365,6 @@ mod tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use gb_core::StartupMode;
@@ -438,15 +437,8 @@ mod tests {
         }
     }
 
-    fn path_guard() -> &'static Mutex<()> {
-        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-        GUARD.get_or_init(|| Mutex::new(()))
-    }
-
     fn with_tool_path<T>(tool_root: &Path, action: impl FnOnce() -> T) -> T {
-        let _guard = path_guard()
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
+        let _guard = crate::test_support::lock_env();
         let previous = env::var_os("PATH");
         let mut paths = vec![tool_root.to_path_buf()];
         if let Some(path) = previous.clone() {

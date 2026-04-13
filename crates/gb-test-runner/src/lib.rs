@@ -11,6 +11,8 @@ mod run_sameboy_case_bundle_cli;
 mod run_sameboy_tester_cli;
 mod sameboy_case_bundle;
 mod sameboy_tester;
+#[cfg(test)]
+mod test_support;
 mod workspace_paths;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -2269,7 +2271,6 @@ mod tests {
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const TEST_ROM_MINIMUM_LEN: usize = 32 * 1024;
@@ -2284,11 +2285,6 @@ mod tests {
                 .expect("system clock should be after unix epoch")
                 .as_nanos()
         ))
-    }
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
@@ -3203,7 +3199,7 @@ mod tests {
             absolute
         );
 
-        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+        let _guard = crate::test_support::lock_env();
         let previous_test_root = env::var_os(TEST_ROM_ROOT_ENV_VAR);
         remove_env_var(TEST_ROM_ROOT_ENV_VAR);
 
