@@ -41,27 +41,19 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
-- Work stopped before closing the main oracle debt. Still-open families are:
-  - remaining `Mode 3` live-write families: `m3_lcdc_bg_map_change`, `m3_lcdc_tile_sel_change`, `m3_lcdc_tile_sel_win_change`, `m3_scy_change`
-- Last stable external measurements for the still-open live-write sentinels are: `m3_lcdc_bg_map_change: 674`, `m3_lcdc_tile_sel_change: 1410`, `m3_lcdc_tile_sel_win_change: 1232`, `m3_scy_change: 7819`.
-- Visible-FIFO cached-slice ownership is explicit and survives `fill.pending -> FIFO` plus startup placeholders. Broad visible-FIFO retargeting was already tried and reverted: it regressed the external oracles instead of moving them. Treat that as settled evidence that the remaining debt is not solved by broad late visible-pop rereads.
-- The important remaining left-edge/live-write evidence is stable:
-  - `LCDC.3` late-tail ownership around `VisibleTile2/VisibleTile3` is already covered by repo-local tests and still does not move the external oracle.
-  - `LCDC.4` / `SCY` visible-FIFO retargeting regressed the target families and was reverted.
-  - current first mismatches stay at `m3_lcdc_bg_map_change -> x = 12, y = 0`, `m3_lcdc_tile_sel_change -> x = 0, y = 10`, `m3_scy_change -> x = 1, y = 0`.
-  - working hypothesis remains: the unresolved debt sits earlier, around startup dummy / first-fetch / restart-lane behavior, not in another broad visible-FIFO retargeting pass.
-- The early visible-raster baseline `daid/ppu_scanline_bgp.gb` is now green again. The winning slice stayed narrow:
-  - keep the DMG CPU-path `BGP` panel delay (`4` visible BG pixels) for same-line output
-  - additionally repaint the previous visible boundary line when the next visible line starts a new per-scanline `BGP` row family, using that next-line `BGP` sequence over the previous line's already-composed mixed pixels
-  - keep that seam panel-only and DMG-only; raw `current_scanline_pixels`, fetcher timing, and the shared `Mode 3` ownership model stay unchanged
-  - hard regression gates remained green through the closure: `hacktix/strikethrough.gb`, `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb`, and `cargo test -p gb-core ppu -- --nocapture`
-- `PpuSnapshot` and the scheduler trace already export the useful re-entry state: transfer lane, source window, backing, readiness, startup seam, and visible-FIFO cached-slice metadata. Do not add new broad tracing until one of those existing fields fails to discriminate the next oracle.
-- The Donkey Kong desktop gate remains stable after the refactor slices that landed the new ownership model. No current evidence says the remaining open PPU debt is the source of a desktop slowdown regression.
-- `hacktix/strikethrough.gb`, `blargg oam_bug/4`, `blargg oam_bug/5`, and `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` are green again. The `intr_2_mode0_timing_sprites` closure came from narrower CPU-visible `STAT` publication seams for the ten-sprite step-8 staggered families, not from another broad `Mode 3` runtime rewrite.
-- The repo-local wide gate is aligned again: `cargo test -p gb-core ppu -- --nocapture` is green after pruning stale startup/right-edge same-`X` local oracles and retuning the remaining expectations to the current contract.
-- **Highest-value next step:** the early raster baseline is closed again, so move the active frontier back to the still-red live-write families (`m3_lcdc_bg_map_change`, `m3_lcdc_tile_sel_change`, `m3_lcdc_tile_sel_win_change`, `m3_scy_change`) with `daid/ppu_scanline_bgp.gb`, `intr_2_mode0_timing_sprites.gb`, and `strikethrough.gb` preserved as hard regression gates.
-- The new DMG maturity ladder in `PPU.md` is now monotonic up to the live-write tranche. With `daid/ppu_scanline_bgp.gb` green again, the first strict ladder blocker moves to the hi-fi `Mode 3` group at `order 27`.
-- The DMG OAM-corruption path now matches the hardware/document baseline more closely too: trigger classification is address-family / trigger-family based, while the PPU remains the owner of the live `Mode 2` mode-and-row gate. That restores the last-row and first-scanline windows in `blargg oam_bug/4-scanline_timing.gb` and `oam_bug/5-timing_bug.gb` without reopening the phase-4 synthetic OAM-corruption fixtures.
+- Active frontier is back on the remaining `Mode 3` live-write families: `m3_lcdc_bg_map_change`, `m3_lcdc_tile_sel_change`, `m3_lcdc_tile_sel_win_change`, `m3_scy_change`.
+- Last stable external measurements for those sentinels are: `m3_lcdc_bg_map_change: 674`, `m3_lcdc_tile_sel_change: 1410`, `m3_lcdc_tile_sel_win_change: 1232`, `m3_scy_change: 7819`.
+- The main broad failure modes are already ruled out:
+  - broad visible-FIFO cached-slice retargeting regressed the external oracles instead of moving them
+  - `LCDC.4` / `SCY` visible-FIFO retargeting regressed the target families and was reverted
+  - current first mismatches still stay at `m3_lcdc_bg_map_change -> x = 12, y = 0`, `m3_lcdc_tile_sel_change -> x = 0, y = 10`, `m3_scy_change -> x = 1, y = 0`
+  - working hypothesis remains: the unresolved debt sits earlier, around startup dummy / first-fetch / restart-lane behavior, not in another broad visible-FIFO retargeting pass
+- The key green regression gates are now stable again:
+  - `daid/ppu_scanline_bgp.gb` is closed through the narrow DMG CPU-path `BGP` previous-line boundary repaint seam; keep that seam panel-only and DMG-only
+  - `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` is closed through narrow CPU-visible `STAT` publication seams for the ten-sprite step-8 staggered families, not through another broad `Mode 3` rewrite
+  - `hacktix/strikethrough.gb`, `blargg oam_bug/4`, `blargg oam_bug/5`, and `cargo test -p gb-core ppu -- --nocapture` are green again
+- Practical maturity: the DMG ladder is now monotonic up to the live-write tranche; the first strict blocker moves to `order 27`.
+- **Highest-value next step:** keep `daid/ppu_scanline_bgp.gb`, `intr_2_mode0_timing_sprites.gb`, and `strikethrough.gb` as hard regression gates and move the active frontier back to the still-red live-write families.
 - Current ladder snapshot:
 
 | order | case | current state | likely gap | next action |
@@ -81,7 +73,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 - [PPU][MEALYBUG-MODE3-LIVE-WRITES] Still-red follow-up families:
   - Low-`X` sprite/live-OBJ timing: `m3_bgp_change_sprites`, remaining `m3_obp0_change` delta.
-  - Window/live-`LCDC.5` timing: `m2_win_en_toggle`, `m3_window_timing*`, `m3_lcdc_win_en_change_multiple*`, `m3_wx_4_change*`, `m3_wx_5_change`, `m3_wx_6_change`.
+  - Window/live-`LCDC.5` timing: `m3_window_timing*`, `m3_lcdc_win_en_change_multiple*`, `m3_wx_4_change*`, `m3_wx_5_change`, `m3_wx_6_change`.
   - Live `LCDC` map/enable/tile-select: `m3_lcdc_bg_en_change`, `m3_lcdc_bg_map_change`, `m3_lcdc_win_map_change`, `m3_lcdc_tile_sel_change*`, `m3_lcdc_obj_en_change*`.
   - `SCX/SCY` live-scroll: `m3_scx_high_5_bits`, `m3_scx_low_3_bits`, `m3_scy_change`.
   - Live sprite-size: `m3_lcdc_obj_size_change`, `m3_lcdc_obj_size_change_scx`.
@@ -101,10 +93,10 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Re-entry rules
 
 - Resume from one failing family at a time; prefer the smallest oracle-backed reproduction that distinguishes the suspected same-T-cycle window.
-- Capture baseline and final `/.roms/test/test-report.md` for any exploratory rerun, especially `mealybug-tearoom-dmg-curated`, `acid-dmg-curated`, and `mooneye-acceptance-dmg-curated`.
-- Treat cached background slices already in `Push`, `fill.pending`, or the visible FIFO as a likely suspect only for the remaining live-write families. Do not let that heuristic override a better active oracle from the still-red mealybug live-write sentinels; keep `daid/ppu_scanline_bgp.gb` as a regression gate, not as the primary frontier.
-- Do not reopen generic startup realignment, broad tilemap rereads, or broad cached-slice retargeting before a new trace proves the fault starts earlier than the cached-slice seam.
-- When a candidate fix touches `STAT`, LCD restart, or sprite-coupled mode boundaries, rerun the narrow mooneye LCD timing slice before trusting any localized mealybug improvement.
+- Capture baseline and final `/.roms/test/test-report.md` for exploratory reruns, especially `mealybug-tearoom-dmg-curated`, `acid-dmg-curated`, and `mooneye-acceptance-dmg-curated`.
+- Keep `daid/ppu_scanline_bgp.gb`, `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb`, and `hacktix/strikethrough.gb` as hard regression gates while touching panel-path palette behavior, sprite-coupled mode boundaries, or remaining live-write families.
+- Do not reopen generic startup realignment, broad tilemap rereads, broad cached-slice / visible-FIFO retargeting, or isolated "strict push" experiments before a new oracle shows the fault starts there.
+- When a candidate fix touches `STAT`, LCD restart, or sprite-coupled mode boundaries, rerun the narrow mooneye LCD timing slice before trusting any localized improvement.
 
 ### Phase 5 — Input and simple peripherals
 

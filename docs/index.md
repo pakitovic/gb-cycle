@@ -37,8 +37,7 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 - `ROADMAP.md` plus `roadmap/*.md` own implementation sequencing and phase context; they do not redefine subsystem behavior.
 - `TODO.md` owns the active TODO ledger for concrete remaining work across phases.
 - `hardware/*.md` own subsystem-specific behavior, MMIO semantics, timing expectations, and subsystem-specific validation detail.
-- `hardware/PPU-REIMPLEMENTATION.md` owns repo-local migration and compatibility notes for PPU rewrites; it does not override `hardware/PPU.md`.
-- `hardware/PPU-REFACTOR-PLAN.md` owns the temporary execution plan for the current PPU refactor and Donkey Kong no-regression gate; it does not override `hardware/PPU.md`, `hardware/PPU-REIMPLEMENTATION.md`, or `TODO.md`.
+- `hardware/PPU-REIMPLEMENTATION.md` owns repo-local migration constraints, seam-specific guardrails, and regression watch points for PPU rewrites; it does not override `hardware/PPU.md`.
 - `hardware/BOOT-ROM.md` owns startup-path semantics such as real boot, skip boot, `FF50` handoff, and post-boot snapshot policy.
 
 When guidance overlaps, the more specific document wins:
@@ -70,7 +69,6 @@ Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work,
 - `hardware/TIMER.md`
 - `hardware/PPU.md`
 - `hardware/PPU-REIMPLEMENTATION.md`
-- `hardware/PPU-REFACTOR-PLAN.md`
 - `hardware/DMA.md`
 - `hardware/APU.md`
 - `hardware/JOYPAD.md`
