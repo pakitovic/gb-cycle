@@ -323,7 +323,12 @@ impl Ppu {
         (palette >> (u32::from(color & 0x03) * 2)) & 0x03
     }
 
-    fn write_dmg_palette_register(&mut self, register: PpuPaletteRegister, value: u8) {
+    fn write_dmg_palette_register(
+        &mut self,
+        register: PpuPaletteRegister,
+        value: u8,
+        source: PpuRegisterWriteSource,
+    ) {
         let previous_visible = match register {
             PpuPaletteRegister::Bgp => self.visible_registers.bgp,
             PpuPaletteRegister::Obp0 => self
@@ -340,7 +345,24 @@ impl Ppu {
             PpuPaletteRegister::Obp1 => self.obp1 = Some(value),
         }
 
-        if let Some(retroactive_pixels) = self.dmg_palette_conflict_retroactive_pixels(register) {
+        let bgp_cpu_commit_delay_active = register == PpuPaletteRegister::Bgp
+            && source == PpuRegisterWriteSource::CpuMmioCommit
+            && matches!(
+                self.current_raster_state(),
+                PpuRasterState::Active {
+                    mode: PpuAccessMode::Drawing,
+                    ..
+                }
+            );
+
+        if bgp_cpu_commit_delay_active {
+            self.dmg_bgp_cpu_commit_output_palette_override = Some(self.pixel_pipeline_bgp());
+            self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 4;
+        }
+
+        if let Some(retroactive_pixels) = self.dmg_palette_conflict_retroactive_pixels(register)
+            && !bgp_cpu_commit_delay_active
+        {
             self.retroactively_recolor_recent_pixels(
                 register,
                 previous_visible | value,

@@ -8253,6 +8253,45 @@ fn dmg_bgp_write_during_mode3_recolors_recent_bg_pixels_with_transient_then_fina
 }
 
 #[test]
+fn cpu_mmio_bgp_write_during_mode3_keeps_the_previous_palette_for_four_visible_pixels() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = 200;
+    ppu.bg_pipeline_state.visible_pixels_output = 25;
+    ppu.bg_pipeline_state.current_transfer_x = 33;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    for _ in 0..5 {
+        ppu.bg_pipeline_state.fifo.push_back(1);
+    }
+    ppu.current_scanline_mixed_pixels[21..25].fill(MixedPixel::background(1));
+    ppu.framebuffer[21..25].fill(1);
+
+    ppu.write_register_with_source(0xFF47, 0xAA, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(&ppu.framebuffer()[21..25], &[1, 1, 1, 1]);
+
+    for _ in 0..5 {
+        ppu.sync_pipeline_registers();
+        ppu.sync_visible_registers();
+        let _ = ppu.advance_mode3_output_phase();
+    }
+
+    assert_eq!(&ppu.framebuffer()[25..30], &[1, 1, 1, 1, 2]);
+}
+
+#[test]
 fn dmg_bgp_write_in_early_hblank_recolors_only_last_three_visible_bg_pixels() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {

@@ -1291,6 +1291,9 @@ impl Ppu {
 
     fn pixel_pipeline_bgp(&self) -> u8 {
         if self.console_model.is_dmg_family() {
+            if let Some(override_palette) = self.dmg_bgp_cpu_commit_output_palette_override {
+                return override_palette;
+            }
             self.visible_registers.bgp | self.pipeline_registers.bgp
         } else {
             self.visible_registers.bgp
@@ -1410,7 +1413,10 @@ impl Ppu {
     fn stat_write_quirk_active(&self) -> bool {
         self.console_model.is_dmg_family()
             && self.is_lcd_enabled()
-            && (self.current_access_mode() != PpuAccessMode::Drawing
+            && (matches!(
+                self.current_access_mode(),
+                PpuAccessMode::HBlank | PpuAccessMode::OamScan
+            )
                 || self.live_lyc_coincidence())
     }
 

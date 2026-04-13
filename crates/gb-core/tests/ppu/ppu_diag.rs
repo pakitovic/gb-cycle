@@ -7,6 +7,585 @@
 
 use super::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DaidPpuScanlineBgpLineObservation {
+    raw_pixels_prefix: [u8; 32],
+    panel_pixels_prefix: [u8; 32],
+    visible_bgp_writes: Vec<(u16, u8, u8)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DaidPpuScanlineBgpDotObservation {
+    ly: u8,
+    line_dot: u16,
+    mode: PpuAccessMode,
+    bgp: u8,
+    visible_bgp: u8,
+    pipeline_bgp: u8,
+    bgp_cpu_commit_output_palette_override: Option<u8>,
+    bgp_cpu_commit_output_delay_pixels_remaining: u8,
+    visible_pixels_output: u8,
+    panel_pixels_prefix: [u8; 32],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DaidPpuScanlineBgpCpuPhaseObservation {
+    ly: u8,
+    line_dot: u16,
+    pc: u16,
+    hl: u16,
+    execution_state: String,
+    ff47: u8,
+    visible_pixels_output: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DaidPpuScanlineBgpWakeObservation {
+    tag: &'static str,
+    ly: u8,
+    line_dot: u16,
+    mode: PpuAccessMode,
+    pc: u16,
+    hl: u16,
+    execution_state: String,
+    ime: bool,
+    delayed_ime_enable: bool,
+    interrupt_flags: u8,
+    interrupt_enable: u8,
+    ff47: u8,
+    visible_pixels_output: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DaidPpuScanlineBgpFullLineObservation {
+    mixed_colors: Vec<u8>,
+    raw_pixels: Vec<u8>,
+    panel_pixels: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DaidPpuScanlineBgpBoundaryRowFamilyObservation {
+    ly: u8,
+    visible_bgp_row_values: Vec<u8>,
+    visible_bgp_hl_range: Option<(u16, u16)>,
+    panel_runs: Vec<(u8, u8, u8)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DaidPpuScanlineBgpFrameBoundaryObservation {
+    completed_frame: usize,
+    ly: u8,
+    panel_runs: Vec<(u8, u8, u8)>,
+}
+
+const DAID_SCANLINE_BGP_ACCEPTED_LY23_PANEL_PREFIXES: [[u8; 32]; 3] = [
+    [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        1, 1,
+    ],
+    [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
+        1, 1,
+    ],
+    [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1,
+        1, 1,
+    ],
+];
+
+fn load_daid_ppu_scanline_bgp_machine() -> Machine<gb_core::TraceSummaryBuffer> {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/daid/ppu_scanline_bgp.gb");
+    let rom = std::fs::read(&rom_path).expect("daid ppu_scanline_bgp ROM should be present");
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("diagnostic ROM should load");
+    machine
+}
+
+fn sample_daid_ppu_scanline_bgp_line(target_ly: u8) -> DaidPpuScanlineBgpLineObservation {
+    sample_daid_ppu_scanline_bgp_lines(&[target_ly])
+        .remove(&target_ly)
+        .expect("target line should be sampled")
+}
+
+fn sample_daid_ppu_scanline_bgp_full_line(target_ly: u8) -> DaidPpuScanlineBgpFullLineObservation {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let snapshot = machine.ppu().snapshot();
+
+        if snapshot.ly != 0 || snapshot.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps == 1 && snapshot.ly == target_ly && snapshot.mode == PpuAccessMode::HBlank {
+            let framebuffer_row_start = snapshot.ly as usize * 160;
+            return DaidPpuScanlineBgpFullLineObservation {
+                mixed_colors: snapshot.current_scanline_mixed_colors,
+                raw_pixels: snapshot.current_scanline_pixels,
+                panel_pixels: machine.ppu().framebuffer()
+                    [framebuffer_row_start..framebuffer_row_start + 160]
+                    .to_vec(),
+            };
+        }
+    }
+
+    panic!("timed out before sampling requested full daid ppu_scanline_bgp line");
+}
+
+fn sample_daid_ppu_scanline_bgp_lines(
+    target_lys: &[u8],
+) -> std::collections::BTreeMap<u8, DaidPpuScanlineBgpLineObservation> {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut visible_bgp_writes = std::collections::BTreeMap::<u8, Vec<(u16, u8, u8)>>::new();
+    let mut observations = std::collections::BTreeMap::new();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let snapshot = machine.ppu().snapshot();
+
+        if snapshot.ly != 0 || snapshot.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF47)
+            && wraps == 1
+            && targets.contains(&snapshot.ly)
+        {
+            visible_bgp_writes.entry(snapshot.ly).or_default().push((
+                snapshot.line_dot,
+                snapshot.visible_pixels_output,
+                machine.read_bus(0xFF47),
+            ));
+        }
+
+        if wraps == 1
+            && targets.contains(&snapshot.ly)
+            && snapshot.mode == PpuAccessMode::HBlank
+            && !observations.contains_key(&snapshot.ly)
+        {
+            let mut raw_pixels_prefix = [0_u8; 32];
+            raw_pixels_prefix.copy_from_slice(&snapshot.current_scanline_pixels[..32]);
+
+            let framebuffer_row_start = snapshot.ly as usize * 160;
+            let mut panel_pixels_prefix = [0_u8; 32];
+            panel_pixels_prefix.copy_from_slice(
+                &machine.ppu().framebuffer()[framebuffer_row_start..framebuffer_row_start + 32],
+            );
+
+            observations.insert(
+                snapshot.ly,
+                DaidPpuScanlineBgpLineObservation {
+                    raw_pixels_prefix,
+                    panel_pixels_prefix,
+                    visible_bgp_writes: visible_bgp_writes.remove(&snapshot.ly).unwrap_or_default(),
+                },
+            );
+            if observations.len() == targets.len() {
+                return observations;
+            }
+        }
+    }
+
+    panic!("timed out before sampling requested daid ppu_scanline_bgp lines");
+}
+
+fn sample_daid_ppu_scanline_bgp_dots(
+    targets: &[(u8, u16)],
+) -> Vec<DaidPpuScanlineBgpDotObservation> {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+    let mut observations = Vec::new();
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let snapshot = machine.ppu().snapshot();
+
+        if snapshot.ly != 0 || snapshot.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps != 1 {
+            continue;
+        }
+
+        if targets
+            .iter()
+            .any(|&(ly, line_dot)| ly == snapshot.ly && line_dot == snapshot.line_dot)
+        {
+            let framebuffer_row_start = snapshot.ly as usize * 160;
+            let mut panel_pixels_prefix = [0_u8; 32];
+            panel_pixels_prefix.copy_from_slice(
+                &machine.ppu().framebuffer()[framebuffer_row_start..framebuffer_row_start + 32],
+            );
+            observations.push(DaidPpuScanlineBgpDotObservation {
+                ly: snapshot.ly,
+                line_dot: snapshot.line_dot,
+                mode: snapshot.mode,
+                bgp: snapshot.bgp,
+                visible_bgp: snapshot.visible_bgp,
+                pipeline_bgp: snapshot.pipeline_bgp,
+                bgp_cpu_commit_output_palette_override: snapshot
+                    .dmg_bgp_cpu_commit_output_palette_override,
+                bgp_cpu_commit_output_delay_pixels_remaining: snapshot
+                    .dmg_bgp_cpu_commit_output_delay_pixels_remaining,
+                visible_pixels_output: snapshot.visible_pixels_output,
+                panel_pixels_prefix,
+            });
+        }
+
+        if observations.len() == targets.len() {
+            break;
+        }
+    }
+
+    observations
+}
+
+fn sample_daid_ppu_scanline_bgp_cpu_phase_window() -> Vec<DaidPpuScanlineBgpCpuPhaseObservation> {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+    let mut observations = Vec::new();
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu = machine.cpu().snapshot();
+
+        if ppu.ly != 0 || ppu.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps != 1 {
+            continue;
+        }
+
+        let line_boundary =
+            (22..=24).contains(&ppu.ly) && matches!(ppu.line_dot, 0 | 1 | 84 | 85 | 100);
+        let ff47_write = machine.cpu().last_address_event().is_some_and(|event| {
+            event.kind == CpuAddressEventKind::Write && event.access_address == Some(0xFF47)
+        }) && (22..=24).contains(&ppu.ly);
+
+        if line_boundary || ff47_write {
+            observations.push(DaidPpuScanlineBgpCpuPhaseObservation {
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                pc: cpu.registers.pc,
+                hl: u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l),
+                execution_state: format!("{:?}", cpu.execution_state),
+                ff47: machine.read_bus(0xFF47),
+                visible_pixels_output: ppu.visible_pixels_output,
+            });
+        }
+
+        if ppu.ly == 24 && ppu.mode == PpuAccessMode::HBlank && ppu.line_dot >= 252 {
+            break;
+        }
+    }
+
+    observations
+}
+
+fn sample_daid_ppu_scanline_bgp_line0_wake_and_first_loop_row()
+-> Vec<DaidPpuScanlineBgpWakeObservation> {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+    let mut armed = false;
+    let mut saw_wake = false;
+    let mut saw_service = false;
+    let mut writes_after_wake = 0usize;
+    let mut previous_execution_state = machine.cpu().execution_state();
+    let mut observations = Vec::new();
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu = machine.cpu().snapshot();
+        let interrupts = machine.interrupts().snapshot();
+        let ff47_write = machine.cpu().last_address_event().is_some_and(|event| {
+            event.kind == CpuAddressEventKind::Write && event.access_address == Some(0xFF47)
+        });
+
+        if ppu.ly != 0 || ppu.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps > 1 {
+            break;
+        }
+
+        if !armed
+            && wraps == 0
+            && ppu.ly >= 145
+            && ppu.mode == PpuAccessMode::VBlank
+            && cpu.execution_state == gb_core::CpuExecutionState::Halted
+        {
+            armed = true;
+            observations.push(DaidPpuScanlineBgpWakeObservation {
+                tag: "armed",
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                pc: cpu.registers.pc,
+                hl: u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l),
+                execution_state: format!("{:?}", cpu.execution_state),
+                ime: cpu.ime,
+                delayed_ime_enable: cpu.delayed_ime_enable,
+                interrupt_flags: interrupts.interrupt_flags,
+                interrupt_enable: interrupts.interrupt_enable,
+                ff47: machine.read_bus(0xFF47),
+                visible_pixels_output: ppu.visible_pixels_output,
+            });
+        }
+
+        if !armed {
+            previous_execution_state = cpu.execution_state;
+            continue;
+        }
+
+        if !saw_wake
+            && previous_execution_state == gb_core::CpuExecutionState::Halted
+            && cpu.execution_state != gb_core::CpuExecutionState::Halted
+        {
+            saw_wake = true;
+            observations.push(DaidPpuScanlineBgpWakeObservation {
+                tag: "wake",
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                pc: cpu.registers.pc,
+                hl: u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l),
+                execution_state: format!("{:?}", cpu.execution_state),
+                ime: cpu.ime,
+                delayed_ime_enable: cpu.delayed_ime_enable,
+                interrupt_flags: interrupts.interrupt_flags,
+                interrupt_enable: interrupts.interrupt_enable,
+                ff47: machine.read_bus(0xFF47),
+                visible_pixels_output: ppu.visible_pixels_output,
+            });
+        }
+
+        if saw_wake
+            && !saw_service
+            && matches!(
+                cpu.execution_state,
+                gb_core::CpuExecutionState::ServiceInterrupt { .. }
+            )
+        {
+            saw_service = true;
+            observations.push(DaidPpuScanlineBgpWakeObservation {
+                tag: "service",
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                pc: cpu.registers.pc,
+                hl: u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l),
+                execution_state: format!("{:?}", cpu.execution_state),
+                ime: cpu.ime,
+                delayed_ime_enable: cpu.delayed_ime_enable,
+                interrupt_flags: interrupts.interrupt_flags,
+                interrupt_enable: interrupts.interrupt_enable,
+                ff47: machine.read_bus(0xFF47),
+                visible_pixels_output: ppu.visible_pixels_output,
+            });
+        }
+
+        if saw_wake && ff47_write {
+            writes_after_wake += 1;
+            observations.push(DaidPpuScanlineBgpWakeObservation {
+                tag: "ff47",
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                mode: ppu.mode,
+                pc: cpu.registers.pc,
+                hl: u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l),
+                execution_state: format!("{:?}", cpu.execution_state),
+                ime: cpu.ime,
+                delayed_ime_enable: cpu.delayed_ime_enable,
+                interrupt_flags: interrupts.interrupt_flags,
+                interrupt_enable: interrupts.interrupt_enable,
+                ff47: machine.read_bus(0xFF47),
+                visible_pixels_output: ppu.visible_pixels_output,
+            });
+            if writes_after_wake >= 12 {
+                break;
+            }
+        }
+
+        previous_execution_state = cpu.execution_state;
+    }
+
+    observations
+}
+
+fn summarize_panel_runs(panel_pixels: &[u8]) -> Vec<(u8, u8, u8)> {
+    if panel_pixels.is_empty() {
+        return Vec::new();
+    }
+
+    let mut runs = Vec::new();
+    let mut start = 0usize;
+    let mut current = panel_pixels[0];
+
+    for (index, &pixel) in panel_pixels.iter().enumerate().skip(1) {
+        if pixel != current {
+            runs.push((start as u8, (index - 1) as u8, current));
+            start = index;
+            current = pixel;
+        }
+    }
+
+    runs.push((start as u8, (panel_pixels.len() - 1) as u8, current));
+    runs
+}
+
+fn sample_daid_ppu_scanline_bgp_boundary_row_family_transition(
+    target_lys: &[u8],
+) -> Vec<DaidPpuScanlineBgpBoundaryRowFamilyObservation> {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut visible_bgp_row_values = std::collections::BTreeMap::<u8, Vec<u8>>::new();
+    let mut visible_bgp_hls = std::collections::BTreeMap::<u8, Vec<u16>>::new();
+    let mut completed = std::collections::BTreeSet::new();
+    let mut observations = Vec::new();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu = machine.cpu().snapshot();
+
+        if ppu.ly != 0 || ppu.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps != 1 {
+            continue;
+        }
+
+        if machine.cpu().last_address_event().is_some_and(|event| {
+            event.kind == CpuAddressEventKind::Write
+                && event.access_address == Some(0xFF47)
+                && targets.contains(&ppu.ly)
+        }) {
+            visible_bgp_row_values
+                .entry(ppu.ly)
+                .or_default()
+                .push(machine.read_bus(0xFF47));
+            visible_bgp_hls
+                .entry(ppu.ly)
+                .or_default()
+                .push(u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l));
+        }
+
+        if targets.contains(&ppu.ly)
+            && ppu.mode == PpuAccessMode::HBlank
+            && completed.insert(ppu.ly)
+        {
+            let framebuffer_row_start = ppu.ly as usize * 160;
+            let panel_pixels =
+                &machine.ppu().framebuffer()[framebuffer_row_start..framebuffer_row_start + 160];
+            let hls = visible_bgp_hls.remove(&ppu.ly).unwrap_or_default();
+            let hl_range = hls.first().copied().zip(hls.last().copied());
+            observations.push(DaidPpuScanlineBgpBoundaryRowFamilyObservation {
+                ly: ppu.ly,
+                visible_bgp_row_values: visible_bgp_row_values.remove(&ppu.ly).unwrap_or_default(),
+                visible_bgp_hl_range: hl_range,
+                panel_runs: summarize_panel_runs(panel_pixels),
+            });
+            if observations.len() == targets.len() {
+                observations.sort_by_key(|observation| observation.ly);
+                return observations;
+            }
+        }
+    }
+
+    panic!("timed out before sampling requested daid ppu_scanline_bgp boundary row families");
+}
+
+fn sample_daid_ppu_scanline_bgp_completed_frame_boundary_lines(
+    frame_count: usize,
+    target_lys: &[u8],
+) -> Vec<DaidPpuScanlineBgpFrameBoundaryObservation> {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut observations = Vec::new();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+
+        if ppu.ly != 0 || ppu.line_dot != 0 {
+            saw_progress = true;
+            continue;
+        }
+
+        if !saw_progress {
+            continue;
+        }
+
+        for &target_ly in target_lys {
+            let framebuffer_row_start = target_ly as usize * 160;
+            let panel_pixels =
+                &machine.ppu().framebuffer()[framebuffer_row_start..framebuffer_row_start + 160];
+            observations.push(DaidPpuScanlineBgpFrameBoundaryObservation {
+                completed_frame: wraps,
+                ly: target_ly,
+                panel_runs: summarize_panel_runs(panel_pixels),
+            });
+        }
+
+        wraps += 1;
+        if wraps == frame_count {
+            return observations;
+        }
+    }
+
+    panic!("timed out before sampling completed daid ppu_scanline_bgp frames");
+}
+
 #[test]
 #[ignore = "diag: mooneye intr_2_oam_ok_timing seam"]
 fn mode2_to_oam_release_probe_matches_mooneye_counts() {
@@ -284,6 +863,492 @@ fn daid_ppu_scanline_bgp_logs_first_frame_ff47_writes() {
         saw_progress,
         "diagnostic should advance past the initial dot"
     );
+}
+
+#[test]
+#[ignore = "diag: first stable-frame FF47 write chronology for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_logs_first_stable_frame_write_chronology() {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+    let mut writes = Vec::new();
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu = machine.cpu().snapshot();
+
+        if ppu.ly != 0 || ppu.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps != 1 {
+            continue;
+        }
+
+        if machine.cpu().last_address_event().is_some_and(|event| {
+            event.kind == CpuAddressEventKind::Write && event.access_address == Some(0xFF47)
+        }) {
+            writes.push((
+                ppu.ly,
+                ppu.line_dot,
+                ppu.visible_pixels_output,
+                cpu.registers.pc,
+                u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l),
+                machine.read_bus(0xFF47),
+            ));
+            if writes.len() >= 40 {
+                break;
+            }
+        }
+    }
+
+    println!("first_stable_frame_ff47_writes={writes:#?}");
+}
+
+#[test]
+#[ignore = "diag: wrap-boundary FF47 chronology for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_logs_wrap_boundary_write_chronology() {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+    let mut writes = Vec::new();
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu = machine.cpu().snapshot();
+
+        if ppu.ly != 0 || ppu.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        let near_boundary = matches!(wraps, 0 | 1)
+            && (ppu.ly >= 152 || ppu.ly <= 1)
+            && machine.cpu().last_address_event().is_some_and(|event| {
+                event.kind == CpuAddressEventKind::Write && event.access_address == Some(0xFF47)
+            });
+        if near_boundary {
+            writes.push((
+                wraps,
+                ppu.ly,
+                ppu.line_dot,
+                ppu.visible_pixels_output,
+                cpu.registers.pc,
+                u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l),
+                machine.read_bus(0xFF47),
+            ));
+        }
+
+        if wraps == 1 && ppu.ly == 1 && ppu.line_dot >= 228 {
+            break;
+        }
+    }
+
+    println!("wrap_boundary_ff47_writes={writes:#?}");
+}
+
+#[test]
+#[ignore = "diag: vblank handoff chronology for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_logs_vblank_handoff() {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+    let mut events = Vec::new();
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu = machine.cpu().snapshot();
+        let interrupts = machine.interrupts().snapshot();
+        let ff47_write = machine.cpu().last_address_event().is_some_and(|event| {
+            event.kind == CpuAddressEventKind::Write && event.access_address == Some(0xFF47)
+        });
+
+        if ppu.ly != 0 || ppu.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps != 0 {
+            continue;
+        }
+
+        let in_window = matches!(ppu.ly, 143..=153)
+            && (ff47_write
+                || ppu.line_dot == 0
+                || ppu.line_dot == 84
+                || ppu.line_dot == 228
+                || matches!(
+                    cpu.execution_state,
+                    gb_core::CpuExecutionState::ServiceInterrupt { .. }
+                        | gb_core::CpuExecutionState::Halted
+                ));
+        if in_window {
+            events.push((
+                ppu.ly,
+                ppu.line_dot,
+                ppu.mode,
+                cpu.registers.pc,
+                format!("{:?}", cpu.execution_state),
+                cpu.ime,
+                cpu.delayed_ime_enable,
+                interrupts.interrupt_flags,
+                interrupts.interrupt_enable,
+                ff47_write.then(|| machine.read_bus(0xFF47)),
+            ));
+        }
+
+        if ppu.ly == 153 && ppu.line_dot >= 448 {
+            break;
+        }
+    }
+
+    println!("vblank_handoff_events={events:#?}");
+}
+
+#[test]
+#[ignore = "diag: local ly23 BGP phase oracle for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_ly23_phase_oracle() {
+    let line15 = sample_daid_ppu_scanline_bgp_line(15);
+    let line23 = sample_daid_ppu_scanline_bgp_line(23);
+
+    assert_eq!(
+        line15.raw_pixels_prefix, line23.raw_pixels_prefix,
+        "ly15 raw={:?} ly23 raw={:?}",
+        line15.raw_pixels_prefix, line23.raw_pixels_prefix
+    );
+    assert_eq!(
+        line15.visible_bgp_writes, line23.visible_bgp_writes,
+        "ly15 writes={:?} ly23 writes={:?}",
+        line15.visible_bgp_writes, line23.visible_bgp_writes
+    );
+    assert_ne!(
+        line15.panel_pixels_prefix, line23.panel_pixels_prefix,
+        "ly15 panel={:?} ly23 panel={:?}",
+        line15.panel_pixels_prefix, line23.panel_pixels_prefix
+    );
+    assert!(
+        DAID_SCANLINE_BGP_ACCEPTED_LY23_PANEL_PREFIXES
+            .iter()
+            .any(|expected| expected == &line23.panel_pixels_prefix),
+        "ly23 panel={:?} accepted={:?}",
+        line23.panel_pixels_prefix,
+        DAID_SCANLINE_BGP_ACCEPTED_LY23_PANEL_PREFIXES
+    );
+}
+
+#[test]
+#[ignore = "diag: ly22-24 BGP carry state around daid boundary lines"]
+fn daid_ppu_scanline_bgp_logs_boundary_carry_state() {
+    let targets = [
+        (22, 228),
+        (22, 252),
+        (23, 0),
+        (23, 1),
+        (23, 84),
+        (23, 85),
+        (23, 100),
+        (24, 0),
+        (24, 84),
+    ];
+    let observations = sample_daid_ppu_scanline_bgp_dots(&targets);
+    println!("boundary_carry_state={observations:#?}");
+}
+
+#[test]
+#[ignore = "diag: block-end BGP carry state on daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_logs_block_end_bgp_carry_state() {
+    let targets = [
+        (7, 0),
+        (7, 1),
+        (7, 2),
+        (7, 3),
+        (7, 84),
+        (7, 85),
+        (8, 0),
+        (8, 1),
+        (8, 2),
+        (8, 3),
+        (8, 84),
+        (8, 85),
+        (23, 0),
+        (23, 1),
+        (23, 2),
+        (23, 3),
+        (23, 84),
+        (23, 85),
+        (24, 0),
+        (24, 1),
+        (24, 2),
+        (24, 3),
+        (24, 84),
+        (24, 85),
+    ];
+    let observations = sample_daid_ppu_scanline_bgp_dots(&targets);
+    println!("block_end_bgp_carry_state={observations:#?}");
+}
+
+#[test]
+#[ignore = "diag: ly22-24 CPU phase around daid BGP loop"]
+fn daid_ppu_scanline_bgp_logs_boundary_cpu_phase() {
+    let observations = sample_daid_ppu_scanline_bgp_cpu_phase_window();
+    println!("boundary_cpu_phase={observations:#?}");
+}
+
+#[test]
+#[ignore = "diag: block-end family summary for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_logs_block_end_family() {
+    let target_lys = [
+        6_u8, 7, 8, 22, 23, 24, 38, 39, 40, 54, 55, 56, 78, 79, 80, 86, 87, 88, 94, 95, 96, 102,
+        103, 104, 118, 119, 120, 134, 135, 136,
+    ];
+    let observations = sample_daid_ppu_scanline_bgp_lines(&target_lys);
+    let mut summary = Vec::new();
+
+    for &ly in &[7_u8, 23, 39, 55, 79, 87, 95, 103, 119, 135] {
+        let previous = observations
+            .get(&(ly - 1))
+            .expect("previous line should be sampled");
+        let current = observations
+            .get(&ly)
+            .expect("current line should be sampled");
+        let next = observations
+            .get(&(ly + 1))
+            .expect("next line should be sampled");
+        let panel_matches_previous = current.panel_pixels_prefix == previous.panel_pixels_prefix;
+        let panel_matches_next = current.panel_pixels_prefix == next.panel_pixels_prefix;
+        let raw_matches_previous = current.raw_pixels_prefix == previous.raw_pixels_prefix;
+        let raw_matches_next = current.raw_pixels_prefix == next.raw_pixels_prefix;
+        let writes_match_previous = current.visible_bgp_writes == previous.visible_bgp_writes;
+        let writes_match_next = current.visible_bgp_writes == next.visible_bgp_writes;
+        summary.push((
+            ly,
+            panel_matches_previous,
+            panel_matches_next,
+            raw_matches_previous,
+            raw_matches_next,
+            writes_match_previous,
+            writes_match_next,
+            current.panel_pixels_prefix,
+        ));
+    }
+
+    println!("block_end_family={summary:#?}");
+}
+
+#[test]
+#[ignore = "diag: line15-vs-line23 BGP register phase at visible writes"]
+fn daid_ppu_scanline_bgp_logs_line15_vs_line23_write_phase() {
+    let targets = [
+        (15, 100),
+        (15, 101),
+        (15, 116),
+        (15, 117),
+        (15, 132),
+        (15, 133),
+        (23, 100),
+        (23, 101),
+        (23, 116),
+        (23, 117),
+        (23, 132),
+        (23, 133),
+    ];
+    let observations = sample_daid_ppu_scanline_bgp_dots(&targets);
+    println!("line15_vs_line23_write_phase={observations:#?}");
+}
+
+#[test]
+#[ignore = "diag: line15-vs-line23 CPU HL progression at FF47 writes"]
+fn daid_ppu_scanline_bgp_logs_line15_vs_line23_hl_progression() {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+    let mut observations = Vec::new();
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu = machine.cpu().snapshot();
+
+        if ppu.ly != 0 || ppu.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps != 1 {
+            continue;
+        }
+
+        if machine.cpu().last_address_event().is_some_and(|event| {
+            event.kind == CpuAddressEventKind::Write
+                && event.access_address == Some(0xFF47)
+                && matches!(ppu.ly, 15 | 23)
+        }) {
+            observations.push(DaidPpuScanlineBgpCpuPhaseObservation {
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                pc: cpu.registers.pc,
+                hl: u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l),
+                execution_state: format!("{:?}", cpu.execution_state),
+                ff47: machine.read_bus(0xFF47),
+                visible_pixels_output: ppu.visible_pixels_output,
+            });
+        }
+
+        if observations.len() >= 20 {
+            break;
+        }
+    }
+
+    println!("line15_vs_line23_hl_progression={observations:#?}");
+}
+
+#[test]
+#[ignore = "diag: boundary row-family transition for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_logs_boundary_row_family_transition() {
+    let observations =
+        sample_daid_ppu_scanline_bgp_boundary_row_family_transition(&[22, 23, 24, 30, 31, 32]);
+    println!("boundary_row_family_transition={observations:#?}");
+}
+
+#[test]
+#[ignore = "diag: completed-frame boundary lines across daid frames"]
+fn daid_ppu_scanline_bgp_logs_completed_frame_boundary_lines_across_frames() {
+    let observations =
+        sample_daid_ppu_scanline_bgp_completed_frame_boundary_lines(4, &[7, 23, 39, 55]);
+    println!("completed_frame_boundary_lines={observations:#?}");
+}
+
+#[test]
+#[ignore = "diag: first block boundary row-family transition for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_logs_first_boundary_row_family_transition() {
+    let observations =
+        sample_daid_ppu_scanline_bgp_boundary_row_family_transition(&[6, 7, 8, 14, 15, 16]);
+    println!("first_boundary_row_family_transition={observations:#?}");
+}
+
+#[test]
+#[ignore = "diag: FF47 row values and HL progression for daid lines 15, 23, 31"]
+fn daid_ppu_scanline_bgp_logs_line15_23_31_ff47_rows() {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+    let mut observations = Vec::new();
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let ppu = machine.ppu().snapshot();
+        let cpu = machine.cpu().snapshot();
+
+        if ppu.ly != 0 || ppu.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps != 1 {
+            continue;
+        }
+
+        if machine.cpu().last_address_event().is_some_and(|event| {
+            event.kind == CpuAddressEventKind::Write
+                && event.access_address == Some(0xFF47)
+                && matches!(ppu.ly, 15 | 23 | 31)
+        }) {
+            observations.push(DaidPpuScanlineBgpCpuPhaseObservation {
+                ly: ppu.ly,
+                line_dot: ppu.line_dot,
+                pc: cpu.registers.pc,
+                hl: u16::from(cpu.registers.h) << 8 | u16::from(cpu.registers.l),
+                execution_state: format!("{:?}", cpu.execution_state),
+                ff47: machine.read_bus(0xFF47),
+                visible_pixels_output: ppu.visible_pixels_output,
+            });
+        }
+
+        if observations.len() >= 30 {
+            break;
+        }
+    }
+
+    println!("line15_23_31_ff47_rows={observations:#?}");
+}
+
+#[test]
+#[ignore = "diag: full raw/panel diffs for daid lines 15, 23, 24"]
+fn daid_ppu_scanline_bgp_logs_line15_23_24_full_diffs() {
+    let line15 = sample_daid_ppu_scanline_bgp_full_line(15);
+    let line23 = sample_daid_ppu_scanline_bgp_full_line(23);
+    let line24 = sample_daid_ppu_scanline_bgp_full_line(24);
+
+    let mixed_15_23: Vec<_> = line15
+        .mixed_colors
+        .iter()
+        .zip(&line23.mixed_colors)
+        .enumerate()
+        .filter_map(|(x, (&left, &right))| (left != right).then_some((x, left, right)))
+        .collect();
+    let mixed_23_24: Vec<_> = line23
+        .mixed_colors
+        .iter()
+        .zip(&line24.mixed_colors)
+        .enumerate()
+        .filter_map(|(x, (&left, &right))| (left != right).then_some((x, left, right)))
+        .collect();
+    let raw_15_23: Vec<_> = line15
+        .raw_pixels
+        .iter()
+        .zip(&line23.raw_pixels)
+        .enumerate()
+        .filter_map(|(x, (&left, &right))| (left != right).then_some((x, left, right)))
+        .collect();
+    let raw_23_24: Vec<_> = line23
+        .raw_pixels
+        .iter()
+        .zip(&line24.raw_pixels)
+        .enumerate()
+        .filter_map(|(x, (&left, &right))| (left != right).then_some((x, left, right)))
+        .collect();
+    let panel_15_23: Vec<_> = line15
+        .panel_pixels
+        .iter()
+        .zip(&line23.panel_pixels)
+        .enumerate()
+        .filter_map(|(x, (&left, &right))| (left != right).then_some((x, left, right)))
+        .collect();
+    let panel_23_24: Vec<_> = line23
+        .panel_pixels
+        .iter()
+        .zip(&line24.panel_pixels)
+        .enumerate()
+        .filter_map(|(x, (&left, &right))| (left != right).then_some((x, left, right)))
+        .collect();
+
+    println!("mixed_15_23={mixed_15_23:?}");
+    println!("mixed_23_24={mixed_23_24:?}");
+    println!("raw_15_23={raw_15_23:?}");
+    println!("raw_23_24={raw_23_24:?}");
+    println!("panel_15_23={panel_15_23:?}");
+    println!("panel_23_24={panel_23_24:?}");
+}
+
+#[test]
+#[ignore = "diag: line0 wake and first FF47 row for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_logs_line0_wake_and_first_loop_row() {
+    let observations = sample_daid_ppu_scanline_bgp_line0_wake_and_first_loop_row();
+    println!("line0_wake_and_first_loop_row={observations:#?}");
 }
 
 #[test]
