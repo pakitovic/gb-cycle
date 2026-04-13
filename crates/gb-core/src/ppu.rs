@@ -395,6 +395,11 @@ pub struct Ppu {
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     visible_registers: PpuVisibleRegisters,
     pipeline_registers: PpuVisibleRegisters,
+    dmg_bgp_cpu_commit_output_palette_override: Option<u8>,
+    dmg_bgp_cpu_commit_output_delay_pixels_remaining: u8,
+    dmg_bgp_cpu_commit_current_line_start_palette: u8,
+    dmg_bgp_cpu_commit_current_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
+    dmg_bgp_cpu_commit_previous_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
     last_unsigned_tile_data_fetch: u8,
     last_unsigned_tile_data_low_fetch: u8,
     last_unsigned_tile_data_high_fetch: u8,
@@ -410,7 +415,15 @@ pub struct Ppu {
     obj_pipeline_state: ObjPipelineState,
     current_scanline_pixels: [u8; SCREEN_WIDTH],
     current_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
+    previous_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
+    previous_scanline_ly: Option<u8>,
     framebuffer: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PpuDmgBgpCpuCommitWrite {
+    visible_pixels_output: u8,
+    value: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -470,6 +483,7 @@ pub struct PpuSnapshot {
     pub window_wy_latch: bool,
     pub window_started_this_line: bool,
     pub window_line_counter: u8,
+    pub current_scanline_mixed_colors: Vec<u8>,
     pub current_scanline_pixels: Vec<u8>,
     pub lyc: u8,
     pub bgp: u8,
@@ -493,6 +507,8 @@ pub struct PpuSnapshot {
     pub pipeline_obp1: Option<u8>,
     pub pipeline_wy: u8,
     pub pipeline_wx: u8,
+    pub dmg_bgp_cpu_commit_output_palette_override: Option<u8>,
+    pub dmg_bgp_cpu_commit_output_delay_pixels_remaining: u8,
     pub obj_palette_read_policy: DmgObjPaletteReadPolicy,
 }
 
@@ -659,6 +675,11 @@ impl Ppu {
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             visible_registers: PpuVisibleRegisters::default(),
             pipeline_registers: PpuVisibleRegisters::default(),
+            dmg_bgp_cpu_commit_output_palette_override: None,
+            dmg_bgp_cpu_commit_output_delay_pixels_remaining: 0,
+            dmg_bgp_cpu_commit_current_line_start_palette: 0,
+            dmg_bgp_cpu_commit_current_line_writes: Vec::new(),
+            dmg_bgp_cpu_commit_previous_line_writes: Vec::new(),
             last_unsigned_tile_data_fetch: 0,
             last_unsigned_tile_data_low_fetch: 0,
             last_unsigned_tile_data_high_fetch: 0,
@@ -674,6 +695,8 @@ impl Ppu {
             obj_pipeline_state: ObjPipelineState::default(),
             current_scanline_pixels: [0; SCREEN_WIDTH],
             current_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            previous_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            previous_scanline_ly: None,
             framebuffer: vec![0; FRAMEBUFFER_PIXELS],
         }
     }
@@ -786,9 +809,9 @@ impl Ppu {
                     self.refresh_stat_irq_line(false);
                 }
             }
-            0xFF47 => self.write_dmg_palette_register(PpuPaletteRegister::Bgp, value),
-            0xFF48 => self.write_dmg_palette_register(PpuPaletteRegister::Obp0, value),
-            0xFF49 => self.write_dmg_palette_register(PpuPaletteRegister::Obp1, value),
+            0xFF47 => self.write_dmg_palette_register(PpuPaletteRegister::Bgp, value, source),
+            0xFF48 => self.write_dmg_palette_register(PpuPaletteRegister::Obp0, value, source),
+            0xFF49 => self.write_dmg_palette_register(PpuPaletteRegister::Obp1, value, source),
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
             _ => {}
@@ -855,6 +878,11 @@ impl Ppu {
         self.obp0 = None;
         self.obp1 = None;
         self.obj_palette_read_policy = startup_state.obj_palette_read_policy;
+        self.dmg_bgp_cpu_commit_output_palette_override = None;
+        self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 0;
+        self.dmg_bgp_cpu_commit_current_line_start_palette = startup_state.bgp;
+        self.dmg_bgp_cpu_commit_current_line_writes.clear();
+        self.dmg_bgp_cpu_commit_previous_line_writes.clear();
         self.blank_frame_active = false;
         self.oam_corruption_controller = OamCorruptionController;
         self.mode2_scan_state.reset();
@@ -866,6 +894,9 @@ impl Ppu {
         self.current_scanline_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
+        self.previous_scanline_mixed_pixels
+            .fill(MixedPixel::background(0));
+        self.previous_scanline_ly = None;
         self.framebuffer.fill(0);
         self.sync_visible_registers();
         self.sync_pipeline_registers();
@@ -969,6 +1000,7 @@ impl Ppu {
         observe_ppu_step_region(observer, step_region, || {
             if self.line_dot == self.current_scanline_length() {
                 let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
+                self.finalize_dmg_bgp_cpu_commit_scanline();
                 if self.bg_pipeline_state.window_started_this_line {
                     self.window_state.window_line_counter =
                         self.window_state.window_line_counter.wrapping_add(1);
@@ -986,6 +1018,8 @@ impl Ppu {
                 self.mode2_scan_state.reset_scanline();
                 self.bg_pipeline_state.reset();
                 self.obj_pipeline_state.reset();
+                self.dmg_bgp_cpu_commit_current_line_start_palette = self.bgp;
+                self.dmg_bgp_cpu_commit_current_line_writes.clear();
                 self.current_scanline_pixels.fill(0);
                 self.current_scanline_mixed_pixels
                     .fill(MixedPixel::background(0));
@@ -1096,6 +1130,11 @@ impl Ppu {
             window_wy_latch: self.bg_pipeline_state.window_wy_latch,
             window_started_this_line: self.bg_pipeline_state.window_started_this_line,
             window_line_counter: self.window_state.window_line_counter,
+            current_scanline_mixed_colors: self
+                .current_scanline_mixed_pixels
+                .iter()
+                .map(|pixel| pixel.color)
+                .collect(),
             current_scanline_pixels: self.current_scanline_pixels.to_vec(),
             lyc: self.lyc,
             bgp: self.bgp,
@@ -1119,6 +1158,10 @@ impl Ppu {
             pipeline_obp1: self.pipeline_registers.obp1,
             pipeline_wy: self.pipeline_registers.wy,
             pipeline_wx: self.pipeline_registers.wx,
+            dmg_bgp_cpu_commit_output_palette_override: self
+                .dmg_bgp_cpu_commit_output_palette_override,
+            dmg_bgp_cpu_commit_output_delay_pixels_remaining: self
+                .dmg_bgp_cpu_commit_output_delay_pixels_remaining,
             obj_palette_read_policy: self.obj_palette_read_policy,
         }
     }

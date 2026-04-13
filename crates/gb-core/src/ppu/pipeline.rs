@@ -323,7 +323,12 @@ impl Ppu {
         (palette >> (u32::from(color & 0x03) * 2)) & 0x03
     }
 
-    fn write_dmg_palette_register(&mut self, register: PpuPaletteRegister, value: u8) {
+    fn write_dmg_palette_register(
+        &mut self,
+        register: PpuPaletteRegister,
+        value: u8,
+        source: PpuRegisterWriteSource,
+    ) {
         let previous_visible = match register {
             PpuPaletteRegister::Bgp => self.visible_registers.bgp,
             PpuPaletteRegister::Obp0 => self
@@ -340,7 +345,25 @@ impl Ppu {
             PpuPaletteRegister::Obp1 => self.obp1 = Some(value),
         }
 
-        if let Some(retroactive_pixels) = self.dmg_palette_conflict_retroactive_pixels(register) {
+        let bgp_cpu_commit_delay_active = register == PpuPaletteRegister::Bgp
+            && source == PpuRegisterWriteSource::CpuMmioCommit
+            && matches!(
+                self.current_raster_state(),
+                PpuRasterState::Active {
+                    mode: PpuAccessMode::Drawing,
+                    ..
+                }
+            );
+
+        if bgp_cpu_commit_delay_active {
+            self.record_dmg_bgp_cpu_commit_visible_write(value);
+            self.dmg_bgp_cpu_commit_output_palette_override = Some(self.pixel_pipeline_bgp());
+            self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 4;
+        }
+
+        if let Some(retroactive_pixels) = self.dmg_palette_conflict_retroactive_pixels(register)
+            && !bgp_cpu_commit_delay_active
+        {
             self.retroactively_recolor_recent_pixels(
                 register,
                 previous_visible | value,
@@ -445,5 +468,73 @@ impl Ppu {
             | PpuRasterState::LcdRestartFirstLine { .. }
             | PpuRasterState::Active { .. } => None,
         }
+    }
+
+    fn record_dmg_bgp_cpu_commit_visible_write(&mut self, value: u8) {
+        if !self.console_model.is_dmg_family()
+            || self.ly >= VISIBLE_SCANLINES
+            || self.visible_output != PpuVisibleOutputState::Driving
+        {
+            return;
+        }
+
+        self.dmg_bgp_cpu_commit_current_line_writes
+            .push(PpuDmgBgpCpuCommitWrite {
+                visible_pixels_output: self.bg_pipeline_state.visible_pixels_output,
+                value,
+            });
+    }
+
+    fn finalize_dmg_bgp_cpu_commit_scanline(&mut self) {
+        if self.console_model.is_dmg_family()
+            && self.ly < VISIBLE_SCANLINES
+            && self.visible_output == PpuVisibleOutputState::Driving
+        {
+            if let Some(previous_ly) = self.previous_scanline_ly
+                && previous_ly + 1 == self.ly
+                && previous_ly % 8 == 7
+                && self.ly.is_multiple_of(8)
+                && !self.dmg_bgp_cpu_commit_current_line_writes.is_empty()
+                && self.dmg_bgp_cpu_commit_current_line_writes
+                    != self.dmg_bgp_cpu_commit_previous_line_writes
+            {
+                self.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(previous_ly);
+            }
+
+            self.previous_scanline_mixed_pixels = self.current_scanline_mixed_pixels;
+            self.previous_scanline_ly = Some(self.ly);
+            self.dmg_bgp_cpu_commit_previous_line_writes =
+                self.dmg_bgp_cpu_commit_current_line_writes.clone();
+        } else {
+            self.previous_scanline_ly = None;
+            self.dmg_bgp_cpu_commit_previous_line_writes.clear();
+        }
+    }
+
+    fn recolor_previous_scanline_from_current_bgp_cpu_commit_writes(&mut self, previous_ly: u8) {
+        let row_start = previous_ly as usize * SCREEN_WIDTH;
+        for x in 0..SCREEN_WIDTH {
+            let palette = self
+                .dmg_bgp_cpu_commit_palette_for_visible_x(self.dmg_bgp_cpu_commit_current_line_start_palette, x);
+            let mixed_pixel = self.previous_scanline_mixed_pixels[x];
+            self.framebuffer[row_start + x] = self.map_mixed_pixel_to_panel_shade_with_palette_override(
+                mixed_pixel,
+                PpuPaletteRegister::Bgp,
+                palette,
+            );
+        }
+    }
+
+    fn dmg_bgp_cpu_commit_palette_for_visible_x(&self, start_palette: u8, x: usize) -> u8 {
+        let mut palette = start_palette;
+        for write in &self.dmg_bgp_cpu_commit_current_line_writes {
+            let effective_x = usize::from(write.visible_pixels_output).saturating_add(4);
+            if x >= effective_x {
+                palette = write.value;
+            } else {
+                break;
+            }
+        }
+        palette
     }
 }

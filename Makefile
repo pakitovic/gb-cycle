@@ -76,7 +76,7 @@ run-blargg:
 
 run-daid:
 	$(MAKE) fetch-test-roms FAMILIES=daid
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact daid_curated_suite_updates_report_from_repo_store --no-capture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact daid_curated_suite_passes_from_repo_store --no-capture
 
 run-mooneye:
 	$(MAKE) fetch-test-roms FAMILIES=mooneye

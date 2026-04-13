@@ -795,6 +795,12 @@ impl Ppu {
                 self.bg_pipeline_state.current_transfer_x =
                     self.bg_pipeline_state.current_transfer_x.saturating_add(1);
                 self.bg_pipeline_state.visible_pixels_output += 1;
+                if self.dmg_bgp_cpu_commit_output_delay_pixels_remaining > 0 {
+                    self.dmg_bgp_cpu_commit_output_delay_pixels_remaining -= 1;
+                    if self.dmg_bgp_cpu_commit_output_delay_pixels_remaining == 0 {
+                        self.dmg_bgp_cpu_commit_output_palette_override = None;
+                    }
+                }
                 Mode3TransferDot::served(plan.result_kind, false)
             }
         }

@@ -7,6 +7,115 @@
 
 use super::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DaidPpuScanlineBgpLineObservation {
+    raw_pixels_prefix: [u8; 32],
+    panel_pixels_prefix: [u8; 32],
+    visible_bgp_writes: Vec<(u16, u8, u8)>,
+}
+
+const DAID_SCANLINE_BGP_ACCEPTED_LY23_PANEL_PREFIXES: [[u8; 32]; 3] = [
+    [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        1, 1,
+    ],
+    [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
+        1, 1,
+    ],
+    [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1,
+        1, 1,
+    ],
+];
+
+fn load_daid_ppu_scanline_bgp_machine() -> Machine<gb_core::TraceSummaryBuffer> {
+    let rom_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.roms/test/daid/ppu_scanline_bgp.gb");
+    let rom = std::fs::read(&rom_path).expect("daid ppu_scanline_bgp ROM should be present");
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("diagnostic ROM should load");
+    machine
+}
+
+fn sample_daid_ppu_scanline_bgp_line(target_ly: u8) -> DaidPpuScanlineBgpLineObservation {
+    sample_daid_ppu_scanline_bgp_lines(&[target_ly])
+        .remove(&target_ly)
+        .expect("target line should be sampled")
+}
+
+fn sample_daid_ppu_scanline_bgp_lines(
+    target_lys: &[u8],
+) -> std::collections::BTreeMap<u8, DaidPpuScanlineBgpLineObservation> {
+    let mut machine = load_daid_ppu_scanline_bgp_machine();
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut visible_bgp_writes = std::collections::BTreeMap::<u8, Vec<(u16, u8, u8)>>::new();
+    let mut observations = std::collections::BTreeMap::new();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+
+    for _ in 0..5_000_000 {
+        machine.step_t_cycle();
+
+        let snapshot = machine.ppu().snapshot();
+
+        if snapshot.ly != 0 || snapshot.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF47)
+            && wraps == 1
+            && targets.contains(&snapshot.ly)
+        {
+            visible_bgp_writes.entry(snapshot.ly).or_default().push((
+                snapshot.line_dot,
+                snapshot.visible_pixels_output,
+                machine.read_bus(0xFF47),
+            ));
+        }
+
+        if wraps == 1
+            && targets.contains(&snapshot.ly)
+            && snapshot.mode == PpuAccessMode::HBlank
+            && !observations.contains_key(&snapshot.ly)
+        {
+            let mut raw_pixels_prefix = [0_u8; 32];
+            raw_pixels_prefix.copy_from_slice(&snapshot.current_scanline_pixels[..32]);
+
+            let framebuffer_row_start = snapshot.ly as usize * 160;
+            let mut panel_pixels_prefix = [0_u8; 32];
+            panel_pixels_prefix.copy_from_slice(
+                &machine.ppu().framebuffer()[framebuffer_row_start..framebuffer_row_start + 32],
+            );
+
+            observations.insert(
+                snapshot.ly,
+                DaidPpuScanlineBgpLineObservation {
+                    raw_pixels_prefix,
+                    panel_pixels_prefix,
+                    visible_bgp_writes: visible_bgp_writes.remove(&snapshot.ly).unwrap_or_default(),
+                },
+            );
+            if observations.len() == targets.len() {
+                return observations;
+            }
+        }
+    }
+
+    panic!("timed out before sampling requested daid ppu_scanline_bgp lines");
+}
+
 #[test]
 #[ignore = "diag: mooneye intr_2_oam_ok_timing seam"]
 fn mode2_to_oam_release_probe_matches_mooneye_counts() {
@@ -190,100 +299,75 @@ fn mode2_to_mode0_stat_probe_matches_mooneye_counts() {
 }
 
 #[test]
-#[ignore = "diag: first-frame FF47 writes for daid ppu_scanline_bgp"]
-fn daid_ppu_scanline_bgp_logs_first_frame_ff47_writes() {
-    let rom_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.roms/test/daid/ppu_scanline_bgp.gb");
-    let rom = std::fs::read(&rom_path).expect("daid ppu_scanline_bgp ROM should be present");
+#[ignore = "diag: local ly23 BGP phase oracle for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_ly23_phase_oracle() {
+    let line15 = sample_daid_ppu_scanline_bgp_line(15);
+    let line23 = sample_daid_ppu_scanline_bgp_line(23);
 
-    let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    assert_eq!(
+        line15.raw_pixels_prefix, line23.raw_pixels_prefix,
+        "ly15 raw={:?} ly23 raw={:?}",
+        line15.raw_pixels_prefix, line23.raw_pixels_prefix
     );
-    machine
-        .load_cartridge(rom)
-        .expect("diagnostic ROM should load");
-
-    let mut saw_progress = false;
-    let mut wraps = 0usize;
-    let mut write_count = 0usize;
-    let mut visible_write_count = 0usize;
-    let mut visible_frame0_line0 = Vec::new();
-    let mut non_e4_visible_writes = Vec::new();
-
-    for _ in 0..20_000_000 {
-        machine.step_t_cycle();
-
-        let snapshot = machine.ppu().snapshot();
-        if snapshot.ly != 0 || snapshot.line_dot != 0 {
-            saw_progress = true;
-        } else if saw_progress {
-            wraps += 1;
-            if wraps >= 2 {
-                break;
-            }
-        }
-
-        if let Some(event) = machine.cpu().last_address_event()
-            && event.kind == CpuAddressEventKind::Write
-            && event.access_address == Some(0xFF47)
-        {
-            write_count += 1;
-            let value = machine.read_bus(0xFF47);
-            if snapshot.ly < 144 {
-                visible_write_count += 1;
-                if wraps == 1 && snapshot.ly == 0 {
-                    visible_frame0_line0.push((
-                        snapshot.line_dot,
-                        snapshot.visible_pixels_output,
-                        value,
-                    ));
-                }
-                if value != 0xE4 {
-                    non_e4_visible_writes.push((
-                        wraps,
-                        snapshot.ly,
-                        snapshot.line_dot,
-                        snapshot.visible_pixels_output,
-                        value,
-                    ));
-                }
-            }
-        }
-    }
-
-    let mut grouped_non_e4 = std::collections::BTreeMap::new();
-    for (frame, ly, line_dot, visible_pixels, value) in non_e4_visible_writes {
-        grouped_non_e4
-            .entry((frame, line_dot, visible_pixels, value))
-            .or_insert_with(Vec::new)
-            .push(ly);
-    }
-
-    let mut summarized_non_e4 = Vec::new();
-    for ((frame, line_dot, visible_pixels, value), lys) in grouped_non_e4 {
-        let mut ranges = Vec::new();
-        let mut start = lys[0];
-        let mut prev = lys[0];
-        for ly in lys.into_iter().skip(1) {
-            if ly == prev + 1 {
-                prev = ly;
-            } else {
-                ranges.push((start, prev));
-                start = ly;
-                prev = ly;
-            }
-        }
-        ranges.push((start, prev));
-        summarized_non_e4.push((frame, line_dot, visible_pixels, value, ranges));
-    }
-
-    println!("ff47_write_total={write_count} visible_write_total={visible_write_count}");
-    println!("frame1_line0_visible_writes={visible_frame0_line0:?}");
-    println!("non_e4_visible_write_ranges={summarized_non_e4:?}");
+    assert_eq!(
+        line15.visible_bgp_writes, line23.visible_bgp_writes,
+        "ly15 writes={:?} ly23 writes={:?}",
+        line15.visible_bgp_writes, line23.visible_bgp_writes
+    );
+    assert_ne!(
+        line15.panel_pixels_prefix, line23.panel_pixels_prefix,
+        "ly15 panel={:?} ly23 panel={:?}",
+        line15.panel_pixels_prefix, line23.panel_pixels_prefix
+    );
     assert!(
-        saw_progress,
-        "diagnostic should advance past the initial dot"
+        DAID_SCANLINE_BGP_ACCEPTED_LY23_PANEL_PREFIXES
+            .iter()
+            .any(|expected| expected == &line23.panel_pixels_prefix),
+        "ly23 panel={:?} accepted={:?}",
+        line23.panel_pixels_prefix,
+        DAID_SCANLINE_BGP_ACCEPTED_LY23_PANEL_PREFIXES
     );
+}
+
+#[test]
+#[ignore = "diag: block-end family summary for daid ppu_scanline_bgp"]
+fn daid_ppu_scanline_bgp_logs_block_end_family() {
+    let target_lys = [
+        6_u8, 7, 8, 22, 23, 24, 38, 39, 40, 54, 55, 56, 78, 79, 80, 86, 87, 88, 94, 95, 96, 102,
+        103, 104, 118, 119, 120, 134, 135, 136,
+    ];
+    let observations = sample_daid_ppu_scanline_bgp_lines(&target_lys);
+    let mut summary = Vec::new();
+
+    for &ly in &[7_u8, 23, 39, 55, 79, 87, 95, 103, 119, 135] {
+        let previous = observations
+            .get(&(ly - 1))
+            .expect("previous line should be sampled");
+        let current = observations
+            .get(&ly)
+            .expect("current line should be sampled");
+        let next = observations
+            .get(&(ly + 1))
+            .expect("next line should be sampled");
+        let panel_matches_previous = current.panel_pixels_prefix == previous.panel_pixels_prefix;
+        let panel_matches_next = current.panel_pixels_prefix == next.panel_pixels_prefix;
+        let raw_matches_previous = current.raw_pixels_prefix == previous.raw_pixels_prefix;
+        let raw_matches_next = current.raw_pixels_prefix == next.raw_pixels_prefix;
+        let writes_match_previous = current.visible_bgp_writes == previous.visible_bgp_writes;
+        let writes_match_next = current.visible_bgp_writes == next.visible_bgp_writes;
+        summary.push((
+            ly,
+            panel_matches_previous,
+            panel_matches_next,
+            raw_matches_previous,
+            raw_matches_next,
+            writes_match_previous,
+            writes_match_next,
+            current.panel_pixels_prefix,
+        ));
+    }
+
+    println!("block_end_family={summary:#?}");
 }
 
 #[test]
