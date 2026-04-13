@@ -16,19 +16,136 @@ pub enum ConsoleModel {
 }
 
 impl ConsoleModel {
-    pub fn family(self) -> ConsoleFamily {
+    pub const fn family(self) -> ConsoleFamily {
         match self {
             Self::Cgb => ConsoleFamily::Cgb,
             Self::Dmg0 | Self::Dmg | Self::Mgb => ConsoleFamily::Dmg,
         }
     }
 
-    pub fn is_dmg_family(self) -> bool {
-        self.family() == ConsoleFamily::Dmg
+    pub const fn is_dmg_family(self) -> bool {
+        matches!(self.family(), ConsoleFamily::Dmg)
     }
 
-    pub fn is_cgb_family(self) -> bool {
-        self.family() == ConsoleFamily::Cgb
+    pub const fn is_cgb_family(self) -> bool {
+        matches!(self.family(), ConsoleFamily::Cgb)
+    }
+
+    pub const fn default_operating_mode(self) -> OperatingMode {
+        match self.family() {
+            ConsoleFamily::Dmg => OperatingMode::Dmg,
+            ConsoleFamily::Cgb => OperatingMode::Cgb,
+        }
+    }
+
+    pub const fn supports_operating_mode(self, operating_mode: OperatingMode) -> bool {
+        match self.family() {
+            ConsoleFamily::Dmg => matches!(operating_mode, OperatingMode::Dmg),
+            ConsoleFamily::Cgb => {
+                matches!(
+                    operating_mode,
+                    OperatingMode::Cgb | OperatingMode::CgbCompatibility
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum OperatingMode {
+    #[default]
+    Dmg,
+    Cgb,
+    CgbCompatibility,
+}
+
+impl OperatingMode {
+    pub const fn uses_dmg_software_contract(self) -> bool {
+        matches!(self, Self::Dmg | Self::CgbCompatibility)
+    }
+
+    pub const fn enables_cgb_extensions(self) -> bool {
+        matches!(self, Self::Cgb)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum HostPlatform {
+    #[default]
+    Handheld,
+    Sgb1,
+    Sgb2,
+}
+
+impl HostPlatform {
+    pub const fn is_sgb(self) -> bool {
+        matches!(self, Self::Sgb1 | Self::Sgb2)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CapabilitySet {
+    console_model: ConsoleModel,
+    console_family: ConsoleFamily,
+    operating_mode: OperatingMode,
+    host_platform: HostPlatform,
+    dmg_software_contract: bool,
+    cgb_extensions_enabled: bool,
+    dmg_family_quirks_enabled: bool,
+    sgb_enhancements_enabled: bool,
+}
+
+impl CapabilitySet {
+    pub const fn from_model_axes(
+        console_model: ConsoleModel,
+        operating_mode: OperatingMode,
+        host_platform: HostPlatform,
+    ) -> Self {
+        Self {
+            console_model,
+            console_family: console_model.family(),
+            operating_mode,
+            host_platform,
+            dmg_software_contract: operating_mode.uses_dmg_software_contract(),
+            cgb_extensions_enabled: console_model.is_cgb_family()
+                && operating_mode.enables_cgb_extensions(),
+            // DMG-family-only quirks such as OAM corruption follow the silicon family,
+            // not the software-facing compatibility mode.
+            dmg_family_quirks_enabled: console_model.is_dmg_family(),
+            sgb_enhancements_enabled: host_platform.is_sgb(),
+        }
+    }
+
+    pub const fn console_model(self) -> ConsoleModel {
+        self.console_model
+    }
+
+    pub const fn console_family(self) -> ConsoleFamily {
+        self.console_family
+    }
+
+    pub const fn operating_mode(self) -> OperatingMode {
+        self.operating_mode
+    }
+
+    pub const fn host_platform(self) -> HostPlatform {
+        self.host_platform
+    }
+
+    pub const fn dmg_software_contract(self) -> bool {
+        self.dmg_software_contract
+    }
+
+    pub const fn cgb_extensions_enabled(self) -> bool {
+        self.cgb_extensions_enabled
+    }
+
+    pub const fn dmg_family_quirks_enabled(self) -> bool {
+        self.dmg_family_quirks_enabled
+    }
+
+    pub const fn sgb_enhancements_enabled(self) -> bool {
+        self.sgb_enhancements_enabled
     }
 }
 
@@ -85,12 +202,17 @@ pub enum DiagnosticPolicy {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct OverridePolicy {
     pub forced_console_model: Option<ConsoleModel>,
+    pub forced_operating_mode: Option<OperatingMode>,
+    pub forced_host_platform: Option<HostPlatform>,
     pub forced_startup_mode: Option<StartupMode>,
 }
 
 impl OverridePolicy {
     pub fn has_overrides(&self) -> bool {
-        self.forced_console_model.is_some() || self.forced_startup_mode.is_some()
+        self.forced_console_model.is_some()
+            || self.forced_operating_mode.is_some()
+            || self.forced_host_platform.is_some()
+            || self.forced_startup_mode.is_some()
     }
 }
 
@@ -144,6 +266,8 @@ impl Default for CompatibilityPolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MachineConfig {
     pub console_model: ConsoleModel,
+    pub operating_mode: OperatingMode,
+    pub host_platform: HostPlatform,
     pub startup_mode: StartupMode,
     pub boot_rom_assets: BootRomAssets,
     pub compatibility: CompatibilityPolicy,
@@ -153,12 +277,23 @@ impl MachineConfig {
     pub fn new(console_model: ConsoleModel) -> Self {
         Self {
             console_model,
+            operating_mode: console_model.default_operating_mode(),
             ..Self::default()
         }
     }
 
     pub fn with_console_model(mut self, console_model: ConsoleModel) -> Self {
         self.console_model = console_model;
+        self
+    }
+
+    pub fn with_operating_mode(mut self, operating_mode: OperatingMode) -> Self {
+        self.operating_mode = operating_mode;
+        self
+    }
+
+    pub fn with_host_platform(mut self, host_platform: HostPlatform) -> Self {
+        self.host_platform = host_platform;
         self
     }
 
@@ -181,12 +316,23 @@ impl MachineConfig {
         self.compatibility.execution_mode = execution_mode;
         self
     }
+
+    pub const fn capability_set(&self) -> CapabilitySet {
+        CapabilitySet::from_model_axes(self.console_model, self.operating_mode, self.host_platform)
+    }
+
+    pub const fn model_axes_are_coherent(&self) -> bool {
+        self.console_model
+            .supports_operating_mode(self.operating_mode)
+    }
 }
 
 impl Default for MachineConfig {
     fn default() -> Self {
         Self {
             console_model: ConsoleModel::Dmg,
+            operating_mode: ConsoleModel::Dmg.default_operating_mode(),
+            host_platform: HostPlatform::Handheld,
             startup_mode: StartupMode::SkipBoot,
             boot_rom_assets: BootRomAssets::none(),
             compatibility: CompatibilityPolicy::strict(),

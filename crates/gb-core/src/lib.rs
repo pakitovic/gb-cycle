@@ -66,8 +66,9 @@ pub use machine::{
     Machine, MachineParts, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver,
 };
 pub use model::{
-    CompatibilityPolicy, ConsoleFamily, ConsoleModel, DiagnosticPolicy, ExecutionMode,
-    HeuristicPolicy, MachineConfig, OverridePolicy, StartupMode, ValidationPolicy,
+    CapabilitySet, CompatibilityPolicy, ConsoleFamily, ConsoleModel, DiagnosticPolicy,
+    ExecutionMode, HeuristicPolicy, HostPlatform, MachineConfig, OperatingMode, OverridePolicy,
+    StartupMode, ValidationPolicy,
 };
 pub use ppu::{
     DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBgFetcherSource, PpuBgFetcherStage,

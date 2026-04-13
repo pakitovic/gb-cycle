@@ -103,6 +103,13 @@ For an early-stage repo, a simplified equivalent is acceptable as long as these 
 - `DMG0`, `DMG`, and `MGB` should share one DMG-family hardware core unless evidence shows a true hardware-level divergence that matters to emulation.
 - CGB must enter as an extension of the shared architecture, not as a second emulator with duplicated subsystems.
 - No critical subsystem should be rigidly tied to a single hardware variant if that would block natural extension to other models.
+- The public model surface should keep three explicit axes instead of collapsing everything into one enum:
+  - `ConsoleModel` for the silicon family / revision baseline
+  - `OperatingMode` for the software-visible GB mode running on that silicon, such as DMG, CGB, or CGB-compatibility
+  - `HostPlatform` for the surrounding host shell, such as handheld standalone or future `SGB1` / `SGB2`
+- The project should also expose one derived `CapabilitySet`-style view so shared subsystems can ask high-level questions such as "are CGB extensions enabled", "does DMG software contract apply", "do DMG-family silicon quirks apply", or "are SGB host enhancements active" without re-deriving those facts ad hoc.
+- `ConsoleModel::Cgb` plus `OperatingMode::CgbCompatibility` should represent a CGB-family machine running monochrome software; it is not the same thing as DMG-family silicon.
+- Future `SGB1` / `SGB2` support should primarily enter through the `HostPlatform` axis around the shared GB core, not by cloning the DMG/CGB silicon model into a separate emulator path.
 
 ## DMG-first, CGB-ready policy
 

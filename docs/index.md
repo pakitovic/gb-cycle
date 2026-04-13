@@ -9,6 +9,7 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 ## Global docs
 
 - `ARCHITECTURE.md`: project goals, crate layout, subsystem boundaries, and portability rules.
+- `MODEL-AXES.md`: usage and migration guidance for `ConsoleModel`, `OperatingMode`, `HostPlatform`, and `CapabilitySet`.
 - `EXECUTION.md`: implementation workflow and change policy.
 - `CODING-RULES.md`: Rust design rules, API style, and optimization discipline.
 - `REFERENCES.md`: primary documentation, hardware research, and open-source consultation order.
@@ -26,6 +27,7 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 ## Authority map
 
 - `ARCHITECTURE.md` owns crate/module layout, subsystem boundaries, and ownership rules.
+- `MODEL-AXES.md` owns code-facing guidance for choosing between the public model axes and their derived capability view; it does not redefine hardware behavior.
 - `ARCHITECTURE.md` plus `TIMING-AND-ACCURACY.md` jointly own the project-level global scheduler contract and shared per-T-cycle ordering.
 - `EXECUTION.md` owns implementation workflow, change-scope discipline, and roadmap-follow-up recording policy.
 - `CODING-RULES.md` owns Rust-facing code style, API clarity expectations, and optimization discipline.
@@ -42,6 +44,7 @@ When working on already-known external ROM failures or rerunning curated ROM sui
 When guidance overlaps, the more specific document wins:
 
 - `hardware/*.md` over generic docs for subsystem behavior
+- `MODEL-AXES.md` over generic prose when the question is "which public model type should code consult here?", but not over subsystem handbooks for hardware truth
 - `ARCHITECTURE.md` over `README.md` or roadmap prose for layout and ownership
 - `TIMING-AND-ACCURACY.md` over `README.md` or roadmap prose for shared timing claims
 - `REFERENCES.md` over generic prose for consultation order unless a subsystem handbook explicitly refines it

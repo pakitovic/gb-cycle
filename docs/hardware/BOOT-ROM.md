@@ -26,6 +26,7 @@ Real boot should start CPU execution at `0x0000` with the internal boot ROM mapp
 - configurable boot ROM source selection
 - direct-boot configuration for tests and tooling
 - future CGB boot ROM mapping and compatibility-mode entry rules
+- boot-time selection of the future `OperatingMode` for CGB-family hardware based on cartridge compatibility information
 
 ## Registers / MMIO
 
