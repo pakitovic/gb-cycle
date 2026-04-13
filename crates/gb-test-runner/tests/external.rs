@@ -563,13 +563,14 @@ fn mooneye_curated_suite_passes_from_repo_store() {
 
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
-fn daid_curated_suite_updates_report_from_repo_store() {
+fn daid_curated_suite_passes_from_repo_store() {
     let Some(report) = run_curated_suite(&daid_dmg_curated_suite(), "curated daid suite", true)
     else {
         return;
     };
     assert_eq!(report.family.as_deref(), Some("daid"), "{report:#?}");
     assert_eq!(report.cases.len(), 3, "{report:#?}");
+    assert!(report.all_non_failing(), "{report:#?}");
 }
 
 #[test]
