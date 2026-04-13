@@ -1415,7 +1415,7 @@ impl Ppu {
             && self.is_lcd_enabled()
             && (matches!(
                 self.current_access_mode(),
-                PpuAccessMode::HBlank | PpuAccessMode::OamScan
+                PpuAccessMode::HBlank | PpuAccessMode::VBlank | PpuAccessMode::OamScan
             )
                 || self.live_lyc_coincidence())
     }

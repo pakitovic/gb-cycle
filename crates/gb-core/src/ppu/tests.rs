@@ -544,7 +544,7 @@ fn mode2_enable_alone_does_not_hold_stat_high_past_vblank_entry() {
 }
 
 #[test]
-fn stat_write_quirk_requests_in_mode2_and_coincidence_but_not_plain_mode3() {
+fn stat_write_quirk_requests_in_mode1_mode2_and_coincidence_but_not_plain_mode3() {
     let mut mode2 = Ppu::new(ConsoleModel::Dmg);
     let oam_bytes = [0; 160];
 
@@ -567,6 +567,31 @@ fn stat_write_quirk_requests_in_mode2_and_coincidence_but_not_plain_mode3() {
     assert!(mode2.snapshot().stat_irq_line);
     assert_eq!(
         drain_ppu_interrupts(&mut mode2),
+        vec![InterruptSource::LcdStat]
+    );
+
+    let mut mode1 = Ppu::new(ConsoleModel::Dmg);
+    mode1.apply_startup_state(PpuStartupState {
+        lcdc: 0x80,
+        stat: 0x01,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 144,
+        lyc: 0x20,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    mode1.line_dot = 8;
+    assert_eq!(mode1.snapshot().mode, PpuAccessMode::VBlank);
+    assert!(drain_ppu_interrupts(&mut mode1).is_empty());
+
+    mode1.write_register(0xFF41, 0x00);
+
+    assert!(mode1.snapshot().stat_irq_line);
+    assert_eq!(
+        drain_ppu_interrupts(&mut mode1),
         vec![InterruptSource::LcdStat]
     );
 
