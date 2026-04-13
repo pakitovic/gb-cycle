@@ -392,26 +392,41 @@ impl Ppu {
             );
 
         if bgp_cpu_commit_delay_active {
-            let had_bg_visible_hold_fallback = self
-                .dmg_bgp_cpu_commit_bg_visible_hold_palette_override
-                .is_some()
-                && self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining == 0
-                && self
-                    .dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette
-                    .is_none();
             self.clear_dmg_bgp_cpu_commit_bg_visible_hold();
             let visible_pixels_output = self.bg_pipeline_state.visible_pixels_output;
             if let Some(retroactive_pixels) = self.dmg_palette_conflict_retroactive_pixels(register)
             {
-                let base_effect_kind = self.dmg_bgp_cpu_commit_effect_kind(retroactive_pixels);
-                let effective_retroactive_pixels = if base_effect_kind
-                    == PpuDmgBgpCpuCommitEffectKind::RetroactivePanel
-                    && had_bg_visible_hold_fallback
+                if let Some((transient_start_x, final_onset_x)) =
+                    self.dmg_single_left_sprite_bgp_second_write_transient_range()
                 {
-                    retroactive_pixels.saturating_sub(1)
-                } else {
-                    retroactive_pixels
-                };
+                    self.apply_single_left_sprite_bgp_second_write_transient_range(
+                        register,
+                        previous_visible,
+                        value,
+                        visible_pixels_output,
+                        transient_start_x,
+                        final_onset_x,
+                    );
+                    return;
+                }
+
+                if let Some(desired_onset_x) = self
+                    .dmg_single_left_sprite_bgp_live_write_onset_visible_x(
+                        self.dmg_bgp_cpu_commit_current_line_writes.len(),
+                    )
+                {
+                    self.apply_single_left_sprite_bgp_live_write_onset(
+                        register,
+                        previous_visible,
+                        value,
+                        visible_pixels_output,
+                        desired_onset_x,
+                    );
+                    return;
+                }
+
+                let base_effect_kind = self.dmg_bgp_cpu_commit_effect_kind(retroactive_pixels);
+                let effective_retroactive_pixels = retroactive_pixels;
                 let line_has_pipeline_delayed = self
                     .dmg_bgp_cpu_commit_current_line_writes
                     .iter()
@@ -498,7 +513,7 @@ impl Ppu {
                             self.start_dmg_bgp_cpu_commit_bg_visible_hold(
                                 value,
                                 bg_visible_pixels,
-                                previous_visible,
+                                value,
                             );
                             self.dmg_bgp_cpu_commit_output_palette_override = None;
                             self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 0;
@@ -702,9 +717,10 @@ impl Ppu {
     fn dmg_bgp_cpu_commit_output_delay_pixels(&self, visible_pixels_output: u8) -> u8 {
         if visible_pixels_output == 0 && self.dmg_recent_panel_dots.is_empty() {
             let leading_visible_obj_pixels = self.leading_visible_obj_fifo_prefix_pixels();
-            if leading_visible_obj_pixels > 0 {
-                return leading_visible_obj_pixels.min(4) as u8;
+            if leading_visible_obj_pixels == 0 {
+                return 0;
             }
+            return leading_visible_obj_pixels.min(4) as u8;
         }
 
         4
@@ -740,6 +756,169 @@ impl Ppu {
             .count()
     }
 
+    fn dmg_single_left_sprite_bgp_live_write_phase(&self) -> Option<u8> {
+        if self.mode2_scan_state.selected_sprite_count() != 1 {
+            return None;
+        }
+
+        let sprite = self.mode2_scan_state.selected_sprite(0)?;
+        if sprite.x >= 16 {
+            return None;
+        }
+
+        Some((sprite.x % 8).min(5))
+    }
+
+    fn dmg_single_left_sprite_bgp_live_write_onset_visible_x(
+        &self,
+        write_index: usize,
+    ) -> Option<u8> {
+        if self.mode2_scan_state.selected_sprite_count() != 1 {
+            return None;
+        }
+
+        let sprite_x = self.mode2_scan_state.selected_sprite(0)?.x as usize;
+
+        // `m3_bgp_change_sprites` needs an explicit DMG seam for the first two
+        // writes: the visible onset follows the left sprite phase, not the
+        // generic 4-dot CPU-commit delay.
+        const EARLY_WRITE0_ONSETS: [u8; 19] =
+            [0, 0, 0, 1, 2, 1, 0, 0, 0, 1, 2, 3, 4, 5, 5, 5, 5, 5, 5];
+        const EARLY_WRITE1_ONSETS: [u8; 19] =
+            [0, 8, 9, 10, 11, 12, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 9, 10];
+
+        match write_index {
+            0 if sprite_x < EARLY_WRITE0_ONSETS.len() => Some(EARLY_WRITE0_ONSETS[sprite_x]),
+            1 if sprite_x < EARLY_WRITE1_ONSETS.len() => Some(EARLY_WRITE1_ONSETS[sprite_x]),
+            2..=5 => self
+                .dmg_single_left_sprite_bgp_live_write_phase()
+                .map(|phase| match write_index {
+                    2 => 46 + phase,
+                    3 => 59 + phase,
+                    4 => 91 + phase,
+                    5 => 102 + phase,
+                    _ => unreachable!(),
+                }),
+            _ => None,
+        }
+    }
+
+    fn dmg_single_left_sprite_bgp_second_write_transient_range(&self) -> Option<(u8, u8)> {
+        if self.mode2_scan_state.selected_sprite_count() != 1
+            || self.dmg_bgp_cpu_commit_current_line_writes.len() != 1
+        {
+            return None;
+        }
+
+        let sprite_x = self.mode2_scan_state.selected_sprite(0)?.x;
+        // The second write on the same scanline exposes a short transient seam
+        // before the final palette reaches the left-edge boundary.
+        let (transient_start_x, final_onset_x) = match sprite_x {
+            7 => (5, 12),
+            8..=14 => (sprite_x.saturating_sub(2), sprite_x.saturating_sub(1)),
+            15 => (12, 12),
+            16..=18 => (5, sprite_x.saturating_sub(8)),
+            _ => return None,
+        };
+        let final_onset_x = match sprite_x {
+            14 => 12,
+            _ => final_onset_x,
+        };
+
+        Some((transient_start_x, final_onset_x))
+    }
+
+    fn apply_single_left_sprite_bgp_live_write_onset(
+        &mut self,
+        register: PpuPaletteRegister,
+        previous_visible: u8,
+        value: u8,
+        visible_pixels_output: u8,
+        desired_onset_x: u8,
+    ) {
+        let effect_kind = if desired_onset_x < visible_pixels_output {
+            PpuDmgBgpCpuCommitEffectKind::RetroactivePanel
+        } else if desired_onset_x == visible_pixels_output {
+            PpuDmgBgpCpuCommitEffectKind::CurrentDotTransient
+        } else {
+            PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
+        };
+        self.record_dmg_bgp_cpu_commit_visible_write(
+            effect_kind,
+            desired_onset_x,
+            value,
+            desired_onset_x.saturating_add(1),
+            value,
+        );
+
+        if desired_onset_x < visible_pixels_output {
+            for x in usize::from(desired_onset_x)..usize::from(visible_pixels_output) {
+                let mixed_pixel = self.current_scanline_mixed_pixels[x];
+                if !register_affects_pixel(register, mixed_pixel) {
+                    continue;
+                }
+
+                let panel_pixel = self.map_mixed_pixel_to_panel_shade_with_palette_override(
+                    mixed_pixel,
+                    register,
+                    value,
+                );
+                self.framebuffer[self.ly as usize * SCREEN_WIDTH + x] = panel_pixel;
+            }
+        }
+
+        if desired_onset_x > visible_pixels_output {
+            self.dmg_bgp_cpu_commit_output_palette_override = Some(previous_visible);
+            self.dmg_bgp_cpu_commit_output_delay_pixels_remaining =
+                desired_onset_x.saturating_sub(visible_pixels_output);
+        } else {
+            self.dmg_bgp_cpu_commit_output_palette_override = Some(value);
+            self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 1;
+        }
+    }
+
+    fn apply_single_left_sprite_bgp_second_write_transient_range(
+        &mut self,
+        register: PpuPaletteRegister,
+        previous_visible: u8,
+        value: u8,
+        visible_pixels_output: u8,
+        transient_start_x: u8,
+        final_onset_x: u8,
+    ) {
+        let transient_palette = previous_visible | value;
+        self.record_dmg_bgp_cpu_commit_visible_write(
+            PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
+            transient_start_x,
+            transient_palette,
+            final_onset_x,
+            value,
+        );
+
+        let row_start = self.ly as usize * SCREEN_WIDTH;
+        for x in usize::from(transient_start_x)..usize::from(visible_pixels_output) {
+            let mixed_pixel = self.current_scanline_mixed_pixels[x];
+            if !register_affects_pixel(register, mixed_pixel) {
+                continue;
+            }
+
+            let palette = if x < usize::from(final_onset_x) {
+                transient_palette
+            } else {
+                value
+            };
+            let panel_pixel = self.map_mixed_pixel_to_panel_shade_with_palette_override(
+                mixed_pixel,
+                register,
+                palette,
+            );
+            self.framebuffer[row_start + x] = panel_pixel;
+        }
+
+        self.dmg_bgp_cpu_commit_output_palette_override = Some(value);
+        self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 1;
+    }
+
     fn early_line_retroactive_obj_hold_bg_visible_pixels(&self) -> Option<u8> {
         if self.bg_pipeline_state.visible_pixels_output < 2 {
             return None;
@@ -763,7 +942,7 @@ impl Ppu {
             return None;
         }
 
-        Some((leading_bg_visible_run + 1).min(u8::MAX as usize) as u8)
+        Some((leading_bg_visible_run + 3).min(u8::MAX as usize) as u8)
     }
 
     fn recent_palette_conflict_panel_dots(
@@ -964,6 +1143,7 @@ impl Ppu {
                         write.effect_kind == PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
                     })
                     || self.current_mode0_start_dot() > self.baseline_mode0_start_dot())
+                && self.mode2_scan_state.selected_sprite_count() == 0
                 && !self.dmg_bgp_cpu_commit_current_line_writes.is_empty()
                 && self.dmg_bgp_cpu_commit_current_line_writes
                     != self.dmg_bgp_cpu_commit_previous_line_writes

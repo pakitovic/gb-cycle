@@ -41,7 +41,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
-- The next strict ladder blocker is `m3_bgp_change_sprites.gb` (`order 28`).
+- The next strict ladder blocker is `m3_lcdc_bg_en_change.gb` (`order 29`).
 - The main broad failure modes are already ruled out:
   - broad visible-FIFO cached-slice retargeting regressed the external oracles instead of moving them
   - `LCDC.4` / `SCY` visible-FIFO retargeting regressed the target families and was reverted
@@ -50,21 +50,21 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 - The key green regression gates are now stable again:
   - `daid/ppu_scanline_bgp.gb` is closed through the narrow DMG CPU-path `BGP` previous-line boundary repaint seam; keep that seam panel-only and DMG-only
   - `mealybug m3_bgp_change.gb` is closed through an explicit DMG CPU-path split: retroactive panel recolor only when the recent visible BG tail is all color `0`, and previous-line boundary repaint only from delayed pipeline-visible writes
+  - `mealybug m3_bgp_change_sprites.gb` is now closed through a narrower DMG single-left-sprite `BGP` seam: the first two CPU-path writes use sprite-position-dependent visible onsets, and the second write keeps a short left-edge transient range before the final palette wins
   - `mealybug m3_obp0_change.gb` is closed through a separate DMG `OBP0` scanline-path seam: no retroactive OBJ recolor before `visible_x = 10`, then a scanline-anchored conflict window that preserves older isolated leading OBJ pixels while still recoloring the later live-write tail
   - `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` is closed through narrow CPU-visible `STAT` publication seams for the ten-sprite step-8 staggered families, not through another broad `Mode 3` rewrite
   - `hacktix/strikethrough.gb`, `blargg oam_bug/4`, `blargg oam_bug/5`, and `cargo test -p gb-core ppu -- --nocapture` are green again
-- Practical maturity: the DMG ladder is now monotonic through the baseline `BGP` live-write oracle; the first strict blocker moves to `order 28`.
-- **Highest-value next step:** keep `daid/ppu_scanline_bgp.gb`, `intr_2_mode0_timing_sprites.gb`, and `strikethrough.gb` as hard regression gates, and take `m3_bgp_change_sprites.gb` as the primary next oracle before returning to the broader live-write tranche.
+- Practical maturity: the DMG ladder is now monotonic through the sprite-coupled `BGP` live-write oracle; the first strict blocker moves to `order 29`.
+- **Highest-value next step:** keep `daid/ppu_scanline_bgp.gb`, `intr_2_mode0_timing_sprites.gb`, and `strikethrough.gb` as hard regression gates, and take `m3_lcdc_bg_en_change.gb` as the primary next oracle before returning to the broader live-write tranche.
 - Practical maturity reading:
-  - Strict ladder maturity: blocked at `order 28`.
-  - The early raster, restart, and baseline `BGP` live-write baselines are closed again; the remaining primary closure target is the sprite-coupled hi-fi live-write tranche.
+  - Strict ladder maturity: blocked at `order 29`.
+  - The early raster, restart, and sprite-coupled `BGP` live-write baselines are closed again; the remaining primary closure target is the broader live-`LCDC` tranche starting at `m3_lcdc_bg_en_change`.
 
 #### Open TODOs
 
 - [PPU][SKIPBOOT-ORACLE] `SkipBoot` startup-mode latch is validated only against repo-local continuity tests. Before Phase `9` hardening, needs comparison against a trusted oracle or hardware capture proving first LCD-visible dots after `SkipBoot` are coherent with published `LCDC`, `STAT`, and `LY` state. Does not block Phase `5`.
 
 - [PPU][MEALYBUG-MODE3-LIVE-WRITES] Still-red follow-up families:
-  - BG palette live-write follow-up: `m3_bgp_change_sprites`.
   - Window/live-`LCDC.5` timing: `m3_window_timing*`, `m3_lcdc_win_en_change_multiple*`, `m3_wx_4_change*`, `m3_wx_5_change`, `m3_wx_6_change`.
   - Live `LCDC` map/enable/tile-select: `m3_lcdc_bg_en_change`, `m3_lcdc_bg_map_change`, `m3_lcdc_win_map_change`, `m3_lcdc_tile_sel_change*`, `m3_lcdc_obj_en_change*`.
   - `SCX/SCY` live-scroll: `m3_scx_high_5_bits`, `m3_scx_low_3_bits`, `m3_scy_change`.
