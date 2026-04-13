@@ -284,7 +284,6 @@ impl MachineConfig {
 
     pub fn with_console_model(mut self, console_model: ConsoleModel) -> Self {
         self.console_model = console_model;
-        self.operating_mode = console_model.default_operating_mode();
         self
     }
 

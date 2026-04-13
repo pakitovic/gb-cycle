@@ -95,6 +95,16 @@ fn machine_config_builder_methods_only_update_requested_fields() {
 }
 
 #[test]
+fn with_console_model_preserves_an_explicit_operating_mode_override() {
+    let config = MachineConfig::new(ConsoleModel::Dmg)
+        .with_operating_mode(OperatingMode::CgbCompatibility)
+        .with_console_model(ConsoleModel::Cgb);
+
+    assert_eq!(config.console_model, ConsoleModel::Cgb);
+    assert_eq!(config.operating_mode, OperatingMode::CgbCompatibility);
+}
+
+#[test]
 fn machine_config_capability_set_tracks_the_three_model_axes() {
     let config = MachineConfig::new(ConsoleModel::Cgb)
         .with_operating_mode(OperatingMode::CgbCompatibility)
