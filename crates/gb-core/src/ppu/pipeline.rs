@@ -412,11 +412,22 @@ impl Ppu {
     ) -> PpuDmgBgpCpuCommitEffectKind {
         let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
         let start = visible_x.saturating_sub(retroactive_pixels);
-        let recent_pixels_are_bg_color0 = self.current_scanline_mixed_pixels[start..visible_x]
-            .iter()
-            .all(|pixel| pixel.source == MixedPixelSource::Background && pixel.color == 0);
+        let mut affected_pixel_count = 0usize;
+        let mut recent_affected_pixels_are_bg_color0 = true;
 
-        if recent_pixels_are_bg_color0 {
+        for pixel in &self.current_scanline_mixed_pixels[start..visible_x] {
+            if !register_affects_pixel(PpuPaletteRegister::Bgp, *pixel) {
+                continue;
+            }
+
+            affected_pixel_count += 1;
+            if pixel.color != 0 {
+                recent_affected_pixels_are_bg_color0 = false;
+                break;
+            }
+        }
+
+        if affected_pixel_count > 0 && recent_affected_pixels_are_bg_color0 {
             PpuDmgBgpCpuCommitEffectKind::RetroactivePanel
         } else {
             PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
@@ -436,16 +447,15 @@ impl Ppu {
 
         let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
         let start = visible_x.saturating_sub(retroactive_pixels);
+        let mut transient_palette_pending = true;
         for x in start..visible_x {
             let mixed_pixel = self.current_scanline_mixed_pixels[x];
             if !register_affects_pixel(register, mixed_pixel) {
                 continue;
             }
 
-            let use_transient_palette = match register {
-                PpuPaletteRegister::Bgp => x == start,
-                PpuPaletteRegister::Obp0 | PpuPaletteRegister::Obp1 => x == start,
-            };
+            let use_transient_palette = transient_palette_pending;
+            transient_palette_pending = false;
             let palette = if use_transient_palette {
                 transient_palette
             } else {
@@ -535,12 +545,18 @@ impl Ppu {
             return;
         }
 
+        let transfer_lead_pixels = self.bg_pipeline_state.current_transfer_x.saturating_sub(
+            self.bg_pipeline_state
+                .visible_pixels_output
+                .saturating_add(8),
+        );
         self.dmg_bgp_cpu_commit_current_line_writes
             .push(PpuDmgBgpCpuCommitWrite {
                 effect_kind,
                 transient_visible_x,
                 transient_palette,
                 repaint_visible_x,
+                transfer_lead_pixels,
                 value,
             });
     }
@@ -554,15 +570,21 @@ impl Ppu {
                 && previous_ly + 1 == self.ly
                 && previous_ly % 8 == 7
                 && self.ly.is_multiple_of(8)
-                && self
+                && (self
                     .dmg_bgp_cpu_commit_current_line_writes
                     .iter()
-                    .any(|write| write.effect_kind == PpuDmgBgpCpuCommitEffectKind::PipelineDelayed)
+                    .any(|write| {
+                        write.effect_kind == PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
+                    })
+                    || self.current_mode0_start_dot() > self.baseline_mode0_start_dot())
                 && !self.dmg_bgp_cpu_commit_current_line_writes.is_empty()
                 && self.dmg_bgp_cpu_commit_current_line_writes
                     != self.dmg_bgp_cpu_commit_previous_line_writes
             {
-                self.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(previous_ly);
+                self.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(
+                    previous_ly,
+                    self.current_mode0_start_dot() > self.baseline_mode0_start_dot(),
+                );
             }
 
             self.previous_scanline_mixed_pixels = self.current_scanline_mixed_pixels;
@@ -578,12 +600,25 @@ impl Ppu {
     pub(super) fn recolor_previous_scanline_from_current_bgp_cpu_commit_writes(
         &mut self,
         previous_ly: u8,
+        include_retroactive_panel_writes: bool,
     ) {
+        let allow_zero_start_retroactive_panel_writes = include_retroactive_panel_writes
+            && !self.previous_scanline_mixed_pixels[..DMG_PALETTE_RETROACTIVE_PIXELS]
+                .iter()
+                .any(|pixel| matches!(pixel.source, MixedPixelSource::Object { .. }));
+        let earliest_pipeline_delayed_repaint_x = self
+            .dmg_bgp_cpu_commit_current_line_writes
+            .iter()
+            .find(|write| write.effect_kind == PpuDmgBgpCpuCommitEffectKind::PipelineDelayed)
+            .map(|write| write.repaint_visible_x);
         let row_start = previous_ly as usize * SCREEN_WIDTH;
         for x in 0..SCREEN_WIDTH {
             let palette = self.dmg_bgp_cpu_commit_palette_for_visible_x(
                 self.dmg_bgp_cpu_commit_current_line_start_palette,
                 x,
+                include_retroactive_panel_writes,
+                allow_zero_start_retroactive_panel_writes,
+                earliest_pipeline_delayed_repaint_x,
             );
             let mixed_pixel = self.previous_scanline_mixed_pixels[x];
             self.framebuffer[row_start + x] = self
@@ -599,15 +634,39 @@ impl Ppu {
         &self,
         start_palette: u8,
         x: usize,
+        include_retroactive_panel_writes: bool,
+        allow_zero_start_retroactive_panel_writes: bool,
+        earliest_pipeline_delayed_repaint_x: Option<u8>,
     ) -> u8 {
         let mut palette = start_palette;
         for write in &self.dmg_bgp_cpu_commit_current_line_writes {
-            if write.effect_kind != PpuDmgBgpCpuCommitEffectKind::PipelineDelayed {
+            if write.effect_kind != PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
+                && !(include_retroactive_panel_writes
+                    && (write.transient_visible_x > 0 || allow_zero_start_retroactive_panel_writes)
+                    && earliest_pipeline_delayed_repaint_x
+                        .is_none_or(|earliest| write.transient_visible_x >= earliest)
+                    && write.effect_kind == PpuDmgBgpCpuCommitEffectKind::RetroactivePanel)
+            {
                 continue;
             }
 
-            if x >= usize::from(write.repaint_visible_x) {
-                palette = write.value;
+            let repaint_threshold_x = match write.effect_kind {
+                PpuDmgBgpCpuCommitEffectKind::PipelineDelayed => write
+                    .repaint_visible_x
+                    .saturating_add(write.transfer_lead_pixels),
+                PpuDmgBgpCpuCommitEffectKind::RetroactivePanel => write
+                    .transient_visible_x
+                    .saturating_add(write.transfer_lead_pixels),
+            };
+
+            if x >= usize::from(repaint_threshold_x) {
+                palette = if write.effect_kind == PpuDmgBgpCpuCommitEffectKind::RetroactivePanel
+                    && x == usize::from(write.transient_visible_x)
+                {
+                    write.transient_palette
+                } else {
+                    write.value
+                };
             } else {
                 break;
             }

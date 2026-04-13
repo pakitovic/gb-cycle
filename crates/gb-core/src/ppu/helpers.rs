@@ -98,6 +98,7 @@ pub(super) struct PpuDmgBgpCpuCommitWrite {
     pub(super) transient_visible_x: u8,
     pub(super) transient_palette: u8,
     pub(super) repaint_visible_x: u8,
+    pub(super) transfer_lead_pixels: u8,
     pub(super) value: u8,
 }
 
