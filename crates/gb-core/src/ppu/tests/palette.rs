@@ -112,6 +112,163 @@ fn later_visible_pixels_use_the_delayed_lcdc_copy() {
 }
 
 #[test]
+fn later_visible_pixels_use_the_live_lcdc_bg_enable_bit() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x92;
+    ppu.pipeline_registers.lcdc = 0x93;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 1;
+    ppu.bg_pipeline_state.current_transfer_x = 9;
+    ppu.bg_pipeline_state.visible_pixels_output = 1;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[1], 0);
+}
+
+#[test]
+fn later_visible_pixels_keep_live_bg_output_when_only_the_delayed_copy_disables_bg() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers.lcdc = 0x92;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 1;
+    ppu.bg_pipeline_state.current_transfer_x = 9;
+    ppu.bg_pipeline_state.visible_pixels_output = 1;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[1], 1);
+}
+
+#[test]
+fn bg_disabled_background_pixels_force_white_panel_output_on_dmg() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x92;
+    ppu.pipeline_registers.lcdc = 0x93;
+    ppu.visible_registers.bgp = 0x1B;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[0], 0);
+    assert_eq!(ppu.framebuffer()[0], 0);
+}
+
+#[test]
+fn bg_disabled_does_not_hide_obj_panel_output_on_dmg() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x92;
+    ppu.pipeline_registers.lcdc = 0x93;
+    ppu.visible_registers.bgp = 0x1B;
+    ppu.visible_registers.obp0 = Some(0xE4);
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+    ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+        color: 2,
+        palette_obp1: false,
+        bg_over_obj: false,
+        sprite_x: 8,
+        oam_index: 0,
+    });
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[0], 2);
+    assert_eq!(ppu.framebuffer()[0], 2);
+}
+
+#[test]
+fn first_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x92;
+    ppu.pipeline_registers.lcdc = 0x93;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+    ppu.bg_pipeline_state
+        .fifo_cached_pixels
+        .push_back(Some(BgFifoPixelCached::new(
+            BgCachedSlice {
+                source: PpuBgFetcherSource::Background,
+                fetch_x: BG_TILE_WIDTH as u16,
+                tile_low: 0xFF,
+                tile_high: 0x00,
+                ..BgCachedSlice::default()
+            },
+            0,
+        )));
+    ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+        color: 2,
+        palette_obp1: false,
+        bg_over_obj: false,
+        sprite_x: 8,
+        oam_index: 0,
+    });
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[0], 2);
+    assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 9);
+    assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 1);
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    assert!(ppu.bg_pipeline_state.fifo_cached_pixels.is_empty());
+}
+
+#[test]
+fn later_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers.lcdc = 0x92;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 1;
+    ppu.bg_pipeline_state.current_transfer_x = 9;
+    ppu.bg_pipeline_state.visible_pixels_output = 1;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+    ppu.bg_pipeline_state
+        .fifo_cached_pixels
+        .push_back(Some(BgFifoPixelCached::new(
+            BgCachedSlice {
+                source: PpuBgFetcherSource::Background,
+                fetch_x: BG_TILE_WIDTH as u16,
+                tile_low: 0xFF,
+                tile_high: 0x00,
+                ..BgCachedSlice::default()
+            },
+            0,
+        )));
+    ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+        color: 2,
+        palette_obp1: false,
+        bg_over_obj: false,
+        sprite_x: 9,
+        oam_index: 0,
+    });
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[1], 2);
+    assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 10);
+    assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 2);
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    assert!(ppu.bg_pipeline_state.fifo_cached_pixels.is_empty());
+}
+
+#[test]
 fn framebuffer_applies_obj_palette_selection_without_changing_logical_obj_colors() {
     let mut ppu = PpuTestRig::dmg();
     ppu.write_oam_entry_with_attributes(0, 16, 8, 0, 0x10);

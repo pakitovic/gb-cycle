@@ -211,6 +211,8 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - A higher-priority OBJ may therefore hide a lower-priority OBJ even if the winning OBJ later stays behind a nonzero BG pixel.
 - BG/OBJ mixing should be decided per popped pixel using the live BG pixel, the winning OBJ pixel, `LCDC.0`, `LCDC.1`, and the OBJ priority attribute.
 - In DMG mode with `LCDC.0 = 0`, BG and window output should be forced to white while OBJ output can still remain visible when `LCDC.1 = 1`.
+- In DMG mode with `LCDC.0 = 0`, visible transfer dots should still consume the BG/window FIFO and advance the same `Mode 3` pipeline timing; only the presented BG/window color is forced to white.
+- In DMG mode, `LCDC.0` BG/window gating during pixel output should follow the live visible register copy even after the first visible pixel; this bit does not share the later-pixel delayed-copy rule used by `LCDC.1` OBJ enable.
 - A BG pixel of color `0` should not block an eligible OBJ pixel as if the BG were opaque.
 
 ## Object fetch and stall baseline

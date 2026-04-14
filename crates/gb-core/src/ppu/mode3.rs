@@ -796,16 +796,22 @@ impl Ppu {
                 Mode3TransferDot::served(plan.result_kind, false)
             }
             Mode3TransferServiceExecution::EmitVisiblePixel => {
-                let bg_pixel = if self.pixel_transfer_bg_enabled() {
-                    self.pop_visible_bg_fifo_pixel(vram)
-                        .expect("visible transfer plans must carry a BG pixel")
-                } else {
-                    0
-                };
+                let bg_pixel = self
+                    .pop_visible_bg_fifo_pixel(vram)
+                    .expect("visible transfer plans must carry a BG pixel");
+                let bg_enabled = self.pixel_transfer_bg_enabled();
+                let bg_pixel = if bg_enabled { bg_pixel } else { 0 };
                 let obj_pixel = self.pop_obj_fifo_pixel();
                 let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
                 let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
-                    self.map_mixed_pixel_to_panel_shade(output_pixel)
+                    if self.console_model.is_dmg_family()
+                        && !bg_enabled
+                        && matches!(output_pixel.source, MixedPixelSource::Background)
+                    {
+                        0
+                    } else {
+                        self.map_mixed_pixel_to_panel_shade(output_pixel)
+                    }
                 } else {
                     0
                 };
