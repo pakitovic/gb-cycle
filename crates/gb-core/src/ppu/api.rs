@@ -52,7 +52,9 @@ impl Ppu {
             obj_pipeline_state: ObjPipelineState::default(),
             current_scanline_pixels: [0; SCREEN_WIDTH],
             current_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            current_scanline_dmg_bg_forced_white: [false; SCREEN_WIDTH],
             previous_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            previous_scanline_dmg_bg_forced_white: [false; SCREEN_WIDTH],
             previous_scanline_ly: None,
             framebuffer: vec![0; FRAMEBUFFER_PIXELS],
         }
@@ -258,8 +260,10 @@ impl Ppu {
         self.current_scanline_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
+        self.current_scanline_dmg_bg_forced_white.fill(false);
         self.previous_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
+        self.previous_scanline_dmg_bg_forced_white.fill(false);
         self.previous_scanline_ly = None;
         self.framebuffer.fill(0);
         self.sync_visible_registers();
@@ -391,6 +395,7 @@ impl Ppu {
                 self.current_scanline_pixels.fill(0);
                 self.current_scanline_mixed_pixels
                     .fill(MixedPixel::background(0));
+                self.current_scanline_dmg_bg_forced_white.fill(false);
                 if wraps_to_frame_start && self.blank_frame_active {
                     self.blank_frame_active = false;
                     self.refresh_visible_output();

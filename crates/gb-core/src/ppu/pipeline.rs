@@ -355,6 +355,17 @@ impl Ppu {
         }
     }
 
+    pub(super) fn dmg_bg_panel_dot_is_forced_white(
+        &self,
+        bg_enabled: bool,
+        pixel: MixedPixel,
+    ) -> bool {
+        self.visible_output == PpuVisibleOutputState::Driving
+            && self.console_model.is_dmg_family()
+            && !bg_enabled
+            && matches!(pixel.source, MixedPixelSource::Background)
+    }
+
     pub(super) fn apply_dmg_palette(&self, palette: u8, color: u8) -> u8 {
         (palette >> (u32::from(color & 0x03) * 2)) & 0x03
     }
@@ -624,6 +635,9 @@ impl Ppu {
         {
             let recent_dots = self.recent_palette_conflict_panel_dots(register, retroactive_pixels);
             for dot in recent_dots.iter().rev() {
+                if register == PpuPaletteRegister::Bgp && dot.dmg_bg_forced_white {
+                    continue;
+                }
                 if !register_affects_pixel(register, dot.pixel) {
                     continue;
                 }
@@ -648,6 +662,9 @@ impl Ppu {
         }
 
         for x in self.recent_palette_conflict_scanline_positions(register, retroactive_pixels) {
+            if register == PpuPaletteRegister::Bgp && self.current_scanline_dmg_bg_forced_white[x] {
+                continue;
+            }
             let mixed_pixel = self.current_scanline_mixed_pixels[x];
             if !register_affects_pixel(register, mixed_pixel) {
                 continue;
@@ -1062,7 +1079,12 @@ impl Ppu {
         ) && self.bg_pipeline_state.visible_pixels_output >= 10
     }
 
-    pub(super) fn record_dmg_recent_panel_dot(&mut self, visible_x: u8, pixel: MixedPixel) {
+    pub(super) fn record_dmg_recent_panel_dot(
+        &mut self,
+        visible_x: u8,
+        pixel: MixedPixel,
+        dmg_bg_forced_white: bool,
+    ) {
         if !self.console_model.is_dmg_family() || self.ly >= VISIBLE_SCANLINES {
             return;
         }
@@ -1070,15 +1092,22 @@ impl Ppu {
         if self.dmg_recent_panel_dots.len() == DMG_PALETTE_RETROACTIVE_DOT_HISTORY {
             let _ = self.dmg_recent_panel_dots.pop_front();
         }
-        self.dmg_recent_panel_dots
-            .push_back(PpuRecentPanelDot { visible_x, pixel });
+        self.dmg_recent_panel_dots.push_back(PpuRecentPanelDot {
+            visible_x,
+            pixel,
+            dmg_bg_forced_white,
+        });
     }
 
     pub(super) fn repeat_last_dmg_recent_panel_dot(&mut self) {
         let Some(last_dot) = self.dmg_recent_panel_dots.back().copied() else {
             return;
         };
-        self.record_dmg_recent_panel_dot(last_dot.visible_x, last_dot.pixel);
+        self.record_dmg_recent_panel_dot(
+            last_dot.visible_x,
+            last_dot.pixel,
+            last_dot.dmg_bg_forced_white,
+        );
     }
 
     pub(super) fn map_mixed_pixel_to_panel_shade_with_palette_override(
@@ -1203,6 +1232,7 @@ impl Ppu {
             }
 
             self.previous_scanline_mixed_pixels = self.current_scanline_mixed_pixels;
+            self.previous_scanline_dmg_bg_forced_white = self.current_scanline_dmg_bg_forced_white;
             self.previous_scanline_ly = Some(self.ly);
             self.dmg_bgp_cpu_commit_previous_line_start_palette =
                 self.dmg_bgp_cpu_commit_current_line_start_palette;
@@ -1210,6 +1240,7 @@ impl Ppu {
                 self.dmg_bgp_cpu_commit_current_line_writes.clone();
         } else {
             self.previous_scanline_ly = None;
+            self.previous_scanline_dmg_bg_forced_white.fill(false);
             self.dmg_bgp_cpu_commit_previous_line_start_palette =
                 self.dmg_bgp_cpu_commit_current_line_start_palette;
             self.dmg_bgp_cpu_commit_previous_line_writes.clear();
@@ -1242,6 +1273,9 @@ impl Ppu {
                 allow_zero_start_retroactive_panel_writes,
                 earliest_pipeline_delayed_repaint_x,
             );
+            if self.previous_scanline_dmg_bg_forced_white[x] {
+                continue;
+            }
             let mixed_pixel = self.previous_scanline_mixed_pixels[x];
             self.framebuffer[row_start + x] = self
                 .map_mixed_pixel_to_panel_shade_with_palette_override(
