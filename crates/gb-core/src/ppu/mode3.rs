@@ -796,9 +796,11 @@ impl Ppu {
                 Mode3TransferDot::served(plan.result_kind, false)
             }
             Mode3TransferServiceExecution::EmitVisiblePixel => {
+                let bg_pixel = self
+                    .pop_visible_bg_fifo_pixel(vram)
+                    .expect("visible transfer plans must carry a BG pixel");
                 let bg_pixel = if self.pixel_transfer_bg_enabled() {
-                    self.pop_visible_bg_fifo_pixel(vram)
-                        .expect("visible transfer plans must carry a BG pixel")
+                    bg_pixel
                 } else {
                     0
                 };

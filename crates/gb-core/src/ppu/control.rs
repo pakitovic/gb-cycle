@@ -1337,7 +1337,11 @@ impl Ppu {
     }
 
     pub(super) fn pixel_transfer_bg_enabled(&self) -> bool {
-        self.pixel_pipeline_lcdc() & LCDC_BG_ENABLE_BIT != 0
+        if self.console_model.is_dmg_family() {
+            self.visible_registers.lcdc & LCDC_BG_ENABLE_BIT != 0
+        } else {
+            self.pixel_pipeline_lcdc() & LCDC_BG_ENABLE_BIT != 0
+        }
     }
 
     pub(super) fn pixel_transfer_obj_enabled(&self) -> bool {
