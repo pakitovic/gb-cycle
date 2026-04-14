@@ -113,6 +113,7 @@ pub(super) struct PpuDmgBgpBoundaryRepaintWrite {
 pub(super) struct PpuRecentPanelDot {
     pub(super) visible_x: u8,
     pub(super) pixel: MixedPixel,
+    pub(super) dmg_bg_forced_white: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

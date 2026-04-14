@@ -803,11 +803,10 @@ impl Ppu {
                 let bg_pixel = if bg_enabled { bg_pixel } else { 0 };
                 let obj_pixel = self.pop_obj_fifo_pixel();
                 let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
+                let dmg_bg_forced_white =
+                    self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
                 let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
-                    if self.console_model.is_dmg_family()
-                        && !bg_enabled
-                        && matches!(output_pixel.source, MixedPixelSource::Background)
-                    {
+                    if dmg_bg_forced_white {
                         0
                     } else {
                         self.map_mixed_pixel_to_panel_shade(output_pixel)
@@ -822,9 +821,14 @@ impl Ppu {
                 };
                 let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
                 self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+                self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
                 self.current_scanline_pixels[visible_x] = scanline_pixel;
                 self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
-                self.record_dmg_recent_panel_dot(visible_x as u8, output_pixel);
+                self.record_dmg_recent_panel_dot(
+                    visible_x as u8,
+                    output_pixel,
+                    dmg_bg_forced_white,
+                );
                 self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
                 self.bg_pipeline_state.current_transfer_x =
                     self.bg_pipeline_state.current_transfer_x.saturating_add(1);

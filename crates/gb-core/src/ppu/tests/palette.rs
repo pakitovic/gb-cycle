@@ -164,6 +164,37 @@ fn bg_disabled_background_pixels_force_white_panel_output_on_dmg() {
 }
 
 #[test]
+fn bg_disabled_background_pixels_stay_white_during_retroactive_bgp_repaint() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x90,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0x11,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    for _ in 0..4 {
+        ppu.bg_pipeline_state.fifo.push_back(0);
+        let _ = ppu.advance_mode3_output_phase();
+    }
+
+    assert_eq!(&ppu.framebuffer()[..4], &[0, 0, 0, 0]);
+
+    ppu.write_register_with_source(0xFF47, 0x12, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(&ppu.framebuffer()[..4], &[0, 0, 0, 0]);
+}
+
+#[test]
 fn bg_disabled_does_not_hide_obj_panel_output_on_dmg() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_output = PpuVisibleOutputState::Driving;
@@ -1194,14 +1225,17 @@ fn dmg_recent_panel_dot_history_drives_the_bgp_panel_path() {
     ppu.dmg_recent_panel_dots.push_back(PpuRecentPanelDot {
         visible_x: 4,
         pixel: MixedPixel::background(0),
+        dmg_bg_forced_white: false,
     });
     ppu.dmg_recent_panel_dots.push_back(PpuRecentPanelDot {
         visible_x: 5,
         pixel: MixedPixel::object(1, false),
+        dmg_bg_forced_white: false,
     });
     ppu.dmg_recent_panel_dots.push_back(PpuRecentPanelDot {
         visible_x: 6,
         pixel: MixedPixel::background(0),
+        dmg_bg_forced_white: false,
     });
 
     assert_eq!(
@@ -1213,6 +1247,7 @@ fn dmg_recent_panel_dot_history_drives_the_bgp_panel_path() {
     ppu.dmg_recent_panel_dots.push_back(PpuRecentPanelDot {
         visible_x: 6,
         pixel: MixedPixel::background(1),
+        dmg_bg_forced_white: false,
     });
 
     assert_eq!(
@@ -1224,6 +1259,7 @@ fn dmg_recent_panel_dot_history_drives_the_bgp_panel_path() {
     ppu.dmg_recent_panel_dots.push_back(PpuRecentPanelDot {
         visible_x: 6,
         pixel: MixedPixel::background(0),
+        dmg_bg_forced_white: false,
     });
     ppu.framebuffer[4] = 1;
     ppu.framebuffer[5] = 0;
@@ -1480,6 +1516,43 @@ fn dmg_bgp_row_family_change_recolors_the_previous_boundary_scanline() {
     let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
     assert_eq!(row[0], 0);
     assert!(row[1..13].iter().all(|&shade| shade == 1));
+    assert!(row[13..].iter().all(|&shade| shade == 0));
+}
+
+#[test]
+fn dmg_bgp_row_family_change_keeps_lcdc0_forced_white_previous_boundary_pixels_white() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.previous_scanline_ly = Some(7);
+    ppu.previous_scanline_mixed_pixels
+        .fill(MixedPixel::background(0));
+    ppu.previous_scanline_dmg_bg_forced_white[1..4].fill(true);
+    ppu.dmg_bgp_cpu_commit_current_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_previous_line_start_palette = 0x10;
+    ppu.dmg_bgp_cpu_commit_current_line_writes = vec![
+        PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+            transient_visible_x: 1,
+            transient_palette: 0x11,
+            repaint_visible_x: 1,
+            transfer_lead_pixels: 0,
+            value: 0x11,
+        },
+        PpuDmgBgpCpuCommitWrite {
+            effect_kind: PpuDmgBgpCpuCommitEffectKind::PipelineDelayed,
+            transient_visible_x: 13,
+            transient_palette: 0x11,
+            repaint_visible_x: 13,
+            transfer_lead_pixels: 0,
+            value: 0x10,
+        },
+    ];
+
+    ppu.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(7, false);
+
+    let row = &ppu.framebuffer()[7 * SCREEN_WIDTH..8 * SCREEN_WIDTH];
+    assert_eq!(&row[..4], &[0, 0, 0, 0]);
+    assert!(row[4..13].iter().all(|&shade| shade == 1));
     assert!(row[13..].iter().all(|&shade| shade == 0));
 }
 

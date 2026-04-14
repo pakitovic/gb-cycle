@@ -1481,6 +1481,7 @@ impl Ppu {
         self.current_scanline_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
+        self.current_scanline_dmg_bg_forced_white.fill(false);
     }
 
     pub(super) fn clear_visible_buffers(&mut self) {
