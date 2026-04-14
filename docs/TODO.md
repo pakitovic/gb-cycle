@@ -49,7 +49,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
   - `mooneye acceptance/ppu/{hblank_ly_scx_timing-GS,intr_1_2_timing-GS,intr_2_0_timing,intr_2_mode0_timing,intr_2_mode0_timing_sprites,intr_2_mode3_timing,intr_2_oam_ok_timing,lcdon_timing-GS,lcdon_write_timing-GS,stat_irq_blocking,stat_lyc_onoff,vblank_stat_intr-GS}.gb`
   - `hacktix/{bully,strikethrough}.gb`
   - `mealybug ppu/{m2_win_en_toggle,m3_bgp_change,m3_bgp_change_sprites,m3_obp0_change}.gb`
-- The next strict ladder blocker is `m3_lcdc_bg_en_change.gb` (`order 29`).
+- The next strict ladder blocker is `m3_scx_low_3_bits.gb` (`order 30`).
 - The DMG visible-transfer path now always consumes one BG FIFO pixel even when `LCDC.0 = 0` forces the presented BG/window color to white. That narrow change does not close `m3_lcdc_bg_en_change.gb`, but it lowers the framebuffer mismatch from `9398` pixels to `1556` while keeping the current green guards (`acid/dmg-acid2.gb`, `mealybug m3_bgp_change.gb`, `mealybug m3_bgp_change_sprites.gb`, `mealybug m3_obp0_change.gb`, `mooneye acceptance/ppu/hblank_ly_scx_timing-GS.gb`) green.
 - A follow-up DMG pixel-path split now treats `LCDC.0` BG/window enable as live during visible output while leaving `LCDC.1` OBJ enable on the existing delayed-copy path. That moves `m3_lcdc_bg_en_change.gb` from `1556` to `1294` mismatching pixels and keeps the current green guards (`acid/dmg-acid2.gb`, `mealybug m3_bgp_change.gb`, `mealybug m3_bgp_change_sprites.gb`, `mealybug m3_obp0_change.gb`, `mooneye acceptance/ppu/hblank_ly_scx_timing-GS.gb`, `cargo test -q`) green.
 - The main broad failure modes are already ruled out:
@@ -64,18 +64,18 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
   - `mealybug m3_obp0_change.gb` is closed through a separate DMG `OBP0` scanline-path seam: no retroactive OBJ recolor before `visible_x = 10`, then a scanline-anchored conflict window that preserves older isolated leading OBJ pixels while still recoloring the later live-write tail
   - `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` is closed through narrow CPU-visible `STAT` publication seams for the ten-sprite step-8 staggered families, not through another broad `Mode 3` rewrite
   - `hacktix/strikethrough.gb`, `mooneye acceptance/ppu/hblank_ly_scx_timing-GS.gb`, `mooneye acceptance/ppu/lcdon_timing-GS.gb`, `mooneye acceptance/ppu/lcdon_write_timing-GS.gb`, `blargg oam_bug/4`, `blargg oam_bug/5`, and `cargo test -p gb-core ppu -- --nocapture` are green again
-- Strict ladder maturity is blocked at `order 29`, but the early raster, restart, and sprite-coupled `BGP` live-write baselines are closed again.
-- The next primary closure target is the broader live-`LCDC` tranche starting at `m3_lcdc_bg_en_change.gb`.
+- Strict ladder maturity is blocked at `order 30`, but the early raster, restart, and sprite-coupled `BGP` live-write baselines are closed again.
+- The next primary closure target is the `SCX/SCY` FIFO core tranche starting at `m3_scx_low_3_bits.gb`.
 
 #### Open TODOs
 
 - [PPU][SKIPBOOT-ORACLE] `SkipBoot` startup-mode latch is validated only against repo-local continuity tests. Before Phase `9` hardening, needs comparison against a trusted oracle or hardware capture proving first LCD-visible dots after `SkipBoot` are coherent with published `LCDC`, `STAT`, and `LY` state. Does not block Phase `5`.
 
-- [PPU][MEALYBUG-MODE3-LIVE-WRITES] Current report still-red follow-up families:
-  - Window/live-`LCDC.5` timing: `m3_window_timing*`, `m3_lcdc_win_en_change_multiple*`, `m3_wx_4_change*`, `m3_wx_5_change`, `m3_wx_6_change`.
-  - Live `LCDC` map/enable/tile-select: `m3_lcdc_bg_en_change`, `m3_lcdc_bg_map_change`, `m3_lcdc_win_map_change`, `m3_lcdc_tile_sel_change*`, `m3_lcdc_obj_en_change*`.
-  - `SCX/SCY` live-scroll: `m3_scx_high_5_bits`, `m3_scx_low_3_bits`, `m3_scy_change`.
-  - Live sprite-size: `m3_lcdc_obj_size_change`, `m3_lcdc_obj_size_change_scx`.
+- [PPU][MEALYBUG-MODE3-LIVE-WRITES] Current report still-red follow-up families (implementation order per PPU.md ladder):
+  - **Tier B — SCX/SCY (FIFO core)** `[orders 30-32]`: `m3_scx_low_3_bits`, `m3_scx_high_5_bits`, `m3_scy_change`.
+  - **Tier C — LCDC BG toggles** `[orders 33-35]`: `m3_lcdc_bg_en_change`, `m3_lcdc_bg_map_change`, `m3_lcdc_tile_sel_change`.
+  - **Tier D — LCDC OBJ toggles** `[orders 36-39]`: `m3_lcdc_obj_en_change`, `m3_lcdc_obj_en_change_variant`, `m3_lcdc_obj_size_change`, `m3_lcdc_obj_size_change_scx`.
+  - **Tier E — Window mechanics** `[orders 40-49]`: `m3_window_timing`, `m3_window_timing_wx_0`, `m3_lcdc_win_map_change`, `m3_lcdc_tile_sel_win_change`, `m3_lcdc_win_en_change_multiple`, `m3_lcdc_win_en_change_multiple_wx`, `m3_wx_4_change`, `m3_wx_5_change`, `m3_wx_6_change`, `m3_wx_4_change_sprites`.
 
 - [PPU][M3-LCDC0-LEFT-EDGE-ONSET] `m3_lcdc_bg_en_change.gb` is still red after fixing the broader bug where `LCDC.0 = 0` stopped consuming BG FIFO pixels. The remaining mismatch is now concentrated in the left edge and the first four live `FF40` toggles per tested scanline. Trace re-entry points:
   - On `LY = 1`, the ROM commits `FF40 <- {0x92, 0x93, 0x92, 0x93}` at `visible_pixels_output = {4, 16, 24, 32}` / `line_dot = {104, 116, 124, 132}`.
