@@ -6,6 +6,93 @@ pub(super) enum PpuPaletteRegister {
     Obp1,
 }
 
+impl PpuPaletteRegister {
+    pub(super) const fn for_obj_palette(palette_obp1: bool) -> Self {
+        if palette_obp1 { Self::Obp1 } else { Self::Obp0 }
+    }
+
+    pub(super) const fn affects_obj_palette(self, palette_obp1: bool) -> bool {
+        matches!(
+            (self, palette_obp1),
+            (Self::Obp0, false) | (Self::Obp1, true)
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PpuRegister {
+    Lcdc,
+    Stat,
+    Scy,
+    Scx,
+    Ly,
+    Lyc,
+    Bgp,
+    Obp0,
+    Obp1,
+    Wy,
+    Wx,
+}
+
+impl PpuRegister {
+    pub(super) const fn from_address(address: u16) -> Option<Self> {
+        match address {
+            0xFF40 => Some(Self::Lcdc),
+            0xFF41 => Some(Self::Stat),
+            0xFF42 => Some(Self::Scy),
+            0xFF43 => Some(Self::Scx),
+            0xFF44 => Some(Self::Ly),
+            0xFF45 => Some(Self::Lyc),
+            0xFF47 => Some(Self::Bgp),
+            0xFF48 => Some(Self::Obp0),
+            0xFF49 => Some(Self::Obp1),
+            0xFF4A => Some(Self::Wy),
+            0xFF4B => Some(Self::Wx),
+            _ => None,
+        }
+    }
+
+    pub(super) const fn palette_register(self) -> Option<PpuPaletteRegister> {
+        match self {
+            Self::Bgp => Some(PpuPaletteRegister::Bgp),
+            Self::Obp0 => Some(PpuPaletteRegister::Obp0),
+            Self::Obp1 => Some(PpuPaletteRegister::Obp1),
+            Self::Lcdc
+            | Self::Stat
+            | Self::Scy
+            | Self::Scx
+            | Self::Ly
+            | Self::Lyc
+            | Self::Wy
+            | Self::Wx => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PpuMode3LiveBackgroundRegister {
+    Lcdc,
+    Scy,
+}
+
+impl PpuMode3LiveBackgroundRegister {
+    pub(super) const fn from_register(register: PpuRegister) -> Option<Self> {
+        match register {
+            PpuRegister::Lcdc => Some(Self::Lcdc),
+            PpuRegister::Scy => Some(Self::Scy),
+            PpuRegister::Stat
+            | PpuRegister::Scx
+            | PpuRegister::Ly
+            | PpuRegister::Lyc
+            | PpuRegister::Bgp
+            | PpuRegister::Obp0
+            | PpuRegister::Obp1
+            | PpuRegister::Wy
+            | PpuRegister::Wx => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Mode3TransferDotKind {
     NotServed,
@@ -395,17 +482,6 @@ impl BgPipelineState {
         self.mode0_start_dot += 1;
     }
 
-    pub(super) fn startup_transfer_window_open(&self, mode3_dot: u16) -> bool {
-        if !self.mode3_started {
-            return mode3_dot >= MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
-        }
-
-        !matches!(
-            self.startup_source_state,
-            Mode3StartupSourceState::EntryDelay { .. }
-        )
-    }
-
     pub(super) fn consume_startup_transfer_entry_delay_dot(&mut self) -> bool {
         if !self.mode3_started {
             return false;
@@ -429,35 +505,6 @@ impl BgPipelineState {
                 true
             }
             Mode3StartupSourceState::Abstract { .. } | Mode3StartupSourceState::FifoBacked => false,
-        }
-    }
-
-    pub(super) fn current_startup_source_window(
-        &self,
-        mode3_dot: u16,
-    ) -> Mode3TransferSourceWindow {
-        if !self.mode3_started {
-            if mode3_dot < MODE3_BG_FETCH_PRIMING_DOTS {
-                return Mode3TransferSourceWindow::AbstractStartup;
-            }
-
-            return Mode3TransferSourceWindow::FifoBacked;
-        }
-
-        match self.startup_source_state {
-            Mode3StartupSourceState::EntryDelay { .. }
-            | Mode3StartupSourceState::Abstract { .. } => {
-                Mode3TransferSourceWindow::AbstractStartup
-            }
-            Mode3StartupSourceState::FifoBacked => Mode3TransferSourceWindow::FifoBacked,
-        }
-    }
-
-    pub(super) fn current_startup_transfer_lane(&self) -> Mode3TransferLane {
-        if self.startup_pre_visible_transfer_dots_remaining > 0 {
-            Mode3TransferLane::PreVisible
-        } else {
-            Mode3TransferLane::Hidden
         }
     }
 
@@ -522,11 +569,14 @@ impl BgPipelineState {
         self.pop_fifo_pixel()
     }
 
-    pub(super) fn mark_live_lcdc3_write_while_fifo_visible(&mut self, previous_lcdc: u8, lcdc: u8) {
+    pub(super) fn mark_live_lcdc3_write_while_fifo_visible(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
         for cached in self.fifo_cached_pixels.iter_mut().flatten() {
             cached
                 .cached
-                .mark_live_lcdc3_write_while_fifo_visible(previous_lcdc, lcdc);
+                .mark_live_lcdc3_write_while_fifo_visible(write_context);
         }
     }
 
@@ -836,24 +886,10 @@ impl BgFetcherState {
 
     pub(super) fn mark_live_lcdc3_write_for_current_background_fetch(
         &mut self,
-        previous_lcdc: u8,
-        lcdc: u8,
+        write_context: PpuMode3LiveRegisterWriteContext,
     ) {
-        if self.source != PpuBgFetcherSource::Background
-            || (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT == 0
-            || !matches!(
-                self.cached_origin,
-                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
-            )
-            || !matches!(
-                self.stage,
-                PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
-            )
-        {
-            return;
-        }
-
-        self.needs_live_tilemap_refetch_on_push = true;
+        PpuMode3LiveBackgroundWriteEffects::for_current_background_fetch(*self, write_context)
+            .apply_to_fetcher(self);
     }
 }
 
@@ -1044,67 +1080,42 @@ impl BgCachedSlice {
 
     pub(super) fn mark_live_register_write_while_push_pending(
         &mut self,
-        address: u16,
-        previous_lcdc: u8,
-        lcdc: u8,
+        register: PpuMode3LiveBackgroundRegister,
+        write_context: PpuMode3LiveRegisterWriteContext,
         entry_delay_active: bool,
     ) {
-        if !self.is_background() || self.is_startup_alignment_seed() {
-            return;
-        }
-
-        let tile_data_selector_changed = (previous_lcdc ^ lcdc) & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
-        let needs_tilemap_refetch = address == 0xFF40
-            && (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT != 0
-            && (entry_delay_active
-                || self.same_cycle_live_tilemap_refetch_window_open
-                || self.is_second_or_third_visible_post_startup_push());
-        let needs_tile_data_refetch =
-            address == 0xFF40 && tile_data_selector_changed || address == 0xFF42;
-
-        self.needs_live_tilemap_refetch |= needs_tilemap_refetch;
-        self.needs_live_tile_data_refetch |= needs_tile_data_refetch;
-        self.needs_live_tile_data_current_row_refetch |= address == 0xFF42;
+        PpuMode3LiveBackgroundWriteEffects::for_push_pending_slice(
+            *self,
+            register,
+            write_context,
+            entry_delay_active,
+        )
+        .apply_to_cached_slice(self);
     }
 
     pub(super) fn mark_live_register_write_while_fill_pending(
         &mut self,
-        address: u16,
-        previous_lcdc: u8,
-        lcdc: u8,
+        register: PpuMode3LiveBackgroundRegister,
+        write_context: PpuMode3LiveRegisterWriteContext,
         includes_real_tile_pixels: bool,
         startup_dummy_pixels: u8,
     ) {
-        if !self.is_background() || !includes_real_tile_pixels {
-            return;
-        }
-
-        if address == 0xFF40
-            && (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT != 0
-            && startup_dummy_pixels == 0
-            && (self.same_cycle_live_tilemap_refetch_window_open
-                || self.is_second_or_third_visible_post_startup_push())
-        {
-            self.needs_live_tilemap_refetch = true;
-        }
-
-        let tile_data_selector_changed = (previous_lcdc ^ lcdc) & LCDC_BG_WINDOW_TILE_DATA_BIT != 0;
-        let needs_tile_data_refetch =
-            address == 0xFF40 && tile_data_selector_changed || address == 0xFF42;
-
-        self.needs_live_tile_data_refetch |= needs_tile_data_refetch;
-        self.needs_live_tile_data_current_row_refetch |= address == 0xFF42;
+        PpuMode3LiveBackgroundWriteEffects::for_fill_pending_slice(
+            *self,
+            register,
+            write_context,
+            includes_real_tile_pixels,
+            startup_dummy_pixels,
+        )
+        .apply_to_cached_slice(self);
     }
 
-    pub(super) fn mark_live_lcdc3_write_while_fifo_visible(&mut self, previous_lcdc: u8, lcdc: u8) {
-        if !self.is_background()
-            || (previous_lcdc ^ lcdc) & LCDC_BG_TILE_MAP_BIT == 0
-            || !self.is_second_or_third_visible_post_startup_push()
-        {
-            return;
-        }
-
-        self.needs_live_tilemap_refetch = true;
+    pub(super) fn mark_live_lcdc3_write_while_fifo_visible(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
+        PpuMode3LiveBackgroundWriteEffects::for_visible_fifo_slice(*self, write_context)
+            .apply_to_cached_slice(self);
     }
 }
 
@@ -1138,11 +1149,7 @@ impl BgFifoPixel {
 pub(super) fn recompute_live_background_cached_slice(
     mut cached: BgCachedSlice,
     vram: &VramBusView<'_>,
-    lcdc: u8,
-    scy: u8,
-    ly: u8,
-    last_unsigned_tile_data_low_fetch: u8,
-    last_unsigned_tile_data_high_fetch: u8,
+    context: PpuMode3LiveBackgroundRefetchContext,
 ) -> Option<BgCachedSlice> {
     if cached.source != PpuBgFetcherSource::Background
         || (!cached.needs_live_tilemap_refetch
@@ -1153,11 +1160,12 @@ pub(super) fn recompute_live_background_cached_slice(
         return None;
     }
 
+    let registers = context.registers();
     let mut tile_map_address = cached.tile_map_address;
     let mut tile_index = cached.tile_index;
     if cached.needs_live_tilemap_refetch {
         let tile_map_offset = cached.tile_map_address & 0x03FF;
-        let tile_map_base = if lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
+        let tile_map_base = if registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
             0x1C00
         } else {
             0x1800
@@ -1168,20 +1176,21 @@ pub(super) fn recompute_live_background_cached_slice(
 
     let tile_data_row = if cached.needs_live_tile_data_refetch {
         if cached.needs_live_tile_data_current_row_refetch {
-            u16::from(scy.wrapping_add(ly) % BG_TILE_WIDTH)
+            context.current_scanline_tile_row()
         } else {
             (cached.tile_data_address.saturating_sub(1) & (TILE_BYTES - 1)) / TILE_ROW_BYTES
         }
     } else {
         (cached.tile_data_address.saturating_sub(1) & (TILE_BYTES - 1)) / TILE_ROW_BYTES
     };
-    let tile_low_address = bg_tile_data_base(lcdc, tile_index) + tile_data_row * TILE_ROW_BYTES;
+    let tile_low_address =
+        bg_tile_data_base(registers.lcdc, tile_index) + tile_data_row * TILE_ROW_BYTES;
     let tile_high_address = tile_low_address + 1;
     let (tile_low, tile_high) =
         if cached.needs_live_tile_data_unsigned_reuse && !cached.needs_live_tilemap_refetch {
             (
-                last_unsigned_tile_data_low_fetch,
-                last_unsigned_tile_data_high_fetch,
+                context.last_unsigned_tile_data_low_fetch(),
+                context.last_unsigned_tile_data_high_fetch(),
             )
         } else {
             (

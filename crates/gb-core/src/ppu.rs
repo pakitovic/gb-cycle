@@ -7,6 +7,7 @@ mod api;
 mod control;
 mod helpers;
 mod mode3;
+mod palette_conflicts;
 mod pipeline;
 mod snapshot;
 mod state;
