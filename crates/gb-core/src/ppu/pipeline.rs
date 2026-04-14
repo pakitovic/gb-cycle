@@ -489,13 +489,13 @@ impl Ppu {
                     PpuDmgBgpCpuCommitEffectKind::PipelineDelayed => {
                         let output_delay_pixels =
                             self.dmg_bgp_cpu_commit_output_delay_pixels(visible_pixels_output);
-                        self.dmg_bgp_cpu_commit_output_palette_override =
-                            (output_delay_pixels > 0).then(|| self.pixel_pipeline_bgp());
-                        self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = output_delay_pixels;
+                        self.set_dmg_bgp_cpu_commit_output_override(
+                            (output_delay_pixels > 0).then(|| self.pixel_pipeline_bgp()),
+                            output_delay_pixels,
+                        );
                     }
                     PpuDmgBgpCpuCommitEffectKind::CurrentDotTransient => {
-                        self.dmg_bgp_cpu_commit_output_palette_override = Some(transient_palette);
-                        self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 1;
+                        self.set_dmg_bgp_cpu_commit_output_override(Some(transient_palette), 1);
                     }
                     PpuDmgBgpCpuCommitEffectKind::RetroactivePanel => {
                         self.retroactively_recolor_recent_pixels(
@@ -515,25 +515,22 @@ impl Ppu {
                                 bg_visible_pixels,
                                 value,
                             );
-                            self.dmg_bgp_cpu_commit_output_palette_override = None;
-                            self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 0;
+                            self.set_dmg_bgp_cpu_commit_output_override(None, 0);
                         } else if delay_final_visible_commit {
                             let output_delay_pixels = self
                                 .dmg_bgp_cpu_commit_retroactive_final_delay_pixels(
                                     visible_pixels_output,
                                 );
                             if output_delay_pixels == 0 {
-                                self.dmg_bgp_cpu_commit_output_palette_override = Some(value);
-                                self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 1;
+                                self.set_dmg_bgp_cpu_commit_output_override(Some(value), 1);
                             } else {
-                                self.dmg_bgp_cpu_commit_output_palette_override =
-                                    Some(self.pixel_pipeline_bgp());
-                                self.dmg_bgp_cpu_commit_output_delay_pixels_remaining =
-                                    output_delay_pixels;
+                                self.set_dmg_bgp_cpu_commit_output_override(
+                                    Some(self.pixel_pipeline_bgp()),
+                                    output_delay_pixels,
+                                );
                             }
                         } else {
-                            self.dmg_bgp_cpu_commit_output_palette_override = Some(value);
-                            self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 1;
+                            self.set_dmg_bgp_cpu_commit_output_override(Some(value), 1);
                         }
                     }
                 }
@@ -682,7 +679,17 @@ impl Ppu {
 
         self.dmg_bgp_cpu_commit_output_delay_pixels_remaining -= 1;
         if self.dmg_bgp_cpu_commit_output_delay_pixels_remaining == 0 {
-            self.dmg_bgp_cpu_commit_output_palette_override = None;
+            if let Some(palette) = self
+                .dmg_bgp_cpu_commit_output_followup_palette_override
+                .take()
+            {
+                self.dmg_bgp_cpu_commit_output_palette_override = Some(palette);
+                self.dmg_bgp_cpu_commit_output_delay_pixels_remaining =
+                    self.dmg_bgp_cpu_commit_output_followup_pixels_remaining;
+                self.dmg_bgp_cpu_commit_output_followup_pixels_remaining = 0;
+            } else {
+                self.dmg_bgp_cpu_commit_output_palette_override = None;
+            }
         }
     }
 
@@ -719,6 +726,31 @@ impl Ppu {
         self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override = Some(palette);
         self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining = bg_visible_pixels;
         self.dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette = Some(fallback_palette);
+    }
+
+    fn clear_dmg_bgp_cpu_commit_output_followup(&mut self) {
+        self.dmg_bgp_cpu_commit_output_followup_palette_override = None;
+        self.dmg_bgp_cpu_commit_output_followup_pixels_remaining = 0;
+    }
+
+    fn set_dmg_bgp_cpu_commit_output_override(
+        &mut self,
+        palette_override: Option<u8>,
+        pixels_remaining: u8,
+    ) {
+        self.dmg_bgp_cpu_commit_output_palette_override = palette_override;
+        self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = pixels_remaining;
+        self.clear_dmg_bgp_cpu_commit_output_followup();
+    }
+
+    fn queue_dmg_bgp_cpu_commit_output_followup(&mut self, palette_override: u8, pixels: u8) {
+        if pixels == 0 {
+            self.clear_dmg_bgp_cpu_commit_output_followup();
+            return;
+        }
+
+        self.dmg_bgp_cpu_commit_output_followup_palette_override = Some(palette_override);
+        self.dmg_bgp_cpu_commit_output_followup_pixels_remaining = pixels;
     }
 
     fn dmg_bgp_cpu_commit_output_delay_pixels(&self, visible_pixels_output: u8) -> u8 {
@@ -875,12 +907,12 @@ impl Ppu {
         }
 
         if desired_onset_x > visible_pixels_output {
-            self.dmg_bgp_cpu_commit_output_palette_override = Some(previous_visible);
-            self.dmg_bgp_cpu_commit_output_delay_pixels_remaining =
-                desired_onset_x.saturating_sub(visible_pixels_output);
+            self.set_dmg_bgp_cpu_commit_output_override(
+                Some(previous_visible),
+                desired_onset_x.saturating_sub(visible_pixels_output),
+            );
         } else {
-            self.dmg_bgp_cpu_commit_output_palette_override = Some(value);
-            self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 1;
+            self.set_dmg_bgp_cpu_commit_output_override(Some(value), 1);
         }
     }
 
@@ -922,8 +954,17 @@ impl Ppu {
             self.framebuffer[row_start + x] = panel_pixel;
         }
 
-        self.dmg_bgp_cpu_commit_output_palette_override = Some(value);
-        self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 1;
+        let hold_pixels = transient_start_x.saturating_sub(visible_pixels_output);
+        let future_transient_start_x = visible_pixels_output.max(transient_start_x);
+        let transient_pixels = final_onset_x.saturating_sub(future_transient_start_x);
+        if hold_pixels > 0 {
+            self.set_dmg_bgp_cpu_commit_output_override(Some(previous_visible), hold_pixels);
+            self.queue_dmg_bgp_cpu_commit_output_followup(transient_palette, transient_pixels);
+        } else if transient_pixels > 0 {
+            self.set_dmg_bgp_cpu_commit_output_override(Some(transient_palette), transient_pixels);
+        } else {
+            self.set_dmg_bgp_cpu_commit_output_override(Some(value), 1);
+        }
     }
 
     fn early_line_retroactive_obj_hold_bg_visible_pixels(&self) -> Option<u8> {
