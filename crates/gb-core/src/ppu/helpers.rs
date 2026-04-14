@@ -87,9 +87,32 @@ impl PpuLcdRestartPhase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PpuDmgBgpCpuCommitEffectKind {
+    PipelineDelayed,
+    CurrentDotTransient,
+    RetroactivePanel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PpuDmgBgpCpuCommitWrite {
-    pub(super) visible_pixels_output: u8,
+    pub(super) effect_kind: PpuDmgBgpCpuCommitEffectKind,
+    pub(super) transient_visible_x: u8,
+    pub(super) transient_palette: u8,
+    pub(super) repaint_visible_x: u8,
+    pub(super) transfer_lead_pixels: u8,
     pub(super) value: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PpuDmgBgpBoundaryRepaintWrite {
+    pub(super) write: PpuDmgBgpCpuCommitWrite,
+    pub(super) selected_current: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PpuRecentPanelDot {
+    pub(super) visible_x: u8,
+    pub(super) pixel: MixedPixel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

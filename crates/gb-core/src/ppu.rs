@@ -63,6 +63,7 @@ const MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS: u8 =
     (MODE3_FIFO_BACKED_HIDDEN_TRANSFER_START_DOT - MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT) as u8;
 const MODE0_START_DOT: u16 = MODE2_DOTS + MODE3_BASELINE_DOTS;
 const DMG_PALETTE_RETROACTIVE_PIXELS: usize = 4;
+const DMG_PALETTE_RETROACTIVE_DOT_HISTORY: usize = DMG_PALETTE_RETROACTIVE_PIXELS + 1;
 const OAM_ENTRY_BYTES: usize = 4;
 const OAM_SPRITE_COUNT: u8 = 40;
 const MODE2_T_CYCLES_PER_OAM_ENTRY: u16 = 2;
@@ -333,9 +334,14 @@ pub struct Ppu {
     pipeline_registers: PpuVisibleRegisters,
     dmg_bgp_cpu_commit_output_palette_override: Option<u8>,
     dmg_bgp_cpu_commit_output_delay_pixels_remaining: u8,
+    dmg_bgp_cpu_commit_bg_visible_hold_palette_override: Option<u8>,
+    dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining: u8,
+    dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette: Option<u8>,
     dmg_bgp_cpu_commit_current_line_start_palette: u8,
+    dmg_bgp_cpu_commit_previous_line_start_palette: u8,
     dmg_bgp_cpu_commit_current_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
     dmg_bgp_cpu_commit_previous_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
+    dmg_recent_panel_dots: VecDeque<PpuRecentPanelDot>,
     last_unsigned_tile_data_fetch: u8,
     last_unsigned_tile_data_low_fetch: u8,
     last_unsigned_tile_data_high_fetch: u8,

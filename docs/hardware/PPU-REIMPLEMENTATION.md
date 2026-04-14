@@ -60,36 +60,40 @@ Nothing in this file overrides those documents.
 ### DMG panel-output and palette seams
 
 - Keep the DMG BG palette-output model split from the raw current-scanline color pipeline.
-- Keep the narrow CPU-path `BGP` previous-line boundary repaint seam explicit, panel-only, and DMG-only.
+- Keep the narrow CPU-path `BGP` previous-line boundary repaint seam explicit, panel-only, DMG-only, and fed only by the delayed pipeline-visible write class.
+- Keep the DMG CPU-path `BGP` live-write seam explicitly bifurcated: the first visible-line CPU write stays retroactive while `visible_pixels_output == 0`, `current_transfer_x == 0`, and no sprites were selected; after that startup seam, retroactive panel recolor should only happen when the already-visible BG tail is all color `0`.
+- Keep the sprite-coupled DMG `BGP` live-write follow-up explicit too: a single left sprite shifts the first two CPU-path write onsets by sprite phase and can expose a short transient left-edge range on the second write before the final palette becomes visible.
 - Keep DMG palette-conflict handling asymmetric where repo-local evidence requires it; do not assume `BGP` and `OBP*` share the same retroactive span.
 
 ## Known Unstable Areas
 
-- Remaining `Mode 3` live-write families tracked in [TODO.md](../TODO.md).
+Use [TODO.md](../TODO.md) for the exact still-red ROM list, active closure target, and current no-regression set.
+This file only keeps the broader instability classes that remain easy to reopen during internal rewrites:
+
+- Remaining `Mode 3` live-write families beyond the current `BGP` / `OBP0` closures.
 - `SkipBoot` oracle closure.
 - Exact late-HBlank `FF44` readback seam.
-- Same-line window restart and some `WX` edge behavior.
+- Same-line window restart and `WX` edge behavior.
 - Mid-frame `LCDC.2` sprite-size artifacts.
 
 ## Regressions To Watch
 
+Use [TODO.md](../TODO.md) for the full active rerun set.
+This watch list keeps the smaller set of repo-local closures that have already regressed during internal PPU refactors.
+
 Timing and interrupt chronology:
-- `mooneye acceptance/ppu/hblank_ly_scx_timing-GS`
-- `mooneye ppu/stat_lyc_onoff`
-- `mooneye ppu/lcdon_timing-GS`
-- `mooneye ppu/lcdon_write_timing-GS`
-- `intr_2_mode0_timing`
-- `intr_2_oam_ok_timing`
+- `mooneye acceptance/ppu/hblank_ly_scx_timing-GS.gb`
+- `mooneye acceptance/ppu/lcdon_timing-GS.gb`
+- `mooneye acceptance/ppu/lcdon_write_timing-GS.gb`
 - `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb`
 
 Raster and panel-visible behavior:
-- `dmg-acid2`
+- `acid/dmg-acid2.gb`
 - `daid/ppu_scanline_bgp.gb`
-- `hacktix/strikethrough`
-- `mealybug m3_bgp_change`
-- `m3_lcdc_tile_sel_change`
-- `m3_scy_change`
-- `m3_lcdc_bg_map_change`
+- `hacktix/strikethrough.gb`
+- `mealybug ppu/m3_bgp_change.gb`
+- `mealybug ppu/m3_bgp_change_sprites.gb`
+- `mealybug ppu/m3_obp0_change.gb`
 
 OAM corruption:
 - `blargg oam_bug/4-scanline_timing.gb`

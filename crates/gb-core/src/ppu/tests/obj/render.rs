@@ -18,6 +18,36 @@ fn obj_priority_prefers_lower_x_before_oam_order() {
 }
 
 #[test]
+fn previsible_left_edge_obj_push_keeps_negative_screen_pixels_until_hidden_dots_consume_them() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.ly = 0;
+    ppu.bg_pipeline_state.current_transfer_x = 6;
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = 0;
+
+    let sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 6,
+        tile_index: 0,
+        attributes: 0,
+    };
+
+    ppu.push_obj_pixels(sprite, 0xC0, 0x00, 0);
+
+    assert_eq!(
+        ppu.obj_pipeline_state
+            .fifo
+            .iter()
+            .take(8)
+            .map(|pixel| pixel.color)
+            .collect::<Vec<_>>(),
+        vec![1, 1, 0, 0, 0, 0, 0, 0]
+    );
+}
+
+#[test]
 fn obj_priority_uses_oam_order_when_x_matches() {
     let mut ppu = dmg_obj_render_rig(ObjRenderRigConfig { lcdc: 0x82, ly: 0 });
     ppu.write_oam_entry(0, 16, 20, 0);
