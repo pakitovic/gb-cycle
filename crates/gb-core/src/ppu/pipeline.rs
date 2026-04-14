@@ -557,6 +557,13 @@ impl Ppu {
         &self,
         retroactive_pixels: usize,
     ) -> PpuDmgBgpCpuCommitEffectKind {
+        if self.mode2_scan_state.selected_sprite_count() == 0
+            && self.bg_pipeline_state.visible_pixels_output == 0
+            && self.bg_pipeline_state.current_transfer_x == 0
+        {
+            return PpuDmgBgpCpuCommitEffectKind::RetroactivePanel;
+        }
+
         let mut affected_pixel_count = 0usize;
         let mut recent_affected_pixels_are_bg_color0 = true;
         if !self.dmg_recent_panel_dots.is_empty() {

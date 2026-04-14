@@ -957,6 +957,8 @@ fn cpu_mmio_bgp_write_with_future_obj_pixels_starts_and_consumes_the_bg_visible_
 fn dmg_recent_panel_dot_history_drives_the_bgp_panel_path() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.bg_pipeline_state.visible_pixels_output = 7;
+    ppu.bg_pipeline_state.current_transfer_x = 15;
     ppu.dmg_recent_panel_dots.push_back(PpuRecentPanelDot {
         visible_x: 4,
         pixel: MixedPixel::background(0),
@@ -1000,6 +1002,32 @@ fn dmg_recent_panel_dot_history_drives_the_bgp_panel_path() {
     assert_eq!(ppu.framebuffer()[4], 3);
     assert_eq!(ppu.framebuffer()[5], 0);
     assert_eq!(ppu.framebuffer()[6], 2);
+}
+
+#[test]
+fn dmg_bgp_cpu_commit_uses_the_panel_path_at_visible_line_start_before_transfer_x_advances() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state.current_transfer_x = 0;
+
+    assert_eq!(
+        ppu.dmg_bgp_cpu_commit_effect_kind(4),
+        PpuDmgBgpCpuCommitEffectKind::RetroactivePanel
+    );
+}
+
+#[test]
+fn dmg_bgp_cpu_commit_keeps_the_delayed_path_once_transfer_x_has_advanced_past_line_start() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state.current_transfer_x = 1;
+
+    assert_eq!(
+        ppu.dmg_bgp_cpu_commit_effect_kind(4),
+        PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
+    );
 }
 
 #[test]

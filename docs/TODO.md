@@ -41,30 +41,35 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
+- The current external report snapshot is `.roms/test/test-report.md = 147/167`.
+- The current external PPU-green snapshot is:
+  - `acid/dmg-acid2.gb`
+  - curated `blargg oam_bug/{1-lcd_sync,2-causes,3-non_causes,4-scanline_timing,5-timing_bug,6-timing_no_bug,8-instr_effect}.gb`
+  - `daid/ppu_scanline_bgp.gb`
+  - `mooneye acceptance/ppu/{hblank_ly_scx_timing-GS,intr_1_2_timing-GS,intr_2_0_timing,intr_2_mode0_timing,intr_2_mode0_timing_sprites,intr_2_mode3_timing,intr_2_oam_ok_timing,lcdon_timing-GS,lcdon_write_timing-GS,stat_irq_blocking,stat_lyc_onoff,vblank_stat_intr-GS}.gb`
+  - `hacktix/{bully,strikethrough}.gb`
+  - `mealybug ppu/{m2_win_en_toggle,m3_bgp_change,m3_bgp_change_sprites,m3_obp0_change}.gb`
 - The next strict ladder blocker is `m3_lcdc_bg_en_change.gb` (`order 29`).
 - The main broad failure modes are already ruled out:
   - broad visible-FIFO cached-slice retargeting regressed the external oracles instead of moving them
   - `LCDC.4` / `SCY` visible-FIFO retargeting regressed the target families and was reverted
   - current first mismatches still stay at `m3_lcdc_bg_map_change -> x = 12, y = 0`, `m3_lcdc_tile_sel_change -> x = 0, y = 10`, `m3_scy_change -> x = 1, y = 0`
   - working hypothesis remains: the unresolved debt sits earlier, around startup dummy / first-fetch / restart-lane behavior, not in another broad visible-FIFO retargeting pass
-- The key green regression gates are now stable again:
+- The most informative green regression gates inside that snapshot are:
   - `daid/ppu_scanline_bgp.gb` is closed through the narrow DMG CPU-path `BGP` previous-line boundary repaint seam; keep that seam panel-only and DMG-only
-  - `mealybug m3_bgp_change.gb` is closed through an explicit DMG CPU-path split: retroactive panel recolor only when the recent visible BG tail is all color `0`, and previous-line boundary repaint only from delayed pipeline-visible writes
+  - `mealybug m3_bgp_change.gb` is closed through an explicit DMG CPU-path split: the first visible-line `BGP` CPU write still uses the retroactive panel path while `visible_pixels_output == 0`, `current_transfer_x == 0`, and no sprites were selected; later writes only stay retroactive when the recent visible BG tail is all color `0`, and previous-line boundary repaint only comes from delayed pipeline-visible writes
   - `mealybug m3_bgp_change_sprites.gb` is now closed through a narrower DMG single-left-sprite `BGP` seam: the first two CPU-path writes use sprite-position-dependent visible onsets, and the second write keeps a short left-edge transient range before the final palette wins
   - `mealybug m3_obp0_change.gb` is closed through a separate DMG `OBP0` scanline-path seam: no retroactive OBJ recolor before `visible_x = 10`, then a scanline-anchored conflict window that preserves older isolated leading OBJ pixels while still recoloring the later live-write tail
   - `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb` is closed through narrow CPU-visible `STAT` publication seams for the ten-sprite step-8 staggered families, not through another broad `Mode 3` rewrite
-  - `hacktix/strikethrough.gb`, `blargg oam_bug/4`, `blargg oam_bug/5`, and `cargo test -p gb-core ppu -- --nocapture` are green again
-- Practical maturity: the DMG ladder is now monotonic through the sprite-coupled `BGP` live-write oracle; the first strict blocker moves to `order 29`.
-- **Highest-value next step:** keep `daid/ppu_scanline_bgp.gb`, `intr_2_mode0_timing_sprites.gb`, and `strikethrough.gb` as hard regression gates, and take `m3_lcdc_bg_en_change.gb` as the primary next oracle before returning to the broader live-write tranche.
-- Practical maturity reading:
-  - Strict ladder maturity: blocked at `order 29`.
-  - The early raster, restart, and sprite-coupled `BGP` live-write baselines are closed again; the remaining primary closure target is the broader live-`LCDC` tranche starting at `m3_lcdc_bg_en_change`.
+  - `hacktix/strikethrough.gb`, `mooneye acceptance/ppu/hblank_ly_scx_timing-GS.gb`, `mooneye acceptance/ppu/lcdon_timing-GS.gb`, `mooneye acceptance/ppu/lcdon_write_timing-GS.gb`, `blargg oam_bug/4`, `blargg oam_bug/5`, and `cargo test -p gb-core ppu -- --nocapture` are green again
+- Strict ladder maturity is blocked at `order 29`, but the early raster, restart, and sprite-coupled `BGP` live-write baselines are closed again.
+- The next primary closure target is the broader live-`LCDC` tranche starting at `m3_lcdc_bg_en_change.gb`.
 
 #### Open TODOs
 
 - [PPU][SKIPBOOT-ORACLE] `SkipBoot` startup-mode latch is validated only against repo-local continuity tests. Before Phase `9` hardening, needs comparison against a trusted oracle or hardware capture proving first LCD-visible dots after `SkipBoot` are coherent with published `LCDC`, `STAT`, and `LY` state. Does not block Phase `5`.
 
-- [PPU][MEALYBUG-MODE3-LIVE-WRITES] Still-red follow-up families:
+- [PPU][MEALYBUG-MODE3-LIVE-WRITES] Current report still-red follow-up families:
   - Window/live-`LCDC.5` timing: `m3_window_timing*`, `m3_lcdc_win_en_change_multiple*`, `m3_wx_4_change*`, `m3_wx_5_change`, `m3_wx_6_change`.
   - Live `LCDC` map/enable/tile-select: `m3_lcdc_bg_en_change`, `m3_lcdc_bg_map_change`, `m3_lcdc_win_map_change`, `m3_lcdc_tile_sel_change*`, `m3_lcdc_obj_en_change*`.
   - `SCX/SCY` live-scroll: `m3_scx_high_5_bits`, `m3_scx_low_3_bits`, `m3_scy_change`.
@@ -86,7 +91,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 - Resume from one failing family at a time; prefer the smallest oracle-backed reproduction that distinguishes the suspected same-T-cycle window.
 - Capture baseline and final `/.roms/test/test-report.md` for exploratory reruns, especially `mealybug-tearoom-dmg-curated`, `acid-dmg-curated`, and `mooneye-acceptance-dmg-curated`.
-- Keep `daid/ppu_scanline_bgp.gb`, `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb`, and `hacktix/strikethrough.gb` as hard regression gates while touching panel-path palette behavior, sprite-coupled mode boundaries, or remaining live-write families.
+- Keep at least `acid/dmg-acid2.gb`, `daid/ppu_scanline_bgp.gb`, `mealybug ppu/m3_bgp_change.gb`, `mealybug ppu/m3_bgp_change_sprites.gb`, `mealybug ppu/m3_obp0_change.gb`, `mooneye acceptance/ppu/hblank_ly_scx_timing-GS.gb`, `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb`, `mooneye acceptance/ppu/lcdon_timing-GS.gb`, `mooneye acceptance/ppu/lcdon_write_timing-GS.gb`, `hacktix/strikethrough.gb`, `blargg oam_bug/4-scanline_timing.gb`, and `blargg oam_bug/5-timing_bug.gb` as the minimum no-regression set while touching panel-path palette behavior, startup/restart timing, sprite-coupled mode boundaries, or remaining live-write families.
 - Do not reopen generic startup realignment, broad tilemap rereads, broad cached-slice / visible-FIFO retargeting, or isolated "strict push" experiments before a new oracle shows the fault starts there.
 - When a candidate fix touches `STAT`, LCD restart, or sprite-coupled mode boundaries, rerun the narrow mooneye LCD timing slice before trusting any localized improvement.
 
@@ -96,7 +101,10 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 ### Phase 6 — Banked cartridges, special cartridges, and cartridge persistence
 
-- None currently.
+- [CARTRIDGE][MBC3-LATCH-RELATCH-POLICY] MBC3 currently keeps a deliberate compatibility deviation for `cpp/latch-rtc-test.gb`: the first RTC latch still requires `0x00 -> 0x01`, but follow-up non-zero writes are also accepted once a valid snapshot exists because instrumentation of that ROM showed repeated non-zero relatch commands without re-arming zeros. Revisit that legacy relatch rule if curated oracle policy moves back toward the stricter `Pan Docs` model.
+- [CARTRIDGE][MBC3-RTC-INVALID-BANKS] MBC3 keeps `0x04..=0x07` as explicit reserved selectors instead of widening standard SRAM banking to `$00-$07`. Current `Pan Docs` wording says `$00-$07` are RAM-bank selectors, but the retained curated `cpp/rtc-invalid-banks-test.gb` oracle only stays green when those selectors remain invalid. Revisit only if stronger hardware evidence or a better oracle closes that source conflict.
+- [CARTRIDGE][MBC3-RTC-ACCESS-SPACING] MBC3 records the recommended RTC access-spacing state as `rtc_access_ready_at` on timed RTC-register reads and writes, but the emulator still treats that state as advisory only. `Pan Docs` recommends `4 us` spacing without defining an early-access penalty, and the current `SameBoy` cross-check does not expose one either. Keep enforcement deferred until a stronger dedicated oracle or hardware evidence exists.
+- [CARTRIDGE][HEADER-CGB-TITLE-DISCRIMINATOR] The cartridge-header parser now preserves `0x013F-0x0142` separately but still decodes CGB-era titles conservatively as `15` visible characters. `Pan Docs` documents an additional `11`-character layout when those bytes are really a manufacturer code, but the raw header does not provide a reliable discriminator. Revisit only if stronger hardware evidence or a clearly scoped per-ROM metadata rule can separate the two layouts without truncating valid `15`-character titles.
 
 ### Phase 7 — Audio
 

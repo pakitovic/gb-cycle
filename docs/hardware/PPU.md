@@ -71,13 +71,10 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - The design should also leave room for a previous-dot or pipeline-visible snapshot where live-write-sensitive DMG behavior needs it, especially for window activation, tile-data selection, and palette-conflict handling.
 - Do not import the CGB-specific `signed -> unsigned` "reuse the last unsigned fetch byte" behavior into the DMG baseline. If that CGB-family glitch is modeled later, keep it explicitly model-gated in the future CGB path instead of treating it as a generic DMG fetcher rule.
 - For `OBP0` and `OBP1`, the low two bits must not change the meaning of OBJ color index `0`, because that index remains transparent.
-- On DMG-family hardware, writes to `BGP`, `OBP0`, and `OBP1` during Mode `3` should not be treated as ordinary "new value is visible only from the next pixel onward" MMIO updates. The PPU design should leave room for the documented/raster-oracle-visible palette-conflict artifacts, including transient write values and limited retroactive recoloring of the most recent visible pixels when those writes race the LCD pipeline.
-- That DMG palette-conflict window should also remain compatible with the observed early-HBlank tail used by raster tests such as `mealybug m3_bgp_change`; do not hard-cut those writes to "no effect" merely because the mode bits already advanced to HBlank in the coarse scheduler model.
-- Keep the DMG BG palette-output model split from the raw current-scanline color pipeline. Raster-oracle evidence now requires a narrow CPU-path `BGP` panel seam at scanline-family boundaries: when a visible line starts a new per-scanline `BGP` waveform, the previous visible boundary line may need repainting from that next-line `BGP` sequence over its already-composed mixed pixels. Keep that seam explicit and narrowly scoped to the DMG panel-output path rather than folding it into generic fetcher or raw-pixel generation logic.
-- Repo-local raster oracles now require the DMG CPU-path `BGP` seam to stay bifurcated: if the most recent visible BG tail is entirely color `0`, a CPU-commit write may retroactively recolor that panel tail and let the very next output dot use the committed palette immediately; otherwise the write must stay on the delayed pipeline-visible path, and only that delayed class should feed the previous-line boundary repaint seam.
-- Repo-local sprite-coupled raster oracles also require a narrower DMG single-left-sprite `BGP` seam: for those lines, the first two CPU-path writes do not follow the generic `4`-dot onset, but instead use sprite-position-dependent visible onsets, and the second write may expose a short transient left-edge range before the final palette wins. Keep that logic explicit and tightly scoped instead of treating it as a generic OBJ/live-write rule.
-- Keep BG and OBJ palette-conflict handling separable; do not assume `BGP` and `OBP*` share exactly the same retroactive span.
-- Repo-local raster oracles now also require a distinct DMG `OBP0` / `OBP1` seam: do not model OBJ live writes as a copy of the `BGP` tail rule. The current DMG closure for `mealybug m3_obp0_change` only starts retroactive OBJ recolor once the write lands at or after `visible_x = 10`, uses a scanline-anchored conflict window over already-mixed pixels, and still allows older isolated leading OBJ pixels to age out of that window instead of forcing every earlier sparse OBJ dot to repaint.
+- On DMG-family hardware, writes to `BGP`, `OBP0`, and `OBP1` during Mode `3` should not be treated as ordinary "new value is visible only from the next pixel onward" MMIO updates. The PPU design should leave room for documented palette-conflict artifacts, including transient write values, limited retroactive recoloring, and the observed early-HBlank tail where such conflicts may still remain panel-visible.
+- Keep the DMG BG palette-output model split from the raw current-scanline color pipeline. The CPU-path `BGP` model should keep three behaviors explicit and separate: delayed pipeline-visible writes, a narrow previous-line boundary repaint seam fed only by that delayed class, and retroactive panel recolor when either the first visible-line write lands at `visible_pixels_output == 0` / `current_transfer_x == 0` with no selected sprites or the already-visible BG tail is entirely color `0`.
+- Keep the sprite-coupled DMG `BGP` live-write follow-up explicit too: a single left sprite can shift the first two CPU-path write onsets by sprite phase and can expose a short transient left-edge range on the second write before the final palette wins.
+- Keep BG and OBJ palette-conflict handling separable; do not assume `BGP` and `OBP*` share the same retroactive span or the same conflict window over already-mixed pixels.
 
 ## LCD master-control baseline
 
@@ -94,6 +91,8 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - The same disabled-state decision should drive both `STAT.mode = 0` readback and the bus-side release of normal VRAM/OAM mode restrictions.
 - Releasing LCD-mode access restrictions must not erase independent bus-side restrictions such as active OAM DMA; LCD-off policy and DMA policy must still compose cleanly.
 - LCD-disabled state should therefore be one explicit source of truth consumed by both the PPU-visible register contract and the bus access-policy contract.
+- While the LCD is disabled, mode-dependent LCD STAT sources should not continue to fire as if the raster were still advancing invisibly, and `LY` should not keep advancing accidentally just because a generic line counter happened to keep ticking.
+- If the project later offers a debug warning for disabling the LCD outside VBlank, that warning must remain observational only and must not change the emulated hardware result.
 
 ## LCD-visible output baseline
 
@@ -153,20 +152,12 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - The quirk must not trigger from a Mode `3` write path merely because `STAT` was written.
 - Future GBC-in-DMG-mode support must keep this quirk model-gated rather than inheriting the DMG behavior accidentally.
 
-## LCD disable / re-enable baseline
-
-- When `LCDC.7 = 0`, the PPU should stop behaving as if it were traversing ordinary Modes `2`, `3`, `0`, and `1` in the background.
-- With LCD disabled, `STAT` mode should report `0`, VRAM should become ordinarily accessible again, and OAM should follow the same LCD-off policy already used by the bus while still remaining compatible with separate DMA-side blocking rules.
-- The internal STAT interrupt line should stop following the ordinary active-LCD mode/coincidence-source schedule while LCD is disabled.
-- The disabled-state transition should also clear or recompute any previous `stat_irq_line` edge-detection state so LCD re-enable does not inherit a stale-high STAT source.
-- Resetting the LCD pipeline on `LCDC.7` transitions must not discard interrupt requests that were already raised earlier in the same shared T-cycle; those requests belong to the later scheduler interrupt-aggregation step, not to the in-flight raster pipeline state.
-- Re-enabling LCD should restart the PPU timing state through the real scheduler path and remain compatible with the separate rule that the first full frame after re-enable stays blank.
-
 ## LCD re-enable and raster restart baseline
 
 - Re-enabling the LCD should enter one explicit, reproducible raster-start state rather than resuming from an ambiguous saved dot or half-finished scanline.
 - The implementation should keep one source of truth for the initial scanline, dot, mode, and related scheduler state used after `LCDC.7: 0 -> 1`.
 - If the chosen DMG-family model exposes a short initial Mode `0` readback window immediately after LCD re-enable, keep that window explicit and tested rather than scattering it across special-case guards.
+- Re-enabling LCD should restart the PPU timing state through the real scheduler path and rebuild live coincidence plus internal STAT-line state from that raster restart instead of reusing stale disabled-state values.
 - The first-full-frame blank period should be counted from that re-enabled raster start, not from the earlier disable event.
 - The implementation should also keep one explicit, tested policy for how `LY` behaves while the LCD is disabled and how it re-enters the active raster model after re-enable.
 
@@ -174,16 +165,9 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 
 - Disabling the LCD should explicitly invalidate or reset in-flight pixel-pipeline state rather than freezing and later resuming a half-consumed scanline.
 - That reset should cover at least BG FIFO state, OBJ FIFO state, background/window fetcher state, object-fetch state, window latch/counter state, and any in-progress pixel-mixing state.
+- Resetting the LCD pipeline on `LCDC.7` transitions must not discard interrupt requests that were already raised earlier in the same shared T-cycle; those requests belong to the later scheduler interrupt-aggregation step, not to the in-flight raster pipeline state.
 - Re-enabling the LCD should start pixel production from a clean pipeline state compatible with the chosen raster-start state.
 - Do not resume fetchers or FIFOs from the last active-LCD dot before disable; that would contradict the hardware-facing model of the PPU being off and then starting a new draw again.
-
-## LCD-disabled scheduler / IRQ baseline
-
-- While the LCD is disabled, mode-dependent LCD STAT sources should not continue to fire as if the raster were still advancing invisibly.
-- The `STAT` controller, `LY` handling, and any mode-driven PPU scheduler state should move coherently into the same explicit LCD-disabled state.
-- The implementation should not let `LY` keep advancing accidentally just because a generic line counter happened to keep ticking after the LCD was turned off.
-- Re-enabling the LCD should rebuild live coincidence and STAT-line state from the chosen raster restart state rather than reusing stale coincidence or edge-detection state from before disable.
-- If the project later offers a debug warning for disabling the LCD outside VBlank, that warning must remain observational only and must not change the emulated hardware result.
 
 ## Sprite pipeline baseline
 
