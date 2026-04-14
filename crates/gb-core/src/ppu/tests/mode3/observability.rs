@@ -1,5 +1,6 @@
 use super::super::*;
 
+mod lcdc0;
 mod lcdc3;
 mod lcdc4;
 mod live_refetch;

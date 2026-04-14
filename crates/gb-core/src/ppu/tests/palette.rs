@@ -146,6 +146,50 @@ fn later_visible_pixels_keep_live_bg_output_when_only_the_delayed_copy_disables_
 }
 
 #[test]
+fn bg_disabled_background_pixels_force_white_panel_output_on_dmg() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x92;
+    ppu.pipeline_registers.lcdc = 0x93;
+    ppu.visible_registers.bgp = 0x1B;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[0], 0);
+    assert_eq!(ppu.framebuffer()[0], 0);
+}
+
+#[test]
+fn bg_disabled_does_not_hide_obj_panel_output_on_dmg() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x92;
+    ppu.pipeline_registers.lcdc = 0x93;
+    ppu.visible_registers.bgp = 0x1B;
+    ppu.visible_registers.obp0 = Some(0xE4);
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.current_transfer_x = 8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(1);
+    ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+        color: 2,
+        palette_obp1: false,
+        bg_over_obj: false,
+        sprite_x: 8,
+        oam_index: 0,
+    });
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(ppu.snapshot().current_scanline_pixels[0], 2);
+    assert_eq!(ppu.framebuffer()[0], 2);
+}
+
+#[test]
 fn first_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_output = PpuVisibleOutputState::Driving;
