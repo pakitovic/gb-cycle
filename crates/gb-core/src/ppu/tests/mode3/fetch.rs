@@ -428,7 +428,7 @@ fn queued_fill_from_real_push_preserves_the_same_tcycle_tilemap_refetch_window()
 }
 
 #[test]
-fn cached_background_fill_recomputes_tiledata_before_the_next_flush() {
+fn cached_background_fill_keeps_fetched_tiledata_after_scy_write_before_flush() {
     let mut ppu = dmg_fetch_startup_rig(0x91);
     ppu.write_bg_tilemap_entry(1, 0, 0);
     ppu.write_bg_tile_row(0, 0, 0x12, 0x34);
@@ -449,16 +449,61 @@ fn cached_background_fill_recomputes_tiledata_before_the_next_flush() {
     assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
     ppu.write_register(0xFF42, 0x01);
     assert!(
-        ppu.bg_pipeline_state
+        !ppu.bg_pipeline_state
             .fill
             .cached
             .needs_live_tile_data_refetch
     );
+    assert!(
+        !ppu.bg_pipeline_state
+            .fill
+            .cached
+            .needs_live_tile_data_current_row_refetch
+    );
 
     ppu.maybe_recompute_pending_background_fill_with_ppu_vram();
-    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_data_address, 0x0003);
-    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0xAB);
-    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0xCD);
+    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_data_address, 0x0001);
+    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0x12);
+    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0x34);
+}
+
+#[test]
+fn cached_background_push_keeps_fetched_tiledata_after_scy_write_before_flush() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    ppu.write_bg_tilemap_entry(1, 0, 0);
+    ppu.write_bg_tile_row(0, 0, 0x12, 0x34);
+    ppu.write_bg_tile_row(0, 1, 0xAB, 0xCD);
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
+    ppu.bg_pipeline_state.push.pending = true;
+    ppu.bg_pipeline_state.push.disposition = BgPushDisposition::Ready;
+    ppu.bg_pipeline_state.push.cached.source = PpuBgFetcherSource::Background;
+    ppu.bg_pipeline_state.push.cached.tile_map_address = 0x1801;
+    ppu.bg_pipeline_state.push.cached.tile_data_address = 0x0001;
+    ppu.bg_pipeline_state.push.cached.tile_index = 0;
+    ppu.bg_pipeline_state.push.cached.tile_low = 0x12;
+    ppu.bg_pipeline_state.push.cached.tile_high = 0x34;
+
+    assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
+    ppu.write_register(0xFF42, 0x01);
+    assert!(
+        !ppu.bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tile_data_refetch
+    );
+    assert!(
+        !ppu.bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tile_data_current_row_refetch
+    );
+
+    ppu.with_ppu_vram(|ppu, vram| ppu.maybe_recompute_pending_background_push(vram));
+    assert_eq!(ppu.bg_pipeline_state.push.cached.tile_data_address, 0x0001);
+    assert_eq!(ppu.bg_pipeline_state.push.cached.tile_low, 0x12);
+    assert_eq!(ppu.bg_pipeline_state.push.cached.tile_high, 0x34);
 }
 
 #[test]

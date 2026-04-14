@@ -61,6 +61,45 @@ fn visible_mode3_registers_lag_enabled_writes_until_the_next_t_cycle() {
 }
 
 #[test]
+fn mode3_initial_scx_capture_uses_the_visible_scx_after_startup_dummy_dots() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.tick_n(80);
+    assert_eq!(ppu.snapshot().line_dot, 80);
+    assert!(ppu.bg_pipeline_state.initial_scx_capture_pending);
+    assert_eq!(ppu.bg_pipeline_state.initial_scx_discard, 0);
+    assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+
+    ppu.tick_n(2);
+    assert_eq!(ppu.snapshot().line_dot, 82);
+    assert_eq!(ppu.snapshot().visible_scx, 0x00);
+    ppu.write_register(0xFF43, 0x05);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+
+    ppu.tick();
+    assert_eq!(ppu.snapshot().line_dot, 83);
+    assert_eq!(ppu.snapshot().visible_scx, 0x05);
+    assert!(!ppu.bg_pipeline_state.initial_scx_capture_pending);
+    assert_eq!(ppu.bg_pipeline_state.initial_scx_discard, 0x05);
+    assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0x05);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 5);
+}
+
+#[test]
 fn mode3_startup_keeps_dummy_occupancy_out_of_the_fifo_until_alignment_push() {
     let mut ppu = PpuTestRig::dmg();
 

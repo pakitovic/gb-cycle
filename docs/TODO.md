@@ -66,6 +66,8 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
   - `hacktix/strikethrough.gb`, `mooneye acceptance/ppu/hblank_ly_scx_timing-GS.gb`, `mooneye acceptance/ppu/lcdon_timing-GS.gb`, `mooneye acceptance/ppu/lcdon_write_timing-GS.gb`, `blargg oam_bug/4`, `blargg oam_bug/5`, and `cargo test -p gb-core ppu -- --nocapture` are green again
 - Strict ladder maturity is blocked at `order 30`, but the early raster, restart, and sprite-coupled `BGP` live-write baselines are closed again.
 - The next primary closure target is the `SCX/SCY` FIFO core tranche starting at `m3_scx_low_3_bits.gb`.
+- A narrow April 14 correction removed `SCY` live tile-data refetch from already-materialized background `push` / `fill` slices. DMG still re-samples `SCY` naturally on the active BG fetcher between `TileDataLow` and `TileDataHigh`, but pending cached slices now keep the bytes they already fetched. The minimum guard set stayed green, while `m3_scy_change.gb` remained red, so the remaining debt is not just "pending-slice refetch erases SCY bitplane desync".
+- A second April 14 correction delayed the initial `SCX & 7` capture from `Mode 3` entry to the post-dummy-fetch startup dot, matching the narrower `m3_scx_low_3_bits` hypothesis better than the old "capture immediately at line start" model. The local startup/transfer tests and the external guard set stayed green, but `m3_scx_low_3_bits.gb` remained red, so the remaining debt is not just "SCX low bits were sampled too early".
 
 #### Open TODOs
 

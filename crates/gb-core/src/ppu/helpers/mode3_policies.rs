@@ -426,10 +426,9 @@ impl PpuMode3LiveBackgroundWriteEffects {
                 && (entry_delay_active
                     || cached.same_cycle_live_tilemap_refetch_window_open
                     || cached.is_second_or_third_visible_post_startup_push()),
-            tile_data_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Scy)
-                || (matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
-                    && write_context.bg_window_tile_data_select_changed()),
-            tile_data_current_row_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Scy),
+            tile_data_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
+                && write_context.bg_window_tile_data_select_changed(),
+            tile_data_current_row_refetch: false,
             fetcher_tilemap_refetch_on_push: false,
         }
     }
@@ -451,10 +450,9 @@ impl PpuMode3LiveBackgroundWriteEffects {
                 && startup_dummy_pixels == 0
                 && (cached.same_cycle_live_tilemap_refetch_window_open
                     || cached.is_second_or_third_visible_post_startup_push()),
-            tile_data_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Scy)
-                || (matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
-                    && write_context.bg_window_tile_data_select_changed()),
-            tile_data_current_row_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Scy),
+            tile_data_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
+                && write_context.bg_window_tile_data_select_changed(),
+            tile_data_current_row_refetch: false,
             fetcher_tilemap_refetch_on_push: false,
         }
     }

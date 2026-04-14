@@ -407,6 +407,7 @@ pub(super) struct BgPipelineState {
     pub(super) startup_fetch_seam: BgStartupFetchSeamState,
     pub(super) startup_fifo_placeholders: u8,
     pub(super) mode3_started: bool,
+    pub(super) initial_scx_capture_pending: bool,
     pub(super) mode0_start_dot: u16,
     pub(super) initial_scx_discard: u8,
     pub(super) scx_discard_remaining: u8,
@@ -433,6 +434,7 @@ impl BgPipelineState {
         self.startup_fetch_seam = BgStartupFetchSeamState::Inactive;
         self.startup_fifo_placeholders = 0;
         self.mode3_started = false;
+        self.initial_scx_capture_pending = false;
         self.mode0_start_dot = MODE0_START_DOT;
         self.initial_scx_discard = 0;
         self.scx_discard_remaining = 0;
@@ -449,11 +451,12 @@ impl BgPipelineState {
         self.wx166_armed_this_line = false;
     }
 
-    pub(super) fn start_line(&mut self, scx: u8) {
+    pub(super) fn start_line(&mut self, _scx: u8) {
         self.mode3_started = true;
-        self.initial_scx_discard = scx & 0x07;
-        self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
-        self.scx_discard_remaining = self.initial_scx_discard;
+        self.initial_scx_capture_pending = true;
+        self.initial_scx_discard = 0;
+        self.mode0_start_dot = MODE0_START_DOT;
+        self.scx_discard_remaining = 0;
         self.fifo.clear();
         self.fifo_cached_pixels.clear();
         self.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
@@ -468,6 +471,17 @@ impl BgPipelineState {
         self.push.reset();
         self.fill.reset();
         self.fetcher.start_background();
+    }
+
+    pub(super) fn capture_initial_scx(&mut self, scx: u8) {
+        if !self.initial_scx_capture_pending {
+            return;
+        }
+
+        self.initial_scx_capture_pending = false;
+        self.initial_scx_discard = scx & 0x07;
+        self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
+        self.scx_discard_remaining = self.initial_scx_discard;
     }
 
     pub(super) fn prepare_window_line(&mut self, wy_latch: bool, force_x0_this_line: bool) {
@@ -748,6 +762,7 @@ impl Default for BgPipelineState {
             startup_fetch_seam: BgStartupFetchSeamState::Inactive,
             startup_fifo_placeholders: 0,
             mode3_started: false,
+            initial_scx_capture_pending: false,
             mode0_start_dot: MODE0_START_DOT,
             initial_scx_discard: 0,
             scx_discard_remaining: 0,

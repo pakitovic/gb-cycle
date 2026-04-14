@@ -23,6 +23,12 @@ impl Ppu {
                     .start_line(self.mode3_register_latches().mode3_start_scx());
             });
         }
+        if self.line_dot == MODE2_DOTS + MODE3_INITIAL_SCX_CAPTURE_DOT {
+            observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
+                self.bg_pipeline_state
+                    .capture_initial_scx(self.mode3_register_latches().mode3_start_scx());
+            });
+        }
 
         let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
         observe_ppu_step_region(observer, bg_pipeline_region, || {
