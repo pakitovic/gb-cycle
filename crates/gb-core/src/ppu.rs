@@ -334,6 +334,8 @@ pub struct Ppu {
     pipeline_registers: PpuVisibleRegisters,
     dmg_bgp_cpu_commit_output_palette_override: Option<u8>,
     dmg_bgp_cpu_commit_output_delay_pixels_remaining: u8,
+    dmg_bgp_cpu_commit_output_followup_palette_override: Option<u8>,
+    dmg_bgp_cpu_commit_output_followup_pixels_remaining: u8,
     dmg_bgp_cpu_commit_bg_visible_hold_palette_override: Option<u8>,
     dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining: u8,
     dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette: Option<u8>,

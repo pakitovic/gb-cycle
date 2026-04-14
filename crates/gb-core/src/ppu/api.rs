@@ -27,6 +27,8 @@ impl Ppu {
             pipeline_registers: PpuVisibleRegisters::default(),
             dmg_bgp_cpu_commit_output_palette_override: None,
             dmg_bgp_cpu_commit_output_delay_pixels_remaining: 0,
+            dmg_bgp_cpu_commit_output_followup_palette_override: None,
+            dmg_bgp_cpu_commit_output_followup_pixels_remaining: 0,
             dmg_bgp_cpu_commit_bg_visible_hold_palette_override: None,
             dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining: 0,
             dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette: None,
@@ -235,6 +237,8 @@ impl Ppu {
         self.obj_palette_read_policy = startup_state.obj_palette_read_policy;
         self.dmg_bgp_cpu_commit_output_palette_override = None;
         self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 0;
+        self.dmg_bgp_cpu_commit_output_followup_palette_override = None;
+        self.dmg_bgp_cpu_commit_output_followup_pixels_remaining = 0;
         self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override = None;
         self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining = 0;
         self.dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette = None;
