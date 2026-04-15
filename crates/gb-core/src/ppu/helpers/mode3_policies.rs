@@ -5,6 +5,7 @@ pub(in crate::ppu) struct PpuMode3TransferPolicy {
     mode3_started: bool,
     startup_source_state: Mode3StartupSourceState,
     startup_pre_visible_transfer_dots_remaining: u8,
+    initial_scx_discard: u8,
     current_transfer_x: u8,
     visible_pixels_output: u8,
     scx_discard_remaining: u8,
@@ -12,22 +13,19 @@ pub(in crate::ppu) struct PpuMode3TransferPolicy {
 }
 
 impl PpuMode3TransferPolicy {
-    pub(in crate::ppu) const fn new(
-        mode3_started: bool,
-        startup_source_state: Mode3StartupSourceState,
-        startup_pre_visible_transfer_dots_remaining: u8,
-        current_transfer_x: u8,
-        visible_pixels_output: u8,
-        scx_discard_remaining: u8,
+    pub(in crate::ppu) const fn from_pipeline_state(
+        bg_pipeline_state: &BgPipelineState,
         line_dot: u16,
     ) -> Self {
         Self {
-            mode3_started,
-            startup_source_state,
-            startup_pre_visible_transfer_dots_remaining,
-            current_transfer_x,
-            visible_pixels_output,
-            scx_discard_remaining,
+            mode3_started: bg_pipeline_state.mode3_started,
+            startup_source_state: bg_pipeline_state.startup_source_state,
+            startup_pre_visible_transfer_dots_remaining: bg_pipeline_state
+                .startup_pre_visible_transfer_dots_remaining,
+            initial_scx_discard: bg_pipeline_state.initial_scx_discard,
+            current_transfer_x: bg_pipeline_state.current_transfer_x,
+            visible_pixels_output: bg_pipeline_state.visible_pixels_output,
+            scx_discard_remaining: bg_pipeline_state.scx_discard_remaining,
             line_dot,
         }
     }
@@ -80,7 +78,10 @@ impl PpuMode3TransferPolicy {
             return None;
         }
 
-        let lane = if self.scx_discard_remaining > 0 || self.current_transfer_x < 8 {
+        let startup_visible_x = self
+            .current_transfer_x
+            .saturating_add(self.initial_scx_discard);
+        let lane = if self.scx_discard_remaining > 0 || startup_visible_x < 8 {
             self.current_startup_transfer_lane()
         } else {
             Mode3TransferLane::Visible
@@ -106,7 +107,7 @@ impl PpuMode3TransferPolicy {
                 Mode3TransferLane::Hidden => {
                     Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop
                 }
-                Mode3TransferLane::Visible => unreachable!("x < 8 cannot be a visible transfer"),
+                Mode3TransferLane::Visible => Mode3TransferServiceExecution::EmitVisiblePixel,
             }
         } else if context.lane == Mode3TransferLane::Visible {
             Mode3TransferServiceExecution::EmitVisiblePixel
@@ -263,7 +264,7 @@ impl PpuMode3WindowPolicy {
         initial_scx_discard: u8,
         scx_discard_remaining: u8,
     ) -> bool {
-        transfer_dot.consumed_scx_discard
+        (transfer_dot.consumed_scx_discard || scx_discard_remaining == 0)
             && !self.started_this_line
             && self.wy_latch
             && self.activation.runtime_enabled()
@@ -404,9 +405,11 @@ impl PpuMode3BgWinFetchPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub(in crate::ppu) struct PpuMode3LiveBackgroundWriteEffects {
     tilemap_refetch: bool,
+    tilemap_full_refetch: bool,
     tile_data_refetch: bool,
     tile_data_current_row_refetch: bool,
     fetcher_tilemap_refetch_on_push: bool,
+    fetcher_tilemap_full_refetch_on_push: bool,
 }
 
 impl PpuMode3LiveBackgroundWriteEffects {
@@ -425,11 +428,22 @@ impl PpuMode3LiveBackgroundWriteEffects {
                 && write_context.bg_tilemap_select_changed()
                 && (entry_delay_active
                     || cached.same_cycle_live_tilemap_refetch_window_open
+                    || cached.is_second_or_third_visible_post_startup_push())
+                || matches!(register, PpuMode3LiveBackgroundRegister::Scx)
+                    && write_context.bg_scx_tilemap_column_changed()
+                    && (entry_delay_active
+                        || cached.same_cycle_live_tilemap_refetch_window_open
+                        || cached.is_second_or_third_visible_post_startup_push()),
+            tilemap_full_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Scx)
+                && write_context.bg_scx_tilemap_column_changed()
+                && (entry_delay_active
+                    || cached.same_cycle_live_tilemap_refetch_window_open
                     || cached.is_second_or_third_visible_post_startup_push()),
             tile_data_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
                 && write_context.bg_window_tile_data_select_changed(),
             tile_data_current_row_refetch: false,
             fetcher_tilemap_refetch_on_push: false,
+            fetcher_tilemap_full_refetch_on_push: false,
         }
     }
 
@@ -449,11 +463,22 @@ impl PpuMode3LiveBackgroundWriteEffects {
                 && write_context.bg_tilemap_select_changed()
                 && startup_dummy_pixels == 0
                 && (cached.same_cycle_live_tilemap_refetch_window_open
+                    || cached.is_second_or_third_visible_post_startup_push())
+                || matches!(register, PpuMode3LiveBackgroundRegister::Scx)
+                    && write_context.bg_scx_tilemap_column_changed()
+                    && startup_dummy_pixels == 0
+                    && (cached.same_cycle_live_tilemap_refetch_window_open
+                        || cached.is_second_or_third_visible_post_startup_push()),
+            tilemap_full_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Scx)
+                && write_context.bg_scx_tilemap_column_changed()
+                && startup_dummy_pixels == 0
+                && (cached.same_cycle_live_tilemap_refetch_window_open
                     || cached.is_second_or_third_visible_post_startup_push()),
             tile_data_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
                 && write_context.bg_window_tile_data_select_changed(),
             tile_data_current_row_refetch: false,
             fetcher_tilemap_refetch_on_push: false,
+            fetcher_tilemap_full_refetch_on_push: false,
         }
     }
 
@@ -465,22 +490,23 @@ impl PpuMode3LiveBackgroundWriteEffects {
             tilemap_refetch: cached.is_background()
                 && write_context.bg_tilemap_select_changed()
                 && cached.is_second_or_third_visible_post_startup_push(),
+            tilemap_full_refetch: false,
             tile_data_refetch: false,
             tile_data_current_row_refetch: false,
             fetcher_tilemap_refetch_on_push: false,
+            fetcher_tilemap_full_refetch_on_push: false,
         }
     }
 
     pub(in crate::ppu) fn for_current_background_fetch(
         fetcher: BgFetcherState,
+        register: PpuMode3LiveBackgroundRegister,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) -> Self {
         Self {
-            tilemap_refetch: false,
-            tile_data_refetch: false,
-            tile_data_current_row_refetch: false,
-            fetcher_tilemap_refetch_on_push: fetcher.source == PpuBgFetcherSource::Background
+            tilemap_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
                 && write_context.bg_tilemap_select_changed()
+                && fetcher.source == PpuBgFetcherSource::Background
                 && matches!(
                     fetcher.cached_origin,
                     BgCachedSliceOrigin::StartupContinuation(
@@ -491,16 +517,54 @@ impl PpuMode3LiveBackgroundWriteEffects {
                     fetcher.stage,
                     PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
                 ),
+            tilemap_full_refetch: false,
+            tile_data_refetch: false,
+            tile_data_current_row_refetch: false,
+            fetcher_tilemap_refetch_on_push: matches!(
+                register,
+                PpuMode3LiveBackgroundRegister::Lcdc
+            ) && write_context.bg_tilemap_select_changed()
+                && fetcher.source == PpuBgFetcherSource::Background
+                && matches!(
+                    fetcher.cached_origin,
+                    BgCachedSliceOrigin::StartupContinuation(
+                        BgStartupContinuationSlice::VisibleTile3
+                    )
+                )
+                && matches!(
+                    fetcher.stage,
+                    PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
+                )
+                || matches!(register, PpuMode3LiveBackgroundRegister::Scx)
+                    && write_context.bg_scx_tilemap_column_changed()
+                    && fetcher.source == PpuBgFetcherSource::Background
+                    && matches!(
+                        fetcher.stage,
+                        PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
+                    ),
+            fetcher_tilemap_full_refetch_on_push: matches!(
+                register,
+                PpuMode3LiveBackgroundRegister::Scx
+            ) && write_context
+                .bg_scx_tilemap_column_changed()
+                && fetcher.source == PpuBgFetcherSource::Background
+                && matches!(
+                    fetcher.stage,
+                    PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
+                ),
         }
     }
 
     pub(in crate::ppu) fn apply_to_cached_slice(self, cached: &mut BgCachedSlice) {
         cached.needs_live_tilemap_refetch |= self.tilemap_refetch;
+        cached.needs_live_tilemap_full_refetch |= self.tilemap_full_refetch;
         cached.needs_live_tile_data_refetch |= self.tile_data_refetch;
         cached.needs_live_tile_data_current_row_refetch |= self.tile_data_current_row_refetch;
     }
 
     pub(in crate::ppu) fn apply_to_fetcher(self, fetcher: &mut BgFetcherState) {
         fetcher.needs_live_tilemap_refetch_on_push |= self.fetcher_tilemap_refetch_on_push;
+        fetcher.needs_live_tilemap_full_refetch_on_push |=
+            self.fetcher_tilemap_full_refetch_on_push;
     }
 }

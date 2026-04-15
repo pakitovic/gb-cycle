@@ -23,6 +23,7 @@ fn dmg_lcd_rig(lcdc: u8, stat: u8, ly: u8, lyc: u8, bgp: u8) -> PpuTestRig {
 fn startup_state_recreates_the_documented_post_boot_lcd_snapshot() {
     let ppu = dmg_lcd_rig(0x91, 0x08, 0x00, 0x00, 0xFC);
 
+    assert_eq!(ppu.read_register(0xFF46), 0xFF);
     assert_eq!(ppu.read_register(0xFF40), 0x91);
     assert_eq!(ppu.read_register(0xFF41), 0x8C);
     assert_eq!(ppu.read_register(0xFF42), 0x00);

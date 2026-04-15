@@ -754,6 +754,13 @@ fn curated_mealybug_suite_uses_framebuffer_fixture_contracts() {
         .expect("curated mealybug suite should include m3_bgp_change_sprites");
     assert_eq!(bgp_change_sprites.startup_mode, StartupMode::SkipBoot);
     assert_eq!(bgp_change_sprites.startup_memory_writes.len(), 16);
+    let scx_low_3_bits = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "mealybug-m3-scx-low-3-bits")
+        .expect("curated mealybug suite should include m3_scx_low_3_bits");
+    assert_eq!(scx_low_3_bits.startup_mode, StartupMode::SkipBoot);
+    assert_eq!(scx_low_3_bits.startup_memory_writes.len(), 16);
 }
 
 #[test]

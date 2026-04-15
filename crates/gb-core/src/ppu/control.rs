@@ -1381,16 +1381,105 @@ impl Ppu {
     }
 
     pub(super) fn mode3_transfer_policy(&self) -> PpuMode3TransferPolicy {
-        PpuMode3TransferPolicy::new(
-            self.bg_pipeline_state.mode3_started,
-            self.bg_pipeline_state.startup_source_state,
-            self.bg_pipeline_state
-                .startup_pre_visible_transfer_dots_remaining,
-            self.bg_pipeline_state.current_transfer_x,
-            self.bg_pipeline_state.visible_pixels_output,
-            self.bg_pipeline_state.scx_discard_remaining,
-            self.line_dot,
-        )
+        PpuMode3TransferPolicy::from_pipeline_state(&self.bg_pipeline_state, self.line_dot)
+    }
+
+    pub(super) fn startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile(&self) -> bool {
+        self.console_model.is_dmg_family()
+            && self.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.fetcher.cached_origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::TileDataHigh
+            && self.bg_pipeline_state.fetcher.stage_dot == 0
+            && self.bg_pipeline_state.current_transfer_x == 16
+            && self.bg_pipeline_state.visible_pixels_output == 8
+            && matches!(
+                self.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::PostAlignment {
+                    next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile3,
+                    startup_continuation_visible_tiles_remaining: 1,
+                    delayed_background_tileindex_read_tiles_remaining: 0,
+                    delayed_background_tilemap_tiles_remaining: 0,
+                    delayed_background_tiledata_tiles_remaining: 0,
+                    ..
+                }
+            )
+    }
+
+    pub(super) fn inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window(&self) -> bool {
+        let expected_visible_tile2_front_pixel =
+            self.bg_pipeline_state.current_transfer_x.saturating_sub(16);
+        self.console_model.is_dmg_family()
+            && self.bg_pipeline_state.push.pending
+            && self.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.push.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
+            && self.bg_pipeline_state.fetcher.stage_dot == 0
+            && (18..=21).contains(&self.bg_pipeline_state.current_transfer_x)
+            && self.bg_pipeline_state.visible_pixels_output
+                == self.bg_pipeline_state.current_transfer_x.saturating_sub(8)
+            && matches!(
+                self.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::Inactive
+            )
+            && self
+                .bg_pipeline_state
+                .fifo_cached_pixels
+                .front()
+                .copied()
+                .flatten()
+                .is_some_and(|cached| {
+                    matches!(
+                        cached.cached.origin,
+                        BgCachedSliceOrigin::StartupContinuation(
+                            BgStartupContinuationSlice::VisibleTile2
+                        )
+                    ) && cached.pixel_index == expected_visible_tile2_front_pixel
+                })
+    }
+
+    pub(super) fn inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget(
+        &self,
+    ) -> bool {
+        let expected_visible_tile2_front_pixel =
+            self.bg_pipeline_state.current_transfer_x.saturating_sub(16);
+        self.console_model.is_dmg_family()
+            && self.scx >= 0x58
+            && self.bg_pipeline_state.push.pending
+            && self.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.push.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
+            && self.bg_pipeline_state.fetcher.stage_dot == 0
+            && self.bg_pipeline_state.current_transfer_x == 22
+            && self.bg_pipeline_state.visible_pixels_output == 14
+            && matches!(
+                self.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::Inactive
+            )
+            && self
+                .bg_pipeline_state
+                .fifo_cached_pixels
+                .front()
+                .copied()
+                .flatten()
+                .is_some_and(|cached| {
+                    matches!(
+                        cached.cached.origin,
+                        BgCachedSliceOrigin::StartupContinuation(
+                            BgStartupContinuationSlice::VisibleTile2
+                        )
+                    ) && cached.pixel_index == expected_visible_tile2_front_pixel
+                })
     }
 
     pub(super) fn mode3_line_timing_policy(&self) -> PpuMode3LineTimingPolicy {

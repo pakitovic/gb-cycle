@@ -182,9 +182,161 @@ impl Ppu {
             ) {
                 self.bg_pipeline_state
                     .mark_live_lcdc3_write_while_fifo_visible(write_context);
+            }
+
+            self.bg_pipeline_state
+                .fetcher
+                .mark_live_register_write_for_current_background_fetch(
+                    live_background_register,
+                    write_context,
+                );
+
+            if matches!(
+                live_background_register,
+                PpuMode3LiveBackgroundRegister::Scx
+            ) && write_context.bg_scx_tilemap_column_changed()
+                && self.startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile()
+            {
                 self.bg_pipeline_state
                     .fetcher
-                    .mark_live_lcdc3_write_for_current_background_fetch(write_context);
+                    .needs_live_tilemap_refetch_on_push = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .needs_live_tilemap_full_refetch_on_push = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .clear_startup_visible_tile3_scx_boundary_old_pixel_window();
+                self.bg_pipeline_state
+                    .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
+                self.bg_pipeline_state
+                    .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
+            }
+
+            if matches!(
+                live_background_register,
+                PpuMode3LiveBackgroundRegister::Scx
+            ) && write_context.bg_scx_tilemap_column_changed()
+                && self.inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window()
+            {
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .needs_live_tilemap_refetch = false;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .needs_live_tilemap_full_refetch = false;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .startup_visible_tile3_scx_boundary_previous_scx = None;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
+                self.bg_pipeline_state
+                    .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
+                self.bg_pipeline_state
+                    .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
+
+                if (0x08..=0x0E).contains(&self.scx) && self.scx & 0x07 == 0x03 {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(
+                            self.visible_registers.scx,
+                        );
+                }
+            }
+
+            if matches!(
+                live_background_register,
+                PpuMode3LiveBackgroundRegister::Scx
+            ) && write_context.bg_scx_tilemap_column_changed()
+                && self.inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget()
+            {
+                let scx_low_bits = self.scx & 0x07;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(self.scx);
+                if scx_low_bits >= 0x03 {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .arm_startup_visible_tile3_scx_boundary_old_tail(
+                            self.visible_registers.scx,
+                            self.scx,
+                        );
+                    if scx_low_bits == 0x03 {
+                        self.bg_pipeline_state
+                            .push
+                            .cached
+                            .startup_visible_tile3_scx_boundary_old_tail_start_pixel =
+                            BG_TILE_WIDTH.saturating_sub(4);
+                    }
+                }
+                if matches!(scx_low_bits, 0x00 | 0x06) {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_previous_scx =
+                        Some(self.visible_registers.scx);
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_prefix_pixels = 1;
+                }
+                if self.scx >= 0x60 && scx_low_bits == 0x01 {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_previous_scx =
+                        Some(self.visible_registers.scx);
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_prefix_pixels = 2;
+                }
+                if self.scx >= 0x78 && matches!(scx_low_bits, 0x00..=0x02) {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_previous_scx =
+                        Some(self.visible_registers.scx);
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_tail_start_pixel = self
+                        .bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_tail_start_pixel
+                        .min(BG_TILE_WIDTH.saturating_sub(scx_low_bits.saturating_add(1)));
+                }
+                if self.scx >= 0x60 && matches!(scx_low_bits, 0x03..=0x05) {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_previous_scx =
+                        Some(self.visible_registers.scx);
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_prefix_pixels = self
+                        .bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_prefix_pixels
+                        .max(5);
+                }
             }
         }
 

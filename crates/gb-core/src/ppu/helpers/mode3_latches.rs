@@ -152,6 +152,10 @@ impl PpuMode3LiveRegisterWriteContext {
     pub(in crate::ppu) const fn bg_window_tile_data_select_changed(self) -> bool {
         self.lcdc_changed(LCDC_BG_WINDOW_TILE_DATA_BIT)
     }
+
+    pub(in crate::ppu) const fn bg_scx_tilemap_column_changed(self) -> bool {
+        (self.previous.scx >> 3) != (self.current.scx >> 3)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -179,6 +183,10 @@ impl PpuMode3LiveBackgroundRefetchContext {
 
     pub(in crate::ppu) const fn registers(self) -> PpuVisibleRegisters {
         self.registers
+    }
+
+    pub(in crate::ppu) const fn ly(self) -> u8 {
+        self.ly
     }
 
     pub(in crate::ppu) const fn current_scanline_tile_row(self) -> u16 {

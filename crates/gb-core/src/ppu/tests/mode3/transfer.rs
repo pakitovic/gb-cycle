@@ -297,6 +297,29 @@ fn transfer_service_plan_distinguishes_abstract_hidden_and_fifo_backed_visible_p
 }
 
 #[test]
+fn transfer_service_plan_rejects_non_visible_context_after_startup_tail() {
+    let mut bg_pipeline_state = BgPipelineState {
+        mode3_started: true,
+        startup_source_state: Mode3StartupSourceState::FifoBacked,
+        current_transfer_x: 8,
+        ..BgPipelineState::default()
+    };
+    bg_pipeline_state.fifo.push_back(0);
+    let policy = PpuMode3TransferPolicy::from_pipeline_state(
+        &bg_pipeline_state,
+        MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS,
+    );
+
+    assert_eq!(
+        policy.transfer_service_plan(Mode3TransferContext {
+            lane: Mode3TransferLane::Hidden,
+            source_window: Mode3TransferSourceWindow::FifoBacked,
+        }),
+        None
+    );
+}
+
+#[test]
 fn bg_fifo_starvation_after_priming_does_not_advance_pre_visible_match_x() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.visible_registers.lcdc = 0x82;
@@ -472,4 +495,73 @@ fn consuming_effective_fifo_pixel_keeps_the_visible_fifo_sideband_in_sync() {
     assert_eq!(ppu.bg_pipeline_state.startup_fifo_placeholders, 0);
     assert!(ppu.bg_pipeline_state.fifo.is_empty());
     assert!(ppu.bg_pipeline_state.fifo_cached_pixels.is_empty());
+}
+
+#[test]
+fn visible_fifo_pop_skips_residual_startup_placeholder_before_real_pixels() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
+    ppu.bg_pipeline_state.fifo.push_back(3);
+    ppu.bg_pipeline_state
+        .fifo_cached_pixels
+        .push_back(Some(BgFifoPixelCached::new(
+            BgCachedSlice {
+                source: PpuBgFetcherSource::Background,
+                origin: BgCachedSliceOrigin::StartupAlignmentFill,
+                fetch_x: 0,
+                tile_low: 0x10,
+                tile_high: 0x10,
+                ..BgCachedSlice::default()
+            },
+            3,
+        )));
+
+    let pixel = ppu
+        .bg_pipeline_state
+        .pop_visible_fifo_pixel()
+        .expect("visible BG pop should skip the placeholder and return the real pixel");
+
+    assert_eq!(pixel.color(), 3);
+    assert_eq!(ppu.bg_pipeline_state.startup_fifo_placeholders, 0);
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    assert!(ppu.bg_pipeline_state.fifo_cached_pixels.is_empty());
+}
+
+#[test]
+fn visible_fifo_pop_preserves_multi_placeholder_startup_tail_timing() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 2;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
+    ppu.bg_pipeline_state.fifo.push_back(3);
+    ppu.bg_pipeline_state
+        .fifo_cached_pixels
+        .push_back(Some(BgFifoPixelCached::new(
+            BgCachedSlice {
+                source: PpuBgFetcherSource::Background,
+                origin: BgCachedSliceOrigin::StartupAlignmentFill,
+                fetch_x: 0,
+                tile_low: 0x10,
+                tile_high: 0x10,
+                ..BgCachedSlice::default()
+            },
+            3,
+        )));
+
+    let pixel = ppu
+        .bg_pipeline_state
+        .pop_visible_fifo_pixel()
+        .expect("multi-placeholder startup tails remain timing-visible");
+
+    assert_eq!(pixel.color(), 0);
+    assert!(pixel.cached.is_none());
+    assert_eq!(ppu.bg_pipeline_state.startup_fifo_placeholders, 2);
+    assert_eq!(ppu.bg_pipeline_state.fifo.len(), 2);
+    assert_eq!(ppu.bg_pipeline_state.fifo_cached_pixels.len(), 2);
 }
