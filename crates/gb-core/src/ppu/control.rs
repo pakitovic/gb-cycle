@@ -1,12 +1,8 @@
 use super::*;
 
 impl Ppu {
-    pub(super) fn is_lcd_enabled(&self) -> bool {
-        self.lcd_state.is_enabled()
-    }
-
-    pub(super) fn sync_visible_registers(&mut self) {
-        self.visible_registers = PpuVisibleRegisters {
+    pub(super) const fn current_mmio_visible_registers(&self) -> PpuVisibleRegisters {
+        PpuVisibleRegisters {
             lcdc: self.lcdc,
             scy: self.scy,
             scx: self.scx,
@@ -15,9 +11,62 @@ impl Ppu {
             obp1: self.obp1,
             wy: self.wy,
             wx: self.wx,
-        };
+        }
     }
 
+    pub(super) const fn mode3_register_latches(&self) -> PpuMode3RegisterLatches {
+        PpuMode3RegisterLatches::new(self.visible_registers, self.pipeline_registers)
+    }
+
+    pub(super) const fn current_mode3_live_register_write_context(
+        &self,
+        previous_mmio_registers: PpuVisibleRegisters,
+    ) -> PpuMode3LiveRegisterWriteContext {
+        PpuMode3LiveRegisterWriteContext::new(
+            previous_mmio_registers,
+            self.current_mmio_visible_registers(),
+        )
+    }
+
+    pub(super) const fn current_mode3_live_background_refetch_context(
+        &self,
+    ) -> PpuMode3LiveBackgroundRefetchContext {
+        PpuMode3LiveBackgroundRefetchContext::new(
+            self.current_mmio_visible_registers(),
+            self.ly,
+            self.last_unsigned_tile_data_low_fetch,
+            self.last_unsigned_tile_data_high_fetch,
+        )
+    }
+
+    pub(super) fn set_mode3_register_latches(&mut self, latches: PpuMode3RegisterLatches) {
+        self.visible_registers = latches.visible();
+        self.pipeline_registers = latches.pipeline();
+    }
+
+    pub(super) fn reload_mode3_register_latches_from_mmio(&mut self) {
+        self.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(
+            self.current_mmio_visible_registers(),
+        ));
+    }
+
+    pub(super) fn advance_mode3_register_latches_from_mmio(&mut self) {
+        self.set_mode3_register_latches(
+            self.mode3_register_latches()
+                .advance(self.current_mmio_visible_registers()),
+        );
+    }
+
+    pub(super) fn is_lcd_enabled(&self) -> bool {
+        self.lcd_state.is_enabled()
+    }
+
+    #[cfg(test)]
+    pub(super) fn sync_visible_registers(&mut self) {
+        self.visible_registers = self.current_mmio_visible_registers();
+    }
+
+    #[cfg(test)]
     pub(super) fn sync_pipeline_registers(&mut self) {
         self.pipeline_registers = self.visible_registers;
     }
@@ -1162,41 +1211,32 @@ impl Ppu {
             return MODE0_START_DOT;
         }
 
-        let mut mode0_start_dot = if self.bg_pipeline_state.mode3_started {
-            let shortens_for_all_offscreen_right_sprites = self.bg_pipeline_state.mode0_start_dot
-                == self.baseline_mode0_start_dot()
-                && self.visible_registers.obj_enabled()
-                && self.mode2_scan_state.selected_sprite_count() > 0
-                && (0..self.mode2_scan_state.selected_sprite_count()).all(|slot| {
-                    self.mode2_scan_state
-                        .selected_sprite(slot)
-                        .is_some_and(|sprite| sprite.x >= 168)
-                });
-            self.bg_pipeline_state
-                .mode0_start_dot
-                .saturating_sub(u16::from(shortens_for_all_offscreen_right_sprites))
-        } else {
-            MODE0_START_DOT + u16::from(self.visible_registers.scx & 0x07)
-        };
-
+        let selected_sprite_count = self.mode2_scan_state.selected_sprite_count();
+        let all_selected_sprites_offscreen_right = selected_sprite_count > 0
+            && (0..selected_sprite_count).all(|slot| {
+                self.mode2_scan_state
+                    .selected_sprite(slot)
+                    .is_some_and(|sprite| sprite.x >= 168)
+            });
         let pending_obj_hit_owns_current_transfer_x = self.obj_pipeline_state.pending_match_x
             == Some(self.bg_pipeline_state.current_transfer_x)
             && !self.obj_pipeline_state.pending_sprite_slots.is_empty();
         let live_transfer_still_owned_by_mode3 = self.current_transfer().is_some();
-        if self.bg_pipeline_state.mode3_started
-            && (self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle
-                || pending_obj_hit_owns_current_transfer_x
-                || live_transfer_still_owned_by_mode3
-                || self.saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3())
-        {
-            mode0_start_dot = mode0_start_dot.max(self.line_dot.saturating_add(1));
-        }
-
-        mode0_start_dot
+        self.mode3_line_timing_policy()
+            .current_mode0_start_dot(PpuMode3LineTimingContext {
+                line_dot: self.line_dot,
+                selected_sprite_count,
+                all_selected_sprites_offscreen_right,
+                obj_fetch_active: self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle,
+                pending_obj_hit_owns_current_transfer_x,
+                live_transfer_still_owned_by_mode3,
+                saturated_placeholder_tail_still_owned_by_mode3: self
+                    .saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3(),
+            })
     }
 
     pub(super) fn baseline_mode0_start_dot(&self) -> u16 {
-        MODE0_START_DOT + u16::from(self.visible_registers.scx & 0x07)
+        self.mode3_line_timing_policy().baseline_mode0_start_dot()
     }
 
     pub(super) fn saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3(
@@ -1298,54 +1338,206 @@ impl Ppu {
     }
 
     pub(super) fn current_obj_height(&self) -> u8 {
-        self.visible_registers.obj_height()
+        self.mode3_register_latches().current_obj_height()
+    }
+
+    pub(super) fn visible_palette_register_value(&self, register: PpuPaletteRegister) -> u8 {
+        self.mode3_register_latches()
+            .visible()
+            .palette_register(register, self.obj_palette_read_policy)
+    }
+
+    pub(super) fn write_palette_register_storage(
+        &mut self,
+        register: PpuPaletteRegister,
+        value: u8,
+    ) {
+        match register {
+            PpuPaletteRegister::Bgp => self.bgp = value,
+            PpuPaletteRegister::Obp0 => self.obp0 = Some(value),
+            PpuPaletteRegister::Obp1 => self.obp1 = Some(value),
+        }
     }
 
     pub(super) fn window_activation_registers(&self) -> PpuVisibleRegisters {
-        if self.console_model.is_dmg_family() {
-            self.pipeline_registers
-        } else {
-            self.visible_registers
-        }
+        self.mode3_register_latches()
+            .window_activation_registers(self.console_model)
     }
 
-    pub(super) fn pixel_pipeline_lcdc(&self) -> u8 {
-        if !self.console_model.is_dmg_family() {
-            return self.visible_registers.lcdc;
-        }
+    pub(super) fn window_activation_state(&self) -> PpuMode3WindowActivationState {
+        PpuMode3WindowActivationState::new(
+            self.window_activation_registers(),
+            self.bg_pipeline_state.window_force_x0_this_line,
+        )
+    }
 
-        if self.bg_pipeline_state.current_transfer_x == 8 {
-            self.visible_registers.lcdc
-        } else {
-            self.pipeline_registers.lcdc
-        }
+    pub(super) fn mode3_window_policy(&self) -> PpuMode3WindowPolicy {
+        PpuMode3WindowPolicy::new(
+            self.mode3_register_latches().visible(),
+            self.window_activation_state(),
+            self.bg_pipeline_state.window_wy_latch,
+            self.bg_pipeline_state.window_started_this_line,
+        )
+    }
+
+    pub(super) fn mode3_transfer_policy(&self) -> PpuMode3TransferPolicy {
+        PpuMode3TransferPolicy::from_pipeline_state(&self.bg_pipeline_state, self.line_dot)
+    }
+
+    pub(super) fn startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile(&self) -> bool {
+        self.console_model.is_dmg_family()
+            && self.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.fetcher.cached_origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::TileDataHigh
+            && self.bg_pipeline_state.fetcher.stage_dot == 0
+            && self.bg_pipeline_state.current_transfer_x == 16
+            && self.bg_pipeline_state.visible_pixels_output == 8
+            && matches!(
+                self.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::PostAlignment {
+                    next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile3,
+                    startup_continuation_visible_tiles_remaining: 1,
+                    delayed_background_tileindex_read_tiles_remaining: 0,
+                    delayed_background_tilemap_tiles_remaining: 0,
+                    delayed_background_tiledata_tiles_remaining: 0,
+                    ..
+                }
+            )
+    }
+
+    pub(super) fn inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window(&self) -> bool {
+        let expected_visible_tile2_front_pixel =
+            self.bg_pipeline_state.current_transfer_x.saturating_sub(16);
+        self.console_model.is_dmg_family()
+            && self.bg_pipeline_state.push.pending
+            && self.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.push.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
+            && self.bg_pipeline_state.fetcher.stage_dot == 0
+            && (18..=21).contains(&self.bg_pipeline_state.current_transfer_x)
+            && self.bg_pipeline_state.visible_pixels_output
+                == self.bg_pipeline_state.current_transfer_x.saturating_sub(8)
+            && matches!(
+                self.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::Inactive
+            )
+            && self
+                .bg_pipeline_state
+                .fifo_cached_pixels
+                .front()
+                .copied()
+                .flatten()
+                .is_some_and(|cached| {
+                    matches!(
+                        cached.cached.origin,
+                        BgCachedSliceOrigin::StartupContinuation(
+                            BgStartupContinuationSlice::VisibleTile2
+                        )
+                    ) && cached.pixel_index == expected_visible_tile2_front_pixel
+                })
+    }
+
+    pub(super) fn inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget(
+        &self,
+    ) -> bool {
+        let expected_visible_tile2_front_pixel =
+            self.bg_pipeline_state.current_transfer_x.saturating_sub(16);
+        self.console_model.is_dmg_family()
+            && self.scx >= 0x58
+            && self.bg_pipeline_state.push.pending
+            && self.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.bg_pipeline_state.push.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+            )
+            && self.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
+            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
+            && self.bg_pipeline_state.fetcher.stage_dot == 0
+            && self.bg_pipeline_state.current_transfer_x == 22
+            && self.bg_pipeline_state.visible_pixels_output == 14
+            && matches!(
+                self.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::Inactive
+            )
+            && self
+                .bg_pipeline_state
+                .fifo_cached_pixels
+                .front()
+                .copied()
+                .flatten()
+                .is_some_and(|cached| {
+                    matches!(
+                        cached.cached.origin,
+                        BgCachedSliceOrigin::StartupContinuation(
+                            BgStartupContinuationSlice::VisibleTile2
+                        )
+                    ) && cached.pixel_index == expected_visible_tile2_front_pixel
+                })
+    }
+
+    pub(super) fn mode3_line_timing_policy(&self) -> PpuMode3LineTimingPolicy {
+        PpuMode3LineTimingPolicy::new(
+            self.mode3_register_latches().visible(),
+            self.bg_pipeline_state.mode3_started,
+            self.bg_pipeline_state.mode0_start_dot,
+        )
+    }
+
+    pub(super) fn mode3_bgwin_fetch_policy(&self) -> PpuMode3BgWinFetchPolicy {
+        PpuMode3BgWinFetchPolicy::new(
+            self.mode3_register_latches(),
+            self.console_model,
+            self.bg_pipeline_state
+                .startup_background_tilemap_uses_pipeline_snapshot(),
+            self.bg_pipeline_state
+                .startup_background_tiledata_uses_pipeline_snapshot(),
+            self.bg_pipeline_state
+                .startup_background_tileindex_reads_on_stage_one(),
+        )
+    }
+
+    pub(super) fn background_fetch_context(
+        &self,
+        next_fetch_pixel: u16,
+    ) -> PpuMode3BackgroundFetchContext {
+        self.mode3_bgwin_fetch_policy()
+            .background_fetch_context(next_fetch_pixel, self.ly)
+    }
+
+    pub(super) fn window_fetch_context(&self) -> PpuMode3WindowFetchContext {
+        self.mode3_bgwin_fetch_policy().window_fetch_context(
+            self.window_state.window_line_counter,
+            self.bg_pipeline_state.fetcher.window_tilemap_x,
+        )
     }
 
     pub(super) fn pixel_pipeline_bgp(&self) -> u8 {
-        if self.console_model.is_dmg_family() {
-            if let Some(override_palette) = self.dmg_bgp_cpu_commit_output_palette_override {
-                return override_palette;
-            }
-            if let Some(override_palette) = self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override
-            {
-                return override_palette;
-            }
-            self.visible_registers.bgp | self.pipeline_registers.bgp
-        } else {
-            self.visible_registers.bgp
-        }
+        self.mode3_register_latches().pixel_pipeline_bgp(
+            self.console_model,
+            self.dmg_bgp_cpu_commit_output_palette_override,
+            self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override,
+        )
     }
 
     pub(super) fn pixel_transfer_bg_enabled(&self) -> bool {
-        if self.console_model.is_dmg_family() {
-            self.visible_registers.lcdc & LCDC_BG_ENABLE_BIT != 0
-        } else {
-            self.pixel_pipeline_lcdc() & LCDC_BG_ENABLE_BIT != 0
-        }
+        self.mode3_register_latches().pixel_transfer_bg_enabled(
+            self.console_model,
+            self.bg_pipeline_state.current_transfer_x,
+        )
     }
 
     pub(super) fn pixel_transfer_obj_enabled(&self) -> bool {
-        self.pixel_pipeline_lcdc() & LCDC_OBJ_ENABLE_BIT != 0
+        self.mode3_register_latches().pixel_transfer_obj_enabled(
+            self.console_model,
+            self.bg_pipeline_state.current_transfer_x,
+        )
     }
 
     pub(super) fn prepare_visible_scanline_state(&mut self) {
@@ -1353,16 +1545,15 @@ impl Ppu {
             return;
         }
 
-        if self.visible_registers.wy < VISIBLE_SCANLINES && self.ly == self.visible_registers.wy {
-            self.window_state.wy_triggered = true;
-        }
-
-        let wy_latch =
-            self.window_state.wy_triggered && self.visible_registers.wy < VISIBLE_SCANLINES;
-        let force_x0_this_line = wy_latch && self.window_state.pending_wx166_next_line;
+        let prepared_line = self.mode3_window_policy().prepare_line(
+            self.ly,
+            self.window_state.wy_triggered,
+            self.window_state.pending_wx166_next_line,
+        );
+        self.window_state.wy_triggered = prepared_line.wy_triggered();
         self.window_state.pending_wx166_next_line = false;
         self.bg_pipeline_state
-            .prepare_window_line(wy_latch, force_x0_this_line);
+            .prepare_window_line(prepared_line.wy_latch(), prepared_line.force_x0_this_line());
     }
 
     pub(super) fn live_lyc_coincidence(&self) -> bool {
@@ -1498,8 +1689,7 @@ impl Ppu {
         self.line_dot = 0;
         self.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
         self.reset_runtime_pipeline_state();
-        self.sync_visible_registers();
-        self.sync_pipeline_registers();
+        self.reload_mode3_register_latches_from_mmio();
         self.clear_visible_buffers();
         self.refresh_visible_output();
     }
@@ -1513,8 +1703,7 @@ impl Ppu {
         self.lcd_restart_phase = PpuLcdRestartPhase::first_line_after_enable();
         self.stat_state.lcd_disabled_lyc_coincidence = false;
         self.reset_runtime_pipeline_state();
-        self.sync_visible_registers();
-        self.sync_pipeline_registers();
+        self.reload_mode3_register_latches_from_mmio();
         self.clear_visible_buffers();
         self.refresh_visible_output();
     }

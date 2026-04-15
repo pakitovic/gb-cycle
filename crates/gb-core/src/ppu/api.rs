@@ -125,24 +125,10 @@ impl Ppu {
         address: u16,
         source: PpuRegisterReadSource,
     ) -> u8 {
-        match address {
-            0xFF40 => self.read_lcdc(),
-            0xFF41 => self.read_stat(source),
-            0xFF42 => self.scy,
-            0xFF43 => self.scx,
-            0xFF44 => self.read_ly(),
-            0xFF45 => self.lyc,
-            0xFF47 => self.bgp,
-            0xFF48 => self
-                .obp0
-                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
-            0xFF49 => self
-                .obp1
-                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
-            0xFF4A => self.wy,
-            0xFF4B => self.wx,
-            _ => 0xFF,
-        }
+        let Some(register) = PpuRegister::from_address(address) else {
+            return 0xFF;
+        };
+        self.read_ppu_register(register, source)
     }
 
     pub fn write_register(&mut self, address: u16, value: u8) {
@@ -155,38 +141,25 @@ impl Ppu {
         value: u8,
         source: PpuRegisterWriteSource,
     ) {
-        let previous_lcdc = self.lcdc;
-        match address {
-            0xFF40 => self.write_lcdc(value, source),
-            0xFF41 => self.write_stat(value),
-            0xFF42 => self.scy = value,
-            0xFF43 => self.scx = value,
-            0xFF44 => {}
-            0xFF45 => {
-                self.lyc = value;
-                if self.is_lcd_enabled() {
-                    self.refresh_stat_irq_line(false);
-                }
-            }
-            0xFF47 => self.write_dmg_palette_register(PpuPaletteRegister::Bgp, value, source),
-            0xFF48 => self.write_dmg_palette_register(PpuPaletteRegister::Obp0, value, source),
-            0xFF49 => self.write_dmg_palette_register(PpuPaletteRegister::Obp1, value, source),
-            0xFF4A => self.wy = value,
-            0xFF4B => self.wx = value,
-            _ => {}
-        }
+        let Some(register) = PpuRegister::from_address(address) else {
+            return;
+        };
+        let previous_mmio_registers = self.current_mmio_visible_registers();
+        self.write_ppu_register(register, value, source);
 
-        if matches!(address, 0xFF40 | 0xFF42)
+        if let Some(live_background_register) =
+            PpuMode3LiveBackgroundRegister::from_register(register)
             && self.current_access_mode() == PpuAccessMode::Drawing
         {
+            let write_context =
+                self.current_mode3_live_register_write_context(previous_mmio_registers);
             if self.bg_pipeline_state.push.pending {
                 self.bg_pipeline_state
                     .push
                     .cached
                     .mark_live_register_write_while_push_pending(
-                        address,
-                        previous_lcdc,
-                        self.lcdc,
+                        live_background_register,
+                        write_context,
                         self.bg_pipeline_state.push.entry_delay_remaining > 0,
                     );
             }
@@ -196,26 +169,230 @@ impl Ppu {
                     .fill
                     .cached
                     .mark_live_register_write_while_fill_pending(
-                        address,
-                        previous_lcdc,
-                        self.lcdc,
+                        live_background_register,
+                        write_context,
                         self.bg_pipeline_state.fill.includes_real_tile_pixels,
                         self.bg_pipeline_state.fill.startup_dummy_pixels,
                     );
             }
 
-            if address == 0xFF40 {
+            if matches!(
+                live_background_register,
+                PpuMode3LiveBackgroundRegister::Lcdc
+            ) {
                 self.bg_pipeline_state
-                    .mark_live_lcdc3_write_while_fifo_visible(previous_lcdc, self.lcdc);
+                    .mark_live_lcdc3_write_while_fifo_visible(write_context);
+            }
+
+            self.bg_pipeline_state
+                .fetcher
+                .mark_live_register_write_for_current_background_fetch(
+                    live_background_register,
+                    write_context,
+                );
+
+            if matches!(
+                live_background_register,
+                PpuMode3LiveBackgroundRegister::Scx
+            ) && write_context.bg_scx_tilemap_column_changed()
+                && self.startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile()
+            {
                 self.bg_pipeline_state
                     .fetcher
-                    .mark_live_lcdc3_write_for_current_background_fetch(previous_lcdc, self.lcdc);
+                    .needs_live_tilemap_refetch_on_push = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .needs_live_tilemap_full_refetch_on_push = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .clear_startup_visible_tile3_scx_boundary_old_pixel_window();
+                self.bg_pipeline_state
+                    .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
+                self.bg_pipeline_state
+                    .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
+            }
+
+            if matches!(
+                live_background_register,
+                PpuMode3LiveBackgroundRegister::Scx
+            ) && write_context.bg_scx_tilemap_column_changed()
+                && self.inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window()
+            {
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .needs_live_tilemap_refetch = false;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .needs_live_tilemap_full_refetch = false;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .startup_visible_tile3_scx_boundary_previous_scx = None;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
+                self.bg_pipeline_state
+                    .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
+                self.bg_pipeline_state
+                    .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
+
+                if (0x08..=0x0E).contains(&self.scx) && self.scx & 0x07 == 0x03 {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(
+                            self.visible_registers.scx,
+                        );
+                }
+            }
+
+            if matches!(
+                live_background_register,
+                PpuMode3LiveBackgroundRegister::Scx
+            ) && write_context.bg_scx_tilemap_column_changed()
+                && self.inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget()
+            {
+                let scx_low_bits = self.scx & 0x07;
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(self.scx);
+                if scx_low_bits >= 0x03 {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .arm_startup_visible_tile3_scx_boundary_old_tail(
+                            self.visible_registers.scx,
+                            self.scx,
+                        );
+                    if scx_low_bits == 0x03 {
+                        self.bg_pipeline_state
+                            .push
+                            .cached
+                            .startup_visible_tile3_scx_boundary_old_tail_start_pixel =
+                            BG_TILE_WIDTH.saturating_sub(4);
+                    }
+                }
+                if matches!(scx_low_bits, 0x00 | 0x06) {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_previous_scx =
+                        Some(self.visible_registers.scx);
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_prefix_pixels = 1;
+                }
+                if self.scx >= 0x60 && scx_low_bits == 0x01 {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_previous_scx =
+                        Some(self.visible_registers.scx);
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_prefix_pixels = 2;
+                }
+                if self.scx >= 0x78 && matches!(scx_low_bits, 0x00..=0x02) {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_previous_scx =
+                        Some(self.visible_registers.scx);
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_tail_start_pixel = self
+                        .bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_tail_start_pixel
+                        .min(BG_TILE_WIDTH.saturating_sub(scx_low_bits.saturating_add(1)));
+                }
+                if self.scx >= 0x60 && matches!(scx_low_bits, 0x03..=0x05) {
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_previous_scx =
+                        Some(self.visible_registers.scx);
+                    self.bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_prefix_pixels = self
+                        .bg_pipeline_state
+                        .push
+                        .cached
+                        .startup_visible_tile3_scx_boundary_old_prefix_pixels
+                        .max(5);
+                }
             }
         }
 
         if !self.is_lcd_enabled() {
-            self.sync_visible_registers();
-            self.sync_pipeline_registers();
+            self.reload_mode3_register_latches_from_mmio();
+        }
+    }
+
+    fn read_ppu_register(&self, register: PpuRegister, source: PpuRegisterReadSource) -> u8 {
+        match register {
+            PpuRegister::Lcdc => self.read_lcdc(),
+            PpuRegister::Stat => self.read_stat(source),
+            PpuRegister::Scy => self.scy,
+            PpuRegister::Scx => self.scx,
+            PpuRegister::Ly => self.read_ly(),
+            PpuRegister::Lyc => self.lyc,
+            PpuRegister::Bgp => self.bgp,
+            PpuRegister::Obp0 => self
+                .obp0
+                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+            PpuRegister::Obp1 => self
+                .obp1
+                .unwrap_or(self.obj_palette_read_policy.default_read_value()),
+            PpuRegister::Wy => self.wy,
+            PpuRegister::Wx => self.wx,
+        }
+    }
+
+    fn write_ppu_register(
+        &mut self,
+        register: PpuRegister,
+        value: u8,
+        source: PpuRegisterWriteSource,
+    ) {
+        if let Some(palette_register) = register.palette_register() {
+            self.write_dmg_palette_register(palette_register, value, source);
+            return;
+        }
+
+        match register {
+            PpuRegister::Lcdc => self.write_lcdc(value, source),
+            PpuRegister::Stat => self.write_stat(value),
+            PpuRegister::Scy => self.scy = value,
+            PpuRegister::Scx => self.scx = value,
+            PpuRegister::Ly => {}
+            PpuRegister::Lyc => {
+                self.lyc = value;
+                if self.is_lcd_enabled() {
+                    self.refresh_stat_irq_line(false);
+                }
+            }
+            PpuRegister::Wy => self.wy = value,
+            PpuRegister::Wx => self.wx = value,
+            PpuRegister::Bgp | PpuRegister::Obp0 | PpuRegister::Obp1 => {
+                unreachable!("palette writes return early")
+            }
         }
     }
 
@@ -266,8 +443,7 @@ impl Ppu {
         self.previous_scanline_dmg_bg_forced_white.fill(false);
         self.previous_scanline_ly = None;
         self.framebuffer.fill(0);
-        self.sync_visible_registers();
-        self.sync_pipeline_registers();
+        self.reload_mode3_register_latches_from_mmio();
         self.startup_mode_latch = if self.lcd_state.is_enabled() {
             let startup_mode = PpuAccessMode::from_stat_bits(startup_state.stat);
             let derived_mode =
@@ -351,8 +527,7 @@ impl Ppu {
 
         let step_region = self.current_step_region_after_line_advance();
         let previous_mode = observe_ppu_step_region(observer, step_region, || {
-            self.sync_pipeline_registers();
-            self.sync_visible_registers();
+            self.advance_mode3_register_latches_from_mmio();
             let previous_mode = self.current_access_mode();
             self.startup_mode_latch = None;
             self.line_dot += 1;
@@ -415,6 +590,9 @@ impl Ppu {
         let mode = raster_state.access_mode();
         let current_transfer = self.current_transfer();
         let current_transfer_plan = current_transfer.map(Mode3CurrentTransfer::service_plan);
+        let register_latches = self.mode3_register_latches();
+        let visible_registers = register_latches.visible();
+        let pipeline_registers = register_latches.pipeline();
 
         PpuSnapshot {
             console_model: self.console_model,
@@ -515,22 +693,22 @@ impl Ppu {
             obp1: self.obp1,
             wy: self.wy,
             wx: self.wx,
-            visible_lcdc: self.visible_registers.lcdc,
-            visible_scy: self.visible_registers.scy,
-            visible_scx: self.visible_registers.scx,
-            visible_bgp: self.visible_registers.bgp,
-            visible_obp0: self.visible_registers.obp0,
-            visible_obp1: self.visible_registers.obp1,
-            visible_wy: self.visible_registers.wy,
-            visible_wx: self.visible_registers.wx,
-            pipeline_lcdc: self.pipeline_registers.lcdc,
-            pipeline_scy: self.pipeline_registers.scy,
-            pipeline_scx: self.pipeline_registers.scx,
-            pipeline_bgp: self.pipeline_registers.bgp,
-            pipeline_obp0: self.pipeline_registers.obp0,
-            pipeline_obp1: self.pipeline_registers.obp1,
-            pipeline_wy: self.pipeline_registers.wy,
-            pipeline_wx: self.pipeline_registers.wx,
+            visible_lcdc: visible_registers.lcdc,
+            visible_scy: visible_registers.scy,
+            visible_scx: visible_registers.scx,
+            visible_bgp: visible_registers.bgp,
+            visible_obp0: visible_registers.obp0,
+            visible_obp1: visible_registers.obp1,
+            visible_wy: visible_registers.wy,
+            visible_wx: visible_registers.wx,
+            pipeline_lcdc: pipeline_registers.lcdc,
+            pipeline_scy: pipeline_registers.scy,
+            pipeline_scx: pipeline_registers.scx,
+            pipeline_bgp: pipeline_registers.bgp,
+            pipeline_obp0: pipeline_registers.obp0,
+            pipeline_obp1: pipeline_registers.obp1,
+            pipeline_wy: pipeline_registers.wy,
+            pipeline_wx: pipeline_registers.wx,
             dmg_bgp_cpu_commit_output_palette_override: self
                 .dmg_bgp_cpu_commit_output_palette_override,
             dmg_bgp_cpu_commit_output_delay_pixels_remaining: self

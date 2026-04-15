@@ -4,8 +4,8 @@ use common::machine_driver::run_until_halted;
 use common::synthetic_cartridge::{HEADER_MINIMUM_ROM_LEN, build_nom_bc_test_rom};
 use gb_core::{
     ConsoleModel, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, Machine,
-    MachineConfig, PpuAccessMode, PpuBgFetcherSource, PpuLcdState, PpuObjFetcherStage, PpuSnapshot,
-    PpuVisibleOutputState, StartupMode,
+    MachineConfig, OperatingMode, PpuAccessMode, PpuBgFetcherSource, PpuLcdState,
+    PpuObjFetcherStage, PpuSnapshot, PpuVisibleOutputState, StartupMode,
 };
 
 include!("ppu/ppu_setup.rs");
@@ -24,6 +24,53 @@ mod ppu_lcd_restart;
 mod ppu_mode_edges;
 #[path = "ppu/ppu_oam_dma.rs"]
 mod ppu_oam_dma;
+
+fn step_until_visible_pixels_output_on_line(
+    machine: &mut Machine,
+    target_ly: u8,
+    min_visible_pixels_output: u8,
+) {
+    let mut stepped_t_cycles = 0u32;
+    loop {
+        let snapshot = machine.ppu().snapshot();
+        if snapshot.ly == target_ly
+            && snapshot.mode == PpuAccessMode::Drawing
+            && snapshot.visible_pixels_output >= min_visible_pixels_output
+        {
+            return;
+        }
+
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        assert!(
+            stepped_t_cycles < 2_000,
+            "did not reach ly={} drawing with {} visible pixels in time; last snapshot={:?}",
+            target_ly,
+            min_visible_pixels_output,
+            machine.ppu().snapshot()
+        );
+    }
+}
+
+fn run_live_bgp_write_prefix(config: MachineConfig) -> (Vec<u8>, Vec<u8>) {
+    let mut machine = Machine::new(config);
+    machine.write_bus(0xFF40, 0x91);
+    machine.write_bus(0xFF42, 0x00);
+    machine.write_bus(0xFF43, 0x00);
+    machine.write_bus(0xFF47, 0x01);
+
+    seed_bg_tile_row(&mut machine, 0, 0, 0x00, 0x00);
+    for tile_x in 0..4 {
+        seed_bg_tilemap_entry(&mut machine, tile_x, 0, 0);
+    }
+
+    step_until_visible_pixels_output_on_line(&mut machine, 0, 8);
+
+    let before = machine.ppu().framebuffer()[..8].to_vec();
+    machine.write_bus(0xFF47, 0x12);
+    let after = machine.ppu().framebuffer()[..8].to_vec();
+    (before, after)
+}
 
 #[test]
 fn live_machine_bus_access_uses_the_current_ppu_mode_from_the_raster_state() {
@@ -88,6 +135,26 @@ fn bg_only_mode3_produces_visible_pixels_from_vram_on_the_machine_timeline() {
         &snapshot.current_scanline_pixels[..16],
         &[0, 1, 2, 3, 0, 1, 2, 3, 3, 2, 1, 0, 3, 2, 1, 0]
     );
+}
+
+#[test]
+fn cgb_compatibility_machine_keeps_bgp_palette_conflict_quirks_disabled() {
+    let dmg_config = MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot);
+    let cgb_compat_config = MachineConfig::new(ConsoleModel::Cgb)
+        .with_operating_mode(OperatingMode::CgbCompatibility)
+        .with_startup_mode(StartupMode::SkipBoot);
+
+    let (dmg_before, dmg_after) = run_live_bgp_write_prefix(dmg_config);
+    let (cgb_before, cgb_after) = run_live_bgp_write_prefix(cgb_compat_config.clone());
+
+    let capabilities = cgb_compat_config.capability_set();
+    assert!(capabilities.dmg_software_contract());
+    assert!(!capabilities.dmg_family_quirks_enabled());
+
+    assert_eq!(dmg_before, vec![1; 8]);
+    assert_ne!(dmg_after, dmg_before);
+    assert_eq!(cgb_before, vec![1; 8]);
+    assert_eq!(cgb_after, cgb_before);
 }
 
 #[test]

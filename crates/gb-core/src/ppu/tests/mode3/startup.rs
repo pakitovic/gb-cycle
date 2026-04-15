@@ -61,6 +61,246 @@ fn visible_mode3_registers_lag_enabled_writes_until_the_next_t_cycle() {
 }
 
 #[test]
+fn mode3_initial_scx_capture_uses_the_visible_scx_after_startup_dummy_dots() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.tick_n(80);
+    assert_eq!(ppu.snapshot().line_dot, 80);
+    assert!(ppu.bg_pipeline_state.initial_scx_capture_pending);
+    assert_eq!(ppu.bg_pipeline_state.initial_scx_discard, 0);
+    assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+
+    ppu.tick_n(2);
+    assert_eq!(ppu.snapshot().line_dot, 82);
+    assert_eq!(ppu.snapshot().visible_scx, 0x00);
+    ppu.write_register(0xFF43, 0x05);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT);
+
+    ppu.tick();
+    assert_eq!(ppu.snapshot().line_dot, 83);
+    assert_eq!(ppu.snapshot().visible_scx, 0x05);
+    assert!(!ppu.bg_pipeline_state.initial_scx_capture_pending);
+    assert_eq!(ppu.bg_pipeline_state.initial_scx_discard, 0x05);
+    assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0x05);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 5);
+}
+
+#[test]
+fn cpu_mmio_scx_write_during_alignment_seed_retunes_the_current_line_discard_budget() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.tick_n(84);
+
+    let before = ppu.snapshot();
+    assert_eq!(before.mode, PpuAccessMode::Drawing);
+    assert_eq!(before.visible_scx, 0x00);
+    assert_eq!(before.bg_current_transfer_x, 1);
+    assert_eq!(before.visible_pixels_output, 0);
+    assert_eq!(before.mode0_start_dot, MODE0_START_DOT);
+    assert!(matches!(
+        before.bg_startup_fetch_seam,
+        PpuBgStartupFetchSeamSnapshot::AlignmentSeedPending
+    ));
+
+    ppu.write_register_with_source(0xFF43, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
+
+    let pending = ppu.snapshot();
+    assert_eq!(pending.visible_scx, 0x00);
+    assert_eq!(pending.mode0_start_dot, MODE0_START_DOT);
+    assert_eq!(pending.scx_discard_remaining, 0);
+
+    ppu.tick();
+
+    let after = ppu.snapshot();
+    assert_eq!(after.line_dot, 85);
+    assert_eq!(after.visible_scx, 0x02);
+    assert_eq!(after.bg_current_transfer_x, 0);
+    assert_eq!(after.visible_pixels_output, 0);
+    assert_eq!(after.mode0_start_dot, MODE0_START_DOT + 2);
+    assert_eq!(after.scx_discard_remaining, 0);
+}
+
+#[test]
+fn cpu_mmio_scx_write_after_alignment_seed_does_not_retune_the_current_line_discard_budget() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.tick_n(88);
+
+    let before = ppu.snapshot();
+    assert_eq!(before.mode, PpuAccessMode::Drawing);
+    assert_eq!(before.visible_scx, 0x00);
+    assert_eq!(before.bg_current_transfer_x, 5);
+    assert_eq!(before.visible_pixels_output, 0);
+    assert_eq!(before.mode0_start_dot, MODE0_START_DOT);
+    assert!(matches!(
+        before.bg_startup_fetch_seam,
+        PpuBgStartupFetchSeamSnapshot::PostAlignment { .. }
+    ));
+
+    ppu.write_register_with_source(0xFF43, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
+    ppu.tick();
+
+    let after = ppu.snapshot();
+    assert_eq!(after.line_dot, 89);
+    assert_eq!(after.visible_scx, 0x02);
+    assert_eq!(after.bg_current_transfer_x, 6);
+    assert_eq!(after.visible_pixels_output, 0);
+    assert_eq!(after.mode0_start_dot, MODE0_START_DOT);
+    assert_eq!(after.scx_discard_remaining, 0);
+}
+
+#[test]
+fn previsible_live_scx_retarget_accounts_for_already_consumed_discard_dots() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.initial_scx_discard = 5;
+    ppu.bg_pipeline_state.scx_discard_remaining = 3;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 5;
+    ppu.visible_registers.scx = 0x02;
+    ppu.pipeline_registers.scx = 0x05;
+
+    ppu.bg_pipeline_state
+        .retune_previsible_scx_discard(ppu.mode3_register_latches().visible().scx);
+
+    assert_eq!(ppu.bg_pipeline_state.initial_scx_discard, 2);
+    assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);
+    assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 2);
+}
+
+#[test]
+#[ignore = "diagnostic cpu-commit SCX write against a startup SCX=2 baseline on the same line"]
+fn cpu_commit_scx_alignment_seed_tail_matches_startup_scx2_baseline() {
+    fn seeded_ppu(scx: u8) -> PpuTestRig {
+        let mut ppu = PpuTestRig::dmg();
+        ppu.write_bg_tile_row(0x00, 0, 0x00, 0x00);
+        ppu.write_bg_tile_row(0x19, 0, 0xFF, 0xFF);
+        for tile_x in 0..32 {
+            ppu.write_bg_tilemap_entry(tile_x, 0, if tile_x == 19 { 0x19 } else { 0x00 });
+        }
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xFC,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu
+    }
+
+    let mut startup = seeded_ppu(0x02);
+    while startup.snapshot().mode != PpuAccessMode::HBlank {
+        startup.tick();
+    }
+
+    let mut live = seeded_ppu(0x00);
+    live.tick_n(84);
+    live.write_register_with_source(0xFF43, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
+    while live.snapshot().mode != PpuAccessMode::HBlank {
+        live.tick();
+    }
+
+    println!(
+        "startup tail={:?} live tail={:?}",
+        &startup.snapshot().current_scanline_pixels[148..160],
+        &live.snapshot().current_scanline_pixels[148..160]
+    );
+}
+
+#[test]
+#[ignore = "diagnostic startup scx=2 versus scx=0 state at line_dot=84"]
+fn startup_scx2_state_at_line84() {
+    fn seeded_ppu(scx: u8) -> PpuTestRig {
+        let mut ppu = PpuTestRig::dmg();
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0xFC,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu
+    }
+
+    let mut scx0 = seeded_ppu(0x00);
+    scx0.tick_n(84);
+    println!(
+        "scx0 dot84 x={} vpo={} placeholders={} stage={:?} stage_dot={} seam={:?} discard={} mode0={}",
+        scx0.snapshot().bg_current_transfer_x,
+        scx0.snapshot().visible_pixels_output,
+        scx0.snapshot().bg_startup_fifo_placeholders,
+        scx0.snapshot().bg_fetcher_stage,
+        scx0.snapshot().bg_fetcher_stage_dot,
+        scx0.snapshot().bg_startup_fetch_seam,
+        scx0.snapshot().scx_discard_remaining,
+        scx0.snapshot().mode0_start_dot,
+    );
+
+    let mut scx2 = seeded_ppu(0x02);
+    scx2.tick_n(84);
+    println!(
+        "scx2 dot84 x={} vpo={} placeholders={} stage={:?} stage_dot={} seam={:?} discard={} mode0={}",
+        scx2.snapshot().bg_current_transfer_x,
+        scx2.snapshot().visible_pixels_output,
+        scx2.snapshot().bg_startup_fifo_placeholders,
+        scx2.snapshot().bg_fetcher_stage,
+        scx2.snapshot().bg_fetcher_stage_dot,
+        scx2.snapshot().bg_startup_fetch_seam,
+        scx2.snapshot().scx_discard_remaining,
+        scx2.snapshot().mode0_start_dot,
+    );
+}
+
+#[test]
 fn mode3_startup_keeps_dummy_occupancy_out_of_the_fifo_until_alignment_push() {
     let mut ppu = PpuTestRig::dmg();
 
@@ -154,6 +394,94 @@ fn mode3_startup_fetches_the_first_three_visible_background_tiles_in_order() {
     assert_eq!(snapshot.current_scanline_pixels[..8], [0; 8]);
     assert_eq!(snapshot.current_scanline_pixels[8..16], [1; 8]);
     assert_eq!(snapshot.current_scanline_pixels[16..24], [2; 8]);
+}
+
+#[test]
+fn mode3_startup_scx_low_bits_shift_the_first_visible_background_pixels() {
+    fn patterned_startup(scx: u8) -> PpuTestRig {
+        let mut ppu = PpuTestRig::dmg();
+        ppu.write_bg_tile_row(0, 0, 0x55, 0x33);
+        for tile_x in 0..32 {
+            ppu.write_bg_tilemap_entry(tile_x, 0, 0);
+        }
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu
+    }
+
+    let mut scx0 = patterned_startup(0x00);
+    while scx0.snapshot().visible_pixels_output != 8 {
+        assert!(scx0.t_cycle < 140);
+        scx0.tick();
+    }
+
+    let mut scx2 = patterned_startup(0x02);
+    while scx2.snapshot().visible_pixels_output != 8 {
+        assert!(scx2.t_cycle < 140);
+        scx2.tick();
+    }
+
+    assert_eq!(
+        scx0.snapshot().current_scanline_pixels[..8],
+        [0, 1, 2, 3, 0, 1, 2, 3]
+    );
+    assert_eq!(
+        scx2.snapshot().current_scanline_pixels[..8],
+        [2, 3, 0, 1, 2, 3, 0, 1]
+    );
+}
+
+#[test]
+fn cpu_mmio_scx_write_during_alignment_seed_matches_startup_scx2_pixel_phase() {
+    fn patterned_startup(scx: u8) -> PpuTestRig {
+        let mut ppu = PpuTestRig::dmg();
+        ppu.write_bg_tile_row(0, 0, 0x55, 0x33);
+        for tile_x in 0..32 {
+            ppu.write_bg_tilemap_entry(tile_x, 0, 0);
+        }
+        ppu.apply_startup_state(PpuStartupState {
+            lcdc: 0x91,
+            stat: 0x82,
+            scy: 0x00,
+            scx,
+            ly: 0x00,
+            lyc: 0x00,
+            bgp: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        });
+        ppu
+    }
+
+    let mut startup = patterned_startup(0x02);
+    while startup.snapshot().visible_pixels_output != 8 {
+        assert!(startup.t_cycle < 140);
+        startup.tick();
+    }
+
+    let mut live = patterned_startup(0x00);
+    live.tick_n(84);
+    live.write_register_with_source(0xFF43, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
+    while live.snapshot().visible_pixels_output != 8 {
+        assert!(live.t_cycle < 140);
+        live.tick();
+    }
+
+    assert_eq!(
+        live.snapshot().current_scanline_pixels[..8],
+        startup.snapshot().current_scanline_pixels[..8]
+    );
 }
 
 #[test]
