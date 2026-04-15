@@ -502,51 +502,62 @@ For DMG bring-up and PPU refactor closure, use the following finer-grained matur
 | 49 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_wx_4_change_sprites.gb` | PPU | VERY HIGH | Mode `3`, live `WX` with OBJ interaction | 165 |
 
 Project-owned tests:
-- tests for variable Mode 3 timing, `SCX` discard behavior, and sprite-induced stalls
-- tests for the canonical BG/window fetcher phase order: `TileIndex -> TileDataLow -> TileDataHigh -> Sleep -> Push`
-- tests that BG/window `Push` retries until the BG FIFO is empty and does not push into a non-empty BG FIFO
-- tests that OBJ fetch may seize the shared fetcher only from an eligible BG/window `Push` point, with BG refill still taking priority when the BG FIFO is empty
-- tests for Mode 2 sprite selection using Y only, including horizontally off-screen sprites still consuming one of the `10` slots
-- tests for DMG OBJ/OBJ priority: lower `X` wins, then OAM order on equal `X`
-- tests for OBJ color `0` transparency and transparent object FIFO filler behavior
-- tests for BG/OBJ mixing using the winning OBJ pixel before applying the BG-over-OBJ rule
-- tests for `8x8` versus `8x16` selection and row mapping, including bit `0` ignored on `8x16` tile indices
-- tests for top-edge and bottom-edge partial sprite visibility such as `Y = 2` and `Y = 154`
-- tests for mid-frame `LCDC.1` and `LCDC.2` changes
-- tests for WY latch timing at Mode 2 start and WX-trigger timing during Mode 3
-- tests for window fetcher reset and BG FIFO clear when the window starts mid-scanline
-- tests for the internal window line counter, including increment-only-when-started and reset during VBlank
-- tests for `WX = 0` and `WX = 166` special behavior
-- tests for DMG `LCDC.0` suppressing window rendering even when `LCDC.5 = 1`
-- tests for mid-frame `WX`, `WY`, and `LCDC.5` writes
-- tests for `LCDC.5` disable during active window fetch and same-scanline re-enable with `WX` retargeting
-- tests for window-start and window-glitch cases that continue into later BG/OBJ mixing without resetting the OBJ FIFO incorrectly
-- tests for live `STAT` readback composition: documented writable enable bits, live mode/coincidence bits, and the chosen bit-`7` model
-- tests for `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
-- tests for immediate `LYC` write reevaluation of `STAT.2` and the internal STAT interrupt line
-- tests for each enabled LCD STAT mode source path for Mode `0`, Mode `1`, and Mode `2`
-- tests for the line-start Mode `2` / LCD STAT chronology used by raster-effect ROMs, including the non-line-`0` pretrigger path and first-line timing differences when a handler writes back into PPU MMIO during the same scanline
-- tests for LCD STAT rising-edge behavior and STAT blocking across consecutive enabled sources such as Mode `0` followed by Mode `1`
-- tests that Mode `3` never acts as a direct LCD STAT interrupt source
-- tests that entering Mode `1` can request both VBlank interrupt and LCD STAT interrupt independently
-- tests for DMG-family `STAT` write quirk in Mode `2`, Mode `0`, Mode `1`, and coincidence-active cases, plus a negative test for Mode `3`
-- tests that the mode reported through `STAT` matches the same live state used by the bus to block or allow VRAM/OAM access
-- tests for blocked CPU VRAM/OAM access semantics, including ignored writes and blocked-read return values in the relevant modes
-- tests for LCD off/on behavior around `STAT`, including LCD-off `STAT` mode readback, release of ordinary LCD-mode VRAM/OAM restrictions, and re-enable without stale STAT-line or coincidence carry-over
-- tests for `LCDC.7: 1 -> 0` causing immediate LCD/PPU disable, visible white output, and release of ordinary VRAM/OAM mode restrictions
-- tests for `LCDC.7: 0 -> 1` causing immediate internal PPU restart while keeping the visible output blank for the first full frame
-- tests that LCD disable resets pipeline state so re-enable does not resume a corrupted partial scanline
-- tests for one explicit LY/off/re-enable policy covering the disable point, steady LCD-off state, and re-enable boundary rather than accidental continued line counting during LCD-disabled state
-- tests that mid-scanline `LCDC.7` writes take effect immediately rather than waiting for scanline or frame end
-- tests that the Mode `2` OAM row exposed by the PPU is deterministic and advances one row per `4` dots
-- tests for OAM corruption trigger families: ordinary OAM access, `FEA0-FEFF` read during Mode `2`, and IDU-driven `inc/dec` events in `FE00-FEFF`
-- tests for first-row immunity of the basic OAM corruption patterns
-- tests for write corruption and read corruption using the documented deterministic word formulas rather than random damage
-- tests for `write + inc/dec` collapsing to one effective write-corruption path
-- tests for the dedicated `read + inc/dec` pattern, including its row exclusions for the first four rows and the last row
-- tests that `[hli]` / `[hld]`, `push` / `pop`, `call` / `ret` / `rst`, interrupt service, and executing code from OAM can all trigger the bug through the same event model
-- tests that DMG-family models are affected while future CGB-family models are not
-- direct-boot continuity tests that verify the first LCD-visible dots after `SkipBoot` are coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
+
+This status tracks repo-owned unit, integration, and synthetic-ROM coverage. It does not replace the external ROM rows above; green mealybug / mooneye / differential coverage remains a separate closure signal.
+
+Covered:
+- variable Mode `3` timing, `SCX` discard behavior, and sprite-induced stalls
+- BG/window `Push` retry behavior: retry until the BG FIFO is empty, and never push into a non-empty BG FIFO
+- OBJ fetch arbitration at eligible BG/window `Push` points, with BG refill still taking priority when the BG FIFO is empty
+- Mode `2` sprite selection using Y only, including horizontally off-screen sprites still consuming one of the `10` slots
+- DMG OBJ/OBJ priority: lower `X` wins, then OAM order on equal `X`
+- BG/OBJ mixing using the winning OBJ pixel before applying the BG-over-OBJ rule
+- `8x8` versus `8x16` selection and row mapping, including bit `0` ignored on `8x16` tile indices
+- top-edge and bottom-edge partial sprite visibility such as `Y = 2` and `Y = 154`
+- WY latch timing at Mode `2` start and WX-trigger timing during Mode `3`
+- window fetcher reset and BG FIFO clear when the window starts mid-scanline
+- `WX = 0` and `WX = 166` special behavior
+- live `STAT` readback composition: documented writable enable bits, live mode/coincidence bits, and the chosen bit-`7` model
+- `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
+- immediate `LYC` write reevaluation of `STAT.2` and the internal STAT interrupt line
+- each enabled LCD STAT mode source path for Mode `0`, Mode `1`, and Mode `2`
+- LCD STAT rising-edge behavior and STAT blocking across consecutive enabled sources such as Mode `0` followed by Mode `1`
+- Mode `3` never acting as a direct LCD STAT interrupt source
+- entering Mode `1` requesting both VBlank interrupt and LCD STAT interrupt independently
+- DMG-family `STAT` write quirk in Mode `2`, Mode `0`, Mode `1`, and coincidence-active cases, plus a negative test for Mode `3`
+- mode reported through `STAT` matching the same live state used by the bus to block or allow VRAM/OAM access
+- blocked CPU VRAM/OAM access semantics, including ignored writes and blocked-read return values in the relevant modes
+- LCD off/on behavior around `STAT`, including LCD-off `STAT` mode readback, release of ordinary LCD-mode VRAM/OAM restrictions, and re-enable without stale STAT-line or coincidence carry-over
+- `LCDC.7: 1 -> 0` causing immediate LCD/PPU disable, visible white output, and release of ordinary VRAM/OAM mode restrictions
+- `LCDC.7: 0 -> 1` causing immediate internal PPU restart while keeping the visible output blank for the first full frame
+- LCD disable resetting pipeline state so re-enable does not resume a corrupted partial scanline
+- one explicit LY/off/re-enable policy covering the disable point, steady LCD-off state, and re-enable boundary rather than accidental continued line counting during LCD-disabled state
+- mid-scanline `LCDC.7` writes taking effect immediately rather than waiting for scanline or frame end
+- Mode `2` OAM row exposure as deterministic state that advances one row per `4` dots
+- OAM corruption trigger families for ordinary OAM access, `FEA0-FEFF` read/write during Mode `2`, and IDU-driven `inc/dec` events in `FE00-FEFF`
+- first-row immunity of the basic OAM corruption patterns
+- write corruption and read corruption using the documented deterministic word formulas rather than random damage
+- `write + inc/dec` collapsing to one effective write-corruption path
+- dedicated `read + inc/dec` behavior, including row exclusions for the first four rows and the last row
+- DMG-family models being affected by OAM corruption while future CGB-family models are not
+- direct-boot continuity for the first LCD-visible dots after `SkipBoot` being coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
+
+Partial:
+- canonical BG/window fetcher phase order: the hardware contract is `TileIndex -> TileDataLow -> TileDataHigh -> Sleep -> Push`, while the current project model tests the explicit fetch stages and push-entry / retry behavior without a separately named `Sleep` enum stage
+- OBJ color `0` transparency is covered; transparent object FIFO filler behavior is covered only indirectly through OBJ FIFO and mixing tests
+- mid-frame `LCDC.1` / `LCDC.2` coverage exists for OBJ fetch cancellation, live Mode `2` size selection, and size-row safety, but not as complete external-oracle closure for all Mode `3` toggle cases
+- internal window line counter coverage includes increment-only-when-started behavior and reset through LCD pipeline reset paths; VBlank reset should remain visible as a dedicated assertion if this area changes again
+- mid-frame `WX`, `WY`, and `LCDC.5` writes have focused local coverage for latching, previous-dot WX, and window-fetch aborts, but not a complete glitch matrix
+- `LCDC.5` disable during active window fetch is covered; same-scanline re-enable with `WX` retargeting is not yet a complete closed case
+- window-start plus OBJ mixing is covered without spurious OBJ FIFO reset; broader window-glitch continuation into later BG/OBJ mixing remains incomplete
+- line-start Mode `2` / LCD STAT chronology has focused local and synthetic-ROM coverage for raster-effect timing, but handler-writeback and first-line variants remain partly diagnostic
+- OAM corruption instruction-family routing is covered for `[hli]` / `[hld]`, `push`, interrupt service, and generic CPU address-event classes; `pop`, `call`, `ret`, `rst`, and executing code from OAM still need direct end-to-end coverage if they are claimed individually
+
+Open:
+- direct project-owned test for DMG `LCDC.0 = 0` suppressing window rendering when `LCDC.5 = 1`
+- complete same-scanline `LCDC.5` re-enable with `WX` retargeting test
+- direct end-to-end OAM-corruption fixtures for `pop`, `call`, `ret`, `rst`, and executing code from OAM
+- explicit project decision and matching test wording for whether the canonical fetcher `Sleep` phase is represented as a named state or as the current push-entry / retry timing
 
 ## Known pitfalls
 
