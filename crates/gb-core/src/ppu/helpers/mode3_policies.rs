@@ -280,6 +280,7 @@ impl PpuMode3WindowPolicy {
         transfer_dot: Mode3TransferDot,
         visible_pixels_output: u8,
         current_transfer_x: u8,
+        initial_scx_discard: u8,
         scx_discard_remaining: u8,
         wx166_armed_this_line: bool,
     ) -> PpuMode3WindowStartDecision {
@@ -305,16 +306,19 @@ impl PpuMode3WindowPolicy {
             return PpuMode3WindowStartDecision::NotReady;
         };
 
-        if visible_pixels_output != trigger_x {
-            return PpuMode3WindowStartDecision::NotReady;
-        }
-
         let can_start_now = if trigger_x == 0 {
+            let first_visible_pixel_from_scx_discard = initial_scx_discard != 0
+                && visible_pixels_output == 1
+                && current_transfer_x <= 8
+                && transfer_dot.kind == Mode3TransferDotKind::ServedVisiblePixel;
+
             scx_discard_remaining == 0
-                && current_transfer_x >= 8
                 && transfer_dot.can_start_window_after_x0_service()
+                && ((visible_pixels_output == 0 && current_transfer_x >= 8)
+                    || first_visible_pixel_from_scx_discard)
         } else {
             scx_discard_remaining == 0
+                && visible_pixels_output == trigger_x
                 && transfer_dot.kind == Mode3TransferDotKind::ServedVisiblePixel
         };
 

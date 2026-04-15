@@ -48,6 +48,7 @@ Nothing in this file overrides those documents.
 - Treat the activation dot as separate from the restarted window fetch.
 - Turning `LCDC.5` off mid-window must finish the current window tile before BG resumes on a tile boundary.
 - Keep `WX = 0`, `WX = 166`, and the `WX = 0 && (SCX & 7) > 0` shortening case explicit.
+- Keep the `WX = 0` trigger reachable when `SCX & 7` startup discard makes the first visible transfer dot occur at or before `current_transfer_x == 8`.
 
 ### DMA, OAM, and corruption
 

@@ -953,6 +953,7 @@ impl Ppu {
                 transfer_dot,
                 self.bg_pipeline_state.visible_pixels_output,
                 self.bg_pipeline_state.current_transfer_x,
+                self.bg_pipeline_state.initial_scx_discard,
                 self.bg_pipeline_state.scx_discard_remaining,
                 self.bg_pipeline_state.wx166_armed_this_line,
             ) {

@@ -91,6 +91,37 @@ fn wx_zero_previsible_window_start_requires_a_late_fifo_backed_served_dot() {
 }
 
 #[test]
+fn wx_zero_starts_after_first_visible_scx_discard_dot() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0xF1;
+    ppu.visible_registers.wx = 0;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.ly = 0;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = 0;
+    ppu.bg_pipeline_state.initial_scx_discard = 1;
+    ppu.bg_pipeline_state.scx_discard_remaining = 0;
+    ppu.bg_pipeline_state.current_transfer_x = 7;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+
+    let transfer_dot = ppu.advance_mode3_output_phase();
+    ppu.maybe_apply_wx0_shortening_after_transfer_dot(transfer_dot);
+
+    assert_eq!(transfer_dot.kind, Mode3TransferDotKind::ServedVisiblePixel);
+    assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 1);
+    assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
+    assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+    assert!(ppu.bg_pipeline_state.window_started_this_line);
+    assert_eq!(
+        ppu.bg_pipeline_state.fetcher.source,
+        PpuBgFetcherSource::Window
+    );
+}
+
+#[test]
 fn wx_zero_last_scx_discard_shortening_is_applied_from_the_served_transfer_dot() {
     let mut ppu = PpuTestRig::dmg();
     ppu.visible_registers.lcdc = 0xF1;
