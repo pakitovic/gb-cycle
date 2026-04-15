@@ -156,6 +156,23 @@ impl PpuMode3LiveRegisterWriteContext {
     pub(in crate::ppu) const fn bg_scx_tilemap_column_changed(self) -> bool {
         (self.previous.scx >> 3) != (self.current.scx >> 3)
     }
+
+    pub(in crate::ppu) const fn bg_scy_tilemap_row_changed(self, ly: u8) -> bool {
+        (self.previous.scy.wrapping_add(ly) >> 3) != (self.current.scy.wrapping_add(ly) >> 3)
+    }
+
+    pub(in crate::ppu) const fn bg_scy_tile_data_row_changed(self, ly: u8) -> bool {
+        (self.previous.scy.wrapping_add(ly) & (BG_TILE_WIDTH - 1))
+            != (self.current.scy.wrapping_add(ly) & (BG_TILE_WIDTH - 1))
+    }
+
+    pub(in crate::ppu) const fn current_lcdc(self) -> u8 {
+        self.current.lcdc
+    }
+
+    pub(in crate::ppu) const fn current_scy_tile_data_row(self, ly: u8) -> u16 {
+        (self.current.scy.wrapping_add(ly) % BG_TILE_WIDTH) as u16
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -230,7 +247,7 @@ impl PpuMode3BackgroundFetchContext {
             .tilemap_registers
             .scx
             .wrapping_add(self.next_fetch_pixel as u8);
-        let bg_y = self.tiledata_registers.scy.wrapping_add(self.ly);
+        let bg_y = self.tilemap_registers.scy.wrapping_add(self.ly);
         let tile_map_base = if self.tilemap_registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
             0x1C00
         } else {

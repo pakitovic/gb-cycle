@@ -81,8 +81,10 @@ impl Ppu {
         fetcher.tile_data_address = tile_data_address;
 
         if plane == 0 {
+            fetcher.tile_low_address = tile_data_address;
             fetcher.tile_low = tile_byte;
         } else {
+            fetcher.tile_high_address = tile_data_address;
             fetcher.tile_high = tile_byte;
         }
     }

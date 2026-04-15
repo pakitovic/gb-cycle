@@ -153,6 +153,7 @@ impl Ppu {
         {
             let write_context =
                 self.current_mode3_live_register_write_context(previous_mmio_registers);
+            let scy_routing = self.live_scy_write_routing(live_background_register);
             if self.bg_pipeline_state.push.pending {
                 self.bg_pipeline_state
                     .push
@@ -161,6 +162,8 @@ impl Ppu {
                         live_background_register,
                         write_context,
                         self.bg_pipeline_state.push.entry_delay_remaining > 0,
+                        self.ly,
+                        scy_routing,
                     );
             }
 
@@ -173,6 +176,8 @@ impl Ppu {
                         write_context,
                         self.bg_pipeline_state.fill.includes_real_tile_pixels,
                         self.bg_pipeline_state.fill.startup_dummy_pixels,
+                        self.ly,
+                        scy_routing,
                     );
             }
 
@@ -183,12 +188,24 @@ impl Ppu {
                 self.bg_pipeline_state
                     .mark_live_lcdc3_write_while_fifo_visible(write_context);
             }
+            if matches!(
+                live_background_register,
+                PpuMode3LiveBackgroundRegister::Scy
+            ) {
+                self.bg_pipeline_state
+                    .mark_live_scy_write_while_startup_alignment_fifo_visible(
+                        write_context,
+                        self.ly,
+                    );
+            }
 
             self.bg_pipeline_state
                 .fetcher
                 .mark_live_register_write_for_current_background_fetch(
                     live_background_register,
                     write_context,
+                    self.ly,
+                    scy_routing,
                 );
 
             if matches!(
@@ -343,6 +360,70 @@ impl Ppu {
         if !self.is_lcd_enabled() {
             self.reload_mode3_register_latches_from_mmio();
         }
+    }
+
+    pub(super) fn live_scy_write_routing(
+        &self,
+        register: PpuMode3LiveBackgroundRegister,
+    ) -> PpuMode3LiveScyWriteRouting {
+        PpuMode3LiveScyWriteRouting {
+            pending_high_plane_only: self.scy_pending_refetch_prefers_high_plane_only(register),
+            pending_tilemap_row_refetch: self.scy_pending_refetch_prefers_tilemap_row(register),
+            startup_visible_tile2_tilemap_row_refetch: self
+                .scy_startup_visible_tile2_refetch_prefers_tilemap_row(register),
+            startup_visible_tile2_phase6_tilemap_row_refetch: self
+                .scy_startup_visible_tile2_phase6_refetch_prefers_tilemap_row(register),
+        }
+    }
+
+    fn scy_pending_refetch_prefers_high_plane_only(
+        &self,
+        register: PpuMode3LiveBackgroundRegister,
+    ) -> bool {
+        if !matches!(register, PpuMode3LiveBackgroundRegister::Scy) {
+            return false;
+        }
+
+        self.scy_obj_phase_policy()
+            .is_some_and(PpuMode3ScyObjPhasePolicy::pending_refetch_prefers_high_plane_only)
+    }
+
+    fn scy_pending_refetch_prefers_tilemap_row(
+        &self,
+        register: PpuMode3LiveBackgroundRegister,
+    ) -> bool {
+        if !matches!(register, PpuMode3LiveBackgroundRegister::Scy) {
+            return false;
+        }
+
+        self.scy_obj_phase_policy()
+            .is_some_and(PpuMode3ScyObjPhasePolicy::pending_refetch_prefers_tilemap_row)
+    }
+
+    fn scy_startup_visible_tile2_refetch_prefers_tilemap_row(
+        &self,
+        register: PpuMode3LiveBackgroundRegister,
+    ) -> bool {
+        if !matches!(register, PpuMode3LiveBackgroundRegister::Scy) {
+            return false;
+        }
+
+        self.scy_obj_phase_policy().is_some_and(
+            PpuMode3ScyObjPhasePolicy::startup_visible_tile2_refetch_prefers_tilemap_row,
+        )
+    }
+
+    fn scy_startup_visible_tile2_phase6_refetch_prefers_tilemap_row(
+        &self,
+        register: PpuMode3LiveBackgroundRegister,
+    ) -> bool {
+        if !matches!(register, PpuMode3LiveBackgroundRegister::Scy) {
+            return false;
+        }
+
+        self.scy_obj_phase_policy().is_some_and(
+            PpuMode3ScyObjPhasePolicy::startup_visible_tile2_phase6_refetch_prefers_tilemap_row,
+        )
     }
 
     fn read_ppu_register(&self, register: PpuRegister, source: PpuRegisterReadSource) -> u8 {

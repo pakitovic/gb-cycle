@@ -265,6 +265,18 @@ impl Ppu {
                     self.bg_pipeline_state
                         .fetcher
                         .needs_live_tilemap_full_refetch_on_push = false;
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tile_data_refetch_on_push = false;
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tile_data_current_row_refetch_on_push = false;
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tile_low_current_row_refetch_on_push = false;
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tile_high_current_row_refetch_on_push = false;
                 }
                 let tile_map_address =
                     self.compute_fetch_tile_index_address(fetcher.source, fetcher.fetch_x);
@@ -316,6 +328,7 @@ impl Ppu {
                     0,
                 );
                 self.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
+                self.bg_pipeline_state.fetcher.tile_low_address = tile_data_address;
                 let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
                 self.bg_pipeline_state.fetcher.tile_low = tile_data;
                 self.maybe_cache_unsigned_bgwin_tile_data_fetch(
@@ -339,6 +352,7 @@ impl Ppu {
                     1,
                 );
                 self.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
+                self.bg_pipeline_state.fetcher.tile_high_address = tile_data_address;
                 let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
                 self.bg_pipeline_state.fetcher.tile_high = tile_data;
                 self.maybe_cache_unsigned_bgwin_tile_data_fetch(
@@ -617,6 +631,8 @@ impl Ppu {
         } else {
             self.bg_pipeline_state.fill.queue_from_push(push);
         }
+        self.bg_pipeline_state
+            .apply_startup_scy_tiledata_latch_to_fill();
         self.bg_pipeline_state.fetcher.fetch_x = push.next_fetch_pixel;
         self.bg_pipeline_state.fetcher.next_fetch_pixel = push.next_fetch_pixel;
         self.bg_pipeline_state
@@ -688,6 +704,8 @@ impl Ppu {
         self.bg_pipeline_state.fetcher.tile_map_address = recomputed.tile_map_address;
         self.bg_pipeline_state.fetcher.tile_index = recomputed.tile_index;
         self.bg_pipeline_state.fetcher.tile_data_address = recomputed.tile_data_address;
+        self.bg_pipeline_state.fetcher.tile_low_address = recomputed.tile_low_address;
+        self.bg_pipeline_state.fetcher.tile_high_address = recomputed.tile_high_address;
         self.bg_pipeline_state.fetcher.tile_low = recomputed.tile_low;
         self.bg_pipeline_state.fetcher.tile_high = recomputed.tile_high;
     }
@@ -747,7 +765,12 @@ impl Ppu {
                 let bg_enabled = self.pixel_transfer_bg_enabled();
                 let bg_pixel = if bg_enabled { bg_pixel } else { 0 };
                 let obj_pixel = self.pop_obj_fifo_pixel();
+                let visible_x = self.bg_pipeline_state.visible_pixels_output;
                 let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
+                let output_pixel = self
+                    .compute_startup_visible_tile2_scy_placeholder_pixel(visible_x, vram)
+                    .map(MixedPixel::background)
+                    .unwrap_or(output_pixel);
                 let dmg_bg_forced_white =
                     self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
                 let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
@@ -764,7 +787,7 @@ impl Ppu {
                 } else {
                     0
                 };
-                let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
+                let visible_x = visible_x as usize;
                 self.current_scanline_mixed_pixels[visible_x] = output_pixel;
                 self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
                 self.current_scanline_pixels[visible_x] = scanline_pixel;
@@ -786,8 +809,20 @@ impl Ppu {
     pub(super) fn pop_visible_bg_fifo_pixel(&mut self, vram: &VramBusView<'_>) -> Option<u8> {
         let mut pixel = self.bg_pipeline_state.pop_visible_fifo_pixel()?;
         let Some(cached) = pixel.cached.as_mut() else {
+            if let Some(override_pixel) = self.compute_startup_visible_tile2_scy_placeholder_pixel(
+                self.bg_pipeline_state.visible_pixels_output,
+                vram,
+            ) {
+                return Some(override_pixel);
+            }
             return Some(pixel.color);
         };
+        let visible_tile2_scy_tilemap_override = self
+            .compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
+                cached.cached,
+                cached.pixel_index,
+                vram,
+            );
         let next_tile_output_retarget = self
             .compute_startup_visible_tile3_scx_boundary_next_tile_output_retarget_pixel(
                 cached.cached,
@@ -805,6 +840,18 @@ impl Ppu {
                 cached.pixel_index,
                 vram,
             );
+        let visible_tile2_previous_row_override = self
+            .compute_startup_visible_tile2_previous_row_pixel(
+                cached.cached,
+                cached.pixel_index,
+                vram,
+            );
+        let visible_tile3_previous_row_override = self
+            .compute_startup_visible_tile3_previous_row_pixel(
+                cached.cached,
+                cached.pixel_index,
+                vram,
+            );
         let Some(recomputed) = recompute_live_background_cached_slice(
             cached.cached,
             vram,
@@ -813,6 +860,9 @@ impl Ppu {
             return Some(
                 old_pixel_override
                     .or(low_band_shifted_override)
+                    .or(visible_tile2_scy_tilemap_override)
+                    .or(visible_tile2_previous_row_override)
+                    .or(visible_tile3_previous_row_override)
                     .or(next_tile_output_retarget)
                     .unwrap_or(pixel.color),
             );
@@ -821,6 +871,9 @@ impl Ppu {
         cached.cached = recomputed;
         pixel.color = old_pixel_override
             .or(low_band_shifted_override)
+            .or(visible_tile2_scy_tilemap_override)
+            .or(visible_tile2_previous_row_override)
+            .or(visible_tile3_previous_row_override)
             .or(next_tile_output_retarget)
             .unwrap_or_else(|| {
                 bg_tile_pixel_value(
@@ -832,7 +885,237 @@ impl Ppu {
         Some(pixel.color)
     }
 
-    fn compute_startup_visible_tile3_scx_boundary_next_tile_output_retarget_pixel(
+    pub(super) fn compute_startup_visible_tile2_scy_placeholder_pixel(
+        &self,
+        visible_x: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        self.bg_pipeline_state.startup_scy_tiledata_latch?;
+
+        let sprite_phase = self.scy_obj_phase_policy()?;
+        if !sprite_phase
+            .startup_visible_tile2_placeholder_uses_previous_tilemap_row(self.ly, visible_x)
+        {
+            return None;
+        }
+
+        let registers = self.mode3_register_latches().visible();
+        let tile_map_base = if registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
+            0x1C00
+        } else {
+            0x1800
+        };
+        let tile_map_row =
+            ((self.ly.wrapping_add(self.scy) / BG_TILE_WIDTH) as u16).wrapping_sub(1) & 0x1F;
+        let tile_map_column = u16::from(visible_x / BG_TILE_WIDTH);
+        let tile_map_address = tile_map_base + tile_map_row * 32 + tile_map_column;
+        let tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+        let tile_data_base = bg_tile_data_base(registers.lcdc, tile_index);
+        let tile_low_address = tile_data_base + 7 * TILE_ROW_BYTES;
+        let tile_high_address = tile_low_address + 1;
+        let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
+        Some(bg_tile_pixel_value(
+            tile_low,
+            tile_high,
+            visible_x & (BG_TILE_WIDTH - 1),
+        ))
+    }
+
+    pub(super) fn compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        self.bg_pipeline_state.startup_scy_tiledata_latch?;
+
+        if !matches!(
+            cached.origin,
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+        ) || cached.needs_live_tilemap_refetch
+            || cached.needs_live_tile_data_refetch
+        {
+            return None;
+        }
+
+        let retarget = self
+            .scy_obj_phase_policy()?
+            .startup_visible_tile2_tilemap_retarget(self.ly, pixel_index)?;
+
+        Some(self.read_startup_visible_tile2_scy_retargeted_pixel(
+            cached,
+            pixel_index,
+            retarget.tilemap_row_delta,
+            retarget.tiledata_row_delta,
+            vram,
+        ))
+    }
+
+    fn read_startup_visible_tile2_scy_retargeted_pixel(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        tilemap_row_delta: i8,
+        tiledata_row_delta: i8,
+        vram: &VramBusView<'_>,
+    ) -> u8 {
+        let tile_map_offset = cached.tile_map_address & 0x03FF;
+        let tile_map_base = cached.tile_map_address & !0x03FF;
+        let tile_map_row =
+            ((tile_map_offset / 32) as i16 + i16::from(tilemap_row_delta)).rem_euclid(32) as u16;
+        let tile_map_column = tile_map_offset & 0x1F;
+        let tile_map_address = tile_map_base + tile_map_row * 32 + tile_map_column;
+        let tile_index = vram
+            .read(tile_map_address as usize)
+            .unwrap_or(cached.tile_index);
+
+        let registers = self.mode3_register_latches().visible();
+        let cached_tile_data_base = bg_tile_data_base(registers.lcdc, cached.tile_index);
+        let tile_data_row = (((cached.tile_high_address - cached_tile_data_base) / TILE_ROW_BYTES)
+            as i16
+            + i16::from(tiledata_row_delta))
+        .rem_euclid(8) as u16;
+        let tile_data_base = bg_tile_data_base(registers.lcdc, tile_index);
+        let tile_low_address = tile_data_base + tile_data_row * TILE_ROW_BYTES;
+        let tile_high_address = tile_low_address + 1;
+        let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
+        bg_tile_pixel_value(tile_low, tile_high, pixel_index)
+    }
+
+    pub(super) fn current_transfer_selected_sprite_x(&self) -> Option<u8> {
+        let current_transfer_x = self.bg_pipeline_state.current_transfer_x;
+        (0..self.mode2_scan_state.selected_sprite_count())
+            .filter(|&slot| !self.obj_pipeline_state.has_fetched(slot))
+            .filter_map(|slot| self.mode2_scan_state.selected_sprite(slot))
+            .find(|sprite| sprite_trigger_x(*sprite) == Some(current_transfer_x))
+            .map(|sprite| sprite.x)
+    }
+
+    pub(super) fn startup_line_lead_sprite_x(&self) -> Option<u8> {
+        (0..self.mode2_scan_state.selected_sprite_count())
+            .filter_map(|slot| self.mode2_scan_state.selected_sprite(slot))
+            .min_by_key(|sprite| sprite.x)
+            .map(|sprite| sprite.x)
+    }
+
+    pub(super) fn scy_startup_line_lead_owner_window_open(&self) -> bool {
+        self.current_transfer().is_some()
+            || self.bg_pipeline_state.mode3_started
+                && !matches!(
+                    self.bg_pipeline_state.startup_fetch_seam,
+                    BgStartupFetchSeamState::Inactive
+                )
+    }
+
+    pub(super) fn scy_obj_phase_owner(&self) -> Option<PpuMode3ScyObjPhaseOwner> {
+        if self.current_dot_has_pending_obj_hit() {
+            return Some(PpuMode3ScyObjPhaseOwner::PendingHit {
+                match_x: self.bg_pipeline_state.current_transfer_x,
+            });
+        }
+
+        if self.obj_enabled() && self.obj_pipeline_state.fetch.stage != PpuObjFetcherStage::Idle {
+            let sprite = self.obj_pipeline_state.fetch.sprite?;
+            return Some(PpuMode3ScyObjPhaseOwner::ActiveFetch { sprite_x: sprite.x });
+        }
+
+        self.current_transfer_selected_sprite_x()
+            .map(|sprite_x| PpuMode3ScyObjPhaseOwner::CurrentTransferSprite { sprite_x })
+            .or_else(|| {
+                if !self.scy_startup_line_lead_owner_window_open() {
+                    return None;
+                }
+                self.startup_line_lead_sprite_x()
+                    .map(|sprite_x| PpuMode3ScyObjPhaseOwner::StartupLineLead { sprite_x })
+            })
+    }
+
+    pub(super) fn scy_obj_phase_policy(&self) -> Option<PpuMode3ScyObjPhasePolicy> {
+        let phase_owner = self.scy_obj_phase_owner()?;
+        let context = PpuMode3ScyObjPhaseContext {
+            phase_owner,
+            current_transfer_x: self.bg_pipeline_state.current_transfer_x,
+            current_transfer: self.current_transfer(),
+            bg_fetcher_stage: self.bg_pipeline_state.fetcher.stage,
+            bg_fetcher_stage_dot: self.bg_pipeline_state.fetcher.stage_dot,
+            bg_fifo_len: self.bg_pipeline_state.fifo.len(),
+            startup_fifo_placeholders: self.bg_pipeline_state.startup_fifo_placeholders,
+            obj_fetcher_stage: self.obj_pipeline_state.fetch.stage,
+            obj_fetcher_stage_dot: self.obj_pipeline_state.fetch.stage_dot,
+        };
+
+        Some(PpuMode3ScyObjPhasePolicy::new(context))
+    }
+
+    pub(super) fn compute_startup_visible_tile3_previous_row_pixel(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        self.bg_pipeline_state.startup_scy_tiledata_latch?;
+
+        if !matches!(
+            cached.origin,
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
+        ) || cached.needs_live_tilemap_refetch
+            || cached.needs_live_tile_data_refetch
+            || self
+                .scy_obj_phase_policy()
+                .is_none_or(|phase| !phase.startup_visible_tile3_uses_previous_tiledata_row())
+        {
+            return None;
+        }
+
+        let tile_data_base = bg_tile_data_base(
+            self.mode3_register_latches().visible().lcdc,
+            cached.tile_index,
+        );
+        let current_row = ((cached.tile_high_address - tile_data_base) / TILE_ROW_BYTES) & 0x07;
+        let previous_row = current_row.wrapping_sub(1) & 0x07;
+        let tile_low_address = tile_data_base + previous_row * TILE_ROW_BYTES;
+        let tile_high_address = tile_low_address + 1;
+        let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
+        Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
+    }
+
+    pub(super) fn compute_startup_visible_tile2_previous_row_pixel(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        self.bg_pipeline_state.startup_scy_tiledata_latch?;
+
+        if !matches!(
+            cached.origin,
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+        ) || cached.needs_live_tilemap_refetch
+            || cached.needs_live_tile_data_refetch
+            || self
+                .scy_obj_phase_policy()
+                .is_none_or(|phase| !phase.startup_visible_tile2_uses_previous_tiledata_row())
+        {
+            return None;
+        }
+
+        let tile_data_base = bg_tile_data_base(
+            self.mode3_register_latches().visible().lcdc,
+            cached.tile_index,
+        );
+        let current_row = ((cached.tile_high_address - tile_data_base) / TILE_ROW_BYTES) & 0x07;
+        let previous_row = current_row.wrapping_sub(1) & 0x07;
+        let tile_low_address = tile_data_base + previous_row * TILE_ROW_BYTES;
+        let tile_high_address = tile_low_address + 1;
+        let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
+        Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
+    }
+
+    pub(super) fn compute_startup_visible_tile3_scx_boundary_next_tile_output_retarget_pixel(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
@@ -865,7 +1148,7 @@ impl Ppu {
         Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
     }
 
-    fn compute_startup_visible_tile3_scx_low_band_shifted_pixel(
+    pub(super) fn compute_startup_visible_tile3_scx_low_band_shifted_pixel(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
