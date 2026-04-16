@@ -764,13 +764,12 @@ impl Ppu {
                     .expect("visible transfer plans must carry a BG pixel");
                 let bg_enabled = self.pixel_transfer_bg_enabled();
                 let bg_pixel = if bg_enabled { bg_pixel } else { 0 };
-                let obj_pixel = self.pop_obj_fifo_pixel();
                 let visible_x = self.bg_pipeline_state.visible_pixels_output;
-                let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
-                let output_pixel = self
+                let bg_pixel = self
                     .compute_startup_visible_tile2_scy_placeholder_pixel(visible_x, vram)
-                    .map(MixedPixel::background)
-                    .unwrap_or(output_pixel);
+                    .unwrap_or(bg_pixel);
+                let obj_pixel = self.pop_obj_fifo_pixel();
+                let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
                 let dmg_bg_forced_white =
                     self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
                 let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {

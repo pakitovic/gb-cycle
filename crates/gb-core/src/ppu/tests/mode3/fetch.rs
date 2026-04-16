@@ -1145,6 +1145,43 @@ fn startup_scy_visible_tile2_placeholder_reads_the_previous_tilemap_row() {
 }
 
 #[test]
+fn startup_scy_visible_tile2_placeholder_preserves_obj_mixing_priority() {
+    let mut ppu = dmg_fetch_startup_rig(0x93);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 16;
+    ppu.ly = 5;
+    ppu.scy = 3;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 24;
+    ppu.bg_pipeline_state.visible_pixels_output = 16;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.startup_scy_tiledata_latch =
+        Some(BgStartupScyTiledataLatch::new(0x91, 7));
+    push_selected_sprite_x(&mut ppu, 16);
+    ppu.write_bg_tilemap_entry(2, 0, 4);
+    ppu.write_bg_tile_row(4, 7, 0x80, 0x00);
+    ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+        color: 2,
+        palette_obp1: false,
+        bg_over_obj: false,
+        sprite_x: 16,
+        oam_index: 0,
+    });
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(
+        ppu.current_scanline_mixed_pixels[16],
+        MixedPixel::object(2, false)
+    );
+    assert_eq!(ppu.current_scanline_pixels[16], 2);
+}
+
+#[test]
 fn startup_scy_visible_tile2_tilemap_retarget_can_read_a_neighbor_row() {
     let mut ppu = dmg_fetch_startup_rig(0x91);
     ppu.visible_registers.lcdc = 0x91;
