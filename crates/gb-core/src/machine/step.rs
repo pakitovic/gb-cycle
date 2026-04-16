@@ -10,6 +10,7 @@ use crate::cartridge::CartridgeSlot;
 use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState, CpuExternalOperation};
 use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
 use crate::dma::DmaController;
+use crate::external_port::ExternalPort;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
 use crate::ppu::{Ppu, PpuBusStateSnapshot, PpuDmaOamConflict};
@@ -168,6 +169,7 @@ struct MachinePhaseRunner<'a> {
     dma: &'a mut DmaController,
     timer: &'a mut Timer,
     serial: &'a mut Serial,
+    external_port: &'a mut ExternalPort,
     boot: &'a mut BootController,
     interrupts: &'a mut InterruptController,
     joypad: &'a mut Joypad,
@@ -354,7 +356,12 @@ impl MachinePhaseRunner<'_> {
                 .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
             observer.end_region(MachineStepRegion::Ppu);
             observe_machine_step_region(observer, MachineStepRegion::Serial, || {
+                self.external_port.tick_t_cycle();
                 self.serial.tick_t_cycle(context);
+                if let Some(output_byte) = self.serial.take_latest_completed_output_byte() {
+                    self.external_port.handle_completed_serial_byte(output_byte);
+                }
+                self.serial.set_peer(self.external_port.serial_peer());
             });
 
             if let Some((transfer_work, value)) = dma_transfer_work.zip(dma_transfer_byte) {
@@ -661,6 +668,7 @@ impl<S: TraceSink> Machine<S> {
             dma: &mut self.dma,
             timer: &mut self.timer,
             serial: &mut self.serial,
+            external_port: &mut self.external_port,
             boot: &mut self.boot,
             interrupts: &mut self.interrupts,
             joypad: &mut self.joypad,

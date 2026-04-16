@@ -6,6 +6,7 @@ use crate::bus::BusSnapshot;
 use crate::cartridge::CartridgeSnapshot;
 use crate::cpu::CpuSnapshot;
 use crate::dma::DmaSnapshot;
+use crate::external_port::ExternalPortSnapshot;
 use crate::interrupts::InterruptControllerSnapshot;
 use crate::joypad::JoypadSnapshot;
 use crate::model::MachineConfig;
@@ -541,6 +542,7 @@ pub struct MachineSnapshot {
     pub dma: DmaSnapshot,
     pub timer: TimerSnapshot,
     pub serial: SerialSnapshot,
+    pub external_port: ExternalPortSnapshot,
     pub boot: BootSnapshot,
     pub interrupts: InterruptControllerSnapshot,
     pub joypad: JoypadSnapshot,
@@ -578,6 +580,7 @@ impl MachineSnapshot {
                 "dma.console_model={:?} dma.status={:?}\n",
                 "timer.console_model={:?} timer.status={:?}\n",
                 "serial.console_model={:?} serial.status={:?} serial.sb={:#04X} serial.clock_mode={:?} serial.transfer_state={:?}\n",
+                "external_port.attachment_kind={:?} external_port.reset_policy={:?}\n",
                 "boot.console_model={:?} boot.startup_mode={:?} boot.status={:?} boot.boot_rom_kind={:?} boot.boot_rom_mapped={} boot.asset_configured={} boot.memory_policy={:?}\n",
                 "interrupts.console_model={:?} interrupts.status={:?}\n",
                 "joypad.console_model={:?} joypad.status={:?}\n",
@@ -657,6 +660,8 @@ impl MachineSnapshot {
             self.serial.sb,
             self.serial.clock_mode,
             self.serial.transfer_state,
+            self.external_port.attachment_kind,
+            self.external_port.reset_policy,
             self.boot.console_model,
             self.boot.startup_mode,
             self.boot.status,

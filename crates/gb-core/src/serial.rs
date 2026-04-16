@@ -23,6 +23,9 @@ pub enum SerialPeer {
     #[default]
     Disconnected,
     Loopback,
+    StagedIncomingByte {
+        byte: u8,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -77,6 +80,8 @@ pub struct Serial {
     clock_counter: u16,
     external_clock_pulses_pending: u8,
     current_outgoing_byte: u8,
+    current_incoming_byte: u8,
+    latest_completed_output_byte: Option<u8>,
     completed_output_bytes: Vec<u8>,
 }
 
@@ -102,6 +107,8 @@ impl Serial {
             clock_counter: 0,
             external_clock_pulses_pending: 0,
             current_outgoing_byte: 0,
+            current_incoming_byte: 0,
+            latest_completed_output_byte: None,
             completed_output_bytes: Vec::new(),
         }
     }
@@ -159,6 +166,8 @@ impl Serial {
         };
         self.external_clock_pulses_pending = 0;
         self.current_outgoing_byte = 0;
+        self.current_incoming_byte = 0;
+        self.latest_completed_output_byte = None;
     }
 
     pub fn apply_startup_state(&mut self, startup_state: SerialStartupState) {
@@ -169,6 +178,8 @@ impl Serial {
         self.clock_counter = startup_state.clock_counter;
         self.external_clock_pulses_pending = 0;
         self.current_outgoing_byte = 0;
+        self.current_incoming_byte = 0;
+        self.latest_completed_output_byte = None;
         self.completed_output_bytes.clear();
     }
 
@@ -190,6 +201,10 @@ impl Serial {
         std::mem::take(&mut self.completed_output_bytes)
     }
 
+    pub(crate) fn take_latest_completed_output_byte(&mut self) -> Option<u8> {
+        self.latest_completed_output_byte.take()
+    }
+
     pub fn snapshot(&self) -> SerialSnapshot {
         SerialSnapshot {
             console_model: self.console_model,
@@ -202,6 +217,8 @@ impl Serial {
     }
 
     pub(crate) fn tick_t_cycle(&mut self, context: &mut CycleContext) {
+        self.latest_completed_output_byte = None;
+
         let previous_clock_counter = self.clock_counter;
         self.clock_counter = self.clock_counter.wrapping_add(1);
         let internal_clock_edge =
@@ -269,9 +286,14 @@ impl Serial {
             return;
         };
 
+        if bits_shifted == 0 {
+            self.current_incoming_byte = staged_incoming_byte_for_peer(self.peer);
+        }
+
         let outgoing_bit = self.sb & 0x80 != 0;
         self.current_outgoing_byte = (self.current_outgoing_byte << 1) | u8::from(outgoing_bit);
-        let incoming_bit = incoming_bit_from_peer(self.peer, outgoing_bit);
+        let incoming_bit =
+            incoming_bit_from_peer(self.peer, outgoing_bit, &mut self.current_incoming_byte);
         self.sb = (self.sb << 1) | u8::from(incoming_bit);
 
         let bits_shifted = bits_shifted + 1;
@@ -279,7 +301,9 @@ impl Serial {
             self.transfer_state = SerialTransferState::Idle;
             self.external_clock_pulses_pending = 0;
             self.completed_output_bytes.push(self.current_outgoing_byte);
+            self.latest_completed_output_byte = Some(self.current_outgoing_byte);
             self.current_outgoing_byte = 0;
+            self.current_incoming_byte = 0;
             context.queue_interrupt_request(InterruptSource::Serial);
         } else {
             self.transfer_state = SerialTransferState::TransferRequested { bits_shifted };
@@ -287,10 +311,26 @@ impl Serial {
     }
 }
 
-const fn incoming_bit_from_peer(peer: SerialPeer, outgoing_bit: bool) -> bool {
+const fn staged_incoming_byte_for_peer(peer: SerialPeer) -> u8 {
+    match peer {
+        SerialPeer::Disconnected | SerialPeer::Loopback => 0,
+        SerialPeer::StagedIncomingByte { byte } => byte,
+    }
+}
+
+fn incoming_bit_from_peer(
+    peer: SerialPeer,
+    outgoing_bit: bool,
+    current_incoming_byte: &mut u8,
+) -> bool {
     match peer {
         SerialPeer::Disconnected => true,
         SerialPeer::Loopback => outgoing_bit,
+        SerialPeer::StagedIncomingByte { .. } => {
+            let incoming_bit = *current_incoming_byte & 0x80 != 0;
+            *current_incoming_byte <<= 1;
+            incoming_bit
+        }
     }
 }
 

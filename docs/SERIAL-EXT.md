@@ -210,13 +210,21 @@ Implement the printer as the first real external device on the port.
 
 ### Expected protocol scope
 
-The initial implementation should at least define whether v1 includes:
+The current Phase `2` v1 target is:
 
 - command framing and checksums
 - `INIT`, `DATA`, `PRINT`, `STATUS`
 - empty `DATA` packet before `PRINT`
 - packet timeout handling
-- busy / status progression
+- deterministic busy / status progression
+- typed printed-page output from `gb-core`
+
+Explicitly deferred from v1:
+
+- compressed packet payloads
+- detailed real-time printer-busy timing beyond the deterministic status
+  progression
+- frontend-specific image export or preview concerns
 
 ### Crates / files
 

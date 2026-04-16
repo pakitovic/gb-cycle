@@ -165,6 +165,25 @@ fn loopback_peer_returns_the_original_byte_after_eight_shifts() {
 }
 
 #[test]
+fn staged_incoming_byte_is_shifted_in_bit_by_bit_across_the_transfer() {
+    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    serial.set_peer(SerialPeer::StagedIncomingByte { byte: 0x81 });
+    serial.write_sb(0x00);
+    serial.write_sc(0x81);
+
+    for _ in 0..(8 * 512) {
+        serial.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(serial.read_sb(), 0x81);
+    assert_eq!(serial.transfer_state(), SerialTransferState::Idle);
+    assert_eq!(context.interrupt_requests(), &[InterruptSource::Serial]);
+    assert_eq!(serial.take_completed_output_bytes(), vec![0x00]);
+}
+
+#[test]
 fn internal_clock_phase_stays_aligned_to_the_free_running_counter_when_transfer_starts() {
     let mut serial = Serial::new(ConsoleModel::Dmg);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);

@@ -75,6 +75,7 @@ Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work,
 - `hardware/DMA.md`
 - `hardware/APU.md`
 - `hardware/JOYPAD.md`
+- `hardware/PRINTER.md`
 - `hardware/SERIAL.md`
 - `hardware/CARTRIDGES-MBC.md`
 - `hardware/BOOT-ROM.md`

@@ -5,6 +5,7 @@ pub mod cartridge;
 pub mod cpu;
 pub mod debugger;
 pub mod dma;
+pub mod external_port;
 pub mod interrupts;
 pub mod joypad;
 pub mod machine;
@@ -56,6 +57,11 @@ pub use dma::{
     DmaAdvanceCondition, DmaController, DmaCpuImpactPolicy, DmaSnapshot, DmaStartupState,
     DmaStatus, DmaTransfer, DmaTransferFamily, DmaTransferKind, DmaTransferLifecycle,
     DmaTransferProgress, DmaTransferState, DmaTransferStatusView, DmaTransferTiming,
+};
+pub use external_port::{
+    ExternalPort, ExternalPortAttachmentKind, ExternalPortResetPolicy, ExternalPortSnapshot,
+    PrintedPage, PrinterCommand, PrinterMargins, PrinterPrintArgs, PrinterSnapshot,
+    PrinterStatusBits,
 };
 pub use interrupts::{
     InterruptController, InterruptControllerSnapshot, InterruptControllerStatus,

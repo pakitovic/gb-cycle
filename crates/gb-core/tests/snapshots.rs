@@ -1,8 +1,8 @@
 mod common;
 
 use gb_core::{
-    ConsoleModel, CpuExecutionState, DmaCpuAccessPolicy, Machine, MachineConfig, PpuAccessMode,
-    SerialClockMode, SerialTransferState, StartupMode, TCycle,
+    ConsoleModel, CpuExecutionState, DmaCpuAccessPolicy, ExternalPortAttachmentKind, Machine,
+    MachineConfig, PpuAccessMode, SerialClockMode, SerialTransferState, StartupMode, TCycle,
 };
 
 const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::MACHINE;
@@ -37,6 +37,10 @@ fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
     assert_eq!(snapshot.serial.sb, 0x00);
     assert_eq!(snapshot.serial.clock_mode, SerialClockMode::External);
     assert_eq!(snapshot.serial.transfer_state, SerialTransferState::Idle);
+    assert_eq!(
+        snapshot.external_port.attachment_kind,
+        ExternalPortAttachmentKind::None
+    );
     assert!(!snapshot.bus.arbitration.boot_rom.maps_low_window());
     assert!(!snapshot.bus.arbitration.boot_rom.maps_cgb_upper_window());
     assert!(snapshot.bus.arbitration.ppu.is_lcd_enabled());

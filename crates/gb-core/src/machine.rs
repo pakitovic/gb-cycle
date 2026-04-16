@@ -11,6 +11,7 @@ use crate::debugger::{
     TraceSummaryBuffer, Tracer,
 };
 use crate::dma::DmaController;
+use crate::external_port::ExternalPort;
 use crate::interrupts::InterruptController;
 use crate::joypad::{Joypad, JoypadButton, button_mask};
 use crate::model::MachineConfig;
@@ -106,6 +107,7 @@ pub struct Machine<S = TraceBuffer> {
     dma: DmaController,
     timer: Timer,
     serial: Serial,
+    external_port: ExternalPort,
     boot: BootController,
     interrupts: InterruptController,
     joypad: Joypad,
@@ -126,6 +128,7 @@ pub struct MachineParts<S = TraceBuffer> {
     pub dma: DmaController,
     pub timer: Timer,
     pub serial: Serial,
+    pub external_port: ExternalPort,
     pub boot: BootController,
     pub interrupts: InterruptController,
     pub joypad: Joypad,
@@ -198,6 +201,7 @@ impl<S: TraceSink + TraceSnapshotProvider> Machine<S> {
             dma: self.dma.snapshot(),
             timer: self.timer.snapshot(),
             serial: self.serial.snapshot(),
+            external_port: self.external_port.snapshot(),
             boot: self.boot.snapshot(),
             interrupts: self.interrupts.snapshot(),
             joypad: self.joypad.snapshot(),
@@ -224,6 +228,7 @@ impl<S: TraceSink> Machine<S> {
             dma: DmaController::new(console_model),
             timer: Timer::new(console_model),
             serial: Serial::new(console_model),
+            external_port: ExternalPort::new(),
             boot: BootController::new(console_model, startup_mode, boot_rom_assets),
             interrupts: InterruptController::new(console_model),
             joypad: Joypad::new(console_model),
@@ -287,8 +292,27 @@ impl<S: TraceSink> Machine<S> {
         &self.serial
     }
 
+    pub fn external_port(&self) -> &ExternalPort {
+        &self.external_port
+    }
+
+    pub fn set_external_port_attachment(
+        &mut self,
+        attachment_kind: crate::external_port::ExternalPortAttachmentKind,
+    ) {
+        self.external_port.set_attachment_kind(attachment_kind);
+        self.sync_serial_peer_from_external_port();
+    }
+
     pub fn set_serial_peer(&mut self, peer: SerialPeer) {
-        self.serial.set_peer(peer);
+        let attachment_kind = match peer {
+            SerialPeer::Disconnected => crate::external_port::ExternalPortAttachmentKind::None,
+            SerialPeer::Loopback => crate::external_port::ExternalPortAttachmentKind::Loopback,
+            SerialPeer::StagedIncomingByte { .. } => {
+                crate::external_port::ExternalPortAttachmentKind::None
+            }
+        };
+        self.set_external_port_attachment(attachment_kind);
     }
 
     pub fn queue_external_serial_clock(&mut self) {
@@ -297,6 +321,10 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn take_serial_output_bytes(&mut self) -> Vec<u8> {
         self.serial.take_completed_output_bytes()
+    }
+
+    pub fn take_printed_pages(&mut self) -> Vec<crate::external_port::PrintedPage> {
+        self.external_port.take_printed_pages()
     }
 
     pub fn boot(&self) -> &BootController {
@@ -344,11 +372,16 @@ impl<S: TraceSink> Machine<S> {
             dma: self.dma,
             timer: self.timer,
             serial: self.serial,
+            external_port: self.external_port,
             boot: self.boot,
             interrupts: self.interrupts,
             joypad: self.joypad,
             cartridge: self.cartridge,
         }
+    }
+
+    pub(super) fn sync_serial_peer_from_external_port(&mut self) {
+        self.serial.set_peer(self.external_port.serial_peer());
     }
 }
 
