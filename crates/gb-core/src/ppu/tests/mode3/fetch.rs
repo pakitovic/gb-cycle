@@ -19,6 +19,251 @@ fn dmg_fetch_startup_rig(lcdc: u8) -> PpuTestRig {
     })
 }
 
+fn push_selected_sprite_x(ppu: &mut PpuTestRig, x: u8) {
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x,
+        tile_index: 0,
+        attributes: 0,
+    });
+}
+
+fn observed_scy_obj_phase_table_for_sprite_x(sprite_x: u8) -> PpuMode3ObservedScyObjPhaseTable {
+    PpuMode3ObservedScyObjPhaseTable::new(sprite_x)
+}
+
+#[test]
+fn observed_scy_obj_phase_table_classifies_pending_refetch_by_obj_fetch_phase() {
+    for sprite_x in 0..16 {
+        let table = observed_scy_obj_phase_table_for_sprite_x(sprite_x);
+        let phase = sprite_x & (BG_TILE_WIDTH - 1);
+
+        assert_eq!(table.obj_match_tile_phase(), phase);
+        assert_eq!(
+            table.pending_refetch_prefers_high_plane_only(),
+            matches!(phase, 5..=7),
+            "sprite_x={sprite_x} phase={phase}"
+        );
+        assert_eq!(
+            table.pending_refetch_prefers_tilemap_row(),
+            matches!(phase, 0..=2),
+            "sprite_x={sprite_x} phase={phase}"
+        );
+        assert_eq!(
+            table.startup_visible_tile2_refetch_prefers_tilemap_row(),
+            matches!(phase, 4..=7),
+            "sprite_x={sprite_x} phase={phase}"
+        );
+    }
+}
+
+#[test]
+fn scy_obj_phase_policy_uses_current_transfer_x_for_owned_pending_obj_hits() {
+    let policy = PpuMode3ScyObjPhasePolicy::new(PpuMode3ScyObjPhaseContext {
+        phase_owner: PpuMode3ScyObjPhaseOwner::PendingHit { match_x: 8 },
+        current_transfer_x: 8,
+        current_transfer: None,
+        bg_fetcher_stage: PpuBgFetcherStage::TileDataHigh,
+        bg_fetcher_stage_dot: 1,
+        bg_fifo_len: 8,
+        startup_fifo_placeholders: 0,
+        obj_fetcher_stage: PpuObjFetcherStage::Idle,
+        obj_fetcher_stage_dot: 0,
+    });
+
+    assert_eq!(
+        policy.phase_owner(),
+        PpuMode3ScyObjPhaseOwner::PendingHit { match_x: 8 }
+    );
+    assert_eq!(
+        policy.observed_phase_table(),
+        PpuMode3ObservedScyObjPhaseTable::new(8)
+    );
+    assert_eq!(policy.observed_phase_table().obj_match_x(), 8);
+    assert_eq!(policy.observed_phase_table().obj_match_tile_phase(), 0);
+    assert!(!policy.pending_refetch_prefers_high_plane_only());
+    assert!(policy.pending_refetch_prefers_tilemap_row());
+}
+
+#[test]
+fn scy_obj_phase_policy_uses_current_owner_for_startup_windows() {
+    let mut ppu = dmg_fetch_startup_rig(0x93);
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers = ppu.visible_registers;
+    push_selected_sprite_x(&mut ppu, 8);
+    push_selected_sprite_x(&mut ppu, 16);
+    ppu.bg_pipeline_state.current_transfer_x = 16;
+    ppu.obj_pipeline_state.pending_match_x = Some(16);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+
+    let policy = ppu
+        .scy_obj_phase_policy()
+        .expect("pending OBJ hit should produce an SCY/OBJ phase policy");
+
+    assert_eq!(
+        policy.phase_owner(),
+        PpuMode3ScyObjPhaseOwner::PendingHit { match_x: 16 }
+    );
+    assert_eq!(policy.observed_phase_table().obj_match_x(), 16);
+    assert!(!policy.startup_visible_tile2_uses_previous_tiledata_row());
+    assert!(policy.startup_visible_tile3_uses_previous_tiledata_row());
+}
+
+#[test]
+fn scy_obj_phase_policy_uses_active_fetch_owner_before_line_order() {
+    let mut ppu = dmg_fetch_startup_rig(0x93);
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers = ppu.visible_registers;
+    push_selected_sprite_x(&mut ppu, 8);
+    let active_sprite = PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 16,
+        tile_index: 0,
+        attributes: 0,
+    };
+    ppu.mode2_scan_state.push(active_sprite);
+    ppu.obj_pipeline_state.start_fetch(1, active_sprite);
+
+    let policy = ppu
+        .scy_obj_phase_policy()
+        .expect("active OBJ fetch should produce an SCY/OBJ phase policy");
+
+    assert_eq!(
+        policy.phase_owner(),
+        PpuMode3ScyObjPhaseOwner::ActiveFetch { sprite_x: 16 }
+    );
+    assert_eq!(policy.observed_phase_table().obj_match_x(), 16);
+}
+
+#[test]
+fn scy_obj_phase_policy_has_no_line_lead_owner_before_transfer_window() {
+    let mut ppu = dmg_fetch_startup_rig(0x93);
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers = ppu.visible_registers;
+    push_selected_sprite_x(&mut ppu, 8);
+    ppu.bg_pipeline_state.current_transfer_x = 16;
+
+    assert_eq!(ppu.scy_obj_phase_policy(), None);
+}
+
+#[test]
+fn scy_obj_phase_policy_names_startup_line_lead_owner_inside_transfer_window() {
+    let mut ppu = dmg_fetch_startup_rig(0x93);
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers = ppu.visible_registers;
+    push_selected_sprite_x(&mut ppu, 8);
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 16;
+
+    let policy = ppu
+        .scy_obj_phase_policy()
+        .expect("open Mode 3 transfer window should expose the startup line-lead owner");
+
+    assert_eq!(
+        policy.phase_owner(),
+        PpuMode3ScyObjPhaseOwner::StartupLineLead { sprite_x: 8 }
+    );
+    assert_eq!(policy.observed_phase_table().obj_match_x(), 8);
+}
+
+#[test]
+fn scy_obj_phase_policy_names_startup_line_lead_owner_during_startup_seam() {
+    let mut ppu = dmg_fetch_startup_rig(0x93);
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers = ppu.visible_registers;
+    push_selected_sprite_x(&mut ppu, 8);
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
+    ppu.bg_pipeline_state.current_transfer_x = 16;
+
+    let policy = ppu
+        .scy_obj_phase_policy()
+        .expect("startup seam should expose the startup line-lead owner");
+
+    assert_eq!(
+        policy.phase_owner(),
+        PpuMode3ScyObjPhaseOwner::StartupLineLead { sprite_x: 8 }
+    );
+    assert_eq!(policy.observed_phase_table().obj_match_x(), 8);
+}
+
+#[test]
+fn observed_scy_obj_phase_table_keeps_startup_previous_row_windows_explicit() {
+    for sprite_x in 0..24 {
+        let table = observed_scy_obj_phase_table_for_sprite_x(sprite_x);
+
+        assert_eq!(
+            table.startup_visible_tile2_phase6_refetch_prefers_tilemap_row(),
+            matches!(sprite_x, 4..=7),
+            "sprite_x={sprite_x}"
+        );
+        assert_eq!(
+            table.startup_visible_tile2_uses_previous_tiledata_row(),
+            matches!(sprite_x, 8..=15),
+            "sprite_x={sprite_x}"
+        );
+        assert_eq!(
+            table.startup_visible_tile3_uses_previous_tiledata_row(),
+            matches!(sprite_x, 16..=17),
+            "sprite_x={sprite_x}"
+        );
+    }
+}
+
+#[test]
+fn observed_scy_obj_phase_table_names_startup_tile2_retarget_cases() {
+    let cases = [
+        (9, 6, 4, Some((1, 0))),
+        (9, 6, 5, Some((1, 0))),
+        (9, 6, 6, Some((1, -1))),
+        (9, 6, 7, Some((1, 0))),
+        (10, 6, 5, Some((-1, 0))),
+        (10, 6, 6, Some((-1, 0))),
+        (10, 6, 7, Some((-1, 0))),
+        (11, 7, 5, Some((0, 0))),
+        (16, 6, 0, Some((1, 0))),
+        (16, 6, 7, Some((0, -1))),
+        (9, 5, 4, None),
+        (10, 6, 4, None),
+        (16, 5, 0, None),
+    ];
+
+    for (sprite_x, ly, pixel_index, expected) in cases {
+        let retarget = observed_scy_obj_phase_table_for_sprite_x(sprite_x)
+            .startup_visible_tile2_tilemap_retarget(ly, pixel_index)
+            .map(|retarget| (retarget.tilemap_row_delta, retarget.tiledata_row_delta));
+
+        assert_eq!(
+            retarget, expected,
+            "sprite_x={sprite_x} ly={ly} pixel_index={pixel_index}"
+        );
+    }
+}
+
+#[test]
+fn observed_scy_obj_phase_table_names_startup_placeholder_cases() {
+    let positive_cases = [(16, 5, 16), (17, 6, 8)];
+    for (sprite_x, ly, visible_x) in positive_cases {
+        assert!(
+            observed_scy_obj_phase_table_for_sprite_x(sprite_x)
+                .startup_visible_tile2_placeholder_uses_previous_tilemap_row(ly, visible_x),
+            "sprite_x={sprite_x} ly={ly} visible_x={visible_x}"
+        );
+    }
+
+    let negative_cases = [(15, 5, 16), (16, 5, 8), (16, 6, 16), (17, 6, 16)];
+    for (sprite_x, ly, visible_x) in negative_cases {
+        assert!(
+            !observed_scy_obj_phase_table_for_sprite_x(sprite_x)
+                .startup_visible_tile2_placeholder_uses_previous_tilemap_row(ly, visible_x),
+            "sprite_x={sprite_x} ly={ly} visible_x={visible_x}"
+        );
+    }
+}
+
 #[test]
 fn bg_fetcher_stage_dot_is_an_explicit_one_dot_automaton() {
     let mut ppu = dmg_fetch_rig();
@@ -814,6 +1059,225 @@ fn ordinary_slice_after_visible_tile3_scx_boundary_preserves_old_prefix_pixel_on
 }
 
 #[test]
+fn startup_scy_visible_tile2_previous_row_override_requires_a_live_scy_latch() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers = ppu.visible_registers;
+    push_selected_sprite_x(&mut ppu, 12);
+    ppu.bg_pipeline_state.current_transfer_x = 12;
+    ppu.write_bg_tile_row(2, 2, 0x08, 0x00);
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2),
+        fetch_x: BG_TILE_WIDTH as u16,
+        tile_index: 2,
+        tile_high_address: 0x20 + 3 * TILE_ROW_BYTES + 1,
+        ..BgCachedSlice::default()
+    };
+
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile2_previous_row_pixel(cached, 4, vram)
+        }),
+        None
+    );
+
+    ppu.bg_pipeline_state.startup_scy_tiledata_latch =
+        Some(BgStartupScyTiledataLatch::new(0x91, 2));
+
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile2_previous_row_pixel(cached, 4, vram)
+        }),
+        Some(1)
+    );
+}
+
+#[test]
+fn startup_scy_visible_tile3_previous_row_override_uses_the_latched_scy_class() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers = ppu.visible_registers;
+    push_selected_sprite_x(&mut ppu, 16);
+    ppu.bg_pipeline_state.current_transfer_x = 16;
+    ppu.bg_pipeline_state.startup_scy_tiledata_latch =
+        Some(BgStartupScyTiledataLatch::new(0x91, 3));
+    ppu.write_bg_tile_row(3, 3, 0x04, 0x00);
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3),
+        fetch_x: BG_TILE_WIDTH as u16 * 2,
+        tile_index: 3,
+        tile_high_address: 0x30 + 4 * TILE_ROW_BYTES + 1,
+        ..BgCachedSlice::default()
+    };
+
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile3_previous_row_pixel(cached, 5, vram)
+        }),
+        Some(1)
+    );
+}
+
+#[test]
+fn startup_scy_visible_tile2_placeholder_reads_the_previous_tilemap_row() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.ly = 5;
+    ppu.scy = 3;
+    push_selected_sprite_x(&mut ppu, 16);
+    ppu.bg_pipeline_state.current_transfer_x = 16;
+    ppu.bg_pipeline_state.startup_scy_tiledata_latch =
+        Some(BgStartupScyTiledataLatch::new(0x91, 7));
+    ppu.write_bg_tilemap_entry(2, 0, 4);
+    ppu.write_bg_tile_row(4, 7, 0x80, 0x00);
+
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile2_scy_placeholder_pixel(16, vram)
+        }),
+        Some(1)
+    );
+}
+
+#[test]
+fn startup_scy_visible_tile2_placeholder_preserves_obj_mixing_priority() {
+    let mut ppu = dmg_fetch_startup_rig(0x93);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 16;
+    ppu.ly = 5;
+    ppu.scy = 3;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 24;
+    ppu.bg_pipeline_state.visible_pixels_output = 16;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.startup_scy_tiledata_latch =
+        Some(BgStartupScyTiledataLatch::new(0x91, 7));
+    push_selected_sprite_x(&mut ppu, 16);
+    ppu.write_bg_tilemap_entry(2, 0, 4);
+    ppu.write_bg_tile_row(4, 7, 0x80, 0x00);
+    ppu.obj_pipeline_state.fifo.push_back(ObjPixel {
+        color: 2,
+        palette_obp1: false,
+        bg_over_obj: false,
+        sprite_x: 16,
+        oam_index: 0,
+    });
+
+    let _ = ppu.advance_mode3_output_phase();
+
+    assert_eq!(
+        ppu.current_scanline_mixed_pixels[16],
+        MixedPixel::object(2, false)
+    );
+    assert_eq!(ppu.current_scanline_pixels[16], 2);
+}
+
+#[test]
+fn startup_scy_visible_tile2_tilemap_retarget_can_read_a_neighbor_row() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.ly = 6;
+    push_selected_sprite_x(&mut ppu, 9);
+    ppu.bg_pipeline_state.current_transfer_x = 9;
+    ppu.bg_pipeline_state.startup_scy_tiledata_latch =
+        Some(BgStartupScyTiledataLatch::new(0x91, 2));
+    ppu.write_bg_tilemap_entry(0, 1, 1);
+    ppu.write_bg_tile_row(1, 2, 0x08, 0x00);
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2),
+        fetch_x: BG_TILE_WIDTH as u16,
+        tile_map_address: 0x1800,
+        tile_index: 0,
+        tile_high_address: 2 * TILE_ROW_BYTES + 1,
+        ..BgCachedSlice::default()
+    };
+
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile2_scy_tilemap_retarget_pixel(cached, 4, vram)
+        }),
+        Some(1)
+    );
+}
+
+#[test]
+fn visible_tile3_scx_boundary_next_tile_retarget_reads_the_following_bg_tile() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.visible_registers.scx = 0;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.ly = 0;
+    ppu.scx = 0;
+    ppu.write_bg_tilemap_entry(3, 0, 5);
+    ppu.write_bg_tile_row(5, 0, 0x02, 0x00);
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3),
+        fetch_x: BG_TILE_WIDTH as u16 * 2,
+        startup_visible_tile3_scx_boundary_next_tile_output_retarget_scx: Some(0),
+        ..BgCachedSlice::default()
+    };
+
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile3_scx_boundary_next_tile_output_retarget_pixel(
+                cached, 6, vram,
+            )
+        }),
+        Some(1)
+    );
+}
+
+#[test]
+fn visible_tile3_scx_low_band_shift_can_use_cached_or_next_tile_pixels() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.ly = 0;
+    ppu.write_bg_tilemap_entry(3, 0, 6);
+    ppu.write_bg_tile_row(6, 0, 0x02, 0x00);
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3),
+        fetch_x: BG_TILE_WIDTH as u16 * 2,
+        tile_low: 0x40,
+        tile_high: 0x00,
+        startup_visible_tile3_scx_boundary_next_tile_output_retarget_scx: Some(0),
+        ..BgCachedSlice::default()
+    };
+
+    ppu.scx = 0x08;
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile3_scx_low_band_shifted_pixel(cached, 0, vram)
+        }),
+        Some(1)
+    );
+
+    ppu.scx = 0x0B;
+    assert_eq!(
+        ppu.with_ppu_vram(|ppu, vram| {
+            ppu.compute_startup_visible_tile3_scx_low_band_shifted_pixel(cached, 5, vram)
+        }),
+        Some(1)
+    );
+}
+
+#[test]
 fn ordinary_background_fetcher_carries_full_tilemap_refetch_on_scx_tile_column_change() {
     let mut ppu = dmg_fetch_startup_rig(0x91);
     ppu.bg_pipeline_state.mode3_started = true;
@@ -856,6 +1320,15 @@ fn live_write_registers(lcdc: u8, scx: u8) -> PpuVisibleRegisters {
     }
 }
 
+fn live_write_registers_with_scy(lcdc: u8, scx: u8, scy: u8) -> PpuVisibleRegisters {
+    PpuVisibleRegisters {
+        lcdc,
+        scx,
+        scy,
+        ..PpuVisibleRegisters::default()
+    }
+}
+
 #[test]
 fn live_background_write_effects_ignore_non_background_or_dummy_slices() {
     let write_context = PpuMode3LiveRegisterWriteContext::new(
@@ -873,6 +1346,8 @@ fn live_background_write_effects_ignore_non_background_or_dummy_slices() {
         PpuMode3LiveBackgroundRegister::Lcdc,
         write_context,
         true,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
     )
     .apply_to_cached_slice(&mut window_push);
     assert!(!window_push.needs_live_tilemap_refetch);
@@ -889,10 +1364,158 @@ fn live_background_write_effects_ignore_non_background_or_dummy_slices() {
         write_context,
         false,
         0,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
     )
     .apply_to_cached_slice(&mut dummy_fill);
     assert!(!dummy_fill.needs_live_tilemap_refetch);
     assert!(!dummy_fill.needs_live_tilemap_full_refetch);
+}
+
+#[test]
+fn live_scy_write_routing_tracks_selected_sprite_phase_classes() {
+    let mut high_plane = dmg_fetch_startup_rig(0x91);
+    push_selected_sprite_x(&mut high_plane, 13);
+    high_plane.bg_pipeline_state.current_transfer_x = 13;
+    let routing = high_plane.live_scy_write_routing(PpuMode3LiveBackgroundRegister::Scy);
+    assert!(routing.pending_high_plane_only);
+    assert!(!routing.pending_tilemap_row_refetch);
+    assert!(routing.startup_visible_tile2_tilemap_row_refetch);
+    assert!(!routing.startup_visible_tile2_phase6_tilemap_row_refetch);
+
+    let mut phase6 = dmg_fetch_startup_rig(0x91);
+    push_selected_sprite_x(&mut phase6, 4);
+    phase6.bg_pipeline_state.current_transfer_x = 4;
+    let routing = phase6.live_scy_write_routing(PpuMode3LiveBackgroundRegister::Scy);
+    assert!(!routing.pending_high_plane_only);
+    assert!(!routing.pending_tilemap_row_refetch);
+    assert!(routing.startup_visible_tile2_tilemap_row_refetch);
+    assert!(routing.startup_visible_tile2_phase6_tilemap_row_refetch);
+
+    let lcdc_routing = phase6.live_scy_write_routing(PpuMode3LiveBackgroundRegister::Lcdc);
+    assert_eq!(lcdc_routing, PpuMode3LiveScyWriteRouting::default());
+}
+
+#[test]
+fn live_background_write_effects_mark_pending_push_scy_tile_row_refetch_in_live_window() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers_with_scy(0x91, 0x00, 0),
+        live_write_registers_with_scy(0x91, 0x00, 1),
+    );
+    let mut cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        same_cycle_live_tilemap_refetch_window_open: true,
+        ..BgCachedSlice::default()
+    };
+
+    PpuMode3LiveBackgroundWriteEffects::for_push_pending_slice(
+        cached,
+        PpuMode3LiveBackgroundRegister::Scy,
+        write_context,
+        false,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
+    )
+    .apply_to_cached_slice(&mut cached);
+
+    assert!(!cached.needs_live_tilemap_refetch);
+    assert!(!cached.needs_live_tilemap_full_refetch);
+    assert!(cached.needs_live_tile_data_refetch);
+    assert!(cached.needs_live_tile_data_current_row_refetch);
+}
+
+#[test]
+fn live_background_write_effects_can_limit_scy_refetch_to_high_plane() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers_with_scy(0x91, 0x00, 0),
+        live_write_registers_with_scy(0x91, 0x00, 1),
+    );
+    let mut cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        same_cycle_live_tilemap_refetch_window_open: true,
+        ..BgCachedSlice::default()
+    };
+
+    PpuMode3LiveBackgroundWriteEffects::for_push_pending_slice(
+        cached,
+        PpuMode3LiveBackgroundRegister::Scy,
+        write_context,
+        false,
+        0,
+        PpuMode3LiveScyWriteRouting {
+            pending_high_plane_only: true,
+            ..PpuMode3LiveScyWriteRouting::default()
+        },
+    )
+    .apply_to_cached_slice(&mut cached);
+
+    assert!(cached.needs_live_tile_data_refetch);
+    assert!(!cached.needs_live_tile_data_current_row_refetch);
+    assert!(!cached.needs_live_tile_low_current_row_refetch);
+    assert!(cached.needs_live_tile_high_current_row_refetch);
+}
+
+#[test]
+fn live_background_write_effects_mark_pending_push_scy_tilemap_row_refetch() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers_with_scy(0x91, 0x00, 0),
+        live_write_registers_with_scy(0x91, 0x00, 1),
+    );
+    let mut cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        same_cycle_live_tilemap_refetch_window_open: true,
+        ..BgCachedSlice::default()
+    };
+
+    PpuMode3LiveBackgroundWriteEffects::for_push_pending_slice(
+        cached,
+        PpuMode3LiveBackgroundRegister::Scy,
+        write_context,
+        false,
+        7,
+        PpuMode3LiveScyWriteRouting {
+            pending_tilemap_row_refetch: true,
+            ..PpuMode3LiveScyWriteRouting::default()
+        },
+    )
+    .apply_to_cached_slice(&mut cached);
+
+    assert!(cached.needs_live_tilemap_refetch);
+    assert!(cached.needs_live_tilemap_full_refetch);
+    assert!(cached.needs_live_tile_data_refetch);
+    assert!(cached.needs_live_tile_data_current_row_refetch);
+}
+
+#[test]
+fn live_background_write_effects_mark_startup_visible_tile2_scy_tilemap_phase6_refetch() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers_with_scy(0x91, 0x00, 0),
+        live_write_registers_with_scy(0x91, 0x00, 8),
+    );
+    let mut cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2),
+        fetch_x: BG_TILE_WIDTH as u16,
+        ..BgCachedSlice::default()
+    };
+
+    PpuMode3LiveBackgroundWriteEffects::for_push_pending_slice(
+        cached,
+        PpuMode3LiveBackgroundRegister::Scy,
+        write_context,
+        false,
+        6,
+        PpuMode3LiveScyWriteRouting {
+            startup_visible_tile2_tilemap_row_refetch: true,
+            startup_visible_tile2_phase6_tilemap_row_refetch: true,
+            ..PpuMode3LiveScyWriteRouting::default()
+        },
+    )
+    .apply_to_cached_slice(&mut cached);
+
+    assert!(cached.needs_live_tilemap_refetch);
+    assert!(cached.needs_live_tilemap_full_refetch);
+    assert!(!cached.needs_live_tile_data_refetch);
 }
 
 #[test]
@@ -913,6 +1536,8 @@ fn live_background_write_effects_mark_fill_full_refetch_on_scx_tile_column_chang
         write_context,
         true,
         0,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
     )
     .apply_to_cached_slice(&mut cached);
 
@@ -939,11 +1564,215 @@ fn live_background_write_effects_mark_startup_fill_full_refetch_on_scx_tile_colu
         write_context,
         true,
         0,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
     )
     .apply_to_cached_slice(&mut cached);
 
     assert!(cached.needs_live_tilemap_refetch);
     assert!(cached.needs_live_tilemap_full_refetch);
+}
+
+#[test]
+fn live_background_write_effects_mark_fill_scy_high_plane_only_refetch() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers_with_scy(0x91, 0x00, 0),
+        live_write_registers_with_scy(0x91, 0x00, 1),
+    );
+    let mut cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        same_cycle_live_tilemap_refetch_window_open: true,
+        ..BgCachedSlice::default()
+    };
+
+    PpuMode3LiveBackgroundWriteEffects::for_fill_pending_slice(
+        cached,
+        PpuMode3LiveBackgroundRegister::Scy,
+        write_context,
+        true,
+        0,
+        0,
+        PpuMode3LiveScyWriteRouting {
+            pending_high_plane_only: true,
+            ..PpuMode3LiveScyWriteRouting::default()
+        },
+    )
+    .apply_to_cached_slice(&mut cached);
+
+    assert!(cached.needs_live_tile_data_refetch);
+    assert!(!cached.needs_live_tile_data_current_row_refetch);
+    assert!(cached.needs_live_tile_high_current_row_refetch);
+}
+
+#[test]
+fn live_background_write_effects_mark_current_fetcher_scy_tiledata_on_push() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers_with_scy(0x91, 0x00, 0),
+        live_write_registers_with_scy(0x91, 0x00, 1),
+    );
+    let fetcher = BgFetcherState {
+        source: PpuBgFetcherSource::Background,
+        stage: PpuBgFetcherStage::TileDataLow,
+        ..BgFetcherState::default()
+    };
+    let effects = PpuMode3LiveBackgroundWriteEffects::for_current_background_fetch(
+        fetcher,
+        PpuMode3LiveBackgroundRegister::Scy,
+        write_context,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
+    );
+
+    let mut fetcher = fetcher;
+    effects.apply_to_fetcher(&mut fetcher);
+    assert!(!fetcher.needs_live_tilemap_refetch_on_push);
+    assert!(!fetcher.needs_live_tilemap_full_refetch_on_push);
+    assert!(fetcher.needs_live_tile_data_refetch_on_push);
+    assert!(fetcher.needs_live_tile_data_current_row_refetch_on_push);
+    assert!(!fetcher.needs_live_tile_low_current_row_refetch_on_push);
+    assert!(!fetcher.needs_live_tile_high_current_row_refetch_on_push);
+}
+
+#[test]
+fn live_background_write_effects_mark_current_fetcher_startup_visible_tile2_scy_tilemap_on_push() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers_with_scy(0x91, 0x00, 0),
+        live_write_registers_with_scy(0x91, 0x00, 8),
+    );
+    let fetcher = BgFetcherState {
+        source: PpuBgFetcherSource::Background,
+        stage: PpuBgFetcherStage::TileDataHigh,
+        cached_origin: BgCachedSliceOrigin::StartupContinuation(
+            BgStartupContinuationSlice::VisibleTile2,
+        ),
+        ..BgFetcherState::default()
+    };
+    let effects = PpuMode3LiveBackgroundWriteEffects::for_current_background_fetch(
+        fetcher,
+        PpuMode3LiveBackgroundRegister::Scy,
+        write_context,
+        6,
+        PpuMode3LiveScyWriteRouting {
+            startup_visible_tile2_tilemap_row_refetch: true,
+            startup_visible_tile2_phase6_tilemap_row_refetch: true,
+            ..PpuMode3LiveScyWriteRouting::default()
+        },
+    );
+
+    let mut fetcher = fetcher;
+    effects.apply_to_fetcher(&mut fetcher);
+    assert!(fetcher.needs_live_tilemap_refetch_on_push);
+    assert!(fetcher.needs_live_tilemap_full_refetch_on_push);
+}
+
+#[test]
+fn live_background_refetch_can_mix_tile_data_plane_rows_after_scy_write() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    ppu.write_bg_tile_row(0, 0, 0x12, 0x34);
+    ppu.write_bg_tile_row(0, 1, 0x56, 0x78);
+    ppu.scy = 1;
+    ppu.ly = 0;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        needs_live_tile_data_refetch: true,
+        needs_live_tile_high_current_row_refetch: true,
+        tile_map_address: 0x1800,
+        tile_data_address: 0x0001,
+        tile_low_address: 0x0000,
+        tile_high_address: 0x0001,
+        tile_index: 0,
+        tile_low: 0x12,
+        tile_high: 0x34,
+        ..BgCachedSlice::default()
+    };
+
+    let recomputed = ppu
+        .with_ppu_vram(|ppu, vram| {
+            recompute_live_background_cached_slice(
+                cached,
+                vram,
+                ppu.current_mode3_live_background_refetch_context(),
+            )
+        })
+        .expect("SCY live write should recompute the cached BG slice");
+
+    assert_eq!(recomputed.tile_low_address, 0x0000);
+    assert_eq!(recomputed.tile_high_address, 0x0003);
+    assert_eq!(recomputed.tile_low, 0x12);
+    assert_eq!(recomputed.tile_high, 0x78);
+}
+
+#[test]
+fn startup_scy_latch_marks_alignment_fifo_push_and_fill_cached_slices() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers_with_scy(0x91, 0x00, 0),
+        live_write_registers_with_scy(0x91, 0x00, 1),
+    );
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupAlignmentFill,
+        tile_index: 2,
+        ..BgCachedSlice::default()
+    };
+    ppu.bg_pipeline_state.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
+    ppu.bg_pipeline_state.push.cached = cached;
+    ppu.bg_pipeline_state.fill.cached = cached;
+    ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
+
+    ppu.bg_pipeline_state
+        .mark_live_scy_write_while_startup_alignment_fifo_visible(write_context, 0);
+
+    let fifo_cached = ppu
+        .bg_pipeline_state
+        .fifo_cached_pixels
+        .front()
+        .and_then(Option::as_ref)
+        .expect("startup alignment cached pixel should remain queued")
+        .cached;
+    assert!(fifo_cached.needs_live_tile_data_refetch);
+    assert_eq!(fifo_cached.tile_low_address, 0x20 + TILE_ROW_BYTES);
+    assert_eq!(fifo_cached.tile_high_address, 0x20 + TILE_ROW_BYTES + 1);
+    assert!(
+        ppu.bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tile_data_refetch
+    );
+    assert!(
+        ppu.bg_pipeline_state
+            .fill
+            .cached
+            .needs_live_tile_data_refetch
+    );
+}
+
+#[test]
+fn startup_scy_latch_can_be_applied_to_a_later_fill_slice() {
+    let mut ppu = dmg_fetch_startup_rig(0x91);
+    ppu.bg_pipeline_state.startup_scy_tiledata_latch =
+        Some(BgStartupScyTiledataLatch::new(0x91, 3));
+    ppu.bg_pipeline_state.fill.cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupAlignmentFill,
+        tile_index: 1,
+        ..BgCachedSlice::default()
+    };
+
+    ppu.bg_pipeline_state
+        .apply_startup_scy_tiledata_latch_to_fill();
+
+    assert!(
+        ppu.bg_pipeline_state
+            .fill
+            .cached
+            .needs_live_tile_data_refetch
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state.fill.cached.tile_low_address,
+        0x10 + 3 * TILE_ROW_BYTES
+    );
 }
 
 #[test]
@@ -964,6 +1793,8 @@ fn live_background_write_effects_mark_visible_tile3_current_fetch_on_lcdc3_chang
         fetcher,
         PpuMode3LiveBackgroundRegister::Lcdc,
         write_context,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
     );
 
     let mut cached = BgCachedSlice::default();
@@ -993,6 +1824,8 @@ fn live_background_write_effects_mark_visible_tile3_high_byte_fetch_on_lcdc3_cha
         fetcher,
         PpuMode3LiveBackgroundRegister::Lcdc,
         write_context,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
     );
 
     let mut cached = BgCachedSlice::default();

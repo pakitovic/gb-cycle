@@ -407,13 +407,27 @@ impl PpuMode3BgWinFetchPolicy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub(in crate::ppu) struct PpuMode3LiveScyWriteRouting {
+    pub(in crate::ppu) pending_high_plane_only: bool,
+    pub(in crate::ppu) pending_tilemap_row_refetch: bool,
+    pub(in crate::ppu) startup_visible_tile2_tilemap_row_refetch: bool,
+    pub(in crate::ppu) startup_visible_tile2_phase6_tilemap_row_refetch: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub(in crate::ppu) struct PpuMode3LiveBackgroundWriteEffects {
     tilemap_refetch: bool,
     tilemap_full_refetch: bool,
     tile_data_refetch: bool,
     tile_data_current_row_refetch: bool,
+    tile_low_current_row_refetch: bool,
+    tile_high_current_row_refetch: bool,
     fetcher_tilemap_refetch_on_push: bool,
     fetcher_tilemap_full_refetch_on_push: bool,
+    fetcher_tile_data_refetch_on_push: bool,
+    fetcher_tile_data_current_row_refetch_on_push: bool,
+    fetcher_tile_low_current_row_refetch_on_push: bool,
+    fetcher_tile_high_current_row_refetch_on_push: bool,
 }
 
 impl PpuMode3LiveBackgroundWriteEffects {
@@ -422,10 +436,35 @@ impl PpuMode3LiveBackgroundWriteEffects {
         register: PpuMode3LiveBackgroundRegister,
         write_context: PpuMode3LiveRegisterWriteContext,
         entry_delay_active: bool,
+        ly: u8,
+        scy_routing: PpuMode3LiveScyWriteRouting,
     ) -> Self {
         if !cached.is_background() || cached.is_startup_alignment_seed() {
             return Self::default();
         }
+
+        let scy_pending_refetch_window = entry_delay_active
+            || cached.same_cycle_live_tilemap_refetch_window_open
+            || cached.is_second_or_third_visible_post_startup_push();
+        let scy_tile_data_row_changed = matches!(register, PpuMode3LiveBackgroundRegister::Scy)
+            && scy_pending_refetch_window
+            && write_context.bg_scy_tile_data_row_changed(ly);
+        let scy_uses_startup_visible_tile2_tilemap_row = scy_routing
+            .startup_visible_tile2_tilemap_row_refetch
+            && matches!(
+                cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            );
+        let scy_startup_visible_tile2_tilemap_phase_matches = matches!(ly & 0x07, 7)
+            || scy_routing.startup_visible_tile2_phase6_tilemap_row_refetch
+                && matches!(ly & 0x07, 6);
+        let scy_tilemap_row_changed = scy_routing.pending_tilemap_row_refetch
+            || scy_uses_startup_visible_tile2_tilemap_row
+                && scy_startup_visible_tile2_tilemap_phase_matches;
+        let scy_tilemap_row_changed = scy_tilemap_row_changed
+            && matches!(register, PpuMode3LiveBackgroundRegister::Scy)
+            && scy_pending_refetch_window
+            && write_context.bg_scy_tilemap_row_changed(ly);
 
         Self {
             tilemap_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
@@ -437,17 +476,28 @@ impl PpuMode3LiveBackgroundWriteEffects {
                     && write_context.bg_scx_tilemap_column_changed()
                     && (entry_delay_active
                         || cached.same_cycle_live_tilemap_refetch_window_open
-                        || cached.is_second_or_third_visible_post_startup_push()),
+                        || cached.is_second_or_third_visible_post_startup_push())
+                || scy_tilemap_row_changed,
             tilemap_full_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Scx)
                 && write_context.bg_scx_tilemap_column_changed()
                 && (entry_delay_active
                     || cached.same_cycle_live_tilemap_refetch_window_open
-                    || cached.is_second_or_third_visible_post_startup_push()),
+                    || cached.is_second_or_third_visible_post_startup_push())
+                || scy_tilemap_row_changed,
             tile_data_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
-                && write_context.bg_window_tile_data_select_changed(),
-            tile_data_current_row_refetch: false,
+                && write_context.bg_window_tile_data_select_changed()
+                || scy_tile_data_row_changed,
+            tile_data_current_row_refetch: scy_tile_data_row_changed
+                && !scy_routing.pending_high_plane_only,
+            tile_low_current_row_refetch: false,
+            tile_high_current_row_refetch: scy_tile_data_row_changed
+                && scy_routing.pending_high_plane_only,
             fetcher_tilemap_refetch_on_push: false,
             fetcher_tilemap_full_refetch_on_push: false,
+            fetcher_tile_data_refetch_on_push: false,
+            fetcher_tile_data_current_row_refetch_on_push: false,
+            fetcher_tile_low_current_row_refetch_on_push: false,
+            fetcher_tile_high_current_row_refetch_on_push: false,
         }
     }
 
@@ -457,10 +507,35 @@ impl PpuMode3LiveBackgroundWriteEffects {
         write_context: PpuMode3LiveRegisterWriteContext,
         includes_real_tile_pixels: bool,
         startup_dummy_pixels: u8,
+        ly: u8,
+        scy_routing: PpuMode3LiveScyWriteRouting,
     ) -> Self {
         if !cached.is_background() || !includes_real_tile_pixels {
             return Self::default();
         }
+
+        let scy_pending_refetch_window = startup_dummy_pixels == 0
+            && (cached.same_cycle_live_tilemap_refetch_window_open
+                || cached.is_second_or_third_visible_post_startup_push());
+        let scy_tile_data_row_changed = matches!(register, PpuMode3LiveBackgroundRegister::Scy)
+            && scy_pending_refetch_window
+            && write_context.bg_scy_tile_data_row_changed(ly);
+        let scy_uses_startup_visible_tile2_tilemap_row = scy_routing
+            .startup_visible_tile2_tilemap_row_refetch
+            && matches!(
+                cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            );
+        let scy_startup_visible_tile2_tilemap_phase_matches = matches!(ly & 0x07, 7)
+            || scy_routing.startup_visible_tile2_phase6_tilemap_row_refetch
+                && matches!(ly & 0x07, 6);
+        let scy_tilemap_row_changed = scy_routing.pending_tilemap_row_refetch
+            || scy_uses_startup_visible_tile2_tilemap_row
+                && scy_startup_visible_tile2_tilemap_phase_matches;
+        let scy_tilemap_row_changed = scy_tilemap_row_changed
+            && matches!(register, PpuMode3LiveBackgroundRegister::Scy)
+            && scy_pending_refetch_window
+            && write_context.bg_scy_tilemap_row_changed(ly);
 
         Self {
             tilemap_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
@@ -472,17 +547,28 @@ impl PpuMode3LiveBackgroundWriteEffects {
                     && write_context.bg_scx_tilemap_column_changed()
                     && startup_dummy_pixels == 0
                     && (cached.same_cycle_live_tilemap_refetch_window_open
-                        || cached.is_second_or_third_visible_post_startup_push()),
+                        || cached.is_second_or_third_visible_post_startup_push())
+                || scy_tilemap_row_changed,
             tilemap_full_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Scx)
                 && write_context.bg_scx_tilemap_column_changed()
                 && startup_dummy_pixels == 0
                 && (cached.same_cycle_live_tilemap_refetch_window_open
-                    || cached.is_second_or_third_visible_post_startup_push()),
+                    || cached.is_second_or_third_visible_post_startup_push())
+                || scy_tilemap_row_changed,
             tile_data_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
-                && write_context.bg_window_tile_data_select_changed(),
-            tile_data_current_row_refetch: false,
+                && write_context.bg_window_tile_data_select_changed()
+                || scy_tile_data_row_changed,
+            tile_data_current_row_refetch: scy_tile_data_row_changed
+                && !scy_routing.pending_high_plane_only,
+            tile_low_current_row_refetch: false,
+            tile_high_current_row_refetch: scy_tile_data_row_changed
+                && scy_routing.pending_high_plane_only,
             fetcher_tilemap_refetch_on_push: false,
             fetcher_tilemap_full_refetch_on_push: false,
+            fetcher_tile_data_refetch_on_push: false,
+            fetcher_tile_data_current_row_refetch_on_push: false,
+            fetcher_tile_low_current_row_refetch_on_push: false,
+            fetcher_tile_high_current_row_refetch_on_push: false,
         }
     }
 
@@ -497,8 +583,14 @@ impl PpuMode3LiveBackgroundWriteEffects {
             tilemap_full_refetch: false,
             tile_data_refetch: false,
             tile_data_current_row_refetch: false,
+            tile_low_current_row_refetch: false,
+            tile_high_current_row_refetch: false,
             fetcher_tilemap_refetch_on_push: false,
             fetcher_tilemap_full_refetch_on_push: false,
+            fetcher_tile_data_refetch_on_push: false,
+            fetcher_tile_data_current_row_refetch_on_push: false,
+            fetcher_tile_low_current_row_refetch_on_push: false,
+            fetcher_tile_high_current_row_refetch_on_push: false,
         }
     }
 
@@ -506,7 +598,39 @@ impl PpuMode3LiveBackgroundWriteEffects {
         fetcher: BgFetcherState,
         register: PpuMode3LiveBackgroundRegister,
         write_context: PpuMode3LiveRegisterWriteContext,
+        ly: u8,
+        scy_routing: PpuMode3LiveScyWriteRouting,
     ) -> Self {
+        let scy_uses_startup_visible_tile2_tilemap_row = scy_routing
+            .startup_visible_tile2_tilemap_row_refetch
+            && matches!(
+                fetcher.cached_origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            );
+        let scy_startup_visible_tile2_tilemap_phase_matches = matches!(ly & 0x07, 7)
+            || scy_routing.startup_visible_tile2_phase6_tilemap_row_refetch
+                && matches!(ly & 0x07, 6);
+        let background_coordinate_fetch = fetcher.source == PpuBgFetcherSource::Background
+            && (fetcher.stage == PpuBgFetcherStage::TileIndex
+                || (scy_routing.pending_tilemap_row_refetch
+                    || scy_uses_startup_visible_tile2_tilemap_row
+                        && scy_startup_visible_tile2_tilemap_phase_matches)
+                    && matches!(
+                        fetcher.stage,
+                        PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
+                    ));
+        let background_tile_data_fetch = fetcher.source == PpuBgFetcherSource::Background
+            && matches!(
+                fetcher.stage,
+                PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
+            );
+        let scy_tilemap_row_changed = matches!(register, PpuMode3LiveBackgroundRegister::Scy)
+            && background_coordinate_fetch
+            && write_context.bg_scy_tilemap_row_changed(ly);
+        let scy_tile_data_row_changed = matches!(register, PpuMode3LiveBackgroundRegister::Scy)
+            && background_tile_data_fetch
+            && write_context.bg_scy_tile_data_row_changed(ly);
+
         Self {
             tilemap_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
                 && write_context.bg_tilemap_select_changed()
@@ -520,10 +644,13 @@ impl PpuMode3LiveBackgroundWriteEffects {
                 && matches!(
                     fetcher.stage,
                     PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
-                ),
+                )
+                || scy_tilemap_row_changed,
             tilemap_full_refetch: false,
-            tile_data_refetch: false,
-            tile_data_current_row_refetch: false,
+            tile_data_refetch: scy_tile_data_row_changed,
+            tile_data_current_row_refetch: scy_tile_data_row_changed,
+            tile_low_current_row_refetch: false,
+            tile_high_current_row_refetch: false,
             fetcher_tilemap_refetch_on_push: matches!(
                 register,
                 PpuMode3LiveBackgroundRegister::Lcdc
@@ -545,7 +672,8 @@ impl PpuMode3LiveBackgroundWriteEffects {
                     && matches!(
                         fetcher.stage,
                         PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
-                    ),
+                    )
+                || scy_tilemap_row_changed,
             fetcher_tilemap_full_refetch_on_push: matches!(
                 register,
                 PpuMode3LiveBackgroundRegister::Scx
@@ -555,7 +683,12 @@ impl PpuMode3LiveBackgroundWriteEffects {
                 && matches!(
                     fetcher.stage,
                     PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
-                ),
+                )
+                || scy_tilemap_row_changed,
+            fetcher_tile_data_refetch_on_push: scy_tile_data_row_changed,
+            fetcher_tile_data_current_row_refetch_on_push: scy_tile_data_row_changed,
+            fetcher_tile_low_current_row_refetch_on_push: false,
+            fetcher_tile_high_current_row_refetch_on_push: false,
         }
     }
 
@@ -564,11 +697,210 @@ impl PpuMode3LiveBackgroundWriteEffects {
         cached.needs_live_tilemap_full_refetch |= self.tilemap_full_refetch;
         cached.needs_live_tile_data_refetch |= self.tile_data_refetch;
         cached.needs_live_tile_data_current_row_refetch |= self.tile_data_current_row_refetch;
+        cached.needs_live_tile_low_current_row_refetch |= self.tile_low_current_row_refetch;
+        cached.needs_live_tile_high_current_row_refetch |= self.tile_high_current_row_refetch;
     }
 
     pub(in crate::ppu) fn apply_to_fetcher(self, fetcher: &mut BgFetcherState) {
         fetcher.needs_live_tilemap_refetch_on_push |= self.fetcher_tilemap_refetch_on_push;
         fetcher.needs_live_tilemap_full_refetch_on_push |=
             self.fetcher_tilemap_full_refetch_on_push;
+        fetcher.needs_live_tile_data_refetch_on_push |= self.fetcher_tile_data_refetch_on_push;
+        fetcher.needs_live_tile_data_current_row_refetch_on_push |=
+            self.fetcher_tile_data_current_row_refetch_on_push;
+        fetcher.needs_live_tile_low_current_row_refetch_on_push |=
+            self.fetcher_tile_low_current_row_refetch_on_push;
+        fetcher.needs_live_tile_high_current_row_refetch_on_push |=
+            self.fetcher_tile_high_current_row_refetch_on_push;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) enum PpuMode3ScyObjPhaseOwner {
+    PendingHit { match_x: u8 },
+    ActiveFetch { sprite_x: u8 },
+    CurrentTransferSprite { sprite_x: u8 },
+    StartupLineLead { sprite_x: u8 },
+}
+
+impl PpuMode3ScyObjPhaseOwner {
+    pub(in crate::ppu) const fn x(self) -> u8 {
+        match self {
+            Self::PendingHit { match_x } => match_x,
+            Self::ActiveFetch { sprite_x }
+            | Self::CurrentTransferSprite { sprite_x }
+            | Self::StartupLineLead { sprite_x } => sprite_x,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3ScyObjPhaseContext {
+    pub(in crate::ppu) phase_owner: PpuMode3ScyObjPhaseOwner,
+    pub(in crate::ppu) current_transfer_x: u8,
+    pub(in crate::ppu) current_transfer: Option<Mode3CurrentTransfer>,
+    pub(in crate::ppu) bg_fetcher_stage: PpuBgFetcherStage,
+    pub(in crate::ppu) bg_fetcher_stage_dot: u8,
+    pub(in crate::ppu) bg_fifo_len: usize,
+    pub(in crate::ppu) startup_fifo_placeholders: u8,
+    pub(in crate::ppu) obj_fetcher_stage: PpuObjFetcherStage,
+    pub(in crate::ppu) obj_fetcher_stage_dot: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3ScyTilemapRetarget {
+    pub(in crate::ppu) tilemap_row_delta: i8,
+    pub(in crate::ppu) tiledata_row_delta: i8,
+}
+
+/// Observed DMG SCY/OBJ startup phase table that can perturb BG refetch routing.
+/// These ranges are an explicit hardware hypothesis until an oracle lets the
+/// pipeline derive them directly from shared BG/OBJ arbitration state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3ObservedScyObjPhaseTable {
+    obj_match_x: u8,
+}
+
+impl PpuMode3ObservedScyObjPhaseTable {
+    pub(in crate::ppu) const fn new(obj_match_x: u8) -> Self {
+        Self { obj_match_x }
+    }
+
+    pub(in crate::ppu) const fn obj_match_x(self) -> u8 {
+        self.obj_match_x
+    }
+
+    pub(in crate::ppu) const fn obj_match_tile_phase(self) -> u8 {
+        self.obj_match_x() & (BG_TILE_WIDTH - 1)
+    }
+
+    pub(in crate::ppu) const fn pending_refetch_prefers_high_plane_only(self) -> bool {
+        matches!(self.obj_match_tile_phase(), 5..=7)
+    }
+
+    pub(in crate::ppu) const fn pending_refetch_prefers_tilemap_row(self) -> bool {
+        matches!(self.obj_match_tile_phase(), 0..=2)
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_refetch_prefers_tilemap_row(self) -> bool {
+        matches!(self.obj_match_tile_phase(), 4..=7)
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_phase6_refetch_prefers_tilemap_row(
+        self,
+    ) -> bool {
+        matches!(self.obj_match_x(), 4..=7)
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_placeholder_uses_previous_tilemap_row(
+        self,
+        ly: u8,
+        visible_x: u8,
+    ) -> bool {
+        matches!(
+            (self.obj_match_x(), ly & (BG_TILE_WIDTH - 1), visible_x),
+            (16, 5, 16) | (17, 6, 8)
+        )
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_tilemap_retarget(
+        self,
+        ly: u8,
+        pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        let (tilemap_row_delta, tiledata_row_delta) =
+            match (self.obj_match_x(), ly & (BG_TILE_WIDTH - 1), pixel_index) {
+                (9, 6, 4 | 5 | 7) => (1, 0),
+                (9, 6, 6) => (1, -1),
+                (10, 6, 5..=7) => (-1, 0),
+                (11, 7, 5) => (0, 0),
+                (16, 6, 0) => (1, 0),
+                (16, 6, 7) => (0, -1),
+                _ => return None,
+            };
+
+        Some(PpuMode3ScyTilemapRetarget {
+            tilemap_row_delta,
+            tiledata_row_delta,
+        })
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_uses_previous_tiledata_row(self) -> bool {
+        matches!(self.obj_match_x(), 8..=15)
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile3_uses_previous_tiledata_row(self) -> bool {
+        matches!(self.obj_match_x(), 16..=17)
+    }
+}
+
+/// Resolves the current SCY/OBJ phase owner and exposes the observed table through
+/// an explicit context object, keeping the hypothesis away from mutation code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3ScyObjPhasePolicy {
+    context: PpuMode3ScyObjPhaseContext,
+}
+
+impl PpuMode3ScyObjPhasePolicy {
+    pub(in crate::ppu) const fn new(context: PpuMode3ScyObjPhaseContext) -> Self {
+        Self { context }
+    }
+
+    pub(in crate::ppu) const fn phase_owner(self) -> PpuMode3ScyObjPhaseOwner {
+        self.context.phase_owner
+    }
+
+    pub(in crate::ppu) const fn observed_phase_table(self) -> PpuMode3ObservedScyObjPhaseTable {
+        PpuMode3ObservedScyObjPhaseTable::new(self.phase_owner().x())
+    }
+
+    pub(in crate::ppu) const fn pending_refetch_prefers_high_plane_only(self) -> bool {
+        self.observed_phase_table()
+            .pending_refetch_prefers_high_plane_only()
+    }
+
+    pub(in crate::ppu) const fn pending_refetch_prefers_tilemap_row(self) -> bool {
+        self.observed_phase_table()
+            .pending_refetch_prefers_tilemap_row()
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_refetch_prefers_tilemap_row(self) -> bool {
+        self.observed_phase_table()
+            .startup_visible_tile2_refetch_prefers_tilemap_row()
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_phase6_refetch_prefers_tilemap_row(
+        self,
+    ) -> bool {
+        self.observed_phase_table()
+            .startup_visible_tile2_phase6_refetch_prefers_tilemap_row()
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_placeholder_uses_previous_tilemap_row(
+        self,
+        ly: u8,
+        visible_x: u8,
+    ) -> bool {
+        self.observed_phase_table()
+            .startup_visible_tile2_placeholder_uses_previous_tilemap_row(ly, visible_x)
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_tilemap_retarget(
+        self,
+        ly: u8,
+        pixel_index: u8,
+    ) -> Option<PpuMode3ScyTilemapRetarget> {
+        self.observed_phase_table()
+            .startup_visible_tile2_tilemap_retarget(ly, pixel_index)
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile2_uses_previous_tiledata_row(self) -> bool {
+        self.observed_phase_table()
+            .startup_visible_tile2_uses_previous_tiledata_row()
+    }
+
+    pub(in crate::ppu) const fn startup_visible_tile3_uses_previous_tiledata_row(self) -> bool {
+        self.observed_phase_table()
+            .startup_visible_tile3_uses_previous_tiledata_row()
     }
 }

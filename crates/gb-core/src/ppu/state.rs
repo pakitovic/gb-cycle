@@ -425,6 +425,22 @@ pub(super) struct BgPipelineState {
     pub(super) wx166_armed_this_line: bool,
     pub(super) startup_visible_tile3_scx_boundary_next_slice_previous_scx: Option<u8>,
     pub(super) startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: u8,
+    pub(super) startup_scy_tiledata_latch: Option<BgStartupScyTiledataLatch>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct BgStartupScyTiledataLatch {
+    lcdc: u8,
+    tile_data_row: u16,
+}
+
+impl BgStartupScyTiledataLatch {
+    pub(super) const fn new(lcdc: u8, tile_data_row: u16) -> Self {
+        Self {
+            lcdc,
+            tile_data_row,
+        }
+    }
 }
 
 impl BgPipelineState {
@@ -454,6 +470,7 @@ impl BgPipelineState {
         self.wx166_armed_this_line = false;
         self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
+        self.startup_scy_tiledata_latch = None;
     }
 
     pub(super) fn start_line(&mut self, _scx: u8) {
@@ -465,6 +482,7 @@ impl BgPipelineState {
         self.fifo.clear();
         self.fifo_cached_pixels.clear();
         self.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
+        self.startup_scy_tiledata_latch = None;
         self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
         self.startup_source_state = Mode3StartupSourceState::EntryDelay {
             remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
@@ -532,6 +550,7 @@ impl BgPipelineState {
         self.wx166_armed_this_line = false;
         self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
+        self.startup_scy_tiledata_latch = None;
     }
 
     pub(super) fn extend_mode3_by_one_dot(&mut self) {
@@ -642,6 +661,63 @@ impl BgPipelineState {
                 .cached
                 .mark_live_lcdc3_write_while_fifo_visible(write_context);
         }
+    }
+
+    pub(super) fn mark_live_scy_write_while_startup_alignment_fifo_visible(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+        ly: u8,
+    ) {
+        if !write_context.bg_scy_tile_data_row_changed(ly) {
+            return;
+        }
+
+        let has_unlatched_startup_alignment_pixel =
+            self.fifo_cached_pixels.iter().flatten().any(|cached| {
+                matches!(
+                    cached.cached.origin,
+                    BgCachedSliceOrigin::StartupAlignmentFill
+                ) && !cached.cached.needs_live_tile_data_refetch
+            });
+        if !has_unlatched_startup_alignment_pixel {
+            return;
+        }
+
+        self.latch_startup_scy_tiledata_row(write_context, ly);
+        let Some(latch) = self.startup_scy_tiledata_latch else {
+            return;
+        };
+
+        for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+            apply_startup_scy_tiledata_latch_to_cached(&mut cached.cached, latch);
+        }
+        apply_startup_scy_tiledata_latch_to_cached(&mut self.push.cached, latch);
+        apply_startup_scy_tiledata_latch_to_cached(&mut self.fill.cached, latch);
+    }
+
+    pub(super) fn latch_startup_scy_tiledata_row(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+        ly: u8,
+    ) {
+        if self.startup_scy_tiledata_latch.is_some()
+            || matches!(self.startup_fetch_seam, BgStartupFetchSeamState::Inactive)
+            || !write_context.bg_scy_tile_data_row_changed(ly)
+        {
+            return;
+        }
+
+        self.startup_scy_tiledata_latch = Some(BgStartupScyTiledataLatch::new(
+            write_context.current_lcdc(),
+            write_context.current_scy_tile_data_row(ly),
+        ));
+    }
+
+    pub(super) fn apply_startup_scy_tiledata_latch_to_fill(&mut self) {
+        let Some(latch) = self.startup_scy_tiledata_latch else {
+            return;
+        };
+        apply_startup_scy_tiledata_latch_to_cached(&mut self.fill.cached, latch);
     }
 
     pub(super) fn push_dummy_fifo_pixels(&mut self, count: u8) {
@@ -830,6 +906,23 @@ impl BgPipelineState {
     }
 }
 
+fn apply_startup_scy_tiledata_latch_to_cached(
+    cached: &mut BgCachedSlice,
+    latch: BgStartupScyTiledataLatch,
+) {
+    if cached.source != PpuBgFetcherSource::Background
+        || !matches!(cached.origin, BgCachedSliceOrigin::StartupAlignmentFill)
+        || cached.needs_live_tile_data_refetch
+    {
+        return;
+    }
+
+    let tile_data_base = bg_tile_data_base(latch.lcdc, cached.tile_index);
+    cached.tile_low_address = tile_data_base + latch.tile_data_row * TILE_ROW_BYTES;
+    cached.tile_high_address = tile_data_base + latch.tile_data_row * TILE_ROW_BYTES + 1;
+    cached.needs_live_tile_data_refetch = true;
+}
+
 impl Default for BgPipelineState {
     fn default() -> Self {
         Self {
@@ -858,6 +951,7 @@ impl Default for BgPipelineState {
             wx166_armed_this_line: false,
             startup_visible_tile3_scx_boundary_next_slice_previous_scx: None,
             startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: 0,
+            startup_scy_tiledata_latch: None,
         }
     }
 }
@@ -903,6 +997,10 @@ pub(super) struct BgFetcherState {
     pub(super) cached_origin: BgCachedSliceOrigin,
     pub(super) needs_live_tilemap_refetch_on_push: bool,
     pub(super) needs_live_tilemap_full_refetch_on_push: bool,
+    pub(super) needs_live_tile_data_refetch_on_push: bool,
+    pub(super) needs_live_tile_data_current_row_refetch_on_push: bool,
+    pub(super) needs_live_tile_low_current_row_refetch_on_push: bool,
+    pub(super) needs_live_tile_high_current_row_refetch_on_push: bool,
     pub(super) startup_visible_tile3_scx_boundary_full_refetch_next_tile: bool,
     pub(super) startup_visible_tile3_scx_boundary_previous_scx: Option<u8>,
     pub(super) startup_visible_tile3_scx_boundary_old_tail_start_pixel: u8,
@@ -916,6 +1014,8 @@ pub(super) struct BgFetcherState {
     pub(super) first_window_tile_after_activation: bool,
     pub(super) tile_map_address: u16,
     pub(super) tile_data_address: u16,
+    pub(super) tile_low_address: u16,
+    pub(super) tile_high_address: u16,
     pub(super) tile_index: u8,
     pub(super) tile_low: u8,
     pub(super) tile_high: u8,
@@ -938,6 +1038,10 @@ impl BgFetcherState {
         self.cached_origin = BgCachedSliceOrigin::Ordinary;
         self.needs_live_tilemap_refetch_on_push = false;
         self.needs_live_tilemap_full_refetch_on_push = false;
+        self.needs_live_tile_data_refetch_on_push = false;
+        self.needs_live_tile_data_current_row_refetch_on_push = false;
+        self.needs_live_tile_low_current_row_refetch_on_push = false;
+        self.needs_live_tile_high_current_row_refetch_on_push = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = 0;
@@ -949,6 +1053,8 @@ impl BgFetcherState {
         self.first_window_tile_after_activation = true;
         self.tile_map_address = 0;
         self.tile_data_address = 0;
+        self.tile_low_address = 0;
+        self.tile_high_address = 0;
         self.tile_index = 0;
         self.tile_low = 0;
         self.tile_high = 0;
@@ -960,6 +1066,10 @@ impl BgFetcherState {
         self.cached_origin = BgCachedSliceOrigin::Ordinary;
         self.needs_live_tilemap_refetch_on_push = false;
         self.needs_live_tilemap_full_refetch_on_push = false;
+        self.needs_live_tile_data_refetch_on_push = false;
+        self.needs_live_tile_data_current_row_refetch_on_push = false;
+        self.needs_live_tile_low_current_row_refetch_on_push = false;
+        self.needs_live_tile_high_current_row_refetch_on_push = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = 0;
@@ -971,6 +1081,8 @@ impl BgFetcherState {
         self.first_window_tile_after_activation = false;
         self.tile_map_address = 0;
         self.tile_data_address = 0;
+        self.tile_low_address = 0;
+        self.tile_high_address = 0;
         self.tile_index = 0;
         self.tile_low = 0;
         self.tile_high = 0;
@@ -985,6 +1097,10 @@ impl BgFetcherState {
         self.cached_origin = BgCachedSliceOrigin::Ordinary;
         self.needs_live_tilemap_refetch_on_push = false;
         self.needs_live_tilemap_full_refetch_on_push = false;
+        self.needs_live_tile_data_refetch_on_push = false;
+        self.needs_live_tile_data_current_row_refetch_on_push = false;
+        self.needs_live_tile_low_current_row_refetch_on_push = false;
+        self.needs_live_tile_high_current_row_refetch_on_push = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = self.bg_resume_fetch_pixel;
@@ -998,11 +1114,15 @@ impl BgFetcherState {
         &mut self,
         register: PpuMode3LiveBackgroundRegister,
         write_context: PpuMode3LiveRegisterWriteContext,
+        ly: u8,
+        scy_routing: PpuMode3LiveScyWriteRouting,
     ) {
         PpuMode3LiveBackgroundWriteEffects::for_current_background_fetch(
             *self,
             register,
             write_context,
+            ly,
+            scy_routing,
         )
         .apply_to_fetcher(self);
     }
@@ -1162,9 +1282,13 @@ pub(super) struct BgCachedSlice {
     pub(super) needs_live_tilemap_full_refetch: bool,
     pub(super) needs_live_tile_data_refetch: bool,
     pub(super) needs_live_tile_data_current_row_refetch: bool,
+    pub(super) needs_live_tile_low_current_row_refetch: bool,
+    pub(super) needs_live_tile_high_current_row_refetch: bool,
     pub(super) needs_live_tile_data_unsigned_reuse: bool,
     pub(super) tile_map_address: u16,
     pub(super) tile_data_address: u16,
+    pub(super) tile_low_address: u16,
+    pub(super) tile_high_address: u16,
     pub(super) tile_index: u8,
     pub(super) tile_low: u8,
     pub(super) tile_high: u8,
@@ -1188,11 +1312,18 @@ impl BgCachedSlice {
                 .startup_visible_tile3_scx_boundary_old_prefix_pixels,
             needs_live_tilemap_refetch: fetcher.needs_live_tilemap_refetch_on_push,
             needs_live_tilemap_full_refetch: fetcher.needs_live_tilemap_full_refetch_on_push,
-            needs_live_tile_data_refetch: false,
-            needs_live_tile_data_current_row_refetch: false,
+            needs_live_tile_data_refetch: fetcher.needs_live_tile_data_refetch_on_push,
+            needs_live_tile_data_current_row_refetch: fetcher
+                .needs_live_tile_data_current_row_refetch_on_push,
+            needs_live_tile_low_current_row_refetch: fetcher
+                .needs_live_tile_low_current_row_refetch_on_push,
+            needs_live_tile_high_current_row_refetch: fetcher
+                .needs_live_tile_high_current_row_refetch_on_push,
             needs_live_tile_data_unsigned_reuse: false,
             tile_map_address: fetcher.tile_map_address,
             tile_data_address: fetcher.tile_data_address,
+            tile_low_address: fetcher.tile_low_address,
+            tile_high_address: fetcher.tile_high_address,
             tile_index: fetcher.tile_index,
             tile_low: fetcher.tile_low,
             tile_high: fetcher.tile_high,
@@ -1238,12 +1369,16 @@ impl BgCachedSlice {
         register: PpuMode3LiveBackgroundRegister,
         write_context: PpuMode3LiveRegisterWriteContext,
         entry_delay_active: bool,
+        ly: u8,
+        scy_routing: PpuMode3LiveScyWriteRouting,
     ) {
         PpuMode3LiveBackgroundWriteEffects::for_push_pending_slice(
             *self,
             register,
             write_context,
             entry_delay_active,
+            ly,
+            scy_routing,
         )
         .apply_to_cached_slice(self);
     }
@@ -1254,6 +1389,8 @@ impl BgCachedSlice {
         write_context: PpuMode3LiveRegisterWriteContext,
         includes_real_tile_pixels: bool,
         startup_dummy_pixels: u8,
+        ly: u8,
+        scy_routing: PpuMode3LiveScyWriteRouting,
     ) {
         PpuMode3LiveBackgroundWriteEffects::for_fill_pending_slice(
             *self,
@@ -1261,6 +1398,8 @@ impl BgCachedSlice {
             write_context,
             includes_real_tile_pixels,
             startup_dummy_pixels,
+            ly,
+            scy_routing,
         )
         .apply_to_cached_slice(self);
     }
@@ -1349,6 +1488,8 @@ pub(super) fn recompute_live_background_cached_slice(
             && !cached.needs_live_tilemap_full_refetch
             && !cached.needs_live_tile_data_refetch
             && !cached.needs_live_tile_data_current_row_refetch
+            && !cached.needs_live_tile_low_current_row_refetch
+            && !cached.needs_live_tile_high_current_row_refetch
             && !cached.needs_live_tile_data_unsigned_reuse)
     {
         return None;
@@ -1384,18 +1525,25 @@ pub(super) fn recompute_live_background_cached_slice(
         tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
     }
 
-    let tile_data_row = if cached.needs_live_tile_data_refetch {
-        if cached.needs_live_tile_data_current_row_refetch {
-            context.current_scanline_tile_row()
-        } else {
-            (cached.tile_data_address.saturating_sub(1) & (TILE_BYTES - 1)) / TILE_ROW_BYTES
-        }
+    let cached_tile_low_address = cached_tile_low_address(cached);
+    let cached_tile_high_address = cached_tile_high_address(cached);
+    let tile_low_row = if cached.needs_live_tile_data_current_row_refetch
+        || cached.needs_live_tile_low_current_row_refetch
+    {
+        context.current_scanline_tile_row()
     } else {
-        (cached.tile_data_address.saturating_sub(1) & (TILE_BYTES - 1)) / TILE_ROW_BYTES
+        bg_tile_data_address_row(cached_tile_low_address)
     };
-    let tile_low_address =
-        bg_tile_data_base(registers.lcdc, tile_index) + tile_data_row * TILE_ROW_BYTES;
-    let tile_high_address = tile_low_address + 1;
+    let tile_high_row = if cached.needs_live_tile_data_current_row_refetch
+        || cached.needs_live_tile_high_current_row_refetch
+    {
+        context.current_scanline_tile_row()
+    } else {
+        bg_tile_data_address_row(cached_tile_high_address)
+    };
+    let tile_data_base = bg_tile_data_base(registers.lcdc, tile_index);
+    let tile_low_address = tile_data_base + tile_low_row * TILE_ROW_BYTES;
+    let tile_high_address = tile_data_base + tile_high_row * TILE_ROW_BYTES + 1;
     let (tile_low, tile_high) =
         if cached.needs_live_tile_data_unsigned_reuse && !cached.needs_live_tilemap_refetch {
             (
@@ -1411,6 +1559,8 @@ pub(super) fn recompute_live_background_cached_slice(
 
     cached.tile_map_address = tile_map_address;
     cached.tile_data_address = tile_high_address;
+    cached.tile_low_address = tile_low_address;
+    cached.tile_high_address = tile_high_address;
     cached.tile_index = tile_index;
     cached.tile_low = tile_low;
     cached.tile_high = tile_high;
@@ -1419,8 +1569,30 @@ pub(super) fn recompute_live_background_cached_slice(
     cached.needs_live_tilemap_full_refetch = false;
     cached.needs_live_tile_data_refetch = false;
     cached.needs_live_tile_data_current_row_refetch = false;
+    cached.needs_live_tile_low_current_row_refetch = false;
+    cached.needs_live_tile_high_current_row_refetch = false;
     cached.needs_live_tile_data_unsigned_reuse = false;
     Some(cached)
+}
+
+const fn bg_tile_data_address_row(address: u16) -> u16 {
+    (address & (TILE_BYTES - 1)) / TILE_ROW_BYTES
+}
+
+const fn cached_tile_low_address(cached: BgCachedSlice) -> u16 {
+    if cached.tile_low_address == 0 && cached.tile_data_address != 0 {
+        cached.tile_data_address & !1
+    } else {
+        cached.tile_low_address
+    }
+}
+
+const fn cached_tile_high_address(cached: BgCachedSlice) -> u16 {
+    if cached.tile_high_address == 0 && cached.tile_data_address != 0 {
+        cached.tile_data_address | 1
+    } else {
+        cached.tile_high_address
+    }
 }
 
 const fn startup_visible_tile3_scx_boundary_old_tail_pixels(scx: u8) -> u8 {
