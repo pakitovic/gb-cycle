@@ -1,6 +1,39 @@
 use super::*;
 use crate::model::{CompatibilityPolicy, DiagnosticPolicy, ValidationPolicy};
 
+/// Bundles the parameters shared by every mapper validator, providing
+/// helpers that eliminate the repeated `CartridgeLoadError::Rejected`
+/// construction and `record_degradable_issue` + `map_err` pattern.
+struct ValidationContext<'a> {
+    compatibility: &'a CompatibilityPolicy,
+    classification: &'a CartridgeClassification,
+    diagnostics: &'a mut Vec<CartridgeDiagnostic>,
+}
+
+impl<'a> ValidationContext<'a> {
+    fn name(&self) -> &str {
+        self.classification.detected_name()
+    }
+
+    fn reject(&self, reason: String) -> CartridgeLoadError {
+        CartridgeLoadError::Rejected {
+            classification: *self.classification,
+            execution_mode: self.compatibility.execution_mode,
+            reason,
+            diagnostics: self.diagnostics.clone(),
+        }
+    }
+
+    fn check_degradable(&mut self, message: String) -> Result<(), CartridgeLoadError> {
+        record_degradable_issue(
+            self.diagnostics,
+            self.compatibility.validation_policy,
+            message,
+        )
+        .map_err(|reason| self.reject(reason))
+    }
+}
+
 pub(in crate::cartridge) fn validate_no_mbc(
     header: &CartridgeHeader,
     actual_rom_size: usize,
@@ -8,6 +41,12 @@ pub(in crate::cartridge) fn validate_no_mbc(
     classification: &CartridgeClassification,
     diagnostics: &mut Vec<CartridgeDiagnostic>,
 ) -> Result<(), CartridgeLoadError> {
+    let mut ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
     let expected_ram_code = match classification.raw_type() {
         0x00 => 0x00,
         0x08 | 0x09 => 0x02,
@@ -15,101 +54,51 @@ pub(in crate::cartridge) fn validate_no_mbc(
     };
 
     if header.ram_size.raw_code != expected_ram_code {
-        record_degradable_issue(
-            diagnostics,
-            compatibility.validation_policy,
-            format!(
-                "{} expects RAM size code {expected_ram_code:#04X}, but the header declared {:#04X}",
-                classification.detected_name(),
-                header.ram_size.raw_code
-            ),
-        )
-        .map_err(|message| CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: message,
-            diagnostics: diagnostics.clone(),
-        })?;
+        ctx.check_degradable(format!(
+            "{} expects RAM size code {expected_ram_code:#04X}, but the header declared {:#04X}",
+            ctx.name(),
+            header.ram_size.raw_code
+        ))?;
     }
 
     if header.ram_size.decoded_bytes != Some(expected_ram_code_decompressed(expected_ram_code)) {
-        record_degradable_issue(
-            diagnostics,
-            compatibility.validation_policy,
-            format!(
-                "{} resolved to an unsupported RAM configuration from code {:#04X}",
-                classification.detected_name(),
-                header.ram_size.raw_code
-            ),
-        )
-        .map_err(|message| CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: message,
-            diagnostics: diagnostics.clone(),
-        })?;
+        ctx.check_degradable(format!(
+            "{} resolved to an unsupported RAM configuration from code {:#04X}",
+            ctx.name(),
+            header.ram_size.raw_code
+        ))?;
     }
 
     if header.rom_size.raw_code != 0x00 {
-        record_degradable_issue(
-            diagnostics,
-            compatibility.validation_policy,
-            format!(
-                "{} expects ROM size code 0x00, but the header declared {:#04X}",
-                classification.detected_name(),
-                header.rom_size.raw_code
-            ),
-        )
-        .map_err(|message| CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: message,
-            diagnostics: diagnostics.clone(),
-        })?;
+        ctx.check_degradable(format!(
+            "{} expects ROM size code 0x00, but the header declared {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        ))?;
     }
 
     if header.rom_size.decoded_bytes != Some(NO_MBC_SUPPORTED_ROM_BYTES) {
-        record_degradable_issue(
-            diagnostics,
-            compatibility.validation_policy,
-            format!(
-                "{} expects a 32 KiB ROM declaration, but the header resolved to {:?} bytes",
-                classification.detected_name(),
-                header.rom_size.decoded_bytes
-            ),
-        )
-        .map_err(|message| CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: message,
-            diagnostics: diagnostics.clone(),
-        })?;
+        ctx.check_degradable(format!(
+            "{} expects a 32 KiB ROM declaration, but the header resolved to {:?} bytes",
+            ctx.name(),
+            header.rom_size.decoded_bytes
+        ))?;
     }
 
     if actual_rom_size != NO_MBC_SUPPORTED_ROM_BYTES {
-        record_degradable_issue(
-            diagnostics,
-            compatibility.validation_policy,
-            format!(
-                "{} expects a 32 KiB image, but the loaded ROM is {} bytes",
-                classification.detected_name(),
-                actual_rom_size
-            ),
-        )
-        .map_err(|message| CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: message,
-            diagnostics: diagnostics.clone(),
-        })?;
+        ctx.check_degradable(format!(
+            "{} expects a 32 KiB image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            actual_rom_size
+        ))?;
     }
 
     if matches!(classification.raw_type(), 0x08 | 0x09) {
-        diagnostics.push(CartridgeDiagnostic {
+        ctx.diagnostics.push(CartridgeDiagnostic {
             severity: CartridgeDiagnosticSeverity::Warning,
             message: format!(
                 "{} is rare but still treated as a valid No MBC variant",
-                classification.detected_name()
+                ctx.name()
             ),
         });
     }
@@ -124,52 +113,43 @@ pub(in crate::cartridge) fn validate_mbc1(
     classification: &CartridgeClassification,
     diagnostics: &mut Vec<CartridgeDiagnostic>,
 ) -> Result<Mbc1Layout, CartridgeLoadError> {
+    let mut ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
     let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} declared an unsupported ROM size code {:#04X}",
-                classification.detected_name(),
-                header.rom_size.raw_code
-            ),
-            diagnostics: diagnostics.to_vec(),
-        });
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
     };
 
     if actual_rom_size != declared_rom_bytes {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} expects a {}-byte image, but the loaded ROM is {} bytes",
-                classification.detected_name(),
-                declared_rom_bytes,
-                actual_rom_size
-            ),
-            diagnostics: diagnostics.to_vec(),
-        });
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
     }
 
     if classification.detected_name() == "MBC1M" {
         if header.ram_size.raw_code != 0x00 {
-            return Err(CartridgeLoadError::Rejected {
-                classification: *classification,
-                execution_mode: compatibility.execution_mode,
-                reason: format!(
-                    "{} currently only supports the no-RAM 1 MiB multicart baseline",
-                    classification.detected_name()
-                ),
-                diagnostics: diagnostics.to_vec(),
-            });
+            return Err(ctx.reject(format!(
+                "{} currently only supports the no-RAM 1 MiB multicart baseline",
+                ctx.name()
+            )));
         }
 
         if compatibility.diagnostic_policy != DiagnosticPolicy::Quiet {
-            diagnostics.push(CartridgeDiagnostic {
+            ctx.diagnostics.push(CartridgeDiagnostic {
                 severity: CartridgeDiagnosticSeverity::Warning,
                 message: format!(
                     "{} banking was enabled through an explicit experimental multicart heuristic and remains non-oracle",
-                    classification.detected_name()
+                    ctx.name()
                 ),
             });
         }
@@ -186,16 +166,11 @@ pub(in crate::cartridge) fn validate_mbc1(
     } else if MBC1_LARGE_ROM_SIZES.contains(&declared_rom_bytes) {
         Mbc1Wiring::LargeRom
     } else {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} declared a ROM size that is not valid for the current MBC1 baseline: {} bytes",
-                classification.detected_name(),
-                declared_rom_bytes
-            ),
-            diagnostics: diagnostics.to_vec(),
-        });
+        return Err(ctx.reject(format!(
+            "{} declared a ROM size that is not valid for the current MBC1 baseline: {} bytes",
+            ctx.name(),
+            declared_rom_bytes
+        )));
     };
 
     let has_ram = matches!(classification.raw_type(), 0x02 | 0x03);
@@ -210,23 +185,13 @@ pub(in crate::cartridge) fn validate_mbc1(
         } else {
             "MBC1 without RAM"
         };
-        record_degradable_issue(
-            diagnostics,
-            compatibility.validation_policy,
-            format!(
-                "{} declared RAM size code {:#04X}, which contradicts the current {} {:?} wiring baseline",
-                classification.detected_name(),
-                header.ram_size.raw_code,
-                capability_label,
-                wiring
-            ),
-        )
-        .map_err(|message| CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: message,
-            diagnostics: diagnostics.to_vec(),
-        })?;
+        ctx.check_degradable(format!(
+            "{} declared RAM size code {:#04X}, which contradicts the current {} {:?} wiring baseline",
+            ctx.name(),
+            header.ram_size.raw_code,
+            capability_label,
+            wiring
+        ))?;
     }
 
     let ram_len = match (has_ram, wiring, header.ram_size.raw_code) {
@@ -253,63 +218,44 @@ pub(in crate::cartridge) fn validate_mbc2(
     classification: &CartridgeClassification,
     diagnostics: &mut Vec<CartridgeDiagnostic>,
 ) -> Result<(), CartridgeLoadError> {
+    let mut ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
     let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} declared an unsupported ROM size code {:#04X}",
-                classification.detected_name(),
-                header.rom_size.raw_code
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
     };
 
     if actual_rom_size != declared_rom_bytes {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} expects a {}-byte image, but the loaded ROM is {} bytes",
-                classification.detected_name(),
-                declared_rom_bytes,
-                actual_rom_size
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
     }
 
     if declared_rom_bytes > MBC2_SUPPORTED_ROM_BYTES_MAX {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} exceeds the current MBC2 ROM limit of {} bytes with {} bytes",
-                classification.detected_name(),
-                MBC2_SUPPORTED_ROM_BYTES_MAX,
-                declared_rom_bytes
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} exceeds the current MBC2 ROM limit of {} bytes with {} bytes",
+            ctx.name(),
+            MBC2_SUPPORTED_ROM_BYTES_MAX,
+            declared_rom_bytes
+        )));
     }
 
     if header.ram_size.raw_code != 0x00 {
-        record_degradable_issue(
-            diagnostics,
-            compatibility.validation_policy,
-            format!(
-                "{} expects RAM size code 0x00 because MBC2 RAM is internal, but the header declared {:#04X}",
-                classification.detected_name(),
-                header.ram_size.raw_code
-            ),
-        )
-        .map_err(|message| CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: message,
-            diagnostics: diagnostics.clone(),
-        })?;
+        ctx.check_degradable(format!(
+            "{} expects RAM size code 0x00 because MBC2 RAM is internal, but the header declared {:#04X}",
+            ctx.name(),
+            header.ram_size.raw_code
+        ))?;
     }
 
     Ok(())
@@ -322,89 +268,60 @@ pub(in crate::cartridge) fn validate_mbc3(
     classification: &CartridgeClassification,
     diagnostics: &mut Vec<CartridgeDiagnostic>,
 ) -> Result<Mbc3Variant, CartridgeLoadError> {
+    let mut ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
     let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} declared an unsupported ROM size code {:#04X}",
-                classification.detected_name(),
-                header.rom_size.raw_code
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
     };
 
     if actual_rom_size != declared_rom_bytes {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} expects a {}-byte image, but the loaded ROM is {} bytes",
-                classification.detected_name(),
-                declared_rom_bytes,
-                actual_rom_size
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
     }
 
     if declared_rom_bytes > MBC3_SUPPORTED_ROM_BYTES_MAX {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} exceeds the current MBC3 ROM limit of {} bytes with {} bytes",
-                classification.detected_name(),
-                MBC3_SUPPORTED_ROM_BYTES_MAX,
-                declared_rom_bytes
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} exceeds the current MBC3 ROM limit of {} bytes with {} bytes",
+            ctx.name(),
+            MBC3_SUPPORTED_ROM_BYTES_MAX,
+            declared_rom_bytes
+        )));
     }
 
     let has_ram = matches!(classification.raw_type(), 0x10 | 0x12 | 0x13);
     if has_ram && header.ram_size.raw_code == 0x05 {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} with 64 KiB SRAM is reserved for the future MBC30 variant, not standard MBC3",
-                classification.detected_name()
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} with 64 KiB SRAM is reserved for the future MBC30 variant, not standard MBC3",
+            ctx.name()
+        )));
     }
 
     if has_ram {
         if !matches!(header.ram_size.raw_code, 0x01..=0x03) {
-            return Err(CartridgeLoadError::Rejected {
-                classification: *classification,
-                execution_mode: compatibility.execution_mode,
-                reason: format!(
-                    "{} declared RAM size code {:#04X}, which is not valid for the current standard MBC3 baseline",
-                    classification.detected_name(),
-                    header.ram_size.raw_code
-                ),
-                diagnostics: diagnostics.clone(),
-            });
+            return Err(ctx.reject(format!(
+                "{} declared RAM size code {:#04X}, which is not valid for the current standard MBC3 baseline",
+                ctx.name(),
+                header.ram_size.raw_code
+            )));
         }
     } else if header.ram_size.raw_code != 0x00 {
-        record_degradable_issue(
-            diagnostics,
-            compatibility.validation_policy,
-            format!(
-                "{} does not provide external RAM, but the header declared RAM size code {:#04X}",
-                classification.detected_name(),
-                header.ram_size.raw_code
-            ),
-        )
-        .map_err(|message| CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: message,
-            diagnostics: diagnostics.clone(),
-        })?;
+        ctx.check_degradable(format!(
+            "{} does not provide external RAM, but the header declared RAM size code {:#04X}",
+            ctx.name(),
+            header.ram_size.raw_code
+        ))?;
     }
 
     Ok(Mbc3Variant::Standard)
@@ -417,45 +334,36 @@ pub(in crate::cartridge) fn validate_mbc5(
     classification: &CartridgeClassification,
     diagnostics: &mut Vec<CartridgeDiagnostic>,
 ) -> Result<Mbc5Variant, CartridgeLoadError> {
+    let mut ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
     let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} declared an unsupported ROM size code {:#04X}",
-                classification.detected_name(),
-                header.rom_size.raw_code
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
     };
 
     if actual_rom_size > MBC5_SUPPORTED_ROM_BYTES_MAX {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} exceeds the current MBC5 ROM limit of {} bytes with {} bytes",
-                classification.detected_name(),
-                MBC5_SUPPORTED_ROM_BYTES_MAX,
-                actual_rom_size
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} exceeds the current MBC5 ROM limit of {} bytes with {} bytes",
+            ctx.name(),
+            MBC5_SUPPORTED_ROM_BYTES_MAX,
+            actual_rom_size
+        )));
     }
 
     if actual_rom_size != declared_rom_bytes {
-        return Err(CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: format!(
-                "{} expects a {}-byte image, but the loaded ROM is {} bytes",
-                classification.detected_name(),
-                declared_rom_bytes,
-                actual_rom_size
-            ),
-            diagnostics: diagnostics.clone(),
-        });
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
     }
 
     let variant = match classification.raw_type() {
@@ -476,38 +384,23 @@ pub(in crate::cartridge) fn validate_mbc5(
         };
 
         if !allowed_ram_codes.contains(&header.ram_size.raw_code) {
-            return Err(CartridgeLoadError::Rejected {
-                classification: *classification,
-                execution_mode: compatibility.execution_mode,
-                reason: format!(
-                    "{} declared RAM size code {:#04X}, which is not valid for the current {} MBC5 baseline",
-                    classification.detected_name(),
-                    header.ram_size.raw_code,
-                    if variant.has_rumble() {
-                        "rumble-capable"
-                    } else {
-                        "standard"
-                    }
-                ),
-                diagnostics: diagnostics.clone(),
-            });
+            return Err(ctx.reject(format!(
+                "{} declared RAM size code {:#04X}, which is not valid for the current {} MBC5 baseline",
+                ctx.name(),
+                header.ram_size.raw_code,
+                if variant.has_rumble() {
+                    "rumble-capable"
+                } else {
+                    "standard"
+                }
+            )));
         }
     } else if header.ram_size.raw_code != 0x00 {
-        record_degradable_issue(
-            diagnostics,
-            compatibility.validation_policy,
-            format!(
-                "{} does not provide external RAM, but the header declared RAM size code {:#04X}",
-                classification.detected_name(),
-                header.ram_size.raw_code
-            ),
-        )
-        .map_err(|message| CartridgeLoadError::Rejected {
-            classification: *classification,
-            execution_mode: compatibility.execution_mode,
-            reason: message,
-            diagnostics: diagnostics.clone(),
-        })?;
+        ctx.check_degradable(format!(
+            "{} does not provide external RAM, but the header declared RAM size code {:#04X}",
+            ctx.name(),
+            header.ram_size.raw_code
+        ))?;
     }
 
     Ok(variant)
