@@ -245,7 +245,7 @@ fn pulse_trigger_rom_second_half_enable_keeps_length_unchanged_before_retrigger(
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(6);
-    prime_channel_2_trigger_test(&mut apu, 2);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_2.pulse.length_counter, 2);
@@ -262,7 +262,7 @@ fn pulse_trigger_rom_first_half_enable_clocks_once_and_survives_the_intervening_
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_2_trigger_test(&mut apu, 2);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_2.pulse.length_counter, 1);
@@ -284,7 +284,7 @@ fn triggering_a_zero_length_pulse_with_length_enabled_reloads_and_clocks_it() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_2_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_2.pulse.length_counter, 0);
@@ -302,7 +302,7 @@ fn triggering_a_length_one_pulse_with_enable_on_the_same_first_half_write_matche
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_2_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
@@ -315,7 +315,7 @@ fn triggering_a_nonzero_length_pulse_does_not_change_its_length_counter() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(6);
-    prime_channel_2_trigger_test(&mut apu, 2);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
@@ -329,7 +329,7 @@ fn writes_other_than_disabling_to_enabled_do_not_extra_clock_pulse_length() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_2_trigger_test(&mut apu, 2);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_2.pulse.length_counter, 1);
@@ -369,7 +369,7 @@ fn extra_length_clocking_to_zero_disables_the_pulse_channel() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_2_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
 
@@ -382,7 +382,7 @@ fn enabling_length_again_after_it_reached_zero_does_not_clock_or_unfreeze_it() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_2_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_2.pulse.length_counter, 0);
@@ -401,7 +401,7 @@ fn triggering_a_zero_length_pulse_with_length_disabled_unfreezes_it_to_the_full_
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_2_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
     apu.write_register(0xFF19, 0x00);
@@ -419,7 +419,7 @@ fn disabled_dac_still_allows_trigger_to_reload_and_clock_pulse_length() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_2_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF17, 0x00);
     assert!(!apu.channel_2.pulse.runtime.dac_enabled);
@@ -442,7 +442,7 @@ fn channel_1_first_half_enable_clocks_length_once_before_retrigger() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_1_trigger_test(&mut apu, 2);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 2);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_1.pulse.length_counter, 1);
@@ -460,7 +460,7 @@ fn channel_1_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_1_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_1.pulse.length_counter, 0);
@@ -477,7 +477,7 @@ fn channel_1_trigger_unfreezes_zero_length_and_clocks_it_after_disabling_length(
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_1_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_1.pulse.length_counter, 0);
@@ -498,7 +498,7 @@ fn channel_1_retrigger_after_unfreezing_zero_length_does_not_extra_clock_again()
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_1_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_1.pulse.length_counter, 0);
@@ -520,7 +520,7 @@ fn trigger_unfreezes_zero_length_then_a_later_enable_allows_normal_length_clocks
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_2_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
     assert_eq!(apu.channel_2.pulse.length_counter, 0);
@@ -554,7 +554,7 @@ fn channel_1_retrigger_after_two_zero_length_freezes_only_extra_clocks_on_real_u
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.frame_sequencer.apply_startup_phase(7);
-    prime_channel_1_trigger_test(&mut apu, 1);
+    prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
 
     apu.write_register(0xFF14, 0x00);
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);

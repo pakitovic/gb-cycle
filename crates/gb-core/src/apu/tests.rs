@@ -20,16 +20,30 @@ const fn pulse_length_load(counter: u8) -> u8 {
     0xC0 | ((PULSE_LENGTH_COUNTER_RELOAD - counter) & PULSE_LENGTH_LOAD_MASK)
 }
 
-fn prime_channel_2_trigger_test(apu: &mut Apu, length_counter: u8) {
-    apu.write_register(0xFF17, 0x08);
-    apu.write_register(0xFF16, pulse_length_load(PULSE_LENGTH_COUNTER_RELOAD));
-    apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT);
-    apu.write_register(0xFF16, pulse_length_load(length_counter));
+struct PulseChannelAddresses {
+    envelope: u16,
+    length_duty: u16,
+    trigger: u16,
 }
 
-fn prime_channel_1_trigger_test(apu: &mut Apu, length_counter: u8) {
-    apu.write_register(0xFF12, 0x08);
-    apu.write_register(0xFF11, pulse_length_load(PULSE_LENGTH_COUNTER_RELOAD));
-    apu.write_register(0xFF14, CHANNEL_TRIGGER_BIT);
-    apu.write_register(0xFF11, pulse_length_load(length_counter));
+const CHANNEL_1: PulseChannelAddresses = PulseChannelAddresses {
+    envelope: 0xFF12,
+    length_duty: 0xFF11,
+    trigger: 0xFF14,
+};
+
+const CHANNEL_2: PulseChannelAddresses = PulseChannelAddresses {
+    envelope: 0xFF17,
+    length_duty: 0xFF16,
+    trigger: 0xFF19,
+};
+
+fn prime_pulse_trigger_test(apu: &mut Apu, ch: &PulseChannelAddresses, length_counter: u8) {
+    apu.write_register(ch.envelope, 0x08);
+    apu.write_register(
+        ch.length_duty,
+        pulse_length_load(PULSE_LENGTH_COUNTER_RELOAD),
+    );
+    apu.write_register(ch.trigger, CHANNEL_TRIGGER_BIT);
+    apu.write_register(ch.length_duty, pulse_length_load(length_counter));
 }
