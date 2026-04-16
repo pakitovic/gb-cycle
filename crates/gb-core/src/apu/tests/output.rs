@@ -27,7 +27,7 @@ fn disabling_the_last_dac_disconnects_the_output_immediately() {
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, 0x00);
-    apu.write_register(0xFF25, 0x11);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
 
     tick_apu_with_edges(&mut apu, 0, &[]);
     let charged = apu.snapshot().output;
@@ -49,7 +49,7 @@ fn hpf_capacitor_freezes_while_all_dacs_are_off() {
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, 0x00);
-    apu.write_register(0xFF25, 0x11);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
 
     tick_apu_with_edges(&mut apu, 0, &[]);
     apu.write_register(0xFF12, 0x00);
@@ -84,7 +84,7 @@ fn routed_nonzero_vin_does_not_keep_the_output_path_connected_without_channel_da
     apu.write_register(0xFF24, NR50_VIN_LEFT_BIT | NR50_VIN_RIGHT_BIT);
 
     let routed = apu.snapshot().output;
-    assert_eq!(routed.channel_dac_outputs, [0, 0, 0, 0]);
+    assert_eq!(routed.channel_dac_outputs, [0; CHANNEL_COUNT]);
     assert_eq!(
         routed.vin_analog_output,
         ApuStereoOutputSnapshot::new(ANALOG_ONE, ANALOG_ONE / 2)
@@ -112,7 +112,7 @@ fn nr51_routes_channel_dac_outputs_independently_to_left_and_right_buses() {
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF17, 0x08);
-    apu.write_register(0xFF25, 0x12);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH2_BIT);
 
     let snapshot = apu.snapshot();
 
@@ -133,7 +133,7 @@ fn nr50_vin_bits_route_the_explicit_neutral_vin_lane_without_altering_channel_mi
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
-    apu.write_register(0xFF25, 0x11);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
     apu.write_register(0xFF24, 0x00);
 
     let baseline = apu.snapshot().output;
@@ -158,14 +158,14 @@ fn nr50_volume_zero_still_scales_by_one_and_seven_scales_by_eight() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
-    apu.write_register(0xFF25, 0x11);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
 
     apu.write_register(0xFF24, 0x00);
     let quiet_snapshot = apu.snapshot();
     assert_eq!(quiet_snapshot.output.master_output.left, ANALOG_ONE);
     assert_eq!(quiet_snapshot.output.master_output.right, ANALOG_ONE);
 
-    apu.write_register(0xFF24, 0x77);
+    apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
     let loud_snapshot = apu.snapshot();
     assert_eq!(loud_snapshot.output.master_output.left, ANALOG_ONE * 8);
     assert_eq!(loud_snapshot.output.master_output.right, ANALOG_ONE * 8);
@@ -177,7 +177,7 @@ fn hpf_state_persists_across_t_cycles_and_pulls_the_output_towards_zero() {
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, 0x00);
-    apu.write_register(0xFF25, 0x11);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
 
     let before = apu.snapshot().output;
     assert_eq!(before.hpf_output.left, ANALOG_ONE);
@@ -249,7 +249,7 @@ fn cgb_hpf_settles_more_aggressively_than_dmg() {
         apu.write_register(0xFF26, 0x80);
         apu.write_register(0xFF12, 0x08);
         apu.write_register(0xFF24, 0x00);
-        apu.write_register(0xFF25, 0x11);
+        apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
     }
 
     tick_apu_with_edges(&mut dmg, 0, &[]);
@@ -274,8 +274,8 @@ fn host_output_sample_matches_the_live_post_hpf_output_snapshot() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
-    apu.write_register(0xFF24, 0x77);
-    apu.write_register(0xFF25, 0x11);
+    apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
 
     let output_snapshot = apu.snapshot().output.hpf_output;
 
@@ -378,7 +378,7 @@ fn mixer_and_hpf_output_change_immediately_when_routing_changes() {
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF24, 0x00);
-    apu.write_register(0xFF25, 0x01);
+    apu.write_register(0xFF25, NR51_RIGHT_ROUTE_CH1_BIT);
 
     let right_only = apu.snapshot().output;
     assert_eq!(right_only.master_output.left, 0);
@@ -386,7 +386,7 @@ fn mixer_and_hpf_output_change_immediately_when_routing_changes() {
     assert_eq!(right_only.hpf_output.left, 0);
     assert_eq!(right_only.hpf_output.right, ANALOG_ONE);
 
-    apu.write_register(0xFF25, 0x10);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT);
     let left_only = apu.snapshot().output;
     assert_eq!(left_only.master_output.left, ANALOG_ONE);
     assert_eq!(left_only.master_output.right, 0);

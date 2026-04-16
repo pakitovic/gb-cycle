@@ -104,13 +104,20 @@ impl Apu {
     }
 
     pub(in crate::apu) fn read_nr52(&self) -> u8 {
+        self.read_nr52_from_channel_output(self.channel_output_state())
+    }
+
+    pub(in crate::apu) fn read_nr52_from_channel_output(
+        &self,
+        channel_output: super::ChannelOutputState,
+    ) -> u8 {
         NR52_FORCED_HIGH_MASK
             | if self.master.powered {
                 NR52_MASTER_POWER_BIT
             } else {
                 0
             }
-            | self.channel_active_mask()
+            | channel_output.active_mask
     }
 
     pub(in crate::apu) fn write_nr52(&mut self, value: u8) {
@@ -121,26 +128,24 @@ impl Apu {
             (false, true) => {
                 self.master.powered = true;
                 self.frame_sequencer.apply_startup_phase(0);
-                self.channel_1.pulse.mark_powered_on();
-                self.channel_2.pulse.mark_powered_on();
+                self.channel_1.mark_powered_on();
+                self.channel_2.mark_powered_on();
             }
             _ => {}
         }
     }
 
-    pub(in crate::apu) fn should_observe_register_write(address: u16) -> bool {
-        (0xFF10..=0xFF26).contains(&address)
-    }
-
     pub(in crate::apu) fn register_write_state(&self) -> ApuRegisterWriteState {
+        let resolved = self.resolved_output_state();
+
         ApuRegisterWriteState {
             powered: self.master.powered,
             nr50: self.master.nr50,
             nr51: self.master.nr51,
-            nr52: self.read_nr52(),
-            channel_active_mask: self.channel_active_mask(),
-            channel_dac_mask: self.channel_dac_mask(),
-            output: self.output_snapshot(),
+            nr52: self.read_nr52_from_channel_output(resolved.channel_output),
+            channel_active_mask: resolved.channel_output.active_mask,
+            channel_dac_mask: resolved.channel_output.dac_mask,
+            output: self.output_snapshot_from_resolved(resolved),
         }
     }
 

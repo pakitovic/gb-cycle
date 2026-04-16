@@ -268,14 +268,13 @@ fn observed_register_write_captures_channel_3_dac_disable_before_and_after_state
 }
 
 fn active_channel_3_test_state() -> Channel3State {
-    Channel3State {
-        nr30: NR30_DAC_POWER_BIT,
-        runtime: ChannelRuntimeState {
-            dac_enabled: true,
-            active: true,
-        },
-        ..Channel3State::default()
-    }
+    let mut channel = Channel3State::default();
+    channel.apply_powered_startup(NR30_DAC_POWER_BIT, 0, 0, 0, 0, true);
+    channel.runtime = ChannelRuntimeState {
+        dac_enabled: true,
+        active: true,
+    };
+    channel
 }
 
 #[test]

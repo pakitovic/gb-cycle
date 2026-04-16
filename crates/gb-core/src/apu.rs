@@ -4,6 +4,7 @@ mod control;
 mod frame_sequencer;
 mod mmio;
 mod output;
+mod registers;
 mod sample_capture;
 
 use crate::model::ConsoleModel;
@@ -78,6 +79,12 @@ pub struct ApuSnapshot {
     pub last_register_write: Option<ApuRegisterWriteObservation>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::apu) struct ResolvedApuOutputState {
+    pub(in crate::apu) channel_output: ChannelOutputState,
+    pub(in crate::apu) output_mix: OutputMixState,
+}
+
 impl Apu {
     pub fn new(console_model: ConsoleModel) -> Self {
         let wave_ram_startup_policy = WaveRamStartupPolicy::DeterministicZeroed;
@@ -110,10 +117,7 @@ impl Apu {
         self.channel_3.begin_t_cycle();
 
         if self.master.powered {
-            self.channel_1.tick_fast_timer();
-            self.channel_2.tick_fast_timer();
-            self.channel_3.tick_fast_timer();
-            self.channel_4.tick_fast_timer();
+            self.tick_channel_fast_timers();
         }
 
         for edge in context.derived_edges() {
@@ -130,18 +134,20 @@ impl Apu {
     }
 
     pub fn snapshot(&self) -> ApuSnapshot {
+        let resolved = self.resolved_output_state();
+
         ApuSnapshot {
             console_model: self.console_model,
             status: self.status,
             powered: self.master.powered,
             nr50: self.master.nr50,
             nr51: self.master.nr51,
-            channel_active_mask: self.channel_active_mask(),
-            channel_dac_mask: self.channel_dac_mask(),
+            channel_active_mask: resolved.channel_output.active_mask,
+            channel_dac_mask: resolved.channel_output.dac_mask,
             div_apu: self.frame_sequencer.step,
-            wave_ram: self.channel_3.wave_ram,
+            wave_ram: self.channel_3.wave_ram_snapshot(),
             wave_ram_startup_policy: self.wave_ram_startup_policy,
-            output: self.output_snapshot(),
+            output: self.output_snapshot_from_resolved(resolved),
             last_register_write: self.last_register_write.clone(),
         }
     }
@@ -151,7 +157,9 @@ impl Apu {
     }
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
-        let output = self.output_snapshot();
+        let resolved = self.resolved_output_state();
+        let output = self.output_snapshot_from_resolved(resolved);
+
         format!(
             "t_cycle={} phase={} console_model={:?} status={:?} powered={} nr50={:#04X} nr51={:#04X} nr52={:#04X} div_apu={} active_mask={:#04X} dac_mask={:#04X} channel_digital_outputs={:?} mixer=({}, {}) hpf=({}, {})",
             context.t_cycle().get(),
@@ -161,24 +169,16 @@ impl Apu {
             self.master.powered,
             self.master.nr50,
             self.master.nr51,
-            self.read_nr52(),
+            self.read_nr52_from_channel_output(resolved.channel_output),
             self.frame_sequencer.step,
-            self.channel_active_mask(),
-            self.channel_dac_mask(),
+            resolved.channel_output.active_mask,
+            resolved.channel_output.dac_mask,
             output.channel_digital_outputs,
             output.mixer_output.left,
             output.mixer_output.right,
             output.hpf_output.left,
             output.hpf_output.right,
         )
-    }
-
-    fn channel_active_mask(&self) -> u8 {
-        self.channel_output_state().active_mask
-    }
-
-    fn channel_dac_mask(&self) -> u8 {
-        self.channel_output_state().dac_mask
     }
 
     fn channel_output_state(&self) -> ChannelOutputState {
@@ -190,22 +190,51 @@ impl Apu {
         )
     }
 
-    fn output_mix(&self) -> OutputMixState {
-        mix_output(&self.master, self.channel_output_state())
+    pub(in crate::apu) fn resolved_output_state(&self) -> ResolvedApuOutputState {
+        let channel_output = self.channel_output_state();
+        let output_mix = mix_output(&self.master, channel_output);
+
+        ResolvedApuOutputState {
+            channel_output,
+            output_mix,
+        }
     }
 
-    fn output_snapshot(&self) -> ApuOutputSnapshot {
-        self.output_mix().snapshot(&self.output_path)
+    pub(in crate::apu) fn output_snapshot_from_resolved(
+        &self,
+        resolved: ResolvedApuOutputState,
+    ) -> ApuOutputSnapshot {
+        resolved.output_mix.snapshot(&self.output_path)
     }
 
     fn preview_output_path(&mut self) {
-        let output_mix = self.output_mix();
-        preview_output_path(&mut self.output_path, output_mix);
+        let resolved = self.resolved_output_state();
+        preview_output_path(&mut self.output_path, resolved.output_mix);
     }
 
     fn tick_output_path(&mut self) {
-        let output_mix = self.output_mix();
-        tick_output_path(&mut self.output_path, output_mix);
+        let resolved = self.resolved_output_state();
+        tick_output_path(&mut self.output_path, resolved.output_mix);
+    }
+
+    fn tick_channel_fast_timers(&mut self) {
+        self.channel_1.tick_fast_timer();
+        self.channel_2.tick_fast_timer();
+        self.channel_3.tick_fast_timer();
+        self.channel_4.tick_fast_timer();
+    }
+
+    fn clock_channel_lengths(&mut self) {
+        self.channel_1.clock_length();
+        self.channel_2.clock_length();
+        self.channel_3.clock_length();
+        self.channel_4.clock_length();
+    }
+
+    fn clock_channel_envelopes(&mut self) {
+        self.channel_1.clock_envelope();
+        self.channel_2.clock_envelope();
+        self.channel_4.clock_envelope();
     }
 
     fn advance_frame_sequencer(&mut self) {
@@ -216,18 +245,13 @@ impl Apu {
         }
 
         if clocks.length {
-            self.channel_1.clock_length();
-            self.channel_2.clock_length();
-            self.channel_3.clock_length();
-            self.channel_4.clock_length();
+            self.clock_channel_lengths();
         }
         if clocks.sweep {
             self.channel_1.clock_sweep();
         }
         if clocks.envelope {
-            self.channel_1.clock_envelope();
-            self.channel_2.clock_envelope();
-            self.channel_4.clock_envelope();
+            self.clock_channel_envelopes();
         }
 
         self.preview_output_path();

@@ -1,10 +1,12 @@
 use crate::model::ConsoleModel;
 
 use super::super::common::{
-    ChannelRuntimeState, LENGTH_ENABLE_BIT, PULSE_DUTY_MASK, PULSE_LENGTH_COUNTER_RELOAD,
-    apply_consistent_zombie_mode_increment, clock_envelope_unit, decode_envelope_register,
-    envelope_timer_reload, pulse_length_counter_from_load, pulse_timer_reload, pulse_waveform_high,
-    should_apply_extra_length_clocking_on_enable,
+    ChannelRuntimeState, ExtraLengthClockingContext, LENGTH_ENABLE_BIT, PULSE_DUTY_MASK,
+    PULSE_DUTY_SHIFT, PULSE_DUTY_STEP_MASK, PULSE_LENGTH_COUNTER_RELOAD,
+    PULSE_PERIOD_TIMER_LOW_BITS_MASK, apply_consistent_zombie_mode_increment,
+    apply_extra_length_clocking_u8, clock_envelope_unit, clock_length_counter_u8,
+    decode_envelope_register, envelope_timer_reload, pulse_length_counter_from_load,
+    pulse_timer_reload, pulse_waveform_high,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -51,8 +53,16 @@ impl PulseChannelState {
         self.suppress_initial_trigger_output = false;
     }
 
+    pub(in crate::apu) fn runtime_state(&self) -> ChannelRuntimeState {
+        self.runtime
+    }
+
     pub(in crate::apu) fn apply_length_duty_write(&mut self, value: u8) {
-        self.duty = (value & PULSE_DUTY_MASK) >> 6;
+        self.duty = (value & PULSE_DUTY_MASK) >> PULSE_DUTY_SHIFT;
+        self.length_counter = pulse_length_counter_from_load(value);
+    }
+
+    pub(in crate::apu) fn write_length_counter_while_powered_off(&mut self, value: u8) {
         self.length_counter = pulse_length_counter_from_load(value);
     }
 
@@ -85,25 +95,19 @@ impl PulseChannelState {
         trigger: bool,
         trigger_reloaded_zero_length: bool,
     ) {
-        if !should_apply_extra_length_clocking_on_enable(
-            console_model,
-            self.length_enabled,
-            self.length_counter == 0,
-            was_length_enabled,
-            next_step_clocks_length,
-            trigger_reloaded_zero_length,
-        ) {
-            return;
-        }
-
-        self.length_counter -= 1;
-        if self.length_counter == 0 {
-            if trigger {
-                self.length_counter = PULSE_LENGTH_COUNTER_RELOAD - 1;
-            } else {
-                self.runtime.active = false;
-            }
-        }
+        apply_extra_length_clocking_u8(
+            ExtraLengthClockingContext {
+                console_model,
+                length_enabled: self.length_enabled,
+                was_length_enabled,
+                next_step_clocks_length,
+                trigger,
+                trigger_reloaded_zero_length,
+            },
+            &mut self.length_counter,
+            PULSE_LENGTH_COUNTER_RELOAD,
+            &mut self.runtime.active,
+        );
     }
 
     pub(in crate::apu) fn apply_powered_startup(&mut self, startup: PulseStartupState) {
@@ -119,6 +123,36 @@ impl PulseChannelState {
         self.runtime = startup.runtime;
     }
 
+    pub(in crate::apu) fn apply_channel_startup(
+        &mut self,
+        length_duty_value: u8,
+        envelope_value: u8,
+        nrx4: u8,
+        period_value: u16,
+        dac_enabled: bool,
+        active: bool,
+    ) {
+        let mut runtime = ChannelRuntimeState::default();
+        runtime.set_dac_enabled(dac_enabled);
+        runtime.set_active_from_startup(active);
+        self.apply_powered_startup(PulseStartupState {
+            length_duty_value,
+            envelope_value,
+            nrx4,
+            period_value,
+            runtime,
+            first_trigger_after_power_on_pending: !active,
+        });
+    }
+
+    pub(in crate::apu) fn power_off(&mut self, console_model: ConsoleModel) {
+        if console_model.is_dmg_family() {
+            self.clear_preserving_length();
+        } else {
+            self.clear();
+        }
+    }
+
     pub(in crate::apu) fn trigger(
         &mut self,
         period_value: u16,
@@ -132,7 +166,7 @@ impl PulseChannelState {
         }
 
         self.apply_envelope_write(envelope_value);
-        let preserved_period_timer_low_bits = self.period_timer & 0x03;
+        let preserved_period_timer_low_bits = self.period_timer & PULSE_PERIOD_TIMER_LOW_BITS_MASK;
         self.period_timer = pulse_timer_reload(period_value) | preserved_period_timer_low_bits;
         self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
         self.envelope_timer =
@@ -157,20 +191,17 @@ impl PulseChannelState {
 
         if self.period_timer == 0 {
             self.period_timer = pulse_timer_reload(period_value);
-            self.duty_step = (self.duty_step + 1) & 0x07;
+            self.duty_step = (self.duty_step + 1) & PULSE_DUTY_STEP_MASK;
             self.suppress_initial_trigger_output = false;
         }
     }
 
     pub(in crate::apu) fn clock_length(&mut self) {
-        if !self.length_enabled || self.length_counter == 0 {
-            return;
-        }
-
-        self.length_counter -= 1;
-        if self.length_counter == 0 {
-            self.runtime.active = false;
-        }
+        clock_length_counter_u8(
+            self.length_enabled,
+            &mut self.length_counter,
+            &mut self.runtime.active,
+        );
     }
 
     pub(in crate::apu) fn clock_envelope(&mut self) {
