@@ -31,43 +31,14 @@ fn build_test_cartridge(program: &[u8]) -> CartridgeSlot {
     cartridge
 }
 
-fn tick_cpu(cpu: &mut CpuCore, bus: &mut Bus, cartridge: &mut CartridgeSlot) {
-    let arbitration_state = BusArbitrationState::default();
-
-    cpu.tick_t_cycle(|operation| match operation {
-        CpuBusOperation::Read { address } => Some(bus.read_with_context(
-            address,
-            BusRequester::Cpu,
-            &arbitration_state,
-            Some(&*cartridge),
-            BusIoReadView::default(),
-        )),
-        CpuBusOperation::Write { address, value } => {
-            bus.write_with_context(
-                address,
-                value,
-                BusRequester::Cpu,
-                &arbitration_state,
-                Some(cartridge),
-                BusIoWriteView::default(),
-            );
-            None
-        }
-        CpuBusOperation::PendingInterruptMask => Some(0),
-        CpuBusOperation::InterruptEnableMask => Some(0),
-        CpuBusOperation::StopWakeLineAsserted => Some(0),
-        CpuBusOperation::AcknowledgeInterrupt { .. } => None,
-        CpuBusOperation::RequestInterrupt { .. } => None,
-    });
-}
-
-fn tick_cpu_with_interrupts(
+fn tick_cpu(
     cpu: &mut CpuCore,
     bus: &mut Bus,
     cartridge: &mut CartridgeSlot,
-    interrupts: &mut InterruptController,
+    mut interrupts: Option<&mut InterruptController>,
 ) {
     let arbitration_state = BusArbitrationState::default();
+
     cpu.tick_t_cycle(|operation| match operation {
         CpuBusOperation::Read { address } => Some(bus.read_with_context(
             address,
@@ -75,7 +46,7 @@ fn tick_cpu_with_interrupts(
             &arbitration_state,
             Some(&*cartridge),
             BusIoReadView {
-                interrupts: Some(&*interrupts),
+                interrupts: interrupts.as_deref(),
                 ..BusIoReadView::default()
             },
         )),
@@ -87,21 +58,31 @@ fn tick_cpu_with_interrupts(
                 &arbitration_state,
                 Some(cartridge),
                 BusIoWriteView {
-                    interrupts: Some(interrupts),
+                    interrupts: interrupts.as_deref_mut(),
                     ..BusIoWriteView::default()
                 },
             );
             None
         }
-        CpuBusOperation::PendingInterruptMask => Some(interrupts.pending_mask()),
-        CpuBusOperation::InterruptEnableMask => Some(interrupts.read_ie()),
+        CpuBusOperation::PendingInterruptMask => match &interrupts {
+            Some(ic) => Some(ic.pending_mask()),
+            None => Some(0),
+        },
+        CpuBusOperation::InterruptEnableMask => match &interrupts {
+            Some(ic) => Some(ic.read_ie()),
+            None => Some(0),
+        },
         CpuBusOperation::StopWakeLineAsserted => Some(0),
         CpuBusOperation::AcknowledgeInterrupt { source } => {
-            interrupts.clear(source);
+            if let Some(ic) = &mut interrupts {
+                ic.clear(source);
+            }
             None
         }
         CpuBusOperation::RequestInterrupt { source } => {
-            interrupts.request(source);
+            if let Some(ic) = &mut interrupts {
+                ic.request(source);
+            }
             None
         }
     });
@@ -109,7 +90,7 @@ fn tick_cpu_with_interrupts(
 
 fn tick_cpu_n(cpu: &mut CpuCore, bus: &mut Bus, cartridge: &mut CartridgeSlot, steps: usize) {
     for _ in 0..steps {
-        tick_cpu(cpu, bus, cartridge);
+        tick_cpu(cpu, bus, cartridge, None);
     }
 }
 
@@ -121,7 +102,7 @@ fn tick_cpu_n_with_interrupts(
     steps: usize,
 ) {
     for _ in 0..steps {
-        tick_cpu_with_interrupts(cpu, bus, cartridge, interrupts);
+        tick_cpu(cpu, bus, cartridge, Some(interrupts));
     }
 }
 

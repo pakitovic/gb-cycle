@@ -8,6 +8,7 @@ mod internal;
 mod mbc1;
 mod mbc2;
 mod mbc3;
+mod mbc3_rtc;
 mod mbc5;
 mod no_mbc;
 mod persistence;
