@@ -59,6 +59,29 @@ evidence or a clearer architectural need overrides them later.
    The hard problem is not windowing; it is advancing multiple consoles on one
    shared T-cycle timeline with the repo's scheduler phase rules intact.
 
+## Phase 0 glossary
+
+Phase `0` uses the following vocabulary. Later docs and code comments should
+preserve these distinctions even if final Rust type names evolve.
+
+| Term | Meaning | Primary owner |
+|------|---------|---------------|
+| `serial hardware` | The per-console serial controller: `SB`, `SC`, transfer state, clock selection, bit shifting, and completion IRQ timing. | `gb-core::serial` |
+| `external port` | The physical handheld connector shared by link cable and printer workflows. | hardware concept |
+| `external-port attachment` | What is currently connected to one console's external port: `None`, `Printer`, `GameLinkDmg04`, or `FourPlayerAdapterDmg07`. | `gb-core`, outside local serial shifting logic |
+| `serial endpoint` | The narrow per-console boundary that supplies incoming serial bits, external slave clocks, and disconnected/open-line behavior to local serial hardware. | attachment or linked-session layer |
+| `linked session` | A shared owner that advances multiple `Machine` instances and any cable/adapter topology on one common T-cycle timeline. | `gb-core`, outside local serial hardware |
+| `player slot` | Host-facing player identity such as `P1..P4`, including input, mute, and view policy. | `gb-desktop` |
+
+Two clarifications are intentionally locked in:
+
+- `Printer` and `Game Link` share the same physical external port, but printer
+  support is still a single-console attachment problem rather than a
+  multi-console linked-session problem.
+- A `serial endpoint` is narrower than an attachment or linked session. It is
+  the immediate signal boundary seen by the serial controller, not the full
+  owner of topology, UI, or multi-machine scheduling.
+
 ## Final UX target
 
 The long-term desktop UX target is one `EXT. PORT` menu with:

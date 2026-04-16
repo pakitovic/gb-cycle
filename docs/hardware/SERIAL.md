@@ -2,7 +2,26 @@
 
 ## Scope
 
-Own serial transfer registers, bit-level transfer state, clocking behavior, link-port-visible state, and the boundary to any external peer or cable model. Do not own host networking or transport APIs.
+Own serial transfer registers, bit-level transfer state, clocking behavior, link-port-visible state, and the narrow signal boundary to anything connected on the far side of the handheld's external port. Do not own printer protocol state, cable / adapter topology, shared multi-console scheduling, or host networking / transport APIs.
+
+## External-port layering baseline
+
+Keep these layers distinct even when the current implementation only exposes a
+small serial-peer surface:
+
+- `serial hardware`: the per-console controller that owns `SB`, `SC`,
+  transfer state, bit shifting, and serial IRQ timing
+- `external-port attachment`: what is physically connected to one console's
+  port, such as nothing, a printer, a `DMG-04` cable endpoint, or a
+  `DMG-07` adapter uplink
+- `serial endpoint`: the immediate per-console signal boundary that provides
+  incoming bits, external slave clocks, and disconnected/open-line behavior to
+  the serial controller
+- `linked session`: any owner that must coordinate multiple `Machine`
+  instances and cable / adapter topology on one shared T-cycle timeline
+
+The serial subsystem only owns the first layer and consumes the third. It must
+not silently absorb the second or fourth into ad hoc local state.
 
 ## Hardware model
 
@@ -22,7 +41,8 @@ Keep these concerns distinct:
 - `SB` and `SC` behavior
 - transfer progress state
 - bit-level shifting state and clocking
-- peer or link-endpoint boundary
+- serial-endpoint boundary toward the active external-port attachment or linked
+  session
 - interrupt signaling at transfer completion
 
 ## Registers / MMIO
@@ -68,6 +88,10 @@ Keep these concerns distinct:
 - The serial core should remain separate from whatever lives on the other side of the cable.
 - Use an explicit peer or link-endpoint abstraction for incoming bits, external clock pulses, and disconnected-state behavior.
 - The serial controller must not assume a second emulated Game Boy is always connected.
+- The immediate serial-endpoint boundary is narrower than attachment ownership:
+  printer protocol state, `DMG-04` cable routing, `DMG-07` adapter state, and
+  future multi-machine session scheduling belong outside the local serial
+  controller even if they ultimately drive this boundary.
 - The peer boundary should support at least:
   - disconnected state
   - loopback or echo-style testing
@@ -112,7 +136,8 @@ Keep these concerns distinct:
 - bus/MMIO wiring
 - interrupt controller
 - T-cycle scheduler or clock source
-- peer or link-endpoint boundary
+- serial-endpoint boundary supplied by an external-port attachment or linked
+  session owner
 
 ## Primary references
 
@@ -155,6 +180,10 @@ Keep these concerns distinct:
 - Direct-boot startup values for `SB` and `SC` should come from the centralized post-boot snapshot rather than from serial-local guessed reset defaults.
 - Direct-boot should also seed serial's hidden free-running clock phase explicitly instead of deriving it from the timer's `DIV` phase or from the moment a transfer is armed.
 - Keep disconnected, loopback, scripted, and future transport-backed peers behind one narrow serial-peer boundary so the core stays transport-agnostic.
+- Keep printer protocol state, `DMG-04` / `DMG-07` topology state, and any
+  future linked multi-console scheduler outside the serial subsystem; those
+  owners should drive the narrow serial-endpoint boundary instead of being
+  folded into `SB` / `SC` logic.
 - In the current baseline, the peer boundary is already explicit enough to
   distinguish disconnected input from loopback and to queue external slave-mode
   clock pulses on the shared timeline, while fuller scripted peers can land
