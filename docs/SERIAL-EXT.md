@@ -484,13 +484,24 @@ The current first cut of Phase `6` covers:
 - visible but disabled entries for:
   - `GAME LINK`
   - `4 PLAYER ADAPTER`
-- desktop-owned draining of `PrintedPage` output into session history so
-  printer output becomes host-visible without changing `gb-core`
+
+### Phase 6.2 status
+
+The current printer-host UX adds:
+
+- a dedicated desktop printer window with no HUD
+- automatic PNG output under a `printer/` subdirectory next to the loaded ROM
+- desktop-owned stitching of multi-part `PrintedPage` segments into one final
+  strip when games continue printing with zero feed margins
+- desktop-owned rendering of only the latest completed or in-progress printer
+  document
+- no printer history, gallery, or manual export flow in frontend code
 
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`
 - `crates/gb-desktop/src/menu.rs`
+- `crates/gb-desktop/src/printer_output.rs`
 - desktop settings/config if attachment persistence is added
 
 ### Validation gate

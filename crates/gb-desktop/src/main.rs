@@ -3,6 +3,7 @@ mod bootrom;
 mod cli;
 mod input;
 mod menu;
+mod printer_output;
 mod save_session;
 mod settings;
 
@@ -14,7 +15,7 @@ use gb_core::{
     CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
     CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, CpuSnapshot, ExecutionMode,
     InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
-    MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuStepRegion, PrintedPage, StartupMode,
+    MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuStepRegion, StartupMode,
     TraceSummaryBuffer,
 };
 use gb_desktop::{
@@ -37,6 +38,7 @@ use menu::{
     KeyboardBindingTarget, KeyboardMenuBindingTarget, MenuAction, MenuInput, MenuPresentation,
     OverlayMenuState, PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, render_performance_hud,
 };
+use printer_output::PrinterOutputState;
 use save_session::DesktopSaveSession;
 use sdl3::dialog::{DialogError, DialogFileFilter, show_open_file_dialog, show_open_folder_dialog};
 use sdl3::event::Event;
@@ -74,7 +76,6 @@ const PERFORMANCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const EXPECTED_SCANLINE_T_CYCLES: usize = 456;
 const INPUT_POLL_SLICE_T_CYCLES: usize = 256;
 const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
-const PRINTED_PAGE_HISTORY_LIMIT: usize = 32;
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
 const DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR: &str =
@@ -159,6 +160,7 @@ struct FrontendRuntime {
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
     trace_capture: DesktopTraceCapture,
+    printer_output: PrinterOutputState,
 }
 
 struct DesktopSession {
@@ -168,7 +170,6 @@ struct DesktopSession {
     last_open_directory: Option<PathBuf>,
     recent_roms: Vec<PathBuf>,
     external_port_selection: DesktopExternalPortSelection,
-    printed_pages: VecDeque<PrintedPage>,
 }
 
 #[derive(Clone)]
@@ -219,17 +220,6 @@ impl DesktopSession {
 
     fn recent_roms(&self) -> &[PathBuf] {
         &self.recent_roms
-    }
-
-    fn printed_page_count(&self) -> usize {
-        self.printed_pages.len()
-    }
-
-    fn record_printed_pages(&mut self, printed_pages: Vec<PrintedPage>) {
-        self.printed_pages.extend(printed_pages);
-        while self.printed_pages.len() > PRINTED_PAGE_HISTORY_LIMIT {
-            self.printed_pages.pop_front();
-        }
     }
 }
 
@@ -2644,7 +2634,6 @@ fn run_desktop_with_startup_fallback_persistence(
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
         external_port_selection: DesktopExternalPortSelection::None,
-        printed_pages: VecDeque::new(),
     };
 
     let (mut machine, diagnostics) = match session.rom_bytes() {
@@ -2752,6 +2741,7 @@ fn run_desktop_with_startup_fallback_persistence(
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
         trace_capture: DesktopTraceCapture::from_env()?,
+        printer_output: PrinterOutputState::default(),
     };
     apply_canvas_video_options(&mut canvas, &runtime.video_options)?;
     if !session.has_loaded_rom() {
@@ -2980,6 +2970,7 @@ fn run_desktop_with_startup_fallback_persistence(
     }
 
     settings_store.set_fullscreen(canvas.window().fullscreen_state() != FullscreenType::Off)?;
+    flush_pending_printer_output(canvas.window(), &session, &mut runtime);
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
         gamepad_manager.update_rumble(false, Instant::now())?;
     }
@@ -3106,8 +3097,10 @@ fn apply_external_port_selection_to_machine(
     machine.set_external_port_attachment(selection.core_attachment_kind());
 }
 
-fn drain_printed_pages_into_session(
-    session: &mut DesktopSession,
+fn drain_printed_pages_into_printer_output(
+    main_window: &Window,
+    session: &DesktopSession,
+    runtime: &mut FrontendRuntime,
     machine: &mut Machine<TraceSummaryBuffer>,
 ) {
     let printed_pages = machine.take_printed_pages();
@@ -3115,7 +3108,30 @@ fn drain_printed_pages_into_session(
         return;
     }
 
-    session.record_printed_pages(printed_pages);
+    for printed_page in printed_pages {
+        if let Err(error) = runtime.printer_output.handle_printed_page(
+            main_window,
+            session.rom_path(),
+            session.current_dir.as_path(),
+            &printed_page,
+        ) {
+            eprintln!("printer output failed: {error}");
+        }
+    }
+}
+
+fn flush_pending_printer_output(
+    main_window: &Window,
+    session: &DesktopSession,
+    runtime: &mut FrontendRuntime,
+) {
+    if let Err(error) = runtime.printer_output.flush_pending_document(
+        main_window,
+        session.rom_path(),
+        session.current_dir.as_path(),
+    ) {
+        eprintln!("printer output failed: {error}");
+    }
 }
 
 fn load_initial_rom(
@@ -3228,6 +3244,10 @@ fn process_events(
                     machine,
                 );
             }
+        }
+
+        if runtime.printer_output.handle_event(&event)? {
+            continue;
         }
 
         if runtime.menu_state.is_open() && runtime.menu_state.is_capturing_binding() {
@@ -3409,7 +3429,13 @@ fn process_events(
                             }
                         }
                         HotkeyAction::Reset => {
-                            reset_machine(session, machine, runtime, settings_store)?;
+                            reset_machine(
+                                canvas.window(),
+                                session,
+                                machine,
+                                runtime,
+                                settings_store,
+                            )?;
                             let keyboard_bindings = runtime.keyboard_bindings;
                             sync_live_input_state(event_pump, &keyboard_bindings, machine, runtime);
                         }
@@ -3572,7 +3598,12 @@ fn step_until_next_frame(
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
             context.machine.step_t_cycle();
             stepped_t_cycles += 1;
-            drain_printed_pages_into_session(context.session, context.machine);
+            drain_printed_pages_into_printer_output(
+                canvas.window(),
+                context.session,
+                context.runtime,
+                context.machine,
+            );
             current_scanline_t_cycles += 1;
             context
                 .runtime
@@ -3976,7 +4007,13 @@ fn rebuild_machine_for_config(
     context: &mut FrontendActionContext<'_>,
     next_config: &DesktopConfig,
 ) -> Result<DesktopConfig, String> {
-    drain_printed_pages_into_session(context.session, context.machine);
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
     let battery_backed_state = uses_battery_backed_hardware_persistence(
@@ -4042,7 +4079,6 @@ fn rebuild_machine_for_config(
             last_open_directory: context.session.last_open_directory.clone(),
             recent_roms: context.session.recent_roms.clone(),
             external_port_selection: context.session.external_port_selection,
-            printed_pages: context.session.printed_pages.clone(),
         };
         let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
         Ok((
@@ -4117,7 +4153,13 @@ fn open_selected_rom(
     selected_path: PathBuf,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<(), String> {
-    drain_printed_pages_into_session(context.session, context.machine);
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
     let had_loaded_rom = context.session.has_loaded_rom();
@@ -4161,7 +4203,6 @@ fn open_selected_rom(
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
         external_port_selection: context.session.external_port_selection,
-        printed_pages: context.session.printed_pages.clone(),
     };
     let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
 
@@ -4466,7 +4507,13 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SetExternalPort(selection) => {
-            drain_printed_pages_into_session(context.session, context.machine);
+            drain_printed_pages_into_printer_output(
+                canvas.window(),
+                context.session,
+                context.runtime,
+                context.machine,
+            );
+            flush_pending_printer_output(canvas.window(), context.session, context.runtime);
             context.session.external_port_selection = selection;
             apply_external_port_selection_to_machine(context.machine, selection);
             Ok(None)
@@ -4596,6 +4643,7 @@ fn execute_menu_action(
         }
         MenuAction::Reset => {
             reset_machine(
+                canvas.window(),
                 context.session,
                 context.machine,
                 context.runtime,
@@ -4604,7 +4652,10 @@ fn execute_menu_action(
             close_menu(event_pump, context.machine, context.runtime)?;
             Ok(None)
         }
-        MenuAction::Quit => Ok(Some(LoopSignal::Quit)),
+        MenuAction::Quit => {
+            flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+            Ok(Some(LoopSignal::Quit))
+        }
     }
 }
 
@@ -4654,7 +4705,6 @@ fn current_menu_presentation(
         startup_mode: session.config.launch.startup_mode,
         execution_mode: session.config.launch.execution_mode,
         external_port_selection: session.external_port_selection,
-        printed_page_count: session.printed_page_count(),
         boot_rom_uses_default_path: session.config.boot_rom.search_path.is_none(),
         boot_rom_verification: session.config.boot_rom.verification,
         saves_enabled: session.config.saves.enabled,
@@ -5245,6 +5295,7 @@ fn menu_input_for_gamepad_button(
 }
 
 fn reset_machine(
+    main_window: &Window,
     session: &mut DesktopSession,
     machine: &mut Machine<TraceSummaryBuffer>,
     runtime: &mut FrontendRuntime,
@@ -5253,6 +5304,8 @@ fn reset_machine(
     let Some(rom_bytes) = session.rom_bytes() else {
         return Ok(());
     };
+    drain_printed_pages_into_printer_output(main_window, session, runtime, machine);
+    flush_pending_printer_output(main_window, session, runtime);
     runtime.rtc_sync.apply_to_machine(machine);
     let battery_backed_state =
         uses_battery_backed_hardware_persistence(machine.cartridge().persistence_metadata())
@@ -5982,7 +6035,6 @@ mod tests {
                 last_open_directory: Some(root.clone()),
                 recent_roms: Vec::new(),
                 external_port_selection: DesktopExternalPortSelection::None,
-                printed_pages: VecDeque::new(),
             };
 
             let sdl = sdl3::init().expect("frontend harness SDL should initialize");
@@ -6050,6 +6102,7 @@ mod tests {
                     max_t_cycles: super::DEFAULT_TRACE_CAPTURE_T_CYCLES,
                     records: VecDeque::new(),
                 },
+                printer_output: super::PrinterOutputState::default(),
             };
 
             Self {
@@ -8715,6 +8768,7 @@ mod tests {
         super::set_fullscreen_state(harness.canvas.window_mut(), false)
             .expect("setting the existing fullscreen state should be a no-op");
         super::reset_machine(
+            harness.canvas.window(),
             &mut harness.session,
             &mut harness.machine,
             &mut harness.runtime,
@@ -9239,34 +9293,36 @@ mod tests {
     }
 
     #[test]
-    fn drain_printed_pages_into_session_collects_printer_output() {
-        let root = temp_test_root("printer-sink");
-        let mut session = super::DesktopSession {
-            config: DesktopConfig::default(),
-            current_dir: root.clone(),
-            loaded_rom: None,
-            last_open_directory: None,
-            recent_roms: Vec::new(),
-            external_port_selection: DesktopExternalPortSelection::Printer,
-            printed_pages: VecDeque::new(),
-        };
-        let mut machine = Machine::new_summary(
-            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
-        );
+    fn drain_printed_pages_into_printer_output_saves_png_and_updates_the_window() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("printer-sink", true, false, false);
+        harness.session.external_port_selection = DesktopExternalPortSelection::Printer;
         super::apply_external_port_selection_to_machine(
-            &mut machine,
-            session.external_port_selection,
+            &mut harness.machine,
+            harness.session.external_port_selection,
         );
 
-        run_print_sequence(&mut machine);
-        super::drain_printed_pages_into_session(&mut session, &mut machine);
+        run_print_sequence(&mut harness.machine);
+        super::drain_printed_pages_into_printer_output(
+            harness.canvas.window(),
+            &harness.session,
+            &mut harness.runtime,
+            &mut harness.machine,
+        );
 
-        assert_eq!(session.printed_page_count(), 1);
-        assert_eq!(machine.take_printed_pages().len(), 0);
-        assert_eq!(session.printed_pages[0].width, 160);
-        assert_eq!(session.printed_pages[0].height, 8);
-
-        fs::remove_dir_all(root).expect("temp root should be removable");
+        assert_eq!(harness.machine.take_printed_pages().len(), 0);
+        assert!(harness.runtime.printer_output.has_window());
+        assert_eq!(
+            harness.runtime.printer_output.latest_page_dimensions(),
+            Some((160, 8))
+        );
+        let saved_path = harness
+            .runtime
+            .printer_output
+            .last_saved_path()
+            .expect("printer output should remember the saved PNG path");
+        assert!(saved_path.exists());
+        assert!(saved_path.starts_with(harness.root.join("printer")));
     }
 
     #[test]
@@ -9282,6 +9338,7 @@ mod tests {
             .expect("stale real-boot settings should persist before reset");
 
         super::reset_machine(
+            harness.canvas.window(),
             &mut harness.session,
             &mut harness.machine,
             &mut harness.runtime,

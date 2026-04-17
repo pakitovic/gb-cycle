@@ -108,12 +108,11 @@ const INPUT_MENU_ITEMS: [MenuItem; 9] = [
     MenuItem::InputDefaults,
     MenuItem::Return,
 ];
-const EXT_PORT_MENU_ITEMS: [MenuItem; 6] = [
+const EXT_PORT_MENU_ITEMS: [MenuItem; 5] = [
     MenuItem::ExternalPortNone,
     MenuItem::ExternalPortPrinter,
     MenuItem::ExternalPortGameLink,
     MenuItem::ExternalPortFourPlayerAdapter,
-    MenuItem::ExternalPortPrintedPages,
     MenuItem::Return,
 ];
 const KEYBOARD_MENU_ITEMS: [MenuItem; 9] = [
@@ -379,7 +378,6 @@ pub struct MenuPresentation {
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
     pub external_port_selection: DesktopExternalPortSelection,
-    pub printed_page_count: usize,
     pub boot_rom_uses_default_path: bool,
     pub boot_rom_verification: BootRomVerificationMode,
     pub saves_enabled: bool,
@@ -449,7 +447,7 @@ impl MenuPresentation {
             MenuItem::AudioMenu | MenuItem::ToggleMute | MenuItem::AudioVolume => {
                 self.audio_available
             }
-            MenuItem::GamepadActive | MenuItem::ExternalPortPrintedPages => false,
+            MenuItem::GamepadActive => false,
             MenuItem::GamepadPreferred => {
                 self.gamepad_available
                     && (self.active_gamepad_connected || self.preferred_gamepad_configured)
@@ -672,9 +670,6 @@ impl MenuPresentation {
             }
             MenuItem::ExternalPortGameLink => "GAME LINK".to_string(),
             MenuItem::ExternalPortFourPlayerAdapter => "4P ADAPTER".to_string(),
-            MenuItem::ExternalPortPrintedPages => {
-                format!("PAGES {}", self.printed_page_count)
-            }
             MenuItem::GamepadActive => {
                 if self.active_gamepad_connected {
                     format!("ACTIVE {}", self.active_gamepad_label.as_str())
@@ -910,7 +905,6 @@ enum MenuItem {
     ExternalPortPrinter,
     ExternalPortGameLink,
     ExternalPortFourPlayerAdapter,
-    ExternalPortPrintedPages,
     GamepadRumble,
     InputDefaults,
     GamepadActive,
@@ -1498,7 +1492,6 @@ impl OverlayMenuState {
                 DesktopExternalPortSelection::Printer,
             )),
             MenuItem::ExternalPortGameLink | MenuItem::ExternalPortFourPlayerAdapter => None,
-            MenuItem::ExternalPortPrintedPages => None,
             MenuItem::GamepadRumble => Some(MenuAction::CycleGamepadRumbleMode),
             MenuItem::InputDefaults => Some(MenuAction::ResetInputDefaults),
             MenuItem::GamepadActive => None,
@@ -2285,7 +2278,6 @@ mod tests {
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
             external_port_selection: DesktopExternalPortSelection::None,
-            printed_page_count: 0,
             boot_rom_uses_default_path: true,
             boot_rom_verification: BootRomVerificationMode::Strict,
             saves_enabled: true,
@@ -3256,7 +3248,6 @@ mod tests {
         assert_eq!(presentation.item_label(MenuItem::AudioVolume), "VOL 100%");
 
         presentation.external_port_selection = DesktopExternalPortSelection::Printer;
-        presentation.printed_page_count = 3;
         assert_eq!(
             presentation.item_label(MenuItem::ExtPortMenu),
             "EXT PRINTER"
@@ -3274,13 +3265,8 @@ mod tests {
             presentation.item_label(MenuItem::ExternalPortFourPlayerAdapter),
             "4P ADAPTER"
         );
-        assert_eq!(
-            presentation.item_label(MenuItem::ExternalPortPrintedPages),
-            "PAGES 3"
-        );
         assert!(!presentation.item_enabled(MenuItem::ExternalPortGameLink));
         assert!(!presentation.item_enabled(MenuItem::ExternalPortFourPlayerAdapter));
-        assert!(!presentation.item_enabled(MenuItem::ExternalPortPrintedPages));
 
         presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;
         assert_eq!(
