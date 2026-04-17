@@ -24,7 +24,10 @@ fn first_hidden_same_x_cluster_fetch_can_skip_obj_tile_data_low_byte_when_bg_fet
     ppu.mode2_scan_state.push(next_sprite);
     ppu.obj_pipeline_state.pending_match_x = Some(4);
     ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
-    ppu.obj_pipeline_state.start_fetch(0, current_sprite);
+    let obj_height = ppu.current_obj_height();
+    ppu.obj_pipeline_state.pending_sprite_obj_heights[1] = obj_height;
+    ppu.obj_pipeline_state
+        .start_fetch(0, current_sprite, obj_height, obj_height);
     ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
     ppu.obj_pipeline_state.fetch.stage_dot = 1;
 
@@ -60,7 +63,10 @@ fn first_hidden_same_x_cluster_fetch_at_x_six_keeps_the_low_byte_half_step() {
     ppu.mode2_scan_state.push(next_sprite);
     ppu.obj_pipeline_state.pending_match_x = Some(6);
     ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
-    ppu.obj_pipeline_state.start_fetch(0, current_sprite);
+    let obj_height = ppu.current_obj_height();
+    ppu.obj_pipeline_state.pending_sprite_obj_heights[1] = obj_height;
+    ppu.obj_pipeline_state
+        .start_fetch(0, current_sprite, obj_height, obj_height);
     ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
     ppu.obj_pipeline_state.fetch.stage_dot = 1;
 
@@ -101,7 +107,10 @@ fn first_hidden_same_x_cluster_fetch_at_x_seven_keeps_the_full_low_byte() {
     ppu.mode2_scan_state.push(next_sprite);
     ppu.obj_pipeline_state.pending_match_x = Some(7);
     ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
-    ppu.obj_pipeline_state.start_fetch(0, current_sprite);
+    let obj_height = ppu.current_obj_height();
+    ppu.obj_pipeline_state.pending_sprite_obj_heights[1] = obj_height;
+    ppu.obj_pipeline_state
+        .start_fetch(0, current_sprite, obj_height, obj_height);
     ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
     ppu.obj_pipeline_state.fetch.stage_dot = 1;
 

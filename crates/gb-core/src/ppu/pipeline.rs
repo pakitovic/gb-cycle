@@ -107,15 +107,13 @@ impl Ppu {
         fetcher.tile_index = tile_index;
     }
 
-    pub(super) fn read_obj_tile_data_byte(
+    pub(super) fn read_obj_tile_data_byte_for_resolved_tile(
         &mut self,
         vram: &VramBusView<'_>,
-        sprite: PpuSelectedSprite,
+        tile_index: u8,
+        tile_row: u8,
         plane: u16,
     ) -> u8 {
-        let Some((tile_index, tile_row)) = self.obj_tile_index_and_row(sprite) else {
-            return 0;
-        };
         let byte_address =
             tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES + plane;
         let tile_data = vram.read(byte_address as usize).unwrap_or(0);
@@ -124,8 +122,15 @@ impl Ppu {
     }
 
     pub(super) fn obj_tile_index_and_row(&self, sprite: PpuSelectedSprite) -> Option<(u8, u8)> {
+        self.obj_tile_index_and_row_for_height(sprite, self.current_obj_height())
+    }
+
+    pub(super) fn obj_tile_index_and_row_for_height(
+        &self,
+        sprite: PpuSelectedSprite,
+        height: u8,
+    ) -> Option<(u8, u8)> {
         let sprite_top = sprite.y.wrapping_sub(16);
-        let height = self.current_obj_height();
         let mut row = self.ly.wrapping_sub(sprite_top);
         if row >= height {
             return None;
@@ -144,6 +149,30 @@ impl Ppu {
         } else {
             Some((sprite.tile_index, row))
         }
+    }
+
+    pub(super) fn obj_tile_index_and_row_for_mode3_fetch(
+        &self,
+        sprite: PpuSelectedSprite,
+        selected_obj_height: u8,
+        fetch_obj_height: u8,
+    ) -> Option<(u8, u8)> {
+        if fetch_obj_height != 8 || selected_obj_height != 16 {
+            return self.obj_tile_index_and_row_for_height(sprite, fetch_obj_height);
+        }
+
+        let sprite_top = sprite.y.wrapping_sub(16);
+        let raw_row = self.ly.wrapping_sub(sprite_top);
+        if raw_row >= selected_obj_height {
+            return None;
+        }
+
+        let mut row = raw_row & 0x07;
+        if sprite.attributes & 0x40 != 0 {
+            row = 7 - row;
+        }
+
+        Some((sprite.tile_index, row))
     }
 
     pub(super) fn push_obj_pixels(
@@ -193,6 +222,57 @@ impl Ppu {
                 .get_mut(offset)
                 .expect("OBJ FIFO was extended to cover the target offset");
             if obj_pixel_has_priority(candidate, *slot) {
+                *slot = candidate;
+            }
+        }
+    }
+
+    pub(super) fn rewrite_obj_fifo_pixels(
+        &mut self,
+        sprite: PpuSelectedSprite,
+        tile_low: u8,
+        tile_high: u8,
+        current_visible_x: u8,
+    ) {
+        let sprite_screen_x = sprite_screen_x(sprite);
+        let fifo_front_screen_x = self.obj_fifo_front_screen_x(current_visible_x);
+        for tile_pixel in 0..BG_TILE_WIDTH {
+            let bit = if sprite.attributes & 0x20 != 0 {
+                tile_pixel
+            } else {
+                7 - tile_pixel
+            };
+            let low_bit = (tile_low >> bit) & 0x01;
+            let high_bit = (tile_high >> bit) & 0x01;
+            let candidate = ObjPixel {
+                color: (high_bit << 1) | low_bit,
+                palette_obp1: sprite.attributes & 0x10 != 0,
+                bg_over_obj: sprite.attributes & 0x80 != 0,
+                sprite_x: sprite.x,
+                oam_index: sprite.oam_index,
+            };
+            let screen_x = sprite_screen_x + tile_pixel as i16;
+            if screen_x < fifo_front_screen_x || screen_x >= SCREEN_WIDTH as i16 {
+                continue;
+            }
+            if current_visible_x > 0 && screen_x < current_visible_x as i16 {
+                continue;
+            }
+
+            let offset = (screen_x - fifo_front_screen_x) as usize;
+            while self.obj_pipeline_state.fifo.len() <= offset {
+                self.obj_pipeline_state
+                    .fifo
+                    .push_back(ObjPixel::transparent());
+            }
+
+            let slot = self
+                .obj_pipeline_state
+                .fifo
+                .get_mut(offset)
+                .expect("OBJ FIFO was extended to cover the target offset");
+            let same_sprite = slot.sprite_x == sprite.x && slot.oam_index == sprite.oam_index;
+            if same_sprite || obj_pixel_has_priority(candidate, *slot) {
                 *slot = candidate;
             }
         }

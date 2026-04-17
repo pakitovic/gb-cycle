@@ -2,6 +2,7 @@ use super::*;
 
 mod common;
 mod mode3_latches;
+mod mode3_lcdc2_obj_size;
 mod mode3_policies;
 mod raster;
 mod visible_registers;

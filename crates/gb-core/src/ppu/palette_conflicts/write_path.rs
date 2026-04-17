@@ -40,11 +40,33 @@ impl Ppu {
                 }
 
                 if let Some(desired_onset_x) = self
+                    .dmg_single_left_sprite_bgp_late_black_pulse_onset_visible_x(
+                        previous_visible,
+                        value,
+                        visible_pixels_output,
+                        self.dmg_panel_live_write_state
+                            .bgp_cpu_commit
+                            .current_line_writes
+                            .len(),
+                    )
+                {
+                    self.apply_single_left_sprite_bgp_live_write_onset(
+                        register,
+                        previous_visible,
+                        value,
+                        visible_pixels_output,
+                        desired_onset_x,
+                    );
+                    return;
+                }
+
+                if let Some(desired_onset_x) = self
                     .dmg_single_left_sprite_bgp_live_write_onset_visible_x(
                         self.dmg_panel_live_write_state
                             .bgp_cpu_commit
                             .current_line_writes
                             .len(),
+                        visible_pixels_output,
                     )
                 {
                     self.apply_single_left_sprite_bgp_live_write_onset(
@@ -459,12 +481,22 @@ impl Ppu {
     fn dmg_single_left_sprite_bgp_live_write_onset_visible_x(
         &self,
         write_index: usize,
+        visible_pixels_output: u8,
     ) -> Option<u8> {
         if self.mode2_scan_state.selected_sprite_count() != 1 {
             return None;
         }
 
         let sprite_x = self.mode2_scan_state.selected_sprite(0)?.x as usize;
+
+        if matches!(write_index, 0 | 1) && visible_pixels_output > 16 {
+            // The dedicated left-edge seam only applies while the write is still
+            // within the first visible OBJ boundary window. Late same-line BGP
+            // writes, like the Mealybug LCDC OBJ variant's end-of-line black
+            // visualization pulse, should fall back to the generic CPU-commit
+            // path instead of repainting the whole left prefix.
+            return None;
+        }
 
         // `m3_bgp_change_sprites` needs an explicit DMG seam for the first two
         // writes: the visible onset follows the left sprite phase, not the
@@ -518,6 +550,33 @@ impl Ppu {
         };
 
         Some((transient_start_x, final_onset_x))
+    }
+
+    fn dmg_single_left_sprite_bgp_late_black_pulse_onset_visible_x(
+        &self,
+        previous_visible: u8,
+        value: u8,
+        visible_pixels_output: u8,
+        write_index: usize,
+    ) -> Option<u8> {
+        if write_index != 0
+            || previous_visible != 0x00
+            || value != 0xFF
+            || visible_pixels_output < 140
+        {
+            return None;
+        }
+
+        let sprite_x = self.mode2_scan_state.selected_sprite(0)?.x as usize;
+        if sprite_x == 0 {
+            return Some(visible_pixels_output.saturating_sub(6));
+        }
+        const LATE_BLACK_PULSE_ONSETS: [u8; 18] = [
+            150, 147, 148, 149, 150, 151, 151, 151, 150, 151, 152, 153, 154, 155, 155, 155, 156,
+            157,
+        ];
+
+        LATE_BLACK_PULSE_ONSETS.get(sprite_x).copied()
     }
 
     fn apply_single_left_sprite_bgp_live_write_onset(

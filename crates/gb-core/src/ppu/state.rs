@@ -578,8 +578,7 @@ pub(super) struct DmgMode3LiveLcdcBgState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) struct DmgLcdc0PanelLiveWriteState {
     pub(super) current_line_bg_enable_write_count: u8,
-    pub(super) bg_enable_visible_hold_override: Option<bool>,
-    pub(super) bg_enable_visible_hold_pixels_remaining: u8,
+    pub(super) bg_enable_visible_hold: DmgVisibleHold<bool>,
 }
 
 impl DmgLcdc0PanelLiveWriteState {
@@ -591,8 +590,113 @@ impl DmgLcdc0PanelLiveWriteState {
     }
 
     pub(super) fn clear_bg_enable_visible_hold(&mut self) {
-        self.bg_enable_visible_hold_override = None;
-        self.bg_enable_visible_hold_pixels_remaining = 0;
+        self.bg_enable_visible_hold.clear();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct DmgLcdc1PanelLiveWriteState {
+    pub(super) obj_enable_visible_hold: DmgVisibleHold<bool>,
+}
+
+impl DmgLcdc1PanelLiveWriteState {
+    pub(super) fn clear_obj_enable_visible_hold(&mut self) {
+        self.obj_enable_visible_hold.clear();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct DmgVisibleHold<T> {
+    pub(super) override_value: Option<T>,
+    pub(super) pixels_remaining: u8,
+}
+
+impl<T> DmgVisibleHold<T> {
+    pub(super) fn clear(&mut self) {
+        self.override_value = None;
+        self.pixels_remaining = 0;
+    }
+
+    pub(super) fn consume(&mut self) {
+        if self.pixels_remaining == 0 {
+            self.override_value = None;
+            return;
+        }
+
+        self.pixels_remaining -= 1;
+        if self.pixels_remaining == 0 {
+            self.override_value = None;
+        }
+    }
+}
+
+impl<T: Copy> DmgVisibleHold<T> {
+    pub(super) fn set(&mut self, override_value: T, pixels_remaining: u8) {
+        self.override_value = Some(override_value);
+        self.pixels_remaining = pixels_remaining;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum DmgLcdc2ObservedEffectState {
+    Pending,
+    Applied,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DmgLcdc2ActiveObjSizeWrite {
+    pub(super) write_index: u8,
+    pub(super) visible_x: u8,
+    pub(super) observed_effect_state: DmgLcdc2ObservedEffectState,
+}
+
+impl DmgLcdc2ActiveObjSizeWrite {
+    pub(super) fn new(write_index: usize, visible_x: u8) -> Self {
+        Self {
+            write_index: write_index as u8,
+            visible_x,
+            observed_effect_state: DmgLcdc2ObservedEffectState::Pending,
+        }
+    }
+
+    pub(super) fn observed_effects_pending(self) -> bool {
+        matches!(
+            self.observed_effect_state,
+            DmgLcdc2ObservedEffectState::Pending
+        )
+    }
+
+    pub(super) fn mark_observed_effects_applied(&mut self) {
+        self.observed_effect_state = DmgLcdc2ObservedEffectState::Applied;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct DmgLcdc2ObjSizeLiveWriteState {
+    pub(super) current_line_obj_size_write_count: u8,
+    pub(super) active_write: Option<DmgLcdc2ActiveObjSizeWrite>,
+}
+
+impl DmgLcdc2ObjSizeLiveWriteState {
+    pub(super) fn take_next_obj_size_write_index(&mut self) -> usize {
+        let write_index = self.current_line_obj_size_write_count as usize;
+        self.current_line_obj_size_write_count =
+            self.current_line_obj_size_write_count.saturating_add(1);
+        write_index
+    }
+
+    pub(super) fn begin_active_shrink(&mut self, write_index: usize, visible_x: u8) {
+        self.active_write = Some(DmgLcdc2ActiveObjSizeWrite::new(write_index, visible_x));
+    }
+
+    pub(super) fn active_write(self) -> Option<DmgLcdc2ActiveObjSizeWrite> {
+        self.active_write
+    }
+
+    pub(super) fn mark_observed_effects_applied(&mut self) {
+        if let Some(active_write) = self.active_write.as_mut() {
+            active_write.mark_observed_effects_applied();
+        }
     }
 }
 
@@ -638,6 +742,8 @@ impl DmgBgpCpuCommitState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DmgPanelLiveWriteState {
     pub(super) lcdc0: DmgLcdc0PanelLiveWriteState,
+    pub(super) lcdc1: DmgLcdc1PanelLiveWriteState,
+    pub(super) lcdc2: DmgLcdc2ObjSizeLiveWriteState,
     pub(super) bgp_cpu_commit: DmgBgpCpuCommitState,
     pub(super) recent_panel_dots: VecDeque<PpuRecentPanelDot>,
 }
@@ -645,12 +751,16 @@ pub(super) struct DmgPanelLiveWriteState {
 impl DmgPanelLiveWriteState {
     pub(super) fn reset_for_startup(&mut self, bgp: u8) {
         self.lcdc0 = DmgLcdc0PanelLiveWriteState::default();
+        self.lcdc1 = DmgLcdc1PanelLiveWriteState::default();
+        self.lcdc2 = DmgLcdc2ObjSizeLiveWriteState::default();
         self.bgp_cpu_commit.reset_for_startup(bgp);
         self.recent_panel_dots.clear();
     }
 
     pub(super) fn reset_for_scanline_start(&mut self, bgp: u8) {
         self.lcdc0 = DmgLcdc0PanelLiveWriteState::default();
+        self.lcdc1 = DmgLcdc1PanelLiveWriteState::default();
+        self.lcdc2 = DmgLcdc2ObjSizeLiveWriteState::default();
         self.bgp_cpu_commit.reset_for_scanline_start(bgp);
         self.recent_panel_dots.clear();
     }
@@ -660,6 +770,8 @@ impl Default for DmgPanelLiveWriteState {
     fn default() -> Self {
         Self {
             lcdc0: DmgLcdc0PanelLiveWriteState::default(),
+            lcdc1: DmgLcdc1PanelLiveWriteState::default(),
+            lcdc2: DmgLcdc2ObjSizeLiveWriteState::default(),
             bgp_cpu_commit: DmgBgpCpuCommitState::default(),
             recent_panel_dots: VecDeque::with_capacity(DMG_PALETTE_RETROACTIVE_DOT_HISTORY),
         }
@@ -2141,6 +2253,8 @@ pub(super) struct ObjPipelineState {
     pub(super) fifo: VecDeque<ObjPixel>,
     pub(super) fetched_sprite_slots: [bool; MAX_SELECTED_SPRITES_PER_LINE],
     pub(super) pending_sprite_slots: VecDeque<u8>,
+    pub(super) pending_sprite_obj_heights: [u8; MAX_SELECTED_SPRITES_PER_LINE],
+    pub(super) mode3_line_start_obj_height: u8,
     pub(super) pending_match_x: Option<u8>,
     pub(super) late_metadata_word: Option<(u8, u8)>,
     pub(super) fetch: ObjFetchState,
@@ -2151,17 +2265,29 @@ impl ObjPipelineState {
         self.fifo.clear();
         self.fetched_sprite_slots.fill(false);
         self.pending_sprite_slots.clear();
+        self.pending_sprite_obj_heights.fill(0);
+        self.mode3_line_start_obj_height = 8;
         self.pending_match_x = None;
         self.late_metadata_word = None;
         self.fetch = ObjFetchState::default();
     }
 
-    pub(super) fn start_fetch(&mut self, sprite_slot: u8, sprite: PpuSelectedSprite) {
+    pub(super) fn start_fetch(
+        &mut self,
+        sprite_slot: u8,
+        sprite: PpuSelectedSprite,
+        selected_obj_height: u8,
+        latched_obj_height: u8,
+    ) {
         self.fetch.stage = PpuObjFetcherStage::Startup;
         self.fetch.stage_dot = 0;
         self.fetch.sprite_slot = sprite_slot;
         self.fetch.sprite = Some(sprite);
         self.fetch.resolved_sprite = None;
+        self.fetch.selected_obj_height = selected_obj_height;
+        self.fetch.latched_obj_height = latched_obj_height;
+        self.fetch.resolved_tile_index = None;
+        self.fetch.resolved_tile_row = None;
         self.fetch.cancelled = false;
         self.fetch.count_terminal_push_dot = false;
         self.fetch.tile_low = 0;
@@ -2176,7 +2302,12 @@ impl ObjPipelineState {
         self.fetched_sprite_slots[sprite_slot as usize]
     }
 
-    pub(super) fn queue_fetch_hit(&mut self, sprite_slot: u8, owner: ObjHitOwnership) {
+    pub(super) fn queue_fetch_hit(
+        &mut self,
+        sprite_slot: u8,
+        owner: ObjHitOwnership,
+        obj_height: u8,
+    ) {
         if self.has_fetched(sprite_slot)
             || self
                 .pending_sprite_slots
@@ -2194,14 +2325,16 @@ impl ObjPipelineState {
             debug_assert_eq!(self.pending_match_x, Some(owner.match_x));
         }
         self.pending_sprite_slots.push_back(sprite_slot);
+        self.pending_sprite_obj_heights[sprite_slot as usize] = obj_height;
     }
 
-    pub(super) fn pop_pending_fetch_hit(&mut self) -> Option<u8> {
-        let sprite_slot = self.pending_sprite_slots.pop_front();
+    pub(super) fn pop_pending_fetch_hit(&mut self) -> Option<(u8, u8)> {
+        let sprite_slot = self.pending_sprite_slots.pop_front()?;
+        let obj_height = self.pending_sprite_obj_heights[sprite_slot as usize];
         if self.pending_sprite_slots.is_empty() {
             self.pending_match_x = None;
         }
-        sprite_slot
+        Some((sprite_slot, obj_height))
     }
 
     pub(super) fn pending_hits_own_current_dot(&self, current_owner: ObjHitOwnership) -> bool {
@@ -2244,6 +2377,10 @@ pub(super) struct ObjFetchState {
     pub(super) sprite_slot: u8,
     pub(super) sprite: Option<PpuSelectedSprite>,
     pub(super) resolved_sprite: Option<PpuSelectedSprite>,
+    pub(super) selected_obj_height: u8,
+    pub(super) latched_obj_height: u8,
+    pub(super) resolved_tile_index: Option<u8>,
+    pub(super) resolved_tile_row: Option<u8>,
     pub(super) cancelled: bool,
     pub(super) count_terminal_push_dot: bool,
     pub(super) tile_low: u8,

@@ -154,6 +154,46 @@ fn live_obj_size_shrink_drops_out_of_range_y_flipped_rows_without_panicking() {
 }
 
 #[test]
+fn mode3_live_obj_size_shrink_wraps_lower_half_rows_onto_the_base_tile() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.lcdc = 0x82;
+    ppu.ly = 24;
+
+    let sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 32,
+        x: 16,
+        tile_index: 0x4C,
+        attributes: 0x00,
+    };
+
+    assert_eq!(
+        ppu.obj_tile_index_and_row_for_mode3_fetch(sprite, 16, 8),
+        Some((0x4C, 0))
+    );
+}
+
+#[test]
+fn mode3_live_obj_size_shrink_wraps_y_flipped_lower_half_rows_onto_the_base_tile() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.lcdc = 0x82;
+    ppu.ly = 24;
+
+    let sprite = PpuSelectedSprite {
+        oam_index: 0,
+        y: 32,
+        x: 16,
+        tile_index: 0x4C,
+        attributes: 0x40,
+    };
+
+    assert_eq!(
+        ppu.obj_tile_index_and_row_for_mode3_fetch(sprite, 16, 8),
+        Some((0x4C, 7))
+    );
+}
+
+#[test]
 fn turning_off_lcdc1_during_object_fetch_cancels_sprite_pixels_but_keeps_timing_cost() {
     fn run_case(disable_obj_during_fetch: bool) -> PpuSnapshot {
         let mut ppu = dmg_obj_render_rig(ObjRenderRigConfig { lcdc: 0x82, ly: 0 });

@@ -1,5 +1,18 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DmgPanelRangeRepaint {
+    Lcdc0BgEnable { bg_enabled: bool },
+    Lcdc1ObjDisable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DmgPanelRepaintContext {
+    visible_output_driving: bool,
+    row_start: usize,
+    historical_bgp: u8,
+}
+
 impl Ppu {
     pub(super) const fn current_mmio_visible_registers(&self) -> PpuVisibleRegisters {
         PpuVisibleRegisters {
@@ -1539,7 +1552,8 @@ impl Ppu {
         if self.console_model.is_dmg_family() {
             self.dmg_panel_live_write_state
                 .lcdc0
-                .bg_enable_visible_hold_override
+                .bg_enable_visible_hold
+                .override_value
                 .unwrap_or(bg_enabled)
         } else {
             bg_enabled
@@ -1657,6 +1671,71 @@ impl Ppu {
         self.start_dmg_lcdc0_bg_enable_visible_hold(previous_bg_enabled, 0);
     }
 
+    pub(super) fn apply_dmg_lcdc1_live_obj_enable_write(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
+        if !self.console_model.is_dmg_family() || !write_context.lcdc_changed(LCDC_OBJ_ENABLE_BIT) {
+            return;
+        }
+
+        let previous_obj_enabled = write_context.previous_lcdc() & LCDC_OBJ_ENABLE_BIT != 0;
+        let obj_enabled = write_context.current_lcdc() & LCDC_OBJ_ENABLE_BIT != 0;
+        if previous_obj_enabled && !obj_enabled {
+            let visible_pixels_output = self.bg_pipeline_state.visible_pixels_output;
+            let onset_visible_x = self
+                .dmg_single_selected_sprite_phase_policy()
+                .and_then(PpuMode3SingleSpritePhasePolicy::observed_lcdc1_disable_onset_visible_x);
+
+            if let Some(onset_visible_x) = onset_visible_x {
+                let (override_enabled, hold_pixels) = if onset_visible_x <= visible_pixels_output {
+                    let repaint_end_x = visible_pixels_output
+                        .saturating_add(1)
+                        .min(SCREEN_WIDTH as u8);
+                    self.repaint_dmg_lcdc1_panel_range(onset_visible_x, repaint_end_x);
+                    (false, 1)
+                } else {
+                    (true, onset_visible_x.saturating_sub(visible_pixels_output))
+                };
+                self.start_dmg_lcdc1_obj_enable_visible_hold(override_enabled, hold_pixels);
+            } else {
+                self.start_dmg_lcdc1_obj_enable_visible_hold(previous_obj_enabled, 0);
+            }
+        } else {
+            self.start_dmg_lcdc1_obj_enable_visible_hold(previous_obj_enabled, 0);
+        }
+    }
+
+    pub(super) fn apply_dmg_lcdc2_live_obj_size_write(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
+        if !self.console_model.is_dmg_family() || !write_context.lcdc_changed(LCDC_OBJ_SIZE_BIT) {
+            return;
+        }
+
+        let write_index = self
+            .dmg_panel_live_write_state
+            .lcdc2
+            .take_next_obj_size_write_index();
+        let previous_obj_height = if write_context.previous_lcdc() & LCDC_OBJ_SIZE_BIT != 0 {
+            16
+        } else {
+            8
+        };
+        let current_obj_height = if write_context.current_lcdc() & LCDC_OBJ_SIZE_BIT != 0 {
+            16
+        } else {
+            8
+        };
+
+        if previous_obj_height == 16 && current_obj_height == 8 {
+            self.dmg_panel_live_write_state
+                .lcdc2
+                .begin_active_shrink(write_index, self.bg_pipeline_state.visible_pixels_output);
+        }
+    }
+
     fn dmg_single_selected_sprite_phase_policy(&self) -> Option<PpuMode3SingleSpritePhasePolicy> {
         if self.mode2_scan_state.selected_sprite_count() != 1 {
             return None;
@@ -1668,31 +1747,10 @@ impl Ppu {
     }
 
     pub(super) fn consume_dmg_lcdc0_bg_enable_visible_hold(&mut self) {
-        if self
-            .dmg_panel_live_write_state
-            .lcdc0
-            .bg_enable_visible_hold_pixels_remaining
-            == 0
-        {
-            self.dmg_panel_live_write_state
-                .lcdc0
-                .bg_enable_visible_hold_override = None;
-            return;
-        }
-
         self.dmg_panel_live_write_state
             .lcdc0
-            .bg_enable_visible_hold_pixels_remaining -= 1;
-        if self
-            .dmg_panel_live_write_state
-            .lcdc0
-            .bg_enable_visible_hold_pixels_remaining
-            == 0
-        {
-            self.dmg_panel_live_write_state
-                .lcdc0
-                .bg_enable_visible_hold_override = None;
-        }
+            .bg_enable_visible_hold
+            .consume();
     }
 
     fn start_dmg_lcdc0_bg_enable_visible_hold(
@@ -1709,62 +1767,151 @@ impl Ppu {
 
         self.dmg_panel_live_write_state
             .lcdc0
-            .bg_enable_visible_hold_override = Some(previous_bg_enabled);
+            .bg_enable_visible_hold
+            .set(previous_bg_enabled, hold_pixels);
+    }
+
+    pub(super) fn consume_dmg_lcdc1_obj_enable_visible_hold(&mut self) {
         self.dmg_panel_live_write_state
-            .lcdc0
-            .bg_enable_visible_hold_pixels_remaining = hold_pixels;
+            .lcdc1
+            .obj_enable_visible_hold
+            .consume();
+    }
+
+    fn start_dmg_lcdc1_obj_enable_visible_hold(
+        &mut self,
+        previous_obj_enabled: bool,
+        hold_pixels: u8,
+    ) {
+        if !self.console_model.is_dmg_family() || hold_pixels == 0 {
+            self.dmg_panel_live_write_state
+                .lcdc1
+                .clear_obj_enable_visible_hold();
+            return;
+        }
+
+        self.dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold
+            .set(previous_obj_enabled, hold_pixels);
     }
 
     fn repaint_dmg_lcdc0_panel_range(&mut self, start_x: u8, end_x: u8, bg_enabled: bool) {
-        let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
-        let row_start = self.ly as usize * SCREEN_WIDTH;
-        let historical_bgp =
-            self.mode3_register_latches()
-                .pixel_pipeline_bgp(self.console_model, None, None);
-        for x in usize::from(start_x)..usize::from(end_x) {
-            let pixel = self.current_scanline_mixed_pixels[x];
-            if !matches!(pixel.source, MixedPixelSource::Background) {
-                continue;
-            }
+        self.repaint_dmg_panel_range(
+            start_x,
+            end_x,
+            DmgPanelRangeRepaint::Lcdc0BgEnable { bg_enabled },
+        );
+    }
 
-            let dmg_bg_forced_white = visible_output_driving && !bg_enabled;
-            let panel_pixel = if visible_output_driving {
-                if dmg_bg_forced_white {
-                    0
-                } else {
-                    self.apply_dmg_palette(historical_bgp, pixel.color)
+    fn repaint_dmg_lcdc1_panel_range(&mut self, start_x: u8, end_x: u8) {
+        self.repaint_dmg_panel_range(start_x, end_x, DmgPanelRangeRepaint::Lcdc1ObjDisable);
+    }
+
+    fn repaint_dmg_panel_range(&mut self, start_x: u8, end_x: u8, repaint: DmgPanelRangeRepaint) {
+        let context = self.dmg_panel_repaint_context();
+        let bg_enabled = match repaint {
+            DmgPanelRangeRepaint::Lcdc0BgEnable { bg_enabled } => bg_enabled,
+            DmgPanelRangeRepaint::Lcdc1ObjDisable => self.pixel_transfer_bg_enabled(),
+        };
+        let dmg_bg_forced_white = context.visible_output_driving && !bg_enabled;
+        let visible_range = usize::from(start_x)..usize::from(end_x);
+
+        for x in visible_range.clone() {
+            match repaint {
+                DmgPanelRangeRepaint::Lcdc0BgEnable { .. } => {
+                    let pixel = self.current_scanline_mixed_pixels[x];
+                    if !matches!(pixel.source, MixedPixelSource::Background) {
+                        continue;
+                    }
+                    self.repaint_dmg_panel_output_pixel(
+                        x,
+                        pixel.color,
+                        dmg_bg_forced_white,
+                        context,
+                    );
                 }
-            } else {
-                0
-            };
-            let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
-                pixel.color
-            } else {
-                0
-            };
-
-            self.current_scanline_dmg_bg_forced_white[x] = dmg_bg_forced_white;
-            self.current_scanline_pixels[x] = scanline_pixel;
-            self.framebuffer[row_start + x] = panel_pixel;
+                DmgPanelRangeRepaint::Lcdc1ObjDisable => {
+                    let bg_pixel = self.current_scanline_bg_pixels[x];
+                    self.current_scanline_mixed_pixels[x] = MixedPixel::background(bg_pixel);
+                    self.repaint_dmg_panel_output_pixel(x, bg_pixel, dmg_bg_forced_white, context);
+                }
+            }
         }
 
         for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
             let visible_x = dot.visible_x as usize;
-            if !(usize::from(start_x)..usize::from(end_x)).contains(&visible_x) {
+            if !visible_range.contains(&visible_x) {
                 continue;
             }
 
-            dot.dmg_bg_forced_white = visible_output_driving
-                && !bg_enabled
-                && matches!(dot.pixel.source, MixedPixelSource::Background);
+            match repaint {
+                DmgPanelRangeRepaint::Lcdc0BgEnable { .. } => {
+                    dot.dmg_bg_forced_white = dmg_bg_forced_white
+                        && matches!(dot.pixel.source, MixedPixelSource::Background);
+                }
+                DmgPanelRangeRepaint::Lcdc1ObjDisable => {
+                    dot.pixel = MixedPixel::background(self.current_scanline_bg_pixels[visible_x]);
+                    dot.dmg_bg_forced_white = dmg_bg_forced_white;
+                }
+            }
         }
     }
 
+    fn dmg_panel_repaint_context(&self) -> DmgPanelRepaintContext {
+        DmgPanelRepaintContext {
+            visible_output_driving: self.visible_output == PpuVisibleOutputState::Driving,
+            row_start: self.ly as usize * SCREEN_WIDTH,
+            historical_bgp: self.mode3_register_latches().pixel_pipeline_bgp(
+                self.console_model,
+                None,
+                None,
+            ),
+        }
+    }
+
+    fn repaint_dmg_panel_output_pixel(
+        &mut self,
+        x: usize,
+        pixel_color: u8,
+        dmg_bg_forced_white: bool,
+        context: DmgPanelRepaintContext,
+    ) {
+        let panel_pixel = if context.visible_output_driving {
+            if dmg_bg_forced_white {
+                0
+            } else {
+                self.apply_dmg_palette(context.historical_bgp, pixel_color)
+            }
+        } else {
+            0
+        };
+        let scanline_pixel = if context.visible_output_driving && !dmg_bg_forced_white {
+            pixel_color
+        } else {
+            0
+        };
+
+        self.current_scanline_dmg_bg_forced_white[x] = dmg_bg_forced_white;
+        self.current_scanline_pixels[x] = scanline_pixel;
+        self.framebuffer[context.row_start + x] = panel_pixel;
+    }
+
     pub(super) fn pixel_transfer_obj_enabled(&self) -> bool {
-        self.mode3_register_latches().pixel_transfer_obj_enabled(
+        let obj_enabled = self.mode3_register_latches().pixel_transfer_obj_enabled(
             self.console_model,
             self.bg_pipeline_state.current_transfer_x,
-        )
+        );
+
+        if self.console_model.is_dmg_family() {
+            self.dmg_panel_live_write_state
+                .lcdc1
+                .obj_enable_visible_hold
+                .override_value
+                .unwrap_or(obj_enabled)
+        } else {
+            obj_enabled
+        }
     }
 
     pub(super) fn prepare_visible_scanline_state(&mut self) {
@@ -1897,6 +2044,7 @@ impl Ppu {
         self.bg_pipeline_state.reset();
         self.obj_pipeline_state.reset();
         self.current_scanline_pixels.fill(0);
+        self.current_scanline_bg_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
         self.current_scanline_dmg_bg_forced_white.fill(false);

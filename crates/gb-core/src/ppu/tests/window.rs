@@ -50,7 +50,9 @@ fn first_window_tile_push_ignores_pending_obj_fetch_start() {
         attributes: 0,
     });
     let ownership = ppu.current_obj_hit_ownership();
-    ppu.obj_pipeline_state.queue_fetch_hit(0, ownership);
+    let obj_height = ppu.current_obj_height();
+    ppu.obj_pipeline_state
+        .queue_fetch_hit(0, ownership, obj_height);
 
     assert_eq!(
         ppu.current_bg_push_dot_ownership(),
@@ -205,7 +207,9 @@ fn pending_obj_hit_blocks_window_start_because_the_output_dot_is_not_served() {
     ppu.bg_pipeline_state.visible_pixels_output = 8;
     ppu.bg_pipeline_state.fifo.push_back(1);
     let ownership = ppu.current_obj_hit_ownership();
-    ppu.obj_pipeline_state.queue_fetch_hit(0, ownership);
+    let obj_height = ppu.current_obj_height();
+    ppu.obj_pipeline_state
+        .queue_fetch_hit(0, ownership, obj_height);
 
     let transfer_dot = ppu.advance_mode3_output_phase();
 
