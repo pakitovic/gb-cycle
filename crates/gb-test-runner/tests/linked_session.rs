@@ -1,15 +1,28 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use gb_test_runner::{
-    LinkedSessionCaptureKind, LinkedSessionPassCondition, LinkedSessionRunner,
-    load_linked_session_suite_manifest,
+    LinkedSessionCaptureKind, LinkedSessionCaseOutcome, LinkedSessionPassCondition,
+    LinkedSessionRunner, load_linked_session_suite_manifest,
 };
 
 const FIXTURE_ACCEPT_ENV: &str = "GB_CYCLE_ACCEPT_GB_TEST_RUNNER_LINKED_FIXTURES";
 
 fn data_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative)
+}
+
+fn unique_temp_dir(label: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "gb-cycle-linked-session-contracts-{}-{}-{}",
+        label,
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ))
 }
 
 fn ensure_text_fixture(path: &Path, actual: &str) {
@@ -198,4 +211,37 @@ fn linked_session_contract_manifest_is_deterministic_across_reruns() {
         .expect("second linked contract suite run should succeed");
 
     assert_eq!(first, second);
+}
+
+#[test]
+fn linked_session_contract_suite_persists_failure_artifacts_for_real_dmg04_cases() {
+    let temp_dir = unique_temp_dir("failure-artifacts");
+    let artifact_root = temp_dir.join("artifacts");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let mut suite = load_contract_suite_with_accepted_participant_fixtures();
+    suite.sessions = vec![suite.sessions[0].clone()];
+    suite.sessions[0].pass_condition = LinkedSessionPassCondition::ParticipantSerialHexExact {
+        participant_id: "left".to_string(),
+        expected: "FF".to_string(),
+    };
+
+    let report = LinkedSessionRunner::new()
+        .with_failure_artifact_root(&artifact_root)
+        .run_suite(&suite)
+        .expect("failing contract suite should execute");
+
+    assert!(!report.all_passed());
+    assert!(matches!(
+        report.sessions[0].outcome,
+        LinkedSessionCaseOutcome::Failed(_)
+    ));
+
+    let session_dir = artifact_root.join("dmg04-left-serial-hex");
+    assert!(session_dir.join("left_serial_hex.txt").is_file());
+    assert!(session_dir.join("right_serial_hex.txt").is_file());
+    assert!(session_dir.join("left_snapshot.txt").is_file());
+    assert!(session_dir.join("right_snapshot.txt").is_file());
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
