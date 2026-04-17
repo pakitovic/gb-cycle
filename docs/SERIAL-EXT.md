@@ -333,13 +333,19 @@ desktop-linked UX becomes a primary validation path.
 ### Design guidance
 
 - `gb-test-runner` should validate linked-session behavior, not reimplement it
+- Keep linked-session suite/case types parallel to the existing single-machine
+  `RomSuite` / `RomTestCase` contract rather than overloading it
 - Keep session manifests explicit enough that later `DMG-07` and printer cases
   can reuse the same harness vocabulary where appropriate
 
 ### Crates / files
 
 - `crates/gb-test-runner/`
-- linked-session manifests, harness types, and retained artifact helpers
+- `linked_session_manifest.rs`, `linked_session_runner.rs`, and retained
+  artifact helpers
+- reserved repo-owned linked-session suites under
+  `crates/gb-test-runner/data/`, starting with `linked-dmg04-smoke.toml`
+  and fixtures under `crates/gb-test-runner/data/fixtures/linked/`
 
 ### Validation gate
 
