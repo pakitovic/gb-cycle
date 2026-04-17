@@ -23,6 +23,11 @@ pub enum LinkedSessionCaseFailure {
         participant_id: String,
         trap: CpuDiagnosticTrap,
     },
+    ParticipantSerialHexMismatch {
+        participant_id: String,
+        expected: String,
+        actual: String,
+    },
     FixtureMismatch {
         fixture_path: PathBuf,
     },
@@ -464,7 +469,10 @@ impl LinkedSessionRunner {
             participants.push(LinkedSessionParticipantReport {
                 participant_id: session.participants[participant_index].id.clone(),
                 rom_path: resolved_rom_paths[participant_index].clone(),
-                outcome: outcome.clone(),
+                outcome: participant_outcome_for_session(
+                    &outcome,
+                    &session.participants[participant_index].id,
+                ),
                 completed_frames: completed_frames[participant_index],
                 diagnostics: diagnostics[participant_index].clone(),
                 artifacts: artifacts.participants[participant_index].clone(),
@@ -737,6 +745,28 @@ impl LinkedSessionRunner {
 
         Ok(match &session.pass_condition {
             LinkedSessionPassCondition::Informational(_) => LinkedSessionCaseOutcome::Informational,
+            LinkedSessionPassCondition::ParticipantSerialHexExact {
+                participant_id,
+                expected,
+            } => {
+                let participant_index = session
+                    .participants
+                    .iter()
+                    .position(|participant| participant.id == *participant_id)
+                    .expect("linked session should validate target participant existence");
+                let actual = artifacts.participants[participant_index].serial_hex.clone();
+                if actual == *expected {
+                    LinkedSessionCaseOutcome::Passed
+                } else {
+                    LinkedSessionCaseOutcome::Failed(
+                        LinkedSessionCaseFailure::ParticipantSerialHexMismatch {
+                            participant_id: participant_id.clone(),
+                            expected: expected.clone(),
+                            actual,
+                        },
+                    )
+                }
+            }
             LinkedSessionPassCondition::TraceFixture(fixture_path) => {
                 let resolved_fixture = self.runner.resolve_path(fixture_path);
                 let expected = fs::read_to_string(&resolved_fixture).map_err(|source| {
@@ -795,6 +825,25 @@ impl LinkedSessionRunner {
         let mut written_paths = Vec::new();
         for artifact in session.failure_artifacts.retained() {
             match artifact {
+                LinkedSessionCaptureKind::ParticipantSerialHex => {
+                    for (participant_index, participant) in session.participants.iter().enumerate()
+                    {
+                        let serial_hex_path =
+                            session_dir.join(format!("{}_serial_hex.txt", participant.id));
+                        fs::write(
+                            &serial_hex_path,
+                            &artifacts.participants[participant_index].serial_hex,
+                        )
+                        .map_err(|source| {
+                            LinkedSessionExecutionError::FileOperation {
+                                path: serial_hex_path.clone(),
+                                operation: "write participant serial hex artifact",
+                                source: Box::new(source),
+                            }
+                        })?;
+                        written_paths.push(serial_hex_path);
+                    }
+                }
                 LinkedSessionCaptureKind::Trace => {
                     if let Some(trace) = &artifacts.session.trace {
                         let path = session_dir.join("linked_trace.txt");
@@ -888,6 +937,53 @@ impl LinkedSessionRunner {
         }
 
         Ok(written_paths)
+    }
+}
+
+fn participant_outcome_for_session(
+    session_outcome: &LinkedSessionCaseOutcome,
+    participant_id: &str,
+) -> LinkedSessionCaseOutcome {
+    match session_outcome {
+        LinkedSessionCaseOutcome::Passed => LinkedSessionCaseOutcome::Passed,
+        LinkedSessionCaseOutcome::Informational => LinkedSessionCaseOutcome::Informational,
+        LinkedSessionCaseOutcome::Failed(LinkedSessionCaseFailure::CpuDiagnosticTrap {
+            participant_id: failed_participant_id,
+            trap,
+        }) => {
+            if failed_participant_id == participant_id {
+                LinkedSessionCaseOutcome::Failed(LinkedSessionCaseFailure::CpuDiagnosticTrap {
+                    participant_id: failed_participant_id.clone(),
+                    trap: *trap,
+                })
+            } else {
+                LinkedSessionCaseOutcome::Passed
+            }
+        }
+        LinkedSessionCaseOutcome::Failed(
+            LinkedSessionCaseFailure::ParticipantSerialHexMismatch {
+                participant_id: failed_participant_id,
+                expected,
+                actual,
+            },
+        ) => {
+            if failed_participant_id == participant_id {
+                LinkedSessionCaseOutcome::Failed(
+                    LinkedSessionCaseFailure::ParticipantSerialHexMismatch {
+                        participant_id: failed_participant_id.clone(),
+                        expected: expected.clone(),
+                        actual: actual.clone(),
+                    },
+                )
+            } else {
+                LinkedSessionCaseOutcome::Passed
+            }
+        }
+        LinkedSessionCaseOutcome::Failed(LinkedSessionCaseFailure::FixtureMismatch {
+            fixture_path,
+        }) => LinkedSessionCaseOutcome::Failed(LinkedSessionCaseFailure::FixtureMismatch {
+            fixture_path: fixture_path.clone(),
+        }),
     }
 }
 
@@ -1167,6 +1263,56 @@ mod tests {
     }
 
     #[test]
+    fn linked_session_runner_supports_participant_serial_hex_expectations() {
+        let temp_dir = unique_temp_dir("participant-serial-hex-pass");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let left_rom = temp_dir.join("left.gb");
+        let right_rom = temp_dir.join("right.gb");
+        fs::write(
+            &left_rom,
+            build_test_rom(&[
+                0x3E, 0xA5, 0xE0, 0x01, 0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x08, 0x01,
+            ]),
+        )
+        .expect("left ROM should be writable");
+        fs::write(
+            &right_rom,
+            build_test_rom(&[
+                0x3E, 0x3C, 0xE0, 0x01, 0x3E, 0x80, 0xE0, 0x02, 0xC3, 0x08, 0x01,
+            ]),
+        )
+        .expect("right ROM should be writable");
+
+        let session = LinkedSessionCase::new(
+            "participant-serial-hex-pass",
+            LinkedSessionTopology::Dmg04,
+            Timeout::TCycles(5_000),
+            LinkedSessionPassCondition::ParticipantSerialHexExact {
+                participant_id: "left".to_string(),
+                expected: "A5".to_string(),
+            },
+        )
+        .with_participant(LinkedSessionParticipant::new("left", &left_rom))
+        .with_participant(LinkedSessionParticipant::new("right", &right_rom));
+
+        let report = LinkedSessionRunner::new()
+            .run_session(&session)
+            .expect("participant serial hex session should execute");
+
+        assert_eq!(report.outcome, LinkedSessionCaseOutcome::Passed);
+        assert_eq!(
+            report.participants[0].outcome,
+            LinkedSessionCaseOutcome::Passed
+        );
+        assert_eq!(
+            report.participants[1].outcome,
+            LinkedSessionCaseOutcome::Passed
+        );
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
     fn linked_session_runner_persists_failure_artifacts_for_trace_mismatches() {
         let temp_dir = unique_temp_dir("failure-artifacts");
         let artifact_root = temp_dir.join("artifacts");
@@ -1255,6 +1401,89 @@ mod tests {
             artifact_root
                 .join("trace-mismatch")
                 .join("left_snapshot.txt")
+                .is_file()
+        );
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn linked_session_runner_reports_participant_serial_hex_mismatches_per_participant() {
+        let temp_dir = unique_temp_dir("participant-serial-hex-mismatch");
+        let artifact_root = temp_dir.join("artifacts");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let left_rom = temp_dir.join("left.gb");
+        let right_rom = temp_dir.join("right.gb");
+        fs::write(
+            &left_rom,
+            build_test_rom(&[
+                0x3E, 0xA5, 0xE0, 0x01, 0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x08, 0x01,
+            ]),
+        )
+        .expect("left ROM should be writable");
+        fs::write(
+            &right_rom,
+            build_test_rom(&[
+                0x3E, 0x3C, 0xE0, 0x01, 0x3E, 0x80, 0xE0, 0x02, 0xC3, 0x08, 0x01,
+            ]),
+        )
+        .expect("right ROM should be writable");
+
+        let session = LinkedSessionCase::new(
+            "participant-serial-hex-mismatch",
+            LinkedSessionTopology::Dmg04,
+            Timeout::TCycles(5_000),
+            LinkedSessionPassCondition::ParticipantSerialHexExact {
+                participant_id: "left".to_string(),
+                expected: "FF".to_string(),
+            },
+        )
+        .with_failure_artifacts(
+            LinkedSessionFailureArtifactPolicy::new()
+                .with_artifact(LinkedSessionCaptureKind::ParticipantSerialHex)
+                .with_artifact(LinkedSessionCaptureKind::Snapshot),
+        )
+        .with_participant(LinkedSessionParticipant::new("left", &left_rom))
+        .with_participant(LinkedSessionParticipant::new("right", &right_rom));
+
+        let report = LinkedSessionRunner::new()
+            .with_failure_artifact_root(&artifact_root)
+            .run_session(&session)
+            .expect("participant serial hex mismatch session should execute");
+
+        assert!(matches!(
+            report.outcome,
+            LinkedSessionCaseOutcome::Failed(
+                LinkedSessionCaseFailure::ParticipantSerialHexMismatch {
+                    ref participant_id,
+                    ref expected,
+                    ref actual,
+                }
+            ) if participant_id == "left" && expected == "FF" && actual == "A5"
+        ));
+        assert!(matches!(
+            report.participants[0].outcome,
+            LinkedSessionCaseOutcome::Failed(
+                LinkedSessionCaseFailure::ParticipantSerialHexMismatch {
+                    ref participant_id,
+                    ..
+                }
+            ) if participant_id == "left"
+        ));
+        assert_eq!(
+            report.participants[1].outcome,
+            LinkedSessionCaseOutcome::Passed
+        );
+        assert!(
+            artifact_root
+                .join("participant-serial-hex-mismatch")
+                .join("left_serial_hex.txt")
+                .is_file()
+        );
+        assert!(
+            artifact_root
+                .join("participant-serial-hex-mismatch")
+                .join("right_serial_hex.txt")
                 .is_file()
         );
 

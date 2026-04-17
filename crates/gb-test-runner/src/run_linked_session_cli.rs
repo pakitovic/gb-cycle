@@ -2,9 +2,9 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use crate::{
-    LinkedSessionCaseOutcome, LinkedSessionRunner, LinkedSessionSuite, LinkedSessionSuiteReport,
-    built_in_linked_session_suite_by_name, built_in_linked_session_suite_catalog,
-    load_linked_session_suite_manifest,
+    LinkedSessionCaseFailure, LinkedSessionCaseOutcome, LinkedSessionRunner, LinkedSessionSuite,
+    LinkedSessionSuiteReport, built_in_linked_session_suite_by_name,
+    built_in_linked_session_suite_catalog, load_linked_session_suite_manifest,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -239,6 +239,9 @@ fn write_suite_report<W: Write>(
                 session.executed_t_cycles
             ),
         )?;
+        if let LinkedSessionCaseOutcome::Failed(failure) = &session.outcome {
+            writeln_checked(output, &format!("failure={}", render_failure(failure)))?;
+        }
         for participant in &session.participants {
             writeln_checked(
                 output,
@@ -265,6 +268,29 @@ fn outcome_label(outcome: &LinkedSessionCaseOutcome) -> &'static str {
         LinkedSessionCaseOutcome::Passed => "PASS",
         LinkedSessionCaseOutcome::Informational => "INFO",
         LinkedSessionCaseOutcome::Failed(_) => "FAIL",
+    }
+}
+
+fn render_failure(failure: &LinkedSessionCaseFailure) -> String {
+    match failure {
+        LinkedSessionCaseFailure::CpuDiagnosticTrap {
+            participant_id,
+            trap,
+        } => format!(
+            "cpu-diagnostic-trap participant={} trap={trap:?}",
+            participant_id
+        ),
+        LinkedSessionCaseFailure::ParticipantSerialHexMismatch {
+            participant_id,
+            expected,
+            actual,
+        } => format!(
+            "participant-serial-hex-mismatch participant={} expected={} actual={}",
+            participant_id, expected, actual
+        ),
+        LinkedSessionCaseFailure::FixtureMismatch { fixture_path } => {
+            format!("fixture-mismatch fixture={}", fixture_path.display())
+        }
     }
 }
 

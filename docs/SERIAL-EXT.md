@@ -361,6 +361,83 @@ desktop-linked UX becomes a primary validation path.
 - The repo has a first-class non-desktop validation path for linked sessions,
   and later desktop work does not need to invent its own correctness oracle.
 
+### Suggested internal rollout
+
+#### Phase 5.1 — linked-session harness baseline
+
+- Land linked-session manifest types parallel to the single-machine suite
+  contract
+- Land a `LinkedSessionRunner` over `gb_core::LinkedMachines`
+- Check in one repo-owned `DMG-04` smoke suite under
+  `crates/gb-test-runner/data/` with deterministic retained fixtures
+
+#### Phase 5.2 — linked-session CLI and built-in suite registry
+
+- Add a dedicated linked-session CLI path
+- Add a small built-in linked-suite registry rooted in repo-owned manifests
+- Support running one linked suite or one linked session outside unit tests
+
+#### Phase 5.3 — participant-scoped linked oracles
+
+##### Goal
+
+Make linked-session validation expressive enough to describe protocol-level
+expectations without relying mostly on whole-session trace or snapshot fixtures.
+
+##### `gb-test-runner` outcomes
+
+- Add participant-scoped linked oracles such as:
+  - exact serial text / serial-hex expectations per participant
+  - participant snapshot fixtures
+  - participant trace fixtures where warranted
+- The first useful slice should be participant-scoped exact `serial_hex`
+  expectations, because they express `DMG-04` byte exchange contracts compactly
+  without whole-session fixtures
+- Extend linked-session manifests so expectations can target the whole session
+  or one named participant explicitly
+- Normalize retained artifact naming for session-level vs participant-level
+  outputs so failures stay easy to inspect and compare
+- Add at least one richer `DMG-04` linked suite beyond the initial smoke case,
+  covering behaviors that matter to the cable protocol rather than only the
+  final state
+
+##### Design guidance
+
+- Prefer compact, protocol-shaped oracles over large whole-session fixtures
+  when they can express the same contract more clearly
+- Keep participant-scoped contracts explicit; do not infer target participants
+  from list position when an ID can be named
+- Preserve session-level fixtures as a useful escape hatch, but stop treating
+  them as the only practical correctness oracle
+- Keep the design friendly to later `DMG-07` reuse without adding `DMG-07`
+  semantics to the `DMG-04` phase
+
+##### Crates / files
+
+- `crates/gb-test-runner/src/linked_session_manifest.rs`
+- `crates/gb-test-runner/src/linked_session_runner.rs`
+- `crates/gb-test-runner/src/run_linked_session_cli.rs`
+- linked-session manifests and fixtures under
+  `crates/gb-test-runner/data/`
+- contract and binary coverage under `crates/gb-test-runner/tests/`
+
+##### Validation gate
+
+- manifest-driven linked-session cases with participant-scoped expectations
+- deterministic rerun coverage for the same participant-scoped oracle
+- CLI coverage for linked suites that validate per-participant outcomes
+- retained failure artifacts that make it obvious which participant contract
+  failed and why
+
+##### Done criteria
+
+- `gb-test-runner` can express and validate linked-session behavior in compact,
+  participant-aware contracts
+- growing `DMG-04` coverage no longer depends mainly on large whole-session
+  fixtures
+- the harness is ready to support a broader `DMG-04` suite and, later, more
+  complex linked topologies
+
 ## Phase 6 — Desktop `EXT. PORT` UX and printer-facing workflows
 
 ### Goal

@@ -68,12 +68,17 @@ pub enum LinkedSessionTopology {
 pub enum LinkedSessionCaptureKind {
     Trace,
     Snapshot,
+    ParticipantSerialHex,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkedSessionPassCondition {
     TraceFixture(PathBuf),
     SnapshotFixture(PathBuf),
+    ParticipantSerialHexExact {
+        participant_id: String,
+        expected: String,
+    },
     Informational(LinkedSessionCaptureKind),
 }
 
@@ -82,6 +87,9 @@ impl LinkedSessionPassCondition {
         match self {
             Self::TraceFixture(_) => LinkedSessionCaptureKind::Trace,
             Self::SnapshotFixture(_) => LinkedSessionCaptureKind::Snapshot,
+            Self::ParticipantSerialHexExact { .. } => {
+                LinkedSessionCaptureKind::ParticipantSerialHex
+            }
             Self::Informational(capture) => *capture,
         }
     }
@@ -250,6 +258,7 @@ pub enum LinkedSessionCaseValidationError {
         topology: LinkedSessionTopology,
         count: usize,
     },
+    UnknownPassConditionParticipant(String),
     DuplicateParticipantId(String),
     InvalidParticipant {
         participant_id: String,
@@ -371,6 +380,20 @@ impl LinkedSessionCase {
             }
         }
 
+        if let LinkedSessionPassCondition::ParticipantSerialHexExact { participant_id, .. } =
+            &self.pass_condition
+            && !self
+                .participants
+                .iter()
+                .any(|participant| participant.id == *participant_id)
+        {
+            return Err(
+                LinkedSessionCaseValidationError::UnknownPassConditionParticipant(
+                    participant_id.clone(),
+                ),
+            );
+        }
+
         Ok(())
     }
 }
@@ -459,6 +482,8 @@ struct LinkedSessionCaseManifest {
     timeout_frames: Option<u32>,
     timeout_tcycles: Option<u64>,
     oracle: Option<String>,
+    expected: Option<String>,
+    target_participant: Option<String>,
     fixture: Option<PathBuf>,
     #[serde(rename = "participant", default)]
     participants: Vec<LinkedSessionParticipantManifest>,
@@ -559,6 +584,8 @@ fn build_session_from_manifest(
             .oracle
             .as_deref()
             .unwrap_or(DEFAULT_LINKED_SESSION_ORACLE),
+        session.expected,
+        session.target_participant,
         session.fixture,
     )?;
 
@@ -656,6 +683,8 @@ fn parse_pass_condition(
     manifest_dir: &Path,
     session_id: &str,
     oracle: &str,
+    expected: Option<String>,
+    participant: Option<String>,
     fixture: Option<PathBuf>,
 ) -> Result<LinkedSessionPassCondition, String> {
     match oracle {
@@ -675,6 +704,18 @@ fn parse_pass_condition(
                 })?,
             ),
         )),
+        "linked-participant-serial-hex-exact" => {
+            let participant_id = participant.ok_or_else(|| {
+                format!("linked session {session_id} is missing participant for {oracle}")
+            })?;
+            let expected = expected.ok_or_else(|| {
+                format!("linked session {session_id} is missing expected for {oracle}")
+            })?;
+            Ok(LinkedSessionPassCondition::ParticipantSerialHexExact {
+                participant_id,
+                expected,
+            })
+        }
         "info-linked-trace" => Ok(LinkedSessionPassCondition::Informational(
             LinkedSessionCaptureKind::Trace,
         )),
@@ -790,7 +831,8 @@ fn capture_plan_for_pass_condition(
 ) -> LinkedSessionCapturePlan {
     match pass_condition {
         LinkedSessionPassCondition::TraceFixture(_)
-        | LinkedSessionPassCondition::SnapshotFixture(_) => {
+        | LinkedSessionPassCondition::SnapshotFixture(_)
+        | LinkedSessionPassCondition::ParticipantSerialHexExact { .. } => {
             LinkedSessionCapturePlan::debugging_minimum_for(pass_condition)
         }
         LinkedSessionPassCondition::Informational(capture) => LinkedSessionCapturePlan::new()
@@ -804,7 +846,8 @@ fn failure_artifacts_for_pass_condition(
 ) -> LinkedSessionFailureArtifactPolicy {
     match pass_condition {
         LinkedSessionPassCondition::TraceFixture(_)
-        | LinkedSessionPassCondition::SnapshotFixture(_) => {
+        | LinkedSessionPassCondition::SnapshotFixture(_)
+        | LinkedSessionPassCondition::ParticipantSerialHexExact { .. } => {
             LinkedSessionFailureArtifactPolicy::debugging_minimum_for(pass_condition)
         }
         LinkedSessionPassCondition::Informational(capture) => {
@@ -965,6 +1008,7 @@ timeout_tcycles = 8192
     fn linked_session_manifest_supports_explicit_metadata_and_trace_fixture_oracles() {
         let workspace = unique_temp_dir("explicit-contract");
         let absolute_fixture = workspace.join("fixtures").join("linked.trace");
+        let absolute_snapshot_fixture = workspace.join("fixtures").join("snapshot.txt");
         fs::create_dir_all(
             absolute_fixture
                 .parent()
@@ -972,6 +1016,8 @@ timeout_tcycles = 8192
         )
         .expect("fixture parent should be creatable");
         fs::write(&absolute_fixture, []).expect("absolute fixture should be writable");
+        fs::write(&absolute_snapshot_fixture, [])
+            .expect("absolute snapshot fixture should be writable");
 
         let manifest_path = write_manifest(
             &workspace,
@@ -1026,6 +1072,10 @@ fixture = "fixtures/snapshot.txt"
             .replace(
                 "fixtures/pokemon.trace",
                 &absolute_fixture.display().to_string(),
+            )
+            .replace(
+                "fixtures/snapshot.txt",
+                &absolute_snapshot_fixture.display().to_string(),
             ),
         );
 
@@ -1073,14 +1123,63 @@ fixture = "fixtures/snapshot.txt"
         assert_eq!(info_session.timeout, crate::Timeout::TCycles(1024));
         assert_eq!(
             info_session.pass_condition,
-            LinkedSessionPassCondition::SnapshotFixture(
-                workspace.join("fixtures").join("snapshot.txt")
-            )
+            LinkedSessionPassCondition::SnapshotFixture(absolute_snapshot_fixture)
         );
         assert!(
             info_session
                 .capture_plan
                 .contains(LinkedSessionCaptureKind::Snapshot)
+        );
+    }
+
+    #[test]
+    fn linked_session_manifest_supports_participant_scoped_serial_hex_oracles() {
+        let workspace = unique_temp_dir("participant-serial-hex");
+        let manifest_path = write_manifest(
+            &workspace,
+            "participant-serial-hex.toml",
+            r#"
+version = 1
+suite_name = "participant-serial-hex"
+subsystem = "serial"
+
+[[session]]
+id = "dmg04-byte-expectation"
+topology = "dmg04"
+timeout_tcycles = 2048
+oracle = "linked-participant-serial-hex-exact"
+target_participant = "left"
+expected = "A5"
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gb"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gb"
+"#,
+        );
+
+        let suite = load_linked_session_suite_manifest(&manifest_path)
+            .expect("participant serial-hex manifest should load cleanly");
+        let session = &suite.sessions[0];
+        assert_eq!(
+            session.pass_condition,
+            LinkedSessionPassCondition::ParticipantSerialHexExact {
+                participant_id: "left".to_string(),
+                expected: "A5".to_string(),
+            }
+        );
+        assert!(
+            session
+                .capture_plan
+                .contains(LinkedSessionCaptureKind::ParticipantSerialHex)
+        );
+        assert!(
+            session
+                .failure_artifacts
+                .contains(LinkedSessionCaptureKind::ParticipantSerialHex)
         );
     }
 
@@ -1411,6 +1510,10 @@ oracle = "info-linked-trace"
             LinkedSessionPassCondition::TraceFixture(PathBuf::from("expected.trace"));
         let snapshot_info =
             LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Snapshot);
+        let participant_serial_hex = LinkedSessionPassCondition::ParticipantSerialHexExact {
+            participant_id: "left".to_string(),
+            expected: "A5".to_string(),
+        };
 
         let trace_plan = capture_plan_for_pass_condition(&trace_fixture);
         assert!(trace_plan.contains(LinkedSessionCaptureKind::Trace));
@@ -1418,9 +1521,52 @@ oracle = "info-linked-trace"
 
         let snapshot_plan = capture_plan_for_pass_condition(&snapshot_info);
         assert!(snapshot_plan.contains(LinkedSessionCaptureKind::Snapshot));
+        let participant_plan = capture_plan_for_pass_condition(&participant_serial_hex);
+        assert!(participant_plan.contains(LinkedSessionCaptureKind::ParticipantSerialHex));
+        assert!(participant_plan.contains(LinkedSessionCaptureKind::Snapshot));
 
         let trace_failures = failure_artifacts_for_pass_condition(&trace_fixture);
         assert!(trace_failures.contains(LinkedSessionCaptureKind::Trace));
         assert!(trace_failures.contains(LinkedSessionCaptureKind::Snapshot));
+        let participant_failures = failure_artifacts_for_pass_condition(&participant_serial_hex);
+        assert!(participant_failures.contains(LinkedSessionCaptureKind::ParticipantSerialHex));
+        assert!(participant_failures.contains(LinkedSessionCaptureKind::Snapshot));
+    }
+
+    #[test]
+    fn linked_session_manifest_rejects_unknown_participant_targets_for_participant_oracles() {
+        let workspace = unique_temp_dir("unknown-pass-condition-participant");
+        let manifest_path = write_manifest(
+            &workspace,
+            "unknown-participant.toml",
+            r#"
+version = 1
+
+[[session]]
+id = "broken"
+topology = "dmg04"
+timeout_tcycles = 256
+oracle = "linked-participant-serial-hex-exact"
+target_participant = "ghost"
+expected = "A5"
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gb"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gb"
+"#,
+        );
+
+        let error = load_linked_session_suite_manifest(&manifest_path)
+            .expect_err("unknown participant target should fail");
+        match error {
+            LinkedSessionSuiteManifestError::Build { message, .. } => {
+                assert!(message.contains("UnknownPassConditionParticipant(\"ghost\")"));
+            }
+            other => panic!("unexpected linked manifest error: {other:?}"),
+        }
     }
 }
