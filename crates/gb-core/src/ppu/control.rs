@@ -1718,16 +1718,21 @@ impl Ppu {
     fn repaint_dmg_lcdc0_panel_range(&mut self, start_x: u8, end_x: u8, bg_enabled: bool) {
         let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
         let row_start = self.ly as usize * SCREEN_WIDTH;
+        let historical_bgp =
+            self.mode3_register_latches()
+                .pixel_pipeline_bgp(self.console_model, None, None);
         for x in usize::from(start_x)..usize::from(end_x) {
             let pixel = self.current_scanline_mixed_pixels[x];
-            let dmg_bg_forced_white = visible_output_driving
-                && !bg_enabled
-                && matches!(pixel.source, MixedPixelSource::Background);
+            if !matches!(pixel.source, MixedPixelSource::Background) {
+                continue;
+            }
+
+            let dmg_bg_forced_white = visible_output_driving && !bg_enabled;
             let panel_pixel = if visible_output_driving {
                 if dmg_bg_forced_white {
                     0
                 } else {
-                    self.map_mixed_pixel_to_panel_shade(pixel)
+                    self.apply_dmg_palette(historical_bgp, pixel.color)
                 }
             } else {
                 0

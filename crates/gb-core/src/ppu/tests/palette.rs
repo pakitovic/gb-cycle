@@ -291,6 +291,118 @@ fn dmg_single_left_sprite_lcdc0_second_write_restores_the_expected_retroactive_w
 }
 
 #[test]
+fn dmg_lcdc0_historical_repaint_only_updates_background_dots() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.lcdc = 0x93;
+    ppu.lcd_state = PpuLcdState::Enabled;
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers.lcdc = 0x93;
+    ppu.visible_registers.bgp = 0xE4;
+    ppu.visible_registers.obp0 = Some(0x00);
+    ppu.line_dot = 104;
+    ppu.bg_pipeline_state.visible_pixels_output = 4;
+    ppu.bg_pipeline_state.current_transfer_x = 12;
+    ppu.mode2_scan_state.selected_sprite_count = 1;
+    ppu.mode2_scan_state.selected_sprites[0] = Some(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 0,
+        tile_index: 0,
+        attributes: 0,
+    });
+
+    let pixels = [
+        MixedPixel::background(1),
+        MixedPixel::object(2, false),
+        MixedPixel::background(3),
+        MixedPixel::background(1),
+    ];
+    ppu.current_scanline_mixed_pixels[..4].copy_from_slice(&pixels);
+    ppu.current_scanline_pixels[..4].copy_from_slice(&[1, 2, 3, 1]);
+    ppu.framebuffer[..4].copy_from_slice(&[1, 3, 3, 1]);
+
+    for (visible_x, pixel) in pixels.into_iter().enumerate() {
+        ppu.dmg_panel_live_write_state
+            .recent_panel_dots
+            .push_back(PpuRecentPanelDot {
+                visible_x: visible_x as u8,
+                pixel,
+                dmg_bg_forced_white: false,
+            });
+    }
+
+    ppu.write_register(0xFF40, 0x92);
+
+    assert_eq!(&ppu.current_scanline_pixels[..4], &[0, 2, 0, 0]);
+    assert_eq!(&ppu.framebuffer()[..4], &[0, 3, 0, 0]);
+    assert_eq!(
+        &ppu.current_scanline_dmg_bg_forced_white[..4],
+        &[true, false, true, true]
+    );
+
+    let recent_dot_forced_white: Vec<_> = ppu
+        .dmg_panel_live_write_state
+        .recent_panel_dots
+        .iter()
+        .map(|dot| dot.dmg_bg_forced_white)
+        .collect();
+    assert_eq!(recent_dot_forced_white, vec![true, false, true, true]);
+}
+
+#[test]
+fn dmg_lcdc0_historical_repaint_ignores_active_bgp_output_delay_override() {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.lcdc = 0x92;
+    ppu.lcd_state = PpuLcdState::Enabled;
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x93;
+    ppu.pipeline_registers.lcdc = 0x92;
+    ppu.visible_registers.bgp = 0xE4;
+    ppu.pipeline_registers.bgp = 0xE4;
+    ppu.line_dot = 116;
+    ppu.bg_pipeline_state.visible_pixels_output = 16;
+    ppu.bg_pipeline_state.current_transfer_x = 24;
+    ppu.mode2_scan_state.selected_sprite_count = 1;
+    ppu.mode2_scan_state.selected_sprites[0] = Some(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 0,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.dmg_panel_live_write_state
+        .lcdc0
+        .current_line_bg_enable_write_count = 1;
+    ppu.dmg_panel_live_write_state
+        .bgp_cpu_commit
+        .output_palette_override = Some(0x00);
+    for x in 0..16 {
+        ppu.current_scanline_mixed_pixels[x] = MixedPixel::background(2);
+        ppu.current_scanline_pixels[x] = 0;
+        ppu.current_scanline_dmg_bg_forced_white[x] = true;
+        ppu.framebuffer[x] = 0;
+    }
+
+    ppu.write_register(0xFF40, 0x93);
+
+    assert_eq!(&ppu.current_scanline_pixels[..11], &[0; 11]);
+    assert_eq!(&ppu.framebuffer()[..11], &[0; 11]);
+    assert_eq!(&ppu.current_scanline_pixels[11..16], &[2; 5]);
+    assert_eq!(&ppu.framebuffer()[11..16], &[2; 5]);
+    assert!(
+        ppu.current_scanline_dmg_bg_forced_white[..11]
+            .iter()
+            .all(|&dot| dot)
+    );
+    assert!(
+        ppu.current_scanline_dmg_bg_forced_white[11..16]
+            .iter()
+            .all(|&dot| !dot)
+    );
+}
+
+#[test]
 fn dmg_single_left_sprite_lcdc0_first_write_waits_until_the_modeled_future_onset() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.lcdc = 0x93;
