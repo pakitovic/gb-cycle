@@ -548,6 +548,31 @@ This first cut intentionally keeps the visible desktop behavior unchanged:
 - the new linked-session runtime seam exists so later subphases can activate
   two-console UX without reworking the single-console event loop again
 
+### Phase 7.2 status
+
+`EXT. PORT -> GAME LINK` now activates a real linked desktop runtime in two
+steps:
+
+- the current loaded ROM remains the primary cartridge
+- desktop opens a second-ROM selection flow for the linked peer
+
+When the peer ROM is chosen:
+
+- `gb-desktop` promotes the runtime into a real two-console `DMG-04` session
+- the desktop session tracks the linked secondary ROM explicitly
+- save flushing / close handling now covers both cartridges
+- reset and configuration rebuild paths preserve the linked two-console runtime
+
+Switching back to `NONE` or `PRINTER` tears the session back down to the
+single primary machine while preserving the current primary runtime state.
+
+This subphase still intentionally keeps presentation and host input policy
+minimal:
+
+- the main loop continues to display only the primary console output
+- per-player video layout, input routing, and audio policy remain for later
+  subphases
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`

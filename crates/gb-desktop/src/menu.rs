@@ -515,7 +515,8 @@ impl MenuPresentation {
             | MenuItem::ClearRecentList
             | MenuItem::Quit
             | MenuItem::Return => true,
-            MenuItem::ExternalPortGameLink | MenuItem::ExternalPortFourPlayerAdapter => false,
+            MenuItem::ExternalPortGameLink => self.rom_loaded && !self.any_dialog_pending,
+            MenuItem::ExternalPortFourPlayerAdapter => false,
         }
     }
 
@@ -1491,7 +1492,10 @@ impl OverlayMenuState {
             MenuItem::ExternalPortPrinter => Some(MenuAction::SetExternalPort(
                 DesktopExternalPortSelection::Printer,
             )),
-            MenuItem::ExternalPortGameLink | MenuItem::ExternalPortFourPlayerAdapter => None,
+            MenuItem::ExternalPortGameLink => Some(MenuAction::SetExternalPort(
+                DesktopExternalPortSelection::GameLink,
+            )),
+            MenuItem::ExternalPortFourPlayerAdapter => None,
             MenuItem::GamepadRumble => Some(MenuAction::CycleGamepadRumbleMode),
             MenuItem::InputDefaults => Some(MenuAction::ResetInputDefaults),
             MenuItem::GamepadActive => None,
@@ -3265,7 +3269,7 @@ mod tests {
             presentation.item_label(MenuItem::ExternalPortFourPlayerAdapter),
             "4P ADAPTER"
         );
-        assert!(!presentation.item_enabled(MenuItem::ExternalPortGameLink));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortGameLink));
         assert!(!presentation.item_enabled(MenuItem::ExternalPortFourPlayerAdapter));
 
         presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;

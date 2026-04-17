@@ -156,8 +156,10 @@ struct FrontendRuntime {
     audio_output: Option<DesktopAudioOutput>,
     gamepad_manager: Option<GamepadManager>,
     save_session: Option<DesktopSaveSession>,
+    secondary_save_session: Option<DesktopSaveSession>,
     rtc_sync: HostRtcSync,
     open_rom_dialog: PathSelectionDialog,
+    open_rom_dialog_mode: OpenRomDialogMode,
     boot_rom_file_dialog: PathSelectionDialog,
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
@@ -165,10 +167,12 @@ struct FrontendRuntime {
     printer_output: PrinterOutputState,
 }
 
+#[derive(Clone)]
 struct DesktopSession {
     config: DesktopConfig,
     current_dir: PathBuf,
     loaded_rom: Option<LoadedRom>,
+    linked_secondary_rom: Option<LoadedRom>,
     last_open_directory: Option<PathBuf>,
     recent_roms: Vec<PathBuf>,
     external_port_selection: DesktopExternalPortSelection,
@@ -203,6 +207,20 @@ impl DesktopSession {
 
     fn rom_bytes(&self) -> Option<&[u8]> {
         match self.loaded_rom.as_ref() {
+            Some(rom) => Some(rom.bytes.as_slice()),
+            None => None,
+        }
+    }
+
+    fn linked_secondary_rom_path(&self) -> Option<&Path> {
+        match self.linked_secondary_rom.as_ref() {
+            Some(rom) => Some(rom.path.as_path()),
+            None => None,
+        }
+    }
+
+    fn linked_secondary_rom_bytes(&self) -> Option<&[u8]> {
+        match self.linked_secondary_rom.as_ref() {
             Some(rom) => Some(rom.bytes.as_slice()),
             None => None,
         }
@@ -368,6 +386,13 @@ enum PathDialogResult {
     Selected(PathBuf),
     Canceled,
     Failed(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum OpenRomDialogMode {
+    #[default]
+    Primary,
+    LinkedSecondary,
 }
 
 impl PathSelectionDialog {
@@ -2633,6 +2658,7 @@ fn run_desktop_with_startup_fallback_persistence(
         config: options.config,
         current_dir,
         loaded_rom,
+        linked_secondary_rom: None,
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
         external_port_selection: DesktopExternalPortSelection::None,
@@ -2738,8 +2764,10 @@ fn run_desktop_with_startup_fallback_persistence(
         audio_output,
         gamepad_manager,
         save_session,
+        secondary_save_session: None,
         rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
+        open_rom_dialog_mode: OpenRomDialogMode::Primary,
         boot_rom_file_dialog: PathSelectionDialog::new(),
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
@@ -2978,9 +3006,7 @@ fn run_desktop_with_startup_fallback_persistence(
         gamepad_manager.update_rumble(false, Instant::now())?;
     }
 
-    if let Some(save_session) = &mut runtime.save_session {
-        save_session.close(&machine)?;
-    }
+    close_runtime_save_sessions(&mut runtime, &machine)?;
     if let Some(rom_path) = session.rom_path() {
         settings_store.remember_loaded_rom(rom_path)?;
     }
@@ -3009,8 +3035,9 @@ struct LoadedMachine {
 
 type RebuildMachineResult = (
     DesktopConfig,
-    Option<String>,
-    Machine<TraceSummaryBuffer>,
+    Vec<String>,
+    DesktopEmulationSession,
+    Option<DesktopSaveSession>,
     Option<DesktopSaveSession>,
 );
 
@@ -3165,7 +3192,22 @@ fn open_save_session_for_session(
     session: &DesktopSession,
     machine: &mut Machine<TraceSummaryBuffer>,
 ) -> Result<Option<DesktopSaveSession>, String> {
-    let Some(rom_path) = session.rom_path() else {
+    open_save_session_for_loaded_rom(session, session.loaded_rom.as_ref(), machine)
+}
+
+fn open_secondary_save_session_for_session(
+    session: &DesktopSession,
+    machine: &mut Machine<TraceSummaryBuffer>,
+) -> Result<Option<DesktopSaveSession>, String> {
+    open_save_session_for_loaded_rom(session, session.linked_secondary_rom.as_ref(), machine)
+}
+
+fn open_save_session_for_loaded_rom(
+    session: &DesktopSession,
+    loaded_rom: Option<&LoadedRom>,
+    machine: &mut Machine<TraceSummaryBuffer>,
+) -> Result<Option<DesktopSaveSession>, String> {
+    let Some(rom_path) = loaded_rom.map(|rom| rom.path.as_path()) else {
         return Ok(None);
     };
 
@@ -3188,13 +3230,24 @@ fn open_save_session_for_session(
 }
 
 fn window_title(session: &DesktopSession, config: &DesktopConfig) -> String {
-    let rom_name = match session.rom_path() {
-        Some(rom_path) => rom_path
+    let rom_name = match (session.rom_path(), session.linked_secondary_rom_path()) {
+        (Some(primary_path), Some(secondary_path)) => format!(
+            "{} + {}",
+            primary_path
+                .file_name()
+                .unwrap_or(primary_path.as_os_str())
+                .to_string_lossy(),
+            secondary_path
+                .file_name()
+                .unwrap_or(secondary_path.as_os_str())
+                .to_string_lossy(),
+        ),
+        (Some(rom_path), None) => rom_path
             .file_name()
             .unwrap_or(rom_path.as_os_str())
             .to_string_lossy()
             .into_owned(),
-        None => "no ROM loaded".to_string(),
+        (None, _) => "no ROM loaded".to_string(),
     };
     format!(
         "gb-desktop | {} | {} | {} | {}",
@@ -3203,6 +3256,53 @@ fn window_title(session: &DesktopSession, config: &DesktopConfig) -> String {
         startup_mode_name(config.launch.startup_mode),
         execution_mode_name(config.launch.execution_mode),
     )
+}
+
+fn close_runtime_save_sessions(
+    runtime: &mut FrontendRuntime,
+    machine: &DesktopEmulationSession,
+) -> Result<(), String> {
+    if let Some(save_session) = &mut runtime.save_session {
+        save_session.close(machine.primary_machine())?;
+    }
+    if let Some(save_session) = &mut runtime.secondary_save_session
+        && let Some(secondary_machine) = machine.secondary_machine()
+    {
+        save_session.close(secondary_machine)?;
+    }
+    Ok(())
+}
+
+fn flush_runtime_save_sessions_if_changed(
+    runtime: &mut FrontendRuntime,
+    machine: &DesktopEmulationSession,
+    reason: &str,
+) -> Result<(), String> {
+    if let Some(save_session) = &mut runtime.save_session {
+        let _ = save_session.flush_if_changed(machine.primary_machine(), reason)?;
+    }
+    if let Some(save_session) = &mut runtime.secondary_save_session
+        && let Some(secondary_machine) = machine.secondary_machine()
+    {
+        let _ = save_session.flush_if_changed(secondary_machine, reason)?;
+    }
+    Ok(())
+}
+
+fn maybe_flush_runtime_save_sessions_at_frame_boundary(
+    runtime: &mut FrontendRuntime,
+    machine: &DesktopEmulationSession,
+    now: Instant,
+) -> Result<(), String> {
+    if let Some(save_session) = &mut runtime.save_session {
+        let _ = save_session.maybe_flush_at_frame_boundary(machine.primary_machine(), now)?;
+    }
+    if let Some(save_session) = &mut runtime.secondary_save_session
+        && let Some(secondary_machine) = machine.secondary_machine()
+    {
+        let _ = save_session.maybe_flush_at_frame_boundary(secondary_machine, now)?;
+    }
+    Ok(())
 }
 
 fn performance_window_title(base_title: &str, snapshot: PerformanceHudSnapshot) -> String {
@@ -3427,9 +3527,11 @@ fn process_events(
                     match hotkey_action(&runtime.keyboard_bindings, keycode) {
                         HotkeyAction::None => {}
                         HotkeyAction::ManualSave => {
-                            if let Some(save_session) = &mut runtime.save_session {
-                                let _ = save_session.flush_if_changed(machine, "manual-hotkey")?;
-                            }
+                            flush_runtime_save_sessions_if_changed(
+                                runtime,
+                                machine,
+                                "manual-hotkey",
+                            )?;
                         }
                         HotkeyAction::Reset => {
                             reset_machine(
@@ -3775,16 +3877,17 @@ fn step_until_next_frame(
                             .record_host_audio_submit_duration(audio_submit_started_at.elapsed());
                     }
                 }
-                if let Some(save_session) = &mut context.runtime.save_session {
-                    let save_flush_started_at = profile_request.as_ref().map(|_| Instant::now());
-                    let _ = save_session
-                        .maybe_flush_at_frame_boundary(context.machine, Instant::now())?;
-                    if let Some(save_flush_started_at) = save_flush_started_at
-                        && let Some(profile_request) = &mut profile_request
-                    {
-                        profile_request
-                            .record_host_save_flush_duration(save_flush_started_at.elapsed());
-                    }
+                let save_flush_started_at = profile_request.as_ref().map(|_| Instant::now());
+                maybe_flush_runtime_save_sessions_at_frame_boundary(
+                    context.runtime,
+                    context.machine,
+                    Instant::now(),
+                )?;
+                if let Some(save_flush_started_at) = save_flush_started_at
+                    && let Some(profile_request) = &mut profile_request
+                {
+                    profile_request
+                        .record_host_save_flush_duration(save_flush_started_at.elapsed());
                 }
                 return Ok(StepUntilNextFrameResult {
                     signal: LoopSignal::Continue,
@@ -3862,10 +3965,18 @@ fn process_pending_open_rom_dialog(
     let Some(result) = context.runtime.open_rom_dialog.take_result() else {
         return Ok(());
     };
+    let open_rom_dialog_mode = context.runtime.open_rom_dialog_mode;
+    context.runtime.open_rom_dialog_mode = OpenRomDialogMode::Primary;
 
     match result {
         PathDialogResult::Selected(path) => {
-            if let Err(error) = open_selected_rom(event_pump, canvas, path, context) {
+            let open_result = match open_rom_dialog_mode {
+                OpenRomDialogMode::Primary => open_selected_rom(event_pump, canvas, path, context),
+                OpenRomDialogMode::LinkedSecondary => {
+                    open_selected_linked_secondary_rom(event_pump, canvas, path, context)
+                }
+            };
+            if let Err(error) = open_result {
                 show_error_message(Some(canvas.window()), "Open ROM failed", &error);
                 eprintln!("warning: {error}");
             }
@@ -4019,96 +4130,229 @@ fn rebuild_machine_for_config(
     flush_pending_printer_output(canvas.window(), context.session, context.runtime);
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
-    let battery_backed_state = uses_battery_backed_hardware_persistence(
-        context.machine.cartridge().persistence_metadata(),
+    let primary_battery_backed_state = uses_battery_backed_hardware_persistence(
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistence_metadata(),
     )
-    .then(|| context.machine.cartridge().persistent_state());
+    .then(|| {
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistent_state()
+    });
+    let secondary_battery_backed_state = context.machine.secondary_machine().and_then(|machine| {
+        uses_battery_backed_hardware_persistence(machine.cartridge().persistence_metadata())
+            .then(|| machine.cartridge().persistent_state())
+    });
 
     let mut previous_save_session = context.runtime.save_session.take();
+    let mut previous_secondary_save_session = context.runtime.secondary_save_session.take();
     if let Some(save_session) = previous_save_session.as_mut()
-        && let Err(error) = save_session.close(context.machine)
+        && let Err(error) = save_session.close(context.machine.primary_machine())
     {
         context.runtime.save_session = previous_save_session;
+        context.runtime.secondary_save_session = previous_secondary_save_session;
+        return Err(error);
+    }
+    if let Some(save_session) = previous_secondary_save_session.as_mut()
+        && let Some(secondary_machine) = context.machine.secondary_machine()
+        && let Err(error) = save_session.close(secondary_machine)
+    {
+        context.runtime.save_session = previous_save_session;
+        context.runtime.secondary_save_session = previous_secondary_save_session;
         return Err(error);
     }
 
     let rebuild_result: Result<RebuildMachineResult, String> = (|| {
-        let (effective_config, boot_rom_fallback_warning, mut next_machine, diagnostics) =
-            match context.session.rom_bytes() {
-                Some(rom_bytes) => {
-                    let loaded =
-                        load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?;
-                    let mut machine = loaded.machine;
-                    apply_external_port_selection_to_machine(
-                        &mut machine,
-                        context.session.external_port_selection,
-                    );
-                    (
-                        loaded.effective_config,
-                        loaded.boot_rom_fallback_warning,
-                        machine,
-                        loaded.diagnostics,
-                    )
-                }
-                None => {
-                    let prepared =
-                        prepare_machine_config(next_config, &context.session.current_dir)?;
-                    let mut machine = Machine::new_summary(prepared.machine_config);
-                    apply_external_port_selection_to_machine(
-                        &mut machine,
-                        context.session.external_port_selection,
-                    );
-                    (
-                        prepared.effective_config,
-                        prepared.boot_rom_fallback_warning,
-                        machine,
-                        Vec::new(),
-                    )
-                }
-            };
-        write_cartridge_diagnostics(&diagnostics);
-        if let Some(persistent_state) = battery_backed_state
-            && let Err(error) = next_machine.restore_cartridge_persistent_state(&persistent_state)
-        {
-            return Err(format!(
-                "failed to restore battery-backed persistence after reconfigure: {error:?}"
-            ));
-        }
+        let mut boot_rom_fallback_warnings = Vec::new();
 
         let next_session = DesktopSession {
-            config: effective_config.clone(),
+            config: next_config.clone(),
             current_dir: context.session.current_dir.clone(),
             loaded_rom: context.session.loaded_rom.clone(),
+            linked_secondary_rom: context.session.linked_secondary_rom.clone(),
             last_open_directory: context.session.last_open_directory.clone(),
             recent_roms: context.session.recent_roms.clone(),
             external_port_selection: context.session.external_port_selection,
         };
-        let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
-        Ok((
-            effective_config,
-            boot_rom_fallback_warning,
-            next_machine,
-            next_save_session,
-        ))
+
+        match (
+            next_session.rom_bytes(),
+            next_session.linked_secondary_rom_bytes(),
+            next_session.external_port_selection,
+        ) {
+            (
+                Some(primary_rom_bytes),
+                Some(secondary_rom_bytes),
+                DesktopExternalPortSelection::GameLink,
+            ) => {
+                let primary_loaded = load_machine_for_rom(
+                    next_config,
+                    &context.session.current_dir,
+                    primary_rom_bytes,
+                )?;
+                let secondary_loaded = load_machine_for_rom(
+                    next_config,
+                    &context.session.current_dir,
+                    secondary_rom_bytes,
+                )?;
+                if primary_loaded.effective_config != secondary_loaded.effective_config {
+                    return Err(
+                        "reconfiguring a linked DMG-04 session produced divergent effective configs between primary and secondary machines"
+                            .to_string(),
+                    );
+                }
+
+                write_cartridge_diagnostics(&primary_loaded.diagnostics);
+                write_cartridge_diagnostics(&secondary_loaded.diagnostics);
+                if let Some(warning) = primary_loaded.boot_rom_fallback_warning {
+                    boot_rom_fallback_warnings.push(warning);
+                }
+                if let Some(warning) = secondary_loaded.boot_rom_fallback_warning {
+                    boot_rom_fallback_warnings.push(warning);
+                }
+
+                let mut next_machine = DesktopEmulationSession::new_single(primary_loaded.machine);
+                if let Some(persistent_state) = primary_battery_backed_state
+                    && let Err(error) = next_machine
+                        .primary_machine_mut()
+                        .restore_cartridge_persistent_state(&persistent_state)
+                {
+                    return Err(format!(
+                        "failed to restore battery-backed persistence after reconfigure: {error:?}"
+                    ));
+                }
+
+                next_machine.attach_secondary_dmg04(secondary_loaded.machine)?;
+                if let Some(persistent_state) = secondary_battery_backed_state
+                    && let Some(secondary_machine) = next_machine.secondary_machine_mut()
+                    && let Err(error) =
+                        secondary_machine.restore_cartridge_persistent_state(&persistent_state)
+                {
+                    return Err(format!(
+                        "failed to restore linked battery-backed persistence after reconfigure: {error:?}"
+                    ));
+                }
+
+                let effective_config = primary_loaded.effective_config;
+                let next_primary_save_session = open_save_session_for_session(
+                    &DesktopSession {
+                        config: effective_config.clone(),
+                        ..next_session.clone()
+                    },
+                    next_machine.primary_machine_mut(),
+                )?;
+                let next_secondary_save_session = open_secondary_save_session_for_session(
+                    &DesktopSession {
+                        config: effective_config.clone(),
+                        ..next_session
+                    },
+                    next_machine
+                        .secondary_machine_mut()
+                        .expect("linked desktop session should expose a secondary machine"),
+                )?;
+                Ok((
+                    effective_config,
+                    boot_rom_fallback_warnings,
+                    next_machine,
+                    next_primary_save_session,
+                    next_secondary_save_session,
+                ))
+            }
+            (Some(rom_bytes), _, _) => {
+                let loaded =
+                    load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?;
+                write_cartridge_diagnostics(&loaded.diagnostics);
+                if let Some(warning) = loaded.boot_rom_fallback_warning {
+                    boot_rom_fallback_warnings.push(warning);
+                }
+                let mut next_machine = DesktopEmulationSession::new_single(loaded.machine);
+                apply_external_port_selection_to_machine(
+                    next_machine.primary_machine_mut(),
+                    next_session.external_port_selection,
+                );
+                if let Some(persistent_state) = primary_battery_backed_state
+                    && let Err(error) = next_machine
+                        .primary_machine_mut()
+                        .restore_cartridge_persistent_state(&persistent_state)
+                {
+                    return Err(format!(
+                        "failed to restore battery-backed persistence after reconfigure: {error:?}"
+                    ));
+                }
+
+                let effective_config = loaded.effective_config;
+                let next_primary_save_session = open_save_session_for_session(
+                    &DesktopSession {
+                        config: effective_config.clone(),
+                        linked_secondary_rom: None,
+                        external_port_selection: next_session.external_port_selection,
+                        ..next_session
+                    },
+                    next_machine.primary_machine_mut(),
+                )?;
+                Ok((
+                    effective_config,
+                    boot_rom_fallback_warnings,
+                    next_machine,
+                    next_primary_save_session,
+                    None,
+                ))
+            }
+            (None, _, _) => {
+                let prepared = prepare_machine_config(next_config, &context.session.current_dir)?;
+                if let Some(warning) = prepared.boot_rom_fallback_warning {
+                    boot_rom_fallback_warnings.push(warning);
+                }
+
+                let mut next_machine = DesktopEmulationSession::new_single(Machine::new_summary(
+                    prepared.machine_config,
+                ));
+                apply_external_port_selection_to_machine(
+                    next_machine.primary_machine_mut(),
+                    next_session.external_port_selection,
+                );
+                Ok((
+                    prepared.effective_config,
+                    boot_rom_fallback_warnings,
+                    next_machine,
+                    None,
+                    None,
+                ))
+            }
+        }
     })();
 
-    let (effective_config, boot_rom_fallback_warning, next_machine, next_save_session) =
-        match rebuild_result {
-            Ok(value) => value,
-            Err(error) => {
-                context.runtime.save_session = previous_save_session;
-                return Err(error);
-            }
-        };
+    let (
+        effective_config,
+        boot_rom_fallback_warnings,
+        next_machine,
+        next_save_session,
+        next_secondary_save_session,
+    ) = match rebuild_result {
+        Ok(value) => value,
+        Err(error) => {
+            context.runtime.save_session = previous_save_session;
+            context.runtime.secondary_save_session = previous_secondary_save_session;
+            return Err(error);
+        }
+    };
 
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.clear_buffer()?;
     }
 
-    log_boot_rom_fallback_warning(boot_rom_fallback_warning.as_deref());
+    for warning in &boot_rom_fallback_warnings {
+        log_boot_rom_fallback_warning(Some(warning));
+    }
     context.runtime.input_state.clear_all(context.machine);
-    *context.machine = DesktopEmulationSession::new_single(next_machine);
+    *context.machine = next_machine;
     context.runtime.save_session = next_save_session;
+    context.runtime.secondary_save_session = next_secondary_save_session;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
@@ -4150,6 +4394,44 @@ fn save_directory_dialog_default_location(session: &DesktopSession) -> PathBuf {
     }
 }
 
+fn load_selected_rom(
+    selected_path: PathBuf,
+    session: &DesktopSession,
+) -> Result<LoadedRom, String> {
+    let rom_path = if selected_path.is_absolute() {
+        selected_path
+    } else {
+        resolve_path(&session.current_dir, &selected_path)
+    };
+    let rom_bytes = match fs::read(&rom_path) {
+        Ok(rom_bytes) => rom_bytes,
+        Err(error) => {
+            return Err(format_path_error(
+                "failed to read ROM",
+                &rom_path,
+                &error.to_string(),
+            ));
+        }
+    };
+
+    Ok(LoadedRom {
+        path: rom_path,
+        bytes: rom_bytes,
+    })
+}
+
+fn next_single_external_port_selection(
+    current_selection: DesktopExternalPortSelection,
+) -> DesktopExternalPortSelection {
+    match current_selection {
+        DesktopExternalPortSelection::None | DesktopExternalPortSelection::Printer => {
+            current_selection
+        }
+        DesktopExternalPortSelection::GameLink
+        | DesktopExternalPortSelection::FourPlayerAdapter => DesktopExternalPortSelection::None,
+    }
+}
+
 fn open_selected_rom(
     event_pump: &sdl3::EventPump,
     canvas: &mut Canvas<Window>,
@@ -4166,63 +4448,45 @@ fn open_selected_rom(
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
     let had_loaded_rom = context.session.has_loaded_rom();
-    let rom_path = if selected_path.is_absolute() {
-        selected_path
-    } else {
-        resolve_path(&context.session.current_dir, &selected_path)
-    };
-    let rom_bytes = match fs::read(&rom_path) {
-        Ok(rom_bytes) => rom_bytes,
-        Err(error) => {
-            return Err(format_path_error(
-                "failed to read ROM",
-                &rom_path,
-                &error.to_string(),
-            ));
-        }
-    };
+    let next_loaded_rom = load_selected_rom(selected_path, context.session)?;
     let loaded = load_machine_for_rom(
         &context.session.config,
         &context.session.current_dir,
-        &rom_bytes,
+        &next_loaded_rom.bytes,
     )?;
     log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
     write_cartridge_diagnostics(&loaded.diagnostics);
-    let next_loaded_rom = LoadedRom {
-        path: rom_path,
-        bytes: rom_bytes,
-    };
     let effective_config = loaded.effective_config;
     let config_fell_back = effective_config != context.session.config;
     let mut next_machine = loaded.machine;
-    apply_external_port_selection_to_machine(
-        &mut next_machine,
-        context.session.external_port_selection,
-    );
+    let next_external_port_selection =
+        next_single_external_port_selection(context.session.external_port_selection);
+    apply_external_port_selection_to_machine(&mut next_machine, next_external_port_selection);
     let next_session = DesktopSession {
         config: effective_config.clone(),
         current_dir: context.session.current_dir.clone(),
         loaded_rom: Some(next_loaded_rom),
+        linked_secondary_rom: None,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
-        external_port_selection: context.session.external_port_selection,
+        external_port_selection: next_external_port_selection,
     };
     let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
 
-    if let Some(save_session) = &mut context.runtime.save_session {
-        save_session.close(context.machine)?;
-    }
+    close_runtime_save_sessions(context.runtime, context.machine)?;
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.clear_buffer()?;
     }
 
     context.session.config = effective_config;
     context.session.loaded_rom = next_session.loaded_rom;
+    context.session.linked_secondary_rom = None;
     context.session.last_open_directory = context
         .session
         .loaded_rom
         .as_ref()
         .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
+    context.session.external_port_selection = next_external_port_selection;
     if config_fell_back {
         context
             .settings_store
@@ -4235,6 +4499,7 @@ fn open_selected_rom(
     context.runtime.input_state.clear_all(context.machine);
     *context.machine = DesktopEmulationSession::new_single(next_machine);
     context.runtime.save_session = next_save_session;
+    context.runtime.secondary_save_session = None;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
@@ -4243,6 +4508,96 @@ fn open_selected_rom(
     if !had_loaded_rom {
         context.runtime.paused = false;
     }
+
+    if context.runtime.menu_state.is_open() {
+        close_menu(event_pump, context.machine, context.runtime)?;
+    }
+
+    Ok(())
+}
+
+fn open_selected_linked_secondary_rom(
+    event_pump: &sdl3::EventPump,
+    canvas: &mut Canvas<Window>,
+    selected_path: PathBuf,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    if !context.session.has_loaded_rom() {
+        return Err(
+            "GAME LINK requires a primary ROM before selecting a second cartridge".to_string(),
+        );
+    }
+
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+    context.runtime.rtc_sync.apply_to_machine(context.machine);
+
+    let next_secondary_rom = load_selected_rom(selected_path, context.session)?;
+    let loaded_secondary = load_machine_for_rom(
+        &context.session.config,
+        &context.session.current_dir,
+        &next_secondary_rom.bytes,
+    )?;
+    log_boot_rom_fallback_warning(loaded_secondary.boot_rom_fallback_warning.as_deref());
+    write_cartridge_diagnostics(&loaded_secondary.diagnostics);
+
+    let effective_config = loaded_secondary.effective_config;
+    let config_fell_back = effective_config != context.session.config;
+    let secondary_machine = loaded_secondary.machine;
+
+    if let Some(save_session) = &mut context.runtime.secondary_save_session
+        && let Some(previous_secondary_machine) = context.machine.secondary_machine()
+    {
+        save_session.close(previous_secondary_machine)?;
+    }
+
+    if context.machine.is_linked_dmg04_two_player() {
+        context.machine.detach_to_single_primary();
+    }
+    context.machine.attach_secondary_dmg04(secondary_machine)?;
+
+    let next_session = DesktopSession {
+        config: effective_config.clone(),
+        current_dir: context.session.current_dir.clone(),
+        loaded_rom: context.session.loaded_rom.clone(),
+        linked_secondary_rom: Some(next_secondary_rom),
+        last_open_directory: context.session.last_open_directory.clone(),
+        recent_roms: context.session.recent_roms.clone(),
+        external_port_selection: DesktopExternalPortSelection::GameLink,
+    };
+    let next_secondary_save_session = open_secondary_save_session_for_session(
+        &next_session,
+        context
+            .machine
+            .secondary_machine_mut()
+            .expect("linked desktop session should expose a secondary machine"),
+    )?;
+
+    context.session.config = effective_config;
+    context.session.linked_secondary_rom = next_session.linked_secondary_rom;
+    context.session.last_open_directory = context
+        .session
+        .linked_secondary_rom
+        .as_ref()
+        .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
+    context.session.external_port_selection = DesktopExternalPortSelection::GameLink;
+    if config_fell_back {
+        context
+            .settings_store
+            .persist_machine_preferences(&context.session.config)?;
+    }
+    context.runtime.input_state.clear_all(context.machine);
+    context.runtime.secondary_save_session = next_secondary_save_session;
+    context.runtime.rtc_sync.resync_to_host_clock();
+    context.performance_counter.reset_base_title(
+        canvas.window_mut(),
+        window_title(context.session, &context.session.config),
+    )?;
 
     if context.runtime.menu_state.is_open() {
         close_menu(event_pump, context.machine, context.runtime)?;
@@ -4288,6 +4643,7 @@ fn execute_menu_action(
         }
         MenuAction::OpenRom => {
             let default_location = context.session.rom_directory_hint();
+            context.runtime.open_rom_dialog_mode = OpenRomDialogMode::Primary;
             if let Err(error) = context.runtime.open_rom_dialog.show_file(
                 &ROM_FILE_DIALOG_FILTERS,
                 canvas.window(),
@@ -4406,9 +4762,7 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SaveBattery => {
-            if let Some(save_session) = &mut context.runtime.save_session {
-                let _ = save_session.flush_if_changed(context.machine, "menu")?;
-            }
+            flush_runtime_save_sessions_if_changed(context.runtime, context.machine, "menu")?;
             Ok(None)
         }
         MenuAction::ToggleFullscreen => {
@@ -4517,8 +4871,49 @@ fn execute_menu_action(
                 context.machine,
             );
             flush_pending_printer_output(canvas.window(), context.session, context.runtime);
-            context.session.external_port_selection = selection;
-            apply_external_port_selection_to_machine(context.machine, selection);
+            match selection {
+                DesktopExternalPortSelection::GameLink => {
+                    if !context.session.has_loaded_rom() {
+                        return Ok(None);
+                    }
+
+                    context.runtime.open_rom_dialog_mode = OpenRomDialogMode::LinkedSecondary;
+                    let default_location = context.session.rom_directory_hint();
+                    if let Err(error) = context.runtime.open_rom_dialog.show_file(
+                        &ROM_FILE_DIALOG_FILTERS,
+                        canvas.window(),
+                        default_location,
+                    ) {
+                        context.runtime.open_rom_dialog_mode = OpenRomDialogMode::Primary;
+                        show_warning_message(Some(canvas.window()), "GAME LINK", &error);
+                        eprintln!("warning: {error}");
+                    }
+                }
+                DesktopExternalPortSelection::None | DesktopExternalPortSelection::Printer => {
+                    if context.machine.is_linked_dmg04_two_player() {
+                        if let Some(save_session) = &mut context.runtime.secondary_save_session
+                            && let Some(secondary_machine) = context.machine.secondary_machine()
+                        {
+                            save_session.close(secondary_machine)?;
+                        }
+                        context.machine.detach_to_single_primary();
+                    }
+
+                    context.runtime.secondary_save_session = None;
+                    context.session.linked_secondary_rom = None;
+                    context.session.external_port_selection = selection;
+                    apply_external_port_selection_to_machine(
+                        context.machine.primary_machine_mut(),
+                        selection,
+                    );
+                    context.performance_counter.reset_base_title(
+                        canvas.window_mut(),
+                        window_title(context.session, &context.session.config),
+                    )?;
+                    context.runtime.rtc_sync.resync_to_host_clock();
+                }
+                DesktopExternalPortSelection::FourPlayerAdapter => {}
+            }
             Ok(None)
         }
         MenuAction::CycleGamepadDirectionalSource => {
@@ -4730,7 +5125,11 @@ fn current_menu_presentation(
         manual_save_available: runtime
             .save_session
             .as_ref()
-            .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual),
+            .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual)
+            || runtime
+                .secondary_save_session
+                .as_ref()
+                .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual),
         any_dialog_pending: runtime.any_dialog_pending(),
         gamepad_available,
         gamepad_directional_source: runtime.gamepad_manager.as_ref().map_or(
@@ -5300,7 +5699,7 @@ fn menu_input_for_gamepad_button(
 fn reset_machine(
     main_window: &Window,
     session: &mut DesktopSession,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
     settings_store: &mut DesktopSettingsStore,
 ) -> Result<(), String> {
@@ -5310,33 +5709,174 @@ fn reset_machine(
     drain_printed_pages_into_printer_output(main_window, session, runtime, machine);
     flush_pending_printer_output(main_window, session, runtime);
     runtime.rtc_sync.apply_to_machine(machine);
-    let battery_backed_state =
-        uses_battery_backed_hardware_persistence(machine.cartridge().persistence_metadata())
-            .then(|| machine.cartridge().persistent_state());
+    let primary_battery_backed_state = uses_battery_backed_hardware_persistence(
+        machine.primary_machine().cartridge().persistence_metadata(),
+    )
+    .then(|| machine.primary_machine().cartridge().persistent_state());
+    let secondary_battery_backed_state =
+        machine.secondary_machine().and_then(|secondary_machine| {
+            uses_battery_backed_hardware_persistence(
+                secondary_machine.cartridge().persistence_metadata(),
+            )
+            .then(|| secondary_machine.cartridge().persistent_state())
+        });
 
-    let loaded = match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
-        Ok(result) => result,
-        Err(error) => {
-            return Err(format_display_error(
-                "failed to reload cartridge during reset",
-                &error,
-            ));
+    close_runtime_save_sessions(runtime, machine)?;
+
+    let (
+        effective_config,
+        boot_rom_fallback_warnings,
+        reset_machine,
+        next_save_session,
+        next_secondary_save_session,
+    ) = match (
+        session.linked_secondary_rom_bytes(),
+        session.external_port_selection,
+    ) {
+        (Some(secondary_rom_bytes), DesktopExternalPortSelection::GameLink) => {
+            let primary_loaded =
+                match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        return Err(format_display_error(
+                            "failed to reload primary cartridge during linked reset",
+                            &error,
+                        ));
+                    }
+                };
+            let secondary_loaded = match load_machine_for_rom(
+                &session.config,
+                &session.current_dir,
+                secondary_rom_bytes,
+            ) {
+                Ok(result) => result,
+                Err(error) => {
+                    return Err(format_display_error(
+                        "failed to reload secondary cartridge during linked reset",
+                        &error,
+                    ));
+                }
+            };
+            if primary_loaded.effective_config != secondary_loaded.effective_config {
+                return Err(
+                    "linked reset produced divergent effective configs between the primary and secondary machines"
+                        .to_string(),
+                );
+            }
+
+            let mut boot_rom_fallback_warnings = Vec::new();
+            if let Some(warning) = primary_loaded.boot_rom_fallback_warning {
+                boot_rom_fallback_warnings.push(warning);
+            }
+            if let Some(warning) = secondary_loaded.boot_rom_fallback_warning {
+                boot_rom_fallback_warnings.push(warning);
+            }
+            write_cartridge_diagnostics(&primary_loaded.diagnostics);
+            write_cartridge_diagnostics(&secondary_loaded.diagnostics);
+
+            let mut reset_machine = DesktopEmulationSession::new_single(primary_loaded.machine);
+            if let Some(persistent_state) = primary_battery_backed_state
+                && let Err(error) = reset_machine
+                    .primary_machine_mut()
+                    .restore_cartridge_persistent_state(&persistent_state)
+            {
+                return Err(format!(
+                    "failed to restore battery-backed persistence after reset: {error:?}"
+                ));
+            }
+            reset_machine.attach_secondary_dmg04(secondary_loaded.machine)?;
+            if let Some(persistent_state) = secondary_battery_backed_state
+                && let Some(secondary_machine) = reset_machine.secondary_machine_mut()
+                && let Err(error) =
+                    secondary_machine.restore_cartridge_persistent_state(&persistent_state)
+            {
+                return Err(format!(
+                    "failed to restore linked battery-backed persistence after reset: {error:?}"
+                ));
+            }
+
+            let effective_config = primary_loaded.effective_config;
+            let next_save_session = open_save_session_for_session(
+                &DesktopSession {
+                    config: effective_config.clone(),
+                    ..session.clone()
+                },
+                reset_machine.primary_machine_mut(),
+            )?;
+            let next_secondary_save_session = open_secondary_save_session_for_session(
+                &DesktopSession {
+                    config: effective_config.clone(),
+                    ..session.clone()
+                },
+                reset_machine
+                    .secondary_machine_mut()
+                    .expect("linked desktop session should expose a secondary machine"),
+            )?;
+            (
+                effective_config,
+                boot_rom_fallback_warnings,
+                reset_machine,
+                next_save_session,
+                next_secondary_save_session,
+            )
+        }
+        _ => {
+            let loaded =
+                match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        return Err(format_display_error(
+                            "failed to reload cartridge during reset",
+                            &error,
+                        ));
+                    }
+                };
+            let mut boot_rom_fallback_warnings = Vec::new();
+            if let Some(warning) = loaded.boot_rom_fallback_warning {
+                boot_rom_fallback_warnings.push(warning);
+            }
+            write_cartridge_diagnostics(&loaded.diagnostics);
+            let mut reset_machine = DesktopEmulationSession::new_single(loaded.machine);
+            if let Some(persistent_state) = primary_battery_backed_state
+                && let Err(error) = reset_machine
+                    .primary_machine_mut()
+                    .restore_cartridge_persistent_state(&persistent_state)
+            {
+                return Err(format!(
+                    "failed to restore battery-backed persistence after reset: {error:?}"
+                ));
+            }
+            apply_external_port_selection_to_machine(
+                reset_machine.primary_machine_mut(),
+                session.external_port_selection,
+            );
+
+            let effective_config = loaded.effective_config;
+            let next_save_session = open_save_session_for_session(
+                &DesktopSession {
+                    config: effective_config.clone(),
+                    linked_secondary_rom: None,
+                    ..session.clone()
+                },
+                reset_machine.primary_machine_mut(),
+            )?;
+            (
+                effective_config,
+                boot_rom_fallback_warnings,
+                reset_machine,
+                next_save_session,
+                None,
+            )
         }
     };
-    log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
-    write_cartridge_diagnostics(&loaded.diagnostics);
-    let config_fell_back = loaded.effective_config != session.config;
-    session.config = loaded.effective_config;
+
+    for warning in &boot_rom_fallback_warnings {
+        log_boot_rom_fallback_warning(Some(warning));
+    }
+    let config_fell_back = effective_config != session.config;
+    session.config = effective_config;
     if config_fell_back {
         settings_store.persist_machine_preferences(&session.config)?;
-    }
-    let mut reset_machine = loaded.machine;
-    if let Some(persistent_state) = battery_backed_state
-        && let Err(error) = reset_machine.restore_cartridge_persistent_state(&persistent_state)
-    {
-        return Err(format!(
-            "failed to restore battery-backed persistence after reset: {error:?}"
-        ));
     }
 
     if let Some(audio_output) = &mut runtime.audio_output {
@@ -5345,6 +5885,8 @@ fn reset_machine(
 
     runtime.input_state.clear_all(machine);
     *machine = reset_machine;
+    runtime.save_session = next_save_session;
+    runtime.secondary_save_session = next_secondary_save_session;
     runtime.rtc_sync.resync_to_host_clock();
     Ok(())
 }
@@ -5935,6 +6477,201 @@ mod tests {
         assert_eq!(primary.read_bus(0xC000), primary_wram_before);
     }
 
+    #[test]
+    fn game_link_menu_action_loads_a_secondary_rom_into_a_linked_runtime() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-activate", true, false, false);
+        let secondary_rom_path = harness.root.join("linked-secondary.gb");
+        fs::write(
+            &secondary_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("secondary link ROM should be writable");
+
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::LinkedSecondary;
+
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(secondary_rom_path.clone()))
+            .expect("secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate GAME LINK");
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::GameLink
+        );
+        assert_eq!(
+            harness.session.linked_secondary_rom_path(),
+            Some(secondary_rom_path.as_path())
+        );
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::Dmg04
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("secondary linked machine should exist")
+                .external_port()
+                .attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+    }
+
+    #[test]
+    fn selecting_none_after_game_link_returns_to_a_single_primary_runtime() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-detach", true, false, false);
+        let secondary_rom_path = harness.root.join("linked-secondary.gb");
+        fs::write(
+            &secondary_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("secondary link ROM should be writable");
+
+        harness.machine.write_bus(0xC000, 0x5A);
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::LinkedSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(secondary_rom_path))
+            .expect("secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate GAME LINK");
+        harness
+            .machine
+            .secondary_machine_mut()
+            .expect("secondary linked machine should exist")
+            .write_bus(0xC000, 0x99);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::None,
+                ))
+                .expect("returning to NONE should tear down GAME LINK")
+                .is_none()
+        );
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::Single
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::None
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert_eq!(harness.machine.read_bus(0xC000), 0x5A);
+    }
+
+    #[test]
+    fn reset_keeps_the_linked_runtime_active_for_game_link_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-reset", true, false, false);
+        let secondary_rom_path = harness.root.join("linked-secondary.gb");
+        fs::write(
+            &secondary_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("secondary link ROM should be writable");
+
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::LinkedSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(secondary_rom_path))
+            .expect("secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate GAME LINK");
+
+        let primary_reset_baseline = harness.machine.read_bus(0xC000);
+        let secondary_reset_baseline = harness
+            .machine
+            .secondary_machine_mut()
+            .expect("secondary linked machine should exist")
+            .read_bus(0xC000);
+        harness.machine.write_bus(0xC000, 0xA5);
+        harness
+            .machine
+            .secondary_machine_mut()
+            .expect("secondary linked machine should exist")
+            .write_bus(0xC000, 0x3C);
+
+        super::reset_machine(
+            harness.canvas.window(),
+            &mut harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.settings_store,
+        )
+        .expect("linked reset should succeed");
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::GameLink
+        );
+        assert!(harness.session.linked_secondary_rom.is_some());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert_eq!(harness.machine.read_bus(0xC000), primary_reset_baseline);
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine_mut()
+                .expect("secondary linked machine should exist")
+                .read_bus(0xC000),
+            secondary_reset_baseline
+        );
+    }
+
+    #[test]
+    fn game_link_menu_action_switches_the_open_rom_dialog_into_secondary_mode() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-action", true, false, false);
+        harness.runtime.open_rom_dialog.pending = true;
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::GameLink,
+                ))
+                .expect("GAME LINK action should not fail when the open dialog is already pending")
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::LinkedSecondary
+        );
+    }
+
     fn push_key_event(events: &sdl3::EventSubsystem, keycode: Keycode, down: bool) {
         let desktop_key =
             desktop_key_from_keycode(keycode).expect("test keycode should map to a desktop key");
@@ -6100,6 +6837,7 @@ mod tests {
                 config: config.clone(),
                 current_dir,
                 loaded_rom,
+                linked_secondary_rom: None,
                 last_open_directory: Some(root.clone()),
                 recent_roms: Vec::new(),
                 external_port_selection: DesktopExternalPortSelection::None,
@@ -6160,8 +6898,10 @@ mod tests {
                 audio_output,
                 gamepad_manager,
                 save_session,
+                secondary_save_session: None,
                 rtc_sync: super::HostRtcSync::from_host_clock(),
                 open_rom_dialog: super::PathSelectionDialog::new(),
+                open_rom_dialog_mode: super::OpenRomDialogMode::Primary,
                 boot_rom_file_dialog: super::PathSelectionDialog::new(),
                 boot_rom_directory_dialog: super::PathSelectionDialog::new(),
                 save_directory_dialog: super::PathSelectionDialog::new(),

@@ -1,6 +1,9 @@
-use gb_core::{LinkedMachines, Machine, MachineStepObserver, TraceSummaryBuffer};
 #[cfg(test)]
-use gb_core::{LinkedMachinesError, LinkedTopologyKind};
+use gb_core::LinkedTopologyKind;
+use gb_core::{
+    ConsoleModel, LinkedMachines, LinkedMachinesError, Machine, MachineConfig, MachineStepObserver,
+    StartupMode, TraceSummaryBuffer,
+};
 use std::ops::{Deref, DerefMut};
 
 #[cfg(test)]
@@ -22,7 +25,6 @@ impl DesktopEmulationSession {
         Self::Single(Box::new(machine))
     }
 
-    #[cfg(test)]
     pub fn new_linked_dmg04_two_player(
         primary_machine: Machine<TraceSummaryBuffer>,
         secondary_machine: Machine<TraceSummaryBuffer>,
@@ -69,7 +71,6 @@ impl DesktopEmulationSession {
         }
     }
 
-    #[cfg(test)]
     pub fn secondary_machine(&self) -> Option<&Machine<TraceSummaryBuffer>> {
         match self {
             Self::Single(_) => None,
@@ -77,12 +78,43 @@ impl DesktopEmulationSession {
         }
     }
 
-    #[cfg(test)]
     pub fn secondary_machine_mut(&mut self) -> Option<&mut Machine<TraceSummaryBuffer>> {
         match self {
             Self::Single(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine_mut(1),
         }
+    }
+
+    pub const fn is_linked_dmg04_two_player(&self) -> bool {
+        matches!(self, Self::LinkedDmg04TwoPlayer(_))
+    }
+
+    pub fn attach_secondary_dmg04(
+        &mut self,
+        secondary_machine: Machine<TraceSummaryBuffer>,
+    ) -> Result<(), String> {
+        let current_session =
+            std::mem::replace(self, Self::new_single(placeholder_summary_machine()));
+        let Self::Single(primary_machine) = current_session else {
+            *self = current_session;
+            return Err(
+                "desktop emulation session is already running a linked DMG-04 runtime".to_string(),
+            );
+        };
+
+        let next_session = Self::new_linked_dmg04_two_player(*primary_machine, secondary_machine)?;
+        *self = next_session;
+        Ok(())
+    }
+
+    pub fn detach_to_single_primary(&mut self) {
+        if matches!(self, Self::Single(_)) {
+            return;
+        }
+
+        let linked_session =
+            std::mem::replace(self, Self::new_single(placeholder_summary_machine()));
+        *self = Self::new_single(linked_session.into_primary_machine());
     }
 
     pub fn step_t_cycle(&mut self) {
@@ -107,7 +139,6 @@ impl DesktopEmulationSession {
         }
     }
 
-    #[cfg(test)]
     pub fn into_primary_machine(self) -> Machine<TraceSummaryBuffer> {
         match self {
             Self::Single(machine) => *machine,
@@ -137,7 +168,6 @@ impl DerefMut for DesktopEmulationSession {
     }
 }
 
-#[cfg(test)]
 fn format_linked_machines_error(error: LinkedMachinesError) -> String {
     match error {
         LinkedMachinesError::TooFewMachines { count } => {
@@ -154,4 +184,10 @@ fn format_linked_machines_error(error: LinkedMachinesError) -> String {
             format!("DMG-04 desktop sessions currently require exactly two machines, found {count}")
         }
     }
+}
+
+fn placeholder_summary_machine() -> Machine<TraceSummaryBuffer> {
+    Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    )
 }
