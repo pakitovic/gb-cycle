@@ -578,8 +578,7 @@ pub(super) struct DmgMode3LiveLcdcBgState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) struct DmgLcdc0PanelLiveWriteState {
     pub(super) current_line_bg_enable_write_count: u8,
-    pub(super) bg_enable_visible_hold_override: Option<bool>,
-    pub(super) bg_enable_visible_hold_pixels_remaining: u8,
+    pub(super) bg_enable_visible_hold: DmgVisibleHold<bool>,
 }
 
 impl DmgLcdc0PanelLiveWriteState {
@@ -591,30 +590,91 @@ impl DmgLcdc0PanelLiveWriteState {
     }
 
     pub(super) fn clear_bg_enable_visible_hold(&mut self) {
-        self.bg_enable_visible_hold_override = None;
-        self.bg_enable_visible_hold_pixels_remaining = 0;
+        self.bg_enable_visible_hold.clear();
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) struct DmgLcdc1PanelLiveWriteState {
-    pub(super) obj_enable_visible_hold_override: Option<bool>,
-    pub(super) obj_enable_visible_hold_pixels_remaining: u8,
+    pub(super) obj_enable_visible_hold: DmgVisibleHold<bool>,
 }
 
 impl DmgLcdc1PanelLiveWriteState {
     pub(super) fn clear_obj_enable_visible_hold(&mut self) {
-        self.obj_enable_visible_hold_override = None;
-        self.obj_enable_visible_hold_pixels_remaining = 0;
+        self.obj_enable_visible_hold.clear();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct DmgVisibleHold<T> {
+    pub(super) override_value: Option<T>,
+    pub(super) pixels_remaining: u8,
+}
+
+impl<T> DmgVisibleHold<T> {
+    pub(super) fn clear(&mut self) {
+        self.override_value = None;
+        self.pixels_remaining = 0;
+    }
+
+    pub(super) fn consume(&mut self) {
+        if self.pixels_remaining == 0 {
+            self.override_value = None;
+            return;
+        }
+
+        self.pixels_remaining -= 1;
+        if self.pixels_remaining == 0 {
+            self.override_value = None;
+        }
+    }
+}
+
+impl<T: Copy> DmgVisibleHold<T> {
+    pub(super) fn set(&mut self, override_value: T, pixels_remaining: u8) {
+        self.override_value = Some(override_value);
+        self.pixels_remaining = pixels_remaining;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum DmgLcdc2ObservedEffectState {
+    Pending,
+    Applied,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DmgLcdc2ActiveObjSizeWrite {
+    pub(super) write_index: u8,
+    pub(super) visible_x: u8,
+    pub(super) observed_effect_state: DmgLcdc2ObservedEffectState,
+}
+
+impl DmgLcdc2ActiveObjSizeWrite {
+    pub(super) fn new(write_index: usize, visible_x: u8) -> Self {
+        Self {
+            write_index: write_index as u8,
+            visible_x,
+            observed_effect_state: DmgLcdc2ObservedEffectState::Pending,
+        }
+    }
+
+    pub(super) fn observed_effects_pending(self) -> bool {
+        matches!(
+            self.observed_effect_state,
+            DmgLcdc2ObservedEffectState::Pending
+        )
+    }
+
+    pub(super) fn mark_observed_effects_applied(&mut self) {
+        self.observed_effect_state = DmgLcdc2ObservedEffectState::Applied;
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) struct DmgLcdc2ObjSizeLiveWriteState {
     pub(super) current_line_obj_size_write_count: u8,
-    pub(super) active_obj_size_write_index: Option<u8>,
-    pub(super) active_obj_size_write_visible_x: Option<u8>,
-    pub(super) pending_effects: bool,
+    pub(super) active_write: Option<DmgLcdc2ActiveObjSizeWrite>,
 }
 
 impl DmgLcdc2ObjSizeLiveWriteState {
@@ -623,6 +683,20 @@ impl DmgLcdc2ObjSizeLiveWriteState {
         self.current_line_obj_size_write_count =
             self.current_line_obj_size_write_count.saturating_add(1);
         write_index
+    }
+
+    pub(super) fn begin_active_shrink(&mut self, write_index: usize, visible_x: u8) {
+        self.active_write = Some(DmgLcdc2ActiveObjSizeWrite::new(write_index, visible_x));
+    }
+
+    pub(super) fn active_write(self) -> Option<DmgLcdc2ActiveObjSizeWrite> {
+        self.active_write
+    }
+
+    pub(super) fn mark_observed_effects_applied(&mut self) {
+        if let Some(active_write) = self.active_write.as_mut() {
+            active_write.mark_observed_effects_applied();
+        }
     }
 }
 

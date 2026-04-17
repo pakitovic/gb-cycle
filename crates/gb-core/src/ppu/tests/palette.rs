@@ -427,13 +427,15 @@ fn dmg_single_left_sprite_lcdc0_first_write_waits_until_the_modeled_future_onset
     assert_eq!(
         ppu.dmg_panel_live_write_state
             .lcdc0
-            .bg_enable_visible_hold_override,
+            .bg_enable_visible_hold
+            .override_value,
         Some(true)
     );
     assert_eq!(
         ppu.dmg_panel_live_write_state
             .lcdc0
-            .bg_enable_visible_hold_pixels_remaining,
+            .bg_enable_visible_hold
+            .pixels_remaining,
         2
     );
     assert!(ppu.pixel_transfer_bg_enabled());
@@ -474,13 +476,15 @@ fn dmg_single_left_sprite_lcdc0_second_write_waits_until_the_modeled_future_onse
     assert_eq!(
         ppu.dmg_panel_live_write_state
             .lcdc0
-            .bg_enable_visible_hold_override,
+            .bg_enable_visible_hold
+            .override_value,
         Some(false)
     );
     assert_eq!(
         ppu.dmg_panel_live_write_state
             .lcdc0
-            .bg_enable_visible_hold_pixels_remaining,
+            .bg_enable_visible_hold
+            .pixels_remaining,
         2
     );
     assert!(!ppu.pixel_transfer_bg_enabled());

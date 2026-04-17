@@ -1142,6 +1142,18 @@ pub(in crate::ppu) enum PpuMode3Lcdc2ObjSizePlaneSelection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) enum PpuMode3Lcdc2ObjSizeObservedEffect {
+    RetroactiveRepaint { background_only: bool },
+    FifoRewrite,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3Lcdc2ObjSizeObservedDecision {
+    pub(in crate::ppu) plane_selection: PpuMode3Lcdc2ObjSizePlaneSelection,
+    pub(in crate::ppu) pending_effect: Option<PpuMode3Lcdc2ObjSizeObservedEffect>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::ppu) struct PpuMode3ObservedLcdc2ObjSizePhaseTable {
     sprite_x: u8,
     scx: u8,
@@ -1157,14 +1169,50 @@ impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
         }
     }
 
-    pub(in crate::ppu) const fn plane_selection(
+    pub(in crate::ppu) fn decision(
         self,
         write_index: usize,
+        active_write_visible_x: Option<u8>,
+    ) -> Option<PpuMode3Lcdc2ObjSizeObservedDecision> {
+        let plane_selection = self.plane_selection(write_index, active_write_visible_x)?;
+        let pending_effect = match (write_index, self.sprite_x, self.scx) {
+            (0, 12, 4..=7) if self.raw_row >= 8 => {
+                Some(PpuMode3Lcdc2ObjSizeObservedEffect::RetroactiveRepaint {
+                    background_only: false,
+                })
+            }
+            (2, 32, 0)
+                if matches!(self.raw_row, 4..=7)
+                    && active_write_visible_x
+                        .is_some_and(|visible_x| i16::from(visible_x) > self.sprite_screen_x()) =>
+            {
+                Some(PpuMode3Lcdc2ObjSizeObservedEffect::FifoRewrite)
+            }
+            _ => None,
+        };
+
+        Some(PpuMode3Lcdc2ObjSizeObservedDecision {
+            plane_selection,
+            pending_effect,
+        })
+    }
+
+    pub(in crate::ppu) fn plane_selection(
+        self,
+        write_index: usize,
+        active_write_visible_x: Option<u8>,
     ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
         match (write_index, self.sprite_x, self.scx) {
             (0, 12, 4..=7) if self.raw_row >= 8 => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
             (0, 32, 0 | 4..=7) if self.raw_row < 8 => {
                 Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8)
+            }
+            (2, 32, 0)
+                if matches!(self.raw_row, 4..=7)
+                    && active_write_visible_x
+                        .is_some_and(|visible_x| i16::from(visible_x) > self.sprite_screen_x()) =>
+            {
+                Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High)
             }
             _ => self.base_plane_selection(write_index),
         }
@@ -1182,5 +1230,9 @@ impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
             (2, 40) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
             _ => None,
         }
+    }
+
+    const fn sprite_screen_x(self) -> i16 {
+        self.sprite_x as i16 - 8
     }
 }
