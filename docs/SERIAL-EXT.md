@@ -327,6 +327,8 @@ desktop-linked UX becomes a primary validation path.
 - Add manifest/session support for two linked consoles
 - Allow per-console ROMs, input schedules, timeouts, and retained artifacts
 - Add combined traces or paired artifacts when link timing matters
+- Expose a public linked-session CLI path and a small built-in linked-suite
+  registry so the harness is usable outside unit tests
 - Keep linked-session execution deterministic and reproducible outside any
   desktop presentation loop
 

@@ -8,6 +8,7 @@ mod linked_session_manifest;
 mod linked_session_runner;
 mod local_rom_suite_manifest;
 mod run_differential_cli;
+mod run_linked_session_cli;
 mod run_rom_suite_cli;
 mod run_sameboy_case_bundle_cli;
 mod run_sameboy_tester_cli;
@@ -69,6 +70,7 @@ pub use linked_session_runner::{
 };
 pub use local_rom_suite_manifest::{LocalRomSuiteManifestError, load_local_rom_suite_manifest};
 pub use run_differential_cli::{differential_cli_help_text, run_differential_command};
+pub use run_linked_session_cli::{linked_session_cli_help_text, run_linked_session_command};
 pub use run_rom_suite_cli::{rom_suite_cli_help_text, run_rom_suite_command};
 pub use run_sameboy_case_bundle_cli::{
     run_sameboy_case_bundle_command, sameboy_case_bundle_cli_help_text,
@@ -880,6 +882,33 @@ pub fn built_in_rom_suite_by_name(name: &str) -> Option<RomSuite> {
     built_in_rom_suites()
         .into_iter()
         .find(|suite| suite.name == name)
+}
+
+const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[(
+    "linked-dmg04-smoke",
+    "crates/gb-test-runner/data/linked-dmg04-smoke.toml",
+)];
+
+pub fn built_in_linked_session_suite_catalog() -> Vec<(&'static str, PathBuf)> {
+    BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS
+        .iter()
+        .map(|(name, relative_path)| (*name, PathBuf::from(relative_path)))
+        .collect()
+}
+
+pub fn built_in_linked_session_suite_by_name(
+    workspace_root: &Path,
+    name: &str,
+) -> Result<Option<LinkedSessionSuite>, LinkedSessionSuiteManifestError> {
+    let Some((_, relative_path)) = BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS
+        .iter()
+        .find(|(suite_name, _)| *suite_name == name)
+    else {
+        return Ok(None);
+    };
+
+    let manifest_path = workspace_root.join(relative_path);
+    load_linked_session_suite_manifest(&manifest_path).map(Some)
 }
 
 pub fn early_phase_9_partial_checklist() -> Vec<EarlyHardeningChecklistEntry> {
