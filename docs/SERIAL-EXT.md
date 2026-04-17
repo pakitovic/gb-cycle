@@ -534,6 +534,20 @@ Expose a local two-console `DMG-04` session in `gb-desktop`.
   targets later; the first requirement is one correctly coordinated linked
   session
 
+### Phase 7.1 status
+
+The desktop runtime now owns an explicit emulation-session enum that can carry:
+
+- one standalone `Machine`
+- or one linked two-console `DMG-04` session backed by `LinkedMachines`
+
+This first cut intentionally keeps the visible desktop behavior unchanged:
+
+- `GAME LINK` remains disabled in the menu
+- the main loop still presents and drives only the primary console
+- the new linked-session runtime seam exists so later subphases can activate
+  two-console UX without reworking the single-console event loop again
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`

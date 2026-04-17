@@ -2,6 +2,7 @@ mod audio;
 mod bootrom;
 mod cli;
 mod input;
+mod linked_session;
 mod menu;
 mod printer_output;
 mod save_session;
@@ -33,6 +34,7 @@ use input::{
     FrontendInputState, GamepadManager, gamepad_button_binding_from_sdl_button,
     sdl_button_for_binding,
 };
+use linked_session::DesktopEmulationSession;
 use menu::{
     CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
     KeyboardBindingTarget, KeyboardMenuBindingTarget, MenuAction, MenuInput, MenuPresentation,
@@ -180,7 +182,7 @@ struct LoadedRom {
 
 struct FrontendActionContext<'state> {
     session: &'state mut DesktopSession,
-    machine: &'state mut Machine<TraceSummaryBuffer>,
+    machine: &'state mut DesktopEmulationSession,
     runtime: &'state mut FrontendRuntime,
     performance_counter: &'state mut PerformanceCounter,
     frame_pacer: &'state mut FramePacer,
@@ -331,13 +333,13 @@ struct FrameLoopTelemetry {
 
 #[derive(Debug)]
 struct EmulationProfileRequest {
-    machine: Machine<TraceSummaryBuffer>,
+    machine: DesktopEmulationSession,
     breakdown: EmulationBreakdownSample,
 }
 
 #[derive(Debug)]
 struct EmulationProfileWorkItem {
-    machine: Machine<TraceSummaryBuffer>,
+    machine: DesktopEmulationSession,
     emulation_duration: Duration,
     breakdown: EmulationBreakdownSample,
 }
@@ -605,7 +607,7 @@ impl EmulationBreakdownSample {
 }
 
 impl EmulationProfileRequest {
-    fn new(machine: Machine<TraceSummaryBuffer>) -> Self {
+    fn new(machine: DesktopEmulationSession) -> Self {
         Self {
             machine,
             breakdown: EmulationBreakdownSample::default(),
@@ -2641,7 +2643,7 @@ fn run_desktop_with_startup_fallback_persistence(
             let loaded = load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?;
             log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
             session.config = loaded.effective_config;
-            let mut machine = loaded.machine;
+            let mut machine = DesktopEmulationSession::new_single(loaded.machine);
             apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
             (machine, loaded.diagnostics)
         }
@@ -2649,7 +2651,8 @@ fn run_desktop_with_startup_fallback_persistence(
             let prepared = prepare_machine_config(&session.config, &session.current_dir)?;
             log_boot_rom_fallback_warning(prepared.boot_rom_fallback_warning.as_deref());
             session.config = prepared.effective_config;
-            let mut machine = Machine::new_summary(prepared.machine_config);
+            let mut machine =
+                DesktopEmulationSession::new_single(Machine::new_summary(prepared.machine_config));
             apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
             (machine, Vec::new())
         }
@@ -4104,7 +4107,7 @@ fn rebuild_machine_for_config(
 
     log_boot_rom_fallback_warning(boot_rom_fallback_warning.as_deref());
     context.runtime.input_state.clear_all(context.machine);
-    *context.machine = next_machine;
+    *context.machine = DesktopEmulationSession::new_single(next_machine);
     context.runtime.save_session = next_save_session;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
@@ -4230,7 +4233,7 @@ fn open_selected_rom(
         context.session.recent_roms = context.settings_store.recent_roms().to_vec();
     }
     context.runtime.input_state.clear_all(context.machine);
-    *context.machine = next_machine;
+    *context.machine = DesktopEmulationSession::new_single(next_machine);
     context.runtime.save_session = next_save_session;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
@@ -5711,9 +5714,9 @@ mod tests {
         Apu, ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
         CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
         CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
-        ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus, Machine, MachineConfig,
-        MachineStepRegion, PersistentCartState, PpuStepRegion, PrinterCommand, StartupMode,
-        TraceSummaryBuffer,
+        ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
+        MachineConfig, MachineStepRegion, PersistentCartState, PpuStepRegion, PrinterCommand,
+        StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
@@ -5855,6 +5858,12 @@ mod tests {
         assert_eq!(serial_transfer_byte(machine, 0x00), 0x04);
     }
 
+    fn dmg_skip_boot_summary_machine() -> Machine<TraceSummaryBuffer> {
+        Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        )
+    }
+
     fn schedule_quit_event() -> thread::JoinHandle<()> {
         thread::spawn(|| {
             thread::sleep(Duration::from_millis(75));
@@ -5867,6 +5876,63 @@ mod tests {
                 .push_event(Event::Quit { timestamp: 0 })
                 .expect("quit event should be pushable");
         })
+    }
+
+    #[test]
+    fn desktop_emulation_session_can_wrap_a_two_console_dmg04_runtime() {
+        let primary = dmg_skip_boot_summary_machine();
+        let secondary = dmg_skip_boot_summary_machine();
+
+        let linked = super::linked_session::DesktopEmulationSession::new_linked_dmg04_two_player(
+            primary, secondary,
+        )
+        .expect("desktop linked session should build from two aligned machines");
+
+        assert_eq!(
+            linked.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert_eq!(linked.linked_topology_kind(), LinkedTopologyKind::Dmg04);
+        assert_eq!(
+            linked.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+        assert_eq!(
+            linked
+                .secondary_machine()
+                .expect("secondary machine should exist")
+                .external_port()
+                .attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+    }
+
+    #[test]
+    fn desktop_emulation_session_can_return_to_a_single_primary_machine() {
+        let primary = dmg_skip_boot_summary_machine();
+        let secondary = dmg_skip_boot_summary_machine();
+
+        let mut linked =
+            super::linked_session::DesktopEmulationSession::new_linked_dmg04_two_player(
+                primary, secondary,
+            )
+            .expect("desktop linked session should build from two aligned machines");
+
+        linked.step_t_cycle();
+        let primary_wram_before = linked.read_bus(0xC000);
+        linked
+            .secondary_machine_mut()
+            .expect("secondary machine should exist")
+            .write_bus(0xC000, 0x3C);
+
+        let mut primary = linked.into_primary_machine();
+
+        assert_eq!(primary.next_t_cycle(), gb_core::TCycle::new(1));
+        assert_eq!(
+            primary.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert_eq!(primary.read_bus(0xC000), primary_wram_before);
     }
 
     fn push_key_event(events: &sdl3::EventSubsystem, keycode: Keycode, down: bool) {
@@ -5982,7 +6048,7 @@ mod tests {
         canvas: Canvas<Window>,
         event_pump: sdl3::EventPump,
         session: super::DesktopSession,
-        machine: Machine<TraceSummaryBuffer>,
+        machine: super::DesktopEmulationSession,
         runtime: super::FrontendRuntime,
         settings_store: DesktopSettingsStore,
         performance_counter: super::PerformanceCounter,
@@ -6019,13 +6085,15 @@ mod tests {
             });
             let current_dir = root.clone();
             let mut machine = if with_rom {
-                super::load_machine_for_rom(&config, &current_dir, &rom_bytes)
-                    .expect("frontend harness machine should load")
-                    .machine
-            } else {
-                Machine::new_summary(
-                    MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+                super::DesktopEmulationSession::new_single(
+                    super::load_machine_for_rom(&config, &current_dir, &rom_bytes)
+                        .expect("frontend harness machine should load")
+                        .machine,
                 )
+            } else {
+                super::DesktopEmulationSession::new_single(Machine::new_summary(
+                    MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+                ))
             };
 
             let session = super::DesktopSession {
@@ -6694,7 +6762,9 @@ mod tests {
         let machine = Machine::new_summary(
             MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
         );
-        let mut request = super::EmulationProfileRequest::new(machine);
+        let mut request = super::EmulationProfileRequest::new(
+            super::DesktopEmulationSession::new_single(machine),
+        );
         request.record_host_event_poll_duration(Duration::from_millis(2));
         request.record_host_audio_submit_duration(Duration::from_millis(3));
         request.record_host_save_flush_duration(Duration::from_millis(4));
@@ -6726,8 +6796,10 @@ mod tests {
         assert!(completed.is_empty());
         assert!(
             worker.try_submit(
-                super::EmulationProfileRequest::new(machine.clone())
-                    .into_work_item(Duration::from_millis(7))
+                super::EmulationProfileRequest::new(super::DesktopEmulationSession::new_single(
+                    machine.clone(),
+                ))
+                .into_work_item(Duration::from_millis(7))
             )
         );
         for _ in 0..200 {
@@ -6749,7 +6821,9 @@ mod tests {
         assert!(!disabled.should_profile_next_frame());
         disabled.collect_emulation_profile_results();
         disabled.submit_emulation_profile_request(
-            Some(super::EmulationProfileRequest::new(machine.clone())),
+            Some(super::EmulationProfileRequest::new(
+                super::DesktopEmulationSession::new_single(machine.clone()),
+            )),
             Duration::from_millis(5),
         );
         assert!(!disabled.emulation_profile_request_in_flight);
@@ -6768,7 +6842,9 @@ mod tests {
         assert!(!counter.should_profile_next_frame());
         counter.emulation_profile_request_in_flight = false;
         counter.submit_emulation_profile_request(
-            Some(super::EmulationProfileRequest::new(machine)),
+            Some(super::EmulationProfileRequest::new(
+                super::DesktopEmulationSession::new_single(machine),
+            )),
             Duration::from_millis(6),
         );
         assert!(counter.emulation_profile_request_in_flight);
