@@ -183,7 +183,7 @@ fn machine_snapshot_exposes_scheduler_trace_and_live_phase_1_subsystems() {
     assert_eq!(snapshot.apu.console_model, ConsoleModel::Dmg);
     assert_eq!(snapshot.serial.console_model, ConsoleModel::Dmg);
     assert_eq!(
-        snapshot.external_port.attachment_kind,
+        snapshot.external_port.attachment_kind(),
         ExternalPortAttachmentKind::None
     );
     assert_eq!(snapshot.interrupts.console_model, ConsoleModel::Dmg);

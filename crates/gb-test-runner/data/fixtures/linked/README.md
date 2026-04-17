@@ -9,6 +9,9 @@ two-console `DMG-04` exchange. These fixtures are intended to validate the
 linked-session harness and its participant-scoped oracles, not to stand in for
 commercial game workflows.
 
+`dmg04/README.md` records the exact synthetic ROM template and the byte program
+for each committed `.gb` fixture so the binaries remain auditable.
+
 The `stale-*.gb` ROM pair exercises the `DMG-04` stale-byte reuse contract:
 the left participant performs two master-clocked transfers without rewriting
 `SB`, while the right participant reloads a new byte before the second slave

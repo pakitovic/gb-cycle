@@ -30,10 +30,33 @@ pub struct ExternalPort {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalPortSnapshot {
-    pub attachment_kind: ExternalPortAttachmentKind,
     pub reset_policy: ExternalPortResetPolicy,
-    pub printer: Option<PrinterSnapshot>,
-    pub dmg04_incoming_byte: Option<u8>,
+    pub attachment: ExternalPortAttachmentSnapshot,
+}
+
+impl ExternalPortSnapshot {
+    pub const fn attachment_kind(&self) -> ExternalPortAttachmentKind {
+        self.attachment.kind()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExternalPortAttachmentSnapshot {
+    None,
+    Loopback,
+    Printer(PrinterSnapshot),
+    GameLinkDmg04 { incoming_byte: Option<u8> },
+}
+
+impl ExternalPortAttachmentSnapshot {
+    pub const fn kind(&self) -> ExternalPortAttachmentKind {
+        match self {
+            Self::None => ExternalPortAttachmentKind::None,
+            Self::Loopback => ExternalPortAttachmentKind::Loopback,
+            Self::Printer(_) => ExternalPortAttachmentKind::Printer,
+            Self::GameLinkDmg04 { .. } => ExternalPortAttachmentKind::GameLinkDmg04,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -84,10 +107,8 @@ impl ExternalPort {
 
     pub fn snapshot(&self) -> ExternalPortSnapshot {
         ExternalPortSnapshot {
-            attachment_kind: self.attachment.kind(),
             reset_policy: self.reset_policy,
-            printer: self.attachment.printer_snapshot(),
-            dmg04_incoming_byte: self.attachment.dmg04_incoming_byte(),
+            attachment: self.attachment.snapshot(),
         }
     }
 
@@ -149,17 +170,14 @@ impl ExternalPortAttachment {
         }
     }
 
-    fn printer_snapshot(&self) -> Option<PrinterSnapshot> {
+    fn snapshot(&self) -> ExternalPortAttachmentSnapshot {
         match self {
-            Self::Printer(printer) => Some(printer.snapshot()),
-            _ => None,
-        }
-    }
-
-    const fn dmg04_incoming_byte(&self) -> Option<u8> {
-        match self {
-            Self::GameLinkDmg04(endpoint) => endpoint.incoming_byte,
-            _ => None,
+            Self::None => ExternalPortAttachmentSnapshot::None,
+            Self::Loopback(_) => ExternalPortAttachmentSnapshot::Loopback,
+            Self::Printer(printer) => ExternalPortAttachmentSnapshot::Printer(printer.snapshot()),
+            Self::GameLinkDmg04(endpoint) => ExternalPortAttachmentSnapshot::GameLinkDmg04 {
+                incoming_byte: endpoint.incoming_byte,
+            },
         }
     }
 }
@@ -190,8 +208,10 @@ mod tests {
             ExternalPortResetPolicy::PreserveAttachmentKind
         );
         assert_eq!(external_port.serial_peer(), SerialPeer::Disconnected);
-        assert!(external_port.snapshot().printer.is_none());
-        assert!(external_port.snapshot().dmg04_incoming_byte.is_none());
+        assert_eq!(
+            external_port.snapshot().attachment,
+            ExternalPortAttachmentSnapshot::None
+        );
     }
 
     #[test]
@@ -229,7 +249,10 @@ mod tests {
             external_port.serial_peer(),
             SerialPeer::StagedIncomingByte { byte: 0x00 }
         );
-        assert!(external_port.snapshot().printer.is_some());
+        assert!(matches!(
+            external_port.snapshot().attachment,
+            ExternalPortAttachmentSnapshot::Printer(_)
+        ));
     }
 
     #[test]
@@ -243,7 +266,12 @@ mod tests {
             ExternalPortAttachmentKind::GameLinkDmg04
         );
         assert_eq!(external_port.serial_peer(), SerialPeer::Disconnected);
-        assert_eq!(external_port.snapshot().dmg04_incoming_byte, None);
+        assert_eq!(
+            external_port.snapshot().attachment,
+            ExternalPortAttachmentSnapshot::GameLinkDmg04 {
+                incoming_byte: None
+            }
+        );
 
         external_port.set_dmg04_incoming_byte(Some(0x3C));
 
@@ -251,7 +279,12 @@ mod tests {
             external_port.serial_peer(),
             SerialPeer::StagedIncomingByte { byte: 0x3C }
         );
-        assert_eq!(external_port.snapshot().dmg04_incoming_byte, Some(0x3C));
+        assert_eq!(
+            external_port.snapshot().attachment,
+            ExternalPortAttachmentSnapshot::GameLinkDmg04 {
+                incoming_byte: Some(0x3C)
+            }
+        );
     }
 
     #[test]
@@ -267,6 +300,11 @@ mod tests {
             ExternalPortAttachmentKind::GameLinkDmg04
         );
         assert_eq!(external_port.serial_peer(), SerialPeer::Disconnected);
-        assert_eq!(external_port.snapshot().dmg04_incoming_byte, None);
+        assert_eq!(
+            external_port.snapshot().attachment,
+            ExternalPortAttachmentSnapshot::GameLinkDmg04 {
+                incoming_byte: None
+            }
+        );
     }
 }

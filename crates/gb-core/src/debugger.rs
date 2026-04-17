@@ -660,7 +660,7 @@ impl MachineSnapshot {
             self.serial.sb,
             self.serial.clock_mode,
             self.serial.transfer_state,
-            self.external_port.attachment_kind,
+            self.external_port.attachment_kind(),
             self.external_port.reset_policy,
             self.boot.console_model,
             self.boot.startup_mode,

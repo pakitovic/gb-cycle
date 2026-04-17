@@ -402,6 +402,9 @@ expectations without relying mostly on whole-session trace or snapshot fixtures.
   or one named participant explicitly
 - Normalize retained artifact naming for session-level vs participant-level
   outputs so failures stay easy to inspect and compare
+- Capture participant snapshots and traces only when the linked-session capture
+  plan requests them; do not materialize hidden participant artifacts outside
+  the declared contract
 - Add at least one richer `DMG-04` linked suite beyond the initial smoke case,
   covering behaviors that matter to the cable protocol rather than only the
   final state, starting with stale-byte reuse through compact participant

@@ -38,7 +38,7 @@ fn machine_snapshot_captures_debug_inspection_state_after_two_cycles() {
     assert_eq!(snapshot.serial.clock_mode, SerialClockMode::External);
     assert_eq!(snapshot.serial.transfer_state, SerialTransferState::Idle);
     assert_eq!(
-        snapshot.external_port.attachment_kind,
+        snapshot.external_port.attachment_kind(),
         ExternalPortAttachmentKind::None
     );
     assert!(!snapshot.bus.arbitration.boot_rom.maps_low_window());

@@ -60,9 +60,9 @@ pub use dma::{
     DmaTransferProgress, DmaTransferState, DmaTransferStatusView, DmaTransferTiming,
 };
 pub use external_port::{
-    ExternalPort, ExternalPortAttachmentKind, ExternalPortResetPolicy, ExternalPortSnapshot,
-    PrintedPage, PrinterCommand, PrinterMargins, PrinterPrintArgs, PrinterSnapshot,
-    PrinterStatusBits,
+    ExternalPort, ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot,
+    ExternalPortResetPolicy, ExternalPortSnapshot, PrintedPage, PrinterCommand, PrinterMargins,
+    PrinterPrintArgs, PrinterSnapshot, PrinterStatusBits,
 };
 pub use interrupts::{
     InterruptController, InterruptControllerSnapshot, InterruptControllerStatus,
