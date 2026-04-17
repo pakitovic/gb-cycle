@@ -265,8 +265,8 @@ console modes.
 
 ### Crates / files
 
-- new linked-session module in `gb-core`, preferably outside the local
-  `serial` hardware module
+- `crates/gb-core/src/link.rs`
+- supporting `Machine` stepping changes in `crates/gb-core/src/machine/`
 - `gb-core` tests for shared stepping
 
 ### Validation gate

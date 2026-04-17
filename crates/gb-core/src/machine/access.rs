@@ -162,6 +162,7 @@ impl<S: TraceSink> Machine<S> {
         self.boot = BootController::new(console_model, startup_mode, boot_rom_assets);
         self.interrupts = InterruptController::new(console_model);
         self.joypad = Joypad::new(console_model);
+        self.pending_ppu_mmio_write = None;
 
         self.apply_startup_configuration(host_joypad_pressed_mask);
     }

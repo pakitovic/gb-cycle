@@ -307,6 +307,8 @@ to immediately materialize as a separate directory.
 - printer protocol state and typed printer output artifacts
 - `DMG-04` cable routing and `DMG-07` adapter topology
 - shared multi-console session orchestration on one T-cycle timeline
+- current shared-session staging module: `link.rs`, `link/`, or an equivalent
+  module outside local `serial/`
 - separation between attachment/topology ownership and the per-console serial
   controller that consumes only a narrow signal boundary
 - separation between core attachment/session ownership and frontend-owned

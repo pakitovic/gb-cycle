@@ -293,6 +293,10 @@ impl GlobalScheduler {
         self.next_t_cycle = TCycle::ZERO;
     }
 
+    pub(crate) fn set_next_t_cycle(&mut self, next_t_cycle: TCycle) {
+        self.next_t_cycle = next_t_cycle;
+    }
+
     pub fn step<F>(&mut self, mut visit_phase: F) -> CycleContext
     where
         F: FnMut(&mut CycleContext),

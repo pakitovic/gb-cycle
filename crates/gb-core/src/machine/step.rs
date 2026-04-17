@@ -16,6 +16,7 @@ use crate::joypad::Joypad;
 use crate::ppu::{Ppu, PpuBusStateSnapshot, PpuDmaOamConflict};
 use crate::scheduler::{
     CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
+    scheduler_phase_trace_message,
 };
 use crate::serial::Serial;
 use crate::timer::Timer;
@@ -175,7 +176,7 @@ struct MachinePhaseRunner<'a> {
     joypad: &'a mut Joypad,
     cartridge: &'a mut CartridgeSlot,
     pending_external_events: &'a mut PendingExternalEvents,
-    pending_ppu_mmio_write: Option<PendingPpuMmioWrite>,
+    pending_ppu_mmio_write: &'a mut Option<PendingPpuMmioWrite>,
     cached_ppu_bus_state_snapshot: Option<PpuBusStateSnapshot>,
     cached_cpu_bus_arbitration_states: Option<CpuBusArbitrationStates>,
 }
@@ -430,7 +431,7 @@ impl MachinePhaseRunner<'_> {
             let interrupts = &mut self.interrupts;
             let joypad = &mut self.joypad;
             let cartridge = &mut self.cartridge;
-            let pending_ppu_mmio_write = &mut self.pending_ppu_mmio_write;
+            let pending_ppu_mmio_write = &mut *self.pending_ppu_mmio_write;
 
             cpu.tick_t_cycle(|operation| match operation {
                 CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
@@ -524,7 +525,7 @@ impl MachinePhaseRunner<'_> {
         O: MachineStepObserver,
     {
         if let Some(write) = observe_machine_step_region(observer, MachineStepRegion::Ppu, || {
-            commit_pending_ppu_mmio_write(self.ppu, &mut self.pending_ppu_mmio_write)
+            commit_pending_ppu_mmio_write(self.ppu, self.pending_ppu_mmio_write)
         }) {
             tracer.emit_with(TraceSubsystem::Ppu, TraceLevel::Trace, || {
                 self.ppu
@@ -650,6 +651,44 @@ impl MachinePhaseRunner<'_> {
 }
 
 impl<S: TraceSink> Machine<S> {
+    pub(crate) fn step_phase_with_context<O>(
+        &mut self,
+        context: &mut CycleContext,
+        observer: &mut O,
+    ) where
+        O: MachineStepObserver,
+    {
+        let tracer = &mut self.tracer;
+        tracer.emit_with(TraceSubsystem::Scheduler, TraceLevel::Trace, || {
+            scheduler_phase_trace_message(context)
+        });
+
+        let mut runner = MachinePhaseRunner {
+            cpu: &mut self.cpu,
+            bus: &mut self.bus,
+            apu: &mut self.apu,
+            ppu: &mut self.ppu,
+            dma: &mut self.dma,
+            timer: &mut self.timer,
+            serial: &mut self.serial,
+            external_port: &mut self.external_port,
+            boot: &mut self.boot,
+            interrupts: &mut self.interrupts,
+            joypad: &mut self.joypad,
+            cartridge: &mut self.cartridge,
+            pending_external_events: &mut self.pending_external_events,
+            pending_ppu_mmio_write: &mut self.pending_ppu_mmio_write,
+            cached_ppu_bus_state_snapshot: None,
+            cached_cpu_bus_arbitration_states: None,
+        };
+
+        runner.step_phase(context, tracer, observer);
+    }
+
+    pub(crate) fn sync_scheduler_next_t_cycle(&mut self, next_t_cycle: crate::scheduler::TCycle) {
+        self.scheduler.set_next_t_cycle(next_t_cycle);
+    }
+
     pub fn step_t_cycle(&mut self) -> CycleContext {
         self.step_t_cycle_with_observer(&mut NoopMachineStepObserver)
     }
@@ -674,13 +713,16 @@ impl<S: TraceSink> Machine<S> {
             joypad: &mut self.joypad,
             cartridge: &mut self.cartridge,
             pending_external_events: &mut self.pending_external_events,
-            pending_ppu_mmio_write: None,
+            pending_ppu_mmio_write: &mut self.pending_ppu_mmio_write,
             cached_ppu_bus_state_snapshot: None,
             cached_cpu_bus_arbitration_states: None,
         };
 
-        scheduler.step_with_trace(tracer, |context, tracer| {
-            runner.step_phase(context, tracer, observer)
+        scheduler.step(|context| {
+            tracer.emit_with(TraceSubsystem::Scheduler, TraceLevel::Trace, || {
+                scheduler_phase_trace_message(context)
+            });
+            runner.step_phase(context, tracer, observer);
         })
     }
 }

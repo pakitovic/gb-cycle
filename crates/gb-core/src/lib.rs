@@ -8,6 +8,7 @@ pub mod dma;
 pub mod external_port;
 pub mod interrupts;
 pub mod joypad;
+pub mod link;
 pub mod machine;
 pub mod model;
 pub mod ppu;
@@ -68,6 +69,7 @@ pub use interrupts::{
     InterruptStartupState,
 };
 pub use joypad::{Joypad, JoypadButton, JoypadSnapshot, JoypadStartupState, JoypadStatus};
+pub use link::{LinkedMachines, LinkedMachinesError, LinkedStepResult};
 pub use machine::{
     Machine, MachineParts, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver,
 };

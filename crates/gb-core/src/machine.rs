@@ -113,6 +113,7 @@ pub struct Machine<S = TraceBuffer> {
     joypad: Joypad,
     cartridge: CartridgeSlot,
     pending_external_events: PendingExternalEvents,
+    pending_ppu_mmio_write: Option<step::PendingPpuMmioWrite>,
 }
 
 #[derive(Debug, Clone)]
@@ -234,6 +235,7 @@ impl<S: TraceSink> Machine<S> {
             joypad: Joypad::new(console_model),
             cartridge: CartridgeSlot::empty(),
             pending_external_events: PendingExternalEvents::default(),
+            pending_ppu_mmio_write: None,
         };
 
         machine.apply_startup_configuration(0);
