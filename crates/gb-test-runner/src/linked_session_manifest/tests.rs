@@ -1,9 +1,12 @@
 use super::parse::{capture_plan_for_pass_condition, failure_artifacts_for_pass_condition};
 use super::{
-    LinkedSessionCaptureKind, LinkedSessionPassCondition, LinkedSessionSuiteManifestError,
+    LinkedSessionCaptureKind, LinkedSessionCapturePlan, LinkedSessionFailureArtifactPolicy,
+    LinkedSessionParticipant, LinkedSessionPassCondition, LinkedSessionSuiteManifestError,
     LinkedSessionTopology, load_linked_session_suite_manifest,
 };
-use crate::{ExternalStimulusAction, StimulusTime, TestSubsystem};
+use crate::{
+    ExternalStimulus, ExternalStimulusAction, ExternalStimulusPlan, StimulusTime, TestSubsystem,
+};
 use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -899,4 +902,200 @@ fixture = "ghost.trace"
         }
         other => panic!("unexpected linked manifest error: {other:?}"),
     }
+}
+
+#[test]
+fn linked_session_manifest_model_helpers_cover_public_contracts() {
+    let trace_fixture = LinkedSessionPassCondition::TraceFixture(PathBuf::from("linked.trace"));
+    let snapshot_fixture =
+        LinkedSessionPassCondition::SnapshotFixture(PathBuf::from("linked.snapshot"));
+    let participant_serial = LinkedSessionPassCondition::ParticipantSerialHexExact {
+        participant_id: "left".to_string(),
+        expected: "A5".to_string(),
+    };
+    let participant_trace = LinkedSessionPassCondition::ParticipantTraceFixture {
+        participant_id: "left".to_string(),
+        fixture_path: PathBuf::from("left.trace"),
+    };
+    let participant_snapshot = LinkedSessionPassCondition::ParticipantSnapshotFixture {
+        participant_id: "left".to_string(),
+        fixture_path: PathBuf::from("left.snapshot"),
+    };
+    let informational_snapshot =
+        LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Snapshot);
+
+    assert_eq!(
+        LinkedSessionTopology::from_manifest_name("dmg04"),
+        Some(LinkedSessionTopology::Dmg04)
+    );
+    assert_eq!(LinkedSessionTopology::from_manifest_name("bogus"), None);
+    assert_eq!(LinkedSessionTopology::Dmg04.manifest_name(), "dmg04");
+
+    assert_eq!(
+        trace_fixture.required_capture(),
+        LinkedSessionCaptureKind::Trace
+    );
+    assert_eq!(
+        snapshot_fixture.required_capture(),
+        LinkedSessionCaptureKind::Snapshot
+    );
+    assert_eq!(
+        participant_serial.required_capture(),
+        LinkedSessionCaptureKind::ParticipantSerialHex
+    );
+    assert_eq!(
+        participant_trace.required_capture(),
+        LinkedSessionCaptureKind::Trace
+    );
+    assert_eq!(
+        participant_snapshot.required_capture(),
+        LinkedSessionCaptureKind::Snapshot
+    );
+    assert_eq!(
+        informational_snapshot.required_capture(),
+        LinkedSessionCaptureKind::Snapshot
+    );
+
+    let capture_plan = LinkedSessionCapturePlan::new()
+        .with_capture(LinkedSessionCaptureKind::Trace)
+        .with_capture(LinkedSessionCaptureKind::Snapshot);
+    assert!(capture_plan.contains(LinkedSessionCaptureKind::Trace));
+    assert_eq!(capture_plan.captures().len(), 2);
+
+    let failure_artifacts = LinkedSessionFailureArtifactPolicy::new()
+        .with_artifact(LinkedSessionCaptureKind::ParticipantSerialHex)
+        .with_artifact(LinkedSessionCaptureKind::Snapshot);
+    assert!(failure_artifacts.contains(LinkedSessionCaptureKind::ParticipantSerialHex));
+    assert_eq!(failure_artifacts.retained().len(), 2);
+
+    let batched_stimuli = ExternalStimulusPlan::new().with_stimulus(ExternalStimulus::at_frame(
+        3,
+        ExternalStimulusAction::JoypadSetButton {
+            button: JoypadButton::Start,
+            pressed: true,
+        },
+    ));
+    let participant = LinkedSessionParticipant::new("left", "left.gb")
+        .with_external_rom_root_key("GB_CYCLE_LINKED_ROOT")
+        .with_external_stimuli(batched_stimuli.clone());
+    assert_eq!(
+        participant.external_rom_root_key.as_deref(),
+        Some("GB_CYCLE_LINKED_ROOT")
+    );
+    assert_eq!(participant.external_stimuli, batched_stimuli);
+
+    let read_error = LinkedSessionSuiteManifestError::Read {
+        path: PathBuf::from("suite.toml"),
+        source: std::io::Error::new(std::io::ErrorKind::NotFound, "missing"),
+    };
+    let parse_error = LinkedSessionSuiteManifestError::Parse {
+        path: PathBuf::from("suite.toml"),
+        message: "bad toml".to_string(),
+    };
+    let unsupported_version = LinkedSessionSuiteManifestError::UnsupportedVersion {
+        path: PathBuf::from("suite.toml"),
+        version: 2,
+    };
+    let build_error = LinkedSessionSuiteManifestError::Build {
+        path: PathBuf::from("suite.toml"),
+        message: "invalid session".to_string(),
+    };
+    assert!(
+        read_error
+            .to_string()
+            .contains("failed to read linked-session suite manifest")
+    );
+    assert!(
+        parse_error
+            .to_string()
+            .contains("failed to parse linked-session suite manifest")
+    );
+    assert!(
+        unsupported_version
+            .to_string()
+            .contains("uses unsupported version 2")
+    );
+    assert!(
+        build_error
+            .to_string()
+            .contains("failed to build linked-session suite manifest")
+    );
+}
+
+#[test]
+fn linked_session_manifest_rejects_unsupported_versions_and_supports_info_snapshot_oracles() {
+    let workspace = unique_temp_dir("version-and-info-snapshot");
+    let left_rom = workspace.join("absolute-left.gb");
+    fs::create_dir_all(&workspace).expect("workspace dir should be creatable");
+    fs::write(&left_rom, [0x00_u8]).expect("left rom should be writable");
+
+    let unsupported_manifest_path = write_manifest(
+        &workspace,
+        "unsupported.toml",
+        r#"
+version = 2
+
+[[session]]
+id = "unsupported"
+timeout_tcycles = 128
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gb"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gb"
+"#,
+    );
+
+    let unsupported = load_linked_session_suite_manifest(&unsupported_manifest_path)
+        .expect_err("unsupported manifest versions should be rejected");
+    assert!(matches!(
+        unsupported,
+        LinkedSessionSuiteManifestError::UnsupportedVersion { version: 2, .. }
+    ));
+
+    let manifest_path = write_manifest(
+        &workspace,
+        "info-snapshot.toml",
+        &format!(
+            r#"
+version = 1
+
+[[session]]
+id = "info-snapshot"
+timeout_tcycles = 512
+oracle = "info-linked-snapshot"
+
+  [[session.participant]]
+  id = "left"
+  rom = "{}"
+
+  [[session.participant]]
+  id = "right"
+  rom = "commercial/right.gb"
+  external_rom_root_key = "GB_CYCLE_LOCAL_COMMERCIAL_ROOT"
+"#,
+            left_rom.display(),
+        ),
+    );
+
+    let suite = load_linked_session_suite_manifest(&manifest_path)
+        .expect("info snapshot manifest should load");
+    let session = &suite.sessions[0];
+    assert_eq!(
+        session.pass_condition,
+        LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Snapshot)
+    );
+    assert!(
+        session
+            .capture_plan
+            .contains(LinkedSessionCaptureKind::Snapshot)
+    );
+    assert_eq!(session.participants[0].rom_path, left_rom);
+    assert_eq!(
+        session.participants[1].external_rom_root_key.as_deref(),
+        Some("GB_CYCLE_LOCAL_COMMERCIAL_ROOT")
+    );
 }
