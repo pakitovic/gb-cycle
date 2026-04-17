@@ -47,6 +47,7 @@ impl Ppu {
         PpuMode3LiveBackgroundRefetchContext::new(
             self.current_mmio_visible_registers(),
             self.ly,
+            self.window_state.window_line_counter,
             self.last_unsigned_tile_data_low_fetch,
             self.last_unsigned_tile_data_high_fetch,
         )

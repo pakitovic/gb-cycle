@@ -683,7 +683,6 @@ impl Ppu {
 
     pub(super) fn maybe_recompute_pending_background_fill(&mut self, vram: &VramBusView<'_>) {
         if !self.bg_pipeline_state.fill.pending
-            || self.bg_pipeline_state.fill.cached.source != PpuBgFetcherSource::Background
             || !self.bg_pipeline_state.fill.includes_real_tile_pixels
         {
             return;
@@ -701,9 +700,7 @@ impl Ppu {
     }
 
     pub(super) fn maybe_recompute_pending_background_push(&mut self, vram: &VramBusView<'_>) {
-        if !self.bg_pipeline_state.push.pending
-            || self.bg_pipeline_state.push.cached.source != PpuBgFetcherSource::Background
-        {
+        if !self.bg_pipeline_state.push.pending {
             return;
         }
 

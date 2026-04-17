@@ -82,9 +82,10 @@ fn mode3_latch_helpers_expose_the_expected_register_snapshots_and_accessors() {
     assert_eq!(advanced.visible().scx, 0x99);
     assert_eq!(advanced.pipeline(), visible);
 
-    let refetch = PpuMode3LiveBackgroundRefetchContext::new(visible, 0x08, 0xAA, 0xBB);
+    let refetch = PpuMode3LiveBackgroundRefetchContext::new(visible, 0x08, 0x03, 0xAA, 0xBB);
     assert_eq!(refetch.registers(), visible);
     assert_eq!(refetch.current_scanline_tile_row(), 2);
+    assert_eq!(refetch.current_window_tile_row(), 3);
     assert_eq!(refetch.last_unsigned_tile_data_low_fetch(), 0xAA);
     assert_eq!(refetch.last_unsigned_tile_data_high_fetch(), 0xBB);
 }

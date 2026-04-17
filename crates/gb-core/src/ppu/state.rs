@@ -993,7 +993,33 @@ impl BgPipelineState {
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
+        let first_window_pixel_index = self
+            .fifo_cached_pixels
+            .iter()
+            .flatten()
+            .find(|cached| cached.cached.source == PpuBgFetcherSource::Window)
+            .map(|cached| cached.pixel_index);
+        let mut mark_window_entries = first_window_pixel_index == Some(0);
+        let mut previous_window_pixel_index = first_window_pixel_index;
+
         for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+            if cached.cached.source == PpuBgFetcherSource::Window {
+                if let Some(previous_pixel_index) = previous_window_pixel_index
+                    && cached.pixel_index < previous_pixel_index
+                {
+                    mark_window_entries = true;
+                }
+                previous_window_pixel_index = Some(cached.pixel_index);
+                if !mark_window_entries {
+                    continue;
+                }
+                cached.cached.needs_live_tilemap_refetch |=
+                    write_context.bgwin_tilemap_select_changed(PpuBgFetcherSource::Window);
+                cached.cached.needs_live_tile_data_refetch |=
+                    write_context.bg_window_tile_data_select_changed();
+                continue;
+            }
+
             cached
                 .cached
                 .mark_live_lcdc3_write_while_fifo_visible(write_context);
@@ -2035,14 +2061,13 @@ pub(super) fn recompute_live_background_cached_slice(
     vram: &VramBusView<'_>,
     context: PpuMode3LiveBackgroundRefetchContext,
 ) -> Option<BgCachedSlice> {
-    if cached.source != PpuBgFetcherSource::Background
-        || (!cached.needs_live_tilemap_refetch
-            && !cached.needs_live_tilemap_full_refetch
-            && !cached.needs_live_tile_data_refetch
-            && !cached.needs_live_tile_data_current_row_refetch
-            && !cached.needs_live_tile_low_current_row_refetch
-            && !cached.needs_live_tile_high_current_row_refetch
-            && !cached.needs_live_tile_data_unsigned_reuse)
+    if !cached.needs_live_tilemap_refetch
+        && !cached.needs_live_tilemap_full_refetch
+        && !cached.needs_live_tile_data_refetch
+        && !cached.needs_live_tile_data_current_row_refetch
+        && !cached.needs_live_tile_low_current_row_refetch
+        && !cached.needs_live_tile_high_current_row_refetch
+        && !cached.needs_live_tile_data_unsigned_reuse
     {
         return None;
     }
@@ -2059,21 +2084,43 @@ pub(super) fn recompute_live_background_cached_slice(
                 cached.fetch_x
             };
         tile_map_address = if cached.needs_live_tilemap_full_refetch {
-            PpuMode3BackgroundFetchContext::new(
-                registers,
-                registers,
-                full_refetch_fetch_x,
-                context.ly(),
-            )
-            .tile_index_address()
+            match cached.source {
+                PpuBgFetcherSource::Background => PpuMode3BackgroundFetchContext::new(
+                    registers,
+                    registers,
+                    full_refetch_fetch_x,
+                    context.ly(),
+                )
+                .tile_index_address(),
+                PpuBgFetcherSource::Window => {
+                    let tile_map_offset = cached.tile_map_address & 0x03FF;
+                    let tile_map_base = if registers.lcdc & LCDC_WINDOW_TILE_MAP_BIT != 0 {
+                        0x1C00
+                    } else {
+                        0x1800
+                    };
+                    tile_map_base | tile_map_offset
+                }
+            }
         } else {
             let tile_map_offset = cached.tile_map_address & 0x03FF;
-            let tile_map_base =
-                if tilemap_select_override.unwrap_or(registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0) {
-                    0x1C00
-                } else {
-                    0x1800
-                };
+            let tile_map_base = match cached.source {
+                PpuBgFetcherSource::Background => {
+                    if tilemap_select_override.unwrap_or(registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0)
+                    {
+                        0x1C00
+                    } else {
+                        0x1800
+                    }
+                }
+                PpuBgFetcherSource::Window => {
+                    if registers.lcdc & LCDC_WINDOW_TILE_MAP_BIT != 0 {
+                        0x1C00
+                    } else {
+                        0x1800
+                    }
+                }
+            };
             tile_map_base | tile_map_offset
         };
         tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
@@ -2081,17 +2128,21 @@ pub(super) fn recompute_live_background_cached_slice(
 
     let cached_tile_low_address = cached_tile_low_address(cached);
     let cached_tile_high_address = cached_tile_high_address(cached);
+    let current_tile_row = match cached.source {
+        PpuBgFetcherSource::Background => context.current_scanline_tile_row(),
+        PpuBgFetcherSource::Window => context.current_window_tile_row(),
+    };
     let tile_low_row = if cached.needs_live_tile_data_current_row_refetch
         || cached.needs_live_tile_low_current_row_refetch
     {
-        context.current_scanline_tile_row()
+        current_tile_row
     } else {
         bg_tile_data_address_row(cached_tile_low_address)
     };
     let tile_high_row = if cached.needs_live_tile_data_current_row_refetch
         || cached.needs_live_tile_high_current_row_refetch
     {
-        context.current_scanline_tile_row()
+        current_tile_row
     } else {
         bg_tile_data_address_row(cached_tile_high_address)
     };

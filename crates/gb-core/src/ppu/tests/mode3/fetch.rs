@@ -1516,28 +1516,11 @@ fn live_write_registers_with_scy(lcdc: u8, scx: u8, scy: u8) -> PpuVisibleRegist
 }
 
 #[test]
-fn live_background_write_effects_ignore_non_background_or_dummy_slices() {
+fn live_background_write_effects_ignore_dummy_fill_slices() {
     let write_context = PpuMode3LiveRegisterWriteContext::new(
         live_write_registers(0x91, 0x00),
         live_write_registers(0x99, 0x08),
     );
-
-    let mut window_push = BgCachedSlice {
-        source: PpuBgFetcherSource::Window,
-        same_cycle_live_tilemap_refetch_window_open: true,
-        ..BgCachedSlice::default()
-    };
-    PpuMode3LiveBackgroundWriteEffects::for_push_pending_slice(
-        window_push,
-        PpuMode3LiveBackgroundRegister::Lcdc,
-        write_context,
-        true,
-        0,
-        PpuMode3LiveScyWriteRouting::default(),
-    )
-    .apply_to_cached_slice(&mut window_push);
-    assert!(!window_push.needs_live_tilemap_refetch);
-    assert!(!window_push.needs_live_tilemap_full_refetch);
 
     let mut dummy_fill = BgCachedSlice {
         source: PpuBgFetcherSource::Background,
@@ -1556,6 +1539,143 @@ fn live_background_write_effects_ignore_non_background_or_dummy_slices() {
     .apply_to_cached_slice(&mut dummy_fill);
     assert!(!dummy_fill.needs_live_tilemap_refetch);
     assert!(!dummy_fill.needs_live_tilemap_full_refetch);
+}
+
+#[test]
+fn live_background_write_effects_keep_window_push_on_the_old_tilemap_after_lcdc6_change() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0x91, 0x00),
+        live_write_registers(0xD1, 0x00),
+    );
+
+    let mut window_push = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        ..BgCachedSlice::default()
+    };
+    PpuMode3LiveBackgroundWriteEffects::for_push_pending_slice(
+        window_push,
+        PpuMode3LiveBackgroundRegister::Lcdc,
+        write_context,
+        false,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
+    )
+    .apply_to_cached_slice(&mut window_push);
+
+    assert!(!window_push.needs_live_tilemap_refetch);
+    assert!(!window_push.needs_live_tilemap_full_refetch);
+}
+
+#[test]
+fn window_visible_fifo_marks_only_future_tiles_on_lcdc6_change() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0x91, 0x00),
+        live_write_registers(0xD1, 0x00),
+    );
+
+    let mut pipeline = BgPipelineState::default();
+    for pixel_index in [5, 6, 7, 0, 1] {
+        pipeline
+            .fifo_cached_pixels
+            .push_back(Some(BgFifoPixelCached::new(
+                BgCachedSlice {
+                    source: PpuBgFetcherSource::Window,
+                    tile_map_address: if pixel_index >= 5 { 0x1800 } else { 0x1801 },
+                    ..BgCachedSlice::default()
+                },
+                pixel_index,
+            )));
+    }
+
+    pipeline.mark_live_lcdc3_write_while_fifo_visible(write_context);
+
+    let cached = pipeline
+        .fifo_cached_pixels
+        .iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert!(
+        cached[..3]
+            .iter()
+            .all(|cached| !cached.cached.needs_live_tilemap_refetch)
+    );
+    assert!(
+        cached[3..]
+            .iter()
+            .all(|cached| cached.cached.needs_live_tilemap_refetch)
+    );
+}
+
+#[test]
+fn live_background_write_effects_keep_window_current_fetch_on_the_old_tilemap_after_lcdc6_change() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0x91, 0x00),
+        live_write_registers(0xD1, 0x00),
+    );
+    let fetcher = BgFetcherState {
+        source: PpuBgFetcherSource::Window,
+        stage: PpuBgFetcherStage::TileDataLow,
+        ..BgFetcherState::default()
+    };
+    let effects = PpuMode3LiveBackgroundWriteEffects::for_current_background_fetch(
+        fetcher,
+        PpuMode3LiveBackgroundRegister::Lcdc,
+        write_context,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
+    );
+
+    let mut cached = BgCachedSlice::default();
+    effects.apply_to_cached_slice(&mut cached);
+    assert!(!cached.needs_live_tilemap_refetch);
+
+    let mut fetcher = fetcher;
+    effects.apply_to_fetcher(&mut fetcher);
+    assert!(!fetcher.needs_live_tilemap_refetch_on_push);
+}
+
+#[test]
+fn live_background_tilemap_refetch_recomputes_window_slice_on_lcdc6_change() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.vram_bytes[0x1801] = 0;
+    ppu.vram_bytes[0x0000] = 0x12;
+    ppu.vram_bytes[0x0001] = 0x34;
+    ppu.vram_bytes[0x1C01] = 1;
+    ppu.vram_bytes[0x0010] = 0xAB;
+    ppu.vram_bytes[0x0011] = 0xCD;
+    ppu.lcdc = 0xD1;
+    ppu.visible_registers.lcdc = 0xD1;
+    ppu.pipeline_registers.lcdc = 0xD1;
+    ppu.window_state.window_line_counter = 0;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: BG_TILE_WIDTH as u16,
+        needs_live_tilemap_refetch: true,
+        tile_map_address: 0x1801,
+        tile_data_address: 0x0001,
+        tile_low_address: 0x0000,
+        tile_high_address: 0x0001,
+        tile_index: 0,
+        tile_low: 0x12,
+        tile_high: 0x34,
+        ..BgCachedSlice::default()
+    };
+
+    let recomputed = ppu
+        .with_ppu_vram(|ppu, vram| {
+            recompute_live_background_cached_slice(
+                cached,
+                vram,
+                ppu.current_mode3_live_background_refetch_context(),
+            )
+        })
+        .expect("LCDC6 live write should recompute the cached window slice");
+
+    assert_eq!(recomputed.tile_map_address, 0x1C01);
+    assert_eq!(recomputed.tile_index, 1);
+    assert_eq!(recomputed.tile_low, 0xAB);
+    assert_eq!(recomputed.tile_high, 0xCD);
 }
 
 #[test]
