@@ -53,6 +53,7 @@ impl Ppu {
                     })
                     || self.current_mode0_start_dot() > self.baseline_mode0_start_dot())
                 && self.mode2_scan_state.selected_sprite_count() == 0
+                && !self.bg_pipeline_state.window_started_this_line
                 && !self
                     .dmg_panel_live_write_state
                     .bgp_cpu_commit

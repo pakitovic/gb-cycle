@@ -41,8 +41,8 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
-- The current external report snapshot is `.roms/test/test-report.md = 157/167`: `155` passed, `10` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint.
-- The strict PPU ladder is green through the OBJ-toggle block (`m3_lcdc_obj_en_change.gb`, `m3_lcdc_obj_en_change_variant.gb`, `m3_lcdc_obj_size_change.gb`, `m3_lcdc_obj_size_change_scx.gb`). The next blocker is `m3_window_timing.gb` (`order 40`), starting the window-mechanics block.
+- The current external report snapshot is `.roms/test/test-report.md = 159/167`: `157` passed, `8` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint.
+- `m3_window_timing.gb` and `m3_window_timing_wx_0.gb` are both green in the current tree after tightening the DMG window-restart `BGP` second-write onset policy, including the `WX = 0` row/arrival seam. The strict PPU ladder now advances to `m3_lcdc_win_map_change.gb` (`order 42`) inside the window-mechanics block.
 
 #### Open TODOs
 
@@ -52,7 +52,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
   | Tier | Orders | Remaining ROMs |
   | --- | --- | --- |
-  | Window mechanics | `40-49` | `m3_window_timing`, `m3_window_timing_wx_0`, `m3_lcdc_win_map_change`, `m3_lcdc_tile_sel_win_change`, `m3_lcdc_win_en_change_multiple`, `m3_lcdc_win_en_change_multiple_wx`, `m3_wx_4_change`, `m3_wx_5_change`, `m3_wx_6_change`, `m3_wx_4_change_sprites` |
+  | Window mechanics | `42-49` | `m3_lcdc_win_map_change`, `m3_lcdc_tile_sel_win_change`, `m3_lcdc_win_en_change_multiple`, `m3_lcdc_win_en_change_multiple_wx`, `m3_wx_4_change`, `m3_wx_5_change`, `m3_wx_6_change`, `m3_wx_4_change_sprites` |
 
 ##### Cleanup debt
 
