@@ -30,8 +30,18 @@ fn build_nom_bc_rom(program: &[u8]) -> Vec<u8> {
     rom
 }
 
+fn append_cpu_isolation_prefix(program: &[u8]) -> Vec<u8> {
+    let mut prefixed = vec![
+        0xAF, // xor a
+        0xE0, 0x40, // ldh ($40), a ; LCDC off
+        0xE0, 0x26, // ldh ($26), a ; NR52 off
+    ];
+    prefixed.extend_from_slice(program);
+    prefixed
+}
+
 fn build_register_alu_loop_rom() -> Vec<u8> {
-    build_nom_bc_rom(&[
+    build_nom_bc_rom(&append_cpu_isolation_prefix(&[
         0x06, 0x12, // ld b, $12
         0x0E, 0x34, // ld c, $34
         0xAF, // xor a
@@ -42,11 +52,11 @@ fn build_register_alu_loop_rom() -> Vec<u8> {
         0xA8, // xor b
         0xB1, // or c
         0x18, 0xF8, // jr loop
-    ])
+    ]))
 }
 
 fn build_hl_memory_cb_loop_rom() -> Vec<u8> {
-    build_nom_bc_rom(&[
+    build_nom_bc_rom(&append_cpu_isolation_prefix(&[
         0x21, 0x00, 0xC0, // ld hl, $C000
         0x36, 0x5A, // ld (hl), $5A
         0x34, // loop: inc (hl)
@@ -57,11 +67,11 @@ fn build_hl_memory_cb_loop_rom() -> Vec<u8> {
         0x7E, // ld a, (hl)
         0x77, // ld (hl), a
         0x18, 0xF4, // jr loop
-    ])
+    ]))
 }
 
 fn build_stack_call_ret_loop_rom() -> Vec<u8> {
-    build_nom_bc_rom(&[
+    build_nom_bc_rom(&append_cpu_isolation_prefix(&[
         0x31, 0x00, 0xD0, // ld sp, $D000
         0x01, 0x34, 0x12, // ld bc, $1234
         0x11, 0x78, 0x56, // ld de, $5678
@@ -72,7 +82,27 @@ fn build_stack_call_ret_loop_rom() -> Vec<u8> {
         0xD1, // pop de
         0xC1, // pop bc
         0xC9, // ret
-    ])
+    ]))
+}
+
+fn build_interrupt_reti_loop_rom() -> Vec<u8> {
+    let program = append_cpu_isolation_prefix(&[
+        0x3E, 0x01, // ld a, $01
+        0xEA, 0xFF, 0xFF, // ld ($FFFF), a ; IE = VBlank
+        0x3E, 0x01, // loop: ld a, $01
+        0xE0, 0x0F, // ldh ($0F), a ; IF = VBlank
+        0xFB, // ei
+        0x00, // nop ; delayed IME enable resolves
+        0x18, 0xF8, // jr loop
+    ]);
+
+    let mut rom = build_nom_bc_rom(&program);
+    rom[0x0040..0x0044].copy_from_slice(&[
+        0x04, // inc b
+        0xCB, 0x40, // bit 0, b
+        0xD9, // reti
+    ]);
+    rom
 }
 
 fn fixture_rom(path: &str) -> Vec<u8> {
@@ -107,6 +137,10 @@ fn benchmark_steady_state_cpu_loops(c: &mut Criterion) {
         SteadyStateBenchCase {
             name: "stack_call_ret_loop",
             machine: load_machine(build_stack_call_ret_loop_rom()),
+        },
+        SteadyStateBenchCase {
+            name: "interrupt_reti_loop",
+            machine: load_machine(build_interrupt_reti_loop_rom()),
         },
     ];
 
