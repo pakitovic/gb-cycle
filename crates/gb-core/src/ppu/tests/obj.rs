@@ -49,7 +49,7 @@ fn push_selected_sprite(ppu: &mut Ppu, spec: SelectedSpriteSpec) -> PpuSelectedS
 fn queue_current_obj_hit(ppu: &mut Ppu, sprite_slot: u8) {
     let ownership = ppu.current_obj_hit_ownership();
     ppu.obj_pipeline_state
-        .queue_fetch_hit(sprite_slot, ownership);
+        .queue_fetch_hit(sprite_slot, ownership, ppu.current_obj_height());
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +98,13 @@ fn arm_object_fetch_push_stage(ppu: &mut Ppu, sprite_slot: u8, sprite: PpuSelect
     ppu.obj_pipeline_state.fetch.sprite_slot = sprite_slot;
     ppu.obj_pipeline_state.fetch.sprite = Some(sprite);
     ppu.obj_pipeline_state.fetch.resolved_sprite = Some(sprite);
+    ppu.obj_pipeline_state.fetch.selected_obj_height = ppu.current_obj_height();
+    ppu.obj_pipeline_state.fetch.latched_obj_height = ppu.current_obj_height();
+    let (tile_index, tile_row) = ppu
+        .obj_tile_index_and_row(sprite)
+        .expect("armed object fetch should resolve tile metadata");
+    ppu.obj_pipeline_state.fetch.resolved_tile_index = Some(tile_index);
+    ppu.obj_pipeline_state.fetch.resolved_tile_row = Some(tile_row);
     ppu.obj_pipeline_state.fetch.tile_low = 0xFF;
     ppu.obj_pipeline_state.fetch.tile_high = 0x00;
 }

@@ -102,6 +102,71 @@ fn load_mealybug_m3_lcdc_bg_map_change_machine() -> Machine<gb_core::TraceSummar
     machine
 }
 
+fn load_mealybug_m3_lcdc_obj_en_change_machine() -> Machine<gb_core::TraceSummaryBuffer> {
+    let rom_path = resolve_test_rom_path("mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change.gb");
+    let rom =
+        std::fs::read(&rom_path).expect("mealybug m3_lcdc_obj_en_change ROM should be present");
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("diagnostic ROM should load");
+    machine
+}
+
+fn load_mealybug_m3_lcdc_obj_en_change_variant_machine() -> Machine<gb_core::TraceSummaryBuffer> {
+    let rom_path =
+        resolve_test_rom_path("mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_variant.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mealybug m3_lcdc_obj_en_change_variant ROM should be present");
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("diagnostic ROM should load");
+    machine
+}
+
+fn load_mealybug_m3_lcdc_obj_size_change_machine() -> Machine<gb_core::TraceSummaryBuffer> {
+    let rom_path = resolve_test_rom_path("mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change.gb");
+    let rom =
+        std::fs::read(&rom_path).expect("mealybug m3_lcdc_obj_size_change ROM should be present");
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("diagnostic ROM should load");
+    machine
+}
+
+fn load_mealybug_m3_lcdc_obj_size_change_scx_machine() -> Machine<gb_core::TraceSummaryBuffer> {
+    let rom_path =
+        resolve_test_rom_path("mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx.gb");
+    let rom = std::fs::read(&rom_path)
+        .expect("mealybug m3_lcdc_obj_size_change_scx ROM should be present");
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("diagnostic ROM should load");
+    machine
+}
+
+fn seed_dmg_boot_trademark_tile(machine: &mut Machine<gb_core::TraceSummaryBuffer>) {
+    const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
+        0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C,
+        0x00,
+    ];
+
+    for (index, byte) in DMG_BOOT_TRADEMARK_TILE_BYTES.iter().copied().enumerate() {
+        machine.write_bus(0x8190 + index as u16, byte);
+    }
+}
+
 fn log_mealybug_m3_scx_high_5_bits_hblank_row_after_target_write(target_ly: u8) {
     let mut machine = load_mealybug_m3_scx_high_5_bits_machine();
     let mut armed = false;
@@ -843,13 +908,12 @@ fn log_mealybug_m3_lcdc_bg_en_change_after_ff40_write_window(target_ly: u8, stop
 
         machine.step_t_cycle();
 
-        if !armed {
-            continue;
-        }
-
         let after = machine.ppu().snapshot();
         if after.ly != target_ly {
-            break;
+            if armed {
+                break;
+            }
+            continue;
         }
 
         if after.visible_pixels_output != last_vpo {
@@ -883,6 +947,995 @@ fn log_mealybug_m3_lcdc_bg_en_change_after_ff40_write_window(target_ly: u8, stop
     }
 
     panic!("timed out before logging the target LY output window after FF40 writes");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_after_ff40_write_window(target_ly: u8, stop_vpo: u8) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+    let mut armed = false;
+    let mut write_index = 0usize;
+    let mut last_vpo = 0u8;
+    let mut recent_emits = std::collections::VecDeque::new();
+    let mut recent_states = std::collections::VecDeque::new();
+
+    for _ in 0..20_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if before.ly == target_ly && before.mode == PpuAccessMode::Drawing {
+            let tile25_row0 = (
+                machine.read_bus(0x8000 + 25 * 16),
+                machine.read_bus(0x8000 + 25 * 16 + 1),
+            );
+            recent_states.push_back(format!(
+                "state line_dot={} vpo={} x={} visible_lcdc={:#04X} pipeline_lcdc={:#04X} obj_stage={:?} obj_stage_dot={} obj_req={:?} obj_resolved={:?} obj_tile={:?} obj_row={:?} obj_addr={:?}/{:?} obj_low={:#04X} obj_high={:#04X} pending_match_x={:?} pending_len={} obj_fifo={:?} tile25_row0={:?}",
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                before.visible_lcdc,
+                before.pipeline_lcdc,
+                before.obj_fetcher_stage,
+                before.obj_fetcher_stage_dot,
+                before.obj_fetcher_requested_sprite,
+                before.obj_fetcher_resolved_sprite,
+                before.obj_fetcher_resolved_tile_index,
+                before.obj_fetcher_resolved_tile_row,
+                before.obj_fetcher_tile_low_address,
+                before.obj_fetcher_tile_high_address,
+                before.obj_fetcher_tile_low,
+                before.obj_fetcher_tile_high,
+                before.obj_pending_hit_match_x,
+                before.obj_pending_hit_len,
+                before.obj_fifo_pixels,
+                tile25_row0,
+            ));
+            while recent_states.len() > 20 {
+                recent_states.pop_front();
+            }
+        }
+
+        if before.ly == target_ly
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            let tile25_row0 = (
+                machine.read_bus(0x8000 + 25 * 16),
+                machine.read_bus(0x8000 + 25 * 16 + 1),
+            );
+            println!(
+                "write#{} ly={} line_dot={} vpo={} x={} value={:#04X} visible_lcdc={:#04X} pipeline_lcdc={:#04X} obj_stage={:?} obj_stage_dot={} obj_req={:?} obj_resolved={:?} obj_tile={:?} obj_row={:?} obj_addr={:?}/{:?} obj_low={:#04X} obj_high={:#04X} pending_match_x={:?} pending_len={} obj_fifo={:?} tile25_row0={:?} selected={:?} startup={:?} push_pending={} fill_pending={} front_cached={:?}",
+                write_index,
+                before.ly,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                activity.value,
+                before.visible_lcdc,
+                before.pipeline_lcdc,
+                before.obj_fetcher_stage,
+                before.obj_fetcher_stage_dot,
+                before.obj_fetcher_requested_sprite,
+                before.obj_fetcher_resolved_sprite,
+                before.obj_fetcher_resolved_tile_index,
+                before.obj_fetcher_resolved_tile_row,
+                before.obj_fetcher_tile_low_address,
+                before.obj_fetcher_tile_high_address,
+                before.obj_fetcher_tile_low,
+                before.obj_fetcher_tile_high,
+                before.obj_pending_hit_match_x,
+                before.obj_pending_hit_len,
+                before.obj_fifo_pixels,
+                tile25_row0,
+                before.selected_sprites,
+                before.bg_startup_fetch_seam,
+                before.bg_push_pending,
+                before.bg_fill_pending,
+                before.bg_fifo_cached_pixels.first(),
+            );
+            if !recent_states.is_empty() {
+                println!("recent_states_before_write=");
+                for state in &recent_states {
+                    println!("  {state}");
+                }
+            }
+            if !recent_emits.is_empty() {
+                println!("recent_emits_before_write={recent_emits:?}");
+            }
+            write_index += 1;
+            if !armed {
+                armed = true;
+                last_vpo = before.visible_pixels_output;
+            }
+        }
+
+        machine.step_t_cycle();
+
+        if !armed {
+            continue;
+        }
+
+        let after = machine.ppu().snapshot();
+        if after.ly != target_ly {
+            break;
+        }
+
+        if after.visible_pixels_output != last_vpo {
+            let visible_x = last_vpo as usize;
+            let lcdc = machine.read_bus(0xFF40);
+            let panel = machine.ppu().framebuffer()[after.ly as usize * 160 + visible_x];
+            recent_emits.push_back((
+                after.line_dot,
+                last_vpo,
+                after.visible_pixels_output,
+                visible_x,
+                after.current_scanline_pixels[visible_x],
+                panel,
+                lcdc,
+            ));
+            while recent_emits.len() > 16 {
+                recent_emits.pop_front();
+            }
+            if armed {
+                println!(
+                    "emit line_dot={} vpo={} -> {} x={} mixed={} panel={} lcdc={:#04X} visible_lcdc={:#04X} pipeline_lcdc={:#04X} obj_stage={:?} obj_stage_dot={} obj_req={:?} obj_resolved={:?} obj_tile={:?} obj_row={:?} obj_addr={:?}/{:?} obj_low={:#04X} obj_high={:#04X} pending_match_x={:?} pending_len={} obj_fifo={:?} selected={:?}",
+                    after.line_dot,
+                    last_vpo,
+                    after.visible_pixels_output,
+                    visible_x,
+                    after.current_scanline_pixels[visible_x],
+                    panel,
+                    lcdc,
+                    after.visible_lcdc,
+                    after.pipeline_lcdc,
+                    after.obj_fetcher_stage,
+                    after.obj_fetcher_stage_dot,
+                    after.obj_fetcher_requested_sprite,
+                    after.obj_fetcher_resolved_sprite,
+                    after.obj_fetcher_resolved_tile_index,
+                    after.obj_fetcher_resolved_tile_row,
+                    after.obj_fetcher_tile_low_address,
+                    after.obj_fetcher_tile_high_address,
+                    after.obj_fetcher_tile_low,
+                    after.obj_fetcher_tile_high,
+                    after.obj_pending_hit_match_x,
+                    after.obj_pending_hit_len,
+                    after.obj_fifo_pixels,
+                    after.selected_sprites,
+                );
+            }
+            last_vpo = after.visible_pixels_output;
+            if armed && after.visible_pixels_output >= stop_vpo {
+                return;
+            }
+        }
+    }
+
+    panic!("timed out before logging the target LY output window after FF40 writes");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_write_signatures(target_lys: &[u8]) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut printed = std::collections::BTreeSet::new();
+
+    for _ in 0..20_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if before.mode == PpuAccessMode::Drawing
+            && targets.contains(&before.ly)
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+            && printed.insert(before.ly)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            println!(
+                "ly={} line_dot={} vpo={} x={} value={:#04X} visible_lcdc={:#04X} pipeline_lcdc={:#04X} selected={:?} obj_stage={:?} obj_stage_dot={} obj_fifo={:?}",
+                before.ly,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                activity.value,
+                before.visible_lcdc,
+                before.pipeline_lcdc,
+                before.selected_sprites,
+                before.obj_fetcher_stage,
+                before.obj_fetcher_stage_dot,
+                before.obj_fifo_pixels,
+            );
+
+            if printed.len() == targets.len() {
+                return;
+            }
+        }
+
+        machine.step_t_cycle();
+    }
+
+    panic!("timed out before logging all target LY signatures");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_hblank_row(target_ly: u8) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+
+    for _ in 0..20_000_000 {
+        machine.step_t_cycle();
+
+        let after = machine.ppu().snapshot();
+        if after.ly != target_ly {
+            continue;
+        }
+
+        if after.mode == PpuAccessMode::HBlank {
+            let row_start = after.ly as usize * 160;
+            let tile25_row0 = (
+                machine.read_bus(0x8000 + 25 * 16),
+                machine.read_bus(0x8000 + 25 * 16 + 1),
+            );
+            let sprite_bytes = after.selected_sprites.first().map(|sprite| {
+                let sprite_top = sprite.y.wrapping_sub(16);
+                let row = target_ly.wrapping_sub(sprite_top);
+                let tile = sprite.tile_index;
+                let base = u16::from(tile) * 16 + u16::from(row) * 2;
+                (
+                    tile,
+                    row,
+                    machine.read_bus(0x8000 + base),
+                    machine.read_bus(0x8000 + base + 1),
+                )
+            });
+            println!(
+                "hblank ly={} mode0={} selected={:?} tile25_row0={:?} sprite_bytes={:?} raw_0_15={:?} panel_0_15={:?}",
+                after.ly,
+                after.mode0_start_dot,
+                after.selected_sprites,
+                tile25_row0,
+                sprite_bytes,
+                &after.current_scanline_pixels[..16],
+                &machine.ppu().framebuffer()[row_start..row_start + 16],
+            );
+            return;
+        }
+    }
+
+    panic!("timed out before sampling HBlank row");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_line_timeline(
+    target_ly: u8,
+    line_dot_start: u16,
+    line_dot_end: u16,
+) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+
+    for _ in 0..20_000_000 {
+        machine.step_t_cycle();
+
+        let after = machine.ppu().snapshot();
+        if after.ly != target_ly || after.line_dot < line_dot_start || after.line_dot > line_dot_end
+        {
+            continue;
+        }
+
+        let cpu = machine.cpu().snapshot();
+        let last_event = cpu.last_address_event.and_then(|event| {
+            event.access_address.map(|address| {
+                (
+                    event.kind,
+                    address,
+                    cpu.last_bus_activity.map(|activity| activity.value),
+                )
+            })
+        });
+        let tile25_row0 = (
+            machine.read_bus(0x8000 + 25 * 16),
+            machine.read_bus(0x8000 + 25 * 16 + 1),
+        );
+        println!(
+            "ly={} line_dot={} vpo={} x={} visible_lcdc={:#04X} pipeline_lcdc={:#04X} obj_stage={:?} obj_stage_dot={} obj_fifo={:?} tile25_row0={:?} last_event={:?}",
+            after.ly,
+            after.line_dot,
+            after.visible_pixels_output,
+            after.bg_current_transfer_x,
+            after.visible_lcdc,
+            after.pipeline_lcdc,
+            after.obj_fetcher_stage,
+            after.obj_fetcher_stage_dot,
+            after.obj_fifo_pixels,
+            tile25_row0,
+            last_event,
+        );
+
+        if after.line_dot == line_dot_end {
+            return;
+        }
+    }
+
+    panic!("timed out before logging the target line timeline");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_tile25_activity(target_lys: &[u8]) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut printed_hblank = std::collections::BTreeSet::new();
+
+    for _ in 0..20_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && let Some(activity) = before_cpu.last_bus_activity
+            && (0x8190..=0x819F).contains(&activity.address)
+        {
+            println!(
+                "tile25_write ly={} mode={:?} line_dot={} vpo={} x={} address={:#06X} value={:#04X}",
+                before.ly,
+                before.mode,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                activity.address,
+                activity.value,
+            );
+        }
+
+        machine.step_t_cycle();
+
+        let after = machine.ppu().snapshot();
+        if after.mode == PpuAccessMode::HBlank
+            && targets.contains(&after.ly)
+            && printed_hblank.insert(after.ly)
+        {
+            let rows = (0..8)
+                .map(|row| {
+                    let base = 0x8000 + 25 * 16 + row * 2;
+                    (row, machine.read_bus(base), machine.read_bus(base + 1))
+                })
+                .collect::<Vec<_>>();
+            println!(
+                "tile25_hblank ly={} mode0={} rows={:?} selected={:?} raw_0_15={:?}",
+                after.ly,
+                after.mode0_start_dot,
+                rows,
+                after.selected_sprites,
+                &after.current_scanline_pixels[..16],
+            );
+            if printed_hblank.len() == targets.len() {
+                return;
+            }
+        }
+    }
+
+    panic!("timed out before logging tile25 activity");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_after_ff40_write_window_in_completed_frame(
+    target_completed_frames: u32,
+    target_ly: u8,
+    stop_vpo: u8,
+) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+    let mut armed = false;
+    let mut write_index = 0usize;
+    let mut last_vpo = 0u8;
+    let mut recent_states = std::collections::VecDeque::new();
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if completed_frames == target_completed_frames
+            && before.ly == target_ly
+            && before.mode == PpuAccessMode::Drawing
+        {
+            recent_states.push_back(format!(
+                "frame={} state line_dot={} vpo={} x={} bg_stage={:?}/{} bg_addr={:#06X} bg_tile={} bg_low={:#04X} bg_high={:#04X} last_unsigned={:#04X}/{:#04X} obj_stage={:?} obj_stage_dot={} obj_req={:?} obj_resolved={:?} obj_tile={:?} obj_row={:?} obj_addr={:?}/{:?} obj_low={:#04X} obj_high={:#04X} obj_fifo={:?}",
+                completed_frames,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                before.bg_fetcher_stage,
+                before.bg_fetcher_stage_dot,
+                before.bg_fetcher_tile_data_address,
+                before.bg_fetcher_tile_index,
+                before.bg_fetcher_tile_low,
+                before.bg_fetcher_tile_high,
+                before.last_unsigned_tile_data_low_fetch,
+                before.last_unsigned_tile_data_high_fetch,
+                before.obj_fetcher_stage,
+                before.obj_fetcher_stage_dot,
+                before.obj_fetcher_requested_sprite,
+                before.obj_fetcher_resolved_sprite,
+                before.obj_fetcher_resolved_tile_index,
+                before.obj_fetcher_resolved_tile_row,
+                before.obj_fetcher_tile_low_address,
+                before.obj_fetcher_tile_high_address,
+                before.obj_fetcher_tile_low,
+                before.obj_fetcher_tile_high,
+                before.obj_fifo_pixels,
+            ));
+            while recent_states.len() > 20 {
+                recent_states.pop_front();
+            }
+        }
+
+        if completed_frames == target_completed_frames
+            && before.ly == target_ly
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            println!(
+                "target_frame_write#{} completed_frames={} ly={} line_dot={} vpo={} x={} value={:#04X} visible_lcdc={:#04X} pipeline_lcdc={:#04X} bg_stage={:?}/{} bg_addr={:#06X} bg_tile={} bg_low={:#04X} bg_high={:#04X} last_unsigned={:#04X}/{:#04X} obj_stage={:?} obj_stage_dot={} obj_req={:?} obj_resolved={:?} obj_tile={:?} obj_row={:?} obj_addr={:?}/{:?} obj_low={:#04X} obj_high={:#04X} obj_fifo={:?}",
+                write_index,
+                completed_frames,
+                before.ly,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                activity.value,
+                before.visible_lcdc,
+                before.pipeline_lcdc,
+                before.bg_fetcher_stage,
+                before.bg_fetcher_stage_dot,
+                before.bg_fetcher_tile_data_address,
+                before.bg_fetcher_tile_index,
+                before.bg_fetcher_tile_low,
+                before.bg_fetcher_tile_high,
+                before.last_unsigned_tile_data_low_fetch,
+                before.last_unsigned_tile_data_high_fetch,
+                before.obj_fetcher_stage,
+                before.obj_fetcher_stage_dot,
+                before.obj_fetcher_requested_sprite,
+                before.obj_fetcher_resolved_sprite,
+                before.obj_fetcher_resolved_tile_index,
+                before.obj_fetcher_resolved_tile_row,
+                before.obj_fetcher_tile_low_address,
+                before.obj_fetcher_tile_high_address,
+                before.obj_fetcher_tile_low,
+                before.obj_fetcher_tile_high,
+                before.obj_fifo_pixels,
+            );
+            println!("recent_target_frame_states_before_write=");
+            for state in &recent_states {
+                println!("  {state}");
+            }
+            write_index += 1;
+            armed = true;
+            last_vpo = before.visible_pixels_output;
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+
+        if !armed {
+            continue;
+        }
+
+        let after = machine.ppu().snapshot();
+        if completed_frames != target_completed_frames || after.ly != target_ly {
+            continue;
+        }
+
+        if after.visible_pixels_output != last_vpo {
+            let visible_x = last_vpo as usize;
+            let panel = machine.ppu().framebuffer()[after.ly as usize * 160 + visible_x];
+            println!(
+                "target_frame_emit completed_frames={} line_dot={} vpo={} -> {} x={} mixed={} panel={} lcdc={:#04X} obj_stage={:?} obj_stage_dot={} obj_low={:#04X} obj_high={:#04X} obj_fifo={:?}",
+                completed_frames,
+                after.line_dot,
+                last_vpo,
+                after.visible_pixels_output,
+                visible_x,
+                after.current_scanline_pixels[visible_x],
+                panel,
+                machine.read_bus(0xFF40),
+                after.obj_fetcher_stage,
+                after.obj_fetcher_stage_dot,
+                after.obj_fetcher_tile_low,
+                after.obj_fetcher_tile_high,
+                after.obj_fifo_pixels,
+            );
+            last_vpo = after.visible_pixels_output;
+            if after.visible_pixels_output >= stop_vpo {
+                return;
+            }
+        }
+    }
+
+    panic!("timed out before logging the target completed frame write window");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_video_writes_until_hblank(
+    target_completed_frames: u32,
+    target_ly: u8,
+) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if completed_frames == target_completed_frames
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && let Some(activity) = before_cpu.last_bus_activity
+            && ((0x8000..=0x9FFF).contains(&activity.address)
+                || (0xFE00..=0xFE9F).contains(&activity.address)
+                || activity.address == 0xFF40)
+        {
+            println!(
+                "frame={} write mode={:?} ly={} line_dot={} vpo={} x={} address={:#06X} value={:#04X}",
+                completed_frames,
+                before.mode,
+                before.ly,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                activity.address,
+                activity.value,
+            );
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+
+        let after = machine.ppu().snapshot();
+        if completed_frames == target_completed_frames
+            && after.ly == target_ly
+            && after.mode == PpuAccessMode::HBlank
+        {
+            let tile25_rows = (0..8)
+                .map(|row| {
+                    let base = 0x8000 + 25 * 16 + row * 2;
+                    (row, machine.read_bus(base), machine.read_bus(base + 1))
+                })
+                .collect::<Vec<_>>();
+            let oam_entry3 = (0..4)
+                .map(|offset| machine.read_bus(0xFE00 + 3 * 4 + offset))
+                .collect::<Vec<_>>();
+            println!(
+                "frame={} hblank ly={} tile25_rows={:?} oam_entry3={:?}",
+                completed_frames, after.ly, tile25_rows, oam_entry3,
+            );
+            return;
+        }
+    }
+
+    panic!("timed out before logging target-frame video writes");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_with_seeded_trademark_tile() {
+    const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
+        0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C,
+        0x00,
+    ];
+
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+    for (index, byte) in DMG_BOOT_TRADEMARK_TILE_BYTES.iter().copied().enumerate() {
+        machine.write_bus(0x8190 + index as u16, byte);
+    }
+    let seeded_rows = (0..8)
+        .map(|row| {
+            let base = 0x8190 + row * 2;
+            (row, machine.read_bus(base), machine.read_bus(base + 1))
+        })
+        .collect::<Vec<_>>();
+    println!("seeded_tile25_rows={seeded_rows:?}");
+
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+
+    while completed_frames < 30 {
+        machine.step_t_cycle();
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+    }
+
+    for y in 24..32 {
+        let row_start = y * 160;
+        println!(
+            "seeded_frame row{} left8={:?}",
+            y,
+            &machine.ppu().framebuffer()[row_start..row_start + 8]
+        );
+    }
+    let final_rows = (0..8)
+        .map(|row| {
+            let base = 0x8190 + row * 2;
+            (row, machine.read_bus(base), machine.read_bus(base + 1))
+        })
+        .collect::<Vec<_>>();
+    println!("final_tile25_rows={final_rows:?}");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_seeded_trademark_final_frame_window() {
+    const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
+        0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C,
+        0x00,
+    ];
+
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+    for (index, byte) in DMG_BOOT_TRADEMARK_TILE_BYTES.iter().copied().enumerate() {
+        machine.write_bus(0x8190 + index as u16, byte);
+    }
+
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if completed_frames == 29
+            && before.ly == 24
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            println!(
+                "seeded_target_write value={:#04X} line_dot={} vpo={} x={} obj_low={:#04X} obj_high={:#04X} obj_fifo={:?} tile25_rows={:?}",
+                activity.value,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                before.obj_fetcher_tile_low,
+                before.obj_fetcher_tile_high,
+                before.obj_fifo_pixels,
+                (0..8)
+                    .map(|row| {
+                        let base = 0x8190 + row * 2;
+                        (row, machine.read_bus(base), machine.read_bus(base + 1))
+                    })
+                    .collect::<Vec<_>>(),
+            );
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+
+        let after = machine.ppu().snapshot();
+        if completed_frames == 29 && after.ly == 24 && (92..=120).contains(&after.line_dot) {
+            println!(
+                "seeded_state line_dot={} vpo={} x={} obj_stage={:?} obj_stage_dot={} obj_tile={:?} obj_row={:?} obj_addr={:?}/{:?} obj_low={:#04X} obj_high={:#04X} obj_fifo={:?}",
+                after.line_dot,
+                after.visible_pixels_output,
+                after.bg_current_transfer_x,
+                after.obj_fetcher_stage,
+                after.obj_fetcher_stage_dot,
+                after.obj_fetcher_resolved_tile_index,
+                after.obj_fetcher_resolved_tile_row,
+                after.obj_fetcher_tile_low_address,
+                after.obj_fetcher_tile_high_address,
+                after.obj_fetcher_tile_low,
+                after.obj_fetcher_tile_high,
+                after.obj_fifo_pixels,
+            );
+            if after.line_dot == 120 {
+                return;
+            }
+        }
+    }
+
+    panic!("timed out before logging seeded trademark final-frame window");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_seeded_trademark_write_fifos(ly_start: u8, ly_end: u8) {
+    const DMG_BOOT_TRADEMARK_TILE_BYTES: [u8; 16] = [
+        0x3C, 0x00, 0x42, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0xB9, 0x00, 0xA5, 0x00, 0x42, 0x00, 0x3C,
+        0x00,
+    ];
+
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_machine();
+    for (index, byte) in DMG_BOOT_TRADEMARK_TILE_BYTES.iter().copied().enumerate() {
+        machine.write_bus(0x8190 + index as u16, byte);
+    }
+
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if completed_frames == 29
+            && (ly_start..=ly_end).contains(&before.ly)
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            println!(
+                "seeded_write ly={} value={:#04X} line_dot={} vpo={} x={} fifo={:?} selected={:?}",
+                before.ly,
+                activity.value,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                before.obj_fifo_pixels,
+                before.selected_sprites,
+            );
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+
+        if completed_frames > 29 {
+            return;
+        }
+    }
+
+    panic!("timed out before logging seeded trademark write fifos");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_variant_seeded_bgp_writes(target_lys: &[u8]) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_variant_machine();
+    seed_dmg_boot_trademark_tile(&mut machine);
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if completed_frames == 29
+            && targets.contains(&before.ly)
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF47)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF47 write should expose a bus activity snapshot");
+            println!(
+                "variant_bgp ly={} mode={:?} line_dot={} vpo={} x={} value={:#04X} visible_bgp={:#04X} pipeline_bgp={:#04X} output_override={:?} output_delay={} selected={:?} fifo_prefix={:?}",
+                before.ly,
+                before.mode,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                activity.value,
+                before.visible_bgp,
+                before.pipeline_bgp,
+                before.dmg_bgp_cpu_commit_output_palette_override,
+                before.dmg_bgp_cpu_commit_output_delay_pixels_remaining,
+                before.selected_sprites,
+                before.obj_fifo_pixels,
+            );
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+
+        if completed_frames > 29 {
+            return;
+        }
+    }
+
+    panic!("timed out before logging variant seeded BGP writes");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_variant_seeded_hblank_row(target_ly: u8) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_variant_machine();
+    seed_dmg_boot_trademark_tile(&mut machine);
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        if completed_frames == 29 && before.ly == target_ly && before.mode == PpuAccessMode::HBlank
+        {
+            println!(
+                "variant_row ly={} pixels={:?} panel={:?}",
+                target_ly,
+                &before.current_scanline_pixels[..24],
+                &machine.ppu().framebuffer()
+                    [target_ly as usize * 160..target_ly as usize * 160 + 24],
+            );
+            return;
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+    }
+
+    panic!("timed out before logging variant seeded hblank row");
+}
+
+fn log_mealybug_m3_lcdc_obj_en_change_variant_seeded_line_window(
+    target_ly: u8,
+    visible_x_start: u8,
+    visible_x_end: u8,
+) {
+    let mut machine = load_mealybug_m3_lcdc_obj_en_change_variant_machine();
+    seed_dmg_boot_trademark_tile(&mut machine);
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        if completed_frames == 29
+            && before.ly == target_ly
+            && before.mode == PpuAccessMode::Drawing
+            && (visible_x_start..=visible_x_end).contains(&before.visible_pixels_output)
+        {
+            println!(
+                "variant_line ly={} line_dot={} vpo={} x={} visible_bgp={:#04X} pipeline_bgp={:#04X} output_override={:?} output_delay={} current_pixels={:?} panel_prefix={:?}",
+                before.ly,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                before.visible_bgp,
+                before.pipeline_bgp,
+                before.dmg_bgp_cpu_commit_output_palette_override,
+                before.dmg_bgp_cpu_commit_output_delay_pixels_remaining,
+                &before.current_scanline_pixels
+                    [..usize::from(before.visible_pixels_output.min(16))],
+                &machine.ppu().framebuffer()[target_ly as usize * 160
+                    ..target_ly as usize * 160 + usize::from(before.visible_pixels_output.min(16))],
+            );
+
+            if before.visible_pixels_output == visible_x_end {
+                return;
+            }
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+    }
+
+    panic!("timed out before logging variant seeded line window");
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change ly24 post-write output window"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_ly24_after_ff40_write_window() {
+    log_mealybug_m3_lcdc_obj_en_change_after_ff40_write_window(24, 16);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change ly80 post-write output window"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_ly80_after_ff40_write_window() {
+    log_mealybug_m3_lcdc_obj_en_change_after_ff40_write_window(80, 16);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change representative write signatures"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_representative_write_signatures() {
+    log_mealybug_m3_lcdc_obj_en_change_write_signatures(&[
+        24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120,
+    ]);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change ly64 hblank row"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_ly64_hblank_row() {
+    log_mealybug_m3_lcdc_obj_en_change_hblank_row(64);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change ly24 timeline"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_ly24_timeline() {
+    log_mealybug_m3_lcdc_obj_en_change_line_timeline(24, 92, 108);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change tile25 activity"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_tile25_activity() {
+    log_mealybug_m3_lcdc_obj_en_change_tile25_activity(&[24, 32]);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change ly24 final-frame window"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_ly24_final_frame_window() {
+    log_mealybug_m3_lcdc_obj_en_change_after_ff40_write_window_in_completed_frame(29, 24, 16);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change frame29 video writes to ly24"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_frame29_video_writes_to_ly24() {
+    log_mealybug_m3_lcdc_obj_en_change_video_writes_until_hblank(29, 24);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change seeded trademark tile"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_seeded_trademark_tile() {
+    log_mealybug_m3_lcdc_obj_en_change_with_seeded_trademark_tile();
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change seeded trademark final-frame window"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_seeded_trademark_final_frame_window() {
+    log_mealybug_m3_lcdc_obj_en_change_seeded_trademark_final_frame_window();
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change seeded trademark write fifos"]
+fn real_mealybug_m3_lcdc_obj_en_change_logs_seeded_trademark_write_fifos() {
+    log_mealybug_m3_lcdc_obj_en_change_seeded_trademark_write_fifos(0, 23);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change_variant seeded BGP writes"]
+fn real_mealybug_m3_lcdc_obj_en_change_variant_logs_seeded_bgp_writes() {
+    log_mealybug_m3_lcdc_obj_en_change_variant_seeded_bgp_writes(&[
+        0, 1, 7, 24, 40, 64, 88, 112, 120,
+    ]);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change_variant seeded hblank row"]
+fn real_mealybug_m3_lcdc_obj_en_change_variant_logs_seeded_hblank_row() {
+    log_mealybug_m3_lcdc_obj_en_change_variant_seeded_hblank_row(24);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_obj_en_change_variant seeded line window"]
+fn real_mealybug_m3_lcdc_obj_en_change_variant_logs_seeded_line_window() {
+    log_mealybug_m3_lcdc_obj_en_change_variant_seeded_line_window(24, 0, 8);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2682,4 +3735,445 @@ fn cpu_path_lcd_enable_write_probe_logs_boundary_snapshots() {
         let vram = run_lcd_enable_write_probe_observation(0x8000, delay);
         println!("delay={delay} oam={oam:?} vram={vram:?}");
     }
+}
+
+#[test]
+#[ignore = "diag: logs FF40 writes and OBJ fetch states for m3_lcdc_obj_size_change"]
+fn real_mealybug_m3_lcdc_obj_size_change_logs_target_lines() {
+    let mut machine = load_mealybug_m3_lcdc_obj_size_change_machine();
+    let target_lys = [8_u8, 24, 40];
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+    let mut last_signature = None;
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if completed_frames == 29
+            && target_lys.contains(&before.ly)
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            println!(
+                "size_change_write ly={} value={:#04X} line_dot={} vpo={} x={} obj_stage={:?} obj_stage_dot={} sprite={:?} resolved={:?} tile={:?}/{:?}",
+                before.ly,
+                activity.value,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                before.obj_fetcher_stage,
+                before.obj_fetcher_stage_dot,
+                before.obj_fetcher_requested_sprite.map(|sprite| sprite.x),
+                before.obj_fetcher_resolved_sprite.map(|sprite| sprite.x),
+                before.obj_fetcher_resolved_tile_index,
+                before.obj_fetcher_resolved_tile_row,
+            );
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+
+        let after = machine.ppu().snapshot();
+        if completed_frames != 29 || !target_lys.contains(&after.ly) {
+            continue;
+        }
+
+        let signature = (
+            after.ly,
+            after.line_dot,
+            after.obj_fetcher_stage,
+            after.obj_fetcher_stage_dot,
+            after.obj_fetcher_requested_sprite.map(|sprite| sprite.x),
+            after.obj_fetcher_resolved_sprite.map(|sprite| sprite.x),
+            after.obj_fetcher_resolved_tile_index,
+            after.obj_fetcher_resolved_tile_row,
+            after.obj_fetcher_tile_low,
+            after.obj_fetcher_tile_high,
+            machine.read_bus(0xFF40),
+        );
+        if !matches!(after.obj_fetcher_stage, PpuObjFetcherStage::Idle)
+            && last_signature != Some(signature)
+        {
+            println!(
+                "size_change_state ly={} line_dot={} vpo={} x={} lcdc={:#04X} obj_stage={:?} obj_stage_dot={} sprite={:?} resolved={:?} tile={:?}/{:?} low={:#04X} high={:#04X}",
+                after.ly,
+                after.line_dot,
+                after.visible_pixels_output,
+                after.bg_current_transfer_x,
+                machine.read_bus(0xFF40),
+                after.obj_fetcher_stage,
+                after.obj_fetcher_stage_dot,
+                after.obj_fetcher_requested_sprite.map(|sprite| sprite.x),
+                after.obj_fetcher_resolved_sprite.map(|sprite| sprite.x),
+                after.obj_fetcher_resolved_tile_index,
+                after.obj_fetcher_resolved_tile_row,
+                after.obj_fetcher_tile_low,
+                after.obj_fetcher_tile_high,
+            );
+            last_signature = Some(signature);
+        }
+
+        if completed_frames == 29 && after.ly > 40 {
+            return;
+        }
+    }
+
+    panic!("timed out before logging the target lines");
+}
+
+#[test]
+#[ignore = "diag: focused FF40/object windows for m3_lcdc_obj_size_change residual seams"]
+fn real_mealybug_m3_lcdc_obj_size_change_logs_focus_lines() {
+    let mut machine = load_mealybug_m3_lcdc_obj_size_change_machine();
+    let target_lys = [2_u8, 4, 8, 20, 24, 34, 130, 136];
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+    let mut printed_hblank = std::collections::BTreeSet::new();
+    let mut line_write_counts = [0_u8; 256];
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if completed_frames == 29
+            && targets.contains(&before.ly)
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            let line_write_index = &mut line_write_counts[before.ly as usize];
+            *line_write_index += 1;
+            println!(
+                "focus_write ly={} pulse={} value={:#04X} line_dot={} vpo={} x={} obj_stage={:?} obj_stage_dot={} obj_heights={}/{} line_start_height={} sprite={:?} resolved={:?} tile={:?}/{:?} low={:#04X} high={:#04X}",
+                before.ly,
+                *line_write_index,
+                activity.value,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                before.obj_fetcher_stage,
+                before.obj_fetcher_stage_dot,
+                before.obj_fetcher_selected_obj_height,
+                before.obj_fetcher_latched_obj_height,
+                before.obj_mode3_line_start_obj_height,
+                before.obj_fetcher_requested_sprite.map(|sprite| sprite.x),
+                before.obj_fetcher_resolved_sprite.map(|sprite| sprite.x),
+                before.obj_fetcher_resolved_tile_index,
+                before.obj_fetcher_resolved_tile_row,
+                before.obj_fetcher_tile_low,
+                before.obj_fetcher_tile_high,
+            );
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+
+        if completed_frames != 29 {
+            continue;
+        }
+
+        let after = machine.ppu().snapshot();
+        if after.line_dot == 0 {
+            line_write_counts[after.ly as usize] = 0;
+        }
+        if targets.contains(&after.ly)
+            && after.mode == PpuAccessMode::Drawing
+            && (92..=150).contains(&after.line_dot)
+            && !matches!(after.obj_fetcher_stage, PpuObjFetcherStage::Idle)
+        {
+            println!(
+                "focus_state ly={} line_dot={} vpo={} x={} lcdc={:#04X} obj_stage={:?} obj_stage_dot={} obj_heights={}/{} line_start_height={} sprite={:?} resolved={:?} tile={:?}/{:?} low={:#04X} high={:#04X}",
+                after.ly,
+                after.line_dot,
+                after.visible_pixels_output,
+                after.bg_current_transfer_x,
+                machine.read_bus(0xFF40),
+                after.obj_fetcher_stage,
+                after.obj_fetcher_stage_dot,
+                after.obj_fetcher_selected_obj_height,
+                after.obj_fetcher_latched_obj_height,
+                after.obj_mode3_line_start_obj_height,
+                after.obj_fetcher_requested_sprite.map(|sprite| sprite.x),
+                after.obj_fetcher_resolved_sprite.map(|sprite| sprite.x),
+                after.obj_fetcher_resolved_tile_index,
+                after.obj_fetcher_resolved_tile_row,
+                after.obj_fetcher_tile_low,
+                after.obj_fetcher_tile_high,
+            );
+        }
+
+        if after.mode == PpuAccessMode::HBlank
+            && targets.contains(&after.ly)
+            && printed_hblank.insert(after.ly)
+        {
+            let row_start = after.ly as usize * 160;
+            let sprite_bytes = after
+                .selected_sprites
+                .iter()
+                .copied()
+                .map(|sprite| {
+                    let sprite_top = sprite.y.wrapping_sub(16);
+                    let raw_row = after.ly.wrapping_sub(sprite_top);
+                    let mut line_start16_row = raw_row;
+                    if sprite.attributes & 0x40 != 0 {
+                        line_start16_row = 15 - line_start16_row;
+                    }
+                    let line_start16_tile = (sprite.tile_index & !0x01)
+                        + u8::from(line_start16_row >= 8);
+                    let line_start16_tile_row = if line_start16_row >= 8 {
+                        line_start16_row - 8
+                    } else {
+                        line_start16_row
+                    };
+                    let line_start16_low = machine.read_bus(
+                        0x8000
+                            + u16::from(line_start16_tile) * 16
+                            + u16::from(line_start16_tile_row) * 2,
+                    );
+                    let line_start16_high = machine.read_bus(
+                        0x8000
+                            + u16::from(line_start16_tile) * 16
+                            + u16::from(line_start16_tile_row) * 2
+                            + 1,
+                    );
+
+                    let mut live8_row = raw_row & 0x07;
+                    if sprite.attributes & 0x40 != 0 {
+                        live8_row = 7 - live8_row;
+                    }
+                    let live8_low = machine.read_bus(
+                        0x8000 + u16::from(sprite.tile_index) * 16 + u16::from(live8_row) * 2,
+                    );
+                    let live8_high = machine.read_bus(
+                        0x8000 + u16::from(sprite.tile_index) * 16 + u16::from(live8_row) * 2 + 1,
+                    );
+
+                    format!(
+                        "x={} y={} tile={:#04X} attr={:#04X} raw_row={} line16=({:#04X},{:#04X}; tile={:#04X} row={}) live8=({:#04X},{:#04X}; row={})",
+                        sprite.x,
+                        sprite.y,
+                        sprite.tile_index,
+                        sprite.attributes,
+                        raw_row,
+                        line_start16_low,
+                        line_start16_high,
+                        line_start16_tile,
+                        line_start16_tile_row,
+                        live8_low,
+                        live8_high,
+                        live8_row,
+                    )
+                })
+                .collect::<Vec<_>>();
+            println!(
+                "focus_hblank ly={} mode0_start_dot={} sprites={:?} row0_39={:?}",
+                after.ly,
+                after.mode0_start_dot,
+                sprite_bytes,
+                &machine.ppu().framebuffer()[row_start..row_start + 40],
+            );
+            if printed_hblank.len() == targets.len() {
+                return;
+            }
+        }
+    }
+
+    panic!("timed out before logging the focus lines");
+}
+
+#[test]
+#[ignore = "diag: focused FF40/object windows for m3_lcdc_obj_size_change_scx residual seams"]
+fn real_mealybug_m3_lcdc_obj_size_change_scx_logs_focus_lines() {
+    let mut machine = load_mealybug_m3_lcdc_obj_size_change_scx_machine();
+    let target_lys = [2_u8, 4, 18, 34, 66, 74, 76, 130, 132];
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut completed_frames = 0_u32;
+    let mut at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+    let mut printed_hblank = std::collections::BTreeSet::new();
+    let mut line_write_counts = [0_u8; 256];
+
+    for _ in 0..80_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+        if completed_frames == 29
+            && targets.contains(&before.ly)
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            let line_write_index = &mut line_write_counts[before.ly as usize];
+            *line_write_index += 1;
+            println!(
+                "scx_focus_write ly={} scx={} pulse={} value={:#04X} line_dot={} vpo={} x={} obj_stage={:?} obj_stage_dot={} obj_heights={}/{} line_start_height={} sprite={:?} resolved={:?} tile={:?}/{:?} low={:#04X} high={:#04X}",
+                before.ly,
+                machine.read_bus(0xFF43),
+                *line_write_index,
+                activity.value,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                before.obj_fetcher_stage,
+                before.obj_fetcher_stage_dot,
+                before.obj_fetcher_selected_obj_height,
+                before.obj_fetcher_latched_obj_height,
+                before.obj_mode3_line_start_obj_height,
+                before.obj_fetcher_requested_sprite.map(|sprite| sprite.x),
+                before.obj_fetcher_resolved_sprite.map(|sprite| sprite.x),
+                before.obj_fetcher_resolved_tile_index,
+                before.obj_fetcher_resolved_tile_row,
+                before.obj_fetcher_tile_low,
+                before.obj_fetcher_tile_high,
+            );
+        }
+
+        machine.step_t_cycle();
+
+        let now_at_frame_origin = machine.ppu().ly() == 0 && machine.ppu().line_dot() == 0;
+        if now_at_frame_origin && !at_frame_origin {
+            completed_frames += 1;
+        }
+        at_frame_origin = now_at_frame_origin;
+
+        if completed_frames != 29 {
+            continue;
+        }
+
+        let after = machine.ppu().snapshot();
+        if after.line_dot == 0 {
+            line_write_counts[after.ly as usize] = 0;
+        }
+        if targets.contains(&after.ly)
+            && after.mode == PpuAccessMode::Drawing
+            && (88..=150).contains(&after.line_dot)
+            && !matches!(after.obj_fetcher_stage, PpuObjFetcherStage::Idle)
+        {
+            println!(
+                "scx_focus_state ly={} scx={} line_dot={} vpo={} x={} lcdc={:#04X} obj_stage={:?} obj_stage_dot={} obj_heights={}/{} line_start_height={} sprite={:?} resolved={:?} tile={:?}/{:?} low={:#04X} high={:#04X}",
+                after.ly,
+                machine.read_bus(0xFF43),
+                after.line_dot,
+                after.visible_pixels_output,
+                after.bg_current_transfer_x,
+                machine.read_bus(0xFF40),
+                after.obj_fetcher_stage,
+                after.obj_fetcher_stage_dot,
+                after.obj_fetcher_selected_obj_height,
+                after.obj_fetcher_latched_obj_height,
+                after.obj_mode3_line_start_obj_height,
+                after.obj_fetcher_requested_sprite.map(|sprite| sprite.x),
+                after.obj_fetcher_resolved_sprite.map(|sprite| sprite.x),
+                after.obj_fetcher_resolved_tile_index,
+                after.obj_fetcher_resolved_tile_row,
+                after.obj_fetcher_tile_low,
+                after.obj_fetcher_tile_high,
+            );
+        }
+
+        if after.mode == PpuAccessMode::HBlank
+            && targets.contains(&after.ly)
+            && printed_hblank.insert(after.ly)
+        {
+            let row_start = after.ly as usize * 160;
+            let sprite_bytes = after
+                .selected_sprites
+                .iter()
+                .copied()
+                .map(|sprite| {
+                    let sprite_top = sprite.y.wrapping_sub(16);
+                    let raw_row = after.ly.wrapping_sub(sprite_top);
+                    let mut line_start16_row = raw_row;
+                    if sprite.attributes & 0x40 != 0 {
+                        line_start16_row = 15 - line_start16_row;
+                    }
+                    let line_start16_tile = (sprite.tile_index & !0x01)
+                        + u8::from(line_start16_row >= 8);
+                    let line_start16_tile_row = if line_start16_row >= 8 {
+                        line_start16_row - 8
+                    } else {
+                        line_start16_row
+                    };
+                    let line_start16_low = machine.read_bus(
+                        0x8000
+                            + u16::from(line_start16_tile) * 16
+                            + u16::from(line_start16_tile_row) * 2,
+                    );
+                    let line_start16_high = machine.read_bus(
+                        0x8000
+                            + u16::from(line_start16_tile) * 16
+                            + u16::from(line_start16_tile_row) * 2
+                            + 1,
+                    );
+
+                    let mut live8_row = raw_row & 0x07;
+                    if sprite.attributes & 0x40 != 0 {
+                        live8_row = 7 - live8_row;
+                    }
+                    let live8_low = machine.read_bus(
+                        0x8000 + u16::from(sprite.tile_index) * 16 + u16::from(live8_row) * 2,
+                    );
+                    let live8_high = machine.read_bus(
+                        0x8000 + u16::from(sprite.tile_index) * 16 + u16::from(live8_row) * 2 + 1,
+                    );
+
+                    format!(
+                        "x={} y={} tile={:#04X} attr={:#04X} raw_row={} line16=({:#04X},{:#04X}; tile={:#04X} row={}) live8=({:#04X},{:#04X}; row={})",
+                        sprite.x,
+                        sprite.y,
+                        sprite.tile_index,
+                        sprite.attributes,
+                        raw_row,
+                        line_start16_low,
+                        line_start16_high,
+                        line_start16_tile,
+                        line_start16_tile_row,
+                        live8_low,
+                        live8_high,
+                        live8_row,
+                    )
+                })
+                .collect::<Vec<_>>();
+            println!(
+                "scx_focus_hblank ly={} scx={} mode0_start_dot={} sprites={:?} row0_39={:?}",
+                after.ly,
+                machine.read_bus(0xFF43),
+                after.mode0_start_dot,
+                sprite_bytes,
+                &machine.ppu().framebuffer()[row_start..row_start + 40],
+            );
+            if printed_hblank.len() == targets.len() {
+                return;
+            }
+        }
+    }
+
+    panic!("timed out before logging the SCX focus lines");
 }

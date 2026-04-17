@@ -46,6 +46,7 @@ rom = "ppu/m3_lcdc_obj_en_change.gb"
 timeout_frames = 30
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug/m3_lcdc_obj_en_change_dmg_blob.png"
+startup_memory_profile = "dmg-boot-trademark-tile"
 
 [[case]]
 id = "mealybug-m3-lcdc-obj-en-change-variant"
@@ -53,6 +54,7 @@ rom = "ppu/m3_lcdc_obj_en_change_variant.gb"
 timeout_frames = 30
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug/m3_lcdc_obj_en_change_variant_dmg_blob.png"
+startup_memory_profile = "dmg-boot-trademark-tile"
 
 [[case]]
 id = "mealybug-m3-lcdc-obj-size-change"

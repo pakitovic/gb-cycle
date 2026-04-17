@@ -345,12 +345,14 @@ fn stale_pending_obj_hit_is_cleared_once_current_x_moves_on() {
     ppu.bg_pipeline_state.current_transfer_x = 13;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
     ppu.bg_pipeline_state.visible_pixels_output = 5;
+    let obj_height = ppu.current_obj_height();
     ppu.obj_pipeline_state.queue_fetch_hit(
         0,
         ObjHitOwnership {
             match_x: 12,
             phase: ObjHitPhase::Visible,
         },
+        obj_height,
     );
 
     ppu.sync_pending_obj_hit_ownership();
@@ -367,12 +369,14 @@ fn pending_obj_hit_survives_dot_phase_changes_while_current_x_is_still_the_same(
     ppu.bg_pipeline_state.current_transfer_x = 6;
     ppu.bg_pipeline_state.scx_discard_remaining = 1;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    let obj_height = ppu.current_obj_height();
     ppu.obj_pipeline_state.queue_fetch_hit(
         0,
         ObjHitOwnership {
             match_x: 6,
             phase: ObjHitPhase::PreVisible,
         },
+        obj_height,
     );
 
     ppu.sync_pending_obj_hit_ownership();

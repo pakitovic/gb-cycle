@@ -928,6 +928,16 @@ impl PpuMode3SingleSpritePhasePolicy {
         PpuMode3ObservedLcdc0OnsetTable::new(self.sprite_x())
     }
 
+    pub(in crate::ppu) const fn observed_lcdc1_disable_onset_visible_x(self) -> Option<u8> {
+        const ONSETS: [u8; 16] = [0, 0, 0, 2, 3, 4, 4, 4, 3, 4, 5, 6, 7, 8, 8, 8];
+        let sprite_x = self.sprite_x() as usize;
+        if sprite_x < ONSETS.len() {
+            Some(ONSETS[sprite_x])
+        } else {
+            None
+        }
+    }
+
     pub(in crate::ppu) const fn observed_lcdc3_phase_table(
         self,
     ) -> PpuMode3ObservedLcdc3PhaseTable {
@@ -1116,5 +1126,61 @@ impl PpuMode3ObservedLcdc4PhaseTable {
             slice,
             override_select,
         })
+    }
+}
+
+/// Observed DMG LCDC.2 16->8 Mode 3 seam for the curated Mealybug OBJ-size
+/// pulses. The remaining hardware-visible difference is confined to which
+/// sprite bitplanes keep the line-start 8x16 interpretation across the active
+/// shrink window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) enum PpuMode3Lcdc2ObjSizePlaneSelection {
+    Live8,
+    Live8LowLineStart16High,
+    LineStart16LowLive8High,
+    LineStart16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3ObservedLcdc2ObjSizePhaseTable {
+    sprite_x: u8,
+    scx: u8,
+    raw_row: u8,
+}
+
+impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
+    pub(in crate::ppu) const fn new(sprite_x: u8, scx: u8, raw_row: u8) -> Self {
+        Self {
+            sprite_x,
+            scx: scx & 0x07,
+            raw_row,
+        }
+    }
+
+    pub(in crate::ppu) const fn plane_selection(
+        self,
+        write_index: usize,
+    ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
+        match (write_index, self.sprite_x, self.scx) {
+            (0, 12, 4..=7) if self.raw_row >= 8 => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
+            (0, 32, 0 | 4..=7) if self.raw_row < 8 => {
+                Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8)
+            }
+            _ => self.base_plane_selection(write_index),
+        }
+    }
+
+    const fn base_plane_selection(
+        self,
+        write_index: usize,
+    ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
+        match (write_index, self.sprite_x) {
+            (0, 8) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
+            (0, 16) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8LowLineStart16High),
+            (0, 24) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
+            (2, 33) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8LowLineStart16High),
+            (2, 40) => Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
+            _ => None,
+        }
     }
 }

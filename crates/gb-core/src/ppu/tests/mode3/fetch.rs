@@ -308,7 +308,9 @@ fn scy_obj_phase_policy_uses_active_fetch_owner_before_line_order() {
         attributes: 0,
     };
     ppu.mode2_scan_state.push(active_sprite);
-    ppu.obj_pipeline_state.start_fetch(1, active_sprite);
+    let obj_height = ppu.current_obj_height();
+    ppu.obj_pipeline_state
+        .start_fetch(1, active_sprite, obj_height, obj_height);
 
     let policy = ppu
         .scy_obj_phase_policy()

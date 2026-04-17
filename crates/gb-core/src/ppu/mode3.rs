@@ -18,6 +18,8 @@ impl Ppu {
             observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
                 self.bg_pipeline_state
                     .start_line(self.mode3_register_latches().mode3_start_scx());
+                self.obj_pipeline_state.mode3_line_start_obj_height =
+                    self.mode3_register_latches().current_obj_height();
             });
         }
         if self.line_dot == MODE2_DOTS + MODE3_INITIAL_SCX_CAPTURE_DOT {
@@ -37,6 +39,7 @@ impl Ppu {
         observe_ppu_step_region(observer, bg_pipeline_region, || {
             self.maybe_recompute_pending_background_fill(vram);
             self.flush_pending_bg_fifo_fill();
+            self.apply_pending_dmg_lcdc2_observed_write_effects(vram);
         });
 
         if observe_ppu_step_region(observer, PpuStepRegion::Mode3ObjFetch, || {
@@ -781,6 +784,8 @@ impl Ppu {
                     .unwrap_or(bg_pixel);
                 let effective_bg_priority_pixel = if bg_enabled { bg_pixel } else { 0 };
                 let obj_pixel = self.pop_obj_fifo_pixel();
+                let obj_pixel =
+                    self.apply_dmg_lcdc2_live_obj_size_output_override(obj_pixel, visible_x, vram);
                 let output_pixel =
                     self.mix_bg_and_obj(bg_pixel, effective_bg_priority_pixel, obj_pixel);
                 let dmg_bg_forced_white =
@@ -802,6 +807,7 @@ impl Ppu {
                     0
                 };
                 let visible_x = visible_x as usize;
+                self.current_scanline_bg_pixels[visible_x] = bg_pixel;
                 self.current_scanline_mixed_pixels[visible_x] = output_pixel;
                 self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
                 self.current_scanline_pixels[visible_x] = scanline_pixel;
@@ -812,6 +818,7 @@ impl Ppu {
                     dmg_bg_forced_white,
                 );
                 self.consume_dmg_lcdc0_bg_enable_visible_hold();
+                self.consume_dmg_lcdc1_obj_enable_visible_hold();
                 self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
                 self.bg_pipeline_state.current_transfer_x =
                     self.bg_pipeline_state.current_transfer_x.saturating_add(1);
@@ -1287,8 +1294,11 @@ impl Ppu {
             };
 
             if trigger_x == current_owner.match_x {
-                self.obj_pipeline_state
-                    .queue_fetch_hit(sprite_slot, current_owner);
+                self.obj_pipeline_state.queue_fetch_hit(
+                    sprite_slot,
+                    current_owner,
+                    self.obj_pipeline_state.mode3_line_start_obj_height,
+                );
             }
         }
     }
@@ -1316,14 +1326,21 @@ impl Ppu {
             return false;
         }
 
-        let Some(sprite_slot) = self.obj_pipeline_state.pop_pending_fetch_hit() else {
+        let Some((sprite_slot, selected_obj_height)) =
+            self.obj_pipeline_state.pop_pending_fetch_hit()
+        else {
             return false;
         };
         let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
             return false;
         };
 
-        self.obj_pipeline_state.start_fetch(sprite_slot, sprite);
+        self.obj_pipeline_state.start_fetch(
+            sprite_slot,
+            sprite,
+            selected_obj_height,
+            self.current_obj_height(),
+        );
         let pending_nonterminal_same_x_cluster_pays_startup_dot =
             self.pending_nonterminal_same_x_cluster_pays_startup_dot();
         let overlap_current_dot =
@@ -1427,6 +1444,13 @@ impl Ppu {
                 let resolved_sprite = fetch
                     .sprite
                     .map(|sprite| self.resolve_obj_fetch_sprite(oam, sprite, dma_oam_conflict));
+                let resolved_tile = resolved_sprite.and_then(|sprite| {
+                    self.obj_tile_index_and_row_for_mode3_fetch(
+                        sprite,
+                        fetch.selected_obj_height,
+                        fetch.latched_obj_height,
+                    )
+                });
                 let first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte =
                     self.first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte();
                 let terminal_right_edge_same_x_chain_skips_to_tile_data_high_half_step =
@@ -1438,6 +1462,10 @@ impl Ppu {
                         && !self.obj_pipeline_state.pending_sprite_slots.is_empty()
                         && self.fetched_same_x_obj_sprite_count_for_active_fetch() == 0;
                 self.obj_pipeline_state.fetch.resolved_sprite = resolved_sprite;
+                self.obj_pipeline_state.fetch.resolved_tile_index =
+                    resolved_tile.map(|(tile_index, _)| tile_index);
+                self.obj_pipeline_state.fetch.resolved_tile_row =
+                    resolved_tile.map(|(_, tile_row)| tile_row);
                 if first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte {
                     self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
                     self.obj_pipeline_state.fetch.stage_dot = 0;
@@ -1455,11 +1483,15 @@ impl Ppu {
                 self.obj_pipeline_state.fetch.stage_dot = 1;
             }
             (PpuObjFetcherStage::TileDataLow, 1) => {
-                let resolved_sprite = fetch
-                    .resolved_sprite
-                    .expect("active OBJ fetch must resolve tile metadata before reading tile data");
-                self.obj_pipeline_state.fetch.tile_low =
-                    self.read_obj_tile_data_byte(vram, resolved_sprite, 0);
+                self.obj_pipeline_state.fetch.tile_low = fetch
+                    .resolved_tile_index
+                    .zip(fetch.resolved_tile_row)
+                    .map(|(tile_index, tile_row)| {
+                        self.read_obj_tile_data_byte_for_resolved_tile(
+                            vram, tile_index, tile_row, 0,
+                        )
+                    })
+                    .unwrap_or(0);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::TileDataHigh;
                 self.obj_pipeline_state.fetch.stage_dot = 0;
             }
@@ -1467,11 +1499,15 @@ impl Ppu {
                 self.obj_pipeline_state.fetch.stage_dot = 1;
             }
             (PpuObjFetcherStage::TileDataHigh, 1) => {
-                let resolved_sprite = fetch
-                    .resolved_sprite
-                    .expect("active OBJ fetch must resolve tile metadata before reading tile data");
-                self.obj_pipeline_state.fetch.tile_high =
-                    self.read_obj_tile_data_byte(vram, resolved_sprite, 1);
+                self.obj_pipeline_state.fetch.tile_high = fetch
+                    .resolved_tile_index
+                    .zip(fetch.resolved_tile_row)
+                    .map(|(tile_index, tile_row)| {
+                        self.read_obj_tile_data_byte_for_resolved_tile(
+                            vram, tile_index, tile_row, 1,
+                        )
+                    })
+                    .unwrap_or(0);
                 self.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Push;
                 self.obj_pipeline_state.fetch.stage_dot = 0;
             }
@@ -1483,11 +1519,22 @@ impl Ppu {
                     .resolved_sprite
                     .expect("active OBJ fetch must keep resolved metadata until FIFO push");
                 if !fetch.cancelled && self.obj_enabled() {
-                    self.push_obj_pixels(
+                    let (tile_low, tile_high) = self.dmg_lcdc2_live_obj_size_push_bytes(
                         resolved_sprite,
                         fetch.tile_low,
                         fetch.tile_high,
+                        vram,
+                    );
+                    self.push_obj_pixels(
+                        resolved_sprite,
+                        tile_low,
+                        tile_high,
                         self.bg_pipeline_state.visible_pixels_output,
+                    );
+                    self.repaint_observed_startup_obj_prefix_overlap(
+                        resolved_sprite,
+                        tile_low,
+                        tile_high,
                     );
                 }
                 self.obj_pipeline_state.mark_fetched(fetch.sprite_slot);
@@ -1547,6 +1594,332 @@ impl Ppu {
             tile_index,
             attributes,
             ..sprite
+        }
+    }
+
+    fn active_dmg_lcdc2_obj_size_write_index(&self) -> Option<usize> {
+        self.console_model
+            .is_dmg_family()
+            .then_some(
+                self.dmg_panel_live_write_state
+                    .lcdc2
+                    .active_obj_size_write_index
+                    .map(usize::from),
+            )
+            .flatten()
+    }
+
+    fn dmg_lcdc2_live_obj_size_plane_selection(
+        &self,
+        sprite: PpuSelectedSprite,
+    ) -> Option<PpuMode3Lcdc2ObjSizePlaneSelection> {
+        let write_index = self.active_dmg_lcdc2_obj_size_write_index()?;
+        let scx = self.mode3_register_latches().visible().scx;
+        let sprite_top = sprite.y.wrapping_sub(16);
+        let raw_row = self.ly.wrapping_sub(sprite_top);
+        let sprite_screen_x = sprite_screen_x(sprite);
+        let active_write_visible_x = self
+            .dmg_panel_live_write_state
+            .lcdc2
+            .active_obj_size_write_visible_x;
+        if write_index == 2
+            && sprite.x == 32
+            && scx & 0x07 == 0
+            && matches!(raw_row, 4..=7)
+            && active_write_visible_x
+                .is_some_and(|visible_x| i16::from(visible_x) > sprite_screen_x)
+        {
+            return Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High);
+        }
+        PpuMode3ObservedLcdc2ObjSizePhaseTable::new(sprite.x, scx, raw_row)
+            .plane_selection(write_index)
+    }
+
+    fn dmg_lcdc2_live_obj_size_selection_bytes(
+        &mut self,
+        sprite: PpuSelectedSprite,
+        selection: PpuMode3Lcdc2ObjSizePlaneSelection,
+        vram: &VramBusView<'_>,
+    ) -> Option<(u8, u8)> {
+        let live8_tile = self.obj_tile_index_and_row_for_mode3_fetch(sprite, 16, 8)?;
+        let line_start16_tile = self.obj_tile_index_and_row_for_height(sprite, 16)?;
+        let live8_low =
+            self.read_obj_tile_data_byte_for_resolved_tile(vram, live8_tile.0, live8_tile.1, 0);
+        let live8_high =
+            self.read_obj_tile_data_byte_for_resolved_tile(vram, live8_tile.0, live8_tile.1, 1);
+        let line_start16_low = self.read_obj_tile_data_byte_for_resolved_tile(
+            vram,
+            line_start16_tile.0,
+            line_start16_tile.1,
+            0,
+        );
+        let line_start16_high = self.read_obj_tile_data_byte_for_resolved_tile(
+            vram,
+            line_start16_tile.0,
+            line_start16_tile.1,
+            1,
+        );
+
+        let bytes = match selection {
+            PpuMode3Lcdc2ObjSizePlaneSelection::Live8 => (live8_low, live8_high),
+            PpuMode3Lcdc2ObjSizePlaneSelection::Live8LowLineStart16High => {
+                (live8_low, line_start16_high)
+            }
+            PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High => {
+                (line_start16_low, live8_high)
+            }
+            PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16 => {
+                (line_start16_low, line_start16_high)
+            }
+        };
+        Some(bytes)
+    }
+
+    pub(super) fn apply_pending_dmg_lcdc2_observed_write_effects(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
+        if !self.dmg_panel_live_write_state.lcdc2.pending_effects {
+            return;
+        }
+
+        let Some(write_index) = self.active_dmg_lcdc2_obj_size_write_index() else {
+            self.dmg_panel_live_write_state.lcdc2.pending_effects = false;
+            return;
+        };
+        let scx = self.mode3_register_latches().visible().scx & 0x07;
+        let current_visible_x = self.bg_pipeline_state.visible_pixels_output;
+        let active_write_visible_x = self
+            .dmg_panel_live_write_state
+            .lcdc2
+            .active_obj_size_write_visible_x
+            .unwrap_or(current_visible_x);
+
+        if write_index == 0 && matches!(scx, 4..=7) {
+            for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
+                if !self.obj_pipeline_state.has_fetched(sprite_slot) {
+                    continue;
+                }
+                let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
+                    continue;
+                };
+                let sprite_top = sprite.y.wrapping_sub(16);
+                let raw_row = self.ly.wrapping_sub(sprite_top);
+                if sprite.x != 12 || raw_row < 8 {
+                    continue;
+                }
+                let Some((tile_low, tile_high)) = self.dmg_lcdc2_live_obj_size_selection_bytes(
+                    sprite,
+                    PpuMode3Lcdc2ObjSizePlaneSelection::Live8,
+                    vram,
+                ) else {
+                    continue;
+                };
+                self.repaint_observed_obj_scanline_overlap(
+                    sprite,
+                    tile_low,
+                    tile_high,
+                    active_write_visible_x,
+                    false,
+                );
+            }
+        }
+
+        if write_index == 2 && scx == 0 {
+            for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
+                if !self.obj_pipeline_state.has_fetched(sprite_slot) {
+                    continue;
+                }
+                let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
+                    continue;
+                };
+                let sprite_top = sprite.y.wrapping_sub(16);
+                let raw_row = self.ly.wrapping_sub(sprite_top);
+                if sprite.x != 32 || !matches!(raw_row, 4..=7) {
+                    continue;
+                }
+                if i16::from(active_write_visible_x) <= sprite_screen_x(sprite) {
+                    continue;
+                }
+                let Some((tile_low, tile_high)) = self.dmg_lcdc2_live_obj_size_selection_bytes(
+                    sprite,
+                    PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High,
+                    vram,
+                ) else {
+                    continue;
+                };
+                self.rewrite_obj_fifo_pixels(sprite, tile_low, tile_high, current_visible_x);
+            }
+        }
+
+        self.dmg_panel_live_write_state.lcdc2.pending_effects = false;
+    }
+
+    pub(super) fn dmg_lcdc2_live_obj_size_push_bytes(
+        &mut self,
+        sprite: PpuSelectedSprite,
+        current_low: u8,
+        current_high: u8,
+        vram: &VramBusView<'_>,
+    ) -> (u8, u8) {
+        let Some(selection) = self.dmg_lcdc2_live_obj_size_plane_selection(sprite) else {
+            return (current_low, current_high);
+        };
+        self.dmg_lcdc2_live_obj_size_selection_bytes(sprite, selection, vram)
+            .unwrap_or((current_low, current_high))
+    }
+
+    fn selected_sprite_for_oam_index(&self, oam_index: u8) -> Option<PpuSelectedSprite> {
+        (0..self.mode2_scan_state.selected_sprite_count())
+            .find_map(|slot| self.mode2_scan_state.selected_sprite(slot))
+            .filter(|sprite| sprite.oam_index == oam_index)
+    }
+
+    pub(super) fn apply_dmg_lcdc2_live_obj_size_output_override(
+        &mut self,
+        obj_pixel: ObjPixel,
+        visible_x: u8,
+        vram: &VramBusView<'_>,
+    ) -> ObjPixel {
+        if obj_pixel.is_transparent() {
+            return obj_pixel;
+        }
+
+        let Some(sprite) = self.selected_sprite_for_oam_index(obj_pixel.oam_index) else {
+            return obj_pixel;
+        };
+        let Some(selection) = self.dmg_lcdc2_live_obj_size_plane_selection(sprite) else {
+            return obj_pixel;
+        };
+        let Some((tile_low, tile_high)) =
+            self.dmg_lcdc2_live_obj_size_selection_bytes(sprite, selection, vram)
+        else {
+            return obj_pixel;
+        };
+
+        let sprite_screen_x = sprite_screen_x(sprite);
+        let tile_pixel = i16::from(visible_x) - sprite_screen_x;
+        if !(0..BG_TILE_WIDTH as i16).contains(&tile_pixel) {
+            return obj_pixel;
+        }
+
+        let bit = if sprite.attributes & 0x20 != 0 {
+            tile_pixel as u8
+        } else {
+            7 - tile_pixel as u8
+        };
+        let low_bit = (tile_low >> bit) & 0x01;
+        let high_bit = (tile_high >> bit) & 0x01;
+        ObjPixel {
+            color: (high_bit << 1) | low_bit,
+            ..obj_pixel
+        }
+    }
+
+    fn repaint_observed_startup_obj_prefix_overlap(
+        &mut self,
+        sprite: PpuSelectedSprite,
+        tile_low: u8,
+        tile_high: u8,
+    ) {
+        self.repaint_observed_obj_scanline_overlap(
+            sprite,
+            tile_low,
+            tile_high,
+            self.bg_pipeline_state.visible_pixels_output,
+            true,
+        );
+    }
+
+    fn repaint_observed_obj_scanline_overlap(
+        &mut self,
+        sprite: PpuSelectedSprite,
+        tile_low: u8,
+        tile_high: u8,
+        overlap_end_visible_x: u8,
+        background_only: bool,
+    ) {
+        if !self.console_model.is_dmg_family()
+            || self.visible_output != PpuVisibleOutputState::Driving
+            || overlap_end_visible_x == 0
+        {
+            return;
+        }
+
+        let sprite_screen_x = sprite_screen_x(sprite);
+        let overlap_start = sprite_screen_x.max(0) as u8;
+        let overlap_end = (sprite_screen_x + BG_TILE_WIDTH as i16)
+            .min(i16::from(overlap_end_visible_x))
+            .min(SCREEN_WIDTH as i16) as u8;
+        if overlap_start >= overlap_end {
+            return;
+        }
+
+        let bg_enabled = self.pixel_transfer_bg_enabled();
+        for visible_x in overlap_start..overlap_end {
+            let tile_pixel = i16::from(visible_x) - sprite_screen_x;
+            if !(0..BG_TILE_WIDTH as i16).contains(&tile_pixel) {
+                continue;
+            }
+
+            let bit = if sprite.attributes & 0x20 != 0 {
+                tile_pixel as u8
+            } else {
+                7 - tile_pixel as u8
+            };
+            let low_bit = (tile_low >> bit) & 0x01;
+            let high_bit = (tile_high >> bit) & 0x01;
+            let candidate = ObjPixel {
+                color: (high_bit << 1) | low_bit,
+                palette_obp1: sprite.attributes & 0x10 != 0,
+                bg_over_obj: sprite.attributes & 0x80 != 0,
+                sprite_x: sprite.x,
+                oam_index: sprite.oam_index,
+            };
+            if background_only && candidate.is_transparent() {
+                continue;
+            }
+
+            let visible_x = visible_x as usize;
+            if background_only
+                && self.current_scanline_mixed_pixels[visible_x].source
+                    != MixedPixelSource::Background
+            {
+                continue;
+            }
+
+            let bg_pixel = self.current_scanline_bg_pixels[visible_x];
+            let effective_bg_priority_pixel = if bg_enabled { bg_pixel } else { 0 };
+            let output_pixel = if candidate.is_transparent() {
+                MixedPixel::background(bg_pixel)
+            } else {
+                self.mix_bg_and_obj(bg_pixel, effective_bg_priority_pixel, candidate)
+            };
+            let dmg_bg_forced_white =
+                self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+            let scanline_pixel =
+                if self.visible_output == PpuVisibleOutputState::Driving && !dmg_bg_forced_white {
+                    output_pixel.color
+                } else {
+                    0
+                };
+            let panel_pixel = if dmg_bg_forced_white {
+                0
+            } else {
+                self.map_mixed_pixel_to_panel_shade(output_pixel)
+            };
+
+            self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+            self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
+            self.current_scanline_pixels[visible_x] = scanline_pixel;
+            self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+
+            for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
+                if usize::from(dot.visible_x) == visible_x {
+                    dot.pixel = output_pixel;
+                    dot.dmg_bg_forced_white = dmg_bg_forced_white;
+                }
+            }
         }
     }
 

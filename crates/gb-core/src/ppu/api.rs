@@ -40,6 +40,7 @@ impl Ppu {
             bg_pipeline_state: BgPipelineState::default(),
             obj_pipeline_state: ObjPipelineState::default(),
             current_scanline_pixels: [0; SCREEN_WIDTH],
+            current_scanline_bg_pixels: [0; SCREEN_WIDTH],
             current_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
             current_scanline_dmg_bg_forced_white: [false; SCREEN_WIDTH],
             previous_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
@@ -179,6 +180,8 @@ impl Ppu {
                 self.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
                 self.apply_dmg_lcdc4_live_bg_tiledata_write(write_context);
                 self.apply_dmg_lcdc0_live_bg_enable_write(write_context);
+                self.apply_dmg_lcdc1_live_obj_enable_write(write_context);
+                self.apply_dmg_lcdc2_live_obj_size_write(write_context);
             }
             if matches!(
                 live_background_register,
@@ -498,6 +501,7 @@ impl Ppu {
         self.pending_interrupts = 0;
         self.system_stop_active = false;
         self.current_scanline_pixels.fill(0);
+        self.current_scanline_bg_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
         self.current_scanline_dmg_bg_forced_white.fill(false);
@@ -652,6 +656,21 @@ impl Ppu {
         let register_latches = self.mode3_register_latches();
         let visible_registers = register_latches.visible();
         let pipeline_registers = register_latches.pipeline();
+        let obj_fetcher_requested_sprite = self.obj_pipeline_state.fetch.sprite;
+        let obj_fetcher_resolved_sprite = self.obj_pipeline_state.fetch.resolved_sprite;
+        let obj_fetcher_resolved_tile = self
+            .obj_pipeline_state
+            .fetch
+            .resolved_tile_index
+            .zip(self.obj_pipeline_state.fetch.resolved_tile_row)
+            .or_else(|| {
+                obj_fetcher_resolved_sprite.and_then(|sprite| self.obj_tile_index_and_row(sprite))
+            });
+        let obj_fetcher_tile_low_address =
+            obj_fetcher_resolved_tile.map(|(tile_index, tile_row)| {
+                tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES
+            });
+        let obj_fetcher_tile_high_address = obj_fetcher_tile_low_address.map(|address| address + 1);
 
         PpuSnapshot {
             console_model: self.console_model,
@@ -681,6 +700,8 @@ impl Ppu {
             bg_fetcher_tile_index: self.bg_pipeline_state.fetcher.tile_index,
             bg_fetcher_tile_low: self.bg_pipeline_state.fetcher.tile_low,
             bg_fetcher_tile_high: self.bg_pipeline_state.fetcher.tile_high,
+            last_unsigned_tile_data_low_fetch: self.last_unsigned_tile_data_low_fetch,
+            last_unsigned_tile_data_high_fetch: self.last_unsigned_tile_data_high_fetch,
             bg_push_pending: self.bg_pipeline_state.push.pending,
             bg_push_cached: snapshot_bg_cached_slice(self.bg_pipeline_state.push.cached),
             bg_push_disposition: snapshot_bg_push_disposition(
@@ -723,6 +744,18 @@ impl Ppu {
                 .map(|plan| snapshot_bg_transfer_kind(plan.result_kind)),
             obj_fetcher_stage: self.obj_pipeline_state.fetch.stage,
             obj_fetcher_stage_dot: self.obj_pipeline_state.fetch.stage_dot,
+            obj_fetcher_requested_sprite,
+            obj_fetcher_resolved_sprite,
+            obj_fetcher_selected_obj_height: self.obj_pipeline_state.fetch.selected_obj_height,
+            obj_fetcher_latched_obj_height: self.obj_pipeline_state.fetch.latched_obj_height,
+            obj_fetcher_resolved_tile_index: obj_fetcher_resolved_tile
+                .map(|(tile_index, _)| tile_index),
+            obj_fetcher_resolved_tile_row: obj_fetcher_resolved_tile.map(|(_, tile_row)| tile_row),
+            obj_fetcher_tile_low_address,
+            obj_fetcher_tile_high_address,
+            obj_fetcher_tile_low: self.obj_pipeline_state.fetch.tile_low,
+            obj_fetcher_tile_high: self.obj_pipeline_state.fetch.tile_high,
+            obj_mode3_line_start_obj_height: self.obj_pipeline_state.mode3_line_start_obj_height,
             obj_pending_hit_match_x: self.obj_pipeline_state.pending_match_x,
             obj_pending_hit_len: self.obj_pipeline_state.pending_sprite_slots.len(),
             obj_pending_hit_front_sprite_slot: self

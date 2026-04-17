@@ -1657,6 +1657,76 @@ impl Ppu {
         self.start_dmg_lcdc0_bg_enable_visible_hold(previous_bg_enabled, 0);
     }
 
+    pub(super) fn apply_dmg_lcdc1_live_obj_enable_write(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
+        if !self.console_model.is_dmg_family() || !write_context.lcdc_changed(LCDC_OBJ_ENABLE_BIT) {
+            return;
+        }
+
+        let previous_obj_enabled = write_context.previous_lcdc() & LCDC_OBJ_ENABLE_BIT != 0;
+        let obj_enabled = write_context.current_lcdc() & LCDC_OBJ_ENABLE_BIT != 0;
+        if previous_obj_enabled && !obj_enabled {
+            let visible_pixels_output = self.bg_pipeline_state.visible_pixels_output;
+            let onset_visible_x = self
+                .dmg_single_selected_sprite_phase_policy()
+                .and_then(PpuMode3SingleSpritePhasePolicy::observed_lcdc1_disable_onset_visible_x);
+
+            if let Some(onset_visible_x) = onset_visible_x {
+                let (override_enabled, hold_pixels) = if onset_visible_x <= visible_pixels_output {
+                    self.repaint_dmg_lcdc1_panel_range(
+                        onset_visible_x,
+                        visible_pixels_output.saturating_add(1),
+                    );
+                    (false, 1)
+                } else {
+                    (true, onset_visible_x.saturating_sub(visible_pixels_output))
+                };
+                self.start_dmg_lcdc1_obj_enable_visible_hold(override_enabled, hold_pixels);
+            } else {
+                self.start_dmg_lcdc1_obj_enable_visible_hold(previous_obj_enabled, 0);
+            }
+        } else {
+            self.start_dmg_lcdc1_obj_enable_visible_hold(previous_obj_enabled, 0);
+        }
+    }
+
+    pub(super) fn apply_dmg_lcdc2_live_obj_size_write(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
+        if !self.console_model.is_dmg_family() || !write_context.lcdc_changed(LCDC_OBJ_SIZE_BIT) {
+            return;
+        }
+
+        let write_index = self
+            .dmg_panel_live_write_state
+            .lcdc2
+            .take_next_obj_size_write_index();
+        let previous_obj_height = if write_context.previous_lcdc() & LCDC_OBJ_SIZE_BIT != 0 {
+            16
+        } else {
+            8
+        };
+        let current_obj_height = if write_context.current_lcdc() & LCDC_OBJ_SIZE_BIT != 0 {
+            16
+        } else {
+            8
+        };
+
+        if previous_obj_height == 16 && current_obj_height == 8 {
+            self.dmg_panel_live_write_state
+                .lcdc2
+                .active_obj_size_write_index = Some(write_index as u8);
+            self.dmg_panel_live_write_state
+                .lcdc2
+                .active_obj_size_write_visible_x =
+                Some(self.bg_pipeline_state.visible_pixels_output);
+            self.dmg_panel_live_write_state.lcdc2.pending_effects = true;
+        }
+    }
+
     fn dmg_single_selected_sprite_phase_policy(&self) -> Option<PpuMode3SingleSpritePhasePolicy> {
         if self.mode2_scan_state.selected_sprite_count() != 1 {
             return None;
@@ -1715,6 +1785,54 @@ impl Ppu {
             .bg_enable_visible_hold_pixels_remaining = hold_pixels;
     }
 
+    pub(super) fn consume_dmg_lcdc1_obj_enable_visible_hold(&mut self) {
+        if self
+            .dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold_pixels_remaining
+            == 0
+        {
+            self.dmg_panel_live_write_state
+                .lcdc1
+                .obj_enable_visible_hold_override = None;
+            return;
+        }
+
+        self.dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold_pixels_remaining -= 1;
+        if self
+            .dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold_pixels_remaining
+            == 0
+        {
+            self.dmg_panel_live_write_state
+                .lcdc1
+                .obj_enable_visible_hold_override = None;
+        }
+    }
+
+    fn start_dmg_lcdc1_obj_enable_visible_hold(
+        &mut self,
+        previous_obj_enabled: bool,
+        hold_pixels: u8,
+    ) {
+        if !self.console_model.is_dmg_family() || hold_pixels == 0 {
+            self.dmg_panel_live_write_state
+                .lcdc1
+                .clear_obj_enable_visible_hold();
+            return;
+        }
+
+        self.dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold_override = Some(previous_obj_enabled);
+        self.dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold_pixels_remaining = hold_pixels;
+    }
+
     fn repaint_dmg_lcdc0_panel_range(&mut self, start_x: u8, end_x: u8, bg_enabled: bool) {
         let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
         let row_start = self.ly as usize * SCREEN_WIDTH;
@@ -1760,11 +1878,64 @@ impl Ppu {
         }
     }
 
+    fn repaint_dmg_lcdc1_panel_range(&mut self, start_x: u8, end_x: u8) {
+        let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
+        let row_start = self.ly as usize * SCREEN_WIDTH;
+        let bg_enabled = self.pixel_transfer_bg_enabled();
+        let historical_bgp =
+            self.mode3_register_latches()
+                .pixel_pipeline_bgp(self.console_model, None, None);
+
+        for x in usize::from(start_x)..usize::from(end_x) {
+            let bg_pixel = self.current_scanline_bg_pixels[x];
+            let pixel = MixedPixel::background(bg_pixel);
+            let dmg_bg_forced_white = visible_output_driving && !bg_enabled;
+            let panel_pixel = if visible_output_driving {
+                if dmg_bg_forced_white {
+                    0
+                } else {
+                    self.apply_dmg_palette(historical_bgp, bg_pixel)
+                }
+            } else {
+                0
+            };
+            let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
+                bg_pixel
+            } else {
+                0
+            };
+
+            self.current_scanline_mixed_pixels[x] = pixel;
+            self.current_scanline_dmg_bg_forced_white[x] = dmg_bg_forced_white;
+            self.current_scanline_pixels[x] = scanline_pixel;
+            self.framebuffer[row_start + x] = panel_pixel;
+        }
+
+        for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
+            let visible_x = dot.visible_x as usize;
+            if !(usize::from(start_x)..usize::from(end_x)).contains(&visible_x) {
+                continue;
+            }
+
+            dot.pixel = MixedPixel::background(self.current_scanline_bg_pixels[visible_x]);
+            dot.dmg_bg_forced_white = visible_output_driving && !bg_enabled;
+        }
+    }
+
     pub(super) fn pixel_transfer_obj_enabled(&self) -> bool {
-        self.mode3_register_latches().pixel_transfer_obj_enabled(
+        let obj_enabled = self.mode3_register_latches().pixel_transfer_obj_enabled(
             self.console_model,
             self.bg_pipeline_state.current_transfer_x,
-        )
+        );
+
+        if self.console_model.is_dmg_family() {
+            self.dmg_panel_live_write_state
+                .lcdc1
+                .obj_enable_visible_hold_override
+                .unwrap_or(obj_enabled)
+        } else {
+            obj_enabled
+        }
     }
 
     pub(super) fn prepare_visible_scanline_state(&mut self) {
@@ -1897,6 +2068,7 @@ impl Ppu {
         self.bg_pipeline_state.reset();
         self.obj_pipeline_state.reset();
         self.current_scanline_pixels.fill(0);
+        self.current_scanline_bg_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
         self.current_scanline_dmg_bg_forced_white.fill(false);
