@@ -1586,6 +1586,78 @@ impl Ppu {
             );
     }
 
+    pub(super) fn apply_dmg_lcdc4_live_bg_tiledata_write(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
+        if !self.console_model.is_dmg_family()
+            || !write_context.lcdc_changed(LCDC_BG_WINDOW_TILE_DATA_BIT)
+        {
+            return;
+        }
+
+        if self.mode2_scan_state.selected_sprite_count() != 1 {
+            return;
+        }
+
+        let Some(sprite) = self.mode2_scan_state.selected_sprite(0) else {
+            return;
+        };
+
+        if write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0 {
+            match sprite.x {
+                3 | 4 => self
+                    .bg_pipeline_state
+                    .set_dmg_lcdc4_startup_tiledata_select_override(
+                        BgStartupContinuationSlice::VisibleTile2,
+                        Some(true),
+                        Some(true),
+                    ),
+                5..=7 => self
+                    .bg_pipeline_state
+                    .set_dmg_lcdc4_startup_tiledata_select_override(
+                        BgStartupContinuationSlice::VisibleTile2,
+                        Some(false),
+                        Some(true),
+                    ),
+                8..=17 => self
+                    .bg_pipeline_state
+                    .set_dmg_lcdc4_startup_tiledata_select_override(
+                        BgStartupContinuationSlice::VisibleTile2,
+                        Some(false),
+                        Some(false),
+                    ),
+                _ => {}
+            }
+            return;
+        }
+
+        match sprite.x {
+            3 | 4 | 8..=12 => self
+                .bg_pipeline_state
+                .set_dmg_lcdc4_startup_tiledata_select_override(
+                    BgStartupContinuationSlice::VisibleTile3,
+                    Some(false),
+                    Some(false),
+                ),
+            5..=7 | 13..=15 => self
+                .bg_pipeline_state
+                .set_dmg_lcdc4_startup_tiledata_select_override(
+                    BgStartupContinuationSlice::VisibleTile3,
+                    Some(true),
+                    Some(false),
+                ),
+            16..=17 => self
+                .bg_pipeline_state
+                .set_dmg_lcdc4_startup_tiledata_select_override(
+                    BgStartupContinuationSlice::VisibleTile3,
+                    Some(true),
+                    Some(true),
+                ),
+            _ => {}
+        }
+    }
+
     pub(super) fn apply_dmg_lcdc0_live_bg_enable_write(
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,

@@ -192,6 +192,7 @@ impl Ppu {
                 self.bg_pipeline_state
                     .mark_live_lcdc3_write_while_fifo_visible(write_context);
                 self.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
+                self.apply_dmg_lcdc4_live_bg_tiledata_write(write_context);
                 self.apply_dmg_lcdc0_live_bg_enable_write(write_context);
             }
             if matches!(

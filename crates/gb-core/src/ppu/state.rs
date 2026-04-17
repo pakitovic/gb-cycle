@@ -429,6 +429,10 @@ pub(super) struct BgPipelineState {
     pub(super) dmg_lcdc3_startup_continuation_tilemap_select_override: Option<bool>,
     pub(super) dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2: bool,
     pub(super) dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3: bool,
+    pub(super) dmg_lcdc4_startup_visible_tile2_tiledata_select_override_low: Option<bool>,
+    pub(super) dmg_lcdc4_startup_visible_tile2_tiledata_select_override_high: Option<bool>,
+    pub(super) dmg_lcdc4_startup_visible_tile3_tiledata_select_override_low: Option<bool>,
+    pub(super) dmg_lcdc4_startup_visible_tile3_tiledata_select_override_high: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -477,6 +481,10 @@ impl BgPipelineState {
         self.dmg_lcdc3_startup_continuation_tilemap_select_override = None;
         self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2 = false;
         self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3 = false;
+        self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_low = None;
+        self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_high = None;
+        self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_low = None;
+        self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_high = None;
     }
 
     pub(super) fn start_line(&mut self, _scx: u8) {
@@ -492,6 +500,10 @@ impl BgPipelineState {
         self.dmg_lcdc3_startup_continuation_tilemap_select_override = None;
         self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2 = false;
         self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3 = false;
+        self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_low = None;
+        self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_high = None;
+        self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_low = None;
+        self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_high = None;
         self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
         self.startup_source_state = Mode3StartupSourceState::EntryDelay {
             remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
@@ -847,6 +859,103 @@ impl BgPipelineState {
         }
     }
 
+    pub(super) fn set_dmg_lcdc4_startup_tiledata_select_override(
+        &mut self,
+        slice: BgStartupContinuationSlice,
+        low: Option<bool>,
+        high: Option<bool>,
+    ) {
+        match slice {
+            BgStartupContinuationSlice::VisibleTile2 => {
+                self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_low = low;
+                self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_high = high;
+            }
+            BgStartupContinuationSlice::VisibleTile3 => {
+                self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_low = low;
+                self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_high = high;
+            }
+            BgStartupContinuationSlice::None => return,
+        }
+
+        let visible_tile2_low = self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_low;
+        let visible_tile2_high = self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_high;
+        let visible_tile3_low = self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_low;
+        let visible_tile3_high = self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_high;
+        for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+            let (override_low, override_high) =
+                dmg_lcdc4_startup_tiledata_select_override_for_cached_slice(
+                    cached.cached,
+                    visible_tile2_low,
+                    visible_tile2_high,
+                    visible_tile3_low,
+                    visible_tile3_high,
+                );
+            apply_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+                &mut cached.cached,
+                override_low,
+                override_high,
+            );
+        }
+
+        let (push_low, push_high) = dmg_lcdc4_startup_tiledata_select_override_for_cached_slice(
+            self.push.cached,
+            visible_tile2_low,
+            visible_tile2_high,
+            visible_tile3_low,
+            visible_tile3_high,
+        );
+        apply_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+            &mut self.push.cached,
+            push_low,
+            push_high,
+        );
+
+        let (fill_low, fill_high) = dmg_lcdc4_startup_tiledata_select_override_for_cached_slice(
+            self.fill.cached,
+            visible_tile2_low,
+            visible_tile2_high,
+            visible_tile3_low,
+            visible_tile3_high,
+        );
+        apply_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+            &mut self.fill.cached,
+            fill_low,
+            fill_high,
+        );
+    }
+
+    pub(super) fn maybe_apply_dmg_lcdc4_startup_tiledata_select_override_to_fill(&mut self) {
+        let (override_low, override_high) =
+            dmg_lcdc4_startup_tiledata_select_override_for_cached_slice(
+                self.fill.cached,
+                self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_low,
+                self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_high,
+                self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_low,
+                self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_high,
+            );
+        apply_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+            &mut self.fill.cached,
+            override_low,
+            override_high,
+        );
+    }
+
+    pub(super) fn maybe_apply_dmg_lcdc4_startup_tiledata_select_override_to_push(&mut self) {
+        let (override_low, override_high) =
+            dmg_lcdc4_startup_tiledata_select_override_for_cached_slice(
+                self.push.cached,
+                self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_low,
+                self.dmg_lcdc4_startup_visible_tile2_tiledata_select_override_high,
+                self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_low,
+                self.dmg_lcdc4_startup_visible_tile3_tiledata_select_override_high,
+            );
+        apply_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+            &mut self.push.cached,
+            override_low,
+            override_high,
+        );
+    }
+
     pub(super) fn mark_live_scy_write_while_startup_alignment_fifo_visible(
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
@@ -1107,6 +1216,56 @@ fn apply_startup_scy_tiledata_latch_to_cached(
     cached.needs_live_tile_data_refetch = true;
 }
 
+fn dmg_lcdc4_startup_tiledata_select_override_for_cached_slice(
+    cached: BgCachedSlice,
+    visible_tile2_low: Option<bool>,
+    visible_tile2_high: Option<bool>,
+    visible_tile3_low: Option<bool>,
+    visible_tile3_high: Option<bool>,
+) -> (Option<bool>, Option<bool>) {
+    if cached.source != PpuBgFetcherSource::Background {
+        return (None, None);
+    }
+
+    match cached.origin {
+        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2) => {
+            (visible_tile2_low, visible_tile2_high)
+        }
+        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3) => {
+            (visible_tile3_low, visible_tile3_high)
+        }
+        BgCachedSliceOrigin::Ordinary
+        | BgCachedSliceOrigin::StartupAlignmentSeed
+        | BgCachedSliceOrigin::StartupAlignmentFill
+        | BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::None) => {
+            (None, None)
+        }
+    }
+}
+
+fn apply_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+    cached: &mut BgCachedSlice,
+    override_low: Option<bool>,
+    override_high: Option<bool>,
+) {
+    if cached.source != PpuBgFetcherSource::Background
+        || !matches!(
+            cached.origin,
+            BgCachedSliceOrigin::StartupContinuation(
+                BgStartupContinuationSlice::VisibleTile2 | BgStartupContinuationSlice::VisibleTile3
+            )
+        )
+    {
+        return;
+    }
+
+    cached.dmg_lcdc4_tiledata_select_override_low = override_low;
+    cached.dmg_lcdc4_tiledata_select_override_high = override_high;
+    if override_low.is_some() || override_high.is_some() {
+        cached.needs_live_tile_data_refetch = true;
+    }
+}
+
 impl Default for BgPipelineState {
     fn default() -> Self {
         Self {
@@ -1139,6 +1298,10 @@ impl Default for BgPipelineState {
             dmg_lcdc3_startup_continuation_tilemap_select_override: None,
             dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2: false,
             dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3: false,
+            dmg_lcdc4_startup_visible_tile2_tiledata_select_override_low: None,
+            dmg_lcdc4_startup_visible_tile2_tiledata_select_override_high: None,
+            dmg_lcdc4_startup_visible_tile3_tiledata_select_override_low: None,
+            dmg_lcdc4_startup_visible_tile3_tiledata_select_override_high: None,
         }
     }
 }
@@ -1460,6 +1623,8 @@ pub(super) struct BgCachedSlice {
     pub(super) origin: BgCachedSliceOrigin,
     pub(super) fetch_x: u16,
     pub(super) dmg_lcdc3_tilemap_select_override: Option<bool>,
+    pub(super) dmg_lcdc4_tiledata_select_override_low: Option<bool>,
+    pub(super) dmg_lcdc4_tiledata_select_override_high: Option<bool>,
     pub(super) same_cycle_live_tilemap_refetch_window_open: bool,
     pub(super) startup_visible_tile3_scx_boundary_full_refetch_next_tile: bool,
     pub(super) startup_visible_tile3_scx_boundary_next_tile_output_retarget_scx: Option<u8>,
@@ -1489,6 +1654,8 @@ impl BgCachedSlice {
             origin: fetcher.cached_origin,
             fetch_x: fetcher.fetch_x,
             dmg_lcdc3_tilemap_select_override: None,
+            dmg_lcdc4_tiledata_select_override_low: None,
+            dmg_lcdc4_tiledata_select_override_high: None,
             same_cycle_live_tilemap_refetch_window_open: false,
             startup_visible_tile3_scx_boundary_full_refetch_next_tile: fetcher
                 .startup_visible_tile3_scx_boundary_full_refetch_next_tile,
@@ -1737,9 +1904,29 @@ pub(super) fn recompute_live_background_cached_slice(
     } else {
         bg_tile_data_address_row(cached_tile_high_address)
     };
-    let tile_data_base = bg_tile_data_base(registers.lcdc, tile_index);
-    let tile_low_address = tile_data_base + tile_low_row * TILE_ROW_BYTES;
-    let tile_high_address = tile_data_base + tile_high_row * TILE_ROW_BYTES + 1;
+    let tile_low_lcdc = if let Some(uses_unsigned) = cached.dmg_lcdc4_tiledata_select_override_low {
+        if uses_unsigned {
+            registers.lcdc | LCDC_BG_WINDOW_TILE_DATA_BIT
+        } else {
+            registers.lcdc & !LCDC_BG_WINDOW_TILE_DATA_BIT
+        }
+    } else {
+        registers.lcdc
+    };
+    let tile_high_lcdc = if let Some(uses_unsigned) = cached.dmg_lcdc4_tiledata_select_override_high
+    {
+        if uses_unsigned {
+            registers.lcdc | LCDC_BG_WINDOW_TILE_DATA_BIT
+        } else {
+            registers.lcdc & !LCDC_BG_WINDOW_TILE_DATA_BIT
+        }
+    } else {
+        registers.lcdc
+    };
+    let tile_low_address =
+        bg_tile_data_base(tile_low_lcdc, tile_index) + tile_low_row * TILE_ROW_BYTES;
+    let tile_high_address =
+        bg_tile_data_base(tile_high_lcdc, tile_index) + tile_high_row * TILE_ROW_BYTES + 1;
     let (tile_low, tile_high) =
         if cached.needs_live_tile_data_unsigned_reuse && !cached.needs_live_tilemap_refetch {
             (
@@ -1769,6 +1956,8 @@ pub(super) fn recompute_live_background_cached_slice(
     cached.needs_live_tile_high_current_row_refetch = false;
     cached.needs_live_tile_data_unsigned_reuse = false;
     cached.dmg_lcdc3_tilemap_select_override = None;
+    cached.dmg_lcdc4_tiledata_select_override_low = None;
+    cached.dmg_lcdc4_tiledata_select_override_high = None;
     Some(cached)
 }
 

@@ -43,7 +43,8 @@ Nothing in this file overrides those documents.
 - Keep lane ownership, startup window (`AbstractStartup` versus `FifoBacked`), and effective BG FIFO occupancy as separate state.
 - Keep the alignment/discard fetch distinct from the first real BG push.
 - Keep the DMG `LCDC.3` startup map-change seam explicit: prefer narrow startup-continuation / live-refetch overrides over any synthetic retroactive `visible_tile2_window` repaint. For the late second-write class in `m3_lcdc_bg_map_change.gb` (`sprite.x >= 16`), clear the startup `visible_tile2` live-refetch instead of painting an extra black prefix.
-- For curated `SkipBoot` ROMs that depend on DMG boot-logo VRAM contents, seed those tiles explicitly in the manifest instead of hiding the dependency inside PPU behavior. `m3_lcdc_bg_map_change.gb` depends on the boot trademark tile (`tile $19` at `0x8190`).
+- Keep the DMG `LCDC.4` startup tile-select seam explicit too: prefer startup-continuation overrides on `VisibleTile2` / `VisibleTile3` cached slices over a broad fetcher retarget, and allow the low and high tile-data planes to carry different signed/unsigned selection when the single-left-sprite seam demands it. `m3_lcdc_tile_sel_change.gb` closes with phase-specific per-plane overrides, not with a generic FIFO rewrite.
+- For curated `SkipBoot` ROMs that depend on DMG boot-logo VRAM contents, seed those tiles explicitly in the manifest instead of hiding the dependency inside PPU behavior. `m3_lcdc_bg_map_change.gb` and `m3_lcdc_tile_sel_change.gb` depend on the boot trademark tile (`tile $19` at `0x8190`).
 - The first real BG/window push after startup still skips the ordinary one-dot push-entry delay.
 - Keep `current_transfer_x`-style ownership explicit for Mode `3` arbitration.
 - Keep the `WY` latch and runtime `WX` trigger distinct.

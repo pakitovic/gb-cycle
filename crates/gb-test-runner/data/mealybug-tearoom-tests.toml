@@ -74,6 +74,7 @@ rom = "ppu/m3_lcdc_tile_sel_change.gb"
 timeout_frames = 30
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug/m3_lcdc_tile_sel_change_dmg_blob.png"
+startup_memory_profile = "dmg-boot-trademark-tile"
 
 [[case]]
 id = "mealybug-m3-lcdc-tile-sel-win-change"

@@ -395,6 +395,8 @@ impl Ppu {
                 self.bg_pipeline_state
                     .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_push();
                 self.bg_pipeline_state
+                    .maybe_apply_dmg_lcdc4_startup_tiledata_select_override_to_push();
+                self.bg_pipeline_state
                     .fetcher
                     .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
                 self.bg_pipeline_state
@@ -636,6 +638,8 @@ impl Ppu {
         self.bg_pipeline_state
             .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill();
         self.bg_pipeline_state
+            .maybe_apply_dmg_lcdc4_startup_tiledata_select_override_to_fill();
+        self.bg_pipeline_state
             .apply_startup_scy_tiledata_latch_to_fill();
         self.bg_pipeline_state.fetcher.fetch_x = push.next_fetch_pixel;
         self.bg_pipeline_state.fetcher.next_fetch_pixel = push.next_fetch_pixel;
@@ -657,6 +661,8 @@ impl Ppu {
 
         self.bg_pipeline_state
             .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill();
+        self.bg_pipeline_state
+            .maybe_apply_dmg_lcdc4_startup_tiledata_select_override_to_fill();
         let fill = self.bg_pipeline_state.fill;
         if fill.startup_dummy_pixels > 0 {
             self.bg_pipeline_state

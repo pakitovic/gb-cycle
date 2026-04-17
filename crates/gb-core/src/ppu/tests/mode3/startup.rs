@@ -598,6 +598,82 @@ fn sprite_coupled_line10_startup_tail_renders_correctly_once_panel_blank_is_lift
     );
 }
 
+fn dmg_tile_sel_replay_background_row(sprite_x: u8) -> [u8; 24] {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.write_oam_entry(0, 26, sprite_x, 0);
+    for row in 0..BG_TILE_WIDTH {
+        ppu.write_bg_tile_row(0, row, 0xFF, 0xFF);
+        let signed_tile_row = 0x1000 + row as usize * TILE_ROW_BYTES as usize;
+        ppu.vram_bytes[signed_tile_row] = 0x00;
+        ppu.vram_bytes[signed_tile_row + 1] = 0x00;
+    }
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x00,
+        stat: 0xA4,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x96,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.write_register(0xFF40, 0x83);
+    ppu.advance_until_tile_sel_replay_position(10, 85);
+    ppu.blank_frame_active = false;
+    ppu.refresh_visible_output();
+    while !(ppu.snapshot().ly == 10 && ppu.snapshot().visible_pixels_output == 24) {
+        apply_tile_sel_line_write_replay(&mut ppu);
+        assert!(ppu.t_cycle < 12_000);
+        ppu.tick();
+    }
+
+    let row = ppu.snapshot().current_scanline_pixels;
+    let bg_start = sprite_x as usize;
+    let mut sample = [0; 24];
+    sample.copy_from_slice(&row[bg_start..bg_start + 24]);
+    sample
+}
+
+#[test]
+fn sprite_coupled_tile_sel_replay_matches_phase5_background_window() {
+    assert_eq!(
+        dmg_tile_sel_replay_background_row(5),
+        [
+            0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+        ]
+    );
+}
+
+#[test]
+fn sprite_coupled_tile_sel_replay_clears_the_mid_band_for_phase8_background_window() {
+    assert_eq!(dmg_tile_sel_replay_background_row(8), [0; 24]);
+}
+
+#[test]
+fn sprite_coupled_tile_sel_replay_matches_phase13_background_window() {
+    assert_eq!(
+        dmg_tile_sel_replay_background_row(13),
+        [
+            0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]
+    );
+}
+
+#[test]
+fn sprite_coupled_tile_sel_replay_matches_phase16_background_window() {
+    assert_eq!(
+        dmg_tile_sel_replay_background_row(16),
+        [
+            3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]
+    );
+}
+
 #[test]
 fn startup_post_alignment_seam_labels_only_the_second_and_third_visible_tiles() {
     let mut pipeline = BgPipelineState::default();

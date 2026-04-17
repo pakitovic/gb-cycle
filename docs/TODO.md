@@ -41,10 +41,11 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
-- The current external report snapshot is `.roms/test/test-report.md = 152/167`: `150` passed, `15` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint.
-- The strict PPU ladder is green through `m3_scx_low_3_bits.gb`, `m3_scx_high_5_bits.gb`, `m3_scy_change.gb`, `m3_lcdc_bg_en_change.gb`, and `m3_lcdc_bg_map_change.gb`. The next blocker is `m3_lcdc_tile_sel_change.gb` (`order 35`), the last remaining `LCDC` BG live-write tile-selection case before the `LCDC` OBJ-toggle block.
+- The current external report snapshot is `.roms/test/test-report.md = 153/167`: `151` passed, `14` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint.
+- The strict PPU ladder is green through `m3_scx_low_3_bits.gb`, `m3_scx_high_5_bits.gb`, `m3_scy_change.gb`, `m3_lcdc_bg_en_change.gb`, `m3_lcdc_bg_map_change.gb`, and `m3_lcdc_tile_sel_change.gb`. The next blocker is `m3_lcdc_obj_en_change.gb` (`order 36`), starting the `LCDC` OBJ-toggle block.
 - Important green seams are now deliberately narrow: DMG-only `BGP`/`OBP0` live-write panel paths, sprite-coupled `STAT` publication seams, `SCX` startup carry handling, and the single-placeholder Acid2 startup-tail cleanup. Keep these as targeted hardware hypotheses, not general FIFO rewrite permissions.
 - The `m3_lcdc_bg_map_change.gb` closure is also deliberately narrow: the curated `SkipBoot` case must seed the DMG boot trademark tile because the ROM reuses tile `$19` as sprite data, and the DMG `LCDC.3` map-change fix now relies on startup continuation / visible-tile2 live-refetch control rather than a synthetic `visible_tile2_window` repaint prefix.
+- The `m3_lcdc_tile_sel_change.gb` closure is likewise narrow: the curated `SkipBoot` case must also seed the DMG boot trademark tile, and the DMG `LCDC.4` tile-select fix now lives as startup-continuation overrides on `VisibleTile2` / `VisibleTile3` cached slices, including phase-specific mixed signed/unsigned low/high planes for the single-left-sprite seam.
 - Working hypothesis: the remaining Mode `3` debt sits around startup dummy / first-fetch / restart-lane timing and live-write onset classes, not another broad visible-FIFO retargeting pass.
 
 #### Open TODOs
@@ -53,11 +54,10 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
   | Tier | Orders | Remaining ROMs |
   | --- | --- | --- |
-  | LCDC BG toggles | `35` | `m3_lcdc_tile_sel_change` |
   | LCDC OBJ toggles | `36-39` | `m3_lcdc_obj_en_change`, `m3_lcdc_obj_en_change_variant`, `m3_lcdc_obj_size_change`, `m3_lcdc_obj_size_change_scx` |
   | Window mechanics | `40-49` | `m3_window_timing`, `m3_window_timing_wx_0`, `m3_lcdc_win_map_change`, `m3_lcdc_tile_sel_win_change`, `m3_lcdc_win_en_change_multiple`, `m3_lcdc_win_en_change_multiple_wx`, `m3_wx_4_change`, `m3_wx_5_change`, `m3_wx_6_change`, `m3_wx_4_change_sprites` |
 
-- [PPU][STARTUP-DUMMY-SEED-DEFERRED] A March 28 experiment moving the dummy-startup fill to discard-first-BG-fetch (docboy-style) improved `m3_lcdc_bg_map_change` (`978 -> 722`) but regressed raster tests, `acid/dmg-acid2.gb`, and `m3_scy_change` (`7266 -> 10099`). Confirms the remaining `LCDC` map/tile/window debt still touches the startup dummy / first-fetch seam, but the fix must preserve stable startup timing and `acid` baseline.
+- [PPU][STARTUP-DUMMY-SEED-DEFERRED] A March 28 experiment moving the dummy-startup fill to discard-first-BG-fetch (docboy-style) improved `m3_lcdc_bg_map_change` (`978 -> 722`) but regressed raster tests, `acid/dmg-acid2.gb`, and `m3_scy_change` (`7266 -> 10099`). Confirms the remaining live-write OBJ/window debt still touches the startup dummy / first-fetch seam, but the fix must preserve stable startup timing and `acid` baseline.
 
 - [PPU][MODE3-PUSH-ARBITRATION-DEFERRED] A March 26 attempt at strict FIFO-empty BG push plus OBJ-start arbitration regressed multiple external families at once (`mooneye hblank_ly_scx_timing-GS`, `intr_2_mode0_timing`, `hacktix/strikethrough`, `mealybug m3_bgp_change`). Any future pass here needs a wider shared BG/window/OBJ fetcher contract rewrite, with external report comparison as a hard gate.
 
