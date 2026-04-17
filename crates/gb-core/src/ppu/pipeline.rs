@@ -238,12 +238,17 @@ impl Ppu {
             .unwrap_or_else(ObjPixel::transparent)
     }
 
-    pub(super) fn mix_bg_and_obj(&self, bg_pixel: u8, obj_pixel: ObjPixel) -> MixedPixel {
+    pub(super) fn mix_bg_and_obj(
+        &self,
+        bg_pixel: u8,
+        effective_bg_priority_pixel: u8,
+        obj_pixel: ObjPixel,
+    ) -> MixedPixel {
         if !self.pixel_transfer_obj_enabled() || obj_pixel.is_transparent() {
             return MixedPixel::background(bg_pixel);
         }
 
-        if obj_pixel.bg_over_obj && bg_pixel != 0 {
+        if obj_pixel.bg_over_obj && effective_bg_priority_pixel != 0 {
             MixedPixel::background(bg_pixel)
         } else {
             MixedPixel::object(obj_pixel.color, obj_pixel.palette_obp1)

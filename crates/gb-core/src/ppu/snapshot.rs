@@ -26,9 +26,14 @@ pub struct PpuSnapshot {
     pub bg_fetcher_stage_dot: u8,
     pub bg_fetcher_tile_map_address: u16,
     pub bg_fetcher_tile_data_address: u16,
+    pub bg_fetcher_tile_index: u8,
+    pub bg_fetcher_tile_low: u8,
+    pub bg_fetcher_tile_high: u8,
     pub bg_push_pending: bool,
+    pub bg_push_cached: PpuBgCachedSliceSnapshot,
     pub bg_push_disposition: PpuBgPushDispositionSnapshot,
     pub bg_fill_pending: bool,
+    pub bg_fill_cached: PpuBgCachedSliceSnapshot,
     pub bg_fifo_pixels: Vec<u8>,
     pub bg_fifo_cached_pixels: Vec<Option<PpuBgFifoCachedPixelSnapshot>>,
     pub bg_startup_source_state: PpuMode3StartupSourceStateSnapshot,
@@ -108,6 +113,18 @@ pub struct PpuBgFifoCachedPixelSnapshot {
     pub tile_map_address: u16,
     pub tile_data_address: u16,
     pub tile_index: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PpuBgCachedSliceSnapshot {
+    pub source: PpuBgFetcherSource,
+    pub origin: PpuBgCachedSliceOriginSnapshot,
+    pub fetch_x: u16,
+    pub tile_map_address: u16,
+    pub tile_data_address: u16,
+    pub tile_index: u8,
+    pub tile_low: u8,
+    pub tile_high: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -225,6 +242,19 @@ pub(super) fn snapshot_bg_fifo_cached_pixel(
         tile_data_address: cached.cached.tile_data_address,
         tile_index: cached.cached.tile_index,
     })
+}
+
+pub(super) const fn snapshot_bg_cached_slice(cached: BgCachedSlice) -> PpuBgCachedSliceSnapshot {
+    PpuBgCachedSliceSnapshot {
+        source: cached.source,
+        origin: snapshot_bg_fifo_cached_origin(cached.origin),
+        fetch_x: cached.fetch_x,
+        tile_map_address: cached.tile_map_address,
+        tile_data_address: cached.tile_data_address,
+        tile_index: cached.tile_index,
+        tile_low: cached.tile_low,
+        tile_high: cached.tile_high,
+    }
 }
 
 pub(super) const fn snapshot_bg_transfer_phase(

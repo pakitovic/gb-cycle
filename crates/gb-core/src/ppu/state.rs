@@ -426,6 +426,9 @@ pub(super) struct BgPipelineState {
     pub(super) startup_visible_tile3_scx_boundary_next_slice_previous_scx: Option<u8>,
     pub(super) startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: u8,
     pub(super) startup_scy_tiledata_latch: Option<BgStartupScyTiledataLatch>,
+    pub(super) dmg_lcdc3_startup_continuation_tilemap_select_override: Option<bool>,
+    pub(super) dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2: bool,
+    pub(super) dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -471,6 +474,9 @@ impl BgPipelineState {
         self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
         self.startup_scy_tiledata_latch = None;
+        self.dmg_lcdc3_startup_continuation_tilemap_select_override = None;
+        self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2 = false;
+        self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3 = false;
     }
 
     pub(super) fn start_line(&mut self, _scx: u8) {
@@ -483,6 +489,9 @@ impl BgPipelineState {
         self.fifo_cached_pixels.clear();
         self.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
         self.startup_scy_tiledata_latch = None;
+        self.dmg_lcdc3_startup_continuation_tilemap_select_override = None;
+        self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2 = false;
+        self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3 = false;
         self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
         self.startup_source_state = Mode3StartupSourceState::EntryDelay {
             remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
@@ -660,6 +669,181 @@ impl BgPipelineState {
             cached
                 .cached
                 .mark_live_lcdc3_write_while_fifo_visible(write_context);
+        }
+    }
+
+    pub(super) fn latch_dmg_lcdc3_startup_continuation_tilemap_select_override(
+        &mut self,
+        tilemap_select: bool,
+        applies_to_visible_tile2: bool,
+        applies_to_visible_tile3: bool,
+    ) {
+        self.dmg_lcdc3_startup_continuation_tilemap_select_override = Some(tilemap_select);
+        self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2 =
+            applies_to_visible_tile2;
+        self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3 =
+            applies_to_visible_tile3;
+
+        for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+            let applies_to_cached = cached.cached.source == PpuBgFetcherSource::Background
+                && applies_to_visible_tile2
+                && matches!(
+                    cached.cached.origin,
+                    BgCachedSliceOrigin::StartupContinuation(
+                        BgStartupContinuationSlice::VisibleTile2
+                    )
+                )
+                || cached.cached.source == PpuBgFetcherSource::Background
+                    && applies_to_visible_tile3
+                    && matches!(
+                        cached.cached.origin,
+                        BgCachedSliceOrigin::StartupContinuation(
+                            BgStartupContinuationSlice::VisibleTile3
+                        )
+                    );
+            if applies_to_cached {
+                cached
+                    .cached
+                    .latch_dmg_lcdc3_tilemap_select_override(tilemap_select);
+            }
+        }
+
+        let applies_to_fill = self.fill.cached.source == PpuBgFetcherSource::Background
+            && applies_to_visible_tile2
+            && matches!(
+                self.fill.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            )
+            || self.fill.cached.source == PpuBgFetcherSource::Background
+                && applies_to_visible_tile3
+                && matches!(
+                    self.fill.cached.origin,
+                    BgCachedSliceOrigin::StartupContinuation(
+                        BgStartupContinuationSlice::VisibleTile3
+                    )
+                );
+        if applies_to_fill {
+            self.fill
+                .cached
+                .latch_dmg_lcdc3_tilemap_select_override(tilemap_select);
+        }
+
+        let applies_to_push = self.push.cached.source == PpuBgFetcherSource::Background
+            && applies_to_visible_tile2
+            && matches!(
+                self.push.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            )
+            || self.push.cached.source == PpuBgFetcherSource::Background
+                && applies_to_visible_tile3
+                && matches!(
+                    self.push.cached.origin,
+                    BgCachedSliceOrigin::StartupContinuation(
+                        BgStartupContinuationSlice::VisibleTile3
+                    )
+                );
+        if applies_to_push {
+            self.push
+                .cached
+                .latch_dmg_lcdc3_tilemap_select_override(tilemap_select);
+        }
+    }
+
+    pub(super) fn maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill(
+        &mut self,
+    ) {
+        let Some(tilemap_select) = self.dmg_lcdc3_startup_continuation_tilemap_select_override
+        else {
+            return;
+        };
+
+        if self.fill.cached.source != PpuBgFetcherSource::Background {
+            return;
+        }
+
+        let applies_to_fill = self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2
+            && matches!(
+                self.fill.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            )
+            || self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3
+                && matches!(
+                    self.fill.cached.origin,
+                    BgCachedSliceOrigin::StartupContinuation(
+                        BgStartupContinuationSlice::VisibleTile3
+                    )
+                );
+        if applies_to_fill {
+            self.fill
+                .cached
+                .latch_dmg_lcdc3_tilemap_select_override(tilemap_select);
+        }
+    }
+
+    pub(super) fn clear_dmg_lcdc3_startup_visible_tile2_live_refetch(&mut self) {
+        for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+            if cached.cached.source == PpuBgFetcherSource::Background
+                && matches!(
+                    cached.cached.origin,
+                    BgCachedSliceOrigin::StartupContinuation(
+                        BgStartupContinuationSlice::VisibleTile2
+                    )
+                )
+            {
+                cached.cached.needs_live_tilemap_refetch = false;
+                cached.cached.dmg_lcdc3_tilemap_select_override = None;
+            }
+        }
+
+        if self.fill.cached.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.fill.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            )
+        {
+            self.fill.cached.needs_live_tilemap_refetch = false;
+            self.fill.cached.dmg_lcdc3_tilemap_select_override = None;
+        }
+
+        if self.push.cached.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.push.cached.origin,
+                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+            )
+        {
+            self.push.cached.needs_live_tilemap_refetch = false;
+            self.push.cached.dmg_lcdc3_tilemap_select_override = None;
+        }
+    }
+
+    pub(super) fn maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_push(
+        &mut self,
+    ) {
+        let Some(tilemap_select) = self.dmg_lcdc3_startup_continuation_tilemap_select_override
+        else {
+            return;
+        };
+
+        if self.push.cached.source != PpuBgFetcherSource::Background {
+            return;
+        }
+
+        let applies_to_push = matches!(
+            self.push.cached.origin,
+            BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
+        ) && self
+            .dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2
+            || self.dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3
+                && matches!(
+                    self.push.cached.origin,
+                    BgCachedSliceOrigin::StartupContinuation(
+                        BgStartupContinuationSlice::VisibleTile3
+                    )
+                );
+        if applies_to_push {
+            self.push
+                .cached
+                .latch_dmg_lcdc3_tilemap_select_override(tilemap_select);
         }
     }
 
@@ -952,6 +1136,9 @@ impl Default for BgPipelineState {
             startup_visible_tile3_scx_boundary_next_slice_previous_scx: None,
             startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: 0,
             startup_scy_tiledata_latch: None,
+            dmg_lcdc3_startup_continuation_tilemap_select_override: None,
+            dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2: false,
+            dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3: false,
         }
     }
 }
@@ -1272,6 +1459,7 @@ pub(super) struct BgCachedSlice {
     pub(super) source: PpuBgFetcherSource,
     pub(super) origin: BgCachedSliceOrigin,
     pub(super) fetch_x: u16,
+    pub(super) dmg_lcdc3_tilemap_select_override: Option<bool>,
     pub(super) same_cycle_live_tilemap_refetch_window_open: bool,
     pub(super) startup_visible_tile3_scx_boundary_full_refetch_next_tile: bool,
     pub(super) startup_visible_tile3_scx_boundary_next_tile_output_retarget_scx: Option<u8>,
@@ -1300,6 +1488,7 @@ impl BgCachedSlice {
             source: fetcher.source,
             origin: fetcher.cached_origin,
             fetch_x: fetcher.fetch_x,
+            dmg_lcdc3_tilemap_select_override: None,
             same_cycle_live_tilemap_refetch_window_open: false,
             startup_visible_tile3_scx_boundary_full_refetch_next_tile: fetcher
                 .startup_visible_tile3_scx_boundary_full_refetch_next_tile,
@@ -1333,6 +1522,11 @@ impl BgCachedSlice {
     pub(super) fn with_origin(mut self, origin: BgCachedSliceOrigin) -> Self {
         self.origin = origin;
         self
+    }
+
+    pub(super) fn latch_dmg_lcdc3_tilemap_select_override(&mut self, tilemap_select: bool) {
+        self.dmg_lcdc3_tilemap_select_override = Some(tilemap_select);
+        self.needs_live_tilemap_refetch = true;
     }
 
     pub(super) const fn is_background(self) -> bool {
@@ -1499,6 +1693,7 @@ pub(super) fn recompute_live_background_cached_slice(
     let mut tile_map_address = cached.tile_map_address;
     let mut tile_index = cached.tile_index;
     if cached.needs_live_tilemap_refetch {
+        let tilemap_select_override = cached.dmg_lcdc3_tilemap_select_override;
         let full_refetch_fetch_x =
             if cached.startup_visible_tile3_scx_boundary_full_refetch_next_tile {
                 cached.fetch_x + BG_TILE_WIDTH as u16
@@ -1515,11 +1710,12 @@ pub(super) fn recompute_live_background_cached_slice(
             .tile_index_address()
         } else {
             let tile_map_offset = cached.tile_map_address & 0x03FF;
-            let tile_map_base = if registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
-                0x1C00
-            } else {
-                0x1800
-            };
+            let tile_map_base =
+                if tilemap_select_override.unwrap_or(registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0) {
+                    0x1C00
+                } else {
+                    0x1800
+                };
             tile_map_base | tile_map_offset
         };
         tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
@@ -1572,6 +1768,7 @@ pub(super) fn recompute_live_background_cached_slice(
     cached.needs_live_tile_low_current_row_refetch = false;
     cached.needs_live_tile_high_current_row_refetch = false;
     cached.needs_live_tile_data_unsigned_reuse = false;
+    cached.dmg_lcdc3_tilemap_select_override = None;
     Some(cached)
 }
 

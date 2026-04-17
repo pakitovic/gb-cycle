@@ -1838,6 +1838,220 @@ fn live_background_write_effects_mark_visible_tile3_high_byte_fetch_on_lcdc3_cha
 }
 
 #[test]
+fn live_background_tilemap_refetch_uses_latched_lcdc3_override_instead_of_current_registers() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.write_bg_tilemap_entry(1, 0, 0);
+    ppu.write_window_tilemap_entry(1, 0, 1);
+    ppu.vram_bytes[0x1000] = 0x12;
+    ppu.vram_bytes[0x1001] = 0x34;
+    ppu.vram_bytes[0x1010] = 0xAB;
+    ppu.vram_bytes[0x1011] = 0xCD;
+    ppu.lcdc = 0x83;
+    ppu.visible_registers.lcdc = 0x83;
+    ppu.pipeline_registers.lcdc = 0x83;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2),
+        fetch_x: BG_TILE_WIDTH as u16,
+        dmg_lcdc3_tilemap_select_override: Some(true),
+        needs_live_tilemap_refetch: true,
+        tile_map_address: 0x1801,
+        tile_data_address: 0x0001,
+        tile_low_address: 0x0000,
+        tile_high_address: 0x0001,
+        tile_index: 0,
+        tile_low: 0x12,
+        tile_high: 0x34,
+        ..BgCachedSlice::default()
+    };
+
+    let recomputed = ppu
+        .with_ppu_vram(|ppu, vram| {
+            recompute_live_background_cached_slice(
+                cached,
+                vram,
+                ppu.current_mode3_live_background_refetch_context(),
+            )
+        })
+        .expect("latched LCDC3 override should recompute the cached BG slice");
+
+    assert_eq!(recomputed.tile_map_address, 0x1C01);
+    assert_eq!(recomputed.tile_index, 1);
+    assert_eq!(recomputed.tile_low, 0xAB);
+    assert_eq!(recomputed.tile_high, 0xCD);
+    assert_eq!(recomputed.dmg_lcdc3_tilemap_select_override, None);
+}
+
+#[test]
+fn pending_dmg_lcdc3_startup_override_latches_future_visible_tile3_push() {
+    let mut pipeline = BgPipelineState {
+        dmg_lcdc3_startup_continuation_tilemap_select_override: Some(true),
+        dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2: false,
+        dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3: true,
+        ..BgPipelineState::default()
+    };
+    pipeline.push.pending = true;
+    pipeline.push.cached.source = PpuBgFetcherSource::Background;
+    pipeline.push.cached.origin =
+        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3);
+    pipeline.push.cached.tile_map_address = 0x1802;
+    pipeline.push.cached.tile_index = 0;
+
+    pipeline.maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_push();
+
+    assert_eq!(
+        pipeline.push.cached.dmg_lcdc3_tilemap_select_override,
+        Some(true)
+    );
+    assert!(pipeline.push.cached.needs_live_tilemap_refetch);
+}
+
+#[test]
+fn pending_dmg_lcdc3_startup_override_latches_future_visible_tile2_fill() {
+    let mut pipeline = BgPipelineState {
+        dmg_lcdc3_startup_continuation_tilemap_select_override: Some(true),
+        dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2: true,
+        dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3: false,
+        ..BgPipelineState::default()
+    };
+    pipeline.fill.pending = true;
+    pipeline.fill.cached.source = PpuBgFetcherSource::Background;
+    pipeline.fill.cached.origin =
+        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2);
+    pipeline.fill.cached.tile_map_address = 0x1801;
+    pipeline.fill.cached.tile_index = 0;
+
+    pipeline.maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill();
+
+    assert_eq!(
+        pipeline.fill.cached.dmg_lcdc3_tilemap_select_override,
+        Some(true)
+    );
+    assert!(pipeline.fill.cached.needs_live_tilemap_refetch);
+}
+
+#[test]
+fn first_dmg_lcdc3_bg_map_write_clears_visible_tile2_live_refetch_for_single_sprite_lines() {
+    let mut rig = dmg_fetch_rig();
+    push_selected_sprite_x(&mut rig, 4);
+    rig.ppu.bg_pipeline_state.push.cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2),
+        needs_live_tilemap_refetch: true,
+        dmg_lcdc3_tilemap_select_override: Some(false),
+        ..BgCachedSlice::default()
+    };
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0x83, 0x00),
+        live_write_registers(0x8B, 0x00),
+    );
+
+    rig.ppu.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
+
+    assert_eq!(rig.ppu.dmg_lcdc3_current_line_bg_tilemap_write_count, 1);
+    assert!(
+        !rig.ppu
+            .bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tilemap_refetch
+    );
+    assert_eq!(
+        rig.ppu
+            .bg_pipeline_state
+            .push
+            .cached
+            .dmg_lcdc3_tilemap_select_override,
+        None
+    );
+    assert_eq!(
+        rig.ppu
+            .bg_pipeline_state
+            .dmg_lcdc3_startup_continuation_tilemap_select_override,
+        Some(true)
+    );
+    assert!(
+        !rig.ppu
+            .bg_pipeline_state
+            .dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2
+    );
+    assert!(
+        rig.ppu
+            .bg_pipeline_state
+            .dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3
+    );
+}
+
+#[test]
+fn second_dmg_lcdc3_bg_map_write_for_left_edge_sprite_retargets_visible_tile2_only() {
+    let mut rig = dmg_fetch_rig();
+    push_selected_sprite_x(&mut rig, 2);
+    rig.ppu.dmg_lcdc3_current_line_bg_tilemap_write_count = 1;
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0x83, 0x00),
+        live_write_registers(0x8B, 0x00),
+    );
+
+    rig.ppu.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
+
+    assert_eq!(rig.ppu.dmg_lcdc3_current_line_bg_tilemap_write_count, 2);
+    assert_eq!(
+        rig.ppu
+            .bg_pipeline_state
+            .dmg_lcdc3_startup_continuation_tilemap_select_override,
+        Some(true)
+    );
+    assert!(
+        rig.ppu
+            .bg_pipeline_state
+            .dmg_lcdc3_startup_continuation_override_applies_to_visible_tile2
+    );
+    assert!(
+        !rig.ppu
+            .bg_pipeline_state
+            .dmg_lcdc3_startup_continuation_override_applies_to_visible_tile3
+    );
+}
+
+#[test]
+fn second_dmg_lcdc3_bg_map_write_for_x16_plus_clears_visible_tile2_live_refetch() {
+    let mut rig = dmg_fetch_rig();
+    push_selected_sprite_x(&mut rig, 16);
+    rig.ppu.dmg_lcdc3_current_line_bg_tilemap_write_count = 1;
+    rig.ppu.bg_pipeline_state.push.cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Background,
+        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2),
+        needs_live_tilemap_refetch: true,
+        dmg_lcdc3_tilemap_select_override: Some(true),
+        ..BgCachedSlice::default()
+    };
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0x8B, 0x00),
+        live_write_registers(0x83, 0x00),
+    );
+
+    rig.ppu.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
+
+    assert_eq!(rig.ppu.dmg_lcdc3_current_line_bg_tilemap_write_count, 2);
+    assert!(
+        !rig.ppu
+            .bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tilemap_refetch
+    );
+    assert_eq!(
+        rig.ppu
+            .bg_pipeline_state
+            .push
+            .cached
+            .dmg_lcdc3_tilemap_select_override,
+        None
+    );
+}
+
+#[test]
 fn cached_background_fill_recomputes_tilemap_before_the_next_flush_when_same_tcycle_window_is_open()
 {
     let mut ppu = dmg_fetch_startup_rig(0x91);

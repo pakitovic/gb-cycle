@@ -41,9 +41,10 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
-- The current external report snapshot is `.roms/test/test-report.md = 150/167`: `148` passed, `17` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint.
-- The strict PPU ladder is green through `m3_scx_low_3_bits.gb`, `m3_scx_high_5_bits.gb`, and `m3_scy_change.gb`. The next blocker is `m3_lcdc_bg_en_change.gb` (`order 33`), the first broader `LCDC` live-write case after the Tier B `SCX/SCY` FIFO-core cases.
+- The current external report snapshot is `.roms/test/test-report.md = 152/167`: `150` passed, `15` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint.
+- The strict PPU ladder is green through `m3_scx_low_3_bits.gb`, `m3_scx_high_5_bits.gb`, `m3_scy_change.gb`, `m3_lcdc_bg_en_change.gb`, and `m3_lcdc_bg_map_change.gb`. The next blocker is `m3_lcdc_tile_sel_change.gb` (`order 35`), the last remaining `LCDC` BG live-write tile-selection case before the `LCDC` OBJ-toggle block.
 - Important green seams are now deliberately narrow: DMG-only `BGP`/`OBP0` live-write panel paths, sprite-coupled `STAT` publication seams, `SCX` startup carry handling, and the single-placeholder Acid2 startup-tail cleanup. Keep these as targeted hardware hypotheses, not general FIFO rewrite permissions.
+- The `m3_lcdc_bg_map_change.gb` closure is also deliberately narrow: the curated `SkipBoot` case must seed the DMG boot trademark tile because the ROM reuses tile `$19` as sprite data, and the DMG `LCDC.3` map-change fix now relies on startup continuation / visible-tile2 live-refetch control rather than a synthetic `visible_tile2_window` repaint prefix.
 - Working hypothesis: the remaining Mode `3` debt sits around startup dummy / first-fetch / restart-lane timing and live-write onset classes, not another broad visible-FIFO retargeting pass.
 
 #### Open TODOs
@@ -52,20 +53,11 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
   | Tier | Orders | Remaining ROMs |
   | --- | --- | --- |
-  | LCDC BG toggles | `33-35` | `m3_lcdc_bg_en_change`, `m3_lcdc_bg_map_change`, `m3_lcdc_tile_sel_change` |
+  | LCDC BG toggles | `35` | `m3_lcdc_tile_sel_change` |
   | LCDC OBJ toggles | `36-39` | `m3_lcdc_obj_en_change`, `m3_lcdc_obj_en_change_variant`, `m3_lcdc_obj_size_change`, `m3_lcdc_obj_size_change_scx` |
   | Window mechanics | `40-49` | `m3_window_timing`, `m3_window_timing_wx_0`, `m3_lcdc_win_map_change`, `m3_lcdc_tile_sel_win_change`, `m3_lcdc_win_en_change_multiple`, `m3_lcdc_win_en_change_multiple_wx`, `m3_wx_4_change`, `m3_wx_5_change`, `m3_wx_6_change`, `m3_wx_4_change_sprites` |
 
-- [PPU][M3-LCDC0-LEFT-EDGE-ONSET] `m3_lcdc_bg_en_change.gb` is the active blocker. It is still red after fixing the broader bug where `LCDC.0 = 0` stopped consuming BG FIFO pixels.
-  - Remaining mismatch: left edge plus the first four live `FF40` toggles per tested scanline.
-  - Probe cadence on `LY = 1`: `FF40 <- {0x92, 0x93, 0x92, 0x93}` at `visible_pixels_output = {4, 16, 24, 32}` / `line_dot = {104, 116, 124, 132}`.
-  - Startup positions to compare:
-    - lower-mismatch class: first write at `StartupAlignmentFill pixel_index = 3`, `startup_fifo_placeholders = 3`, then `VisibleTile2 pixel_index = 7`, `VisibleTile3 pixel_index = 7`, and `Ordinary pixel_index = 7`.
-    - worst-band class: first write at `StartupAlignmentFill pixel_index = 6`, `startup_fifo_placeholders = 0`, then `VisibleTile3 pixel_index = 2` and `Ordinary pixel_index = 2`.
-  - In the worst-band class, the external framebuffer mismatch begins before the first `FF40` write, so do not treat this as a pure per-write `LCDC.0` onset bug.
-  - Rejected experiments: pinning only `StartupAlignmentFill` to pre-write `LCDC.0` regressed `1556 -> 1773` mismatching pixels; pinning materialized BG slices plus `push/fill pending` slices regressed to `3617`.
-
-- [PPU][STARTUP-DUMMY-SEED-DEFERRED] A March 28 experiment moving the dummy-startup fill to discard-first-BG-fetch (docboy-style) improved `m3_lcdc_bg_map_change` (`978 -> 722`) but regressed raster tests, `acid/dmg-acid2.gb`, and `m3_scy_change` (`7266 -> 10099`). Confirms the remaining left-edge debt sits in the startup dummy/first-fetch seam, but the fix must preserve stable startup timing and `acid` baseline.
+- [PPU][STARTUP-DUMMY-SEED-DEFERRED] A March 28 experiment moving the dummy-startup fill to discard-first-BG-fetch (docboy-style) improved `m3_lcdc_bg_map_change` (`978 -> 722`) but regressed raster tests, `acid/dmg-acid2.gb`, and `m3_scy_change` (`7266 -> 10099`). Confirms the remaining `LCDC` map/tile/window debt still touches the startup dummy / first-fetch seam, but the fix must preserve stable startup timing and `acid` baseline.
 
 - [PPU][MODE3-PUSH-ARBITRATION-DEFERRED] A March 26 attempt at strict FIFO-empty BG push plus OBJ-start arbitration regressed multiple external families at once (`mooneye hblank_ly_scx_timing-GS`, `intr_2_mode0_timing`, `hacktix/strikethrough`, `mealybug m3_bgp_change`). Any future pass here needs a wider shared BG/window/OBJ fetcher contract rewrite, with external report comparison as a hard gate.
 
@@ -90,8 +82,8 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
   - `daid/ppu_scanline_bgp.gb` (`MEDIUM`, order `41`): visible raster and post-boot state coverage for per-scanline `BGP`.
   - `hacktix/bully.gb` (`HIGH`, order `139`): visible raster and post-boot state coverage for visible VRAM / tilemap seed after boot.
 - Keep the following focused no-regression set while touching panel-path palette behavior, startup/restart timing, sprite-coupled mode boundaries, `SCX/SCY`, or remaining live-write families: `mealybug ppu/{m3_bgp_change,m3_bgp_change_sprites,m3_obp0_change,m3_scx_low_3_bits,m3_scx_high_5_bits,m3_scy_change}.gb`, `mooneye acceptance/ppu/{hblank_ly_scx_timing-GS,intr_2_mode0_timing_sprites,lcdon_timing-GS,lcdon_write_timing-GS}.gb`, `hacktix/strikethrough.gb`, and `blargg oam_bug/{4-scanline_timing,5-timing_bug}.gb`.
-- Do not reopen generic startup realignment, broad tilemap rereads, broad cached-slice / visible-FIFO retargeting, broad `SCX`/`SCY` retargeting, fill-only `LCDC.0` overrides, materialized-slice-only `LCDC.0` overrides, or isolated "strict push" experiments before a new oracle shows the fault starts there.
-- For `m3_lcdc_bg_en_change.gb`, localize the left-edge onset rules across the four `FF40` write points together; do not retry a fill-only or generic materialized-slice override.
+- Do not reopen generic startup realignment, broad tilemap rereads, broad cached-slice / visible-FIFO retargeting, broad `SCX`/`SCY` retargeting, fill-only `LCDC.0` overrides, materialized-slice-only `LCDC.0` overrides, synthetic `visible_tile2_window` repaint windows, or isolated "strict push" experiments before a new oracle shows the fault starts there.
+- For the remaining `LCDC` live-write families, keep onset rules localized per write class and per boundary; do not retry a fill-only or generic materialized-slice override.
 - When a candidate fix touches `STAT`, LCD restart, or sprite-coupled mode boundaries, rerun the narrow mooneye LCD timing slice before trusting any localized improvement.
 
 ### Phase 5 — Input and simple peripherals

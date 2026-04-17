@@ -38,6 +38,7 @@ rom = "ppu/m3_lcdc_bg_map_change.gb"
 timeout_frames = 30
 oracle = "framebuffer-fixture"
 fixture = "crates/gb-test-runner/data/fixtures/mealybug/m3_lcdc_bg_map_change_dmg_blob.png"
+startup_memory_profile = "dmg-boot-trademark-tile"
 
 [[case]]
 id = "mealybug-m3-lcdc-obj-en-change"

@@ -25,6 +25,10 @@ impl Ppu {
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             visible_registers: PpuVisibleRegisters::default(),
             pipeline_registers: PpuVisibleRegisters::default(),
+            dmg_lcdc0_current_line_bg_enable_write_count: 0,
+            dmg_lcdc3_current_line_bg_tilemap_write_count: 0,
+            dmg_lcdc0_bg_enable_visible_hold_override: None,
+            dmg_lcdc0_bg_enable_visible_hold_pixels_remaining: 0,
             dmg_bgp_cpu_commit_output_palette_override: None,
             dmg_bgp_cpu_commit_output_delay_pixels_remaining: 0,
             dmg_bgp_cpu_commit_output_followup_palette_override: None,
@@ -187,6 +191,8 @@ impl Ppu {
             ) {
                 self.bg_pipeline_state
                     .mark_live_lcdc3_write_while_fifo_visible(write_context);
+                self.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
+                self.apply_dmg_lcdc0_live_bg_enable_write(write_context);
             }
             if matches!(
                 live_background_register,
@@ -495,6 +501,10 @@ impl Ppu {
         self.obp0 = None;
         self.obp1 = None;
         self.obj_palette_read_policy = startup_state.obj_palette_read_policy;
+        self.dmg_lcdc0_current_line_bg_enable_write_count = 0;
+        self.dmg_lcdc3_current_line_bg_tilemap_write_count = 0;
+        self.dmg_lcdc0_bg_enable_visible_hold_override = None;
+        self.dmg_lcdc0_bg_enable_visible_hold_pixels_remaining = 0;
         self.dmg_bgp_cpu_commit_output_palette_override = None;
         self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 0;
         self.dmg_bgp_cpu_commit_output_followup_palette_override = None;
@@ -642,6 +652,10 @@ impl Ppu {
                 self.mode2_scan_state.reset_scanline();
                 self.bg_pipeline_state.reset();
                 self.obj_pipeline_state.reset();
+                self.dmg_lcdc0_current_line_bg_enable_write_count = 0;
+                self.dmg_lcdc3_current_line_bg_tilemap_write_count = 0;
+                self.dmg_lcdc0_bg_enable_visible_hold_override = None;
+                self.dmg_lcdc0_bg_enable_visible_hold_pixels_remaining = 0;
                 self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override = None;
                 self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining = 0;
                 self.dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette = None;
@@ -700,11 +714,16 @@ impl Ppu {
             bg_fetcher_stage_dot: self.bg_pipeline_state.fetcher.stage_dot,
             bg_fetcher_tile_map_address: self.bg_pipeline_state.fetcher.tile_map_address,
             bg_fetcher_tile_data_address: self.bg_pipeline_state.fetcher.tile_data_address,
+            bg_fetcher_tile_index: self.bg_pipeline_state.fetcher.tile_index,
+            bg_fetcher_tile_low: self.bg_pipeline_state.fetcher.tile_low,
+            bg_fetcher_tile_high: self.bg_pipeline_state.fetcher.tile_high,
             bg_push_pending: self.bg_pipeline_state.push.pending,
+            bg_push_cached: snapshot_bg_cached_slice(self.bg_pipeline_state.push.cached),
             bg_push_disposition: snapshot_bg_push_disposition(
                 self.bg_pipeline_state.push.disposition,
             ),
             bg_fill_pending: self.bg_pipeline_state.fill.pending,
+            bg_fill_cached: snapshot_bg_cached_slice(self.bg_pipeline_state.fill.cached),
             bg_fifo_pixels: self.bg_pipeline_state.fifo.iter().copied().collect(),
             bg_fifo_cached_pixels: self
                 .bg_pipeline_state
