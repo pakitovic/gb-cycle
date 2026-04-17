@@ -85,6 +85,10 @@ impl FrontendInputState {
         }
     }
 
+    pub fn reset(&mut self) {
+        *self = Self::new();
+    }
+
     pub fn set_keyboard_button(
         &mut self,
         machine: &mut Machine<TraceSummaryBuffer>,

@@ -79,6 +79,16 @@ const PERFORMANCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const EXPECTED_SCANLINE_T_CYCLES: usize = 456;
 const INPUT_POLL_SLICE_T_CYCLES: usize = 256;
 const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
+const LINKED_SECONDARY_KEYBOARD_BINDINGS: [(JoypadButton, Scancode); 8] = [
+    (JoypadButton::Up, Scancode::W),
+    (JoypadButton::Down, Scancode::S),
+    (JoypadButton::Left, Scancode::A),
+    (JoypadButton::Right, Scancode::D),
+    (JoypadButton::A, Scancode::V),
+    (JoypadButton::B, Scancode::C),
+    (JoypadButton::Select, Scancode::Q),
+    (JoypadButton::Start, Scancode::E),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FramebufferDimensions {
@@ -164,6 +174,7 @@ struct FrontendRuntime {
     paused: bool,
     menu_state: OverlayMenuState,
     input_state: FrontendInputState,
+    secondary_input_state: FrontendInputState,
     keyboard_bindings: KeyboardBindings,
     video_options: VideoOptions,
     audio_volume_percent: u8,
@@ -2773,6 +2784,7 @@ fn run_desktop_with_startup_fallback_persistence(
         paused: !session.has_loaded_rom(),
         menu_state: OverlayMenuState::default(),
         input_state,
+        secondary_input_state: FrontendInputState::new(),
         keyboard_bindings: session.config.input.keyboard,
         video_options: session.config.video.clone(),
         audio_volume_percent: session.config.audio.volume_percent,
@@ -3418,12 +3430,16 @@ fn process_events(
     let events = event_pump.poll_iter().collect::<Vec<_>>();
     for event in events {
         if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-            gamepad_manager.handle_event(&event, &mut runtime.input_state, machine)?;
+            gamepad_manager.handle_event(
+                &event,
+                &mut runtime.input_state,
+                machine.primary_machine_mut(),
+            )?;
             if let Event::ControllerButtonDown { which, .. } = &event {
                 gamepad_manager.activate_gamepad_from_input(
                     gamepad_event_joystick_id(*which),
                     &mut runtime.input_state,
-                    machine,
+                    machine.primary_machine_mut(),
                 );
             }
         }
@@ -3599,6 +3615,7 @@ fn process_events(
         match event {
             Event::KeyDown {
                 keycode: Some(keycode),
+                scancode,
                 repeat,
                 ..
             } => {
@@ -3646,13 +3663,26 @@ fn process_events(
                 if let Some(button) =
                     joypad_button_for_key(runtime.keyboard_bindings.joypad, keycode)
                 {
-                    runtime
-                        .input_state
-                        .set_keyboard_button(machine, button, true);
+                    runtime.input_state.set_keyboard_button(
+                        machine.primary_machine_mut(),
+                        button,
+                        true,
+                    );
+                }
+                if let Some(scancode) = scancode
+                    && let Some(button) = linked_secondary_joypad_button_for_scancode(scancode)
+                    && let Some(secondary_machine) = machine.secondary_machine_mut()
+                {
+                    runtime.secondary_input_state.set_keyboard_button(
+                        secondary_machine,
+                        button,
+                        true,
+                    );
                 }
             }
             Event::KeyUp {
                 keycode: Some(keycode),
+                scancode,
                 repeat,
                 ..
             } => {
@@ -3662,9 +3692,21 @@ fn process_events(
                 if let Some(button) =
                     joypad_button_for_key(runtime.keyboard_bindings.joypad, keycode)
                 {
-                    runtime
-                        .input_state
-                        .set_keyboard_button(machine, button, false);
+                    runtime.input_state.set_keyboard_button(
+                        machine.primary_machine_mut(),
+                        button,
+                        false,
+                    );
+                }
+                if let Some(scancode) = scancode
+                    && let Some(button) = linked_secondary_joypad_button_for_scancode(scancode)
+                    && let Some(secondary_machine) = machine.secondary_machine_mut()
+                {
+                    runtime.secondary_input_state.set_keyboard_button(
+                        secondary_machine,
+                        button,
+                        false,
+                    );
                 }
             }
             _ => {}
@@ -3677,7 +3719,8 @@ fn process_events(
     }
 
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-        gamepad_manager.poll_active_gamepad_state(&mut runtime.input_state, machine);
+        gamepad_manager
+            .poll_active_gamepad_state(&mut runtime.input_state, machine.primary_machine_mut());
     }
     sync_gamepad_rumble(runtime, machine, Instant::now())?;
 
@@ -4026,7 +4069,7 @@ fn toggle_menu(
     event_pump: &sdl3::EventPump,
     window: &Window,
     session: &DesktopSession,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
 ) -> Result<(), String> {
     if runtime.menu_state.is_open() {
@@ -4428,7 +4471,7 @@ fn rebuild_machine_for_config(
     for warning in &boot_rom_fallback_warnings {
         log_boot_rom_fallback_warning(Some(warning));
     }
-    context.runtime.input_state.clear_all(context.machine);
+    clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
     context.runtime.save_session = next_save_session;
     context.runtime.secondary_save_session = next_secondary_save_session;
@@ -4575,7 +4618,7 @@ fn open_selected_rom(
         context.settings_store.remember_loaded_rom(rom_path)?;
         context.session.recent_roms = context.settings_store.recent_roms().to_vec();
     }
-    context.runtime.input_state.clear_all(context.machine);
+    clear_live_input_state(context.machine, context.runtime);
     *context.machine = DesktopEmulationSession::new_single(next_machine);
     context.runtime.save_session = next_save_session;
     context.runtime.secondary_save_session = None;
@@ -4616,29 +4659,62 @@ fn open_selected_linked_secondary_rom(
     flush_pending_printer_output(canvas.window(), context.session, context.runtime);
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
+    let Some(primary_rom_bytes) = context.session.rom_bytes() else {
+        return Err(
+            "GAME LINK requires a primary ROM before selecting a second cartridge".to_string(),
+        );
+    };
+    let primary_battery_backed_state = uses_battery_backed_hardware_persistence(
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistence_metadata(),
+    )
+    .then(|| {
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistent_state()
+    });
+
     let next_secondary_rom = load_selected_rom(selected_path, context.session)?;
+    let loaded_primary = load_machine_for_rom(
+        &context.session.config,
+        &context.session.current_dir,
+        primary_rom_bytes,
+    )?;
     let loaded_secondary = load_machine_for_rom(
         &context.session.config,
         &context.session.current_dir,
         &next_secondary_rom.bytes,
     )?;
+    if loaded_primary.effective_config != loaded_secondary.effective_config {
+        return Err(
+            "activating GAME LINK produced divergent effective configs between primary and secondary machines"
+                .to_string(),
+        );
+    }
+
+    log_boot_rom_fallback_warning(loaded_primary.boot_rom_fallback_warning.as_deref());
+    write_cartridge_diagnostics(&loaded_primary.diagnostics);
     log_boot_rom_fallback_warning(loaded_secondary.boot_rom_fallback_warning.as_deref());
     write_cartridge_diagnostics(&loaded_secondary.diagnostics);
 
-    let effective_config = loaded_secondary.effective_config;
+    let effective_config = loaded_primary.effective_config;
     let config_fell_back = effective_config != context.session.config;
-    let secondary_machine = loaded_secondary.machine;
-
-    if let Some(save_session) = &mut context.runtime.secondary_save_session
-        && let Some(previous_secondary_machine) = context.machine.secondary_machine()
+    let mut next_machine = DesktopEmulationSession::new_single(loaded_primary.machine);
+    if let Some(persistent_state) = primary_battery_backed_state
+        && let Err(error) = next_machine
+            .primary_machine_mut()
+            .restore_cartridge_persistent_state(&persistent_state)
     {
-        save_session.close(previous_secondary_machine)?;
+        return Err(format!(
+            "failed to restore battery-backed persistence while activating GAME LINK: {error:?}"
+        ));
     }
-
-    if context.machine.is_linked_dmg04_two_player() {
-        context.machine.detach_to_single_primary();
-    }
-    context.machine.attach_secondary_dmg04(secondary_machine)?;
+    next_machine.attach_secondary_dmg04(loaded_secondary.machine)?;
 
     let next_session = DesktopSession {
         config: effective_config.clone(),
@@ -4649,13 +4725,19 @@ fn open_selected_linked_secondary_rom(
         recent_roms: context.session.recent_roms.clone(),
         external_port_selection: DesktopExternalPortSelection::GameLink,
     };
+    let next_primary_save_session =
+        open_save_session_for_session(&next_session, next_machine.primary_machine_mut())?;
     let next_secondary_save_session = open_secondary_save_session_for_session(
         &next_session,
-        context
-            .machine
+        next_machine
             .secondary_machine_mut()
             .expect("linked desktop session should expose a secondary machine"),
     )?;
+
+    close_runtime_save_sessions(context.runtime, context.machine)?;
+    if let Some(audio_output) = &mut context.runtime.audio_output {
+        audio_output.clear_buffer()?;
+    }
 
     context.session.config = effective_config;
     context.session.linked_secondary_rom = next_session.linked_secondary_rom;
@@ -4670,7 +4752,9 @@ fn open_selected_linked_secondary_rom(
             .settings_store
             .persist_machine_preferences(&context.session.config)?;
     }
-    context.runtime.input_state.clear_all(context.machine);
+    clear_live_input_state(context.machine, context.runtime);
+    *context.machine = next_machine;
+    context.runtime.save_session = next_primary_save_session;
     context.runtime.secondary_save_session = next_secondary_save_session;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
@@ -4687,20 +4771,20 @@ fn open_selected_linked_secondary_rom(
 
 fn open_menu(
     window: &Window,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     session: &DesktopSession,
     runtime: &mut FrontendRuntime,
 ) -> Result<(), String> {
     runtime
         .menu_state
         .open(current_menu_presentation(window, runtime, machine, session));
-    runtime.input_state.clear_all(machine);
+    clear_live_input_state(machine, runtime);
     sync_audio_playback_state(machine, runtime)
 }
 
 fn close_menu(
     event_pump: &sdl3::EventPump,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
 ) -> Result<(), String> {
     runtime.menu_state.close();
@@ -5010,7 +5094,7 @@ fn execute_menu_action(
                     &mut context.runtime.input_state,
                     context.machine,
                 );
-                context.runtime.input_state.clear_all(context.machine);
+                clear_live_input_state(context.machine, context.runtime);
                 context
                     .settings_store
                     .set_gamepad_directional_source(next_directional_source)?;
@@ -5680,18 +5764,33 @@ fn set_keyboard_binding_value(
 fn sync_live_input_state(
     event_pump: &sdl3::EventPump,
     keyboard_bindings: &KeyboardBindings,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
 ) {
-    runtime.input_state.clear_all(machine);
+    clear_live_input_state(machine, runtime);
     sync_keyboard_state(
         event_pump,
         keyboard_bindings,
         &mut runtime.input_state,
-        machine,
+        machine.primary_machine_mut(),
+    );
+    sync_linked_secondary_keyboard_state(
+        event_pump,
+        &mut runtime.secondary_input_state,
+        machine.secondary_machine_mut(),
     );
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-        gamepad_manager.sync_active_gamepad_state(&mut runtime.input_state, machine);
+        gamepad_manager
+            .sync_active_gamepad_state(&mut runtime.input_state, machine.primary_machine_mut());
+    }
+}
+
+fn clear_live_input_state(machine: &mut DesktopEmulationSession, runtime: &mut FrontendRuntime) {
+    runtime.input_state.clear_all(machine.primary_machine_mut());
+    if let Some(secondary_machine) = machine.secondary_machine_mut() {
+        runtime.secondary_input_state.clear_all(secondary_machine);
+    } else {
+        runtime.secondary_input_state.reset();
     }
 }
 
@@ -5721,6 +5820,32 @@ fn sync_keyboard_state(
             keyboard_state.is_scancode_pressed(desktop_key_scancode(desktop_key)),
         );
     }
+}
+
+fn sync_linked_secondary_keyboard_state(
+    event_pump: &sdl3::EventPump,
+    input_state: &mut FrontendInputState,
+    machine: Option<&mut Machine<TraceSummaryBuffer>>,
+) {
+    let Some(machine) = machine else {
+        input_state.reset();
+        return;
+    };
+
+    let keyboard_state = event_pump.keyboard_state();
+    for (joypad_button, scancode) in LINKED_SECONDARY_KEYBOARD_BINDINGS {
+        input_state.set_keyboard_button(
+            machine,
+            joypad_button,
+            keyboard_state.is_scancode_pressed(scancode),
+        );
+    }
+}
+
+fn linked_secondary_joypad_button_for_scancode(scancode: Scancode) -> Option<JoypadButton> {
+    LINKED_SECONDARY_KEYBOARD_BINDINGS
+        .into_iter()
+        .find_map(|(button, binding)| (binding == scancode).then_some(button))
 }
 
 fn desktop_key_scancode(binding: DesktopKey) -> Scancode {
@@ -5968,7 +6093,7 @@ fn reset_machine(
         audio_output.clear_buffer()?;
     }
 
-    runtime.input_state.clear_all(machine);
+    clear_live_input_state(machine, runtime);
     *machine = reset_machine;
     runtime.save_session = next_save_session;
     runtime.secondary_save_session = next_secondary_save_session;
@@ -6471,7 +6596,7 @@ mod tests {
     use sdl3::event::Event;
     use sdl3::gamepad::Button;
     use sdl3::joystick::JoystickId;
-    use sdl3::keyboard::{Keycode, Mod};
+    use sdl3::keyboard::{Keycode, Mod, Scancode};
     use sdl3::render::Canvas;
     use sdl3::video::Window;
     use std::collections::VecDeque;
@@ -6744,7 +6869,6 @@ mod tests {
         )
         .expect("secondary link ROM should be writable");
 
-        harness.machine.write_bus(0xC000, 0x5A);
         harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::LinkedSecondary;
         harness
             .runtime
@@ -6755,6 +6879,7 @@ mod tests {
         harness
             .process_pending_open_rom_dialog()
             .expect("secondary ROM selection should activate GAME LINK");
+        harness.machine.write_bus(0xC000, 0x5A);
         harness
             .machine
             .secondary_machine_mut()
@@ -6788,6 +6913,51 @@ mod tests {
             ExternalPortAttachmentKind::None
         );
         assert_eq!(harness.machine.read_bus(0xC000), 0x5A);
+    }
+
+    #[test]
+    fn game_link_activation_rebuilds_an_advanced_primary_into_a_fresh_linked_session() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-fresh-sync", true, false, false);
+        let secondary_rom_path = harness.root.join("linked-secondary.gb");
+        fs::write(
+            &secondary_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("secondary link ROM should be writable");
+
+        for _ in 0..256 {
+            harness.machine.step_t_cycle();
+        }
+        assert_ne!(harness.machine.next_t_cycle(), gb_core::TCycle::ZERO);
+
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::LinkedSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(secondary_rom_path))
+            .expect("secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("advanced primary should still activate GAME LINK");
+
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert_eq!(
+            harness.machine.primary_machine().next_t_cycle(),
+            gb_core::TCycle::ZERO
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("secondary linked machine should exist")
+                .next_t_cycle(),
+            gb_core::TCycle::ZERO
+        );
     }
 
     #[test]
@@ -6875,9 +7045,18 @@ mod tests {
     }
 
     fn push_key_event(events: &sdl3::EventSubsystem, keycode: Keycode, down: bool) {
-        let desktop_key =
-            desktop_key_from_keycode(keycode).expect("test keycode should map to a desktop key");
-        let scancode = desktop_key_scancode(desktop_key);
+        let scancode = desktop_key_from_keycode(keycode)
+            .map(desktop_key_scancode)
+            .unwrap_or_else(|| keycode_to_test_scancode(keycode));
+        push_key_event_with_scancode(events, keycode, scancode, down);
+    }
+
+    fn push_key_event_with_scancode(
+        events: &sdl3::EventSubsystem,
+        keycode: Keycode,
+        scancode: Scancode,
+        down: bool,
+    ) {
         let event = if down {
             Event::KeyDown {
                 timestamp: 0,
@@ -6905,6 +7084,20 @@ mod tests {
         events
             .push_event(event)
             .expect("keyboard event should be pushable");
+    }
+
+    fn keycode_to_test_scancode(keycode: Keycode) -> Scancode {
+        match keycode {
+            Keycode::A => Scancode::A,
+            Keycode::C => Scancode::C,
+            Keycode::D => Scancode::D,
+            Keycode::E => Scancode::E,
+            Keycode::Q => Scancode::Q,
+            Keycode::S => Scancode::S,
+            Keycode::V => Scancode::V,
+            Keycode::W => Scancode::W,
+            _ => panic!("test keycode should map to a desktop key"),
+        }
     }
 
     fn schedule_key_sequence(sequence: Vec<(Keycode, bool)>) -> thread::JoinHandle<()> {
@@ -7094,6 +7287,7 @@ mod tests {
                 paused: !with_rom,
                 menu_state: super::OverlayMenuState::default(),
                 input_state,
+                secondary_input_state: super::FrontendInputState::new(),
                 keyboard_bindings: config.input.keyboard,
                 video_options: config.video.clone(),
                 audio_volume_percent: config.audio.volume_percent,
@@ -7152,6 +7346,14 @@ mod tests {
                 .event()
                 .expect("frontend harness event subsystem should initialize");
             push_key_event(&events, keycode, down);
+        }
+
+        fn push_key_with_scancode(&self, keycode: Keycode, scancode: Scancode, down: bool) {
+            let events = self
+                .sdl
+                .event()
+                .expect("frontend harness event subsystem should initialize");
+            push_key_event_with_scancode(&events, keycode, scancode, down);
         }
 
         fn process_events(&mut self) -> Result<super::LoopSignal, String> {
@@ -9864,6 +10066,73 @@ mod tests {
         )
         .expect("HUD frame should render");
         assert!(rgb_frame.iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn linked_runtime_routes_primary_and_secondary_keyboard_input_independently() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("linked-keyboard-routing", true, false, false);
+        let secondary_machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        harness
+            .machine
+            .attach_secondary_dmg04(secondary_machine)
+            .expect("secondary machine should attach");
+
+        harness.push_key(Keycode::Z, true);
+        harness.push_key_with_scancode(Keycode::W, Scancode::W, true);
+        harness
+            .process_events()
+            .expect("linked keyboard press should process");
+        harness.machine.step_t_cycle();
+
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0x20
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("linked runtime should expose a secondary machine")
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0x04
+        );
+
+        harness.push_key(Keycode::Z, false);
+        harness.push_key_with_scancode(Keycode::W, Scancode::W, false);
+        harness
+            .process_events()
+            .expect("linked keyboard release should process");
+        harness.machine.step_t_cycle();
+
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("linked runtime should expose a secondary machine")
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0
+        );
     }
 
     #[test]

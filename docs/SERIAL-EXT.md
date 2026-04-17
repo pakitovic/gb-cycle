@@ -558,10 +558,16 @@ steps:
 
 When the peer ROM is chosen:
 
-- `gb-desktop` promotes the runtime into a real two-console `DMG-04` session
+- `gb-desktop` rebuilds both cartridges into a fresh synchronized two-console
+  `DMG-04` session
 - the desktop session tracks the linked secondary ROM explicitly
 - save flushing / close handling now covers both cartridges
 - reset and configuration rebuild paths preserve the linked two-console runtime
+
+This current desktop cut intentionally prefers a valid shared linked timeline
+over hot-plugging a second independently-aged runtime into the existing primary
+machine. A later phase can revisit true mid-session cable attachment if the
+frontend/runtime model grows that support.
 
 Switching back to `NONE` or `PRINTER` tears the session back down to the
 single primary machine while preserving the current primary runtime state.
@@ -596,6 +602,25 @@ phases:
 - input is still primary-only
 - audio policy is still primary-only
 - no second OS window exists yet
+
+### Phase 7.4 status
+
+Desktop now routes a first minimal independent host input policy for the
+two-console `DMG-04` session:
+
+- the existing configurable keyboard and gamepad bindings still drive `P1`
+- `P2` now receives a fixed temporary keyboard mapping:
+  - `W` / `S` / `A` / `D` for directions
+  - `V` = `A`
+  - `C` = `B`
+  - `Q` = `SELECT`
+  - `E` = `START`
+
+This keeps the scope intentionally narrow:
+
+- the second-console mapping lives entirely in `gb-desktop`
+- no player-slot abstraction or persistent per-player rebinding exists yet
+- gamepad input remains primary-only until the later player-slot phase
 
 ### Crates / files
 
