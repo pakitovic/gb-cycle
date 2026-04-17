@@ -6,3 +6,10 @@ rust-version = "1.93"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "cpu_phase6"
+harness = false

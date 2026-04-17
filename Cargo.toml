@@ -7,3 +7,6 @@ members = [
     "crates/gb-desktop",
 ]
 resolver = "2"
+
+[profile.bench]
+debug = true
