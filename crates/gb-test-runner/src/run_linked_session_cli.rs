@@ -423,6 +423,66 @@ mod tests {
     }
 
     #[test]
+    fn built_in_contract_suite_runs_stale_byte_reuse_case_through_the_cli() {
+        let mut output = Vec::new();
+        run_linked_session_command_with_runner(
+            [
+                "--suite",
+                "linked-dmg04-contracts",
+                "--session",
+                "dmg04-stale-left-serial-hex",
+            ],
+            LinkedSessionRunner::new(),
+            &mut output,
+        )
+        .expect("built-in linked stale-byte contract suite should succeed");
+        let output = String::from_utf8(output).expect("run output should be utf-8");
+        assert!(output.contains("session=dmg04-stale-left-serial-hex outcome=PASS"));
+        assert!(output.contains("participant=left outcome=PASS"));
+        assert!(output.contains("serial_hex=A5A5"));
+    }
+
+    #[test]
+    fn built_in_contract_suite_runs_double_master_case_through_the_cli() {
+        let mut output = Vec::new();
+        run_linked_session_command_with_runner(
+            [
+                "--suite",
+                "linked-dmg04-contracts",
+                "--session",
+                "dmg04-double-master-left-snapshot",
+            ],
+            LinkedSessionRunner::new(),
+            &mut output,
+        )
+        .expect("built-in linked double-master contract suite should succeed");
+        let output = String::from_utf8(output).expect("run output should be utf-8");
+        assert!(output.contains("session=dmg04-double-master-left-snapshot outcome=PASS"));
+        assert!(output.contains("participant=left outcome=PASS"));
+        assert!(output.contains("participant=right outcome=PASS"));
+    }
+
+    #[test]
+    fn built_in_contract_suite_runs_open_line_case_through_the_cli() {
+        let mut output = Vec::new();
+        run_linked_session_command_with_runner(
+            [
+                "--suite",
+                "linked-dmg04-contracts",
+                "--session",
+                "dmg04-open-line-left-snapshot",
+            ],
+            LinkedSessionRunner::new(),
+            &mut output,
+        )
+        .expect("built-in linked open-line contract suite should succeed");
+        let output = String::from_utf8(output).expect("run output should be utf-8");
+        assert!(output.contains("session=dmg04-open-line-left-snapshot outcome=PASS"));
+        assert!(output.contains("participant=left outcome=PASS"));
+        assert!(output.contains("participant=right outcome=PASS"));
+    }
+
+    #[test]
     fn selecting_an_unknown_session_fails() {
         let error = run_linked_session_command_with_runner(
             ["--suite", "linked-dmg04-smoke", "--session", "missing"],

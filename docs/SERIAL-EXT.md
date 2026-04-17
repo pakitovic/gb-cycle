@@ -404,7 +404,10 @@ expectations without relying mostly on whole-session trace or snapshot fixtures.
   outputs so failures stay easy to inspect and compare
 - Add at least one richer `DMG-04` linked suite beyond the initial smoke case,
   covering behaviors that matter to the cable protocol rather than only the
-  final state
+  final state, starting with stale-byte reuse through compact participant
+  `serial_hex` contracts, then unsupported double-master behavior through
+  participant snapshot contracts, and then open-line behavior for a
+  non-participating far end
 
 ##### Design guidance
 

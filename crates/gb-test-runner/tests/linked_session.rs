@@ -61,24 +61,38 @@ fn load_fixture_backed_suite() -> gb_test_runner::LinkedSessionSuite {
 fn load_contract_suite_with_accepted_participant_fixtures() -> gb_test_runner::LinkedSessionSuite {
     let manifest_path = data_path("data/linked-dmg04-contracts.toml");
     let left_snapshot_fixture = data_path("data/fixtures/linked/dmg04/basic-left.snapshot");
+    let double_master_left_snapshot_fixture =
+        data_path("data/fixtures/linked/dmg04/double-master-left.snapshot");
+    let double_master_right_snapshot_fixture =
+        data_path("data/fixtures/linked/dmg04/double-master-right.snapshot");
+    let open_line_left_snapshot_fixture =
+        data_path("data/fixtures/linked/dmg04/open-line-left.snapshot");
 
     let suite = load_linked_session_suite_manifest(&manifest_path)
         .expect("repo linked contract manifest should load");
-    assert_eq!(suite.sessions.len(), 3);
+    assert_eq!(suite.sessions.len(), 8);
 
-    let mut snapshot_suite = suite.clone();
-    snapshot_suite.sessions = vec![snapshot_suite.sessions[2].clone()];
-    snapshot_suite.sessions[0].pass_condition =
-        LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Snapshot);
-    let snapshot_report = LinkedSessionRunner::new()
-        .run_suite(&snapshot_suite)
-        .expect("informational participant snapshot suite should execute");
-    let actual_snapshot = snapshot_report.sessions[0].participants[0]
-        .artifacts
-        .snapshot_text
-        .as_deref()
-        .expect("participant snapshot should be captured");
-    ensure_text_fixture(&left_snapshot_fixture, actual_snapshot);
+    let accept_participant_snapshot =
+        |session_index: usize, participant_index: usize, fixture_path: &Path| {
+            let mut snapshot_suite = suite.clone();
+            snapshot_suite.sessions = vec![snapshot_suite.sessions[session_index].clone()];
+            snapshot_suite.sessions[0].pass_condition =
+                LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Snapshot);
+            let snapshot_report = LinkedSessionRunner::new()
+                .run_suite(&snapshot_suite)
+                .expect("informational participant snapshot suite should execute");
+            let actual_snapshot = snapshot_report.sessions[0].participants[participant_index]
+                .artifacts
+                .snapshot_text
+                .as_deref()
+                .expect("participant snapshot should be captured");
+            ensure_text_fixture(fixture_path, actual_snapshot);
+        };
+
+    accept_participant_snapshot(2, 0, &left_snapshot_fixture);
+    accept_participant_snapshot(5, 0, &double_master_left_snapshot_fixture);
+    accept_participant_snapshot(6, 1, &double_master_right_snapshot_fixture);
+    accept_participant_snapshot(7, 0, &open_line_left_snapshot_fixture);
 
     suite
 }
@@ -127,7 +141,7 @@ fn linked_session_contract_manifest_matches_participant_scoped_oracles() {
         .expect("contract linked-session suite should execute");
 
     assert!(report.all_passed());
-    assert_eq!(report.sessions.len(), 3);
+    assert_eq!(report.sessions.len(), 8);
     assert_eq!(
         report.sessions[0].participants[0].artifacts.serial_hex,
         "A5"
@@ -137,6 +151,38 @@ fn linked_session_contract_manifest_matches_participant_scoped_oracles() {
         "3C"
     );
     assert_eq!(report.sessions[2].participants[0].participant_id, "left");
+    assert_eq!(
+        report.sessions[3].participants[0].artifacts.serial_hex,
+        "A5A5"
+    );
+    assert_eq!(
+        report.sessions[4].participants[1].artifacts.serial_hex,
+        "3CF0"
+    );
+    assert!(
+        report.sessions[5].participants[0]
+            .artifacts
+            .snapshot_text
+            .as_deref()
+            .expect("left double-master snapshot should be captured")
+            .contains("serial.sb=0xFF")
+    );
+    assert!(
+        report.sessions[6].participants[1]
+            .artifacts
+            .snapshot_text
+            .as_deref()
+            .expect("right double-master snapshot should be captured")
+            .contains("serial.sb=0xFF")
+    );
+    assert!(
+        report.sessions[7].participants[0]
+            .artifacts
+            .snapshot_text
+            .as_deref()
+            .expect("left open-line snapshot should be captured")
+            .contains("serial.sb=0xFF")
+    );
 }
 
 #[test]
