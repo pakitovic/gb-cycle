@@ -1,8 +1,9 @@
 use gb_core::{ExecutionMode, StartupMode};
 use gb_desktop::{
-    BootRomVerificationMode, DesktopConsoleModel, DesktopKey, DesktopSaveFlushPolicy,
-    GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
-    GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
+    BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
+    DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
+    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
+    MenuKeyboardBindings,
 };
 use std::time::{Duration, Instant};
 
@@ -57,7 +58,7 @@ const RECENT_ROM_SCROLL_STEP: Duration = Duration::from_millis(150);
 const RECENT_ROM_SCROLL_GAP_CHARS: usize = 3;
 pub const RECENT_ROM_MENU_CAPACITY: usize = 8;
 
-const ROOT_MENU_ITEMS: [MenuItem; 9] = [
+const ROOT_MENU_ITEMS: [MenuItem; 10] = [
     MenuItem::Resume,
     MenuItem::OpenRom,
     MenuItem::RecentMenu,
@@ -65,6 +66,7 @@ const ROOT_MENU_ITEMS: [MenuItem; 9] = [
     MenuItem::VideoMenu,
     MenuItem::AudioMenu,
     MenuItem::InputMenu,
+    MenuItem::ExtPortMenu,
     MenuItem::SystemMenu,
     MenuItem::Quit,
 ];
@@ -104,6 +106,14 @@ const INPUT_MENU_ITEMS: [MenuItem; 9] = [
     MenuItem::GamepadDirection,
     MenuItem::GamepadRumble,
     MenuItem::InputDefaults,
+    MenuItem::Return,
+];
+const EXT_PORT_MENU_ITEMS: [MenuItem; 6] = [
+    MenuItem::ExternalPortNone,
+    MenuItem::ExternalPortPrinter,
+    MenuItem::ExternalPortGameLink,
+    MenuItem::ExternalPortFourPlayerAdapter,
+    MenuItem::ExternalPortPrintedPages,
     MenuItem::Return,
 ];
 const KEYBOARD_MENU_ITEMS: [MenuItem; 9] = [
@@ -206,6 +216,7 @@ pub enum MenuAction {
     TogglePreferredGamepad,
     ResetVideoDefaults,
     ResetAudioDefaults,
+    SetExternalPort(DesktopExternalPortSelection),
     ResetInputDefaults,
     SetKeyboardBinding(KeyboardBindingTarget, DesktopKey),
     SetKeyboardMenuBinding(KeyboardMenuBindingTarget, DesktopKey),
@@ -367,6 +378,8 @@ pub struct MenuPresentation {
     pub console_model: DesktopConsoleModel,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
+    pub external_port_selection: DesktopExternalPortSelection,
+    pub printed_page_count: usize,
     pub boot_rom_uses_default_path: bool,
     pub boot_rom_verification: BootRomVerificationMode,
     pub saves_enabled: bool,
@@ -436,7 +449,7 @@ impl MenuPresentation {
             MenuItem::AudioMenu | MenuItem::ToggleMute | MenuItem::AudioVolume => {
                 self.audio_available
             }
-            MenuItem::GamepadActive => false,
+            MenuItem::GamepadActive | MenuItem::ExternalPortPrintedPages => false,
             MenuItem::GamepadPreferred => {
                 self.gamepad_available
                     && (self.active_gamepad_connected || self.preferred_gamepad_configured)
@@ -480,6 +493,7 @@ impl MenuPresentation {
             | MenuItem::HotkeyPerformanceHud
             | MenuItem::HotkeySaveBattery
             | MenuItem::InputMenu
+            | MenuItem::ExtPortMenu
             | MenuItem::VideoMenu
             | MenuItem::SystemMenu
             | MenuItem::ConsoleModel
@@ -490,6 +504,8 @@ impl MenuPresentation {
             | MenuItem::SavesEnabled
             | MenuItem::SavePolicy
             | MenuItem::SaveDefaultPath
+            | MenuItem::ExternalPortNone
+            | MenuItem::ExternalPortPrinter
             | MenuItem::Fullscreen
             | MenuItem::Vsync
             | MenuItem::WindowScale
@@ -501,6 +517,7 @@ impl MenuPresentation {
             | MenuItem::ClearRecentList
             | MenuItem::Quit
             | MenuItem::Return => true,
+            MenuItem::ExternalPortGameLink | MenuItem::ExternalPortFourPlayerAdapter => false,
         }
     }
 
@@ -522,6 +539,12 @@ impl MenuPresentation {
             MenuItem::VideoMenu => "VIDEO".to_string(),
             MenuItem::AudioMenu => "AUDIO".to_string(),
             MenuItem::InputMenu => "INPUT".to_string(),
+            MenuItem::ExtPortMenu => match self.external_port_selection {
+                DesktopExternalPortSelection::None => "EXT NONE".to_string(),
+                DesktopExternalPortSelection::Printer => "EXT PRINTER".to_string(),
+                DesktopExternalPortSelection::GameLink => "EXT LINK".to_string(),
+                DesktopExternalPortSelection::FourPlayerAdapter => "EXT 4P".to_string(),
+            },
             MenuItem::KeyboardMenu => "KEYBOARD".to_string(),
             MenuItem::KeyboardMenuControls => "KB MENU".to_string(),
             MenuItem::HotkeysMenu => "HOTKEYS".to_string(),
@@ -633,6 +656,25 @@ impl MenuPresentation {
                 }
             }
             MenuItem::InputDefaults => "DEFAULTS".to_string(),
+            MenuItem::ExternalPortNone => {
+                if self.external_port_selection == DesktopExternalPortSelection::None {
+                    "NONE ON".to_string()
+                } else {
+                    "NONE".to_string()
+                }
+            }
+            MenuItem::ExternalPortPrinter => {
+                if self.external_port_selection == DesktopExternalPortSelection::Printer {
+                    "PRINTER ON".to_string()
+                } else {
+                    "PRINTER".to_string()
+                }
+            }
+            MenuItem::ExternalPortGameLink => "GAME LINK".to_string(),
+            MenuItem::ExternalPortFourPlayerAdapter => "4P ADAPTER".to_string(),
+            MenuItem::ExternalPortPrintedPages => {
+                format!("PAGES {}", self.printed_page_count)
+            }
             MenuItem::GamepadActive => {
                 if self.active_gamepad_connected {
                     format!("ACTIVE {}", self.active_gamepad_label.as_str())
@@ -784,6 +826,7 @@ enum MenuScreen {
     Video,
     Audio,
     Input,
+    ExtPort,
     Gamepad,
     GamepadMenuControls,
     Keyboard,
@@ -806,6 +849,7 @@ impl MenuScreen {
             Self::Video => "VIDEO",
             Self::Audio => "AUDIO",
             Self::Input => "INPUT",
+            Self::ExtPort => "EXT PORT",
             Self::Gamepad => "GAMEPAD",
             Self::GamepadMenuControls => "PAD MENU",
             Self::Keyboard => "KEYBOARD",
@@ -834,6 +878,7 @@ enum MenuItem {
     VideoMenu,
     AudioMenu,
     InputMenu,
+    ExtPortMenu,
     KeyboardMenu,
     KeyboardMenuControls,
     HotkeysMenu,
@@ -861,6 +906,11 @@ enum MenuItem {
     AudioVolume,
     AudioDefaults,
     GamepadDirection,
+    ExternalPortNone,
+    ExternalPortPrinter,
+    ExternalPortGameLink,
+    ExternalPortFourPlayerAdapter,
+    ExternalPortPrintedPages,
     GamepadRumble,
     InputDefaults,
     GamepadActive,
@@ -1392,6 +1442,10 @@ impl OverlayMenuState {
                 self.push_screen(MenuScreen::Input, presentation);
                 None
             }
+            MenuItem::ExtPortMenu => {
+                self.push_screen(MenuScreen::ExtPort, presentation);
+                None
+            }
             MenuItem::KeyboardMenu => {
                 self.push_screen(MenuScreen::Keyboard, presentation);
                 None
@@ -1437,6 +1491,14 @@ impl OverlayMenuState {
             MenuItem::AudioVolume => Some(MenuAction::CycleAudioVolume),
             MenuItem::AudioDefaults => Some(MenuAction::ResetAudioDefaults),
             MenuItem::GamepadDirection => Some(MenuAction::CycleGamepadDirectionalSource),
+            MenuItem::ExternalPortNone => Some(MenuAction::SetExternalPort(
+                DesktopExternalPortSelection::None,
+            )),
+            MenuItem::ExternalPortPrinter => Some(MenuAction::SetExternalPort(
+                DesktopExternalPortSelection::Printer,
+            )),
+            MenuItem::ExternalPortGameLink | MenuItem::ExternalPortFourPlayerAdapter => None,
+            MenuItem::ExternalPortPrintedPages => None,
             MenuItem::GamepadRumble => Some(MenuAction::CycleGamepadRumbleMode),
             MenuItem::InputDefaults => Some(MenuAction::ResetInputDefaults),
             MenuItem::GamepadActive => None,
@@ -1796,6 +1858,7 @@ fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
         MenuScreen::Video => &VIDEO_MENU_ITEMS,
         MenuScreen::Audio => &AUDIO_MENU_ITEMS,
         MenuScreen::Input => &INPUT_MENU_ITEMS,
+        MenuScreen::ExtPort => &EXT_PORT_MENU_ITEMS,
         MenuScreen::Gamepad => &GAMEPAD_MENU_ITEMS,
         MenuScreen::GamepadMenuControls => &GAMEPAD_MENU_CONTROL_ITEMS,
         MenuScreen::Keyboard => &KEYBOARD_MENU_ITEMS,
@@ -2206,9 +2269,10 @@ mod tests {
     };
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
-        BootRomVerificationMode, DesktopConsoleModel, DesktopKey, DesktopSaveFlushPolicy,
-        GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings,
-        GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings, MenuKeyboardBindings,
+        BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
+        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings,
+        GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings,
+        JoypadKeyboardBindings, MenuKeyboardBindings,
     };
     use std::time::Duration;
 
@@ -2220,6 +2284,8 @@ mod tests {
             console_model: DesktopConsoleModel::Dmg,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
+            external_port_selection: DesktopExternalPortSelection::None,
+            printed_page_count: 0,
             boot_rom_uses_default_path: true,
             boot_rom_verification: BootRomVerificationMode::Strict,
             saves_enabled: true,
@@ -2515,6 +2581,7 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
@@ -2538,6 +2605,7 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
 
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -2569,6 +2637,7 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
 
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -3071,7 +3140,7 @@ mod tests {
         );
         assert_eq!(
             previous_enabled_index(MenuScreen::Root, 0, test_presentation()),
-            6
+            7
         );
 
         let mut presentation = test_presentation();
@@ -3185,6 +3254,33 @@ mod tests {
         assert_eq!(presentation.item_label(MenuItem::ToggleMute), "MUTE ON");
         presentation.audio_volume_percent = 250;
         assert_eq!(presentation.item_label(MenuItem::AudioVolume), "VOL 100%");
+
+        presentation.external_port_selection = DesktopExternalPortSelection::Printer;
+        presentation.printed_page_count = 3;
+        assert_eq!(
+            presentation.item_label(MenuItem::ExtPortMenu),
+            "EXT PRINTER"
+        );
+        assert_eq!(presentation.item_label(MenuItem::ExternalPortNone), "NONE");
+        assert_eq!(
+            presentation.item_label(MenuItem::ExternalPortPrinter),
+            "PRINTER ON"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::ExternalPortGameLink),
+            "GAME LINK"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::ExternalPortFourPlayerAdapter),
+            "4P ADAPTER"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::ExternalPortPrintedPages),
+            "PAGES 3"
+        );
+        assert!(!presentation.item_enabled(MenuItem::ExternalPortGameLink));
+        assert!(!presentation.item_enabled(MenuItem::ExternalPortFourPlayerAdapter));
+        assert!(!presentation.item_enabled(MenuItem::ExternalPortPrintedPages));
 
         presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;
         assert_eq!(
@@ -3401,6 +3497,7 @@ mod tests {
         assert_eq!(MenuScreen::Video.title(presentation), "VIDEO");
         assert_eq!(MenuScreen::Audio.title(presentation), "AUDIO");
         assert_eq!(MenuScreen::Input.title(presentation), "INPUT");
+        assert_eq!(MenuScreen::ExtPort.title(presentation), "EXT PORT");
         assert_eq!(MenuScreen::Gamepad.title(presentation), "GAMEPAD");
         assert_eq!(
             MenuScreen::GamepadMenuControls.title(presentation),
@@ -3445,6 +3542,12 @@ mod tests {
             menu.apply_item_action(MenuItem::InputMenu, presentation),
             None
         );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ExtPortMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::ExtPort);
+        menu.open(presentation);
         assert_eq!(
             menu.apply_item_action(MenuItem::SystemMenu, presentation),
             None

@@ -473,6 +473,20 @@ usable from the frontend.
 - Desktop should consume typed printer output from `gb-core`
 - Desktop should not invent printer protocol behavior of its own
 
+### Phase 6.1 status
+
+The current first cut of Phase `6` covers:
+
+- a desktop `EXT. PORT` menu
+- active selection of:
+  - `NONE`
+  - `PRINTER`
+- visible but disabled entries for:
+  - `GAME LINK`
+  - `4 PLAYER ADAPTER`
+- desktop-owned draining of `PrintedPage` output into session history so
+  printer output becomes host-visible without changing `gb-core`
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`

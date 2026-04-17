@@ -14,15 +14,15 @@ use gb_core::{
     CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
     CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, CpuSnapshot, ExecutionMode,
     InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
-    MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuStepRegion, StartupMode,
+    MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuStepRegion, PrintedPage, StartupMode,
     TraceSummaryBuffer,
 };
 use gb_desktop::{
-    BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel, DesktopKey,
-    DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
-    KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy,
-    VideoOptions,
+    BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel,
+    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
+    GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode,
+    HotkeyBindings, JoypadKeyboardBindings, KeyboardBindings, MenuKeyboardBindings,
+    PreferredGamepadIdentity, SaveDirectoryPolicy, VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveTimeSource, SystemCartridgeSaveTimeSource,
@@ -74,6 +74,7 @@ const PERFORMANCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const EXPECTED_SCANLINE_T_CYCLES: usize = 456;
 const INPUT_POLL_SLICE_T_CYCLES: usize = 256;
 const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
+const PRINTED_PAGE_HISTORY_LIMIT: usize = 32;
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
 const DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR: &str =
@@ -166,6 +167,8 @@ struct DesktopSession {
     loaded_rom: Option<LoadedRom>,
     last_open_directory: Option<PathBuf>,
     recent_roms: Vec<PathBuf>,
+    external_port_selection: DesktopExternalPortSelection,
+    printed_pages: VecDeque<PrintedPage>,
 }
 
 #[derive(Clone)]
@@ -216,6 +219,17 @@ impl DesktopSession {
 
     fn recent_roms(&self) -> &[PathBuf] {
         &self.recent_roms
+    }
+
+    fn printed_page_count(&self) -> usize {
+        self.printed_pages.len()
+    }
+
+    fn record_printed_pages(&mut self, printed_pages: Vec<PrintedPage>) {
+        self.printed_pages.extend(printed_pages);
+        while self.printed_pages.len() > PRINTED_PAGE_HISTORY_LIMIT {
+            self.printed_pages.pop_front();
+        }
     }
 }
 
@@ -2629,6 +2643,8 @@ fn run_desktop_with_startup_fallback_persistence(
         loaded_rom,
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
+        external_port_selection: DesktopExternalPortSelection::None,
+        printed_pages: VecDeque::new(),
     };
 
     let (mut machine, diagnostics) = match session.rom_bytes() {
@@ -2636,13 +2652,17 @@ fn run_desktop_with_startup_fallback_persistence(
             let loaded = load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?;
             log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
             session.config = loaded.effective_config;
-            (loaded.machine, loaded.diagnostics)
+            let mut machine = loaded.machine;
+            apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
+            (machine, loaded.diagnostics)
         }
         None => {
             let prepared = prepare_machine_config(&session.config, &session.current_dir)?;
             log_boot_rom_fallback_warning(prepared.boot_rom_fallback_warning.as_deref());
             session.config = prepared.effective_config;
-            (Machine::new_summary(prepared.machine_config), Vec::new())
+            let mut machine = Machine::new_summary(prepared.machine_config);
+            apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
+            (machine, Vec::new())
         }
     };
     if persist_startup_fallback && session.config != original_config {
@@ -3077,6 +3097,25 @@ fn load_machine_for_rom(
         diagnostics,
         boot_rom_fallback_warning: prepared.boot_rom_fallback_warning,
     })
+}
+
+fn apply_external_port_selection_to_machine(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    selection: DesktopExternalPortSelection,
+) {
+    machine.set_external_port_attachment(selection.core_attachment_kind());
+}
+
+fn drain_printed_pages_into_session(
+    session: &mut DesktopSession,
+    machine: &mut Machine<TraceSummaryBuffer>,
+) {
+    let printed_pages = machine.take_printed_pages();
+    if printed_pages.is_empty() {
+        return;
+    }
+
+    session.record_printed_pages(printed_pages);
 }
 
 fn load_initial_rom(
@@ -3533,6 +3572,7 @@ fn step_until_next_frame(
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
             context.machine.step_t_cycle();
             stepped_t_cycles += 1;
+            drain_printed_pages_into_session(context.session, context.machine);
             current_scanline_t_cycles += 1;
             context
                 .runtime
@@ -3936,6 +3976,7 @@ fn rebuild_machine_for_config(
     context: &mut FrontendActionContext<'_>,
     next_config: &DesktopConfig,
 ) -> Result<DesktopConfig, String> {
+    drain_printed_pages_into_session(context.session, context.machine);
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
     let battery_backed_state = uses_battery_backed_hardware_persistence(
@@ -3957,20 +3998,30 @@ fn rebuild_machine_for_config(
                 Some(rom_bytes) => {
                     let loaded =
                         load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?;
+                    let mut machine = loaded.machine;
+                    apply_external_port_selection_to_machine(
+                        &mut machine,
+                        context.session.external_port_selection,
+                    );
                     (
                         loaded.effective_config,
                         loaded.boot_rom_fallback_warning,
-                        loaded.machine,
+                        machine,
                         loaded.diagnostics,
                     )
                 }
                 None => {
                     let prepared =
                         prepare_machine_config(next_config, &context.session.current_dir)?;
+                    let mut machine = Machine::new_summary(prepared.machine_config);
+                    apply_external_port_selection_to_machine(
+                        &mut machine,
+                        context.session.external_port_selection,
+                    );
                     (
                         prepared.effective_config,
                         prepared.boot_rom_fallback_warning,
-                        Machine::new_summary(prepared.machine_config),
+                        machine,
                         Vec::new(),
                     )
                 }
@@ -3990,6 +4041,8 @@ fn rebuild_machine_for_config(
             loaded_rom: context.session.loaded_rom.clone(),
             last_open_directory: context.session.last_open_directory.clone(),
             recent_roms: context.session.recent_roms.clone(),
+            external_port_selection: context.session.external_port_selection,
+            printed_pages: context.session.printed_pages.clone(),
         };
         let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
         Ok((
@@ -4064,6 +4117,7 @@ fn open_selected_rom(
     selected_path: PathBuf,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<(), String> {
+    drain_printed_pages_into_session(context.session, context.machine);
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
     let had_loaded_rom = context.session.has_loaded_rom();
@@ -4096,12 +4150,18 @@ fn open_selected_rom(
     let effective_config = loaded.effective_config;
     let config_fell_back = effective_config != context.session.config;
     let mut next_machine = loaded.machine;
+    apply_external_port_selection_to_machine(
+        &mut next_machine,
+        context.session.external_port_selection,
+    );
     let next_session = DesktopSession {
         config: effective_config.clone(),
         current_dir: context.session.current_dir.clone(),
         loaded_rom: Some(next_loaded_rom),
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
+        external_port_selection: context.session.external_port_selection,
+        printed_pages: context.session.printed_pages.clone(),
     };
     let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
 
@@ -4405,6 +4465,12 @@ fn execute_menu_action(
             context.settings_store.reset_audio_defaults()?;
             Ok(None)
         }
+        MenuAction::SetExternalPort(selection) => {
+            drain_printed_pages_into_session(context.session, context.machine);
+            context.session.external_port_selection = selection;
+            apply_external_port_selection_to_machine(context.machine, selection);
+            Ok(None)
+        }
         MenuAction::CycleGamepadDirectionalSource => {
             if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
                 let next_directional_source =
@@ -4587,6 +4653,8 @@ fn current_menu_presentation(
         console_model: session.config.launch.console_model,
         startup_mode: session.config.launch.startup_mode,
         execution_mode: session.config.launch.execution_mode,
+        external_port_selection: session.external_port_selection,
+        printed_page_count: session.printed_page_count(),
         boot_rom_uses_default_path: session.config.boot_rom.search_path.is_none(),
         boot_rom_verification: session.config.boot_rom.verification,
         saves_enabled: session.config.saves.enabled,
@@ -5590,12 +5658,13 @@ mod tests {
         Apu, ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
         CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
         CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
-        JoypadSnapshot, JoypadStatus, Machine, MachineConfig, MachineStepRegion,
-        PersistentCartState, PpuStepRegion, StartupMode, TraceSummaryBuffer,
+        ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus, Machine, MachineConfig,
+        MachineStepRegion, PersistentCartState, PpuStepRegion, PrinterCommand, StartupMode,
+        TraceSummaryBuffer,
     };
     use gb_desktop::{
-        BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopKey,
-        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
+        BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
+        DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
         GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings,
     };
     use sdl3::dialog::DialogError;
@@ -5664,6 +5733,73 @@ mod tests {
         fs::write(&rom_path, build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
             .expect("test ROM should be writable");
         rom_path
+    }
+
+    fn serial_transfer_byte(machine: &mut Machine<TraceSummaryBuffer>, outgoing_byte: u8) -> u8 {
+        machine.write_bus(0xFF01, outgoing_byte);
+        machine.write_bus(0xFF02, 0x81);
+
+        while !matches!(
+            machine.serial().transfer_state(),
+            gb_core::SerialTransferState::Idle
+        ) {
+            machine.step_t_cycle();
+        }
+
+        machine.read_bus(0xFF01)
+    }
+
+    fn printer_packet(command: PrinterCommand, data: &[u8]) -> Vec<u8> {
+        let mut packet = vec![
+            0x88,
+            0x33,
+            command as u8,
+            0x00,
+            (data.len() & 0xFF) as u8,
+            ((data.len() >> 8) & 0xFF) as u8,
+        ];
+        packet.extend_from_slice(data);
+        let checksum = packet[2..]
+            .iter()
+            .fold(0u16, |sum, &byte| sum.wrapping_add(byte as u16));
+        packet.push((checksum & 0xFF) as u8);
+        packet.push((checksum >> 8) as u8);
+        packet
+    }
+
+    fn send_printer_packet(
+        machine: &mut Machine<TraceSummaryBuffer>,
+        command: PrinterCommand,
+        data: &[u8],
+    ) -> Vec<u8> {
+        printer_packet(command, data)
+            .into_iter()
+            .map(|byte| serial_transfer_byte(machine, byte))
+            .collect()
+    }
+
+    fn run_print_sequence(machine: &mut Machine<TraceSummaryBuffer>) {
+        let tile_row = vec![0xFF; 320];
+
+        send_printer_packet(machine, PrinterCommand::Data, &tile_row);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x81);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x08);
+
+        send_printer_packet(machine, PrinterCommand::Data, &[]);
+        serial_transfer_byte(machine, 0x00);
+        serial_transfer_byte(machine, 0x00);
+
+        send_printer_packet(machine, PrinterCommand::Print, &[0x01, 0x13, 0xE4, 0x40]);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x81);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x08);
+
+        send_printer_packet(machine, PrinterCommand::Status, &[]);
+        serial_transfer_byte(machine, 0x00);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x06);
+
+        send_printer_packet(machine, PrinterCommand::Status, &[]);
+        serial_transfer_byte(machine, 0x00);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x04);
     }
 
     fn schedule_quit_event() -> thread::JoinHandle<()> {
@@ -5845,6 +5981,8 @@ mod tests {
                 loaded_rom,
                 last_open_directory: Some(root.clone()),
                 recent_roms: Vec::new(),
+                external_port_selection: DesktopExternalPortSelection::None,
+                printed_pages: VecDeque::new(),
             };
 
             let sdl = sdl3::init().expect("frontend harness SDL should initialize");
@@ -9101,6 +9239,37 @@ mod tests {
     }
 
     #[test]
+    fn drain_printed_pages_into_session_collects_printer_output() {
+        let root = temp_test_root("printer-sink");
+        let mut session = super::DesktopSession {
+            config: DesktopConfig::default(),
+            current_dir: root.clone(),
+            loaded_rom: None,
+            last_open_directory: None,
+            recent_roms: Vec::new(),
+            external_port_selection: DesktopExternalPortSelection::Printer,
+            printed_pages: VecDeque::new(),
+        };
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        super::apply_external_port_selection_to_machine(
+            &mut machine,
+            session.external_port_selection,
+        );
+
+        run_print_sequence(&mut machine);
+        super::drain_printed_pages_into_session(&mut session, &mut machine);
+
+        assert_eq!(session.printed_page_count(), 1);
+        assert_eq!(machine.take_printed_pages().len(), 0);
+        assert_eq!(session.printed_pages[0].width, 160);
+        assert_eq!(session.printed_pages[0].height, 8);
+
+        fs::remove_dir_all(root).expect("temp root should be removable");
+    }
+
+    #[test]
     fn reset_machine_persists_skip_boot_when_the_boot_rom_path_goes_missing() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("reset-missing-bootrom", true, false, false);
@@ -9259,6 +9428,38 @@ mod tests {
                 .is_none()
         );
         assert_eq!(harness.runtime.audio_volume_percent, 25);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::Printer,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::Printer
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::Printer
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::None,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleGamepadDirectionalSource)
