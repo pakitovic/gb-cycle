@@ -169,6 +169,47 @@ pub(super) struct ExtraLengthClockingContext {
     pub(super) trigger_reloaded_zero_length: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(in crate::apu) struct EnvelopeState {
+    initial_volume: u8,
+    increase: bool,
+    pace: u8,
+    pub(in crate::apu) automatic_updates_enabled: bool,
+    pub(in crate::apu) timer: u8,
+    pub(in crate::apu) current_volume: u8,
+}
+
+impl EnvelopeState {
+    pub(in crate::apu) fn apply_write(&mut self, value: u8) {
+        decode_envelope_register(
+            value,
+            &mut self.initial_volume,
+            &mut self.increase,
+            &mut self.pace,
+        );
+    }
+
+    pub(in crate::apu) fn apply_live_write_effect(&mut self, active: bool, value: u8) {
+        apply_consistent_zombie_mode_increment(active, &mut self.current_volume, value);
+    }
+
+    pub(in crate::apu) fn reload(&mut self, next_step_clocks_envelope: bool) {
+        self.automatic_updates_enabled = self.pace != 0;
+        self.timer = envelope_timer_reload(self.pace) + u8::from(next_step_clocks_envelope);
+        self.current_volume = self.initial_volume;
+    }
+
+    pub(in crate::apu) fn clock(&mut self) {
+        clock_envelope_unit(
+            self.pace,
+            self.increase,
+            &mut self.timer,
+            &mut self.current_volume,
+            &mut self.automatic_updates_enabled,
+        );
+    }
+}
+
 pub(super) fn wave_ram_mmio_policy(console_model: ConsoleModel) -> WaveRamMmioPolicy {
     if console_model.is_dmg_family() {
         WaveRamMmioPolicy::DmgCurrentByteDuringFetchOnly

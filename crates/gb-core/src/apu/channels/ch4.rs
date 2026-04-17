@@ -1,14 +1,13 @@
 use crate::model::ConsoleModel;
 
 use super::super::common::{
-    ChannelRuntimeState, DAC_ENABLE_REGISTER_MASK, ExtraLengthClockingContext, LENGTH_ENABLE_BIT,
-    NOISE_CLOCK_SHIFT_MASK, NOISE_CLOCK_SHIFT_SHIFT, NOISE_DIVIDER_CODE_MASK,
+    ChannelRuntimeState, DAC_ENABLE_REGISTER_MASK, EnvelopeState, ExtraLengthClockingContext,
+    LENGTH_ENABLE_BIT, NOISE_CLOCK_SHIFT_MASK, NOISE_CLOCK_SHIFT_SHIFT, NOISE_DIVIDER_CODE_MASK,
     NOISE_LFSR_FEEDBACK_BIT, NOISE_LFSR_INITIAL_STATE, NOISE_LFSR_OUTPUT_BIT,
     NOISE_LFSR_SHORT_WIDTH_FEEDBACK_BIT, NOISE_LFSR_TAP_BIT, NOISE_SHORT_WIDTH_BIT,
     NR41_WRITE_ONLY_READ_VALUE, NR44_FORCED_HIGH_MASK, NR44_READ_MASK, NR44_WRITABLE_MASK,
-    PULSE_LENGTH_COUNTER_RELOAD, apply_consistent_zombie_mode_increment,
-    apply_extra_length_clocking_u8, begin_nrx4_write, clock_envelope_unit, clock_length_counter_u8,
-    decode_envelope_register, envelope_timer_reload, noise_clocking_suppressed, noise_timer_reload,
+    PULSE_LENGTH_COUNTER_RELOAD, apply_extra_length_clocking_u8, begin_nrx4_write,
+    clock_length_counter_u8, noise_clocking_suppressed, noise_timer_reload,
     pulse_length_counter_from_load,
 };
 use super::super::registers::Channel4Register;
@@ -22,12 +21,7 @@ pub(in crate::apu) struct Channel4State {
     pub(in crate::apu) runtime: ChannelRuntimeState,
     pub(in crate::apu) length_counter: u8,
     length_enabled: bool,
-    initial_volume: u8,
-    envelope_increase: bool,
-    envelope_pace: u8,
-    pub(in crate::apu) envelope_automatic_updates_enabled: bool,
-    pub(in crate::apu) envelope_timer: u8,
-    pub(in crate::apu) current_volume: u8,
+    pub(in crate::apu) envelope: EnvelopeState,
     pub(in crate::apu) clock_shift: u8,
     pub(in crate::apu) short_width_mode: bool,
     pub(in crate::apu) clock_divider_code: u8,
@@ -149,9 +143,7 @@ impl Channel4State {
         self.length_enabled = self.nr44 & LENGTH_ENABLE_BIT != 0;
         self.apply_envelope_write(self.nr42);
         self.decode_nr43(self.nr43);
-        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
-        self.envelope_timer = envelope_timer_reload(self.envelope_pace);
-        self.current_volume = self.initial_volume;
+        self.envelope.reload(false);
         self.period_timer = self.noise_timer_reload();
         self.lfsr_state = NOISE_LFSR_INITIAL_STATE;
         self.runtime.clear();
@@ -166,12 +158,7 @@ impl Channel4State {
         self.nr44 = 0;
         self.length_counter = 0;
         self.length_enabled = false;
-        self.initial_volume = 0;
-        self.envelope_increase = false;
-        self.envelope_pace = 0;
-        self.envelope_automatic_updates_enabled = false;
-        self.envelope_timer = 0;
-        self.current_volume = 0;
+        self.envelope = EnvelopeState::default();
         self.clock_shift = 0;
         self.short_width_mode = false;
         self.clock_divider_code = 0;
@@ -199,20 +186,12 @@ impl Channel4State {
     }
 
     fn apply_envelope_write(&mut self, value: u8) {
-        decode_envelope_register(
-            value,
-            &mut self.initial_volume,
-            &mut self.envelope_increase,
-            &mut self.envelope_pace,
-        );
+        self.envelope.apply_write(value);
     }
 
     fn apply_live_envelope_write_effect(&mut self, value: u8) {
-        apply_consistent_zombie_mode_increment(
-            self.runtime.active,
-            &mut self.current_volume,
-            value,
-        );
+        self.envelope
+            .apply_live_write_effect(self.runtime.active, value);
     }
 
     fn decode_nr43(&mut self, value: u8) {
@@ -258,10 +237,7 @@ impl Channel4State {
         self.apply_envelope_write(self.nr42);
         self.period_timer = self.noise_timer_reload();
         self.lfsr_state = NOISE_LFSR_INITIAL_STATE;
-        self.envelope_automatic_updates_enabled = self.envelope_pace != 0;
-        self.envelope_timer =
-            envelope_timer_reload(self.envelope_pace) + u8::from(next_step_clocks_envelope);
-        self.current_volume = self.initial_volume;
+        self.envelope.reload(next_step_clocks_envelope);
         self.runtime.trigger();
         reloaded_zero_length
     }
@@ -307,13 +283,7 @@ impl Channel4State {
     }
 
     pub(in crate::apu) fn clock_envelope(&mut self) {
-        clock_envelope_unit(
-            self.envelope_pace,
-            self.envelope_increase,
-            &mut self.envelope_timer,
-            &mut self.current_volume,
-            &mut self.envelope_automatic_updates_enabled,
-        );
+        self.envelope.clock();
     }
 
     pub(in crate::apu) fn current_digital_output(&self) -> u8 {
@@ -322,7 +292,7 @@ impl Channel4State {
         }
 
         if self.lfsr_state & (1 << NOISE_LFSR_OUTPUT_BIT) == 0 {
-            self.current_volume
+            self.envelope.current_volume
         } else {
             0
         }

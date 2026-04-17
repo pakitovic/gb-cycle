@@ -8,19 +8,22 @@ fn channel_1_trigger_reloads_period_envelope_and_sweep_without_resetting_duty_st
     apu.write_register(0xFF11, 0xBF);
     apu.write_register(0xFF12, 0xA2);
     apu.write_register(0xFF13, 0xAB);
-    apu.channel_1.pulse.duty_step = 5;
+    apu.channels.channel_1.pulse.duty_step = 5;
 
     apu.write_register(0xFF14, 0xC4);
 
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert_eq!(apu.channel_1.pulse.duty_step, 5);
-    assert_eq!(apu.channel_1.pulse.length_counter, 1);
-    assert_eq!(apu.channel_1.pulse.current_volume, 0x0A);
-    assert_eq!(apu.channel_1.pulse.envelope_timer, 0x02);
-    assert_eq!(apu.channel_1.pulse.period_timer, pulse_timer_reload(0x04AB));
-    assert_eq!(apu.channel_1.sweep.shadow_period, 0x04AB);
-    assert_eq!(apu.channel_1.sweep.timer, 0x01);
-    assert!(apu.channel_1.sweep.enabled);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.duty_step, 5);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 1);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 0x0A);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.timer, 0x02);
+    assert_eq!(
+        apu.channels.channel_1.pulse.period_timer,
+        pulse_timer_reload(0x04AB)
+    );
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x04AB);
+    assert_eq!(apu.channels.channel_1.sweep.timer, 0x01);
+    assert!(apu.channels.channel_1.sweep.enabled);
 }
 
 #[test]
@@ -32,42 +35,48 @@ fn pulse_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
     apu.write_register(0xFF11, 0x80);
     apu.write_register(0xFF12, 0x00);
     apu.write_register(0xFF13, 0xAB);
-    apu.channel_1.pulse.period_timer = 0x0123;
-    apu.channel_1.pulse.envelope_timer = 5;
-    apu.channel_1.pulse.current_volume = 7;
-    apu.channel_1.sweep.shadow_period = 0x0456;
-    apu.channel_1.sweep.timer = 3;
-    apu.channel_1.sweep.enabled = true;
+    apu.channels.channel_1.pulse.period_timer = 0x0123;
+    apu.channels.channel_1.pulse.envelope.timer = 5;
+    apu.channels.channel_1.pulse.envelope.current_volume = 7;
+    apu.channels.channel_1.sweep.shadow_period = 0x0456;
+    apu.channels.channel_1.sweep.timer = 3;
+    apu.channels.channel_1.sweep.enabled = true;
 
     apu.write_register(0xFF14, 0x80);
 
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
     assert_eq!(
-        apu.channel_1.pulse.period_timer,
+        apu.channels.channel_1.pulse.period_timer,
         pulse_timer_reload(0x00AB) | (0x0123 & 0x03)
     );
-    assert_eq!(apu.channel_1.pulse.envelope_timer, envelope_timer_reload(0));
-    assert_eq!(apu.channel_1.pulse.current_volume, 0);
-    assert_eq!(apu.channel_1.sweep.shadow_period, 0x00AB);
-    assert_eq!(apu.channel_1.sweep.timer, 1);
-    assert!(apu.channel_1.sweep.enabled);
+    assert_eq!(
+        apu.channels.channel_1.pulse.envelope.timer,
+        envelope_timer_reload(0)
+    );
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 0);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x00AB);
+    assert_eq!(apu.channels.channel_1.sweep.timer, 1);
+    assert!(apu.channels.channel_1.sweep.enabled);
 
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0x00);
     apu.write_register(0xFF18, 0xCD);
-    apu.channel_2.pulse.period_timer = 0x0235;
-    apu.channel_2.pulse.envelope_timer = 6;
-    apu.channel_2.pulse.current_volume = 9;
+    apu.channels.channel_2.pulse.period_timer = 0x0235;
+    apu.channels.channel_2.pulse.envelope.timer = 6;
+    apu.channels.channel_2.pulse.envelope.current_volume = 9;
 
     apu.write_register(0xFF19, 0x80);
 
-    assert!(!apu.channel_2.pulse.runtime.active);
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
     assert_eq!(
-        apu.channel_2.pulse.period_timer,
+        apu.channels.channel_2.pulse.period_timer,
         pulse_timer_reload(0x00CD) | (0x0235 & 0x03)
     );
-    assert_eq!(apu.channel_2.pulse.envelope_timer, envelope_timer_reload(0));
-    assert_eq!(apu.channel_2.pulse.current_volume, 0);
+    assert_eq!(
+        apu.channels.channel_2.pulse.envelope.timer,
+        envelope_timer_reload(0)
+    );
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 0);
 }
 
 #[test]
@@ -80,21 +89,21 @@ fn channel_1_first_trigger_after_power_on_suppresses_the_initial_high_duty_outpu
 
     apu.write_register(0xFF14, 0x87);
 
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert_eq!(apu.channel_1.pulse.duty_step, 0);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.duty_step, 0);
     assert!(pulse_waveform_high(
-        apu.channel_1.pulse.duty,
-        apu.channel_1.pulse.duty_step,
+        apu.channels.channel_1.pulse.duty,
+        apu.channels.channel_1.pulse.duty_step,
     ));
-    assert!(apu.channel_1.pulse.suppress_initial_trigger_output);
-    assert_eq!(apu.channel_1.pulse.current_digital_output(), 0);
+    assert!(apu.channels.channel_1.pulse.suppress_initial_trigger_output);
+    assert_eq!(apu.channels.channel_1.pulse.current_digital_output(), 0);
 
     for _ in 0..4 {
-        apu.channel_1.tick_fast_timer();
+        apu.channels.channel_1.tick_fast_timer();
     }
 
-    assert_eq!(apu.channel_1.pulse.duty_step, 1);
-    assert!(!apu.channel_1.pulse.suppress_initial_trigger_output);
+    assert_eq!(apu.channels.channel_1.pulse.duty_step, 1);
+    assert!(!apu.channels.channel_1.pulse.suppress_initial_trigger_output);
 }
 
 #[test]
@@ -106,19 +115,19 @@ fn channel_2_retrigger_after_the_first_post_power_on_trigger_does_not_resuppress
     apu.write_register(0xFF18, 0xFF);
 
     apu.write_register(0xFF19, 0x87);
-    assert!(apu.channel_2.pulse.suppress_initial_trigger_output);
+    assert!(apu.channels.channel_2.pulse.suppress_initial_trigger_output);
 
     for _ in 0..4 {
-        apu.channel_2.tick_fast_timer();
+        apu.channels.channel_2.tick_fast_timer();
     }
 
-    assert!(!apu.channel_2.pulse.suppress_initial_trigger_output);
+    assert!(!apu.channels.channel_2.pulse.suppress_initial_trigger_output);
 
-    apu.channel_2.pulse.duty_step = 0;
+    apu.channels.channel_2.pulse.duty_step = 0;
     apu.write_register(0xFF19, 0x87);
 
-    assert!(!apu.channel_2.pulse.suppress_initial_trigger_output);
-    assert_eq!(apu.channel_2.pulse.current_digital_output(), 0x0F);
+    assert!(!apu.channels.channel_2.pulse.suppress_initial_trigger_output);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0x0F);
 }
 
 #[test]
@@ -129,14 +138,19 @@ fn pulse_fast_timer_stays_frozen_until_the_first_trigger_after_power_on() {
     apu.write_register(0xFF17, 0xF0);
     apu.write_register(0xFF18, 0xFF);
 
-    apu.channel_2.pulse.duty_step = 3;
-    apu.channel_2.pulse.period_timer = 1;
+    apu.channels.channel_2.pulse.duty_step = 3;
+    apu.channels.channel_2.pulse.period_timer = 1;
 
-    apu.channel_2.tick_fast_timer();
+    apu.channels.channel_2.tick_fast_timer();
 
-    assert_eq!(apu.channel_2.pulse.duty_step, 3);
-    assert_eq!(apu.channel_2.pulse.period_timer, 1);
-    assert!(apu.channel_2.pulse.first_trigger_after_power_on_pending);
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 3);
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 1);
+    assert!(
+        apu.channels
+            .channel_2
+            .pulse
+            .first_trigger_after_power_on_pending
+    );
 }
 
 #[test]
@@ -148,13 +162,13 @@ fn nr52_power_cycle_rearms_the_first_trigger_after_power_on_pulse_suppression() 
     apu.write_register(0xFF13, 0xFF);
     apu.write_register(0xFF14, 0x87);
 
-    assert!(apu.channel_1.pulse.suppress_initial_trigger_output);
+    assert!(apu.channels.channel_1.pulse.suppress_initial_trigger_output);
 
     for _ in 0..4 {
-        apu.channel_1.tick_fast_timer();
+        apu.channels.channel_1.tick_fast_timer();
     }
 
-    assert!(!apu.channel_1.pulse.suppress_initial_trigger_output);
+    assert!(!apu.channels.channel_1.pulse.suppress_initial_trigger_output);
 
     apu.write_register(0xFF26, 0x00);
     apu.write_register(0xFF26, 0x80);
@@ -163,8 +177,8 @@ fn nr52_power_cycle_rearms_the_first_trigger_after_power_on_pulse_suppression() 
     apu.write_register(0xFF13, 0xFF);
     apu.write_register(0xFF14, 0x87);
 
-    assert!(apu.channel_1.pulse.suppress_initial_trigger_output);
-    assert_eq!(apu.channel_1.pulse.current_digital_output(), 0);
+    assert!(apu.channels.channel_1.pulse.suppress_initial_trigger_output);
+    assert_eq!(apu.channels.channel_1.pulse.current_digital_output(), 0);
 }
 
 #[test]
@@ -174,12 +188,12 @@ fn triggering_a_pulse_channel_preserves_the_low_two_bits_of_the_frequency_timer(
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0xF0);
     apu.write_register(0xFF18, 0xFF);
-    apu.channel_2.pulse.period_timer = 0x0003;
+    apu.channels.channel_2.pulse.period_timer = 0x0003;
 
     apu.write_register(0xFF19, 0x87);
 
     assert_eq!(
-        apu.channel_2.pulse.period_timer,
+        apu.channels.channel_2.pulse.period_timer,
         pulse_timer_reload(0x07FF) | 0x0003
     );
 }
@@ -195,7 +209,7 @@ fn triggering_a_pulse_channel_just_before_an_envelope_step_reloads_the_timer_wit
     apu.write_register(0xFF19, 0x80);
 
     assert_eq!(
-        apu.channel_2.pulse.envelope_timer,
+        apu.channels.channel_2.pulse.envelope.timer,
         envelope_timer_reload(0x02) + 1
     );
 }
@@ -209,15 +223,15 @@ fn enabling_pulse_length_on_a_non_length_step_clocks_it_immediately() {
     apu.write_register(0xFF12, 0xF0);
     apu.write_register(0xFF14, 0x80);
 
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert!(!apu.channel_1.pulse.length_enabled);
-    assert_eq!(apu.channel_1.pulse.length_counter, 1);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert!(!apu.channels.channel_1.pulse.length_enabled);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 1);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
 
-    assert!(apu.channel_1.pulse.length_enabled);
-    assert_eq!(apu.channel_1.pulse.length_counter, 0);
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert!(apu.channels.channel_1.pulse.length_enabled);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -229,15 +243,15 @@ fn enabling_pulse_length_on_a_length_step_does_not_clock_it() {
     apu.write_register(0xFF12, 0xF0);
     apu.write_register(0xFF14, 0x80);
 
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert!(!apu.channel_1.pulse.length_enabled);
-    assert_eq!(apu.channel_1.pulse.length_counter, 1);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert!(!apu.channels.channel_1.pulse.length_enabled);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 1);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
 
-    assert!(apu.channel_1.pulse.length_enabled);
-    assert_eq!(apu.channel_1.pulse.length_counter, 1);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert!(apu.channels.channel_1.pulse.length_enabled);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 1);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -248,13 +262,13 @@ fn pulse_trigger_rom_second_half_enable_keeps_length_unchanged_before_retrigger(
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 2);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 2);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 2);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 2);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -265,18 +279,18 @@ fn pulse_trigger_rom_first_half_enable_clocks_once_and_survives_the_intervening_
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 1);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 1);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
     assert_eq!(apu.snapshot().div_apu, 0x00);
-    assert_eq!(apu.channel_2.pulse.length_counter, 1);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 1);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 1);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 1);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -287,13 +301,13 @@ fn triggering_a_zero_length_pulse_with_length_enabled_reloads_and_clocks_it() {
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 0);
-    assert!(!apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 63);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 63);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -306,8 +320,8 @@ fn triggering_a_length_one_pulse_with_enable_on_the_same_first_half_write_matche
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 63);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 63);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -320,8 +334,8 @@ fn triggering_a_nonzero_length_pulse_does_not_change_its_length_counter() {
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 2);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 2);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -332,16 +346,16 @@ fn writes_other_than_disabling_to_enabled_do_not_extra_clock_pulse_length() {
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 2);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 1);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 1);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 1);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 1);
 
     apu.write_register(0xFF19, 0x00);
-    assert_eq!(apu.channel_2.pulse.length_counter, 1);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 1);
 
     apu.write_register(0xFF19, 0x00);
-    assert_eq!(apu.channel_2.pulse.length_counter, 1);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 1);
 }
 
 #[test]
@@ -359,9 +373,9 @@ fn writing_length_after_enabling_it_matches_the_trigger_rom_sequence() {
     apu.write_register(0xFF19, 0x00);
     apu.write_register(0xFF19, 0x00);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 2);
-    assert!(!apu.channel_2.pulse.length_enabled);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 2);
+    assert!(!apu.channels.channel_2.pulse.length_enabled);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -373,8 +387,8 @@ fn extra_length_clocking_to_zero_disables_the_pulse_channel() {
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 0);
-    assert!(!apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -385,15 +399,15 @@ fn enabling_length_again_after_it_reached_zero_does_not_clock_or_unfreeze_it() {
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 0);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
 
     apu.write_register(0xFF19, 0x00);
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 0);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
 
     apu.write_register(0xFF19, 0x00);
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 0);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
 }
 
 #[test]
@@ -405,13 +419,13 @@ fn triggering_a_zero_length_pulse_with_length_disabled_unfreezes_it_to_the_full_
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
     apu.write_register(0xFF19, 0x00);
-    assert_eq!(apu.channel_2.pulse.length_counter, 0);
-    assert!(!apu.channel_2.pulse.length_enabled);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_2.pulse.length_enabled);
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 64);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 64);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -422,19 +436,19 @@ fn disabled_dac_still_allows_trigger_to_reload_and_clock_pulse_length() {
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF17, 0x00);
-    assert!(!apu.channel_2.pulse.runtime.dac_enabled);
-    assert!(!apu.channel_2.pulse.runtime.active);
+    assert!(!apu.channels.channel_2.pulse.runtime.dac_enabled);
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 63);
-    assert!(!apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 63);
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
 
     apu.write_register(0xFF17, 0x08);
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT);
 
-    assert_eq!(apu.channel_2.pulse.length_counter, 63);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 63);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -445,14 +459,14 @@ fn channel_1_first_half_enable_clocks_length_once_before_retrigger() {
     prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 2);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 1);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 1);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
     apu.write_register(0xFF14, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_1.pulse.length_counter, 1);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 1);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -463,13 +477,13 @@ fn channel_1_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
     prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 0);
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 
     apu.write_register(0xFF14, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_1.pulse.length_counter, 63);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 63);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -480,17 +494,17 @@ fn channel_1_trigger_unfreezes_zero_length_and_clocks_it_after_disabling_length(
     prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 0);
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 
     apu.write_register(0xFF14, 0x00);
-    assert_eq!(apu.channel_1.pulse.length_counter, 0);
-    assert!(!apu.channel_1.pulse.length_enabled);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_1.pulse.length_enabled);
 
     apu.write_register(0xFF14, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_1.pulse.length_counter, 63);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 63);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -501,18 +515,18 @@ fn channel_1_retrigger_after_unfreezing_zero_length_does_not_extra_clock_again()
     prime_pulse_trigger_test(&mut apu, &CHANNEL_1, 1);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 0);
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 
     apu.write_register(0xFF14, 0x00);
     apu.write_register(0xFF14, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 63);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 63);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 
     apu.write_register(0xFF14, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert_eq!(apu.channel_1.pulse.length_counter, 63);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 63);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -523,30 +537,30 @@ fn trigger_unfreezes_zero_length_then_a_later_enable_allows_normal_length_clocks
     prime_pulse_trigger_test(&mut apu, &CHANNEL_2, 1);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 0);
-    assert!(!apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
 
     apu.write_register(0xFF19, 0x00);
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 64);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 64);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
     assert_eq!(apu.snapshot().div_apu, 0x00);
-    assert_eq!(apu.channel_2.pulse.length_counter, 64);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 64);
 
     apu.write_register(0xFF19, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_2.pulse.length_counter, 64);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 64);
 
     tick_apu_with_edges(&mut apu, 1, &[DerivedEdge::ApuFrameSequencerEdge]);
     tick_apu_with_edges(&mut apu, 2, &[DerivedEdge::ApuFrameSequencerEdge]);
-    assert_eq!(apu.channel_2.pulse.length_counter, 63);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 63);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 
     tick_apu_with_edges(&mut apu, 3, &[DerivedEdge::ApuFrameSequencerEdge]);
     tick_apu_with_edges(&mut apu, 4, &[DerivedEdge::ApuFrameSequencerEdge]);
-    assert_eq!(apu.channel_2.pulse.length_counter, 62);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 62);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -558,35 +572,35 @@ fn channel_1_retrigger_after_two_zero_length_freezes_only_extra_clocks_on_real_u
 
     apu.write_register(0xFF14, 0x00);
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 0);
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 
     apu.write_register(0xFF14, 0x00);
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 0);
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 
     apu.write_register(0xFF14, CHANNEL_TRIGGER_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 64);
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert!(!apu.channel_1.pulse.length_enabled);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 64);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert!(!apu.channels.channel_1.pulse.length_enabled);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 63);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 63);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 
     apu.write_register(0xFF14, 0x00);
-    assert_eq!(apu.channel_1.pulse.length_counter, 63);
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert!(!apu.channel_1.pulse.length_enabled);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 63);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert!(!apu.channels.channel_1.pulse.length_enabled);
 
     apu.write_register(0xFF14, LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 62);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 62);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 
     apu.write_register(0xFF14, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
-    assert_eq!(apu.channel_1.pulse.length_counter, 62);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 62);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -596,13 +610,13 @@ fn triggering_a_zero_length_pulse_on_a_non_length_step_reloads_it_to_63() {
     apu.frame_sequencer.apply_startup_phase(1);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0xF0);
-    apu.channel_2.pulse.length_counter = 0;
+    apu.channels.channel_2.pulse.length_counter = 0;
 
     apu.write_register(0xFF19, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
 
-    assert!(apu.channel_2.pulse.runtime.active);
-    assert!(apu.channel_2.pulse.length_enabled);
-    assert_eq!(apu.channel_2.pulse.length_counter, 63);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
+    assert!(apu.channels.channel_2.pulse.length_enabled);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 63);
 }
 
 #[test]
@@ -614,24 +628,24 @@ fn pulse_period_writes_take_effect_only_after_the_current_sample_finishes() {
     apu.write_register(0xFF18, 0xFF);
     apu.write_register(0xFF19, 0x87);
 
-    assert_eq!(apu.channel_2.pulse.period_timer, 4);
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 4);
 
-    apu.channel_2.tick_fast_timer();
-    apu.channel_2.tick_fast_timer();
-    assert_eq!(apu.channel_2.pulse.period_timer, 2);
+    apu.channels.channel_2.tick_fast_timer();
+    apu.channels.channel_2.tick_fast_timer();
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 2);
 
     apu.write_register(0xFF18, 0xFE);
     apu.write_register(0xFF19, 0x07);
-    assert_eq!(apu.channel_2.period_value(), 0x07FE);
-    assert_eq!(apu.channel_2.pulse.period_timer, 2);
+    assert_eq!(apu.channels.channel_2.period_value(), 0x07FE);
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 2);
 
-    apu.channel_2.tick_fast_timer();
-    assert_eq!(apu.channel_2.pulse.period_timer, 1);
-    apu.channel_2.tick_fast_timer();
+    apu.channels.channel_2.tick_fast_timer();
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 1);
+    apu.channels.channel_2.tick_fast_timer();
 
-    assert_eq!(apu.channel_2.pulse.period_timer, 8);
-    assert_eq!(apu.channel_2.pulse.duty_step, 1);
-    assert_eq!(apu.channel_2.pulse.current_digital_output(), 0);
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 8);
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 1);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0);
 }
 
 #[test]
@@ -648,16 +662,16 @@ fn frame_sequencer_length_and_envelope_clocks_drive_pulse_channel_state() {
     apu.frame_sequencer.apply_startup_phase(7);
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
 
-    assert_eq!(apu.channel_1.pulse.current_volume, 0);
-    assert_eq!(apu.channel_2.pulse.current_volume, 1);
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 0);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 1);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 
     apu.frame_sequencer.apply_startup_phase(0);
     tick_apu_with_edges(&mut apu, 1, &[DerivedEdge::ApuFrameSequencerEdge]);
 
-    assert!(!apu.channel_1.pulse.runtime.active);
-    assert!(!apu.channel_2.pulse.runtime.active);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -670,14 +684,14 @@ fn channel_1_sweep_clock_writes_back_shadow_period_and_runs_the_second_overflow_
     apu.write_register(0xFF13, 0x00);
     apu.write_register(0xFF14, 0x85);
 
-    assert_eq!(apu.channel_1.period_value(), 0x0500);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 
-    apu.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep();
 
-    assert_eq!(apu.channel_1.period_value(), 0x0780);
-    assert_eq!(apu.channel_1.sweep.shadow_period, 0x0780);
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0780);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -690,15 +704,15 @@ fn channel_1_sweep_clock_can_update_the_shadow_period_while_inactive() {
     apu.write_register(0xFF13, 0x00);
     apu.write_register(0xFF14, 0x85);
 
-    assert_eq!(apu.channel_1.period_value(), 0x0500);
-    assert!(apu.channel_1.sweep.enabled);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0500);
+    assert!(apu.channels.channel_1.sweep.enabled);
 
-    apu.channel_1.pulse.runtime.active = false;
-    apu.channel_1.clock_sweep();
+    apu.channels.channel_1.pulse.runtime.active = false;
+    apu.channels.channel_1.clock_sweep();
 
-    assert_eq!(apu.channel_1.period_value(), 0x0780);
-    assert_eq!(apu.channel_1.sweep.shadow_period, 0x0780);
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0780);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0780);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -711,13 +725,13 @@ fn channel_1_shift_zero_sweep_does_not_calculate_on_trigger_but_can_overflow_on_
     apu.write_register(0xFF13, 0x00);
     apu.write_register(0xFF14, 0x86);
 
-    assert_eq!(apu.channel_1.period_value(), 0x0600);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0600);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 
-    apu.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep();
 
-    assert_eq!(apu.channel_1.period_value(), 0x0600);
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0600);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -730,26 +744,26 @@ fn channel_1_zero_sweep_pace_reloads_to_eight_and_rearms_on_a_non_zero_write() {
     apu.write_register(0xFF13, 0x00);
     apu.write_register(0xFF14, 0x82);
 
-    assert_eq!(apu.channel_1.period_value(), 0x0200);
-    apu.channel_1.clock_sweep();
-    assert_eq!(apu.channel_1.period_value(), 0x0300);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0200);
+    apu.channels.channel_1.clock_sweep();
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0300);
 
     apu.write_register(0xFF10, 0x01);
     for _ in 0..8 {
-        apu.channel_1.clock_sweep();
-        assert_eq!(apu.channel_1.period_value(), 0x0300);
-        assert!(apu.channel_1.pulse.runtime.active);
+        apu.channels.channel_1.clock_sweep();
+        assert_eq!(apu.channels.channel_1.period_value(), 0x0300);
+        assert!(apu.channels.channel_1.pulse.runtime.active);
     }
 
-    assert_eq!(apu.channel_1.sweep.shadow_period, 0x0300);
-    assert_eq!(apu.channel_1.sweep.timer, 1);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0300);
+    assert_eq!(apu.channels.channel_1.sweep.timer, 1);
 
     apu.write_register(0xFF10, 0x11);
-    apu.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep();
 
-    assert_eq!(apu.channel_1.period_value(), 0x0480);
-    assert_eq!(apu.channel_1.sweep.shadow_period, 0x0480);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0480);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0480);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -762,12 +776,12 @@ fn clearing_negate_after_a_negate_calculation_disables_channel_1() {
     apu.write_register(0xFF13, 0x00);
     apu.write_register(0xFF14, 0x84);
 
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert!(apu.channel_1.sweep.negate_calculated_since_trigger);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert!(apu.channels.channel_1.sweep.negate_calculated_since_trigger);
 
     apu.write_register(0xFF10, 0x10);
 
-    assert!(!apu.channel_1.pulse.runtime.active);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -780,14 +794,14 @@ fn clearing_negate_after_an_in_range_negate_calculation_still_disables_channel_1
     apu.write_register(0xFF13, 0x00);
     apu.write_register(0xFF14, 0x84);
 
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert!(apu.channel_1.sweep.negate_calculated_since_trigger);
-    assert_eq!(apu.channel_1.period_value(), 0x0400);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert!(apu.channels.channel_1.sweep.negate_calculated_since_trigger);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0400);
 
     apu.write_register(0xFF10, 0x11);
 
-    assert!(!apu.channel_1.pulse.runtime.active);
-    assert_eq!(apu.channel_1.period_value(), 0x0400);
+    assert!(!apu.channels.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0400);
 }
 
 #[test]
@@ -800,12 +814,12 @@ fn clearing_negate_without_a_negate_calculation_keeps_channel_1_active() {
     apu.write_register(0xFF13, 0x00);
     apu.write_register(0xFF14, 0x84);
 
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert!(!apu.channel_1.sweep.negate_calculated_since_trigger);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert!(!apu.channels.channel_1.sweep.negate_calculated_since_trigger);
 
     apu.write_register(0xFF10, 0x10);
 
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -818,11 +832,11 @@ fn channel_1_negate_sweep_uses_eleven_bit_twos_complement_subtraction() {
     apu.write_register(0xFF13, 0xB0);
     apu.write_register(0xFF14, 0x85);
 
-    apu.channel_1.clock_sweep();
+    apu.channels.channel_1.clock_sweep();
 
-    assert_eq!(apu.channel_1.period_value(), 0x0555);
-    assert_eq!(apu.channel_1.sweep.shadow_period, 0x0555);
-    assert!(apu.channel_1.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.period_value(), 0x0555);
+    assert_eq!(apu.channels.channel_1.sweep.shadow_period, 0x0555);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
 }
 
 #[test]
@@ -836,8 +850,8 @@ fn envelope_reaching_zero_does_not_disable_the_pulse_channel() {
     apu.frame_sequencer.apply_startup_phase(7);
     tick_apu_with_edges(&mut apu, 0, &[DerivedEdge::ApuFrameSequencerEdge]);
 
-    assert_eq!(apu.channel_2.pulse.current_volume, 0);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 0);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 }
 
 #[test]
@@ -848,29 +862,47 @@ fn pulse_envelope_stops_automatic_updates_after_saturating_at_fifteen() {
     apu.write_register(0xFF17, 0xFA);
     apu.write_register(0xFF19, 0x80);
 
-    apu.channel_2.pulse.envelope_timer = 1;
+    apu.channels.channel_2.pulse.envelope.timer = 1;
 
-    assert!(apu.channel_2.pulse.envelope_automatic_updates_enabled);
-    assert_eq!(apu.channel_2.pulse.current_volume, 0x0F);
+    assert!(
+        apu.channels
+            .channel_2
+            .pulse
+            .envelope
+            .automatic_updates_enabled
+    );
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 0x0F);
 
-    apu.channel_2.clock_envelope();
+    apu.channels.channel_2.clock_envelope();
 
-    assert_eq!(apu.channel_2.pulse.current_volume, 0x0F);
-    assert_eq!(apu.channel_2.pulse.envelope_timer, 2);
-    assert!(apu.channel_2.pulse.runtime.active);
-    assert!(!apu.channel_2.pulse.envelope_automatic_updates_enabled);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 0x0F);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.timer, 2);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
+    assert!(
+        !apu.channels
+            .channel_2
+            .pulse
+            .envelope
+            .automatic_updates_enabled
+    );
 
-    apu.channel_2.clock_envelope();
+    apu.channels.channel_2.clock_envelope();
 
-    assert_eq!(apu.channel_2.pulse.current_volume, 0x0F);
-    assert_eq!(apu.channel_2.pulse.envelope_timer, 2);
-    assert!(apu.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 0x0F);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.timer, 2);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
 
     apu.write_register(0xFF19, 0x80);
 
-    assert!(apu.channel_2.pulse.envelope_automatic_updates_enabled);
-    assert_eq!(apu.channel_2.pulse.current_volume, 0x0F);
-    assert_eq!(apu.channel_2.pulse.envelope_timer, 2);
+    assert!(
+        apu.channels
+            .channel_2
+            .pulse
+            .envelope
+            .automatic_updates_enabled
+    );
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 0x0F);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.timer, 2);
 }
 
 #[test]
@@ -882,16 +914,16 @@ fn pulse_fast_timer_advances_duty_step_while_the_channel_is_inactive() {
     apu.write_register(0xFF18, 0xFF);
     apu.write_register(0xFF19, 0x87);
 
-    apu.channel_2.pulse.runtime.active = false;
-    apu.channel_2.pulse.duty_step = 6;
-    apu.channel_2.pulse.period_timer = 1;
+    apu.channels.channel_2.pulse.runtime.active = false;
+    apu.channels.channel_2.pulse.duty_step = 6;
+    apu.channels.channel_2.pulse.period_timer = 1;
 
-    apu.channel_2.tick_fast_timer();
+    apu.channels.channel_2.tick_fast_timer();
 
-    assert_eq!(apu.channel_2.pulse.duty_step, 7);
-    assert_eq!(apu.channel_2.pulse.period_timer, 4);
-    assert!(!apu.channel_2.pulse.runtime.active);
-    assert_eq!(apu.channel_2.pulse.current_digital_output(), 0);
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 7);
+    assert_eq!(apu.channels.channel_2.pulse.period_timer, 4);
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0);
 }
 
 #[test]
@@ -902,16 +934,16 @@ fn pulse_envelope_clock_advances_while_the_channel_is_inactive() {
     apu.write_register(0xFF17, 0x11);
     apu.write_register(0xFF19, 0x80);
 
-    apu.channel_2.pulse.runtime.active = false;
-    apu.channel_2.pulse.envelope_timer = 1;
-    apu.channel_2.pulse.current_volume = 1;
+    apu.channels.channel_2.pulse.runtime.active = false;
+    apu.channels.channel_2.pulse.envelope.timer = 1;
+    apu.channels.channel_2.pulse.envelope.current_volume = 1;
 
-    apu.channel_2.clock_envelope();
+    apu.channels.channel_2.clock_envelope();
 
-    assert_eq!(apu.channel_2.pulse.envelope_timer, 1);
-    assert_eq!(apu.channel_2.pulse.current_volume, 0);
-    assert!(!apu.channel_2.pulse.runtime.active);
-    assert_eq!(apu.channel_2.pulse.current_digital_output(), 0);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.timer, 1);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 0);
+    assert!(!apu.channels.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0);
 }
 
 #[test]
@@ -925,24 +957,24 @@ fn live_nrx2_write_with_increase_and_zero_pace_increments_active_pulse_channels(
     apu.write_register(0xFF17, 0x08);
     apu.write_register(0xFF19, 0x80);
 
-    assert!(apu.channel_1.pulse.runtime.active);
-    assert!(apu.channel_2.pulse.runtime.active);
-    assert_eq!(apu.channel_1.pulse.current_volume, 0);
-    assert_eq!(apu.channel_2.pulse.current_volume, 0);
+    assert!(apu.channels.channel_1.pulse.runtime.active);
+    assert!(apu.channels.channel_2.pulse.runtime.active);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 0);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 0);
 
     apu.write_register(0xFF12, 0x08);
     apu.write_register(0xFF17, 0x08);
 
-    assert_eq!(apu.channel_1.pulse.current_volume, 1);
-    assert_eq!(apu.channel_2.pulse.current_volume, 1);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 1);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 1);
 
-    apu.channel_1.pulse.current_volume = 0x0F;
+    apu.channels.channel_1.pulse.envelope.current_volume = 0x0F;
     apu.write_register(0xFF12, 0x08);
-    assert_eq!(apu.channel_1.pulse.current_volume, 0);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 0);
 
-    apu.channel_2.pulse.current_volume = 7;
+    apu.channels.channel_2.pulse.envelope.current_volume = 7;
     apu.write_register(0xFF17, 0x09);
-    assert_eq!(apu.channel_2.pulse.current_volume, 7);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 7);
 }
 
 #[test]
@@ -953,35 +985,35 @@ fn live_nrx2_write_requires_retrigger_before_reprogramming_pulse_envelopes() {
     apu.write_register(0xFF11, 0x80);
     apu.write_register(0xFF12, 0x52);
     apu.write_register(0xFF14, 0x80);
-    apu.channel_1.pulse.envelope_timer = 1;
+    apu.channels.channel_1.pulse.envelope.timer = 1;
 
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0x52);
     apu.write_register(0xFF19, 0x80);
-    apu.channel_2.pulse.envelope_timer = 1;
+    apu.channels.channel_2.pulse.envelope.timer = 1;
 
-    assert_eq!(apu.channel_1.pulse.current_volume, 5);
-    assert_eq!(apu.channel_2.pulse.current_volume, 5);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 5);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 5);
 
     apu.write_register(0xFF12, 0x69);
     apu.write_register(0xFF17, 0x69);
 
-    assert_eq!(apu.channel_1.pulse.current_volume, 5);
-    assert_eq!(apu.channel_2.pulse.current_volume, 5);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 5);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 5);
 
-    apu.channel_1.clock_envelope();
-    apu.channel_2.clock_envelope();
+    apu.channels.channel_1.clock_envelope();
+    apu.channels.channel_2.clock_envelope();
 
-    assert_eq!(apu.channel_1.pulse.current_volume, 4);
-    assert_eq!(apu.channel_1.pulse.envelope_timer, 2);
-    assert_eq!(apu.channel_2.pulse.current_volume, 4);
-    assert_eq!(apu.channel_2.pulse.envelope_timer, 2);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 4);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.timer, 2);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 4);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.timer, 2);
 
     apu.write_register(0xFF14, 0x80);
     apu.write_register(0xFF19, 0x80);
 
-    assert_eq!(apu.channel_1.pulse.current_volume, 6);
-    assert_eq!(apu.channel_1.pulse.envelope_timer, 1);
-    assert_eq!(apu.channel_2.pulse.current_volume, 6);
-    assert_eq!(apu.channel_2.pulse.envelope_timer, 1);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.current_volume, 6);
+    assert_eq!(apu.channels.channel_1.pulse.envelope.timer, 1);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.current_volume, 6);
+    assert_eq!(apu.channels.channel_2.pulse.envelope.timer, 1);
 }

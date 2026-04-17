@@ -244,6 +244,68 @@ mod tests {
     }
 
     #[test]
+    fn decode_characterizes_the_full_ff10_ff3f_apu_window() {
+        let register_addresses = [
+            NR10_ADDRESS,
+            super::NR11_ADDRESS,
+            super::NR12_ADDRESS,
+            super::NR13_ADDRESS,
+            super::NR14_ADDRESS,
+            super::UNUSED_NR15_ADDRESS,
+            super::NR21_ADDRESS,
+            super::NR22_ADDRESS,
+            super::NR23_ADDRESS,
+            super::NR24_ADDRESS,
+            super::NR30_ADDRESS,
+            super::NR31_ADDRESS,
+            super::NR32_ADDRESS,
+            super::NR33_ADDRESS,
+            super::NR34_ADDRESS,
+            UNUSED_NR1F_ADDRESS,
+            super::NR41_ADDRESS,
+            super::NR42_ADDRESS,
+            super::NR43_ADDRESS,
+            super::NR44_ADDRESS,
+            super::NR50_ADDRESS,
+            super::NR51_ADDRESS,
+            NR52_ADDRESS,
+        ];
+
+        for address in register_addresses {
+            assert!(
+                matches!(
+                    ApuMmioRegister::decode(address),
+                    ApuMmioRegister::Register(_)
+                ),
+                "{address:#06X} should decode as an APU register"
+            );
+        }
+
+        for (index, address) in (WAVE_RAM_START_ADDRESS..=WAVE_RAM_END_ADDRESS).enumerate() {
+            assert_eq!(
+                ApuMmioRegister::decode(address),
+                ApuMmioRegister::WaveRam(index)
+            );
+        }
+
+        for address in 0xFF27..=0xFF2F {
+            assert_eq!(ApuMmioRegister::decode(address), ApuMmioRegister::Unmapped);
+        }
+    }
+
+    #[test]
+    fn observation_policy_matches_register_decode_kind_across_ff10_ff3f() {
+        for address in 0xFF10..=0xFF3F {
+            let decoded = ApuMmioRegister::decode(address);
+            assert_eq!(
+                decoded.should_observe_register_write(),
+                matches!(decoded, ApuMmioRegister::Register(_)),
+                "{address:#06X} should observe only decoded register writes"
+            );
+        }
+    }
+
+    #[test]
     fn register_addresses_round_trip_through_decode() {
         let registers = [
             ApuRegister::Nr10,

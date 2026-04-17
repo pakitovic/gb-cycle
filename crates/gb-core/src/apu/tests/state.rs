@@ -1,4 +1,5 @@
 use super::*;
+use crate::apu::registers::{UNUSED_NR1F_ADDRESS, UNUSED_NR15_ADDRESS, WAVE_RAM_START_ADDRESS};
 
 #[test]
 fn nr52_tracks_channel_active_state_separately_from_dac_state() {
@@ -90,25 +91,159 @@ fn dmg_powered_off_length_writes_preserve_internal_length_counters_without_resto
     apu.write_register(0xFF20, 0xCD);
 
     assert_eq!(
-        apu.channel_1.pulse.length_counter,
+        apu.channels.channel_1.pulse.length_counter,
         pulse_length_counter_from_load(0xD5)
     );
     assert_eq!(
-        apu.channel_2.pulse.length_counter,
+        apu.channels.channel_2.pulse.length_counter,
         pulse_length_counter_from_load(0xEA)
     );
     assert_eq!(
-        apu.channel_3.length_counter,
+        apu.channels.channel_3.length_counter,
         wave_length_counter_from_load(0x44)
     );
     assert_eq!(
-        apu.channel_4.length_counter,
+        apu.channels.channel_4.length_counter,
         pulse_length_counter_from_load(0xCD)
     );
     assert_eq!(apu.read_register(0xFF11), 0x3F);
     assert_eq!(apu.read_register(0xFF16), 0x3F);
     assert_eq!(apu.read_register(0xFF1B), 0xFF);
     assert_eq!(apu.read_register(0xFF20), 0xFF);
+}
+
+#[test]
+fn dmg_powered_off_non_length_writes_leave_preserved_length_counters_unchanged() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF26, 0x00);
+
+    apu.write_register(0xFF11, 0xD5);
+    apu.write_register(0xFF16, 0xEA);
+    apu.write_register(0xFF1B, 0x44);
+    apu.write_register(0xFF20, 0xCD);
+
+    let expected_length_counters = (
+        apu.channels.channel_1.pulse.length_counter,
+        apu.channels.channel_2.pulse.length_counter,
+        apu.channels.channel_3.length_counter,
+        apu.channels.channel_4.length_counter,
+    );
+
+    for (address, value) in [
+        (0xFF10, 0x7F),
+        (0xFF12, 0xF3),
+        (0xFF14, 0xC7),
+        (0xFF17, 0xF3),
+        (0xFF19, 0xC7),
+        (0xFF1A, 0x80),
+        (0xFF1C, 0x60),
+        (0xFF1E, 0xC7),
+        (0xFF21, 0xF3),
+        (0xFF22, 0x35),
+        (0xFF23, 0xC7),
+        (0xFF24, 0x77),
+        (0xFF25, 0xF3),
+    ] {
+        apu.write_register(address, value);
+    }
+
+    assert_eq!(
+        (
+            apu.channels.channel_1.pulse.length_counter,
+            apu.channels.channel_2.pulse.length_counter,
+            apu.channels.channel_3.length_counter,
+            apu.channels.channel_4.length_counter,
+        ),
+        expected_length_counters
+    );
+    assert_eq!(apu.read_register(0xFF12), 0x00);
+    assert_eq!(apu.read_register(0xFF17), 0x00);
+    assert_eq!(apu.read_register(0xFF1A), 0x7F);
+    assert_eq!(apu.read_register(0xFF21), 0x00);
+    assert_eq!(apu.read_register(0xFF24), 0x00);
+    assert_eq!(apu.read_register(0xFF25), 0x00);
+}
+
+#[test]
+fn cgb_powered_off_length_writes_are_ignored_for_all_channels() {
+    let mut apu = Apu::new(ConsoleModel::Cgb);
+
+    for (address, value) in [
+        (0xFF11, 0xD5),
+        (0xFF16, 0xEA),
+        (0xFF1B, 0x44),
+        (0xFF20, 0xCD),
+    ] {
+        apu.write_register(address, value);
+    }
+
+    assert_eq!(apu.channels.channel_1.pulse.length_counter, 0);
+    assert_eq!(apu.channels.channel_2.pulse.length_counter, 0);
+    assert_eq!(apu.channels.channel_3.length_counter, 0);
+    assert_eq!(apu.channels.channel_4.length_counter, 0);
+    assert_eq!(apu.read_register(0xFF11), 0x3F);
+    assert_eq!(apu.read_register(0xFF16), 0x3F);
+    assert_eq!(apu.read_register(0xFF1B), 0xFF);
+    assert_eq!(apu.read_register(0xFF20), 0xFF);
+}
+
+#[test]
+fn register_write_observation_is_recorded_only_for_decoded_apu_registers() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+
+    for (address, value, expected_observation) in [
+        (UNUSED_NR15_ADDRESS, 0x34, true),
+        (UNUSED_NR1F_ADDRESS, 0x12, true),
+        (WAVE_RAM_START_ADDRESS, 0xAB, false),
+        (0xFF27, 0x56, false),
+        (0xFF40, 0x78, false),
+    ] {
+        apu.write_register(address, value);
+        let observation = apu.snapshot().last_register_write;
+
+        if expected_observation {
+            let observation = observation.expect("decoded APU register write should be observed");
+            assert_eq!(observation.address, address);
+            assert_eq!(observation.value, value);
+            assert_eq!(observation.before, observation.after);
+        } else {
+            assert!(
+                observation.is_none(),
+                "{address:#06X} should not be observed"
+            );
+        }
+    }
+
+    assert_eq!(apu.read_register(WAVE_RAM_START_ADDRESS), 0xAB);
+}
+
+#[test]
+fn observed_nr52_power_off_write_captures_the_before_and_after_power_transition() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0xF3);
+    apu.write_register(0xFF14, 0x80);
+    apu.write_register(0xFF24, 0x77);
+    apu.write_register(0xFF25, 0x11);
+
+    apu.write_register(0xFF26, 0x00);
+
+    let observation = apu
+        .snapshot()
+        .last_register_write
+        .expect("NR52 power-off write should be observed");
+    assert_eq!(observation.address, 0xFF26);
+    assert_eq!(observation.value, 0x00);
+    assert!(observation.before.powered);
+    assert!(!observation.after.powered);
+    assert_eq!(observation.before.nr52, 0xF1);
+    assert_eq!(observation.after.nr52, 0x70);
+    assert_eq!(observation.before.channel_active_mask, CHANNEL_ACTIVE_CH1);
+    assert_eq!(observation.after.channel_active_mask, 0x00);
+    assert_eq!(observation.before.channel_dac_mask, CHANNEL_ACTIVE_CH1);
+    assert_eq!(observation.after.channel_dac_mask, 0x00);
 }
 
 #[test]

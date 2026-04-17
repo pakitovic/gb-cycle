@@ -9,9 +9,10 @@ impl Apu {
     pub fn read_register(&self, address: u16) -> u8 {
         match ApuMmioRegister::decode(address) {
             ApuMmioRegister::Register(register) => self.read_apu_register(register),
-            ApuMmioRegister::WaveRam(index) => {
-                self.channel_3.read_wave_ram(self.console_model, index)
-            }
+            ApuMmioRegister::WaveRam(index) => self
+                .channels
+                .channel_3
+                .read_wave_ram(self.console_model, index),
             ApuMmioRegister::Unmapped => APU_UNMAPPED_READ_VALUE,
         }
     }
@@ -22,7 +23,8 @@ impl Apu {
 
         match decoded_register {
             ApuMmioRegister::WaveRam(index) => {
-                self.channel_3
+                self.channels
+                    .channel_3
                     .write_wave_ram(self.console_model, index, value);
                 self.preview_output_path();
             }
@@ -44,10 +46,10 @@ impl Apu {
 
     fn read_apu_register(&self, register: ApuRegister) -> u8 {
         match register.owner() {
-            ApuRegisterOwner::Channel1(register) => self.channel_1.read_register(register),
-            ApuRegisterOwner::Channel2(register) => self.channel_2.read_register(register),
-            ApuRegisterOwner::Channel3(register) => self.channel_3.read_register(register),
-            ApuRegisterOwner::Channel4(register) => self.channel_4.read_register(register),
+            ApuRegisterOwner::Channel1(register) => self.channels.channel_1.read_register(register),
+            ApuRegisterOwner::Channel2(register) => self.channels.channel_2.read_register(register),
+            ApuRegisterOwner::Channel3(register) => self.channels.channel_3.read_register(register),
+            ApuRegisterOwner::Channel4(register) => self.channels.channel_4.read_register(register),
             ApuRegisterOwner::Master(register) => self.read_master_register(register),
             ApuRegisterOwner::Unused => APU_UNMAPPED_READ_VALUE,
         }
@@ -74,56 +76,60 @@ impl Apu {
 
     fn write_channel_1_register(&mut self, register: Channel1Register, value: u8) {
         if self.master.powered {
-            self.channel_1.write_register(
+            self.channels.channel_1.write_register(
                 register,
                 value,
                 self.console_model,
                 self.frame_sequencer.step,
             );
         } else {
-            self.channel_1
+            self.channels
+                .channel_1
                 .write_powered_off_register(register, value, self.console_model);
         }
     }
 
     fn write_channel_2_register(&mut self, register: Channel2Register, value: u8) {
         if self.master.powered {
-            self.channel_2.write_register(
+            self.channels.channel_2.write_register(
                 register,
                 value,
                 self.console_model,
                 self.frame_sequencer.step,
             );
         } else {
-            self.channel_2
+            self.channels
+                .channel_2
                 .write_powered_off_register(register, value, self.console_model);
         }
     }
 
     fn write_channel_3_register(&mut self, register: Channel3Register, value: u8) {
         if self.master.powered {
-            self.channel_3.write_register(
+            self.channels.channel_3.write_register(
                 register,
                 value,
                 self.console_model,
                 self.frame_sequencer.step,
             );
         } else {
-            self.channel_3
+            self.channels
+                .channel_3
                 .write_powered_off_register(register, value, self.console_model);
         }
     }
 
     fn write_channel_4_register(&mut self, register: Channel4Register, value: u8) {
         if self.master.powered {
-            self.channel_4.write_register(
+            self.channels.channel_4.write_register(
                 register,
                 value,
                 self.console_model,
                 self.frame_sequencer.step,
             );
         } else {
-            self.channel_4
+            self.channels
+                .channel_4
                 .write_powered_off_register(register, value, self.console_model);
         }
     }
