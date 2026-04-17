@@ -25,22 +25,7 @@ impl Ppu {
             obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
             visible_registers: PpuVisibleRegisters::default(),
             pipeline_registers: PpuVisibleRegisters::default(),
-            dmg_lcdc0_current_line_bg_enable_write_count: 0,
-            dmg_lcdc3_current_line_bg_tilemap_write_count: 0,
-            dmg_lcdc0_bg_enable_visible_hold_override: None,
-            dmg_lcdc0_bg_enable_visible_hold_pixels_remaining: 0,
-            dmg_bgp_cpu_commit_output_palette_override: None,
-            dmg_bgp_cpu_commit_output_delay_pixels_remaining: 0,
-            dmg_bgp_cpu_commit_output_followup_palette_override: None,
-            dmg_bgp_cpu_commit_output_followup_pixels_remaining: 0,
-            dmg_bgp_cpu_commit_bg_visible_hold_palette_override: None,
-            dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining: 0,
-            dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette: None,
-            dmg_bgp_cpu_commit_current_line_start_palette: 0,
-            dmg_bgp_cpu_commit_previous_line_start_palette: 0,
-            dmg_bgp_cpu_commit_current_line_writes: Vec::new(),
-            dmg_bgp_cpu_commit_previous_line_writes: Vec::new(),
-            dmg_recent_panel_dots: VecDeque::with_capacity(DMG_PALETTE_RETROACTIVE_DOT_HISTORY),
+            dmg_panel_live_write_state: DmgPanelLiveWriteState::default(),
             last_unsigned_tile_data_fetch: 0,
             last_unsigned_tile_data_low_fetch: 0,
             last_unsigned_tile_data_high_fetch: 0,
@@ -502,22 +487,8 @@ impl Ppu {
         self.obp0 = None;
         self.obp1 = None;
         self.obj_palette_read_policy = startup_state.obj_palette_read_policy;
-        self.dmg_lcdc0_current_line_bg_enable_write_count = 0;
-        self.dmg_lcdc3_current_line_bg_tilemap_write_count = 0;
-        self.dmg_lcdc0_bg_enable_visible_hold_override = None;
-        self.dmg_lcdc0_bg_enable_visible_hold_pixels_remaining = 0;
-        self.dmg_bgp_cpu_commit_output_palette_override = None;
-        self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = 0;
-        self.dmg_bgp_cpu_commit_output_followup_palette_override = None;
-        self.dmg_bgp_cpu_commit_output_followup_pixels_remaining = 0;
-        self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override = None;
-        self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining = 0;
-        self.dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette = None;
-        self.dmg_bgp_cpu_commit_current_line_start_palette = startup_state.bgp;
-        self.dmg_bgp_cpu_commit_previous_line_start_palette = startup_state.bgp;
-        self.dmg_bgp_cpu_commit_current_line_writes.clear();
-        self.dmg_bgp_cpu_commit_previous_line_writes.clear();
-        self.dmg_recent_panel_dots.clear();
+        self.dmg_panel_live_write_state
+            .reset_for_startup(startup_state.bgp);
         self.blank_frame_active = false;
         self.oam_corruption_controller = OamCorruptionController;
         self.mode2_scan_state.reset();
@@ -653,16 +624,8 @@ impl Ppu {
                 self.mode2_scan_state.reset_scanline();
                 self.bg_pipeline_state.reset();
                 self.obj_pipeline_state.reset();
-                self.dmg_lcdc0_current_line_bg_enable_write_count = 0;
-                self.dmg_lcdc3_current_line_bg_tilemap_write_count = 0;
-                self.dmg_lcdc0_bg_enable_visible_hold_override = None;
-                self.dmg_lcdc0_bg_enable_visible_hold_pixels_remaining = 0;
-                self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override = None;
-                self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining = 0;
-                self.dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette = None;
-                self.dmg_bgp_cpu_commit_current_line_start_palette = self.bgp;
-                self.dmg_bgp_cpu_commit_current_line_writes.clear();
-                self.dmg_recent_panel_dots.clear();
+                self.dmg_panel_live_write_state
+                    .reset_for_scanline_start(self.bgp);
                 self.current_scanline_pixels.fill(0);
                 self.current_scanline_mixed_pixels
                     .fill(MixedPixel::background(0));
@@ -811,9 +774,13 @@ impl Ppu {
             pipeline_wy: pipeline_registers.wy,
             pipeline_wx: pipeline_registers.wx,
             dmg_bgp_cpu_commit_output_palette_override: self
-                .dmg_bgp_cpu_commit_output_palette_override,
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .output_palette_override,
             dmg_bgp_cpu_commit_output_delay_pixels_remaining: self
-                .dmg_bgp_cpu_commit_output_delay_pixels_remaining,
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .output_delay_pixels_remaining,
             obj_palette_read_policy: self.obj_palette_read_policy,
         }
     }

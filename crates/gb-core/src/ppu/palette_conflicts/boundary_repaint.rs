@@ -21,7 +21,9 @@ impl Ppu {
                 .visible_pixels_output
                 .saturating_add(8),
         );
-        self.dmg_bgp_cpu_commit_current_line_writes
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .current_line_writes
             .push(PpuDmgBgpCpuCommitWrite {
                 effect_kind,
                 transient_visible_x,
@@ -42,16 +44,28 @@ impl Ppu {
                 && previous_ly % 8 == 7
                 && self.ly.is_multiple_of(8)
                 && (self
-                    .dmg_bgp_cpu_commit_current_line_writes
+                    .dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .current_line_writes
                     .iter()
                     .any(|write| {
                         write.effect_kind == PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
                     })
                     || self.current_mode0_start_dot() > self.baseline_mode0_start_dot())
                 && self.mode2_scan_state.selected_sprite_count() == 0
-                && !self.dmg_bgp_cpu_commit_current_line_writes.is_empty()
-                && self.dmg_bgp_cpu_commit_current_line_writes
-                    != self.dmg_bgp_cpu_commit_previous_line_writes
+                && !self
+                    .dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .current_line_writes
+                    .is_empty()
+                && self
+                    .dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .current_line_writes
+                    != self
+                        .dmg_panel_live_write_state
+                        .bgp_cpu_commit
+                        .previous_line_writes
             {
                 self.recolor_previous_scanline_from_current_bgp_cpu_commit_writes(
                     previous_ly,
@@ -62,16 +76,32 @@ impl Ppu {
             self.previous_scanline_mixed_pixels = self.current_scanline_mixed_pixels;
             self.previous_scanline_dmg_bg_forced_white = self.current_scanline_dmg_bg_forced_white;
             self.previous_scanline_ly = Some(self.ly);
-            self.dmg_bgp_cpu_commit_previous_line_start_palette =
-                self.dmg_bgp_cpu_commit_current_line_start_palette;
-            self.dmg_bgp_cpu_commit_previous_line_writes =
-                self.dmg_bgp_cpu_commit_current_line_writes.clone();
+            self.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .previous_line_start_palette = self
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .current_line_start_palette;
+            self.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .previous_line_writes = self
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .current_line_writes
+                .clone();
         } else {
             self.previous_scanline_ly = None;
             self.previous_scanline_dmg_bg_forced_white.fill(false);
-            self.dmg_bgp_cpu_commit_previous_line_start_palette =
-                self.dmg_bgp_cpu_commit_current_line_start_palette;
-            self.dmg_bgp_cpu_commit_previous_line_writes.clear();
+            self.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .previous_line_start_palette = self
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .current_line_start_palette;
+            self.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .previous_line_writes
+                .clear();
         }
     }
 
@@ -94,7 +124,9 @@ impl Ppu {
         let row_start = previous_ly as usize * SCREEN_WIDTH;
         for x in 0..SCREEN_WIDTH {
             let palette = self.dmg_bgp_cpu_commit_palette_for_visible_x(
-                self.dmg_bgp_cpu_commit_previous_line_start_palette,
+                self.dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .previous_line_start_palette,
                 &boundary_writes,
                 x,
                 include_retroactive_panel_writes,
@@ -210,11 +242,21 @@ impl Ppu {
             }
         }
 
-        if self.dmg_bgp_cpu_commit_current_line_writes.len()
-            != self.dmg_bgp_cpu_commit_previous_line_writes.len()
+        if self
+            .dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .current_line_writes
+            .len()
+            != self
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .previous_line_writes
+                .len()
         {
             return self
-                .dmg_bgp_cpu_commit_current_line_writes
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .current_line_writes
                 .iter()
                 .copied()
                 .map(|write| PpuDmgBgpBoundaryRepaintWrite {
@@ -224,10 +266,18 @@ impl Ppu {
                 .collect();
         }
 
-        self.dmg_bgp_cpu_commit_current_line_writes
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .current_line_writes
             .iter()
             .copied()
-            .zip(self.dmg_bgp_cpu_commit_previous_line_writes.iter().copied())
+            .zip(
+                self.dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .previous_line_writes
+                    .iter()
+                    .copied(),
+            )
             .map(|(current, previous)| {
                 if repaint_onset_x(current) >= repaint_onset_x(previous) {
                     PpuDmgBgpBoundaryRepaintWrite {

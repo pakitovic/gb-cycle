@@ -14,7 +14,7 @@ impl Ppu {
         }
 
         let mut transient_palette_pending = matches!(register, PpuPaletteRegister::Bgp);
-        if !self.dmg_recent_panel_dots.is_empty()
+        if !self.dmg_panel_live_write_state.recent_panel_dots.is_empty()
             && !self.use_scanline_palette_conflict_positions(register)
         {
             let recent_dots = self.recent_palette_conflict_panel_dots(register, retroactive_pixels);
@@ -78,7 +78,8 @@ impl Ppu {
         _register: PpuPaletteRegister,
         retroactive_pixels: usize,
     ) -> Vec<PpuRecentPanelDot> {
-        self.dmg_recent_panel_dots
+        self.dmg_panel_live_write_state
+            .recent_panel_dots
             .iter()
             .rev()
             .take(retroactive_pixels)
@@ -152,18 +153,30 @@ impl Ppu {
             return;
         }
 
-        if self.dmg_recent_panel_dots.len() == DMG_PALETTE_RETROACTIVE_DOT_HISTORY {
-            let _ = self.dmg_recent_panel_dots.pop_front();
+        if self.dmg_panel_live_write_state.recent_panel_dots.len()
+            == DMG_PALETTE_RETROACTIVE_DOT_HISTORY
+        {
+            let _ = self
+                .dmg_panel_live_write_state
+                .recent_panel_dots
+                .pop_front();
         }
-        self.dmg_recent_panel_dots.push_back(PpuRecentPanelDot {
-            visible_x,
-            pixel,
-            dmg_bg_forced_white,
-        });
+        self.dmg_panel_live_write_state
+            .recent_panel_dots
+            .push_back(PpuRecentPanelDot {
+                visible_x,
+                pixel,
+                dmg_bg_forced_white,
+            });
     }
 
     pub(in crate::ppu) fn repeat_last_dmg_recent_panel_dot(&mut self) {
-        let Some(last_dot) = self.dmg_recent_panel_dots.back().copied() else {
+        let Some(last_dot) = self
+            .dmg_panel_live_write_state
+            .recent_panel_dots
+            .back()
+            .copied()
+        else {
             return;
         };
         self.record_dmg_recent_panel_dot(

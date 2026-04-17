@@ -41,7 +41,10 @@ impl Ppu {
 
                 if let Some(desired_onset_x) = self
                     .dmg_single_left_sprite_bgp_live_write_onset_visible_x(
-                        self.dmg_bgp_cpu_commit_current_line_writes.len(),
+                        self.dmg_panel_live_write_state
+                            .bgp_cpu_commit
+                            .current_line_writes
+                            .len(),
                     )
                 {
                     self.apply_single_left_sprite_bgp_live_write_onset(
@@ -57,20 +60,26 @@ impl Ppu {
                 let base_effect_kind = self.dmg_bgp_cpu_commit_effect_kind(retroactive_pixels);
                 let effective_retroactive_pixels = retroactive_pixels;
                 let line_has_pipeline_delayed = self
-                    .dmg_bgp_cpu_commit_current_line_writes
+                    .dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .current_line_writes
                     .iter()
                     .any(|write| {
                         write.effect_kind == PpuDmgBgpCpuCommitEffectKind::PipelineDelayed
                     });
                 let retroactive_write_count = self
-                    .dmg_bgp_cpu_commit_current_line_writes
+                    .dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .current_line_writes
                     .iter()
                     .filter(|write| {
                         write.effect_kind == PpuDmgBgpCpuCommitEffectKind::RetroactivePanel
                     })
                     .count();
                 let first_retroactive_write = self
-                    .dmg_bgp_cpu_commit_current_line_writes
+                    .dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .current_line_writes
                     .iter()
                     .find(|write| {
                         write.effect_kind == PpuDmgBgpCpuCommitEffectKind::RetroactivePanel
@@ -135,7 +144,12 @@ impl Ppu {
                             delay_final_visible_commit,
                         );
                         if !delay_final_visible_commit
-                            && self.dmg_bgp_cpu_commit_current_line_writes.len() == 1
+                            && self
+                                .dmg_panel_live_write_state
+                                .bgp_cpu_commit
+                                .current_line_writes
+                                .len()
+                                == 1
                             && let Some(bg_visible_pixels) =
                                 self.early_line_retroactive_obj_hold_bg_visible_pixels()
                         {
@@ -192,9 +206,10 @@ impl Ppu {
 
         let mut affected_pixel_count = 0usize;
         let mut recent_affected_pixels_are_bg_color0 = true;
-        if !self.dmg_recent_panel_dots.is_empty() {
+        if !self.dmg_panel_live_write_state.recent_panel_dots.is_empty() {
             let recent_dots = self
-                .dmg_recent_panel_dots
+                .dmg_panel_live_write_state
+                .recent_panel_dots
                 .iter()
                 .rev()
                 .take(retroactive_pixels)
@@ -236,22 +251,46 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn consume_dmg_bgp_cpu_commit_output_delay(&mut self) {
-        if self.dmg_bgp_cpu_commit_output_delay_pixels_remaining == 0 {
+        if self
+            .dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_delay_pixels_remaining
+            == 0
+        {
             return;
         }
 
-        self.dmg_bgp_cpu_commit_output_delay_pixels_remaining -= 1;
-        if self.dmg_bgp_cpu_commit_output_delay_pixels_remaining == 0 {
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_delay_pixels_remaining -= 1;
+        if self
+            .dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_delay_pixels_remaining
+            == 0
+        {
             if let Some(palette) = self
-                .dmg_bgp_cpu_commit_output_followup_palette_override
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .output_followup_palette_override
                 .take()
             {
-                self.dmg_bgp_cpu_commit_output_palette_override = Some(palette);
-                self.dmg_bgp_cpu_commit_output_delay_pixels_remaining =
-                    self.dmg_bgp_cpu_commit_output_followup_pixels_remaining;
-                self.dmg_bgp_cpu_commit_output_followup_pixels_remaining = 0;
+                self.dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .output_palette_override = Some(palette);
+                self.dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .output_delay_pixels_remaining = self
+                    .dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .output_followup_pixels_remaining;
+                self.dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .output_followup_pixels_remaining = 0;
             } else {
-                self.dmg_bgp_cpu_commit_output_palette_override = None;
+                self.dmg_panel_live_write_state
+                    .bgp_cpu_commit
+                    .output_palette_override = None;
             }
         }
     }
@@ -261,26 +300,49 @@ impl Ppu {
         output_pixel: MixedPixel,
     ) {
         if self
-            .dmg_bgp_cpu_commit_bg_visible_hold_palette_override
+            .dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_palette_override
             .is_none()
             || !matches!(output_pixel.source, MixedPixelSource::Background)
-            || self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining == 0
+            || self
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .bg_visible_hold_bg_pixels_remaining
+                == 0
         {
             return;
         }
 
-        self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining -= 1;
-        if self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining == 0 {
-            self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override = self
-                .dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_bg_pixels_remaining -= 1;
+        if self
+            .dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_bg_pixels_remaining
+            == 0
+        {
+            self.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .bg_visible_hold_palette_override = self
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .bg_visible_hold_fallback_palette
                 .take();
         }
     }
 
     pub(in crate::ppu) fn clear_dmg_bgp_cpu_commit_bg_visible_hold(&mut self) {
-        self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override = None;
-        self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining = 0;
-        self.dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette = None;
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_palette_override = None;
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_bg_pixels_remaining = 0;
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_fallback_palette = None;
     }
 
     fn start_dmg_bgp_cpu_commit_bg_visible_hold(
@@ -289,14 +351,24 @@ impl Ppu {
         bg_visible_pixels: u8,
         fallback_palette: u8,
     ) {
-        self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override = Some(palette);
-        self.dmg_bgp_cpu_commit_bg_visible_hold_bg_pixels_remaining = bg_visible_pixels;
-        self.dmg_bgp_cpu_commit_bg_visible_hold_fallback_palette = Some(fallback_palette);
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_palette_override = Some(palette);
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_bg_pixels_remaining = bg_visible_pixels;
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .bg_visible_hold_fallback_palette = Some(fallback_palette);
     }
 
     fn clear_dmg_bgp_cpu_commit_output_followup(&mut self) {
-        self.dmg_bgp_cpu_commit_output_followup_palette_override = None;
-        self.dmg_bgp_cpu_commit_output_followup_pixels_remaining = 0;
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_followup_palette_override = None;
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_followup_pixels_remaining = 0;
     }
 
     fn set_dmg_bgp_cpu_commit_output_override(
@@ -304,8 +376,12 @@ impl Ppu {
         palette_override: Option<u8>,
         pixels_remaining: u8,
     ) {
-        self.dmg_bgp_cpu_commit_output_palette_override = palette_override;
-        self.dmg_bgp_cpu_commit_output_delay_pixels_remaining = pixels_remaining;
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_palette_override = palette_override;
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_delay_pixels_remaining = pixels_remaining;
         self.clear_dmg_bgp_cpu_commit_output_followup();
     }
 
@@ -315,12 +391,18 @@ impl Ppu {
             return;
         }
 
-        self.dmg_bgp_cpu_commit_output_followup_palette_override = Some(palette_override);
-        self.dmg_bgp_cpu_commit_output_followup_pixels_remaining = pixels;
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_followup_palette_override = Some(palette_override);
+        self.dmg_panel_live_write_state
+            .bgp_cpu_commit
+            .output_followup_pixels_remaining = pixels;
     }
 
     fn dmg_bgp_cpu_commit_output_delay_pixels(&self, visible_pixels_output: u8) -> u8 {
-        if visible_pixels_output == 0 && self.dmg_recent_panel_dots.is_empty() {
+        if visible_pixels_output == 0
+            && self.dmg_panel_live_write_state.recent_panel_dots.is_empty()
+        {
             let leading_visible_obj_pixels = self.leading_visible_obj_fifo_prefix_pixels();
             if leading_visible_obj_pixels == 0 {
                 return 0;
@@ -410,7 +492,12 @@ impl Ppu {
 
     fn dmg_single_left_sprite_bgp_second_write_transient_range(&self) -> Option<(u8, u8)> {
         if self.mode2_scan_state.selected_sprite_count() != 1
-            || self.dmg_bgp_cpu_commit_current_line_writes.len() != 1
+            || self
+                .dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .current_line_writes
+                .len()
+                != 1
         {
             return None;
         }

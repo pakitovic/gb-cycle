@@ -904,3 +904,217 @@ impl PpuMode3ScyObjPhasePolicy {
             .startup_visible_tile3_uses_previous_tiledata_row()
     }
 }
+
+/// Resolves sprite-phased DMG Mode 3 live-write quirks through explicit
+/// observed tables, keeping imperative control code focused on applying
+/// the already-decided hardware hypothesis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3SingleSpritePhasePolicy {
+    sprite_x: u8,
+}
+
+impl PpuMode3SingleSpritePhasePolicy {
+    pub(in crate::ppu) const fn new(sprite_x: u8) -> Self {
+        Self { sprite_x }
+    }
+
+    pub(in crate::ppu) const fn sprite_x(self) -> u8 {
+        self.sprite_x
+    }
+
+    pub(in crate::ppu) const fn observed_lcdc0_onset_table(
+        self,
+    ) -> PpuMode3ObservedLcdc0OnsetTable {
+        PpuMode3ObservedLcdc0OnsetTable::new(self.sprite_x())
+    }
+
+    pub(in crate::ppu) const fn observed_lcdc3_phase_table(
+        self,
+    ) -> PpuMode3ObservedLcdc3PhaseTable {
+        PpuMode3ObservedLcdc3PhaseTable::new(self.sprite_x())
+    }
+
+    pub(in crate::ppu) const fn observed_lcdc4_phase_table(
+        self,
+    ) -> PpuMode3ObservedLcdc4PhaseTable {
+        PpuMode3ObservedLcdc4PhaseTable::new(self.sprite_x())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3ObservedLcdc0OnsetTable {
+    sprite_x: u8,
+}
+
+impl PpuMode3ObservedLcdc0OnsetTable {
+    pub(in crate::ppu) const fn new(sprite_x: u8) -> Self {
+        Self { sprite_x }
+    }
+
+    pub(in crate::ppu) const fn onset_visible_x(self, write_index: usize) -> Option<u8> {
+        const WRITE0_ONSETS: [u8; 18] = [0, 0, 0, 2, 3, 4, 4, 4, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        const WRITE1_ONSETS: [u8; 18] = [
+            11, 12, 13, 14, 15, 16, 16, 16, 11, 12, 13, 14, 15, 16, 16, 16, 11, 12,
+        ];
+
+        let sprite_x = self.sprite_x as usize;
+        match write_index {
+            0 if sprite_x < WRITE0_ONSETS.len() => Some(WRITE0_ONSETS[sprite_x]),
+            1 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x]),
+            2 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x] + 8),
+            3 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x] + 16),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3Lcdc3StartupTilemapOverride {
+    pub(in crate::ppu) tilemap_select: bool,
+    pub(in crate::ppu) applies_to_visible_tile2: bool,
+    pub(in crate::ppu) applies_to_visible_tile3: bool,
+}
+
+impl PpuMode3Lcdc3StartupTilemapOverride {
+    pub(in crate::ppu) const fn has_effect(self) -> bool {
+        self.applies_to_visible_tile2 || self.applies_to_visible_tile3
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3Lcdc3LiveWriteDecision {
+    pub(in crate::ppu) clear_visible_tile2_live_refetch: bool,
+    pub(in crate::ppu) tilemap_override: Option<PpuMode3Lcdc3StartupTilemapOverride>,
+}
+
+impl PpuMode3Lcdc3LiveWriteDecision {
+    pub(in crate::ppu) const fn has_effect(self) -> bool {
+        self.clear_visible_tile2_live_refetch || self.tilemap_override.is_some()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3ObservedLcdc3PhaseTable {
+    sprite_x: u8,
+}
+
+impl PpuMode3ObservedLcdc3PhaseTable {
+    pub(in crate::ppu) const fn new(sprite_x: u8) -> Self {
+        Self { sprite_x }
+    }
+
+    pub(in crate::ppu) const fn live_write_decision(
+        self,
+        write_index: usize,
+        current_bg_tilemap_select: bool,
+    ) -> Option<PpuMode3Lcdc3LiveWriteDecision> {
+        let clear_visible_tile2_live_refetch = matches!(
+            (write_index, self.sprite_x),
+            (0, 4..=17) | (1, 16..=u8::MAX)
+        );
+
+        let tilemap_override = match write_index {
+            0 if current_bg_tilemap_select => {
+                let override_decision = PpuMode3Lcdc3StartupTilemapOverride {
+                    tilemap_select: true,
+                    applies_to_visible_tile2: self.sprite_x <= 2,
+                    applies_to_visible_tile3: matches!(self.sprite_x & 0x07, 3..=7),
+                };
+                if override_decision.has_effect() {
+                    Some(override_decision)
+                } else {
+                    None
+                }
+            }
+            1 if self.sprite_x <= 2 => Some(PpuMode3Lcdc3StartupTilemapOverride {
+                tilemap_select: true,
+                applies_to_visible_tile2: true,
+                applies_to_visible_tile3: false,
+            }),
+            _ => None,
+        };
+
+        let decision = PpuMode3Lcdc3LiveWriteDecision {
+            clear_visible_tile2_live_refetch,
+            tilemap_override,
+        };
+        if decision.has_effect() {
+            Some(decision)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3Lcdc4StartupOverride {
+    pub(in crate::ppu) slice: BgVisibleStartupSlice,
+    pub(in crate::ppu) override_select: BgTileDataSelectOverride,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuMode3ObservedLcdc4PhaseTable {
+    sprite_x: u8,
+}
+
+impl PpuMode3ObservedLcdc4PhaseTable {
+    pub(in crate::ppu) const fn new(sprite_x: u8) -> Self {
+        Self { sprite_x }
+    }
+
+    pub(in crate::ppu) const fn startup_override_for_target_select(
+        self,
+        target_select: BgTileDataSelect,
+    ) -> Option<PpuMode3Lcdc4StartupOverride> {
+        let (slice, override_select) = match (target_select, self.sprite_x) {
+            (BgTileDataSelect::Unsigned8000, 3 | 4) => (
+                BgVisibleStartupSlice::VisibleTile2,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Unsigned8000),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            ),
+            (BgTileDataSelect::Unsigned8000, 5..=7) => (
+                BgVisibleStartupSlice::VisibleTile2,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            ),
+            (BgTileDataSelect::Unsigned8000, 8..=17) => (
+                BgVisibleStartupSlice::VisibleTile2,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 3 | 4 | 8..=12) => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 5..=7 | 13..=15) => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Unsigned8000),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            ),
+            (BgTileDataSelect::Signed8800, 16..=17) => (
+                BgVisibleStartupSlice::VisibleTile3,
+                PerPlane::new(
+                    Some(BgTileDataSelect::Unsigned8000),
+                    Some(BgTileDataSelect::Unsigned8000),
+                ),
+            ),
+            _ => return None,
+        };
+
+        Some(PpuMode3Lcdc4StartupOverride {
+            slice,
+            override_select,
+        })
+    }
+}

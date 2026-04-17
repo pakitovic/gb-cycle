@@ -1521,8 +1521,12 @@ impl Ppu {
     pub(super) fn pixel_pipeline_bgp(&self) -> u8 {
         self.mode3_register_latches().pixel_pipeline_bgp(
             self.console_model,
-            self.dmg_bgp_cpu_commit_output_palette_override,
-            self.dmg_bgp_cpu_commit_bg_visible_hold_palette_override,
+            self.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .output_palette_override,
+            self.dmg_panel_live_write_state
+                .bgp_cpu_commit
+                .bg_visible_hold_palette_override,
         )
     }
 
@@ -1533,7 +1537,9 @@ impl Ppu {
         );
 
         if self.console_model.is_dmg_family() {
-            self.dmg_lcdc0_bg_enable_visible_hold_override
+            self.dmg_panel_live_write_state
+                .lcdc0
+                .bg_enable_visible_hold_override
                 .unwrap_or(bg_enabled)
         } else {
             bg_enabled
@@ -1549,41 +1555,34 @@ impl Ppu {
             return;
         }
 
-        let write_index = self.dmg_lcdc3_current_line_bg_tilemap_write_count as usize;
-        self.dmg_lcdc3_current_line_bg_tilemap_write_count = self
-            .dmg_lcdc3_current_line_bg_tilemap_write_count
-            .saturating_add(1);
+        let write_index = self
+            .bg_pipeline_state
+            .take_next_dmg_lcdc3_current_line_bg_tilemap_write_index();
 
-        if self.mode2_scan_state.selected_sprite_count() != 1 {
-            return;
-        }
-
-        let Some(sprite) = self.mode2_scan_state.selected_sprite(0) else {
+        let Some(policy) = self.dmg_single_selected_sprite_phase_policy() else {
             return;
         };
-        if write_index == 0 && matches!(sprite.x, 4..=17) {
+
+        let Some(decision) = policy.observed_lcdc3_phase_table().live_write_decision(
+            write_index,
+            write_context.current_lcdc() & LCDC_BG_TILE_MAP_BIT != 0,
+        ) else {
+            return;
+        };
+
+        if decision.clear_visible_tile2_live_refetch {
             self.bg_pipeline_state
                 .clear_dmg_lcdc3_startup_visible_tile2_live_refetch();
-        }
-        if write_index == 1 && sprite.x <= 2 {
-            self.bg_pipeline_state
-                .latch_dmg_lcdc3_startup_continuation_tilemap_select_override(true, true, false);
-            return;
-        }
-        if write_index == 1 && sprite.x >= 16 {
-            self.bg_pipeline_state
-                .clear_dmg_lcdc3_startup_visible_tile2_live_refetch();
-        }
-        if write_index != 0 || write_context.current_lcdc() & LCDC_BG_TILE_MAP_BIT == 0 {
-            return;
         }
 
-        self.bg_pipeline_state
-            .latch_dmg_lcdc3_startup_continuation_tilemap_select_override(
-                true,
-                sprite.x <= 2,
-                matches!(sprite.x & 0x07, 3..=7),
-            );
+        if let Some(tilemap_override) = decision.tilemap_override {
+            self.bg_pipeline_state
+                .latch_dmg_lcdc3_startup_continuation_tilemap_select_override(
+                    tilemap_override.tilemap_select,
+                    tilemap_override.applies_to_visible_tile2,
+                    tilemap_override.applies_to_visible_tile3,
+                );
+        }
     }
 
     pub(super) fn apply_dmg_lcdc4_live_bg_tiledata_write(
@@ -1596,66 +1595,28 @@ impl Ppu {
             return;
         }
 
-        if self.mode2_scan_state.selected_sprite_count() != 1 {
-            return;
-        }
-
-        let Some(sprite) = self.mode2_scan_state.selected_sprite(0) else {
+        let Some(policy) = self.dmg_single_selected_sprite_phase_policy() else {
             return;
         };
 
-        if write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0 {
-            match sprite.x {
-                3 | 4 => self
-                    .bg_pipeline_state
-                    .set_dmg_lcdc4_startup_tiledata_select_override(
-                        BgStartupContinuationSlice::VisibleTile2,
-                        Some(true),
-                        Some(true),
-                    ),
-                5..=7 => self
-                    .bg_pipeline_state
-                    .set_dmg_lcdc4_startup_tiledata_select_override(
-                        BgStartupContinuationSlice::VisibleTile2,
-                        Some(false),
-                        Some(true),
-                    ),
-                8..=17 => self
-                    .bg_pipeline_state
-                    .set_dmg_lcdc4_startup_tiledata_select_override(
-                        BgStartupContinuationSlice::VisibleTile2,
-                        Some(false),
-                        Some(false),
-                    ),
-                _ => {}
-            }
-            return;
-        }
+        let target_select = if write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0 {
+            BgTileDataSelect::Unsigned8000
+        } else {
+            BgTileDataSelect::Signed8800
+        };
 
-        match sprite.x {
-            3 | 4 | 8..=12 => self
-                .bg_pipeline_state
-                .set_dmg_lcdc4_startup_tiledata_select_override(
-                    BgStartupContinuationSlice::VisibleTile3,
-                    Some(false),
-                    Some(false),
-                ),
-            5..=7 | 13..=15 => self
-                .bg_pipeline_state
-                .set_dmg_lcdc4_startup_tiledata_select_override(
-                    BgStartupContinuationSlice::VisibleTile3,
-                    Some(true),
-                    Some(false),
-                ),
-            16..=17 => self
-                .bg_pipeline_state
-                .set_dmg_lcdc4_startup_tiledata_select_override(
-                    BgStartupContinuationSlice::VisibleTile3,
-                    Some(true),
-                    Some(true),
-                ),
-            _ => {}
-        }
+        let Some(override_decision) = policy
+            .observed_lcdc4_phase_table()
+            .startup_override_for_target_select(target_select)
+        else {
+            return;
+        };
+
+        self.bg_pipeline_state
+            .latch_and_apply_dmg_lcdc4_startup_tiledata_select_override(
+                override_decision.slice,
+                override_decision.override_select,
+            );
     }
 
     pub(super) fn apply_dmg_lcdc0_live_bg_enable_write(
@@ -1666,13 +1627,17 @@ impl Ppu {
             return;
         }
 
-        let write_index = self.dmg_lcdc0_current_line_bg_enable_write_count as usize;
-        self.dmg_lcdc0_current_line_bg_enable_write_count = self
-            .dmg_lcdc0_current_line_bg_enable_write_count
-            .saturating_add(1);
+        let write_index = self
+            .dmg_panel_live_write_state
+            .lcdc0
+            .take_next_bg_enable_write_index();
 
-        let Some(onset_visible_x) =
-            self.dmg_single_left_sprite_lcdc0_live_write_onset_visible_x(write_index)
+        let Some(policy) = self.dmg_single_selected_sprite_phase_policy() else {
+            return;
+        };
+        let Some(onset_visible_x) = policy
+            .observed_lcdc0_onset_table()
+            .onset_visible_x(write_index)
         else {
             return;
         };
@@ -1692,15 +1657,41 @@ impl Ppu {
         self.start_dmg_lcdc0_bg_enable_visible_hold(previous_bg_enabled, 0);
     }
 
+    fn dmg_single_selected_sprite_phase_policy(&self) -> Option<PpuMode3SingleSpritePhasePolicy> {
+        if self.mode2_scan_state.selected_sprite_count() != 1 {
+            return None;
+        }
+
+        self.mode2_scan_state
+            .selected_sprite(0)
+            .map(|sprite| PpuMode3SingleSpritePhasePolicy::new(sprite.x))
+    }
+
     pub(super) fn consume_dmg_lcdc0_bg_enable_visible_hold(&mut self) {
-        if self.dmg_lcdc0_bg_enable_visible_hold_pixels_remaining == 0 {
-            self.dmg_lcdc0_bg_enable_visible_hold_override = None;
+        if self
+            .dmg_panel_live_write_state
+            .lcdc0
+            .bg_enable_visible_hold_pixels_remaining
+            == 0
+        {
+            self.dmg_panel_live_write_state
+                .lcdc0
+                .bg_enable_visible_hold_override = None;
             return;
         }
 
-        self.dmg_lcdc0_bg_enable_visible_hold_pixels_remaining -= 1;
-        if self.dmg_lcdc0_bg_enable_visible_hold_pixels_remaining == 0 {
-            self.dmg_lcdc0_bg_enable_visible_hold_override = None;
+        self.dmg_panel_live_write_state
+            .lcdc0
+            .bg_enable_visible_hold_pixels_remaining -= 1;
+        if self
+            .dmg_panel_live_write_state
+            .lcdc0
+            .bg_enable_visible_hold_pixels_remaining
+            == 0
+        {
+            self.dmg_panel_live_write_state
+                .lcdc0
+                .bg_enable_visible_hold_override = None;
         }
     }
 
@@ -1710,36 +1701,18 @@ impl Ppu {
         hold_pixels: u8,
     ) {
         if !self.console_model.is_dmg_family() || hold_pixels == 0 {
-            self.dmg_lcdc0_bg_enable_visible_hold_override = None;
-            self.dmg_lcdc0_bg_enable_visible_hold_pixels_remaining = 0;
+            self.dmg_panel_live_write_state
+                .lcdc0
+                .clear_bg_enable_visible_hold();
             return;
         }
 
-        self.dmg_lcdc0_bg_enable_visible_hold_override = Some(previous_bg_enabled);
-        self.dmg_lcdc0_bg_enable_visible_hold_pixels_remaining = hold_pixels;
-    }
-
-    fn dmg_single_left_sprite_lcdc0_live_write_onset_visible_x(
-        &self,
-        write_index: usize,
-    ) -> Option<u8> {
-        if self.mode2_scan_state.selected_sprite_count() != 1 {
-            return None;
-        }
-
-        let sprite_x = self.mode2_scan_state.selected_sprite(0)?.x as usize;
-        const WRITE0_ONSETS: [u8; 18] = [0, 0, 0, 2, 3, 4, 4, 4, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-        const WRITE1_ONSETS: [u8; 18] = [
-            11, 12, 13, 14, 15, 16, 16, 16, 11, 12, 13, 14, 15, 16, 16, 16, 11, 12,
-        ];
-
-        match write_index {
-            0 if sprite_x < WRITE0_ONSETS.len() => Some(WRITE0_ONSETS[sprite_x]),
-            1 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x]),
-            2 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x] + 8),
-            3 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x] + 16),
-            _ => None,
-        }
+        self.dmg_panel_live_write_state
+            .lcdc0
+            .bg_enable_visible_hold_override = Some(previous_bg_enabled);
+        self.dmg_panel_live_write_state
+            .lcdc0
+            .bg_enable_visible_hold_pixels_remaining = hold_pixels;
     }
 
     fn repaint_dmg_lcdc0_panel_range(&mut self, start_x: u8, end_x: u8, bg_enabled: bool) {
@@ -1770,7 +1743,7 @@ impl Ppu {
             self.framebuffer[row_start + x] = panel_pixel;
         }
 
-        for dot in &mut self.dmg_recent_panel_dots {
+        for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
             let visible_x = dot.visible_x as usize;
             if !(usize::from(start_x)..usize::from(end_x)).contains(&visible_x) {
                 continue;
