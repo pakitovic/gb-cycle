@@ -396,6 +396,8 @@ expectations without relying mostly on whole-session trace or snapshot fixtures.
 - The next useful slice should be participant-scoped snapshot fixtures, so the
   harness can pin one participant's full final machine state without forcing a
   whole-session snapshot fixture
+- After that, participant-scoped trace fixtures should cover cases where the
+  participant's execution chronology matters more than the final snapshot alone
 - Extend linked-session manifests so expectations can target the whole session
   or one named participant explicitly
 - Normalize retained artifact naming for session-level vs participant-level

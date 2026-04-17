@@ -290,10 +290,12 @@ fn render_failure(failure: &LinkedSessionCaseFailure) -> String {
         ),
         LinkedSessionCaseFailure::ParticipantFixtureMismatch {
             participant_id,
+            capture,
             fixture_path,
         } => format!(
-            "participant-fixture-mismatch participant={} fixture={}",
+            "participant-fixture-mismatch participant={} capture={:?} fixture={}",
             participant_id,
+            capture,
             fixture_path.display()
         ),
         LinkedSessionCaseFailure::FixtureMismatch { fixture_path } => {
@@ -413,12 +415,13 @@ mod tests {
     fn render_failure_formats_participant_fixture_mismatches() {
         let rendered = render_failure(&LinkedSessionCaseFailure::ParticipantFixtureMismatch {
             participant_id: "left".to_string(),
+            capture: crate::LinkedSessionCaptureKind::Snapshot,
             fixture_path: PathBuf::from("/tmp/left.snapshot"),
         });
 
         assert_eq!(
             rendered,
-            "participant-fixture-mismatch participant=left fixture=/tmp/left.snapshot"
+            "participant-fixture-mismatch participant=left capture=Snapshot fixture=/tmp/left.snapshot"
         );
     }
 }
