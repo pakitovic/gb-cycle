@@ -28,6 +28,10 @@ pub enum LinkedSessionCaseFailure {
         expected: String,
         actual: String,
     },
+    ParticipantFixtureMismatch {
+        participant_id: String,
+        fixture_path: PathBuf,
+    },
     FixtureMismatch {
         fixture_path: PathBuf,
     },
@@ -767,6 +771,38 @@ impl LinkedSessionRunner {
                     )
                 }
             }
+            LinkedSessionPassCondition::ParticipantSnapshotFixture {
+                participant_id,
+                fixture_path,
+            } => {
+                let participant_index = session
+                    .participants
+                    .iter()
+                    .position(|participant| participant.id == *participant_id)
+                    .expect("linked session should validate target participant existence");
+                let resolved_fixture = self.runner.resolve_path(fixture_path);
+                let expected = fs::read_to_string(&resolved_fixture).map_err(|source| {
+                    LinkedSessionExecutionError::FileOperation {
+                        path: resolved_fixture.clone(),
+                        operation: "read participant snapshot fixture",
+                        source: Box::new(source),
+                    }
+                })?;
+                if artifacts.participants[participant_index]
+                    .snapshot_text
+                    .as_deref()
+                    == Some(expected.as_str())
+                {
+                    LinkedSessionCaseOutcome::Passed
+                } else {
+                    LinkedSessionCaseOutcome::Failed(
+                        LinkedSessionCaseFailure::ParticipantFixtureMismatch {
+                            participant_id: participant_id.clone(),
+                            fixture_path: resolved_fixture,
+                        },
+                    )
+                }
+            }
             LinkedSessionPassCondition::TraceFixture(fixture_path) => {
                 let resolved_fixture = self.runner.resolve_path(fixture_path);
                 let expected = fs::read_to_string(&resolved_fixture).map_err(|source| {
@@ -973,6 +1009,23 @@ fn participant_outcome_for_session(
                         participant_id: failed_participant_id.clone(),
                         expected: expected.clone(),
                         actual: actual.clone(),
+                    },
+                )
+            } else {
+                LinkedSessionCaseOutcome::Passed
+            }
+        }
+        LinkedSessionCaseOutcome::Failed(
+            LinkedSessionCaseFailure::ParticipantFixtureMismatch {
+                participant_id: failed_participant_id,
+                fixture_path,
+            },
+        ) => {
+            if failed_participant_id == participant_id {
+                LinkedSessionCaseOutcome::Failed(
+                    LinkedSessionCaseFailure::ParticipantFixtureMismatch {
+                        participant_id: failed_participant_id.clone(),
+                        fixture_path: fixture_path.clone(),
                     },
                 )
             } else {
@@ -1313,6 +1366,79 @@ mod tests {
     }
 
     #[test]
+    fn linked_session_runner_supports_participant_snapshot_fixtures() {
+        let temp_dir = unique_temp_dir("participant-snapshot-pass");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let left_rom = temp_dir.join("left.gb");
+        let right_rom = temp_dir.join("right.gb");
+        let fixture_path = temp_dir.join("left.snapshot");
+        fs::write(
+            &left_rom,
+            build_test_rom(&[
+                0x3E, 0xA5, 0xE0, 0x01, 0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x08, 0x01,
+            ]),
+        )
+        .expect("left ROM should be writable");
+        fs::write(
+            &right_rom,
+            build_test_rom(&[
+                0x3E, 0x3C, 0xE0, 0x01, 0x3E, 0x80, 0xE0, 0x02, 0xC3, 0x08, 0x01,
+            ]),
+        )
+        .expect("right ROM should be writable");
+
+        let baseline = LinkedSessionCase::new(
+            "participant-snapshot-baseline",
+            LinkedSessionTopology::Dmg04,
+            Timeout::TCycles(5_000),
+            LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Snapshot),
+        )
+        .with_participant(LinkedSessionParticipant::new("left", &left_rom))
+        .with_participant(LinkedSessionParticipant::new("right", &right_rom));
+
+        let baseline_report = LinkedSessionRunner::new()
+            .run_session(&baseline)
+            .expect("baseline linked snapshot session should execute");
+        fs::write(
+            &fixture_path,
+            baseline_report.participants[0]
+                .artifacts
+                .snapshot_text
+                .as_deref()
+                .expect("baseline left snapshot should be captured"),
+        )
+        .expect("participant snapshot fixture should be writable");
+
+        let session = LinkedSessionCase::new(
+            "participant-snapshot-pass",
+            LinkedSessionTopology::Dmg04,
+            Timeout::TCycles(5_000),
+            LinkedSessionPassCondition::ParticipantSnapshotFixture {
+                participant_id: "left".to_string(),
+                fixture_path: fixture_path.clone(),
+            },
+        )
+        .with_participant(LinkedSessionParticipant::new("left", &left_rom))
+        .with_participant(LinkedSessionParticipant::new("right", &right_rom));
+
+        let report = LinkedSessionRunner::new()
+            .run_session(&session)
+            .expect("participant snapshot fixture session should execute");
+
+        assert_eq!(report.outcome, LinkedSessionCaseOutcome::Passed);
+        assert_eq!(
+            report.participants[0].outcome,
+            LinkedSessionCaseOutcome::Passed
+        );
+        assert_eq!(
+            report.participants[1].outcome,
+            LinkedSessionCaseOutcome::Passed
+        );
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
     fn linked_session_runner_persists_failure_artifacts_for_trace_mismatches() {
         let temp_dir = unique_temp_dir("failure-artifacts");
         let artifact_root = temp_dir.join("artifacts");
@@ -1401,6 +1527,96 @@ mod tests {
             artifact_root
                 .join("trace-mismatch")
                 .join("left_snapshot.txt")
+                .is_file()
+        );
+
+        fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn linked_session_runner_reports_participant_snapshot_fixture_mismatches_per_participant() {
+        let temp_dir = unique_temp_dir("participant-snapshot-mismatch");
+        let artifact_root = temp_dir.join("artifacts");
+        let expected_fixture_path = temp_dir.join("wrong.snapshot");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+        let left_rom = temp_dir.join("left.gb");
+        let right_rom = temp_dir.join("right.gb");
+        fs::write(
+            &left_rom,
+            build_test_rom(&[
+                0x3E, 0xA5, 0xE0, 0x01, 0x3E, 0x81, 0xE0, 0x02, 0xC3, 0x08, 0x01,
+            ]),
+        )
+        .expect("left ROM should be writable");
+        fs::write(
+            &right_rom,
+            build_test_rom(&[
+                0x3E, 0x3C, 0xE0, 0x01, 0x3E, 0x80, 0xE0, 0x02, 0xC3, 0x08, 0x01,
+            ]),
+        )
+        .expect("right ROM should be writable");
+        fs::write(&expected_fixture_path, "definitely wrong\n")
+            .expect("wrong participant snapshot fixture should be writable");
+
+        let session = LinkedSessionCase::new(
+            "participant-snapshot-mismatch",
+            LinkedSessionTopology::Dmg04,
+            Timeout::TCycles(5_000),
+            LinkedSessionPassCondition::ParticipantSnapshotFixture {
+                participant_id: "left".to_string(),
+                fixture_path: expected_fixture_path.clone(),
+            },
+        )
+        .with_failure_artifacts(
+            LinkedSessionFailureArtifactPolicy::new()
+                .with_artifact(LinkedSessionCaptureKind::Snapshot),
+        )
+        .with_participant(LinkedSessionParticipant::new("left", &left_rom))
+        .with_participant(LinkedSessionParticipant::new("right", &right_rom));
+
+        let report = LinkedSessionRunner::new()
+            .with_failure_artifact_root(&artifact_root)
+            .run_session(&session)
+            .expect("participant snapshot mismatch session should execute");
+
+        assert!(matches!(
+            report.outcome,
+            LinkedSessionCaseOutcome::Failed(
+                LinkedSessionCaseFailure::ParticipantFixtureMismatch {
+                    ref participant_id,
+                    ref fixture_path,
+                }
+            ) if participant_id == "left" && fixture_path == &expected_fixture_path
+        ));
+        assert!(matches!(
+            report.participants[0].outcome,
+            LinkedSessionCaseOutcome::Failed(
+                LinkedSessionCaseFailure::ParticipantFixtureMismatch {
+                    ref participant_id,
+                    ..
+                }
+            ) if participant_id == "left"
+        ));
+        assert_eq!(
+            report.participants[1].outcome,
+            LinkedSessionCaseOutcome::Passed
+        );
+        assert!(
+            artifact_root
+                .join("participant-snapshot-mismatch")
+                .join("linked_snapshot.txt")
+                .is_file()
+        );
+        assert!(
+            artifact_root
+                .join("participant-snapshot-mismatch")
+                .join("left_snapshot.txt")
+                .is_file()
+        );
+        assert!(
+            artifact_root
+                .join("participant-snapshot-mismatch")
+                .join("right_snapshot.txt")
                 .is_file()
         );
 

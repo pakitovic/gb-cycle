@@ -288,6 +288,14 @@ fn render_failure(failure: &LinkedSessionCaseFailure) -> String {
             "participant-serial-hex-mismatch participant={} expected={} actual={}",
             participant_id, expected, actual
         ),
+        LinkedSessionCaseFailure::ParticipantFixtureMismatch {
+            participant_id,
+            fixture_path,
+        } => format!(
+            "participant-fixture-mismatch participant={} fixture={}",
+            participant_id,
+            fixture_path.display()
+        ),
         LinkedSessionCaseFailure::FixtureMismatch { fixture_path } => {
             format!("fixture-mismatch fixture={}", fixture_path.display())
         }
@@ -311,6 +319,7 @@ fn writeln_checked<W: Write>(output: &mut W, line: &str) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::default_workspace_root;
+    use std::path::PathBuf;
 
     #[test]
     fn parse_help_and_list_actions() {
@@ -398,5 +407,18 @@ mod tests {
         )
         .expect_err("unknown session should fail");
         assert!(error.contains("does not contain session"));
+    }
+
+    #[test]
+    fn render_failure_formats_participant_fixture_mismatches() {
+        let rendered = render_failure(&LinkedSessionCaseFailure::ParticipantFixtureMismatch {
+            participant_id: "left".to_string(),
+            fixture_path: PathBuf::from("/tmp/left.snapshot"),
+        });
+
+        assert_eq!(
+            rendered,
+            "participant-fixture-mismatch participant=left fixture=/tmp/left.snapshot"
+        );
     }
 }

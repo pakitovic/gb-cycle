@@ -393,6 +393,9 @@ expectations without relying mostly on whole-session trace or snapshot fixtures.
 - The first useful slice should be participant-scoped exact `serial_hex`
   expectations, because they express `DMG-04` byte exchange contracts compactly
   without whole-session fixtures
+- The next useful slice should be participant-scoped snapshot fixtures, so the
+  harness can pin one participant's full final machine state without forcing a
+  whole-session snapshot fixture
 - Extend linked-session manifests so expectations can target the whole session
   or one named participant explicitly
 - Normalize retained artifact naming for session-level vs participant-level
