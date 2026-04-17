@@ -12,18 +12,9 @@ impl CpuCore {
             startup_state,
             registers: CpuRegisters::from_startup_state(startup_state),
             execution_state: CpuExecutionState::fetch_opcode(),
-            current_opcode: None,
-            ime: false,
-            delayed_ime_enable: false,
-            delayed_ime_enable_steps: 0,
-            halt_request_pending: false,
-            halt_request_ime: false,
-            halt_request_had_delayed_ei: false,
-            halt_bug_pending: false,
-            instruction_kind: None,
-            cb_instruction_kind: None,
-            operand8_latch: 0,
-            operand16_latch: 0,
+            in_flight: InFlightInstruction::default(),
+            ime_state: ImeState::Disabled,
+            halt_control: HaltControlState::Idle,
             last_bus_activity: None,
             last_address_event: None,
             stop_div_reset_requested: false,
@@ -51,15 +42,15 @@ impl CpuCore {
     }
 
     pub fn current_opcode(&self) -> Option<u8> {
-        self.current_opcode
+        self.in_flight.opcode
     }
 
     pub fn ime(&self) -> bool {
-        self.ime
+        self.ime_enabled()
     }
 
     pub fn delayed_ime_enable(&self) -> bool {
-        self.delayed_ime_enable
+        self.ime_state.delayed_enable_pending()
     }
 
     pub fn last_address_event(&self) -> Option<CpuAddressEvent> {
@@ -76,18 +67,9 @@ impl CpuCore {
         self.startup_state = startup_state;
         self.registers = CpuRegisters::from_startup_state(startup_state);
         self.execution_state = CpuExecutionState::fetch_opcode();
-        self.current_opcode = None;
-        self.ime = false;
-        self.delayed_ime_enable = false;
-        self.delayed_ime_enable_steps = 0;
-        self.halt_request_pending = false;
-        self.halt_request_ime = false;
-        self.halt_request_had_delayed_ei = false;
-        self.halt_bug_pending = false;
-        self.instruction_kind = None;
-        self.cb_instruction_kind = None;
-        self.operand8_latch = 0;
-        self.operand16_latch = 0;
+        self.ime_state = ImeState::Disabled;
+        self.halt_control = HaltControlState::Idle;
+        self.clear_in_flight_instruction_state();
         self.last_bus_activity = None;
         self.last_address_event = None;
         self.stop_div_reset_requested = false;
@@ -100,9 +82,9 @@ impl CpuCore {
             startup_state: self.startup_state,
             registers: self.registers,
             execution_state: self.execution_state,
-            current_opcode: self.current_opcode,
-            ime: self.ime,
-            delayed_ime_enable: self.delayed_ime_enable,
+            current_opcode: self.current_opcode(),
+            ime: self.ime(),
+            delayed_ime_enable: self.delayed_ime_enable(),
             last_bus_activity: self
                 .last_bus_activity
                 .map(|activity| CpuBusActivitySnapshot {
@@ -128,9 +110,9 @@ impl CpuCore {
             self.status,
             self.registers.pc,
             self.execution_state,
-            self.current_opcode,
-            self.ime,
-            self.delayed_ime_enable,
+            self.current_opcode(),
+            self.ime(),
+            self.delayed_ime_enable(),
             self.last_bus_activity_trace_value(),
             self.last_address_event_trace_value(),
         )

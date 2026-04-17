@@ -123,7 +123,6 @@ fn ld_hl_sp_plus_signed_immediate_uses_three_machine_cycles_and_sets_flags_from_
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xF8,
             step: 1,
             t_cycle: 0,
         }
@@ -158,7 +157,6 @@ fn add_sp_signed_immediate_uses_four_machine_cycles_and_sets_flags_from_sp_math(
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xE8,
             step: 1,
             t_cycle: 0,
         }
@@ -170,7 +168,6 @@ fn add_sp_signed_immediate_uses_four_machine_cycles_and_sets_flags_from_sp_math(
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xE8,
             step: 2,
             t_cycle: 0,
         }
@@ -204,7 +201,6 @@ fn add_sp_negative_signed_immediate_uses_four_machine_cycles_and_sets_flags_from
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xE8,
             step: 1,
             t_cycle: 0,
         }
@@ -216,7 +212,6 @@ fn add_sp_negative_signed_immediate_uses_four_machine_cycles_and_sets_flags_from
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xE8,
             step: 2,
             t_cycle: 0,
         }

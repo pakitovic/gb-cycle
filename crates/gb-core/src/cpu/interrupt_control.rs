@@ -1,8 +1,71 @@
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
 
-use super::state::{highest_pending_interrupt_from_mask, interrupt_vector};
 use super::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InterruptServicePhase {
+    InternalWait0,
+    InternalWait1,
+    PrepareStackWrite,
+    PushHighAndResolveVector,
+    PushLowAndCommit,
+}
+
+impl InterruptServicePhase {
+    const fn from_step(step: u8) -> Option<Self> {
+        match step {
+            0 => Some(Self::InternalWait0),
+            1 => Some(Self::InternalWait1),
+            2 => Some(Self::PrepareStackWrite),
+            3 => Some(Self::PushHighAndResolveVector),
+            4 => Some(Self::PushLowAndCommit),
+            _ => None,
+        }
+    }
+
+    const fn next_step(self) -> u8 {
+        match self {
+            Self::InternalWait0 => 1,
+            Self::InternalWait1 => 2,
+            Self::PrepareStackWrite => 3,
+            Self::PushHighAndResolveVector => 4,
+            Self::PushLowAndCommit => 4,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StopWakeBuggedInterruptServicePhase {
+    InternalWait0,
+    InternalWait1,
+    PrepareStackWrite,
+    PushHigh,
+    OverwriteHighSlotWithLowAndCommit,
+}
+
+impl StopWakeBuggedInterruptServicePhase {
+    const fn from_step(step: u8) -> Option<Self> {
+        match step {
+            0 => Some(Self::InternalWait0),
+            1 => Some(Self::InternalWait1),
+            2 => Some(Self::PrepareStackWrite),
+            3 => Some(Self::PushHigh),
+            4 => Some(Self::OverwriteHighSlotWithLowAndCommit),
+            _ => None,
+        }
+    }
+
+    const fn next_step(self) -> u8 {
+        match self {
+            Self::InternalWait0 => 1,
+            Self::InternalWait1 => 2,
+            Self::PrepareStackWrite => 3,
+            Self::PushHigh => 4,
+            Self::OverwriteHighSlotWithLowAndCommit => 4,
+        }
+    }
+}
 
 impl CpuCore {
     fn is_stop_sleep_state(&self) -> bool {
@@ -10,16 +73,6 @@ impl CpuCore {
             self.execution_state,
             CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
         )
-    }
-
-    const fn interrupt_source_mask(source: InterruptSource) -> u8 {
-        match source {
-            InterruptSource::VBlank => 0x01,
-            InterruptSource::LcdStat => 0x02,
-            InterruptSource::Timer => 0x04,
-            InterruptSource::Serial => 0x08,
-            InterruptSource::Joypad => 0x10,
-        }
     }
 
     pub(crate) fn evaluate_wake_and_interrupts(
@@ -41,10 +94,8 @@ impl CpuCore {
         if self.is_stop_sleep_state() {
             if joypad.consume_stop_wake_event() {
                 if matches!(self.execution_state, CpuExecutionState::Stopped)
-                    && self.ime
-                    && interrupts.pending_mask()
-                        & Self::interrupt_source_mask(InterruptSource::Joypad)
-                        != 0
+                    && self.ime()
+                    && interrupts.pending_mask() & InterruptSource::Joypad.mask() != 0
                 {
                     interrupts.clear(InterruptSource::Joypad);
                     self.begin_stop_wake_bugged_interrupt_service();
@@ -57,19 +108,13 @@ impl CpuCore {
 
         let pending = interrupts.pending_mask() != 0;
 
-        if self.halt_request_pending {
-            self.halt_request_pending = false;
-            let halt_request_ime = self.halt_request_ime;
-            let halt_request_had_delayed_ei = self.halt_request_had_delayed_ei;
-            self.halt_request_ime = false;
-            self.halt_request_had_delayed_ei = false;
-
-            if !halt_request_ime && pending {
-                if halt_request_had_delayed_ei && self.ime {
+        if let Some(halt_request) = self.take_halt_request() {
+            if !halt_request.ime_enabled && pending {
+                if halt_request.had_pending_ei && self.ime() {
                     self.registers.pc = self.registers.pc.wrapping_sub(1);
                     self.accept_pending_interrupt(interrupts);
                 } else {
-                    self.halt_bug_pending = true;
+                    self.arm_halt_bug();
                     self.execution_state = CpuExecutionState::fetch_opcode();
                 }
             } else if pending {
@@ -85,7 +130,7 @@ impl CpuCore {
                 return;
             }
 
-            if self.ime {
+            if self.ime() {
                 self.accept_pending_interrupt(interrupts);
             } else {
                 self.execution_state = CpuExecutionState::fetch_opcode();
@@ -93,7 +138,7 @@ impl CpuCore {
             return;
         }
 
-        if !self.ime || !self.can_accept_interrupt() {
+        if !self.ime() || !self.can_accept_interrupt() {
             return;
         }
 
@@ -101,26 +146,18 @@ impl CpuCore {
     }
 
     pub(super) fn finish_and_request_halt(&mut self) {
-        self.current_opcode = None;
-        self.instruction_kind = None;
-        self.cb_instruction_kind = None;
-        self.operand8_latch = 0;
-        self.operand16_latch = 0;
-        self.halt_request_ime = self.ime;
-        self.halt_request_had_delayed_ei = self.delayed_ime_enable;
+        self.clear_in_flight_instruction_state();
+        let ime_enabled = self.ime();
+        let had_pending_ei = self.delayed_ime_enable();
         self.advance_delayed_ime_enable();
-        self.halt_request_pending = true;
+        self.request_halt_after_current_instruction(ime_enabled, had_pending_ei);
         self.execution_state = CpuExecutionState::fetch_opcode();
     }
 
     fn begin_interrupt_service(&mut self, source: InterruptSource) {
-        self.ime = false;
+        self.set_ime_disabled();
         self.cancel_delayed_ime_enable();
-        self.current_opcode = None;
-        self.instruction_kind = None;
-        self.cb_instruction_kind = None;
-        self.operand8_latch = 0;
-        self.operand16_latch = 0;
+        self.clear_in_flight_instruction_state();
         self.execution_state = CpuExecutionState::ServiceInterrupt {
             source,
             step: 0,
@@ -137,13 +174,9 @@ impl CpuCore {
     }
 
     fn begin_stop_wake_bugged_interrupt_service(&mut self) {
-        self.ime = false;
+        self.set_ime_disabled();
         self.cancel_delayed_ime_enable();
-        self.current_opcode = None;
-        self.instruction_kind = None;
-        self.cb_instruction_kind = None;
-        self.operand8_latch = 0;
-        self.operand16_latch = 0;
+        self.clear_in_flight_instruction_state();
         self.execution_state = CpuExecutionState::ServiceStopWakeBuggedInterrupt {
             step: 0,
             t_cycle: 0,
@@ -158,11 +191,7 @@ impl CpuCore {
     }
 
     fn finish_interrupt_service(&mut self) {
-        self.current_opcode = None;
-        self.instruction_kind = None;
-        self.cb_instruction_kind = None;
-        self.operand8_latch = 0;
-        self.operand16_latch = 0;
+        self.clear_in_flight_instruction_state();
         self.execution_state = CpuExecutionState::fetch_opcode();
     }
 
@@ -170,22 +199,24 @@ impl CpuCore {
         &mut self,
         source: InterruptSource,
         step: u8,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) {
-        match step {
-            0 | 1 => {
-                self.advance_interrupt_service(source, step + 1);
+        let Some(phase) = InterruptServicePhase::from_step(step) else {
+            self.advance_interrupt_service(source, step);
+            return;
+        };
+
+        match phase {
+            InterruptServicePhase::InternalWait0 | InterruptServicePhase::InternalWait1 => {
+                self.advance_interrupt_service(source, phase.next_step());
             }
-            2 => {
-                let [low, _high] = self.registers.pc.to_le_bytes();
-                self.operand8_latch = low;
-                self.decrement_sp_and_record_idu_event();
+            InterruptServicePhase::PrepareStackWrite => {
+                self.prepare_pc_stack_push();
                 self.advance_interrupt_service(source, 3);
             }
-            3 => {
-                let [_low, high] = self.registers.pc.to_le_bytes();
+            InterruptServicePhase::PushHighAndResolveVector => {
                 let upper_pc_push_targets_ie = self.registers.sp == 0xFFFF;
-                self.write_byte_at_sp(high, bus_operation);
+                self.push_pc_high_at_sp(bus_operation);
                 if upper_pc_push_targets_ie {
                     let pending_mask = self.current_pending_interrupt_mask(bus_operation);
                     let current_ie = self.current_interrupt_enable_mask(bus_operation);
@@ -193,10 +224,11 @@ impl CpuCore {
                     // service began, but it remains latched internally until
                     // the upper-byte IE write has a chance to cancel or
                     // retarget the dispatch.
-                    let candidate_mask =
-                        pending_mask | (current_ie & Self::interrupt_source_mask(source));
+                    let candidate_mask = pending_mask | (current_ie & source.mask());
 
-                    if let Some(next_source) = highest_pending_interrupt_from_mask(candidate_mask) {
+                    if let Some(next_source) =
+                        InterruptSource::highest_priority_from_mask(candidate_mask)
+                    {
                         if next_source != source {
                             self.request_interrupt(source, bus_operation);
                             self.acknowledge_interrupt(next_source, bus_operation);
@@ -211,13 +243,10 @@ impl CpuCore {
                     self.advance_interrupt_service(source, 4);
                 }
             }
-            4 => {
-                self.write_byte_with_decremented_sp(self.operand8_latch, bus_operation);
-                self.registers.pc = interrupt_vector(source);
+            InterruptServicePhase::PushLowAndCommit => {
+                self.push_latched_low_with_decremented_sp(bus_operation);
+                self.registers.pc = source.vector();
                 self.finish_interrupt_service();
-            }
-            _ => {
-                self.advance_interrupt_service(source, step);
             }
         }
     }
@@ -225,42 +254,42 @@ impl CpuCore {
     pub(super) fn complete_stop_wake_bugged_interrupt_service_machine_cycle(
         &mut self,
         step: u8,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) {
-        match step {
-            0 | 1 => {
-                self.advance_stop_wake_bugged_interrupt_service(step + 1);
+        let Some(phase) = StopWakeBuggedInterruptServicePhase::from_step(step) else {
+            self.advance_stop_wake_bugged_interrupt_service(step);
+            return;
+        };
+
+        match phase {
+            StopWakeBuggedInterruptServicePhase::InternalWait0
+            | StopWakeBuggedInterruptServicePhase::InternalWait1 => {
+                self.advance_stop_wake_bugged_interrupt_service(phase.next_step());
             }
-            2 => {
-                let [low, _high] = self.registers.pc.to_le_bytes();
-                self.operand8_latch = low;
-                self.decrement_sp_and_record_idu_event();
+            StopWakeBuggedInterruptServicePhase::PrepareStackWrite => {
+                self.prepare_pc_stack_push();
                 self.advance_stop_wake_bugged_interrupt_service(3);
             }
-            3 => {
-                let [_low, high] = self.registers.pc.to_le_bytes();
-                self.write_byte_at_sp(high, bus_operation);
+            StopWakeBuggedInterruptServicePhase::PushHigh => {
+                self.push_pc_high_at_sp(bus_operation);
                 self.advance_stop_wake_bugged_interrupt_service(4);
             }
-            4 => {
+            StopWakeBuggedInterruptServicePhase::OverwriteHighSlotWithLowAndCommit => {
                 // Hardware research describes STOP wake with IME=1 as a bugged
                 // interrupt that vectors to 0x0000 and often corrupts the stack.
                 // The current repo baseline makes that corruption deterministic
                 // by dropping the final push-side SP decrement, so the low byte
                 // overwrites the previously written high-byte slot.
-                self.write_byte_at_sp(self.operand8_latch, bus_operation);
+                self.write_byte_at_sp(self.in_flight.operand8_latch, bus_operation);
                 self.registers.pc = 0x0000;
                 self.finish_interrupt_service();
-            }
-            _ => {
-                self.advance_stop_wake_bugged_interrupt_service(step);
             }
         }
     }
 
     fn can_accept_interrupt(&self) -> bool {
         matches!(self.execution_state, CpuExecutionState::FetchOpcode { .. })
-            && self.current_opcode.is_none()
+            && self.in_flight.opcode.is_none()
     }
 
     fn accept_pending_interrupt(&mut self, interrupts: &mut InterruptController) {
@@ -278,64 +307,86 @@ impl CpuCore {
     fn request_interrupt(
         &mut self,
         source: InterruptSource,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) {
-        let _ = bus_operation(CpuBusOperation::RequestInterrupt { source });
+        let _ = bus_operation(CpuExternalOperation::RequestInterrupt { source });
     }
 
     fn acknowledge_interrupt(
         &mut self,
         source: InterruptSource,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) {
-        let _ = bus_operation(CpuBusOperation::AcknowledgeInterrupt { source });
+        let _ = bus_operation(CpuExternalOperation::AcknowledgeInterrupt { source });
     }
 
     pub(super) fn current_pending_interrupt_mask(
         &mut self,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) -> u8 {
-        bus_operation(CpuBusOperation::PendingInterruptMask).unwrap_or(0)
+        bus_operation(CpuExternalOperation::PendingInterruptMask).unwrap_or(0)
     }
 
     pub(super) fn current_highest_pending_interrupt(
         &mut self,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) -> Option<InterruptSource> {
-        highest_pending_interrupt_from_mask(self.current_pending_interrupt_mask(bus_operation))
+        InterruptSource::highest_priority_from_mask(
+            self.current_pending_interrupt_mask(bus_operation),
+        )
     }
 
     pub(super) fn current_interrupt_enable_mask(
         &mut self,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) -> u8 {
-        bus_operation(CpuBusOperation::InterruptEnableMask).unwrap_or(0)
+        bus_operation(CpuExternalOperation::InterruptEnableMask).unwrap_or(0)
     }
 
     pub(super) fn schedule_delayed_ime_enable(&mut self) {
-        if self.delayed_ime_enable {
+        if self.delayed_ime_enable() {
             return;
         }
 
-        self.delayed_ime_enable = true;
-        self.delayed_ime_enable_steps = 2;
+        self.ime_state = if self.ime() {
+            ImeState::EnabledPendingEnable {
+                instructions_remaining: 2,
+            }
+        } else {
+            ImeState::DisabledPendingEnable {
+                instructions_remaining: 2,
+            }
+        };
     }
 
     pub(super) fn cancel_delayed_ime_enable(&mut self) {
-        self.delayed_ime_enable = false;
-        self.delayed_ime_enable_steps = 0;
+        self.ime_state = if self.ime() {
+            ImeState::Enabled
+        } else {
+            ImeState::Disabled
+        };
     }
 
     pub(super) fn advance_delayed_ime_enable(&mut self) {
-        if self.delayed_ime_enable_steps == 0 {
-            self.delayed_ime_enable = false;
-            return;
-        }
-
-        self.delayed_ime_enable_steps -= 1;
-        if self.delayed_ime_enable_steps == 0 {
-            self.ime = true;
-            self.delayed_ime_enable = false;
+        match self.ime_state {
+            ImeState::DisabledPendingEnable {
+                instructions_remaining,
+            } if instructions_remaining > 1 => {
+                self.ime_state = ImeState::DisabledPendingEnable {
+                    instructions_remaining: instructions_remaining - 1,
+                };
+            }
+            ImeState::EnabledPendingEnable {
+                instructions_remaining,
+            } if instructions_remaining > 1 => {
+                self.ime_state = ImeState::EnabledPendingEnable {
+                    instructions_remaining: instructions_remaining - 1,
+                };
+            }
+            ImeState::DisabledPendingEnable { .. } | ImeState::EnabledPendingEnable { .. } => {
+                self.set_ime_enabled();
+            }
+            _ => {}
         }
     }
 }

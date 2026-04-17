@@ -2,31 +2,31 @@ use super::*;
 
 #[test]
 fn interrupt_vectors_and_pending_priority_helpers_are_explicit() {
-    assert_eq!(interrupt_vector(InterruptSource::VBlank), 0x0040);
-    assert_eq!(interrupt_vector(InterruptSource::LcdStat), 0x0048);
-    assert_eq!(interrupt_vector(InterruptSource::Timer), 0x0050);
-    assert_eq!(interrupt_vector(InterruptSource::Serial), 0x0058);
-    assert_eq!(interrupt_vector(InterruptSource::Joypad), 0x0060);
+    assert_eq!(InterruptSource::VBlank.vector(), 0x0040);
+    assert_eq!(InterruptSource::LcdStat.vector(), 0x0048);
+    assert_eq!(InterruptSource::Timer.vector(), 0x0050);
+    assert_eq!(InterruptSource::Serial.vector(), 0x0058);
+    assert_eq!(InterruptSource::Joypad.vector(), 0x0060);
 
-    assert_eq!(highest_pending_interrupt_from_mask(0x00), None);
+    assert_eq!(InterruptSource::highest_priority_from_mask(0x00), None);
     assert_eq!(
-        highest_pending_interrupt_from_mask(0x02),
+        InterruptSource::highest_priority_from_mask(0x02),
         Some(InterruptSource::LcdStat),
     );
     assert_eq!(
-        highest_pending_interrupt_from_mask(0x01),
+        InterruptSource::highest_priority_from_mask(0x01),
         Some(InterruptSource::VBlank),
     );
     assert_eq!(
-        highest_pending_interrupt_from_mask(0x04),
+        InterruptSource::highest_priority_from_mask(0x04),
         Some(InterruptSource::Timer),
     );
     assert_eq!(
-        highest_pending_interrupt_from_mask(0x08),
+        InterruptSource::highest_priority_from_mask(0x08),
         Some(InterruptSource::Serial),
     );
     assert_eq!(
-        highest_pending_interrupt_from_mask(0x10),
+        InterruptSource::highest_priority_from_mask(0x10),
         Some(InterruptSource::Joypad),
     );
 }
@@ -147,62 +147,54 @@ fn decode_fetched_opcode_covers_private_complete_and_execute_variants() {
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0x02),
-        DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
-            destination: MemoryAddressSource::BC,
+        DecodedOpcode::Execute(CpuInstructionKind::StoreAToDirectAddress {
+            destination: DirectAddressSource::BC,
         })
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0x12),
-        DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
-            destination: MemoryAddressSource::DE,
+        DecodedOpcode::Execute(CpuInstructionKind::StoreAToDirectAddress {
+            destination: DirectAddressSource::DE,
         })
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0xEA),
-        DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
-            destination: MemoryAddressSource::Immediate16,
-        })
+        DecodedOpcode::Execute(CpuInstructionKind::StoreAToImmediate16Address)
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0xE0),
-        DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
-            destination: MemoryAddressSource::HighImmediate8,
-        })
+        DecodedOpcode::Execute(CpuInstructionKind::StoreAToHighImmediateAddress)
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0xE2),
-        DecodedOpcode::Execute(CpuInstructionKind::StoreAToAddress {
-            destination: MemoryAddressSource::HighC,
+        DecodedOpcode::Execute(CpuInstructionKind::StoreAToDirectAddress {
+            destination: DirectAddressSource::HighC,
         })
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0x0A),
-        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
-            source: MemoryAddressSource::BC,
+        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromDirectAddress {
+            source: DirectAddressSource::BC,
         })
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0x1A),
-        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
-            source: MemoryAddressSource::DE,
+        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromDirectAddress {
+            source: DirectAddressSource::DE,
         })
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0xFA),
-        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
-            source: MemoryAddressSource::Immediate16,
-        })
+        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromImmediate16Address)
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0xF0),
-        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
-            source: MemoryAddressSource::HighImmediate8,
-        })
+        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromHighImmediateAddress)
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0xF2),
-        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromAddress {
-            source: MemoryAddressSource::HighC,
+        DecodedOpcode::Execute(CpuInstructionKind::LoadAFromDirectAddress {
+            source: DirectAddressSource::HighC,
         })
     ));
     assert!(matches!(
@@ -307,7 +299,7 @@ fn decode_fetched_opcode_covers_remaining_split_execute_variants() {
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0xC3),
-        DecodedOpcode::Execute(CpuInstructionKind::AbsoluteJump { condition: None })
+        DecodedOpcode::Execute(CpuInstructionKind::AbsoluteJump)
     ));
     assert!(matches!(
         cpu.decode_fetched_opcode(0xD9),
@@ -343,7 +335,7 @@ fn current_highest_pending_interrupt_queries_the_bus_mask_once() {
     assert_eq!(
         cpu.current_highest_pending_interrupt(&mut |operation| {
             pending_mask_queries += 1;
-            assert_eq!(operation, CpuBusOperation::PendingInterruptMask);
+            assert_eq!(operation, CpuExternalOperation::PendingInterruptMask);
             Some(0x10)
         }),
         Some(InterruptSource::Joypad),

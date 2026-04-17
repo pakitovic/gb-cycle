@@ -16,7 +16,6 @@ fn opcode_fetch_reads_bus_at_pc_on_the_fourth_t_cycle() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xCB,
             step: 0,
             t_cycle: 0,
         }
@@ -43,18 +42,18 @@ fn stop_nop_like_completes_on_the_opcode_fetch_machine_cycle() {
         pc: 0x0100,
         ..CpuStartupState::power_on_reset()
     });
-    cpu.ime = false;
+    cpu.set_ime_disabled();
 
     for _ in 0..4 {
         cpu.tick_t_cycle(|operation| {
             operations.push(operation);
             match operation {
-                CpuBusOperation::Read { address } => {
+                CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
                     assert_eq!(address, 0x0100);
                     Some(0x10)
                 }
-                CpuBusOperation::StopWakeLineAsserted => Some(0x01),
-                CpuBusOperation::PendingInterruptMask => Some(0x01),
+                CpuExternalOperation::StopWakeLineAsserted => Some(0x01),
+                CpuExternalOperation::PendingInterruptMask => Some(0x01),
                 other => panic!("unexpected STOP fetch operation: {other:?}"),
             }
         });
@@ -63,9 +62,9 @@ fn stop_nop_like_completes_on_the_opcode_fetch_machine_cycle() {
     assert_eq!(
         operations,
         vec![
-            CpuBusOperation::Read { address: 0x0100 },
-            CpuBusOperation::StopWakeLineAsserted,
-            CpuBusOperation::PendingInterruptMask,
+            CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::StopWakeLineAsserted,
+            CpuExternalOperation::PendingInterruptMask,
         ]
     );
     assert_eq!(cpu.registers().pc, 0x0101);
@@ -85,17 +84,17 @@ fn stop_with_ime_enabled_and_wake_high_also_completes_on_the_opcode_fetch_machin
         pc: 0x0100,
         ..CpuStartupState::power_on_reset()
     });
-    cpu.ime = true;
+    cpu.set_ime_enabled();
 
     for _ in 0..4 {
         cpu.tick_t_cycle(|operation| {
             operations.push(operation);
             match operation {
-                CpuBusOperation::Read { address } => {
+                CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
                     assert_eq!(address, 0x0100);
                     Some(0x10)
                 }
-                CpuBusOperation::StopWakeLineAsserted => Some(0x01),
+                CpuExternalOperation::StopWakeLineAsserted => Some(0x01),
                 other => panic!("unexpected IME=1 STOP fetch operation: {other:?}"),
             }
         });
@@ -104,8 +103,8 @@ fn stop_with_ime_enabled_and_wake_high_also_completes_on_the_opcode_fetch_machin
     assert_eq!(
         operations,
         vec![
-            CpuBusOperation::Read { address: 0x0100 },
-            CpuBusOperation::StopWakeLineAsserted,
+            CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::StopWakeLineAsserted,
         ]
     );
     assert_eq!(cpu.registers().pc, 0x0101);
@@ -114,6 +113,140 @@ fn stop_with_ime_enabled_and_wake_high_also_completes_on_the_opcode_fetch_machin
         cpu.execution_state(),
         CpuExecutionState::FetchOpcode { t_cycle: 0 }
     );
+}
+
+#[test]
+fn stop_real_path_fetches_the_padding_byte_before_entering_stopped() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut operations = Vec::new();
+
+    cpu.apply_startup_state(CpuStartupState {
+        pc: 0x0100,
+        ..CpuStartupState::power_on_reset()
+    });
+    cpu.set_ime_disabled();
+
+    for _ in 0..8 {
+        cpu.tick_t_cycle(|operation| {
+            operations.push(operation);
+            match operation {
+                CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => match address {
+                    0x0100 => Some(0x10),
+                    0x0101 => Some(0x00),
+                    other => panic!("unexpected STOP real-path read address: {other:#06X}"),
+                },
+                CpuExternalOperation::StopWakeLineAsserted => Some(0x00),
+                CpuExternalOperation::PendingInterruptMask => Some(0x00),
+                other => panic!("unexpected STOP real-path operation: {other:?}"),
+            }
+        });
+    }
+
+    assert_eq!(
+        operations,
+        vec![
+            CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::StopWakeLineAsserted,
+            CpuExternalOperation::StopWakeLineAsserted,
+            CpuExternalOperation::PendingInterruptMask,
+            CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0101 }),
+        ]
+    );
+    assert_eq!(cpu.registers().pc, 0x0102);
+    assert_eq!(cpu.current_opcode(), None);
+    assert_eq!(cpu.execution_state(), CpuExecutionState::Stopped);
+}
+
+#[test]
+fn stop_zombie_path_skips_the_padding_fetch_and_keeps_pc_at_post_opcode() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut operations = Vec::new();
+
+    cpu.apply_startup_state(CpuStartupState {
+        pc: 0x0100,
+        ..CpuStartupState::power_on_reset()
+    });
+    cpu.set_ime_disabled();
+
+    for _ in 0..8 {
+        cpu.tick_t_cycle(|operation| {
+            operations.push(operation);
+            match operation {
+                CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
+                    assert_eq!(address, 0x0100);
+                    Some(0x10)
+                }
+                CpuExternalOperation::StopWakeLineAsserted => Some(0x00),
+                CpuExternalOperation::PendingInterruptMask => Some(0x01),
+                other => panic!("unexpected STOP zombie-path operation: {other:?}"),
+            }
+        });
+    }
+
+    assert_eq!(
+        operations,
+        vec![
+            CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::StopWakeLineAsserted,
+            CpuExternalOperation::StopWakeLineAsserted,
+            CpuExternalOperation::PendingInterruptMask,
+        ]
+    );
+    assert_eq!(cpu.registers().pc, 0x0101);
+    assert_eq!(cpu.current_opcode(), None);
+    assert_eq!(cpu.execution_state(), CpuExecutionState::ZombieStopped);
+}
+
+#[test]
+fn stop_halt_like_path_fetches_the_padding_byte_before_halting() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+    let mut interrupts = InterruptController::new(ConsoleModel::Dmg);
+    let mut joypad = Joypad::new(ConsoleModel::Dmg);
+    let mut operations = Vec::new();
+
+    cpu.apply_startup_state(CpuStartupState {
+        pc: 0x0100,
+        ..CpuStartupState::power_on_reset()
+    });
+    cpu.set_ime_disabled();
+
+    for _ in 0..8 {
+        cpu.tick_t_cycle(|operation| {
+            operations.push(operation);
+            match operation {
+                CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => match address {
+                    0x0100 => Some(0x10),
+                    0x0101 => Some(0x00),
+                    other => panic!("unexpected STOP halt-like read address: {other:#06X}"),
+                },
+                CpuExternalOperation::StopWakeLineAsserted => Some(0x01),
+                CpuExternalOperation::PendingInterruptMask => Some(0x00),
+                other => panic!("unexpected STOP halt-like operation: {other:?}"),
+            }
+        });
+    }
+
+    assert_eq!(
+        operations,
+        vec![
+            CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0100 }),
+            CpuExternalOperation::StopWakeLineAsserted,
+            CpuExternalOperation::PendingInterruptMask,
+            CpuExternalOperation::StopWakeLineAsserted,
+            CpuExternalOperation::PendingInterruptMask,
+            CpuExternalOperation::Bus(CpuBusOperation::Read { address: 0x0101 }),
+        ]
+    );
+    assert_eq!(cpu.registers().pc, 0x0102);
+    assert!(cpu.halt_request_pending_for_test());
+    assert_eq!(
+        cpu.execution_state(),
+        CpuExecutionState::FetchOpcode { t_cycle: 0 }
+    );
+
+    cpu.evaluate_wake_and_interrupts(&mut interrupts, &mut joypad);
+
+    assert_eq!(cpu.execution_state(), CpuExecutionState::Halted);
 }
 
 #[test]

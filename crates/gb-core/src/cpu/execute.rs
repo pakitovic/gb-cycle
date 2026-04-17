@@ -10,13 +10,12 @@ mod stack;
 impl CpuCore {
     pub(super) fn complete_execute_machine_cycle(
         &mut self,
-        opcode: u8,
         step: u8,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) {
-        let Some(kind) = self.instruction_kind else {
+        let opcode = self.current_opcode().unwrap_or(0);
+        let Some(kind) = self.in_flight.kind else {
             self.execution_state = CpuExecutionState::Execute {
-                opcode,
                 step,
                 t_cycle: LAST_MACHINE_CYCLE_T,
             };
@@ -31,8 +30,12 @@ impl CpuCore {
             | CpuInstructionKind::StoreImmediateToHl
             | CpuInstructionKind::LoadAFromHlWithUpdate { .. }
             | CpuInstructionKind::StoreAToHlWithUpdate { .. }
-            | CpuInstructionKind::LoadAFromAddress { .. }
-            | CpuInstructionKind::StoreAToAddress { .. }
+            | CpuInstructionKind::LoadAFromDirectAddress { .. }
+            | CpuInstructionKind::LoadAFromImmediate16Address
+            | CpuInstructionKind::LoadAFromHighImmediateAddress
+            | CpuInstructionKind::StoreAToDirectAddress { .. }
+            | CpuInstructionKind::StoreAToImmediate16Address
+            | CpuInstructionKind::StoreAToHighImmediateAddress
             | CpuInstructionKind::StoreSpToImmediate16
             | CpuInstructionKind::LoadSpFromHl => {
                 self.execute_load_machine_cycle(kind, opcode, step, bus_operation);
@@ -48,10 +51,14 @@ impl CpuCore {
             | CpuInstructionKind::AluFromHl { .. } => {
                 self.execute_arithmetic_machine_cycle(kind, opcode, step, bus_operation);
             }
-            CpuInstructionKind::RelativeJump { .. }
-            | CpuInstructionKind::AbsoluteJump { .. }
-            | CpuInstructionKind::Call { .. }
-            | CpuInstructionKind::Return { .. }
+            CpuInstructionKind::RelativeJump
+            | CpuInstructionKind::ConditionalRelativeJump { .. }
+            | CpuInstructionKind::AbsoluteJump
+            | CpuInstructionKind::ConditionalAbsoluteJump { .. }
+            | CpuInstructionKind::Call
+            | CpuInstructionKind::ConditionalCall { .. }
+            | CpuInstructionKind::Return
+            | CpuInstructionKind::ConditionalReturn { .. }
             | CpuInstructionKind::ReturnFromInterrupt
             | CpuInstructionKind::Stop
             | CpuInstructionKind::Restart { .. } => {

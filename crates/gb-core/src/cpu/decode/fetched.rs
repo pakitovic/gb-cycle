@@ -1,6 +1,6 @@
 use super::super::{CpuCore, FLAG_C};
 use super::{
-    CpuInstructionKind, DecodedOpcode, MemoryAddressSource, Register8Operand,
+    CpuInstructionKind, DecodedOpcode, DirectAddressSource, Register8Operand,
     decode_absolute_jump_condition, decode_alu_operation, decode_call_condition,
     decode_hl_update_direction, decode_register8_operand, decode_register16,
     decode_relative_jump_condition, decode_return_condition, decode_stack_register16,
@@ -68,7 +68,7 @@ impl CpuCore {
                 Some(DecodedOpcode::Complete)
             }
             0xF3 => {
-                self.ime = false;
+                self.set_ime_disabled();
                 self.cancel_delayed_ime_enable();
                 Some(DecodedOpcode::Complete)
             }
@@ -124,28 +124,29 @@ impl CpuCore {
         }
 
         if matches!(opcode, 0x02 | 0x12 | 0xEA) {
-            return Some(DecodedOpcode::Execute(
-                CpuInstructionKind::StoreAToAddress {
-                    destination: match opcode {
-                        0x02 => MemoryAddressSource::BC,
-                        0x12 => MemoryAddressSource::DE,
-                        0xEA => MemoryAddressSource::Immediate16,
-                        _ => unreachable!("opcode filter already constrained"),
-                    },
+            return Some(DecodedOpcode::Execute(match opcode {
+                0x02 => CpuInstructionKind::StoreAToDirectAddress {
+                    destination: DirectAddressSource::BC,
                 },
-            ));
+                0x12 => CpuInstructionKind::StoreAToDirectAddress {
+                    destination: DirectAddressSource::DE,
+                },
+                0xEA => CpuInstructionKind::StoreAToImmediate16Address,
+                _ => unreachable!("opcode filter already constrained"),
+            }));
         }
 
         if matches!(opcode, 0xE0 | 0xE2) {
-            return Some(DecodedOpcode::Execute(
-                CpuInstructionKind::StoreAToAddress {
+            return Some(DecodedOpcode::Execute(match opcode {
+                0xE0 => CpuInstructionKind::StoreAToHighImmediateAddress,
+                0xE2 => CpuInstructionKind::StoreAToDirectAddress {
                     destination: match opcode {
-                        0xE0 => MemoryAddressSource::HighImmediate8,
-                        0xE2 => MemoryAddressSource::HighC,
+                        0xE2 => DirectAddressSource::HighC,
                         _ => unreachable!("opcode filter already constrained"),
                     },
                 },
-            ));
+                _ => unreachable!("opcode filter already constrained"),
+            }));
         }
 
         if matches!(opcode, 0x22 | 0x32) {
@@ -157,28 +158,29 @@ impl CpuCore {
         }
 
         if matches!(opcode, 0x0A | 0x1A | 0xFA) {
-            return Some(DecodedOpcode::Execute(
-                CpuInstructionKind::LoadAFromAddress {
-                    source: match opcode {
-                        0x0A => MemoryAddressSource::BC,
-                        0x1A => MemoryAddressSource::DE,
-                        0xFA => MemoryAddressSource::Immediate16,
-                        _ => unreachable!("opcode filter already constrained"),
-                    },
+            return Some(DecodedOpcode::Execute(match opcode {
+                0x0A => CpuInstructionKind::LoadAFromDirectAddress {
+                    source: DirectAddressSource::BC,
                 },
-            ));
+                0x1A => CpuInstructionKind::LoadAFromDirectAddress {
+                    source: DirectAddressSource::DE,
+                },
+                0xFA => CpuInstructionKind::LoadAFromImmediate16Address,
+                _ => unreachable!("opcode filter already constrained"),
+            }));
         }
 
         if matches!(opcode, 0xF0 | 0xF2) {
-            return Some(DecodedOpcode::Execute(
-                CpuInstructionKind::LoadAFromAddress {
+            return Some(DecodedOpcode::Execute(match opcode {
+                0xF0 => CpuInstructionKind::LoadAFromHighImmediateAddress,
+                0xF2 => CpuInstructionKind::LoadAFromDirectAddress {
                     source: match opcode {
-                        0xF0 => MemoryAddressSource::HighImmediate8,
-                        0xF2 => MemoryAddressSource::HighC,
+                        0xF2 => DirectAddressSource::HighC,
                         _ => unreachable!("opcode filter already constrained"),
                     },
                 },
-            ));
+                _ => unreachable!("opcode filter already constrained"),
+            }));
         }
 
         if opcode == 0x08 {
@@ -302,27 +304,39 @@ impl CpuCore {
         }
 
         if matches!(opcode, 0x18 | 0x20 | 0x28 | 0x30 | 0x38) {
-            return Some(DecodedOpcode::Execute(CpuInstructionKind::RelativeJump {
-                condition: decode_relative_jump_condition(opcode),
-            }));
+            return Some(DecodedOpcode::Execute(
+                match decode_relative_jump_condition(opcode) {
+                    Some(condition) => CpuInstructionKind::ConditionalRelativeJump { condition },
+                    None => CpuInstructionKind::RelativeJump,
+                },
+            ));
         }
 
         if matches!(opcode, 0xC3 | 0xC2 | 0xCA | 0xD2 | 0xDA) {
-            return Some(DecodedOpcode::Execute(CpuInstructionKind::AbsoluteJump {
-                condition: decode_absolute_jump_condition(opcode),
-            }));
+            return Some(DecodedOpcode::Execute(
+                match decode_absolute_jump_condition(opcode) {
+                    Some(condition) => CpuInstructionKind::ConditionalAbsoluteJump { condition },
+                    None => CpuInstructionKind::AbsoluteJump,
+                },
+            ));
         }
 
         if matches!(opcode, 0xCD | 0xC4 | 0xCC | 0xD4 | 0xDC) {
-            return Some(DecodedOpcode::Execute(CpuInstructionKind::Call {
-                condition: decode_call_condition(opcode),
-            }));
+            return Some(DecodedOpcode::Execute(
+                match decode_call_condition(opcode) {
+                    Some(condition) => CpuInstructionKind::ConditionalCall { condition },
+                    None => CpuInstructionKind::Call,
+                },
+            ));
         }
 
         if matches!(opcode, 0xC9 | 0xC0 | 0xC8 | 0xD0 | 0xD8) {
-            return Some(DecodedOpcode::Execute(CpuInstructionKind::Return {
-                condition: decode_return_condition(opcode),
-            }));
+            return Some(DecodedOpcode::Execute(
+                match decode_return_condition(opcode) {
+                    Some(condition) => CpuInstructionKind::ConditionalReturn { condition },
+                    None => CpuInstructionKind::Return,
+                },
+            ));
         }
 
         if opcode == 0xD9 {

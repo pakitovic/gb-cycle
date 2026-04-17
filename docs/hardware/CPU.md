@@ -173,6 +173,8 @@ Priority order:
 - If helper APIs summarize instruction timing, they should still expand into per-T-cycle execution internally.
 - Separate CPU state, decode tables, execution/micro-op planning, ALU helpers, interrupt control flow, and the fine-grained tick engine instead of letting one opcode table own everything.
 - Keep explicit state for the instruction in flight, including the current fetch/execute/service phase and any temporary bytes or addresses needed by the next micro-step.
+- In the current Phase `4` baseline for this repo, the fetched opcode, decoded base/CB instruction kind, and operand latches should live in one internal in-flight instruction record so debugger and scheduler snapshots can derive `current_opcode` from a single source of truth instead of a parallel shadow field.
+- In the current post-Phase `5` cleanup baseline for this repo, `CpuExecutionState::Execute` should no longer shadow that opcode a second time; the in-flight instruction record remains the sole opcode source while execute state tracks only phase progression.
 - Keep the configured direct-boot startup snapshot separate from the live CPU
   register file so tests, debugger snapshots, and real execution can compare
   the handoff state against the current in-flight machine state explicitly.
@@ -188,6 +190,7 @@ Priority order:
 - `PUSH`, `POP`, `CALL`, `RET`, `RST`, interrupt service, and `RETI` should share one bytewise stack-transfer model rather than parallel implementations.
 - Every CPU-visible memory access, including opcode fetch, immediate fetch, stack traffic, and `(HL)` access, should go through the central bus contract.
 - The CPU should own `IME`, delayed-IME-enable state, `halted`, `stopped`, and any `halt_bug_pending`-style fetch modifier state.
+- In the current Phase `5` baseline for this repo, `IME` and HALT-entry / HALT-bug control should live in typed internal CPU control-state enums, while the public snapshot surface still exports the derived boolean `ime` / `delayed_ime_enable` view.
 - The interrupt controller should own `IE` and `IF` as observable interrupt state, while bus/MMIO wiring exposes those registers at their mapped addresses.
 - The CPU should own `stopped` state and the resume point after `STOP`, but the detection of input-driven wake conditions should remain in the relevant hardware subsystem such as joypad.
 - A clear split such as `request_interrupt(kind)`, `pending_interrupts()`, and `consume_interrupt(kind)` is preferred over implicit cross-module mutation.

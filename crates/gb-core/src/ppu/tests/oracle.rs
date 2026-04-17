@@ -16,13 +16,10 @@ fn cpu_stat_read_logs_case1_pre_read_state_against_real_rom() {
         let cpu_before = machine.cpu().snapshot();
         if machine.read_bus(0xFF80) == 1
             && cpu_before.registers.pc == 0x0B9C
+            && cpu_before.current_opcode == Some(0xF0)
             && matches!(
                 cpu_before.execution_state,
-                crate::CpuExecutionState::Execute {
-                    opcode: 0xF0,
-                    step: 2,
-                    ..
-                }
+                crate::CpuExecutionState::Execute { step: 2, .. }
             )
         {
             let ppu_before = machine.ppu().snapshot();

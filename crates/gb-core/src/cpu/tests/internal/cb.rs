@@ -46,13 +46,13 @@ fn cb_decoder_and_apply_helpers_cover_private_paths() {
 fn cb_bit_test_on_hl_finishes_without_writeback() {
     let mut cpu = power_on_cpu();
     cpu.write_register16(Register16::HL, 0xC123);
-    cpu.instruction_kind = Some(CpuInstructionKind::CbPrefixed);
-    cpu.cb_instruction_kind = Some(CbInstructionKind::BitTest {
+    cpu.in_flight.kind = Some(CpuInstructionKind::CbPrefixed);
+    cpu.in_flight.cb_instruction_kind = Some(CbInstructionKind::BitTest {
         bit: 0,
         target: Register8Operand::IndirectHl,
     });
 
-    cpu.complete_execute_machine_cycle(0xCB, 1, &mut |_| Some(0x00));
+    cpu.complete_execute_machine_cycle(1, &mut |_| Some(0x00));
 
     assert_eq!(cpu.execution_state, CpuExecutionState::fetch_opcode());
 }

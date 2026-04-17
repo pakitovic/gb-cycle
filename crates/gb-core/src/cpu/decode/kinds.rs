@@ -54,11 +54,9 @@ pub(in crate::cpu) enum Register8Operand {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(in crate::cpu) enum MemoryAddressSource {
+pub(in crate::cpu) enum DirectAddressSource {
     BC,
     DE,
-    Immediate16,
-    HighImmediate8,
     HighC,
 }
 
@@ -116,12 +114,16 @@ pub(in crate::cpu) enum CpuInstructionKind {
     StoreAToHlWithUpdate {
         direction: CpuAddressUpdateDirection,
     },
-    LoadAFromAddress {
-        source: MemoryAddressSource,
+    LoadAFromDirectAddress {
+        source: DirectAddressSource,
     },
-    StoreAToAddress {
-        destination: MemoryAddressSource,
+    LoadAFromImmediate16Address,
+    LoadAFromHighImmediateAddress,
+    StoreAToDirectAddress {
+        destination: DirectAddressSource,
     },
+    StoreAToImmediate16Address,
+    StoreAToHighImmediateAddress,
     StoreSpToImmediate16,
     LoadHlFromSpPlusImmediate,
     AddSpImmediate,
@@ -143,17 +145,21 @@ pub(in crate::cpu) enum CpuInstructionKind {
     AluFromHl {
         operation: AluOperation,
     },
-    RelativeJump {
-        condition: Option<ConditionCode>,
+    RelativeJump,
+    ConditionalRelativeJump {
+        condition: ConditionCode,
     },
-    AbsoluteJump {
-        condition: Option<ConditionCode>,
+    AbsoluteJump,
+    ConditionalAbsoluteJump {
+        condition: ConditionCode,
     },
-    Call {
-        condition: Option<ConditionCode>,
+    Call,
+    ConditionalCall {
+        condition: ConditionCode,
     },
-    Return {
-        condition: Option<ConditionCode>,
+    Return,
+    ConditionalReturn {
+        condition: ConditionCode,
     },
     ReturnFromInterrupt,
     Stop,

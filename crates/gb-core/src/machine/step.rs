@@ -8,7 +8,7 @@ use crate::bus::{
     IoRegisterOwner,
 };
 use crate::cartridge::CartridgeSlot;
-use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState};
+use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState, CpuExternalOperation};
 use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
@@ -348,7 +348,7 @@ impl MachinePhaseRunner<'_> {
             let pending_ppu_mmio_write = &mut self.pending_ppu_mmio_write;
 
             cpu.tick_t_cycle(|operation| match operation {
-                CpuBusOperation::Read { address } => {
+                CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
                     let read_arbitration_state = if (0xFE00..=0xFE9F).contains(&address) {
                         cpu_read_arbitration_state.with_ppu(ppu.cpu_oam_read_bus_state())
                     } else {
@@ -374,7 +374,7 @@ impl MachinePhaseRunner<'_> {
                         },
                     ))
                 }
-                CpuBusOperation::Write { address, value } => {
+                CpuExternalOperation::Bus(CpuBusOperation::Write { address, value }) => {
                     if cpu_write_targets_ppu_mmio(bus, address) {
                         *pending_ppu_mmio_write = Some(PendingPpuMmioWrite { address, value });
                         context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
@@ -405,16 +405,16 @@ impl MachinePhaseRunner<'_> {
                     }
                     None
                 }
-                CpuBusOperation::PendingInterruptMask => Some(interrupts.pending_mask()),
-                CpuBusOperation::InterruptEnableMask => Some(interrupts.read_ie()),
-                CpuBusOperation::StopWakeLineAsserted => {
+                CpuExternalOperation::PendingInterruptMask => Some(interrupts.pending_mask()),
+                CpuExternalOperation::InterruptEnableMask => Some(interrupts.read_ie()),
+                CpuExternalOperation::StopWakeLineAsserted => {
                     Some(u8::from(joypad.stop_wake_line_asserted()))
                 }
-                CpuBusOperation::AcknowledgeInterrupt { source } => {
+                CpuExternalOperation::AcknowledgeInterrupt { source } => {
                     interrupts.clear(source);
                     None
                 }
-                CpuBusOperation::RequestInterrupt { source } => {
+                CpuExternalOperation::RequestInterrupt { source } => {
                     interrupts.request(source);
                     None
                 }

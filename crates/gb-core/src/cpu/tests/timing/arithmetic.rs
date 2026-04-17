@@ -21,7 +21,6 @@ fn inc_hl_uses_distinct_read_and_write_machine_cycles() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0x34,
             step: 1,
             t_cycle: 0,
         }

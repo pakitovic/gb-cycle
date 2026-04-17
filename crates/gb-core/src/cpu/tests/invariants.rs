@@ -46,20 +46,8 @@ fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
             },
             1,
         ),
-        (
-            0xFA,
-            CpuInstructionKind::LoadAFromAddress {
-                source: MemoryAddressSource::Immediate16,
-            },
-            3,
-        ),
-        (
-            0xEA,
-            CpuInstructionKind::StoreAToAddress {
-                destination: MemoryAddressSource::Immediate16,
-            },
-            3,
-        ),
+        (0xFA, CpuInstructionKind::LoadAFromImmediate16Address, 3),
+        (0xEA, CpuInstructionKind::StoreAToImmediate16Address, 3),
         (0x08, CpuInstructionKind::StoreSpToImmediate16, 4),
         (0xF8, CpuInstructionKind::LoadHlFromSpPlusImmediate, 2),
         (0xE8, CpuInstructionKind::AddSpImmediate, 3),
@@ -103,29 +91,29 @@ fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
         ),
         (
             0x38,
-            CpuInstructionKind::RelativeJump {
-                condition: Some(ConditionCode::C),
+            CpuInstructionKind::ConditionalRelativeJump {
+                condition: ConditionCode::C,
             },
             2,
         ),
         (
             0xDA,
-            CpuInstructionKind::AbsoluteJump {
-                condition: Some(ConditionCode::C),
+            CpuInstructionKind::ConditionalAbsoluteJump {
+                condition: ConditionCode::C,
             },
             3,
         ),
         (
             0xDC,
-            CpuInstructionKind::Call {
-                condition: Some(ConditionCode::C),
+            CpuInstructionKind::ConditionalCall {
+                condition: ConditionCode::C,
             },
             5,
         ),
         (
             0xD8,
-            CpuInstructionKind::Return {
-                condition: Some(ConditionCode::C),
+            CpuInstructionKind::ConditionalReturn {
+                condition: ConditionCode::C,
             },
             4,
         ),
@@ -151,19 +139,15 @@ fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
 
     for (opcode, kind, step) in cases {
         let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-        cpu.instruction_kind = Some(kind);
-        cpu.execution_state = CpuExecutionState::Execute {
-            opcode,
-            step,
-            t_cycle: 0,
-        };
+        cpu.in_flight.opcode = Some(opcode);
+        cpu.in_flight.kind = Some(kind);
+        cpu.execution_state = CpuExecutionState::Execute { step, t_cycle: 0 };
 
-        cpu.complete_execute_machine_cycle(opcode, step, &mut |_| Some(0xFF));
+        cpu.complete_execute_machine_cycle(step, &mut |_| Some(0xFF));
 
         assert_eq!(
             cpu.execution_state,
             CpuExecutionState::Execute {
-                opcode,
                 step,
                 t_cycle: LAST_MACHINE_CYCLE_T,
             },
@@ -172,20 +156,16 @@ fn unexpected_machine_steps_stall_in_place_instead_of_mutating_cpu_state() {
 
     for step in [1_u8, 2, 3] {
         let mut cpu = CpuCore::new(ConsoleModel::Dmg);
-        cpu.instruction_kind = Some(CpuInstructionKind::CbPrefixed);
-        cpu.execution_state = CpuExecutionState::Execute {
-            opcode: 0xCB,
-            step,
-            t_cycle: 0,
-        };
-        cpu.cb_instruction_kind = None;
+        cpu.in_flight.opcode = Some(0xCB);
+        cpu.in_flight.kind = Some(CpuInstructionKind::CbPrefixed);
+        cpu.execution_state = CpuExecutionState::Execute { step, t_cycle: 0 };
+        cpu.in_flight.cb_instruction_kind = None;
 
-        cpu.complete_execute_machine_cycle(0xCB, step, &mut |_| Some(0xFF));
+        cpu.complete_execute_machine_cycle(step, &mut |_| Some(0xFF));
 
         assert_eq!(
             cpu.execution_state,
             CpuExecutionState::Execute {
-                opcode: 0xCB,
                 step,
                 t_cycle: LAST_MACHINE_CYCLE_T,
             },
@@ -235,4 +215,20 @@ fn startup_state_resets_live_registers_and_fetch_state() {
     assert_eq!(cpu.current_opcode(), None);
     assert!(!cpu.ime());
     assert!(!cpu.delayed_ime_enable());
+}
+
+#[test]
+fn snapshot_derives_current_opcode_from_the_in_flight_instruction_record() {
+    let mut cpu = CpuCore::new(ConsoleModel::Dmg);
+
+    cpu.in_flight.opcode = Some(0xCB);
+    cpu.in_flight.kind = Some(CpuInstructionKind::CbPrefixed);
+
+    let snapshot = cpu.snapshot();
+    assert_eq!(snapshot.current_opcode, Some(0xCB));
+
+    cpu.clear_in_flight_instruction_state();
+
+    let cleared_snapshot = cpu.snapshot();
+    assert_eq!(cleared_snapshot.current_opcode, None);
 }

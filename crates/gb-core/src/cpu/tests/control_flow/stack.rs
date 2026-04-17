@@ -21,7 +21,6 @@ fn call_and_ret_use_bytewise_stack_transfers_in_order() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xCD,
             step: 4,
             t_cycle: 0,
         }
@@ -63,7 +62,6 @@ fn call_and_ret_use_bytewise_stack_transfers_in_order() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xC9,
             step: 2,
             t_cycle: 0,
         }

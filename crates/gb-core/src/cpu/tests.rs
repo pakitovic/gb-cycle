@@ -40,17 +40,19 @@ fn tick_cpu(
     let arbitration_state = BusArbitrationState::default();
 
     cpu.tick_t_cycle(|operation| match operation {
-        CpuBusOperation::Read { address } => Some(bus.read_with_context(
-            address,
-            BusRequester::Cpu,
-            &arbitration_state,
-            Some(&*cartridge),
-            BusIoReadView {
-                interrupts: interrupts.as_deref(),
-                ..BusIoReadView::default()
-            },
-        )),
-        CpuBusOperation::Write { address, value } => {
+        CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
+            Some(bus.read_with_context(
+                address,
+                BusRequester::Cpu,
+                &arbitration_state,
+                Some(&*cartridge),
+                BusIoReadView {
+                    interrupts: interrupts.as_deref(),
+                    ..BusIoReadView::default()
+                },
+            ))
+        }
+        CpuExternalOperation::Bus(CpuBusOperation::Write { address, value }) => {
             bus.write_with_context(
                 address,
                 value,
@@ -64,22 +66,22 @@ fn tick_cpu(
             );
             None
         }
-        CpuBusOperation::PendingInterruptMask => match &interrupts {
+        CpuExternalOperation::PendingInterruptMask => match &interrupts {
             Some(ic) => Some(ic.pending_mask()),
             None => Some(0),
         },
-        CpuBusOperation::InterruptEnableMask => match &interrupts {
+        CpuExternalOperation::InterruptEnableMask => match &interrupts {
             Some(ic) => Some(ic.read_ie()),
             None => Some(0),
         },
-        CpuBusOperation::StopWakeLineAsserted => Some(0),
-        CpuBusOperation::AcknowledgeInterrupt { source } => {
+        CpuExternalOperation::StopWakeLineAsserted => Some(0),
+        CpuExternalOperation::AcknowledgeInterrupt { source } => {
             if let Some(ic) = &mut interrupts {
                 ic.clear(source);
             }
             None
         }
-        CpuBusOperation::RequestInterrupt { source } => {
+        CpuExternalOperation::RequestInterrupt { source } => {
             if let Some(ic) = &mut interrupts {
                 ic.request(source);
             }
@@ -103,6 +105,20 @@ fn tick_cpu_n_with_interrupts(
 ) {
     for _ in 0..steps {
         tick_cpu(cpu, bus, cartridge, Some(interrupts));
+    }
+}
+
+fn tick_cpu_n_with_scheduler_interrupt_evaluation(
+    cpu: &mut CpuCore,
+    bus: &mut Bus,
+    cartridge: &mut CartridgeSlot,
+    interrupts: &mut InterruptController,
+    joypad: &mut Joypad,
+    steps: usize,
+) {
+    for _ in 0..steps {
+        tick_cpu(cpu, bus, cartridge, Some(interrupts));
+        cpu.evaluate_wake_and_interrupts(interrupts, joypad);
     }
 }
 
