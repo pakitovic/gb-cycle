@@ -134,6 +134,57 @@ fn disabling_lcdc1_retroactively_repaints_object_dots_from_the_observed_onset() 
 }
 
 #[test]
+fn disabling_lcdc1_on_the_last_visible_dot_clamps_the_repaint_window() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x83,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.bg_pipeline_state.visible_pixels_output = 160;
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 13,
+        tile_index: 25,
+        attributes: 0,
+    });
+    ppu.current_scanline_bg_pixels[159] = 2;
+    ppu.current_scanline_mixed_pixels[159] = MixedPixel::object(1, false);
+    ppu.current_scanline_pixels[159] = 1;
+
+    ppu.apply_dmg_lcdc1_live_obj_enable_write(lcdc_write_context(0x83, 0x81));
+
+    assert_eq!(
+        ppu.current_scanline_mixed_pixels[159],
+        MixedPixel::background(2)
+    );
+    assert_eq!(ppu.current_scanline_pixels[159], 2);
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold
+            .override_value,
+        Some(false),
+    );
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .lcdc1
+            .obj_enable_visible_hold
+            .pixels_remaining,
+        1,
+    );
+}
+
+#[test]
 fn disabling_lcdc1_at_the_first_visible_dot_keeps_the_queued_obj_prefix_pixels() {
     let mut ppu = PpuTestRig::dmg();
     ppu.apply_startup_state(PpuStartupState {

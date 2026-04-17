@@ -1689,10 +1689,10 @@ impl Ppu {
 
             if let Some(onset_visible_x) = onset_visible_x {
                 let (override_enabled, hold_pixels) = if onset_visible_x <= visible_pixels_output {
-                    self.repaint_dmg_lcdc1_panel_range(
-                        onset_visible_x,
-                        visible_pixels_output.saturating_add(1),
-                    );
+                    let repaint_end_x = visible_pixels_output
+                        .saturating_add(1)
+                        .min(SCREEN_WIDTH as u8);
+                    self.repaint_dmg_lcdc1_panel_range(onset_visible_x, repaint_end_x);
                     (false, 1)
                 } else {
                     (true, onset_visible_x.saturating_sub(visible_pixels_output))
