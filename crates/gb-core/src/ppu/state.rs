@@ -426,6 +426,7 @@ pub(super) struct BgPipelineState {
     pub(super) startup_visible_tile3_scx_boundary_next_slice_previous_scx: Option<u8>,
     pub(super) startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: u8,
     pub(super) startup_scy_tiledata_latch: Option<BgStartupScyTiledataLatch>,
+    pub(super) dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -439,6 +440,228 @@ impl BgStartupScyTiledataLatch {
         Self {
             lcdc,
             tile_data_row,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct PerPlane<T> {
+    pub(super) low: T,
+    pub(super) high: T,
+}
+
+impl<T> PerPlane<T> {
+    pub(super) const fn new(low: T, high: T) -> Self {
+        Self { low, high }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum BgTileDataSelect {
+    Signed8800,
+    Unsigned8000,
+}
+
+impl BgTileDataSelect {
+    pub(super) const fn apply_to_lcdc(self, lcdc: u8) -> u8 {
+        match self {
+            Self::Signed8800 => lcdc & !LCDC_BG_WINDOW_TILE_DATA_BIT,
+            Self::Unsigned8000 => lcdc | LCDC_BG_WINDOW_TILE_DATA_BIT,
+        }
+    }
+}
+
+pub(in crate::ppu) type BgTileDataSelectOverride = PerPlane<Option<BgTileDataSelect>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct StartupContinuationSliceOverrides<T> {
+    pub(super) visible_tile2: T,
+    pub(super) visible_tile3: T,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum BgVisibleStartupSlice {
+    VisibleTile2,
+    VisibleTile3,
+}
+
+impl<T: Copy> StartupContinuationSliceOverrides<T> {
+    pub(super) fn set_for_slice(&mut self, slice: BgVisibleStartupSlice, value: T) {
+        match slice {
+            BgVisibleStartupSlice::VisibleTile2 => self.visible_tile2 = value,
+            BgVisibleStartupSlice::VisibleTile3 => self.visible_tile3 = value,
+        }
+    }
+
+    pub(super) const fn for_visible_slice(self, slice: BgVisibleStartupSlice) -> T {
+        match slice {
+            BgVisibleStartupSlice::VisibleTile2 => self.visible_tile2,
+            BgVisibleStartupSlice::VisibleTile3 => self.visible_tile3,
+        }
+    }
+}
+
+impl<T: Copy + Default> StartupContinuationSliceOverrides<T> {
+    pub(super) fn for_optional_visible_slice(self, slice: Option<BgVisibleStartupSlice>) -> T {
+        slice.map_or_else(T::default, |slice| self.for_visible_slice(slice))
+    }
+}
+
+type DmgLcdc3StartupTilemapSelectOverrides = StartupContinuationSliceOverrides<Option<bool>>;
+type DmgLcdc4StartupTileDataSelectOverrides =
+    StartupContinuationSliceOverrides<BgTileDataSelectOverride>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct DmgStartupContinuationOverrides {
+    pub(super) lcdc3_tilemap_select: DmgLcdc3StartupTilemapSelectOverrides,
+    pub(super) lcdc4_tiledata_select: DmgLcdc4StartupTileDataSelectOverrides,
+}
+
+impl DmgStartupContinuationOverrides {
+    pub(super) fn latch_lcdc3_tilemap_select(
+        &mut self,
+        tilemap_select: bool,
+        applies_to_visible_tile2: bool,
+        applies_to_visible_tile3: bool,
+    ) {
+        self.lcdc3_tilemap_select.set_for_slice(
+            BgVisibleStartupSlice::VisibleTile2,
+            applies_to_visible_tile2.then_some(tilemap_select),
+        );
+        self.lcdc3_tilemap_select.set_for_slice(
+            BgVisibleStartupSlice::VisibleTile3,
+            applies_to_visible_tile3.then_some(tilemap_select),
+        );
+    }
+
+    pub(super) fn lcdc3_tilemap_select_for_cached_slice(
+        self,
+        cached: BgCachedSlice,
+    ) -> Option<bool> {
+        if !cached.is_background() {
+            return None;
+        }
+
+        self.lcdc3_tilemap_select
+            .for_optional_visible_slice(cached.visible_startup_continuation_slice())
+    }
+
+    pub(super) fn clear_lcdc3_tilemap_select_for_slice(&mut self, slice: BgVisibleStartupSlice) {
+        self.lcdc3_tilemap_select.set_for_slice(slice, None);
+    }
+
+    pub(super) fn latch_lcdc4_tiledata_select(
+        &mut self,
+        slice: BgVisibleStartupSlice,
+        override_select: BgTileDataSelectOverride,
+    ) {
+        self.lcdc4_tiledata_select
+            .set_for_slice(slice, override_select);
+    }
+
+    pub(super) fn for_cached_slice(self, cached: BgCachedSlice) -> BgTileDataSelectOverride {
+        if !cached.is_background() {
+            return PerPlane::new(None, None);
+        }
+
+        self.lcdc4_tiledata_select
+            .for_optional_visible_slice(cached.visible_startup_continuation_slice())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct DmgMode3LiveLcdcBgState {
+    pub(super) lcdc3_current_line_bg_tilemap_write_count: u8,
+    pub(super) startup_continuation_overrides: DmgStartupContinuationOverrides,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct DmgLcdc0PanelLiveWriteState {
+    pub(super) current_line_bg_enable_write_count: u8,
+    pub(super) bg_enable_visible_hold_override: Option<bool>,
+    pub(super) bg_enable_visible_hold_pixels_remaining: u8,
+}
+
+impl DmgLcdc0PanelLiveWriteState {
+    pub(super) fn take_next_bg_enable_write_index(&mut self) -> usize {
+        let write_index = self.current_line_bg_enable_write_count as usize;
+        self.current_line_bg_enable_write_count =
+            self.current_line_bg_enable_write_count.saturating_add(1);
+        write_index
+    }
+
+    pub(super) fn clear_bg_enable_visible_hold(&mut self) {
+        self.bg_enable_visible_hold_override = None;
+        self.bg_enable_visible_hold_pixels_remaining = 0;
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(super) struct DmgBgpCpuCommitState {
+    pub(super) output_palette_override: Option<u8>,
+    pub(super) output_delay_pixels_remaining: u8,
+    pub(super) output_followup_palette_override: Option<u8>,
+    pub(super) output_followup_pixels_remaining: u8,
+    pub(super) bg_visible_hold_palette_override: Option<u8>,
+    pub(super) bg_visible_hold_bg_pixels_remaining: u8,
+    pub(super) bg_visible_hold_fallback_palette: Option<u8>,
+    pub(super) current_line_start_palette: u8,
+    pub(super) previous_line_start_palette: u8,
+    pub(super) current_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
+    pub(super) previous_line_writes: Vec<PpuDmgBgpCpuCommitWrite>,
+}
+
+impl DmgBgpCpuCommitState {
+    pub(super) fn reset_for_startup(&mut self, bgp: u8) {
+        self.output_palette_override = None;
+        self.output_delay_pixels_remaining = 0;
+        self.output_followup_palette_override = None;
+        self.output_followup_pixels_remaining = 0;
+        self.bg_visible_hold_palette_override = None;
+        self.bg_visible_hold_bg_pixels_remaining = 0;
+        self.bg_visible_hold_fallback_palette = None;
+        self.current_line_start_palette = bgp;
+        self.previous_line_start_palette = bgp;
+        self.current_line_writes.clear();
+        self.previous_line_writes.clear();
+    }
+
+    pub(super) fn reset_for_scanline_start(&mut self, bgp: u8) {
+        self.bg_visible_hold_palette_override = None;
+        self.bg_visible_hold_bg_pixels_remaining = 0;
+        self.bg_visible_hold_fallback_palette = None;
+        self.current_line_start_palette = bgp;
+        self.current_line_writes.clear();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct DmgPanelLiveWriteState {
+    pub(super) lcdc0: DmgLcdc0PanelLiveWriteState,
+    pub(super) bgp_cpu_commit: DmgBgpCpuCommitState,
+    pub(super) recent_panel_dots: VecDeque<PpuRecentPanelDot>,
+}
+
+impl DmgPanelLiveWriteState {
+    pub(super) fn reset_for_startup(&mut self, bgp: u8) {
+        self.lcdc0 = DmgLcdc0PanelLiveWriteState::default();
+        self.bgp_cpu_commit.reset_for_startup(bgp);
+        self.recent_panel_dots.clear();
+    }
+
+    pub(super) fn reset_for_scanline_start(&mut self, bgp: u8) {
+        self.lcdc0 = DmgLcdc0PanelLiveWriteState::default();
+        self.bgp_cpu_commit.reset_for_scanline_start(bgp);
+        self.recent_panel_dots.clear();
+    }
+}
+
+impl Default for DmgPanelLiveWriteState {
+    fn default() -> Self {
+        Self {
+            lcdc0: DmgLcdc0PanelLiveWriteState::default(),
+            bgp_cpu_commit: DmgBgpCpuCommitState::default(),
+            recent_panel_dots: VecDeque::with_capacity(DMG_PALETTE_RETROACTIVE_DOT_HISTORY),
         }
     }
 }
@@ -471,6 +694,7 @@ impl BgPipelineState {
         self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
         self.startup_scy_tiledata_latch = None;
+        self.dmg_mode3_live_lcdc_bg_state = Default::default();
     }
 
     pub(super) fn start_line(&mut self, _scx: u8) {
@@ -483,6 +707,7 @@ impl BgPipelineState {
         self.fifo_cached_pixels.clear();
         self.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
         self.startup_scy_tiledata_latch = None;
+        self.dmg_mode3_live_lcdc_bg_state = Default::default();
         self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
         self.startup_source_state = Mode3StartupSourceState::EntryDelay {
             remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
@@ -661,6 +886,151 @@ impl BgPipelineState {
                 .cached
                 .mark_live_lcdc3_write_while_fifo_visible(write_context);
         }
+    }
+
+    fn for_each_mut_cached_slice(&mut self, mut f: impl FnMut(&mut BgCachedSlice)) {
+        for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+            f(&mut cached.cached);
+        }
+        f(&mut self.push.cached);
+        f(&mut self.fill.cached);
+    }
+
+    fn for_each_mut_background_startup_continuation_slice(
+        &mut self,
+        slice: BgVisibleStartupSlice,
+        mut f: impl FnMut(&mut BgCachedSlice),
+    ) {
+        self.for_each_mut_cached_slice(|cached| {
+            if cached.matches_background_startup_continuation_slice(slice) {
+                f(cached);
+            }
+        });
+    }
+
+    pub(super) fn take_next_dmg_lcdc3_current_line_bg_tilemap_write_index(&mut self) -> usize {
+        let write_index = self
+            .dmg_mode3_live_lcdc_bg_state
+            .lcdc3_current_line_bg_tilemap_write_count as usize;
+        self.dmg_mode3_live_lcdc_bg_state
+            .lcdc3_current_line_bg_tilemap_write_count = self
+            .dmg_mode3_live_lcdc_bg_state
+            .lcdc3_current_line_bg_tilemap_write_count
+            .saturating_add(1);
+        write_index
+    }
+
+    pub(super) fn latch_dmg_lcdc3_startup_continuation_tilemap_select_override(
+        &mut self,
+        tilemap_select: bool,
+        applies_to_visible_tile2: bool,
+        applies_to_visible_tile3: bool,
+    ) {
+        self.dmg_mode3_live_lcdc_bg_state
+            .startup_continuation_overrides
+            .latch_lcdc3_tilemap_select(
+                tilemap_select,
+                applies_to_visible_tile2,
+                applies_to_visible_tile3,
+            );
+
+        if applies_to_visible_tile2 {
+            self.for_each_mut_background_startup_continuation_slice(
+                BgVisibleStartupSlice::VisibleTile2,
+                |cached| cached.latch_dmg_lcdc3_tilemap_select_override(tilemap_select),
+            );
+        }
+        if applies_to_visible_tile3 {
+            self.for_each_mut_background_startup_continuation_slice(
+                BgVisibleStartupSlice::VisibleTile3,
+                |cached| cached.latch_dmg_lcdc3_tilemap_select_override(tilemap_select),
+            );
+        }
+    }
+
+    pub(super) fn maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill(
+        &mut self,
+    ) {
+        let Some(tilemap_select) = self
+            .dmg_mode3_live_lcdc_bg_state
+            .startup_continuation_overrides
+            .lcdc3_tilemap_select_for_cached_slice(self.fill.cached)
+        else {
+            return;
+        };
+
+        self.fill
+            .cached
+            .latch_dmg_lcdc3_tilemap_select_override(tilemap_select);
+    }
+
+    pub(super) fn clear_dmg_lcdc3_startup_visible_tile2_live_refetch(&mut self) {
+        self.dmg_mode3_live_lcdc_bg_state
+            .startup_continuation_overrides
+            .clear_lcdc3_tilemap_select_for_slice(BgVisibleStartupSlice::VisibleTile2);
+        self.for_each_mut_background_startup_continuation_slice(
+            BgVisibleStartupSlice::VisibleTile2,
+            |cached| {
+                cached.needs_live_tilemap_refetch = false;
+                cached.dmg_lcdc3_tilemap_select_override = None;
+            },
+        );
+    }
+
+    pub(super) fn maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_push(
+        &mut self,
+    ) {
+        let Some(tilemap_select) = self
+            .dmg_mode3_live_lcdc_bg_state
+            .startup_continuation_overrides
+            .lcdc3_tilemap_select_for_cached_slice(self.push.cached)
+        else {
+            return;
+        };
+
+        self.push
+            .cached
+            .latch_dmg_lcdc3_tilemap_select_override(tilemap_select);
+    }
+
+    pub(super) fn latch_and_apply_dmg_lcdc4_startup_tiledata_select_override(
+        &mut self,
+        slice: BgVisibleStartupSlice,
+        override_select: BgTileDataSelectOverride,
+    ) {
+        self.dmg_mode3_live_lcdc_bg_state
+            .startup_continuation_overrides
+            .latch_lcdc4_tiledata_select(slice, override_select);
+
+        let overrides = self
+            .dmg_mode3_live_lcdc_bg_state
+            .startup_continuation_overrides;
+        self.for_each_mut_cached_slice(|cached| {
+            apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+                &mut *cached,
+                overrides,
+            );
+        });
+    }
+
+    pub(super) fn maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_fill(
+        &mut self,
+    ) {
+        apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+            &mut self.fill.cached,
+            self.dmg_mode3_live_lcdc_bg_state
+                .startup_continuation_overrides,
+        );
+    }
+
+    pub(super) fn maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_push(
+        &mut self,
+    ) {
+        apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+            &mut self.push.cached,
+            self.dmg_mode3_live_lcdc_bg_state
+                .startup_continuation_overrides,
+        );
     }
 
     pub(super) fn mark_live_scy_write_while_startup_alignment_fifo_visible(
@@ -923,6 +1293,13 @@ fn apply_startup_scy_tiledata_latch_to_cached(
     cached.needs_live_tile_data_refetch = true;
 }
 
+fn apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
+    cached: &mut BgCachedSlice,
+    overrides: DmgStartupContinuationOverrides,
+) {
+    cached.latch_dmg_lcdc4_tiledata_select_override(overrides.for_cached_slice(*cached));
+}
+
 impl Default for BgPipelineState {
     fn default() -> Self {
         Self {
@@ -952,6 +1329,7 @@ impl Default for BgPipelineState {
             startup_visible_tile3_scx_boundary_next_slice_previous_scx: None,
             startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: 0,
             startup_scy_tiledata_latch: None,
+            dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState::default(),
         }
     }
 }
@@ -985,6 +1363,14 @@ impl BgStartupContinuationSlice {
             Self::None => Self::None,
             Self::VisibleTile2 => Self::VisibleTile3,
             Self::VisibleTile3 => Self::None,
+        }
+    }
+
+    pub(super) const fn visible_slice(self) -> Option<BgVisibleStartupSlice> {
+        match self {
+            Self::None => None,
+            Self::VisibleTile2 => Some(BgVisibleStartupSlice::VisibleTile2),
+            Self::VisibleTile3 => Some(BgVisibleStartupSlice::VisibleTile3),
         }
     }
 }
@@ -1265,6 +1651,10 @@ impl BgCachedSliceOrigin {
             }
         }
     }
+
+    pub(super) const fn visible_startup_continuation_slice(self) -> Option<BgVisibleStartupSlice> {
+        self.startup_continuation_slice().visible_slice()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1272,6 +1662,8 @@ pub(super) struct BgCachedSlice {
     pub(super) source: PpuBgFetcherSource,
     pub(super) origin: BgCachedSliceOrigin,
     pub(super) fetch_x: u16,
+    pub(super) dmg_lcdc3_tilemap_select_override: Option<bool>,
+    pub(super) dmg_lcdc4_tiledata_select_override: BgTileDataSelectOverride,
     pub(super) same_cycle_live_tilemap_refetch_window_open: bool,
     pub(super) startup_visible_tile3_scx_boundary_full_refetch_next_tile: bool,
     pub(super) startup_visible_tile3_scx_boundary_next_tile_output_retarget_scx: Option<u8>,
@@ -1300,6 +1692,8 @@ impl BgCachedSlice {
             source: fetcher.source,
             origin: fetcher.cached_origin,
             fetch_x: fetcher.fetch_x,
+            dmg_lcdc3_tilemap_select_override: None,
+            dmg_lcdc4_tiledata_select_override: PerPlane::new(None, None),
             same_cycle_live_tilemap_refetch_window_open: false,
             startup_visible_tile3_scx_boundary_full_refetch_next_tile: fetcher
                 .startup_visible_tile3_scx_boundary_full_refetch_next_tile,
@@ -1335,8 +1729,50 @@ impl BgCachedSlice {
         self
     }
 
+    pub(super) fn latch_dmg_lcdc3_tilemap_select_override(&mut self, tilemap_select: bool) {
+        self.dmg_lcdc3_tilemap_select_override = Some(tilemap_select);
+        self.needs_live_tilemap_refetch = true;
+    }
+
+    pub(super) fn latch_dmg_lcdc4_tiledata_select_override(
+        &mut self,
+        override_select: BgTileDataSelectOverride,
+    ) {
+        if !matches!(
+            self.origin,
+            BgCachedSliceOrigin::StartupContinuation(
+                BgStartupContinuationSlice::VisibleTile2 | BgStartupContinuationSlice::VisibleTile3
+            )
+        ) || !self.is_background()
+        {
+            return;
+        }
+
+        self.dmg_lcdc4_tiledata_select_override = override_select;
+        if override_select.low.is_some() || override_select.high.is_some() {
+            self.needs_live_tile_data_refetch = true;
+        }
+    }
+
     pub(super) const fn is_background(self) -> bool {
         matches!(self.source, PpuBgFetcherSource::Background)
+    }
+
+    pub(super) const fn matches_background_startup_continuation_slice(
+        self,
+        slice: BgVisibleStartupSlice,
+    ) -> bool {
+        self.is_background()
+            && matches!(
+                (self.origin.visible_startup_continuation_slice(), slice),
+                (
+                    Some(BgVisibleStartupSlice::VisibleTile2),
+                    BgVisibleStartupSlice::VisibleTile2,
+                ) | (
+                    Some(BgVisibleStartupSlice::VisibleTile3),
+                    BgVisibleStartupSlice::VisibleTile3,
+                )
+            )
     }
 
     pub(super) const fn is_startup_alignment_seed(self) -> bool {
@@ -1352,6 +1788,10 @@ impl BgCachedSlice {
 
     pub(super) const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
         self.origin.startup_continuation_slice()
+    }
+
+    pub(super) const fn visible_startup_continuation_slice(self) -> Option<BgVisibleStartupSlice> {
+        self.origin.visible_startup_continuation_slice()
     }
 
     pub(super) const fn is_second_or_third_visible_post_startup_push(self) -> bool {
@@ -1499,6 +1939,7 @@ pub(super) fn recompute_live_background_cached_slice(
     let mut tile_map_address = cached.tile_map_address;
     let mut tile_index = cached.tile_index;
     if cached.needs_live_tilemap_refetch {
+        let tilemap_select_override = cached.dmg_lcdc3_tilemap_select_override;
         let full_refetch_fetch_x =
             if cached.startup_visible_tile3_scx_boundary_full_refetch_next_tile {
                 cached.fetch_x + BG_TILE_WIDTH as u16
@@ -1515,11 +1956,12 @@ pub(super) fn recompute_live_background_cached_slice(
             .tile_index_address()
         } else {
             let tile_map_offset = cached.tile_map_address & 0x03FF;
-            let tile_map_base = if registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0 {
-                0x1C00
-            } else {
-                0x1800
-            };
+            let tile_map_base =
+                if tilemap_select_override.unwrap_or(registers.lcdc & LCDC_BG_TILE_MAP_BIT != 0) {
+                    0x1C00
+                } else {
+                    0x1800
+                };
             tile_map_base | tile_map_offset
         };
         tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
@@ -1541,9 +1983,20 @@ pub(super) fn recompute_live_background_cached_slice(
     } else {
         bg_tile_data_address_row(cached_tile_high_address)
     };
-    let tile_data_base = bg_tile_data_base(registers.lcdc, tile_index);
-    let tile_low_address = tile_data_base + tile_low_row * TILE_ROW_BYTES;
-    let tile_high_address = tile_data_base + tile_high_row * TILE_ROW_BYTES + 1;
+    let tile_low_lcdc = if let Some(select) = cached.dmg_lcdc4_tiledata_select_override.low {
+        select.apply_to_lcdc(registers.lcdc)
+    } else {
+        registers.lcdc
+    };
+    let tile_high_lcdc = if let Some(select) = cached.dmg_lcdc4_tiledata_select_override.high {
+        select.apply_to_lcdc(registers.lcdc)
+    } else {
+        registers.lcdc
+    };
+    let tile_low_address =
+        bg_tile_data_base(tile_low_lcdc, tile_index) + tile_low_row * TILE_ROW_BYTES;
+    let tile_high_address =
+        bg_tile_data_base(tile_high_lcdc, tile_index) + tile_high_row * TILE_ROW_BYTES + 1;
     let (tile_low, tile_high) =
         if cached.needs_live_tile_data_unsigned_reuse && !cached.needs_live_tilemap_refetch {
             (
@@ -1572,6 +2025,8 @@ pub(super) fn recompute_live_background_cached_slice(
     cached.needs_live_tile_low_current_row_refetch = false;
     cached.needs_live_tile_high_current_row_refetch = false;
     cached.needs_live_tile_data_unsigned_reuse = false;
+    cached.dmg_lcdc3_tilemap_select_override = None;
+    cached.dmg_lcdc4_tiledata_select_override = PerPlane::new(None, None);
     Some(cached)
 }
 

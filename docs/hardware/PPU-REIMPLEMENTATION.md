@@ -42,6 +42,11 @@ Nothing in this file overrides those documents.
 - Startup transfer progress is driven by served transfer dots, not raw `line_dot`.
 - Keep lane ownership, startup window (`AbstractStartup` versus `FifoBacked`), and effective BG FIFO occupancy as separate state.
 - Keep the alignment/discard fetch distinct from the first real BG push.
+- Keep DMG startup-continuation live-write owner state explicit and grouped inside the BG pipeline: `LCDC.3` and `LCDC.4` startup overrides should share a dedicated startup-continuation owner instead of scattering per-slice scalars across `BgPipelineState`.
+- Keep sprite-phased DMG Mode `3` live-write hypotheses declarative: `LCDC.3` and `LCDC.4` startup quirks should live in explicit observed policy tables that return typed decisions, not in ad hoc imperative branches inside the control path.
+- Keep the DMG `LCDC.3` startup map-change seam explicit: prefer narrow startup-continuation / live-refetch overrides over any synthetic retroactive `visible_tile2_window` repaint. For the late second-write class in `m3_lcdc_bg_map_change.gb` (`sprite.x >= 16`), clear the startup `visible_tile2` live-refetch instead of painting an extra black prefix.
+- Keep the DMG `LCDC.4` startup tile-select seam explicit too: prefer startup-continuation overrides on `VisibleTile2` / `VisibleTile3` cached slices over a broad fetcher retarget, and allow the low and high tile-data planes to carry different signed/unsigned selection when the single-left-sprite seam demands it. `m3_lcdc_tile_sel_change.gb` closes with phase-specific per-plane overrides, not with a generic FIFO rewrite.
+- For curated `SkipBoot` ROMs that depend on DMG boot-logo VRAM contents, seed those tiles explicitly in the manifest instead of hiding the dependency inside PPU behavior. `m3_lcdc_bg_map_change.gb` and `m3_lcdc_tile_sel_change.gb` depend on the boot trademark tile (`tile $19` at `0x8190`).
 - The first real BG/window push after startup still skips the ordinary one-dot push-entry delay.
 - Keep `current_transfer_x`-style ownership explicit for Mode `3` arbitration.
 - Keep the `WY` latch and runtime `WX` trigger distinct.
@@ -61,9 +66,12 @@ Nothing in this file overrides those documents.
 ### DMG panel-output and palette seams
 
 - Keep the DMG BG palette-output model split from the raw current-scanline color pipeline.
+- Keep DMG panel live-write owner state explicit on the PPU side too: `LCDC.0`, CPU-path `BGP`, and recent panel-dot history should live under a dedicated panel-live-write owner instead of as ad hoc top-level scalar fields.
 - Keep the narrow CPU-path `BGP` previous-line boundary repaint seam explicit, panel-only, DMG-only, and fed only by the delayed pipeline-visible write class.
 - Keep the DMG CPU-path `BGP` live-write seam explicitly bifurcated: the first visible-line CPU write stays retroactive while `visible_pixels_output == 0`, `current_transfer_x == 0`, and no sprites were selected; after that startup seam, retroactive panel recolor should only happen when the already-visible BG tail is all color `0`. Dots that were already emitted as `LCDC.0`-forced white are not palette-conflict candidates and must stay white through both current-line and previous-boundary repaint paths.
 - Keep the sprite-coupled DMG `BGP` live-write follow-up explicit too: a single left sprite shifts the first two CPU-path write onsets by sprite phase and can expose a short transient left-edge range on the second write before the final palette becomes visible; when that second write lands early, keep the previous palette active until the modeled onset window starts.
+- Keep the DMG `LCDC.0` live-write panel path separate from raw BG color production too: when BG is disabled mid-line, visible BG dots should still retain their underlying mixed BG color so later retroactive re-enables can repaint them, while the presented panel output stays forced white. Historical `LCDC.0` repaint should only touch BG dots, not OBJ dots, and restored BG shades should come from a stable BGP source that ignores current/future CPU-commit output-delay overrides. For the single-left-sprite `m3_lcdc_bg_en_change.gb` seam, keep the onset model explicit and sprite-phased: the second write window starts one pixel later than the earlier baseline, the third lands at `WRITE1 + 8`, and future-only onsets must hold the previous BG-enable state until `visible_pixels_output` reaches the modeled onset instead of repainting too early.
+- Keep the sprite-phased DMG `LCDC.0` onset model declarative too: the control path should consume an observed onset table rather than restating the per-write arrays inline.
 - Keep DMG palette-conflict handling asymmetric where repo-local evidence requires it; do not assume `BGP` and `OBP*` share the same retroactive span.
 
 ## Known Unstable Areas

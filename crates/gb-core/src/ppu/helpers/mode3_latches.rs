@@ -170,6 +170,10 @@ impl PpuMode3LiveRegisterWriteContext {
         self.current.lcdc
     }
 
+    pub(in crate::ppu) const fn previous_lcdc(self) -> u8 {
+        self.previous.lcdc
+    }
+
     pub(in crate::ppu) const fn current_scy_tile_data_row(self, ly: u8) -> u16 {
         (self.current.scy.wrapping_add(ly) % BG_TILE_WIDTH) as u16
     }

@@ -6,6 +6,7 @@
 //! - stale probes should be deleted instead of preserved as historical noise
 
 use super::*;
+use gb_core::ppu::PpuBgCachedSliceOriginSnapshot;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DaidPpuScanlineBgpLineObservation {
@@ -66,6 +67,32 @@ fn load_mealybug_m3_scx_low_3_bits_machine() -> Machine<gb_core::TraceSummaryBuf
 fn load_mealybug_m3_scx_high_5_bits_machine() -> Machine<gb_core::TraceSummaryBuffer> {
     let rom_path = resolve_test_rom_path("mealybug-tearoom-tests/ppu/m3_scx_high_5_bits.gb");
     let rom = std::fs::read(&rom_path).expect("mealybug m3_scx_high_5_bits ROM should be present");
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("diagnostic ROM should load");
+    machine
+}
+
+fn load_mealybug_m3_lcdc_bg_en_change_machine() -> Machine<gb_core::TraceSummaryBuffer> {
+    let rom_path = resolve_test_rom_path("mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change.gb");
+    let rom =
+        std::fs::read(&rom_path).expect("mealybug m3_lcdc_bg_en_change ROM should be present");
+    let mut machine = Machine::new_summary(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(rom)
+        .expect("diagnostic ROM should load");
+    machine
+}
+
+fn load_mealybug_m3_lcdc_bg_map_change_machine() -> Machine<gb_core::TraceSummaryBuffer> {
+    let rom_path = resolve_test_rom_path("mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change.gb");
+    let rom =
+        std::fs::read(&rom_path).expect("mealybug m3_lcdc_bg_map_change ROM should be present");
     let mut machine = Machine::new_summary(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
@@ -768,6 +795,711 @@ fn real_mealybug_m3_scx_high_5_bits_logs_ff43_write_chronology() {
     }
 
     panic!("timed out before logging enough FF43 writes");
+}
+
+fn log_mealybug_m3_lcdc_bg_en_change_after_ff40_write_window(target_ly: u8, stop_vpo: u8) {
+    let mut machine = load_mealybug_m3_lcdc_bg_en_change_machine();
+    let mut armed = false;
+    let mut write_index = 0usize;
+    let mut last_vpo = 0u8;
+
+    for _ in 0..20_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+
+        if before.ly == target_ly
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            println!(
+                "write#{} ly={} line_dot={} vpo={} x={} scx={} visible_scx={} value={:#04X} stage={:?} stage_dot={} startup={:?} placeholders={} push_pending={} fill_pending={} front_cached={:?}",
+                write_index,
+                before.ly,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                before.scx,
+                before.visible_scx,
+                activity.value,
+                before.bg_fetcher_stage,
+                before.bg_fetcher_stage_dot,
+                before.bg_startup_fetch_seam,
+                before.bg_startup_fifo_placeholders,
+                before.bg_push_pending,
+                before.bg_fill_pending,
+                before.bg_fifo_cached_pixels.first(),
+            );
+            write_index += 1;
+            if !armed {
+                armed = true;
+                last_vpo = before.visible_pixels_output;
+            }
+        }
+
+        machine.step_t_cycle();
+
+        if !armed {
+            continue;
+        }
+
+        let after = machine.ppu().snapshot();
+        if after.ly != target_ly {
+            break;
+        }
+
+        if after.visible_pixels_output != last_vpo {
+            let visible_x = last_vpo as usize;
+            let lcdc = machine.read_bus(0xFF40);
+            let panel = machine.ppu().framebuffer()[after.ly as usize * 160 + visible_x];
+            println!(
+                "emit line_dot={} vpo={} -> {} x={} scx={} visible_scx={} mixed={} panel={} lcdc={:#04X} stage={:?} stage_dot={} startup={:?} placeholders={} push_pending={} fill_pending={} front_cached={:?}",
+                after.line_dot,
+                last_vpo,
+                after.visible_pixels_output,
+                visible_x,
+                after.scx,
+                after.visible_scx,
+                after.current_scanline_pixels[visible_x],
+                panel,
+                lcdc,
+                after.bg_fetcher_stage,
+                after.bg_fetcher_stage_dot,
+                after.bg_startup_fetch_seam,
+                after.bg_startup_fifo_placeholders,
+                after.bg_push_pending,
+                after.bg_fill_pending,
+                after.bg_fifo_cached_pixels.first(),
+            );
+            last_vpo = after.visible_pixels_output;
+            if after.visible_pixels_output >= stop_vpo {
+                return;
+            }
+        }
+    }
+
+    panic!("timed out before logging the target LY output window after FF40 writes");
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MealybugLcdc0WriteSignature {
+    line_dot: u16,
+    visible_pixels_output: u8,
+    current_transfer_x: u8,
+    startup_fifo_placeholders: u8,
+    origin: Option<PpuBgCachedSliceOriginSnapshot>,
+    pixel_index: Option<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MealybugLcdc3WriteSignature {
+    line_dot: u16,
+    visible_pixels_output: u8,
+    current_transfer_x: u8,
+    startup_fifo_placeholders: u8,
+    origin: Option<PpuBgCachedSliceOriginSnapshot>,
+    pixel_index: Option<u8>,
+    tile_map_address: Option<u16>,
+    tile_index: Option<u8>,
+}
+
+fn log_mealybug_m3_lcdc_bg_en_change_representative_row_signatures(target_lys: &[u8]) {
+    let mut machine = load_mealybug_m3_lcdc_bg_en_change_machine();
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut write_signatures =
+        std::collections::BTreeMap::<u8, Vec<MealybugLcdc0WriteSignature>>::new();
+    let mut printed = std::collections::BTreeSet::new();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+
+    for _ in 0..20_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+
+        if before.ly != 0 || before.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps >= 8
+            && targets.contains(&before.ly)
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let front = before.bg_fifo_cached_pixels.first().copied().flatten();
+            write_signatures
+                .entry(before.ly)
+                .or_default()
+                .push(MealybugLcdc0WriteSignature {
+                    line_dot: before.line_dot,
+                    visible_pixels_output: before.visible_pixels_output,
+                    current_transfer_x: before.bg_current_transfer_x,
+                    startup_fifo_placeholders: before.bg_startup_fifo_placeholders,
+                    origin: front.map(|cached| cached.origin),
+                    pixel_index: front.map(|cached| cached.pixel_index),
+                });
+        }
+
+        machine.step_t_cycle();
+
+        let after = machine.ppu().snapshot();
+        if wraps < 8
+            || !targets.contains(&after.ly)
+            || after.mode != PpuAccessMode::HBlank
+            || printed.contains(&after.ly)
+        {
+            continue;
+        }
+
+        let row_start = after.ly as usize * 160;
+        let row = &machine.ppu().framebuffer()[row_start..row_start + 40];
+        let sprite_xs = after
+            .selected_sprites
+            .iter()
+            .map(|sprite| sprite.x)
+            .collect::<Vec<_>>();
+        println!(
+            "ly={} sprite_xs={:?} row40={:?} writes={:?}",
+            after.ly,
+            sprite_xs,
+            row,
+            write_signatures.get(&after.ly).cloned().unwrap_or_default(),
+        );
+        printed.insert(after.ly);
+
+        if printed.len() == targets.len() {
+            return;
+        }
+    }
+
+    panic!("timed out before logging all target LY signatures");
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_en_change ly1 post-write output window"]
+fn real_mealybug_m3_lcdc_bg_en_change_logs_ly1_after_ff40_write_window() {
+    log_mealybug_m3_lcdc_bg_en_change_after_ff40_write_window(1, 40);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_en_change ly67 post-write output window"]
+fn real_mealybug_m3_lcdc_bg_en_change_logs_ly67_after_ff40_write_window() {
+    log_mealybug_m3_lcdc_bg_en_change_after_ff40_write_window(67, 40);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_en_change representative row signatures"]
+fn real_mealybug_m3_lcdc_bg_en_change_logs_representative_row_signatures() {
+    log_mealybug_m3_lcdc_bg_en_change_representative_row_signatures(&[
+        0, 8, 16, 24, 32, 40, 49, 57, 64, 72, 80, 88, 96, 105, 113, 121, 128, 136,
+    ]);
+}
+
+fn log_mealybug_m3_lcdc_bg_map_change_representative_row_signatures(target_lys: &[u8]) {
+    let mut machine = load_mealybug_m3_lcdc_bg_map_change_machine();
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut write_signatures =
+        std::collections::BTreeMap::<u8, Vec<MealybugLcdc3WriteSignature>>::new();
+    let mut printed = std::collections::BTreeSet::new();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+
+    for _ in 0..20_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+
+        if before.ly != 0 || before.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps >= 8
+            && targets.contains(&before.ly)
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let front = before.bg_fifo_cached_pixels.first().copied().flatten();
+            write_signatures
+                .entry(before.ly)
+                .or_default()
+                .push(MealybugLcdc3WriteSignature {
+                    line_dot: before.line_dot,
+                    visible_pixels_output: before.visible_pixels_output,
+                    current_transfer_x: before.bg_current_transfer_x,
+                    startup_fifo_placeholders: before.bg_startup_fifo_placeholders,
+                    origin: front.map(|cached| cached.origin),
+                    pixel_index: front.map(|cached| cached.pixel_index),
+                    tile_map_address: front.map(|cached| cached.tile_map_address),
+                    tile_index: front.map(|cached| cached.tile_index),
+                });
+        }
+
+        machine.step_t_cycle();
+
+        let after = machine.ppu().snapshot();
+        if wraps < 8
+            || !targets.contains(&after.ly)
+            || after.mode != PpuAccessMode::HBlank
+            || printed.contains(&after.ly)
+        {
+            continue;
+        }
+
+        let row_start = after.ly as usize * 160;
+        let row = &machine.ppu().framebuffer()[row_start..row_start + 40];
+        let sprite_xs = after
+            .selected_sprites
+            .iter()
+            .map(|sprite| sprite.x)
+            .collect::<Vec<_>>();
+        println!(
+            "ly={} sprite_xs={:?} row40={:?} writes={:?}",
+            after.ly,
+            sprite_xs,
+            row,
+            write_signatures.get(&after.ly).cloned().unwrap_or_default(),
+        );
+        printed.insert(after.ly);
+
+        if printed.len() == targets.len() {
+            return;
+        }
+    }
+
+    panic!("timed out before logging all target LY signatures");
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_map_change representative row signatures"]
+fn real_mealybug_m3_lcdc_bg_map_change_logs_representative_row_signatures() {
+    log_mealybug_m3_lcdc_bg_map_change_representative_row_signatures(&[
+        0, 8, 16, 24, 32, 40, 49, 57, 64, 72, 80, 88, 96, 105, 113, 121, 128, 136,
+    ]);
+}
+
+fn log_mealybug_m3_lcdc_bg_map_change_after_ff40_write_window(target_ly: u8, stop_vpo: u8) {
+    let mut machine = load_mealybug_m3_lcdc_bg_map_change_machine();
+    let mut armed = false;
+    let mut write_index = 0usize;
+    let mut last_vpo = 0u8;
+
+    for _ in 0..20_000_000 {
+        let before = machine.ppu().snapshot();
+        let before_cpu = machine.cpu().snapshot();
+
+        if before.ly == target_ly
+            && before.mode == PpuAccessMode::Drawing
+            && let Some(event) = before_cpu.last_address_event
+            && event.kind == CpuAddressEventKind::Write
+            && event.access_address == Some(0xFF40)
+        {
+            let activity = before_cpu
+                .last_bus_activity
+                .expect("FF40 write should expose a bus activity snapshot");
+            println!(
+                "write#{} ly={} line_dot={} vpo={} x={} value={:#04X} stage={:?} stage_dot={} fetch_map={:#06X} fetch_data={:#06X} fetch_tile={} fetch_low={:#04X} fetch_high={:#04X} startup={:?} placeholders={} push_pending={} push_cached={:?} fill_pending={} fill_cached={:?} obj_fifo={:?} front_cached={:?}",
+                write_index,
+                before.ly,
+                before.line_dot,
+                before.visible_pixels_output,
+                before.bg_current_transfer_x,
+                activity.value,
+                before.bg_fetcher_stage,
+                before.bg_fetcher_stage_dot,
+                before.bg_fetcher_tile_map_address,
+                before.bg_fetcher_tile_data_address,
+                before.bg_fetcher_tile_index,
+                before.bg_fetcher_tile_low,
+                before.bg_fetcher_tile_high,
+                before.bg_startup_fetch_seam,
+                before.bg_startup_fifo_placeholders,
+                before.bg_push_pending,
+                before.bg_push_cached,
+                before.bg_fill_pending,
+                before.bg_fill_cached,
+                before.obj_fifo_pixels,
+                before.bg_fifo_cached_pixels.first(),
+            );
+            write_index += 1;
+            if !armed {
+                armed = true;
+                last_vpo = before.visible_pixels_output;
+            }
+        }
+
+        machine.step_t_cycle();
+
+        if !armed {
+            continue;
+        }
+
+        let after = machine.ppu().snapshot();
+        if after.ly != target_ly {
+            break;
+        }
+
+        if after.visible_pixels_output != last_vpo {
+            let visible_x = last_vpo as usize;
+            let lcdc = machine.read_bus(0xFF40);
+            let panel = machine.ppu().framebuffer()[after.ly as usize * 160 + visible_x];
+            println!(
+                "emit line_dot={} vpo={} -> {} x={} mixed={} panel={} lcdc={:#04X} stage={:?} stage_dot={} fetch_map={:#06X} fetch_data={:#06X} fetch_tile={} fetch_low={:#04X} fetch_high={:#04X} startup={:?} placeholders={} push_pending={} push_cached={:?} fill_pending={} fill_cached={:?} obj_fifo={:?} front_cached={:?}",
+                after.line_dot,
+                last_vpo,
+                after.visible_pixels_output,
+                visible_x,
+                after.current_scanline_pixels[visible_x],
+                panel,
+                lcdc,
+                after.bg_fetcher_stage,
+                after.bg_fetcher_stage_dot,
+                after.bg_fetcher_tile_map_address,
+                after.bg_fetcher_tile_data_address,
+                after.bg_fetcher_tile_index,
+                after.bg_fetcher_tile_low,
+                after.bg_fetcher_tile_high,
+                after.bg_startup_fetch_seam,
+                after.bg_startup_fifo_placeholders,
+                after.bg_push_pending,
+                after.bg_push_cached,
+                after.bg_fill_pending,
+                after.bg_fill_cached,
+                after.obj_fifo_pixels,
+                after.bg_fifo_cached_pixels.first(),
+            );
+            last_vpo = after.visible_pixels_output;
+            if after.visible_pixels_output >= stop_vpo {
+                return;
+            }
+        }
+    }
+
+    panic!("timed out before logging the target LY output window after FF40 writes");
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_map_change ly8 post-write output window"]
+fn real_mealybug_m3_lcdc_bg_map_change_logs_ly8_after_ff40_write_window() {
+    log_mealybug_m3_lcdc_bg_map_change_after_ff40_write_window(8, 24);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_map_change ly24 post-write output window"]
+fn real_mealybug_m3_lcdc_bg_map_change_logs_ly24_after_ff40_write_window() {
+    log_mealybug_m3_lcdc_bg_map_change_after_ff40_write_window(24, 24);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_map_change ly128 post-write output window"]
+fn real_mealybug_m3_lcdc_bg_map_change_logs_ly128_after_ff40_write_window() {
+    log_mealybug_m3_lcdc_bg_map_change_after_ff40_write_window(128, 24);
+}
+
+fn log_mealybug_m3_lcdc_bg_map_change_high_band_tile_sources(target_lys: &[u8]) {
+    let mut machine = load_mealybug_m3_lcdc_bg_map_change_machine();
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut printed = std::collections::BTreeSet::new();
+
+    for _ in 0..20_000_000 {
+        machine.step_t_cycle();
+
+        let after = machine.ppu().snapshot();
+        if after.mode != PpuAccessMode::HBlank
+            || !targets.contains(&after.ly)
+            || printed.contains(&after.ly)
+        {
+            continue;
+        }
+
+        let bg_row = after.ly & 0x07;
+        let map0 = (0_u16..=2)
+            .map(|col| {
+                let tile = machine.read_bus(0x9800 + (u16::from(after.ly / 8) * 32) + col);
+                let low = machine.read_bus(0x8000 + u16::from(tile) * 16 + u16::from(bg_row) * 2);
+                let high =
+                    machine.read_bus(0x8000 + u16::from(tile) * 16 + u16::from(bg_row) * 2 + 1);
+                (col, tile, low, high)
+            })
+            .collect::<Vec<_>>();
+        let map1 = (0_u16..=2)
+            .map(|col| {
+                let tile = machine.read_bus(0x9C00 + (u16::from(after.ly / 8) * 32) + col);
+                let low = machine.read_bus(0x8000 + u16::from(tile) * 16 + u16::from(bg_row) * 2);
+                let high =
+                    machine.read_bus(0x8000 + u16::from(tile) * 16 + u16::from(bg_row) * 2 + 1);
+                (col, tile, low, high)
+            })
+            .collect::<Vec<_>>();
+        println!(
+            "ly={} bg_row={} map0={:?} map1={:?} row0_23={:?}",
+            after.ly,
+            bg_row,
+            map0,
+            map1,
+            &machine.ppu().framebuffer()[after.ly as usize * 160..after.ly as usize * 160 + 24],
+        );
+        printed.insert(after.ly);
+        if printed.len() == targets.len() {
+            return;
+        }
+    }
+
+    panic!("timed out before logging high-band tile sources");
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_map_change high-band tile sources"]
+fn real_mealybug_m3_lcdc_bg_map_change_logs_high_band_tile_sources() {
+    log_mealybug_m3_lcdc_bg_map_change_high_band_tile_sources(&[
+        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143,
+    ]);
+}
+
+fn log_mealybug_m3_lcdc_bg_map_change_high_band_obj_rows(target_lys: &[u8]) {
+    let mut machine = load_mealybug_m3_lcdc_bg_map_change_machine();
+    let targets = target_lys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut printed = std::collections::BTreeSet::new();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+
+    for _ in 0..20_000_000 {
+        machine.step_t_cycle();
+
+        let after = machine.ppu().snapshot();
+        if after.ly != 0 || after.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if after.mode != PpuAccessMode::HBlank
+            || wraps < 8
+            || !targets.contains(&after.ly)
+            || printed.contains(&after.ly)
+        {
+            continue;
+        }
+
+        let sprite = after
+            .selected_sprites
+            .first()
+            .copied()
+            .expect("target rows should keep one selected sprite");
+        let obj_height = if after.lcdc & 0x04 != 0 { 16 } else { 8 };
+        let sprite_top = sprite.y.wrapping_sub(16);
+        let mut row = after.ly.wrapping_sub(sprite_top);
+        if sprite.attributes & 0x40 != 0 {
+            row = obj_height - 1 - row;
+        }
+        let tile_index = if obj_height == 16 {
+            let base = sprite.tile_index & !0x01;
+            if row < 8 { base } else { base + 1 }
+        } else {
+            sprite.tile_index
+        };
+        let tile_row = if obj_height == 16 && row >= 8 {
+            row - 8
+        } else {
+            row
+        };
+        let low = machine.read_bus(0x8000 + u16::from(tile_index) * 16 + u16::from(tile_row) * 2);
+        let high =
+            machine.read_bus(0x8000 + u16::from(tile_index) * 16 + u16::from(tile_row) * 2 + 1);
+        let bg0_low = machine.read_bus(0x8000 + u16::from(tile_row) * 2);
+        let bg0_high = machine.read_bus(0x8000 + u16::from(tile_row) * 2 + 1);
+        let bg1_low = machine.read_bus(0x8010 + u16::from(tile_row) * 2);
+        let bg1_high = machine.read_bus(0x8010 + u16::from(tile_row) * 2 + 1);
+        println!(
+            "ly={} sprite={:?} obj_height={} row={} tile_index={:#04X} low={:#04X} high={:#04X} bg0=({:#04X},{:#04X}) bg1=({:#04X},{:#04X})",
+            after.ly,
+            sprite,
+            obj_height,
+            tile_row,
+            tile_index,
+            low,
+            high,
+            bg0_low,
+            bg0_high,
+            bg1_low,
+            bg1_high,
+        );
+        printed.insert(after.ly);
+        if printed.len() == targets.len() {
+            return;
+        }
+    }
+
+    panic!("timed out before logging high-band object rows");
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_map_change high-band object rows"]
+fn real_mealybug_m3_lcdc_bg_map_change_logs_high_band_obj_rows() {
+    log_mealybug_m3_lcdc_bg_map_change_high_band_obj_rows(&[
+        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143,
+    ]);
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_map_change dump vram at ly128 hblank"]
+fn real_mealybug_m3_lcdc_bg_map_change_dump_vram_at_ly128_hblank() {
+    let mut machine = load_mealybug_m3_lcdc_bg_map_change_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+
+    for _ in 0..20_000_000 {
+        machine.step_t_cycle();
+
+        let after = machine.ppu().snapshot();
+        if after.ly != 0 || after.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps < 8 || after.mode != PpuAccessMode::HBlank || after.ly != 128 {
+            continue;
+        }
+
+        let debug = format!("{:?}", machine.bus());
+        let vram_start = debug
+            .find("vram: VramDomain { bytes: [")
+            .expect("bus debug should expose VRAM bytes");
+        let bytes_start = vram_start + "vram: VramDomain { bytes: [".len();
+        let bytes_end = debug[bytes_start..]
+            .find("], acquired_by:")
+            .map(|offset| bytes_start + offset)
+            .expect("VRAM bytes list should terminate");
+        let vram_bytes = debug[bytes_start..bytes_end]
+            .split(',')
+            .map(|value| value.trim().parse::<u8>().expect("VRAM byte should parse"))
+            .collect::<Vec<_>>();
+        println!(
+            "tiledata_0190_01B0={:?} tiledata_1000_1020={:?} map0_1A00_1A10={:?} map1_1E00_1E10={:?}",
+            &vram_bytes[0x0190..0x01B0],
+            &vram_bytes[0x1000..0x1020],
+            &vram_bytes[0x1A00..0x1A10],
+            &vram_bytes[0x1E00..0x1E10],
+        );
+        return;
+    }
+
+    panic!("timed out before dumping VRAM at ly128 hblank");
+}
+
+#[test]
+#[ignore = "diag: real mealybug m3_lcdc_bg_map_change search blob tile in vram"]
+fn real_mealybug_m3_lcdc_bg_map_change_search_blob_tile_in_vram() {
+    let mut machine = load_mealybug_m3_lcdc_bg_map_change_machine();
+    let mut saw_progress = false;
+    let mut wraps = 0usize;
+    let blob_rows = [0x3C_u8, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C];
+
+    for _ in 0..20_000_000 {
+        machine.step_t_cycle();
+
+        let after = machine.ppu().snapshot();
+        if after.ly != 0 || after.line_dot != 0 {
+            saw_progress = true;
+        } else if saw_progress {
+            wraps += 1;
+        }
+
+        if wraps < 8 || after.mode != PpuAccessMode::HBlank || after.ly != 128 {
+            continue;
+        }
+
+        let debug = format!("{:?}", machine.bus());
+        let vram_start = debug
+            .find("vram: VramDomain { bytes: [")
+            .expect("bus debug should expose VRAM bytes");
+        let bytes_start = vram_start + "vram: VramDomain { bytes: [".len();
+        let bytes_end = debug[bytes_start..]
+            .find("], acquired_by:")
+            .map(|offset| bytes_start + offset)
+            .expect("VRAM bytes list should terminate");
+        let vram_bytes = debug[bytes_start..bytes_end]
+            .split(',')
+            .map(|value| value.trim().parse::<u8>().expect("VRAM byte should parse"))
+            .collect::<Vec<_>>();
+
+        let mut exact_matches = Vec::new();
+        let mut or_matches = Vec::new();
+        let mut low_matches = Vec::new();
+        let mut high_matches = Vec::new();
+        let mut xor_matches = Vec::new();
+        for tile_base in (0..0x1800).step_by(16) {
+            let mut exact_matched = true;
+            let mut or_matched = true;
+            let mut low_matched = true;
+            let mut high_matched = true;
+            let mut xor_matched = true;
+            for (row, expected) in blob_rows.iter().copied().enumerate() {
+                let low = vram_bytes[tile_base + row * 2];
+                let high = vram_bytes[tile_base + row * 2 + 1];
+                if low != expected || high != expected {
+                    exact_matched = false;
+                }
+                if low | high != expected {
+                    or_matched = false;
+                }
+                if low != expected {
+                    low_matched = false;
+                }
+                if high != expected {
+                    high_matched = false;
+                }
+                if low ^ high != expected {
+                    xor_matched = false;
+                }
+            }
+            if exact_matched {
+                exact_matches.push(tile_base / 16);
+            }
+            if or_matched {
+                or_matches.push(tile_base / 16);
+            }
+            if low_matched {
+                low_matches.push(tile_base / 16);
+            }
+            if high_matched {
+                high_matches.push(tile_base / 16);
+            }
+            if xor_matched {
+                xor_matches.push(tile_base / 16);
+            }
+        }
+
+        println!(
+            "blob_like_tiles exact={:?} or={:?} low={:?} high={:?} xor={:?}",
+            exact_matches, or_matches, low_matches, high_matches, xor_matches
+        );
+        return;
+    }
+
+    panic!("timed out before searching VRAM for blob tile");
 }
 
 #[test]

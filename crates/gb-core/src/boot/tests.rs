@@ -2,6 +2,7 @@ use super::*;
 use crate::cartridge::CartridgeHeader;
 use std::env;
 use std::fs;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn empty_assets() -> BootRomAssets {
@@ -9,13 +10,16 @@ fn empty_assets() -> BootRomAssets {
 }
 
 fn unique_temp_dir() -> PathBuf {
+    static UNIQUE_TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
     env::temp_dir().join(format!(
-        "gb-cycle-boot-assets-{}-{}",
+        "gb-cycle-boot-assets-{}-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock should be after unix epoch")
-            .as_nanos()
+            .as_nanos(),
+        UNIQUE_TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
     ))
 }
 

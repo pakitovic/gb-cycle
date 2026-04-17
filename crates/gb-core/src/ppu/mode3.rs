@@ -393,6 +393,10 @@ impl Ppu {
                     .push
                     .queue_from_fetcher(self.bg_pipeline_state.fetcher);
                 self.bg_pipeline_state
+                    .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_push();
+                self.bg_pipeline_state
+                    .maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_push();
+                self.bg_pipeline_state
                     .fetcher
                     .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
                 self.bg_pipeline_state
@@ -632,6 +636,10 @@ impl Ppu {
             self.bg_pipeline_state.fill.queue_from_push(push);
         }
         self.bg_pipeline_state
+            .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill();
+        self.bg_pipeline_state
+            .maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_fill();
+        self.bg_pipeline_state
             .apply_startup_scy_tiledata_latch_to_fill();
         self.bg_pipeline_state.fetcher.fetch_x = push.next_fetch_pixel;
         self.bg_pipeline_state.fetcher.next_fetch_pixel = push.next_fetch_pixel;
@@ -651,6 +659,10 @@ impl Ppu {
             return;
         }
 
+        self.bg_pipeline_state
+            .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill();
+        self.bg_pipeline_state
+            .maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_fill();
         let fill = self.bg_pipeline_state.fill;
         if fill.startup_dummy_pixels > 0 {
             self.bg_pipeline_state
@@ -763,13 +775,14 @@ impl Ppu {
                     .pop_visible_bg_fifo_pixel(vram)
                     .expect("visible transfer plans must carry a BG pixel");
                 let bg_enabled = self.pixel_transfer_bg_enabled();
-                let bg_pixel = if bg_enabled { bg_pixel } else { 0 };
                 let visible_x = self.bg_pipeline_state.visible_pixels_output;
                 let bg_pixel = self
                     .compute_startup_visible_tile2_scy_placeholder_pixel(visible_x, vram)
                     .unwrap_or(bg_pixel);
+                let effective_bg_priority_pixel = if bg_enabled { bg_pixel } else { 0 };
                 let obj_pixel = self.pop_obj_fifo_pixel();
-                let output_pixel = self.mix_bg_and_obj(bg_pixel, obj_pixel);
+                let output_pixel =
+                    self.mix_bg_and_obj(bg_pixel, effective_bg_priority_pixel, obj_pixel);
                 let dmg_bg_forced_white =
                     self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
                 let panel_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
@@ -781,7 +794,9 @@ impl Ppu {
                 } else {
                     0
                 };
-                let scanline_pixel = if self.visible_output == PpuVisibleOutputState::Driving {
+                let scanline_pixel = if self.visible_output == PpuVisibleOutputState::Driving
+                    && !dmg_bg_forced_white
+                {
                     output_pixel.color
                 } else {
                     0
@@ -796,6 +811,7 @@ impl Ppu {
                     output_pixel,
                     dmg_bg_forced_white,
                 );
+                self.consume_dmg_lcdc0_bg_enable_visible_hold();
                 self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
                 self.bg_pipeline_state.current_transfer_x =
                     self.bg_pipeline_state.current_transfer_x.saturating_add(1);
