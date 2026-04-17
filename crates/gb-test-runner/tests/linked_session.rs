@@ -58,6 +58,31 @@ fn load_fixture_backed_suite() -> gb_test_runner::LinkedSessionSuite {
     suite
 }
 
+fn load_contract_suite_with_accepted_participant_fixtures() -> gb_test_runner::LinkedSessionSuite {
+    let manifest_path = data_path("data/linked-dmg04-contracts.toml");
+    let left_snapshot_fixture = data_path("data/fixtures/linked/dmg04/basic-left.snapshot");
+
+    let suite = load_linked_session_suite_manifest(&manifest_path)
+        .expect("repo linked contract manifest should load");
+    assert_eq!(suite.sessions.len(), 3);
+
+    let mut snapshot_suite = suite.clone();
+    snapshot_suite.sessions = vec![snapshot_suite.sessions[2].clone()];
+    snapshot_suite.sessions[0].pass_condition =
+        LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Snapshot);
+    let snapshot_report = LinkedSessionRunner::new()
+        .run_suite(&snapshot_suite)
+        .expect("informational participant snapshot suite should execute");
+    let actual_snapshot = snapshot_report.sessions[0].participants[0]
+        .artifacts
+        .snapshot_text
+        .as_deref()
+        .expect("participant snapshot should be captured");
+    ensure_text_fixture(&left_snapshot_fixture, actual_snapshot);
+
+    suite
+}
+
 #[test]
 fn linked_session_data_manifest_matches_the_retained_trace_fixture() {
     let suite = load_fixture_backed_suite();
@@ -89,6 +114,42 @@ fn linked_session_data_manifest_is_deterministic_across_reruns() {
     let second = runner
         .run_suite(&suite)
         .expect("second linked-session suite run should succeed");
+
+    assert_eq!(first, second);
+}
+
+#[test]
+fn linked_session_contract_manifest_matches_participant_scoped_oracles() {
+    let suite = load_contract_suite_with_accepted_participant_fixtures();
+
+    let report = LinkedSessionRunner::new()
+        .run_suite(&suite)
+        .expect("contract linked-session suite should execute");
+
+    assert!(report.all_passed());
+    assert_eq!(report.sessions.len(), 3);
+    assert_eq!(
+        report.sessions[0].participants[0].artifacts.serial_hex,
+        "A5"
+    );
+    assert_eq!(
+        report.sessions[1].participants[1].artifacts.serial_hex,
+        "3C"
+    );
+    assert_eq!(report.sessions[2].participants[0].participant_id, "left");
+}
+
+#[test]
+fn linked_session_contract_manifest_is_deterministic_across_reruns() {
+    let suite = load_contract_suite_with_accepted_participant_fixtures();
+
+    let runner = LinkedSessionRunner::new();
+    let first = runner
+        .run_suite(&suite)
+        .expect("first linked contract suite run should succeed");
+    let second = runner
+        .run_suite(&suite)
+        .expect("second linked contract suite run should succeed");
 
     assert_eq!(first, second);
 }

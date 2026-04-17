@@ -359,6 +359,8 @@ mod tests {
         let output = String::from_utf8(output).expect("list output should be utf-8");
         assert!(output.contains("suite=linked-dmg04-smoke"));
         assert!(output.contains("linked-dmg04-smoke.toml"));
+        assert!(output.contains("suite=linked-dmg04-contracts"));
+        assert!(output.contains("linked-dmg04-contracts.toml"));
     }
 
     #[test]
@@ -398,6 +400,26 @@ mod tests {
         let output = String::from_utf8(output).expect("run output should be utf-8");
         assert!(output.contains("suite=linked-dmg04-smoke"));
         assert!(output.contains("session=dmg04-basic-exchange outcome=PASS"));
+    }
+
+    #[test]
+    fn built_in_contract_suite_runs_through_the_cli() {
+        let mut output = Vec::new();
+        run_linked_session_command_with_runner(
+            [
+                "--suite",
+                "linked-dmg04-contracts",
+                "--session",
+                "dmg04-left-serial-hex",
+            ],
+            LinkedSessionRunner::new(),
+            &mut output,
+        )
+        .expect("built-in linked contract suite should succeed");
+        let output = String::from_utf8(output).expect("run output should be utf-8");
+        assert!(output.contains("session=dmg04-left-serial-hex outcome=PASS"));
+        assert!(output.contains("participant=left outcome=PASS"));
+        assert!(output.contains("participant=right outcome=PASS"));
     }
 
     #[test]

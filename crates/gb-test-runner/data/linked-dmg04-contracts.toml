@@ -1,0 +1,52 @@
+version = 1
+suite_name = "linked-dmg04-contracts"
+family = "serial-ext"
+subsystem = "serial"
+
+[[session]]
+id = "dmg04-left-serial-hex"
+topology = "dmg04"
+timeout_tcycles = 5000
+oracle = "linked-participant-serial-hex-exact"
+target_participant = "left"
+expected = "A5"
+
+  [[session.participant]]
+  id = "left"
+  rom = "fixtures/linked/dmg04/basic-left.gb"
+
+  [[session.participant]]
+  id = "right"
+  rom = "fixtures/linked/dmg04/basic-right.gb"
+
+[[session]]
+id = "dmg04-right-serial-hex"
+topology = "dmg04"
+timeout_tcycles = 5000
+oracle = "linked-participant-serial-hex-exact"
+target_participant = "right"
+expected = "3C"
+
+  [[session.participant]]
+  id = "left"
+  rom = "fixtures/linked/dmg04/basic-left.gb"
+
+  [[session.participant]]
+  id = "right"
+  rom = "fixtures/linked/dmg04/basic-right.gb"
+
+[[session]]
+id = "dmg04-left-snapshot"
+topology = "dmg04"
+timeout_tcycles = 5000
+oracle = "linked-participant-snapshot-fixture"
+target_participant = "left"
+fixture = "fixtures/linked/dmg04/basic-left.snapshot"
+
+  [[session.participant]]
+  id = "left"
+  rom = "fixtures/linked/dmg04/basic-left.gb"
+
+  [[session.participant]]
+  id = "right"
+  rom = "fixtures/linked/dmg04/basic-right.gb"
