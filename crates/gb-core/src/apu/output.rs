@@ -2,9 +2,11 @@ use crate::model::ConsoleModel;
 
 use super::channels::ChannelOutputState;
 use super::common::{
-    ANALOG_ONE, CHANNEL_ACTIVE_CH1, CHANNEL_ACTIVE_CH2, CHANNEL_ACTIVE_CH3, CHANNEL_ACTIVE_CH4,
-    DAC_ANALOG_STEP, DMG_FAMILY_HPF_CHARGE_FACTOR_NUMERATOR, HPF_CHARGE_FACTOR_DENOMINATOR,
-    MGB_CGB_HPF_CHARGE_FACTOR_NUMERATOR, NR50_VIN_LEFT_BIT, NR50_VIN_RIGHT_BIT,
+    ANALOG_ONE, CHANNEL_COUNT, CHANNEL_MASKS, DAC_ANALOG_STEP, DAC_DIGITAL_OUTPUT_MASK,
+    DMG_FAMILY_HPF_CHARGE_FACTOR_NUMERATOR, HPF_CHARGE_FACTOR_DENOMINATOR,
+    MGB_CGB_HPF_CHARGE_FACTOR_NUMERATOR, NR50_LEFT_VOLUME_SHIFT, NR50_VIN_LEFT_BIT,
+    NR50_VIN_RIGHT_BIT, NR50_VOLUME_BIAS, NR50_VOLUME_MASK, NR51_LEFT_ROUTE_BITS,
+    NR51_RIGHT_ROUTE_BITS,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -27,8 +29,8 @@ pub struct ApuHpfCapacitorSnapshot {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ApuOutputSnapshot {
-    pub channel_digital_outputs: [u8; 4],
-    pub channel_dac_outputs: [i32; 4],
+    pub channel_digital_outputs: [u8; CHANNEL_COUNT],
+    pub channel_dac_outputs: [i32; CHANNEL_COUNT],
     pub vin_analog_output: ApuStereoOutputSnapshot,
     pub mixer_output: ApuStereoOutputSnapshot,
     pub master_output: ApuStereoOutputSnapshot,
@@ -59,8 +61,8 @@ pub(super) struct OutputPathState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct OutputMixState {
-    pub(super) channel_digital_outputs: [u8; 4],
-    pub(super) channel_dac_outputs: [i32; 4],
+    pub(super) channel_digital_outputs: [u8; CHANNEL_COUNT],
+    pub(super) channel_dac_outputs: [i32; CHANNEL_COUNT],
     pub(super) vin_analog_output: ApuStereoOutputSnapshot,
     pub(super) mixer_output: ApuStereoOutputSnapshot,
     pub(super) master_output: ApuStereoOutputSnapshot,
@@ -181,40 +183,28 @@ pub(super) fn tick_output_path(output_path: &mut OutputPathState, mix: OutputMix
 }
 
 pub(super) const fn dac_analog_output(digital_output: u8) -> i32 {
-    ANALOG_ONE - ((digital_output & 0x0F) as i32) * DAC_ANALOG_STEP
+    ANALOG_ONE - ((digital_output & DAC_DIGITAL_OUTPUT_MASK) as i32) * DAC_ANALOG_STEP
 }
 
 pub(super) const fn nr50_left_volume_factor(nr50: u8) -> i32 {
-    (((nr50 >> 4) & 0x07) as i32) + 1
+    (((nr50 >> NR50_LEFT_VOLUME_SHIFT) & NR50_VOLUME_MASK) as i32) + NR50_VOLUME_BIAS
 }
 
 pub(super) const fn nr50_right_volume_factor(nr50: u8) -> i32 {
-    ((nr50 & 0x07) as i32) + 1
+    ((nr50 & NR50_VOLUME_MASK) as i32) + NR50_VOLUME_BIAS
 }
 
-fn channel_dac_outputs(channel_dac_mask: u8, channel_digital_outputs: [u8; 4]) -> [i32; 4] {
-    [
-        if channel_dac_mask & CHANNEL_ACTIVE_CH1 != 0 {
-            dac_analog_output(channel_digital_outputs[0])
+fn channel_dac_outputs(
+    channel_dac_mask: u8,
+    channel_digital_outputs: [u8; CHANNEL_COUNT],
+) -> [i32; CHANNEL_COUNT] {
+    std::array::from_fn(|index| {
+        if channel_dac_mask & CHANNEL_MASKS[index] != 0 {
+            dac_analog_output(channel_digital_outputs[index])
         } else {
             0
-        },
-        if channel_dac_mask & CHANNEL_ACTIVE_CH2 != 0 {
-            dac_analog_output(channel_digital_outputs[1])
-        } else {
-            0
-        },
-        if channel_dac_mask & CHANNEL_ACTIVE_CH3 != 0 {
-            dac_analog_output(channel_digital_outputs[2])
-        } else {
-            0
-        },
-        if channel_dac_mask & CHANNEL_ACTIVE_CH4 != 0 {
-            dac_analog_output(channel_digital_outputs[3])
-        } else {
-            0
-        },
-    ]
+        }
+    })
 }
 
 fn vin_analog_output(master: &MasterControlState) -> ApuStereoOutputSnapshot {
@@ -232,39 +222,31 @@ fn vin_analog_output(master: &MasterControlState) -> ApuStereoOutputSnapshot {
     )
 }
 
+fn routed_channel_sum(
+    nr51: u8,
+    route_bits: [u8; CHANNEL_COUNT],
+    channel_dac_outputs: [i32; CHANNEL_COUNT],
+) -> i32 {
+    let mut sum = 0;
+
+    for index in 0..CHANNEL_COUNT {
+        if nr51 & route_bits[index] != 0 {
+            sum += channel_dac_outputs[index];
+        }
+    }
+
+    sum
+}
+
 fn mixer_output(
     nr51: u8,
     vin_analog_output: ApuStereoOutputSnapshot,
-    channel_dac_outputs: [i32; 4],
+    channel_dac_outputs: [i32; CHANNEL_COUNT],
 ) -> ApuStereoOutputSnapshot {
-    let mut left = vin_analog_output.left;
-    let mut right = vin_analog_output.right;
-
-    if nr51 & 0x10 != 0 {
-        left += channel_dac_outputs[0];
-    }
-    if nr51 & 0x20 != 0 {
-        left += channel_dac_outputs[1];
-    }
-    if nr51 & 0x40 != 0 {
-        left += channel_dac_outputs[2];
-    }
-    if nr51 & 0x80 != 0 {
-        left += channel_dac_outputs[3];
-    }
-
-    if nr51 & 0x01 != 0 {
-        right += channel_dac_outputs[0];
-    }
-    if nr51 & 0x02 != 0 {
-        right += channel_dac_outputs[1];
-    }
-    if nr51 & 0x04 != 0 {
-        right += channel_dac_outputs[2];
-    }
-    if nr51 & 0x08 != 0 {
-        right += channel_dac_outputs[3];
-    }
+    let left = vin_analog_output.left
+        + routed_channel_sum(nr51, NR51_LEFT_ROUTE_BITS, channel_dac_outputs);
+    let right = vin_analog_output.right
+        + routed_channel_sum(nr51, NR51_RIGHT_ROUTE_BITS, channel_dac_outputs);
 
     ApuStereoOutputSnapshot::new(left, right)
 }

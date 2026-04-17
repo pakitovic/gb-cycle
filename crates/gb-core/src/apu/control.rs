@@ -1,7 +1,4 @@
-use super::common::{
-    CHANNEL_ACTIVE_CH1, CHANNEL_ACTIVE_CH2, CHANNEL_ACTIVE_CH3, CHANNEL_ACTIVE_CH4,
-    NR52_FORCED_HIGH_MASK, NR52_MASTER_POWER_BIT,
-};
+use super::common::{NR52_FORCED_HIGH_MASK, NR52_MASTER_POWER_BIT};
 use super::output::OutputPathState;
 use super::{Apu, ApuOutputSnapshot, WaveRamStartupPolicy};
 
@@ -56,47 +53,19 @@ impl Apu {
     pub fn apply_startup_state(&mut self, startup_state: ApuStartupState) {
         self.last_register_write = None;
         self.wave_ram_startup_policy = startup_state.wave_ram_startup_policy;
-        self.channel_3
-            .initialize_wave_ram(startup_state.wave_ram_startup_policy.initial_bytes());
         self.output_path = OutputPathState::new(self.console_model);
 
         if startup_state.powered {
             self.master.powered = true;
             self.master.nr50 = startup_state.nr50;
             self.master.nr51 = startup_state.nr51;
-            self.channel_1.apply_powered_startup(
-                startup_state.nr10,
-                startup_state.nr11,
-                startup_state.nr12,
-                startup_state.nr13,
-                startup_state.nr14,
-                startup_state.channel_active_mask & CHANNEL_ACTIVE_CH1 != 0,
-            );
-            self.channel_2.apply_powered_startup(
-                startup_state.nr21,
-                startup_state.nr22,
-                startup_state.nr23,
-                startup_state.nr24,
-                startup_state.channel_active_mask & CHANNEL_ACTIVE_CH2 != 0,
-            );
-            self.channel_3.apply_powered_startup(
-                startup_state.nr30,
-                startup_state.nr31,
-                startup_state.nr32,
-                startup_state.nr33,
-                startup_state.nr34,
-                startup_state.channel_active_mask & CHANNEL_ACTIVE_CH3 != 0,
-            );
-            self.channel_4.apply_powered_startup(
-                startup_state.nr41,
-                startup_state.nr42,
-                startup_state.nr43,
-                startup_state.nr44,
-                startup_state.channel_active_mask & CHANNEL_ACTIVE_CH4 != 0,
-            );
         } else {
-            self.power_off();
+            self.master.powered = false;
+            self.master.nr50 = 0;
+            self.master.nr51 = 0;
         }
+        self.channels
+            .apply_startup(self.console_model, startup_state);
 
         self.frame_sequencer
             .apply_startup_phase(startup_state.div_apu);
@@ -104,13 +73,20 @@ impl Apu {
     }
 
     pub(in crate::apu) fn read_nr52(&self) -> u8 {
+        self.read_nr52_from_channel_output(self.channel_output_state())
+    }
+
+    pub(in crate::apu) fn read_nr52_from_channel_output(
+        &self,
+        channel_output: super::ChannelOutputState,
+    ) -> u8 {
         NR52_FORCED_HIGH_MASK
             | if self.master.powered {
                 NR52_MASTER_POWER_BIT
             } else {
                 0
             }
-            | self.channel_active_mask()
+            | channel_output.active_mask
     }
 
     pub(in crate::apu) fn write_nr52(&mut self, value: u8) {
@@ -121,26 +97,23 @@ impl Apu {
             (false, true) => {
                 self.master.powered = true;
                 self.frame_sequencer.apply_startup_phase(0);
-                self.channel_1.pulse.mark_powered_on();
-                self.channel_2.pulse.mark_powered_on();
+                self.channels.mark_powered_on();
             }
             _ => {}
         }
     }
 
-    pub(in crate::apu) fn should_observe_register_write(address: u16) -> bool {
-        (0xFF10..=0xFF26).contains(&address)
-    }
-
     pub(in crate::apu) fn register_write_state(&self) -> ApuRegisterWriteState {
+        let output_resolution = self.resolve_output_state();
+
         ApuRegisterWriteState {
             powered: self.master.powered,
             nr50: self.master.nr50,
             nr51: self.master.nr51,
-            nr52: self.read_nr52(),
-            channel_active_mask: self.channel_active_mask(),
-            channel_dac_mask: self.channel_dac_mask(),
-            output: self.output_snapshot(),
+            nr52: self.read_nr52_from_channel_output(output_resolution.channel_output),
+            channel_active_mask: output_resolution.channel_output.active_mask,
+            channel_dac_mask: output_resolution.channel_output.dac_mask,
+            output: output_resolution.snapshot(&self.output_path),
         }
     }
 
@@ -166,9 +139,6 @@ impl Apu {
         self.master.powered = false;
         self.master.nr50 = 0;
         self.master.nr51 = 0;
-        self.channel_1.power_off_registers(self.console_model);
-        self.channel_2.power_off_registers(self.console_model);
-        self.channel_3.power_off_registers(self.console_model);
-        self.channel_4.power_off_registers(self.console_model);
+        self.channels.power_off_registers(self.console_model);
     }
 }
