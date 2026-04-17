@@ -573,6 +573,30 @@ minimal:
 - per-player video layout, input routing, and audio policy remain for later
   subphases
 
+### Phase 7.3 status
+
+The desktop renderer now presents a first local linked-view layout:
+
+- one SDL window
+- two side-by-side Game Boy panels
+- a shared logical size that expands from `160x144` to `320x144` when the
+  runtime enters the linked two-console `DMG-04` mode
+
+This keeps session ownership unchanged:
+
+- the desktop still runs one coordinated linked runtime
+- the primary and secondary outputs are composed host-side into a single
+  framebuffer
+- tearing the link down returns presentation to the original single-console
+  width
+
+This subphase still intentionally leaves later host policy work for follow-up
+phases:
+
+- input is still primary-only
+- audio policy is still primary-only
+- no second OS window exists yet
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`

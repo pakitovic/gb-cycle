@@ -49,9 +49,9 @@ use sdl3::hint;
 use sdl3::keyboard::{Keycode, Scancode};
 use sdl3::messagebox::{MessageBoxFlag, show_simple_message_box};
 use sdl3::pixels::{Color, PixelFormat};
-use sdl3::render::Canvas;
+use sdl3::render::{Canvas, TextureCreator};
 use sdl3::sys;
-use sdl3::video::{FullscreenType, Window};
+use sdl3::video::{FullscreenType, Window, WindowContext};
 use settings::DesktopSettingsStore;
 use std::collections::VecDeque;
 use std::env;
@@ -68,6 +68,7 @@ use std::time::{Duration, Instant};
 
 const FRAMEBUFFER_WIDTH: u32 = 160;
 const FRAMEBUFFER_HEIGHT: u32 = 144;
+#[cfg(test)]
 const FRAMEBUFFER_PITCH_BYTES: usize = FRAMEBUFFER_WIDTH as usize * 3;
 const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706);
 const AUDIO_QUEUE_TARGET_MS: f64 = 96.0;
@@ -78,6 +79,19 @@ const PERFORMANCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const EXPECTED_SCANLINE_T_CYCLES: usize = 456;
 const INPUT_POLL_SLICE_T_CYCLES: usize = 256;
 const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FramebufferDimensions {
+    width: u32,
+    height: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FramebufferRenderInput<'a> {
+    dimensions: FramebufferDimensions,
+    primary_framebuffer: &'a [u8],
+    secondary_framebuffer: Option<&'a [u8]>,
+}
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
 const DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR: &str =
@@ -2725,10 +2739,13 @@ fn run_desktop_with_startup_fallback_persistence(
     };
     let video = map_display_result(sdl.video(), "failed to initialize SDL3 video subsystem")?;
 
-    let window_width = FRAMEBUFFER_WIDTH
+    let framebuffer_dimensions = framebuffer_dimensions_for_session(&machine);
+    let window_width = framebuffer_dimensions
+        .width
         .checked_mul(u32::from(session.config.video.window_scale))
         .ok_or_else(|| overflow_error("window width overflowed"))?;
-    let window_height = FRAMEBUFFER_HEIGHT
+    let window_height = framebuffer_dimensions
+        .height
         .checked_mul(u32::from(session.config.video.window_scale))
         .ok_or_else(|| overflow_error("window height overflowed"))?;
 
@@ -2744,16 +2761,14 @@ fn run_desktop_with_startup_fallback_persistence(
     let mut canvas = window.into_canvas();
     apply_renderer_vsync(&mut canvas, &mut frame_pacer, session.config.video.vsync)?;
     let texture_creator = canvas.texture_creator();
-    let mut texture = map_display_result(
-        texture_creator.create_texture_streaming(
-            PixelFormat::RGB24,
-            FRAMEBUFFER_WIDTH,
-            FRAMEBUFFER_HEIGHT,
-        ),
-        "failed to create framebuffer texture",
-    )?;
+    let mut texture = create_framebuffer_texture(&texture_creator, framebuffer_dimensions)?;
     let mut event_pump = map_display_result(sdl.event_pump(), "failed to create SDL3 event pump")?;
-    let mut rgb_frame = vec![0_u8; FRAMEBUFFER_HEIGHT as usize * FRAMEBUFFER_PITCH_BYTES];
+    let mut rgb_frame = vec![
+        0_u8;
+        framebuffer_dimensions.height as usize
+            * framebuffer_pitch_bytes_for_dimensions(framebuffer_dimensions)
+    ];
+    let mut current_framebuffer_dimensions = framebuffer_dimensions;
     let mut runtime = FrontendRuntime {
         paused: !session.has_loaded_rom(),
         menu_state: OverlayMenuState::default(),
@@ -2774,7 +2789,11 @@ fn run_desktop_with_startup_fallback_persistence(
         trace_capture: DesktopTraceCapture::from_env()?,
         printer_output: PrinterOutputState::default(),
     };
-    apply_canvas_video_options(&mut canvas, &runtime.video_options)?;
+    apply_canvas_video_options_for_dimensions(
+        &mut canvas,
+        &runtime.video_options,
+        current_framebuffer_dimensions,
+    )?;
     if !session.has_loaded_rom() {
         runtime.menu_state.open(current_menu_presentation(
             canvas.window(),
@@ -2788,11 +2807,26 @@ fn run_desktop_with_startup_fallback_persistence(
         &runtime.menu_state,
         current_menu_presentation(canvas.window(), &runtime, &machine, &session),
     ));
+    sync_framebuffer_presentation_resources(
+        &mut canvas,
+        &texture_creator,
+        &mut texture,
+        &mut rgb_frame,
+        &mut current_framebuffer_dimensions,
+        &machine,
+        &runtime.video_options,
+    )?;
     let _ = render_frame(
         &mut canvas,
         &mut texture,
         &mut rgb_frame,
-        machine.ppu().framebuffer(),
+        FramebufferRenderInput {
+            dimensions: current_framebuffer_dimensions,
+            primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
+            secondary_framebuffer: machine
+                .secondary_machine()
+                .map(|secondary| secondary.ppu().framebuffer()),
+        },
         &runtime.video_options,
         initial_menu_presentation,
         None,
@@ -2837,11 +2871,26 @@ fn run_desktop_with_startup_fallback_persistence(
                     &runtime.menu_state,
                     current_menu_presentation(canvas.window(), &runtime, &machine, &session),
                 ));
+                sync_framebuffer_presentation_resources(
+                    &mut canvas,
+                    &texture_creator,
+                    &mut texture,
+                    &mut rgb_frame,
+                    &mut current_framebuffer_dimensions,
+                    &machine,
+                    &runtime.video_options,
+                )?;
                 let _ = render_frame(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
-                    machine.ppu().framebuffer(),
+                    FramebufferRenderInput {
+                        dimensions: current_framebuffer_dimensions,
+                        primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
+                        secondary_framebuffer: machine
+                            .secondary_machine()
+                            .map(|secondary| secondary.ppu().framebuffer()),
+                    },
                     &runtime.video_options,
                     menu_presentation,
                     None,
@@ -2879,11 +2928,26 @@ fn run_desktop_with_startup_fallback_persistence(
                     &runtime.menu_state,
                     current_menu_presentation(canvas.window(), &runtime, &machine, &session),
                 ));
+                sync_framebuffer_presentation_resources(
+                    &mut canvas,
+                    &texture_creator,
+                    &mut texture,
+                    &mut rgb_frame,
+                    &mut current_framebuffer_dimensions,
+                    &machine,
+                    &runtime.video_options,
+                )?;
                 let _ = render_frame(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
-                    machine.ppu().framebuffer(),
+                    FramebufferRenderInput {
+                        dimensions: current_framebuffer_dimensions,
+                        primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
+                        secondary_framebuffer: machine
+                            .secondary_machine()
+                            .map(|secondary| secondary.ppu().framebuffer()),
+                    },
                     &runtime.video_options,
                     menu_presentation,
                     None,
@@ -2894,11 +2958,26 @@ fn run_desktop_with_startup_fallback_persistence(
         }
 
         let render_started_at = Instant::now();
+        sync_framebuffer_presentation_resources(
+            &mut canvas,
+            &texture_creator,
+            &mut texture,
+            &mut rgb_frame,
+            &mut current_framebuffer_dimensions,
+            &machine,
+            &runtime.video_options,
+        )?;
         let present_duration = render_frame(
             &mut canvas,
             &mut texture,
             &mut rgb_frame,
-            machine.ppu().framebuffer(),
+            FramebufferRenderInput {
+                dimensions: current_framebuffer_dimensions,
+                primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
+                secondary_framebuffer: machine
+                    .secondary_machine()
+                    .map(|secondary| secondary.ppu().framebuffer()),
+            },
             &runtime.video_options,
             None,
             performance_counter.hud_snapshot(),
@@ -4770,9 +4849,10 @@ fn execute_menu_action(
             context.runtime.video_options.fullscreen =
                 canvas.window().fullscreen_state() != FullscreenType::Off;
             if canvas.window().fullscreen_state() == FullscreenType::Off {
-                apply_window_scale(
+                apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     context.runtime.video_options.window_scale,
+                    framebuffer_dimensions_for_session(context.machine),
                 )?;
             }
             context
@@ -4796,9 +4876,10 @@ fn execute_menu_action(
             context.runtime.video_options.window_scale =
                 next_window_scale(context.runtime.video_options.window_scale);
             if canvas.window().fullscreen_state() == FullscreenType::Off {
-                apply_window_scale(
+                apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     context.runtime.video_options.window_scale,
+                    framebuffer_dimensions_for_session(context.machine),
                 )?;
             }
             context
@@ -4828,7 +4909,11 @@ fn execute_menu_action(
             apply_renderer_vsync(canvas, context.frame_pacer, defaults.vsync)?;
             set_fullscreen_state(canvas.window_mut(), defaults.fullscreen)?;
             if canvas.window().fullscreen_state() == FullscreenType::Off {
-                apply_window_scale(canvas.window_mut(), defaults.window_scale)?;
+                apply_window_scale_for_dimensions(
+                    canvas.window_mut(),
+                    defaults.window_scale,
+                    framebuffer_dimensions_for_session(context.machine),
+                )?;
             }
             context.settings_store.reset_video_defaults()?;
             Ok(None)
@@ -5933,12 +6018,30 @@ fn apply_renderer_vsync(
     Ok(())
 }
 
+#[cfg(test)]
 fn apply_window_scale(window: &mut Window, scale: u8) -> Result<(), String> {
+    apply_window_scale_for_dimensions(
+        window,
+        scale,
+        FramebufferDimensions {
+            width: FRAMEBUFFER_WIDTH,
+            height: FRAMEBUFFER_HEIGHT,
+        },
+    )
+}
+
+fn apply_window_scale_for_dimensions(
+    window: &mut Window,
+    scale: u8,
+    dimensions: FramebufferDimensions,
+) -> Result<(), String> {
     let scale = u32::from(scale.max(1));
-    let width = FRAMEBUFFER_WIDTH
+    let width = dimensions
+        .width
         .checked_mul(scale)
         .ok_or_else(|| overflow_error("window width overflowed while applying window scale"))?;
-    let height = FRAMEBUFFER_HEIGHT
+    let height = dimensions
+        .height
         .checked_mul(scale)
         .ok_or_else(|| overflow_error("window height overflowed while applying window scale"))?;
     map_display_result(
@@ -5947,9 +6050,10 @@ fn apply_window_scale(window: &mut Window, scale: u8) -> Result<(), String> {
     )
 }
 
-fn apply_canvas_video_options(
+fn apply_canvas_video_options_for_dimensions(
     canvas: &mut Canvas<Window>,
     video_options: &VideoOptions,
+    dimensions: FramebufferDimensions,
 ) -> Result<(), String> {
     let presentation_mode = if video_options.integer_scale {
         sys::render::SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
@@ -5957,7 +6061,7 @@ fn apply_canvas_video_options(
         sys::render::SDL_LOGICAL_PRESENTATION_LETTERBOX
     };
     map_display_result(
-        canvas.set_logical_size(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, presentation_mode),
+        canvas.set_logical_size(dimensions.width, dimensions.height, presentation_mode),
         "failed to configure SDL3 logical presentation",
     )
 }
@@ -5977,27 +6081,121 @@ fn sync_audio_playback_state(
     }
 }
 
+fn framebuffer_dimensions_for_session(machine: &DesktopEmulationSession) -> FramebufferDimensions {
+    FramebufferDimensions {
+        width: if machine.is_linked_dmg04_two_player() {
+            FRAMEBUFFER_WIDTH * 2
+        } else {
+            FRAMEBUFFER_WIDTH
+        },
+        height: FRAMEBUFFER_HEIGHT,
+    }
+}
+
+fn framebuffer_pitch_bytes_for_dimensions(dimensions: FramebufferDimensions) -> usize {
+    dimensions.width as usize * 3
+}
+
+fn create_framebuffer_texture<'a>(
+    texture_creator: &'a TextureCreator<WindowContext>,
+    dimensions: FramebufferDimensions,
+) -> Result<sdl3::render::Texture<'a>, String> {
+    map_display_result(
+        texture_creator.create_texture_streaming(
+            PixelFormat::RGB24,
+            dimensions.width,
+            dimensions.height,
+        ),
+        "failed to create framebuffer texture",
+    )
+}
+
+fn sync_framebuffer_presentation_resources<'a>(
+    canvas: &mut Canvas<Window>,
+    texture_creator: &'a TextureCreator<WindowContext>,
+    texture: &mut sdl3::render::Texture<'a>,
+    rgb_frame: &mut Vec<u8>,
+    current_dimensions: &mut FramebufferDimensions,
+    machine: &DesktopEmulationSession,
+    video_options: &VideoOptions,
+) -> Result<(), String> {
+    let next_dimensions = framebuffer_dimensions_for_session(machine);
+    if next_dimensions == *current_dimensions {
+        return Ok(());
+    }
+
+    *texture = create_framebuffer_texture(texture_creator, next_dimensions)?;
+    rgb_frame.resize(
+        next_dimensions.height as usize * framebuffer_pitch_bytes_for_dimensions(next_dimensions),
+        0,
+    );
+    if canvas.window().fullscreen_state() == FullscreenType::Off {
+        apply_window_scale_for_dimensions(
+            canvas.window_mut(),
+            video_options.window_scale,
+            next_dimensions,
+        )?;
+    }
+    apply_canvas_video_options_for_dimensions(canvas, video_options, next_dimensions)?;
+    *current_dimensions = next_dimensions;
+    Ok(())
+}
+
+fn write_monochrome_framebuffer_region(
+    target_rgb_frame: &mut [u8],
+    target_dimensions: FramebufferDimensions,
+    target_origin_x: usize,
+    source_framebuffer: &[u8],
+) {
+    let target_pitch_bytes = framebuffer_pitch_bytes_for_dimensions(target_dimensions);
+    let target_width = target_dimensions.width as usize;
+    let target_height = target_dimensions.height as usize;
+    for y in 0..target_height.min(FRAMEBUFFER_HEIGHT as usize) {
+        for x in 0..(FRAMEBUFFER_WIDTH as usize) {
+            if target_origin_x + x >= target_width {
+                break;
+            }
+
+            let source_index = y * FRAMEBUFFER_WIDTH as usize + x;
+            let target_pixel_index = y * target_pitch_bytes + ((target_origin_x + x) * 3);
+            let shade = framebuffer_pixel_to_grayscale(source_framebuffer[source_index]);
+            target_rgb_frame[target_pixel_index] = shade;
+            target_rgb_frame[target_pixel_index + 1] = shade;
+            target_rgb_frame[target_pixel_index + 2] = shade;
+        }
+    }
+}
+
 fn render_frame(
     canvas: &mut Canvas<Window>,
     texture: &mut sdl3::render::Texture<'_>,
     rgb_frame: &mut [u8],
-    framebuffer: &[u8],
+    framebuffer: FramebufferRenderInput<'_>,
     video_options: &VideoOptions,
     menu_state: Option<(&OverlayMenuState, MenuPresentation)>,
     performance_hud: Option<PerformanceHudSnapshot>,
 ) -> Result<Duration, String> {
-    apply_canvas_video_options(canvas, video_options)?;
-    for (source, target) in framebuffer.iter().zip(rgb_frame.chunks_exact_mut(3)) {
-        let shade = framebuffer_pixel_to_grayscale(*source);
-        target[0] = shade;
-        target[1] = shade;
-        target[2] = shade;
+    apply_canvas_video_options_for_dimensions(canvas, video_options, framebuffer.dimensions)?;
+    rgb_frame.fill(0);
+    write_monochrome_framebuffer_region(
+        rgb_frame,
+        framebuffer.dimensions,
+        0,
+        framebuffer.primary_framebuffer,
+    );
+    if let Some(secondary_framebuffer) = framebuffer.secondary_framebuffer {
+        write_monochrome_framebuffer_region(
+            rgb_frame,
+            framebuffer.dimensions,
+            FRAMEBUFFER_WIDTH as usize,
+            secondary_framebuffer,
+        );
     }
     if let Some((menu_state, menu_presentation)) = menu_state {
         menu_state.render_overlay(
             rgb_frame,
-            FRAMEBUFFER_WIDTH as usize,
-            FRAMEBUFFER_HEIGHT as usize,
+            framebuffer.dimensions.width as usize,
+            framebuffer.dimensions.height as usize,
             menu_presentation,
         );
     }
@@ -6007,14 +6205,18 @@ fn render_frame(
     {
         render_performance_hud(
             rgb_frame,
-            FRAMEBUFFER_WIDTH as usize,
-            FRAMEBUFFER_HEIGHT as usize,
+            framebuffer.dimensions.width as usize,
+            framebuffer.dimensions.height as usize,
             snapshot,
         );
     }
 
     map_display_result(
-        texture.update(None, rgb_frame, FRAMEBUFFER_PITCH_BYTES),
+        texture.update(
+            None,
+            rgb_frame,
+            framebuffer_pitch_bytes_for_dimensions(framebuffer.dimensions),
+        ),
         "failed to update framebuffer texture",
     )?;
     canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -9619,7 +9821,14 @@ mod tests {
             &mut harness.canvas,
             &mut texture,
             &mut rgb_frame,
-            harness.machine.ppu().framebuffer(),
+            super::FramebufferRenderInput {
+                dimensions: super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                },
+                primary_framebuffer: harness.machine.ppu().framebuffer(),
+                secondary_framebuffer: None,
+            },
             &harness.runtime.video_options,
             Some((&harness.runtime.menu_state, open_menu_presentation)),
             None,
@@ -9633,7 +9842,14 @@ mod tests {
             &mut harness.canvas,
             &mut texture,
             &mut rgb_frame,
-            harness.machine.ppu().framebuffer(),
+            super::FramebufferRenderInput {
+                dimensions: super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                },
+                primary_framebuffer: harness.machine.ppu().framebuffer(),
+                secondary_framebuffer: None,
+            },
             &harness.runtime.video_options,
             None,
             Some(PerformanceHudSnapshot {
@@ -9648,6 +9864,57 @@ mod tests {
         )
         .expect("HUD frame should render");
         assert!(rgb_frame.iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn render_frame_places_linked_secondary_output_in_the_right_panel() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("linked-render", true, false, false);
+        let texture_creator = harness.canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl3::pixels::PixelFormat::RGB24,
+                super::FRAMEBUFFER_WIDTH * 2,
+                super::FRAMEBUFFER_HEIGHT,
+            )
+            .expect("linked runtime texture should be creatable");
+        let linked_dimensions = super::FramebufferDimensions {
+            width: super::FRAMEBUFFER_WIDTH * 2,
+            height: super::FRAMEBUFFER_HEIGHT,
+        };
+        let mut rgb_frame =
+            vec![
+                0_u8;
+                linked_dimensions.height as usize
+                    * super::framebuffer_pitch_bytes_for_dimensions(linked_dimensions)
+            ];
+        let primary_framebuffer =
+            vec![0_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+        let secondary_framebuffer =
+            vec![3_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+
+        let _ = super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut rgb_frame,
+            super::FramebufferRenderInput {
+                dimensions: linked_dimensions,
+                primary_framebuffer: &primary_framebuffer,
+                secondary_framebuffer: Some(&secondary_framebuffer),
+            },
+            &harness.runtime.video_options,
+            None,
+            None,
+        )
+        .expect("linked frame should render");
+
+        let pitch = super::framebuffer_pitch_bytes_for_dimensions(linked_dimensions);
+        let left_pixel = &rgb_frame[0..3];
+        let right_pixel_index = super::FRAMEBUFFER_WIDTH as usize * 3;
+        let right_pixel = &rgb_frame[right_pixel_index..right_pixel_index + 3];
+        assert_eq!(left_pixel, &[super::framebuffer_pixel_to_grayscale(0); 3]);
+        assert_eq!(right_pixel, &[super::framebuffer_pixel_to_grayscale(3); 3]);
+        assert_eq!(rgb_frame.len(), linked_dimensions.height as usize * pitch);
     }
 
     #[test]
