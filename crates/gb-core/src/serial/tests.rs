@@ -209,3 +209,30 @@ fn internal_clock_phase_stays_aligned_to_the_free_running_counter_when_transfer_
         SerialTransferState::TransferRequested { bits_shifted: 1 }
     );
 }
+
+#[test]
+fn transfer_reuses_the_last_staged_outgoing_byte_until_sb_is_rewritten() {
+    let mut serial = Serial::new(ConsoleModel::Dmg);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    serial.set_peer(SerialPeer::StagedIncomingByte { byte: 0x12 });
+    serial.write_sb(0xA5);
+    serial.write_sc(0x81);
+
+    for _ in 0..(8 * 512) {
+        serial.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(serial.read_sb(), 0x12);
+    assert_eq!(serial.take_completed_output_bytes(), vec![0xA5]);
+
+    serial.set_peer(SerialPeer::StagedIncomingByte { byte: 0x34 });
+    serial.write_sc(0x81);
+
+    for _ in 0..(8 * 512) {
+        serial.tick_t_cycle(&mut context);
+    }
+
+    assert_eq!(serial.read_sb(), 0x34);
+    assert_eq!(serial.take_completed_output_bytes(), vec![0xA5]);
+}

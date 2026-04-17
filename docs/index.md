@@ -48,6 +48,7 @@ When guidance overlaps, the more specific document wins:
 - `MODEL-AXES.md` over generic prose when the question is "which public model type should code consult here?", but not over subsystem handbooks for hardware truth
 - `ARCHITECTURE.md` over `README.md` or roadmap prose for layout and ownership
 - `TIMING-AND-ACCURACY.md` over `README.md` or roadmap prose for shared timing claims
+- `hardware/LINK.md` over `SERIAL-EXT.md` for shared cable / adapter topology behavior and linked-session routing rules
 - `hardware/SERIAL.md` over `SERIAL-EXT.md` for serial hardware truth, MMIO semantics, timing rules, and peer-boundary behavior
 - `REFERENCES.md` over generic prose for consultation order unless a subsystem handbook explicitly refines it
 - `TESTING.md` over roadmap prose for generic validation policy
@@ -76,6 +77,7 @@ Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work,
 - `hardware/APU.md`
 - `hardware/JOYPAD.md`
 - `hardware/PRINTER.md`
+- `hardware/LINK.md`
 - `hardware/SERIAL.md`
 - `hardware/CARTRIDGES-MBC.md`
 - `hardware/BOOT-ROM.md`

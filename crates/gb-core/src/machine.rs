@@ -5,19 +5,19 @@ use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::Bus;
 use crate::cartridge::{CartridgePersistentStateError, CartridgeSlot, PersistentCartState};
-use crate::cpu::CpuCore;
+use crate::cpu::{CpuCore, CpuExecutionState};
 use crate::debugger::{
     DebugControl, MachineSnapshot, TraceBuffer, TraceSink, TraceSnapshotProvider,
     TraceSummaryBuffer, Tracer,
 };
 use crate::dma::DmaController;
-use crate::external_port::ExternalPort;
+use crate::external_port::{ExternalPort, ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::interrupts::InterruptController;
 use crate::joypad::{Joypad, JoypadButton, button_mask};
 use crate::model::MachineConfig;
 use crate::ppu::{Ppu, PpuStepObserver, PpuStepRegion};
 use crate::scheduler::GlobalScheduler;
-use crate::serial::{Serial, SerialPeer};
+use crate::serial::{Serial, SerialClockMode, SerialTransferState};
 use crate::timer::Timer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +92,15 @@ impl Default for PendingExternalEvents {
     fn default() -> Self {
         Self::new(0)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub(crate) struct Dmg04EndpointState {
+    pub attached: bool,
+    pub active_transfer: bool,
+    pub staged_outgoing_byte: u8,
+    pub waiting_for_external_clock: bool,
+    pub internal_clock_edge_pending: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -306,15 +315,8 @@ impl<S: TraceSink> Machine<S> {
         self.sync_serial_peer_from_external_port();
     }
 
-    pub fn set_serial_peer(&mut self, peer: SerialPeer) {
-        let attachment_kind = match peer {
-            SerialPeer::Disconnected => crate::external_port::ExternalPortAttachmentKind::None,
-            SerialPeer::Loopback => crate::external_port::ExternalPortAttachmentKind::Loopback,
-            SerialPeer::StagedIncomingByte { .. } => {
-                crate::external_port::ExternalPortAttachmentKind::None
-            }
-        };
-        self.set_external_port_attachment(attachment_kind);
+    pub fn set_external_port_reset_policy(&mut self, reset_policy: ExternalPortResetPolicy) {
+        self.external_port.set_reset_policy(reset_policy);
     }
 
     pub fn queue_external_serial_clock(&mut self) {
@@ -382,8 +384,41 @@ impl<S: TraceSink> Machine<S> {
         }
     }
 
+    pub(crate) fn dmg04_endpoint_state(&self) -> Dmg04EndpointState {
+        let attached =
+            self.external_port.attachment_kind() == ExternalPortAttachmentKind::GameLinkDmg04;
+        let transfer_requested = matches!(
+            self.serial.transfer_state(),
+            SerialTransferState::TransferRequested { .. }
+        );
+        let active_transfer = attached && transfer_requested && !self.cpu_stop_active();
+
+        Dmg04EndpointState {
+            attached,
+            active_transfer,
+            staged_outgoing_byte: self.serial.endpoint_outgoing_byte(),
+            waiting_for_external_clock: active_transfer
+                && self.serial.clock_mode() == SerialClockMode::External,
+            internal_clock_edge_pending: active_transfer
+                && self.serial.clock_mode() == SerialClockMode::Internal
+                && self.serial.internal_clock_edge_pending_this_t_cycle(),
+        }
+    }
+
+    pub(crate) fn set_dmg04_incoming_byte(&mut self, incoming_byte: Option<u8>) {
+        self.external_port.set_dmg04_incoming_byte(incoming_byte);
+        self.sync_serial_peer_from_external_port();
+    }
+
     pub(super) fn sync_serial_peer_from_external_port(&mut self) {
         self.serial.set_peer(self.external_port.serial_peer());
+    }
+
+    fn cpu_stop_active(&self) -> bool {
+        matches!(
+            self.cpu.execution_state(),
+            CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+        )
     }
 }
 

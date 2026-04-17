@@ -69,7 +69,7 @@ pub use interrupts::{
     InterruptStartupState,
 };
 pub use joypad::{Joypad, JoypadButton, JoypadSnapshot, JoypadStartupState, JoypadStatus};
-pub use link::{LinkedMachines, LinkedMachinesError, LinkedStepResult};
+pub use link::{LinkedMachines, LinkedMachinesError, LinkedStepResult, LinkedTopologyKind};
 pub use machine::{
     Machine, MachineParts, MachineStepObserver, MachineStepRegion, NoopMachineStepObserver,
 };

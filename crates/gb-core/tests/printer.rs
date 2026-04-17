@@ -1,8 +1,12 @@
 mod common;
 
 use gb_core::{
-    ConsoleModel, ExternalPortAttachmentKind, Machine, MachineConfig, PrinterCommand, StartupMode,
+    ConsoleModel, ExternalPortAttachmentKind, Machine, MachineConfig, PrintedPage, PrinterCommand,
+    StartupMode,
 };
+
+const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PRINTER;
+const PRINTED_PAGE_FIXTURE_NAME: &str = "printer_typed_page_fixture.txt";
 
 fn serial_transfer_byte(machine: &mut Machine, outgoing_byte: u8) -> u8 {
     machine.write_bus(0xFF01, outgoing_byte);
@@ -43,6 +47,66 @@ fn send_printer_packet(machine: &mut Machine, command: PrinterCommand, data: &[u
         .collect()
 }
 
+fn run_print_sequence(
+    machine: &mut Machine,
+    image_data: &[u8],
+    print_args: [u8; 4],
+) -> PrintedPage {
+    send_printer_packet(machine, PrinterCommand::Data, image_data);
+    assert_eq!(serial_transfer_byte(machine, 0x00), 0x81);
+    assert_eq!(serial_transfer_byte(machine, 0x00), 0x08);
+
+    send_printer_packet(machine, PrinterCommand::Data, &[]);
+    serial_transfer_byte(machine, 0x00);
+    serial_transfer_byte(machine, 0x00);
+
+    send_printer_packet(machine, PrinterCommand::Print, &print_args);
+    assert_eq!(serial_transfer_byte(machine, 0x00), 0x81);
+    assert_eq!(serial_transfer_byte(machine, 0x00), 0x08);
+
+    send_printer_packet(machine, PrinterCommand::Status, &[]);
+    serial_transfer_byte(machine, 0x00);
+    assert_eq!(serial_transfer_byte(machine, 0x00), 0x06);
+
+    send_printer_packet(machine, PrinterCommand::Status, &[]);
+    serial_transfer_byte(machine, 0x00);
+    assert_eq!(serial_transfer_byte(machine, 0x00), 0x04);
+
+    let mut pages = machine.take_printed_pages();
+    assert_eq!(pages.len(), 1);
+    pages.remove(0)
+}
+
+fn render_printed_page_fixture(page: &PrintedPage) -> String {
+    let mut rendered = String::new();
+    rendered.push_str(&format!("width={}\n", page.width));
+    rendered.push_str(&format!("height={}\n", page.height));
+    rendered.push_str(&format!("sheets={}\n", page.print_args.sheets));
+    rendered.push_str(&format!(
+        "margins.before={}\n",
+        page.print_args.margins.before
+    ));
+    rendered.push_str(&format!(
+        "margins.after={}\n",
+        page.print_args.margins.after
+    ));
+    rendered.push_str(&format!("palette={:#04X}\n", page.print_args.palette));
+    rendered.push_str(&format!("exposure={:#04X}\n", page.print_args.exposure));
+
+    let width = usize::from(page.width);
+    for row in 0..usize::from(page.height) {
+        let row_start = row * width;
+        let row_pixels = &page.pixels[row_start..row_start + 16];
+        rendered.push_str(&format!("row{row}[0..16]="));
+        for &pixel in row_pixels {
+            rendered.push(char::from(b'0' + pixel));
+        }
+        rendered.push('\n');
+    }
+
+    rendered
+}
+
 #[test]
 fn printer_attachment_supports_the_documented_detection_sequence() {
     let mut machine = Machine::new(
@@ -66,34 +130,28 @@ fn printer_attachment_produces_a_typed_printed_page() {
 
     let tile_row = vec![0xFF; 320];
 
-    send_printer_packet(&mut machine, PrinterCommand::Data, &tile_row);
-    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x81);
-    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x08);
+    let page = run_print_sequence(&mut machine, &tile_row, [0x01, 0x13, 0xE4, 0x40]);
 
-    send_printer_packet(&mut machine, PrinterCommand::Data, &[]);
-    serial_transfer_byte(&mut machine, 0x00);
-    serial_transfer_byte(&mut machine, 0x00);
+    assert_eq!(page.width, 160);
+    assert_eq!(page.height, 8);
+    assert_eq!(page.print_args.palette, 0xE4);
+    assert_eq!(page.print_args.exposure, 0x40);
+}
 
-    send_printer_packet(
-        &mut machine,
-        PrinterCommand::Print,
-        &[0x01, 0x13, 0xE4, 0x40],
+#[test]
+fn printer_typed_page_fixture_matches_the_golden_output() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
-    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x81);
-    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x08);
+    machine.set_external_port_attachment(ExternalPortAttachmentKind::Printer);
 
-    send_printer_packet(&mut machine, PrinterCommand::Status, &[]);
-    serial_transfer_byte(&mut machine, 0x00);
-    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x06);
+    let tile_bytes = vec![
+        0x80, 0x40, 0x55, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00,
+    ];
 
-    send_printer_packet(&mut machine, PrinterCommand::Status, &[]);
-    serial_transfer_byte(&mut machine, 0x00);
-    assert_eq!(serial_transfer_byte(&mut machine, 0x00), 0x04);
-
-    let pages = machine.take_printed_pages();
-    assert_eq!(pages.len(), 1);
-    assert_eq!(pages[0].width, 160);
-    assert_eq!(pages[0].height, 8);
-    assert_eq!(pages[0].print_args.palette, 0xE4);
-    assert_eq!(pages[0].print_args.exposure, 0x40);
+    let page = run_print_sequence(&mut machine, &tile_bytes, [0x01, 0x13, 0xE4, 0x40]);
+    let rendered = render_printed_page_fixture(&page);
+    let fixture_path = common::paths::trace_fixture_path(PRINTED_PAGE_FIXTURE_NAME);
+    common::fixtures::ensure_text_fixture(&fixture_path, &rendered, FIXTURE_ACCEPT_ENV);
 }

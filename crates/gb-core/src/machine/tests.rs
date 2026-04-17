@@ -2,7 +2,7 @@ use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write};
 use super::*;
 use crate::cartridge::PersistentCartState;
 use crate::debugger::BreakpointCondition;
-use crate::external_port::ExternalPortAttachmentKind;
+use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
 use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
 use crate::ppu::{PpuLcdState, PpuStepRegion};
@@ -336,7 +336,7 @@ fn load_cartridge_restarts_skip_boot_runtime_from_cycle_zero() {
     machine
         .debug_controls_mut()
         .add_breakpoint(BreakpointCondition::ProgramCounter(0x0100));
-    machine.set_serial_peer(SerialPeer::Loopback);
+    machine.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);
     machine.set_joypad_button_pressed(JoypadButton::A, true);
     machine.step_t_cycle();
     machine.step_t_cycle();
@@ -384,6 +384,20 @@ fn external_port_attachment_selection_updates_the_serial_peer_boundary() {
         ExternalPortAttachmentKind::Loopback
     );
     assert_eq!(machine.serial().peer(), SerialPeer::Loopback);
+}
+
+#[test]
+fn machine_exposes_external_port_reset_policy_configuration() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.set_external_port_reset_policy(ExternalPortResetPolicy::PreserveAttachmentKind);
+
+    assert_eq!(
+        machine.external_port().reset_policy(),
+        ExternalPortResetPolicy::PreserveAttachmentKind
+    );
 }
 
 #[test]

@@ -70,6 +70,9 @@ Keep these concerns distinct:
 - `SB` should therefore evolve during the transfer as the shift register content changes bit by bit.
 - After the eighth shift, `SB` should contain the fully received byte.
 - If a connected peer has not loaded a new outgoing byte before the next transfer begins, the peer side should be able to resend whatever byte it still had staged; the controller should not assume every transfer starts with a freshly provided peer byte.
+- That resend rule should depend on the serial-owned staged-outgoing byte, not on
+  the post-transfer visible contents of `SB`, because `SB` contains the received
+  byte after the previous exchange completes.
 
 ## Master and slave clock baseline
 
@@ -176,6 +179,10 @@ Keep these concerns distinct:
   - outgoing and incoming shift state or equivalent
   - master-clock timing state for DMG internal clock mode
   - optional connected peer or endpoint
+- Keep the serial-owned staged outgoing byte explicit across transfer
+  boundaries so a later transfer can resend the previous byte if software has
+  not written a new one yet, even though visible `SB` has already been replaced
+  by the last received byte.
 - Request the serial interrupt through the shared interrupt-controller path instead of reaching into CPU interrupt state directly.
 - Direct-boot startup values for `SB` and `SC` should come from the centralized post-boot snapshot rather than from serial-local guessed reset defaults.
 - Direct-boot should also seed serial's hidden free-running clock phase explicitly instead of deriving it from the timer's `DIV` phase or from the moment a transfer is armed.
@@ -184,6 +191,14 @@ Keep these concerns distinct:
   future linked multi-console scheduler outside the serial subsystem; those
   owners should drive the narrow serial-endpoint boundary instead of being
   folded into `SB` / `SC` logic.
+- In the current Phase `4` `DMG-04` baseline, the `link` session owns passive
+  cable routing and shared-clock propagation, while each console's
+  `external_port` attachment owns the per-console staged incoming-byte view that
+  the serial controller consumes on the next shift boundary.
+- That same `link` owner also decides when no valid cable exchange exists
+  (for example, the current baseline's unsupported double-master case) and must
+  surface open-line input rather than inventing a second valid byte-exchange
+  path inside the serial controller.
 - In the current baseline, the peer boundary is already explicit enough to
   distinguish disconnected input from loopback and to queue external slave-mode
   clock pulses on the shared timeline, while fuller scripted peers can land

@@ -2,7 +2,10 @@ mod common;
 
 use common::machine_driver::step_machine_t_cycles;
 use common::synthetic_cartridge::build_nom_bc_test_rom;
-use gb_core::{ConsoleModel, Machine, MachineConfig, SerialPeer, SerialTransferState, StartupMode};
+use gb_core::{
+    ConsoleModel, ExternalPortAttachmentKind, Machine, MachineConfig, SerialTransferState,
+    StartupMode,
+};
 
 fn build_test_rom(program: &[u8], patches: &[(usize, u8)]) -> Vec<u8> {
     let mut rom = build_nom_bc_test_rom(program, 0xFF, &[]);
@@ -140,7 +143,7 @@ fn loopback_peer_returns_the_original_byte_after_eight_internal_shifts() {
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
 
-    machine.set_serial_peer(SerialPeer::Loopback);
+    machine.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);
     machine.write_bus(0xFF0F, 0x00);
     machine.write_bus(0xFF01, 0x96);
     machine.write_bus(0xFF02, 0x81);

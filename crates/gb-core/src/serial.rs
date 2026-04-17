@@ -79,7 +79,9 @@ pub struct Serial {
     peer: SerialPeer,
     clock_counter: u16,
     external_clock_pulses_pending: u8,
+    staged_outgoing_byte: u8,
     current_outgoing_byte: u8,
+    current_outgoing_shift_byte: u8,
     current_incoming_byte: u8,
     latest_completed_output_byte: Option<u8>,
     completed_output_bytes: Vec<u8>,
@@ -106,7 +108,9 @@ impl Serial {
             peer: SerialPeer::Disconnected,
             clock_counter: 0,
             external_clock_pulses_pending: 0,
+            staged_outgoing_byte: 0,
             current_outgoing_byte: 0,
+            current_outgoing_shift_byte: 0,
             current_incoming_byte: 0,
             latest_completed_output_byte: None,
             completed_output_bytes: Vec::new(),
@@ -139,6 +143,7 @@ impl Serial {
 
     pub fn write_sb(&mut self, value: u8) {
         self.sb = value;
+        self.staged_outgoing_byte = value;
     }
 
     pub fn read_sc(&self) -> u8 {
@@ -166,6 +171,7 @@ impl Serial {
         };
         self.external_clock_pulses_pending = 0;
         self.current_outgoing_byte = 0;
+        self.current_outgoing_shift_byte = 0;
         self.current_incoming_byte = 0;
         self.latest_completed_output_byte = None;
     }
@@ -177,7 +183,9 @@ impl Serial {
         self.peer = SerialPeer::Disconnected;
         self.clock_counter = startup_state.clock_counter;
         self.external_clock_pulses_pending = 0;
+        self.staged_outgoing_byte = startup_state.sb;
         self.current_outgoing_byte = 0;
+        self.current_outgoing_shift_byte = 0;
         self.current_incoming_byte = 0;
         self.latest_completed_output_byte = None;
         self.completed_output_bytes.clear();
@@ -203,6 +211,24 @@ impl Serial {
 
     pub(crate) fn take_latest_completed_output_byte(&mut self) -> Option<u8> {
         self.latest_completed_output_byte.take()
+    }
+
+    pub(crate) fn internal_clock_edge_pending_this_t_cycle(&self) -> bool {
+        self.clock_mode == SerialClockMode::Internal
+            && matches!(
+                self.transfer_state,
+                SerialTransferState::TransferRequested { .. }
+            )
+            && serial_internal_clock_edge(self.clock_counter, self.clock_counter.wrapping_add(1))
+    }
+
+    pub(crate) fn endpoint_outgoing_byte(&self) -> u8 {
+        match self.transfer_state {
+            SerialTransferState::TransferRequested { bits_shifted } if bits_shifted != 0 => {
+                self.current_outgoing_byte
+            }
+            _ => self.staged_outgoing_byte,
+        }
     }
 
     pub fn snapshot(&self) -> SerialSnapshot {
@@ -287,11 +313,13 @@ impl Serial {
         };
 
         if bits_shifted == 0 {
+            self.current_outgoing_byte = self.staged_outgoing_byte;
+            self.current_outgoing_shift_byte = self.staged_outgoing_byte;
             self.current_incoming_byte = staged_incoming_byte_for_peer(self.peer);
         }
 
-        let outgoing_bit = self.sb & 0x80 != 0;
-        self.current_outgoing_byte = (self.current_outgoing_byte << 1) | u8::from(outgoing_bit);
+        let outgoing_bit = self.current_outgoing_shift_byte & 0x80 != 0;
+        self.current_outgoing_shift_byte <<= 1;
         let incoming_bit =
             incoming_bit_from_peer(self.peer, outgoing_bit, &mut self.current_incoming_byte);
         self.sb = (self.sb << 1) | u8::from(incoming_bit);
@@ -303,6 +331,7 @@ impl Serial {
             self.completed_output_bytes.push(self.current_outgoing_byte);
             self.latest_completed_output_byte = Some(self.current_outgoing_byte);
             self.current_outgoing_byte = 0;
+            self.current_outgoing_shift_byte = 0;
             self.current_incoming_byte = 0;
             context.queue_interrupt_request(InterruptSource::Serial);
         } else {

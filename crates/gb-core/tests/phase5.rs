@@ -2,7 +2,10 @@ mod common;
 
 use common::machine_driver::step_machine_t_cycles;
 use common::synthetic_cartridge::build_nom_bc_test_rom;
-use gb_core::{ConsoleModel, CpuExecutionState, Machine, MachineConfig, SerialPeer, StartupMode};
+use gb_core::{
+    ConsoleModel, CpuExecutionState, ExternalPortAttachmentKind, Machine, MachineConfig,
+    StartupMode,
+};
 
 const FIXTURE_ACCEPT_ENV: &str = common::fixture_env::PHASE5;
 const JOYPAD_STOP_TRACE_NAME: &str = "phase5_joypad_stop_wake_and_irq.trace";
@@ -43,7 +46,7 @@ fn phase_5_serial_external_clock_progress_trace_fixture_matches() {
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
     );
 
-    machine.set_serial_peer(SerialPeer::Loopback);
+    machine.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);
     machine.write_bus(0xFF0F, 0x00);
     machine.write_bus(0xFF01, 0x96);
     machine.write_bus(0xFF02, 0x80);

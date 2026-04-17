@@ -228,7 +228,7 @@ Explicitly deferred from v1:
 
 ### Crates / files
 
-- `crates/gb-core/src/serial/printer.rs`
+- `crates/gb-core/src/external_port/printer.rs`
 - `crates/gb-core/tests/printer.rs`
 - fixtures under `crates/gb-core/tests/fixtures/`
 
@@ -265,7 +265,7 @@ console modes.
 
 ### Crates / files
 
-- `crates/gb-core/src/link.rs`
+- `crates/gb-core/src/link/`
 - supporting `Machine` stepping changes in `crates/gb-core/src/machine/`
 - `gb-core` tests for shared stepping
 

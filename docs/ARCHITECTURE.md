@@ -300,14 +300,16 @@ to immediately materialize as a separate directory.
 - separation between emulated serial hardware and any host transport implementation
 - ownership of transfer-complete detection, `SC.7` clear timing, and completion-triggered serial IRQ requests
 
-### future external-port attachment / linked-session support
+### external-port attachment / linked-session support
 
 - attachment-kind and attachment-runtime-state ownership for the handheld's
   external port
+- public seam(s) for selecting attachment kind and attachment reset/startup
+  policy without exposing unrelated serial-internal state
 - printer protocol state and typed printer output artifacts
 - `DMG-04` cable routing and `DMG-07` adapter topology
 - shared multi-console session orchestration on one T-cycle timeline
-- current shared-session staging module: `link.rs`, `link/`, or an equivalent
+- current shared-session staging module: `link/` or an equivalent
   module outside local `serial/`
 - separation between attachment/topology ownership and the per-console serial
   controller that consumes only a narrow signal boundary

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub const MACHINE: &str = "GB_CYCLE_ACCEPT_MACHINE_FIXTURES";
+pub const PRINTER: &str = "GB_CYCLE_ACCEPT_PRINTER_FIXTURES";
 pub const PHASE2: &str = "GB_CYCLE_ACCEPT_PHASE2_FIXTURES";
 pub const PHASE4: &str = "GB_CYCLE_ACCEPT_PHASE4_FIXTURES";
 pub const PHASE5: &str = "GB_CYCLE_ACCEPT_PHASE5_FIXTURES";

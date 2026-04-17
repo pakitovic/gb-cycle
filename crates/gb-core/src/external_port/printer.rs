@@ -558,11 +558,19 @@ mod tests {
     }
 
     fn printer_packet(command: PrinterCommand, data: &[u8]) -> Vec<u8> {
+        printer_packet_with_flag(command, 0x00, data)
+    }
+
+    fn printer_packet_with_flag(
+        command: PrinterCommand,
+        compression_flag: u8,
+        data: &[u8],
+    ) -> Vec<u8> {
         let mut packet = vec![
             PRINTER_MAGIC_0,
             PRINTER_MAGIC_1,
             command as u8,
-            0x00,
+            compression_flag,
             (data.len() & 0xFF) as u8,
             ((data.len() >> 8) & 0xFF) as u8,
         ];
@@ -573,6 +581,14 @@ mod tests {
         packet.push((checksum & 0xFF) as u8);
         packet.push((checksum >> 8) as u8);
         packet
+    }
+
+    fn consume_reply(printer: &mut PrinterDevice) -> (u8, u8) {
+        let alive = printer.staged_response_byte();
+        printer.receive_serial_byte(0x00);
+        let status = printer.staged_response_byte();
+        printer.receive_serial_byte(0x00);
+        (alive, status)
     }
 
     #[test]
@@ -657,6 +673,36 @@ mod tests {
         assert_eq!(snapshot.parser_state, PrinterParserState::AwaitMagic0);
         assert_eq!(snapshot.status.to_byte(), 0x00);
         assert_eq!(snapshot.image_buffer_len, 0);
+    }
+
+    #[test]
+    fn checksum_mismatch_sets_the_checksum_error_bit_and_drops_the_packet() {
+        let mut printer = PrinterDevice::new();
+        let mut packet = printer_packet(PrinterCommand::Data, &[0xAA, 0x55]);
+        let checksum_hi_index = packet.len() - 1;
+        packet[checksum_hi_index] ^= 0x01;
+
+        send_packet(&mut printer, &packet);
+        let (alive, status) = consume_reply(&mut printer);
+
+        assert_eq!(alive, 0x81);
+        assert_eq!(status, 0x01);
+        assert_eq!(printer.snapshot().image_buffer_len, 0);
+        assert!(printer.take_printed_pages().is_empty());
+    }
+
+    #[test]
+    fn compressed_packets_are_rejected_with_packet_error_status() {
+        let mut printer = PrinterDevice::new();
+        let packet = printer_packet_with_flag(PrinterCommand::Data, 0x01, &[0xAA, 0x55]);
+
+        send_packet(&mut printer, &packet);
+        let (alive, status) = consume_reply(&mut printer);
+
+        assert_eq!(alive, 0x81);
+        assert_eq!(status, 0x10);
+        assert_eq!(printer.snapshot().image_buffer_len, 0);
+        assert!(printer.take_printed_pages().is_empty());
     }
 
     #[test]
