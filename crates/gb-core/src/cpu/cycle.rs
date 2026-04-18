@@ -13,9 +13,7 @@ impl CpuCore {
         match self.execution_state {
             CpuExecutionState::FetchOpcode { t_cycle } => {
                 if t_cycle < LAST_MACHINE_CYCLE_T {
-                    self.execution_state = CpuExecutionState::FetchOpcode {
-                        t_cycle: t_cycle + 1,
-                    };
+                    self.advance_fetch_t_cycle();
                     return;
                 }
 
@@ -23,10 +21,7 @@ impl CpuCore {
             }
             CpuExecutionState::Execute { step, t_cycle } => {
                 if t_cycle < LAST_MACHINE_CYCLE_T {
-                    self.execution_state = CpuExecutionState::Execute {
-                        step,
-                        t_cycle: t_cycle + 1,
-                    };
+                    self.advance_execute_t_cycle();
                     return;
                 }
 
@@ -38,11 +33,7 @@ impl CpuCore {
                 t_cycle,
             } => {
                 if t_cycle < LAST_MACHINE_CYCLE_T {
-                    self.execution_state = CpuExecutionState::ServiceInterrupt {
-                        source,
-                        step,
-                        t_cycle: t_cycle + 1,
-                    };
+                    self.advance_service_interrupt_t_cycle();
                     return;
                 }
 
@@ -50,10 +41,7 @@ impl CpuCore {
             }
             CpuExecutionState::ServiceStopWakeBuggedInterrupt { step, t_cycle } => {
                 if t_cycle < LAST_MACHINE_CYCLE_T {
-                    self.execution_state = CpuExecutionState::ServiceStopWakeBuggedInterrupt {
-                        step,
-                        t_cycle: t_cycle + 1,
-                    };
+                    self.advance_stop_wake_bugged_interrupt_t_cycle();
                     return;
                 }
 
@@ -63,6 +51,38 @@ impl CpuCore {
             | CpuExecutionState::Halted
             | CpuExecutionState::ZombieStopped
             | CpuExecutionState::Stopped => {}
+        }
+    }
+
+    fn advance_fetch_t_cycle(&mut self) {
+        match &mut self.execution_state {
+            CpuExecutionState::FetchOpcode { t_cycle } => *t_cycle += 1,
+            _ => unreachable!("fetch T-cycle advance requested outside fetch state"),
+        }
+    }
+
+    fn advance_execute_t_cycle(&mut self) {
+        match &mut self.execution_state {
+            CpuExecutionState::Execute { t_cycle, .. } => *t_cycle += 1,
+            _ => unreachable!("execute T-cycle advance requested outside execute state"),
+        }
+    }
+
+    fn advance_service_interrupt_t_cycle(&mut self) {
+        match &mut self.execution_state {
+            CpuExecutionState::ServiceInterrupt { t_cycle, .. } => *t_cycle += 1,
+            _ => unreachable!("interrupt service T-cycle advance requested outside service state"),
+        }
+    }
+
+    fn advance_stop_wake_bugged_interrupt_t_cycle(&mut self) {
+        match &mut self.execution_state {
+            CpuExecutionState::ServiceStopWakeBuggedInterrupt { t_cycle, .. } => *t_cycle += 1,
+            _ => {
+                unreachable!(
+                    "STOP wake bugged interrupt T-cycle advance requested outside service state"
+                )
+            }
         }
     }
 
@@ -154,17 +174,36 @@ impl CpuCore {
     }
 
     pub(super) fn advance_instruction(&mut self, _opcode: u8, next_step: u8) {
-        self.execution_state = CpuExecutionState::Execute {
-            step: next_step,
-            t_cycle: 0,
-        };
+        match &mut self.execution_state {
+            CpuExecutionState::Execute { step, t_cycle } => {
+                *step = next_step;
+                *t_cycle = 0;
+            }
+            _ => {
+                self.execution_state = CpuExecutionState::Execute {
+                    step: next_step,
+                    t_cycle: 0,
+                };
+            }
+        }
     }
 
     pub(super) fn stall_instruction(&mut self, _opcode: u8, step: u8) {
-        self.execution_state = CpuExecutionState::Execute {
-            step,
-            t_cycle: LAST_MACHINE_CYCLE_T,
-        };
+        match &mut self.execution_state {
+            CpuExecutionState::Execute {
+                step: current_step,
+                t_cycle,
+            } => {
+                *current_step = step;
+                *t_cycle = LAST_MACHINE_CYCLE_T;
+            }
+            _ => {
+                self.execution_state = CpuExecutionState::Execute {
+                    step,
+                    t_cycle: LAST_MACHINE_CYCLE_T,
+                };
+            }
+        }
     }
 
     pub(super) fn finish_instruction(&mut self) {

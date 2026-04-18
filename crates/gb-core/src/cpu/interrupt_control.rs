@@ -102,11 +102,24 @@ impl CpuCore {
     }
 
     fn advance_interrupt_service(&mut self, source: InterruptSource, next_step: u8) {
-        self.execution_state = CpuExecutionState::ServiceInterrupt {
-            source,
-            step: next_step,
-            t_cycle: 0,
-        };
+        match &mut self.execution_state {
+            CpuExecutionState::ServiceInterrupt {
+                source: current_source,
+                step,
+                t_cycle,
+            } => {
+                *current_source = source;
+                *step = next_step;
+                *t_cycle = 0;
+            }
+            _ => {
+                self.execution_state = CpuExecutionState::ServiceInterrupt {
+                    source,
+                    step: next_step,
+                    t_cycle: 0,
+                };
+            }
+        }
     }
 
     fn begin_stop_wake_bugged_interrupt_service(&mut self) {
@@ -120,10 +133,18 @@ impl CpuCore {
     }
 
     fn advance_stop_wake_bugged_interrupt_service(&mut self, next_step: u8) {
-        self.execution_state = CpuExecutionState::ServiceStopWakeBuggedInterrupt {
-            step: next_step,
-            t_cycle: 0,
-        };
+        match &mut self.execution_state {
+            CpuExecutionState::ServiceStopWakeBuggedInterrupt { step, t_cycle } => {
+                *step = next_step;
+                *t_cycle = 0;
+            }
+            _ => {
+                self.execution_state = CpuExecutionState::ServiceStopWakeBuggedInterrupt {
+                    step: next_step,
+                    t_cycle: 0,
+                };
+            }
+        }
     }
 
     fn finish_interrupt_service(&mut self) {
