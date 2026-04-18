@@ -3,70 +3,6 @@ use crate::joypad::Joypad;
 
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InterruptServicePhase {
-    InternalWait0,
-    InternalWait1,
-    PrepareStackWrite,
-    PushHighAndResolveVector,
-    PushLowAndCommit,
-}
-
-impl InterruptServicePhase {
-    const fn from_step(step: u8) -> Option<Self> {
-        match step {
-            0 => Some(Self::InternalWait0),
-            1 => Some(Self::InternalWait1),
-            2 => Some(Self::PrepareStackWrite),
-            3 => Some(Self::PushHighAndResolveVector),
-            4 => Some(Self::PushLowAndCommit),
-            _ => None,
-        }
-    }
-
-    const fn next_step(self) -> u8 {
-        match self {
-            Self::InternalWait0 => 1,
-            Self::InternalWait1 => 2,
-            Self::PrepareStackWrite => 3,
-            Self::PushHighAndResolveVector => 4,
-            Self::PushLowAndCommit => 4,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StopWakeBuggedInterruptServicePhase {
-    InternalWait0,
-    InternalWait1,
-    PrepareStackWrite,
-    PushHigh,
-    OverwriteHighSlotWithLowAndCommit,
-}
-
-impl StopWakeBuggedInterruptServicePhase {
-    const fn from_step(step: u8) -> Option<Self> {
-        match step {
-            0 => Some(Self::InternalWait0),
-            1 => Some(Self::InternalWait1),
-            2 => Some(Self::PrepareStackWrite),
-            3 => Some(Self::PushHigh),
-            4 => Some(Self::OverwriteHighSlotWithLowAndCommit),
-            _ => None,
-        }
-    }
-
-    const fn next_step(self) -> u8 {
-        match self {
-            Self::InternalWait0 => 1,
-            Self::InternalWait1 => 2,
-            Self::PrepareStackWrite => 3,
-            Self::PushHigh => 4,
-            Self::OverwriteHighSlotWithLowAndCommit => 4,
-        }
-    }
-}
-
 impl CpuCore {
     fn is_stop_sleep_state(&self) -> bool {
         matches!(
@@ -201,20 +137,13 @@ impl CpuCore {
         step: u8,
         bus_operation: &mut CpuExternalCallback<'_>,
     ) {
-        let Some(phase) = InterruptServicePhase::from_step(step) else {
-            self.advance_interrupt_service(source, step);
-            return;
-        };
-
-        match phase {
-            InterruptServicePhase::InternalWait0 | InterruptServicePhase::InternalWait1 => {
-                self.advance_interrupt_service(source, phase.next_step());
-            }
-            InterruptServicePhase::PrepareStackWrite => {
+        match step {
+            0 | 1 => self.advance_interrupt_service(source, step + 1),
+            2 => {
                 self.prepare_pc_stack_push();
                 self.advance_interrupt_service(source, 3);
             }
-            InterruptServicePhase::PushHighAndResolveVector => {
+            3 => {
                 let upper_pc_push_targets_ie = self.registers.sp == 0xFFFF;
                 self.push_pc_high_at_sp(bus_operation);
                 if upper_pc_push_targets_ie {
@@ -243,11 +172,12 @@ impl CpuCore {
                     self.advance_interrupt_service(source, 4);
                 }
             }
-            InterruptServicePhase::PushLowAndCommit => {
+            4 => {
                 self.push_latched_low_with_decremented_sp(bus_operation);
                 self.registers.pc = source.vector();
                 self.finish_interrupt_service();
             }
+            _ => self.advance_interrupt_service(source, step),
         }
     }
 
@@ -256,25 +186,17 @@ impl CpuCore {
         step: u8,
         bus_operation: &mut CpuExternalCallback<'_>,
     ) {
-        let Some(phase) = StopWakeBuggedInterruptServicePhase::from_step(step) else {
-            self.advance_stop_wake_bugged_interrupt_service(step);
-            return;
-        };
-
-        match phase {
-            StopWakeBuggedInterruptServicePhase::InternalWait0
-            | StopWakeBuggedInterruptServicePhase::InternalWait1 => {
-                self.advance_stop_wake_bugged_interrupt_service(phase.next_step());
-            }
-            StopWakeBuggedInterruptServicePhase::PrepareStackWrite => {
+        match step {
+            0 | 1 => self.advance_stop_wake_bugged_interrupt_service(step + 1),
+            2 => {
                 self.prepare_pc_stack_push();
                 self.advance_stop_wake_bugged_interrupt_service(3);
             }
-            StopWakeBuggedInterruptServicePhase::PushHigh => {
+            3 => {
                 self.push_pc_high_at_sp(bus_operation);
                 self.advance_stop_wake_bugged_interrupt_service(4);
             }
-            StopWakeBuggedInterruptServicePhase::OverwriteHighSlotWithLowAndCommit => {
+            4 => {
                 // Hardware research describes STOP wake with IME=1 as a bugged
                 // interrupt that vectors to 0x0000 and often corrupts the stack.
                 // The current repo baseline makes that corruption deterministic
@@ -284,6 +206,7 @@ impl CpuCore {
                 self.registers.pc = 0x0000;
                 self.finish_interrupt_service();
             }
+            _ => self.advance_stop_wake_bugged_interrupt_service(step),
         }
     }
 

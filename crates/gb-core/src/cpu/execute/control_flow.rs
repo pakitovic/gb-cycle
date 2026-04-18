@@ -36,84 +36,6 @@ impl AbsoluteJumpPhase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CallPhase {
-    ReadLow,
-    ReadHigh,
-    DecrementSp,
-    PushHigh,
-    PushLowAndCommit,
-}
-
-impl CallPhase {
-    const fn from_step(step: u8) -> Option<Self> {
-        match step {
-            0 => Some(Self::ReadLow),
-            1 => Some(Self::ReadHigh),
-            2 => Some(Self::DecrementSp),
-            3 => Some(Self::PushHigh),
-            4 => Some(Self::PushLowAndCommit),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReturnPhase {
-    ReadLow,
-    ReadHigh,
-    CommitTarget,
-}
-
-impl ReturnPhase {
-    const fn from_step(step: u8) -> Option<Self> {
-        match step {
-            0 => Some(Self::ReadLow),
-            1 => Some(Self::ReadHigh),
-            2 => Some(Self::CommitTarget),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ConditionalReturnPhase {
-    CheckCondition,
-    ReadLow,
-    ReadHigh,
-    CommitTarget,
-}
-
-impl ConditionalReturnPhase {
-    const fn from_step(step: u8) -> Option<Self> {
-        match step {
-            0 => Some(Self::CheckCondition),
-            1 => Some(Self::ReadLow),
-            2 => Some(Self::ReadHigh),
-            3 => Some(Self::CommitTarget),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RestartPhase {
-    DecrementSp,
-    PushHigh,
-    PushLowAndCommit,
-}
-
-impl RestartPhase {
-    const fn from_step(step: u8) -> Option<Self> {
-        match step {
-            0 => Some(Self::DecrementSp),
-            1 => Some(Self::PushHigh),
-            2 => Some(Self::PushLowAndCommit),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StopPhase {
     ResolveEntry,
 }
@@ -208,37 +130,37 @@ impl CpuCore {
                     None => self.stall_instruction(opcode, step),
                 }
             }
-            CpuInstructionKind::Call => match CallPhase::from_step(step) {
-                Some(CallPhase::ReadLow) => {
+            CpuInstructionKind::Call => match step {
+                0 => {
                     self.in_flight.operand16_latch = u16::from(self.read_pc_u8(bus_operation));
                     self.advance_instruction(opcode, 1);
                 }
-                Some(CallPhase::ReadHigh) => {
+                1 => {
                     let high = self.read_pc_u8(bus_operation);
                     self.in_flight.operand16_latch |= u16::from(high) << 8;
                     self.advance_instruction(opcode, 2);
                 }
-                Some(CallPhase::DecrementSp) => {
+                2 => {
                     self.prepare_pc_stack_push();
                     self.advance_instruction(opcode, 3);
                 }
-                Some(CallPhase::PushHigh) => {
+                3 => {
                     self.push_pc_high_at_sp(bus_operation);
                     self.advance_instruction(opcode, 4);
                 }
-                Some(CallPhase::PushLowAndCommit) => {
+                4 => {
                     self.push_latched_low_with_decremented_sp(bus_operation);
                     self.registers.pc = self.in_flight.operand16_latch;
                     self.finish_instruction();
                 }
-                None => self.stall_instruction(opcode, step),
+                _ => self.stall_instruction(opcode, step),
             },
-            CpuInstructionKind::ConditionalCall { condition } => match CallPhase::from_step(step) {
-                Some(CallPhase::ReadLow) => {
+            CpuInstructionKind::ConditionalCall { condition } => match step {
+                0 => {
                     self.in_flight.operand16_latch = u16::from(self.read_pc_u8(bus_operation));
                     self.advance_instruction(opcode, 1);
                 }
-                Some(CallPhase::ReadHigh) => {
+                1 => {
                     let high = self.read_pc_u8(bus_operation);
                     self.in_flight.operand16_latch |= u16::from(high) << 8;
                     if self.condition_is_met(Some(condition)) {
@@ -247,76 +169,74 @@ impl CpuCore {
                         self.finish_instruction();
                     }
                 }
-                Some(CallPhase::DecrementSp) => {
+                2 => {
                     self.prepare_pc_stack_push();
                     self.advance_instruction(opcode, 3);
                 }
-                Some(CallPhase::PushHigh) => {
+                3 => {
                     self.push_pc_high_at_sp(bus_operation);
                     self.advance_instruction(opcode, 4);
                 }
-                Some(CallPhase::PushLowAndCommit) => {
+                4 => {
                     self.push_latched_low_with_decremented_sp(bus_operation);
                     self.registers.pc = self.in_flight.operand16_latch;
                     self.finish_instruction();
                 }
-                None => self.stall_instruction(opcode, step),
+                _ => self.stall_instruction(opcode, step),
             },
-            CpuInstructionKind::Return => match ReturnPhase::from_step(step) {
-                Some(ReturnPhase::ReadLow) => {
+            CpuInstructionKind::Return => match step {
+                0 => {
                     self.read_latched_stack_low_byte(bus_operation);
                     self.advance_instruction(opcode, 1);
                 }
-                Some(ReturnPhase::ReadHigh) => {
+                1 => {
                     self.read_latched_stack_high_byte(bus_operation);
                     self.advance_instruction(opcode, 2);
                 }
-                Some(ReturnPhase::CommitTarget) => {
+                2 => {
                     self.registers.pc = self.in_flight.operand16_latch;
                     self.finish_instruction();
                 }
-                None => self.stall_instruction(opcode, step),
+                _ => self.stall_instruction(opcode, step),
             },
-            CpuInstructionKind::ConditionalReturn { condition } => {
-                match ConditionalReturnPhase::from_step(step) {
-                    Some(ConditionalReturnPhase::CheckCondition) => {
-                        if self.condition_is_met(Some(condition)) {
-                            self.advance_instruction(opcode, 1);
-                        } else {
-                            self.finish_instruction();
-                        }
-                    }
-                    Some(ConditionalReturnPhase::ReadLow) => {
-                        self.read_latched_stack_low_byte(bus_operation);
-                        self.advance_instruction(opcode, 2);
-                    }
-                    Some(ConditionalReturnPhase::ReadHigh) => {
-                        self.read_latched_stack_high_byte(bus_operation);
-                        self.advance_instruction(opcode, 3);
-                    }
-                    Some(ConditionalReturnPhase::CommitTarget) => {
-                        self.registers.pc = self.in_flight.operand16_latch;
+            CpuInstructionKind::ConditionalReturn { condition } => match step {
+                0 => {
+                    if self.condition_is_met(Some(condition)) {
+                        self.advance_instruction(opcode, 1);
+                    } else {
                         self.finish_instruction();
                     }
-                    None => self.stall_instruction(opcode, step),
                 }
-            }
-            CpuInstructionKind::ReturnFromInterrupt => match ReturnPhase::from_step(step) {
-                Some(ReturnPhase::ReadLow) => {
+                1 => {
+                    self.read_latched_stack_low_byte(bus_operation);
+                    self.advance_instruction(opcode, 2);
+                }
+                2 => {
+                    self.read_latched_stack_high_byte(bus_operation);
+                    self.advance_instruction(opcode, 3);
+                }
+                3 => {
+                    self.registers.pc = self.in_flight.operand16_latch;
+                    self.finish_instruction();
+                }
+                _ => self.stall_instruction(opcode, step),
+            },
+            CpuInstructionKind::ReturnFromInterrupt => match step {
+                0 => {
                     self.read_latched_stack_low_byte(bus_operation);
                     self.advance_instruction(opcode, 1);
                 }
-                Some(ReturnPhase::ReadHigh) => {
+                1 => {
                     self.read_latched_stack_high_byte(bus_operation);
                     self.advance_instruction(opcode, 2);
                 }
-                Some(ReturnPhase::CommitTarget) => {
+                2 => {
                     self.registers.pc = self.in_flight.operand16_latch;
                     self.set_ime_enabled();
                     self.cancel_delayed_ime_enable();
                     self.finish_instruction();
                 }
-                None => self.stall_instruction(opcode, step),
+                _ => self.stall_instruction(opcode, step),
             },
             CpuInstructionKind::Stop => match StopPhase::from_step(step) {
                 Some(StopPhase::ResolveEntry) => {
@@ -352,21 +272,21 @@ impl CpuCore {
                 }
                 None => self.stall_instruction(opcode, step),
             },
-            CpuInstructionKind::Restart { vector } => match RestartPhase::from_step(step) {
-                Some(RestartPhase::DecrementSp) => {
+            CpuInstructionKind::Restart { vector } => match step {
+                0 => {
                     self.prepare_pc_stack_push();
                     self.advance_instruction(opcode, 1);
                 }
-                Some(RestartPhase::PushHigh) => {
+                1 => {
                     self.push_pc_high_at_sp(bus_operation);
                     self.advance_instruction(opcode, 2);
                 }
-                Some(RestartPhase::PushLowAndCommit) => {
+                2 => {
                     self.push_latched_low_with_decremented_sp(bus_operation);
                     self.registers.pc = vector;
                     self.finish_instruction();
                 }
-                None => self.stall_instruction(opcode, step),
+                _ => self.stall_instruction(opcode, step),
             },
             _ => unreachable!("non-control-flow instruction dispatched to control-flow executor"),
         }
