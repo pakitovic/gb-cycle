@@ -432,6 +432,8 @@ pub(super) struct BgPipelineState {
     pub(super) dmg_wx0_window_disable_prefix_state: Option<DmgWx0WindowDisablePrefixState>,
     pub(super) dmg_late_window_enable_override: Option<DmgLateWindowEnableOverride>,
     pub(super) dmg_pending_window_reenable_resume: Option<DmgPendingWindowReenableResume>,
+    pub(super) dmg_previsible_wx_retarget: Option<DmgPrevisibleWxRetarget>,
+    pub(super) dmg_pending_live_wx_trigger_glitch: Option<DmgPendingLiveWxTriggerGlitch>,
     pub(super) dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState,
 }
 
@@ -464,6 +466,38 @@ impl DmgLateWindowEnableOverride {
             end_x,
             window_origin_x,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DmgPrevisibleWxRetarget {
+    pub(super) trigger_x: u8,
+    pub(super) active_line_counter: u8,
+    pub(super) window_pixel_offset: u16,
+}
+
+impl DmgPrevisibleWxRetarget {
+    pub(super) const fn new(
+        trigger_x: u8,
+        active_line_counter: u8,
+        window_pixel_offset: u16,
+    ) -> Self {
+        Self {
+            trigger_x,
+            active_line_counter,
+            window_pixel_offset,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DmgPendingLiveWxTriggerGlitch {
+    pub(super) trigger_x: u8,
+}
+
+impl DmgPendingLiveWxTriggerGlitch {
+    pub(super) const fn new(trigger_x: u8) -> Self {
+        Self { trigger_x }
     }
 }
 
@@ -874,6 +908,11 @@ impl BgPipelineState {
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
         self.startup_scy_tiledata_latch = None;
         self.window_activation_tilemap_select_latch = None;
+        self.dmg_wx0_window_disable_prefix_state = None;
+        self.dmg_late_window_enable_override = None;
+        self.dmg_pending_window_reenable_resume = None;
+        self.dmg_previsible_wx_retarget = None;
+        self.dmg_pending_live_wx_trigger_glitch = None;
         self.dmg_mode3_live_lcdc_bg_state = Default::default();
     }
 
@@ -961,6 +1000,8 @@ impl BgPipelineState {
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
         self.dmg_pending_window_reenable_resume = None;
+        self.dmg_previsible_wx_retarget = None;
+        self.dmg_pending_live_wx_trigger_glitch = None;
     }
 
     pub(super) fn extend_mode3_by_one_dot(&mut self) {
@@ -1681,6 +1722,8 @@ impl Default for BgPipelineState {
             dmg_wx0_window_disable_prefix_state: None,
             dmg_late_window_enable_override: None,
             dmg_pending_window_reenable_resume: None,
+            dmg_previsible_wx_retarget: None,
+            dmg_pending_live_wx_trigger_glitch: None,
             dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState::default(),
         }
     }
@@ -1755,6 +1798,7 @@ pub(super) struct BgFetcherState {
     pub(super) bg_resume_fetch_pixel: u16,
     pub(super) rewind_bg_resume_after_first_tile_index_dot: bool,
     pub(super) first_window_tile_after_activation: bool,
+    pub(super) first_window_tile_leading_pixel_skip: u8,
     pub(super) tile_map_address: u16,
     pub(super) tile_data_address: u16,
     pub(super) tile_low_address: u16,
@@ -1775,6 +1819,16 @@ impl BgFetcherState {
     }
 
     pub(super) fn start_window(&mut self, bg_resume_fetch_pixel: u16) {
+        self.start_window_with_pixel_offset(bg_resume_fetch_pixel, 0);
+    }
+
+    pub(super) fn start_window_with_pixel_offset(
+        &mut self,
+        bg_resume_fetch_pixel: u16,
+        window_pixel_offset: u16,
+    ) {
+        let tile_width = u16::from(BG_TILE_WIDTH);
+        let aligned_fetch_x = (window_pixel_offset / tile_width) * tile_width;
         self.source = PpuBgFetcherSource::Window;
         self.stage = PpuBgFetcherStage::WindowActivating;
         self.stage_dot = 0;
@@ -1792,13 +1846,14 @@ impl BgFetcherState {
         self.needs_live_tile_high_current_row_refetch_on_push = false;
         self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
         self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
-        self.fetch_x = 0;
-        self.next_fetch_pixel = 0;
+        self.fetch_x = aligned_fetch_x;
+        self.next_fetch_pixel = aligned_fetch_x;
         self.post_alignment_fetch_restart_delay_dots = 0;
-        self.window_tilemap_x = 0;
+        self.window_tilemap_x = (window_pixel_offset / tile_width) as u8;
         self.bg_resume_fetch_pixel = bg_resume_fetch_pixel;
         self.rewind_bg_resume_after_first_tile_index_dot = true;
         self.first_window_tile_after_activation = true;
+        self.first_window_tile_leading_pixel_skip = (window_pixel_offset % tile_width) as u8;
         self.tile_map_address = 0;
         self.tile_data_address = 0;
         self.tile_low_address = 0;
@@ -1832,6 +1887,7 @@ impl BgFetcherState {
         self.bg_resume_fetch_pixel = bg_resume_fetch_pixel;
         self.rewind_bg_resume_after_first_tile_index_dot = false;
         self.first_window_tile_after_activation = false;
+        self.first_window_tile_leading_pixel_skip = 0;
         self.tile_map_address = 0;
         self.tile_data_address = 0;
         self.tile_low_address = 0;
@@ -1866,6 +1922,7 @@ impl BgFetcherState {
         self.post_alignment_fetch_restart_delay_dots = 0;
         self.window_tilemap_x = 0;
         self.first_window_tile_after_activation = false;
+        self.first_window_tile_leading_pixel_skip = 0;
     }
 
     pub(super) fn mark_live_register_write_for_current_background_fetch(
@@ -1968,6 +2025,7 @@ pub(super) struct BgPushState {
     pub(super) entry_delay_remaining: u8,
     pub(super) terminal_placeholder_tail_extra_hold_remaining: u8,
     pub(super) just_activated_window_tile: bool,
+    pub(super) leading_pixel_skip: u8,
     pub(super) next_fetch_pixel: u16,
     pub(super) cached: BgCachedSlice,
 }
@@ -1982,6 +2040,11 @@ impl BgPushState {
         self.disposition = BgPushDisposition::Ready;
         self.terminal_placeholder_tail_extra_hold_remaining = 0;
         self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
+        self.leading_pixel_skip = if self.just_activated_window_tile {
+            fetcher.first_window_tile_leading_pixel_skip
+        } else {
+            0
+        };
         self.entry_delay_remaining = if self.just_activated_window_tile {
             0
         } else {
@@ -1996,6 +2059,11 @@ impl BgPushState {
         self.disposition = BgPushDisposition::Ready;
         self.terminal_placeholder_tail_extra_hold_remaining = 0;
         self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
+        self.leading_pixel_skip = if self.just_activated_window_tile {
+            fetcher.first_window_tile_leading_pixel_skip
+        } else {
+            0
+        };
         self.entry_delay_remaining = 0;
         self.next_fetch_pixel = fetcher.fetch_x.wrapping_add(BG_TILE_WIDTH as u16);
         self.cached = BgCachedSlice::from_fetcher(fetcher)
@@ -2021,7 +2089,7 @@ impl BgPushState {
 pub(super) struct BgFifoFillState {
     pub(super) pending: bool,
     pub(super) startup_dummy_pixels: u8,
-    pub(super) startup_leading_pixel_skip: u8,
+    pub(super) leading_pixel_skip: u8,
     pub(super) includes_real_tile_pixels: bool,
     pub(super) cached: BgCachedSlice,
 }
@@ -2034,7 +2102,7 @@ impl BgFifoFillState {
     pub(super) fn queue_from_push(&mut self, push: BgPushState) {
         self.pending = true;
         self.startup_dummy_pixels = 0;
-        self.startup_leading_pixel_skip = 0;
+        self.leading_pixel_skip = push.leading_pixel_skip;
         self.includes_real_tile_pixels = true;
         self.cached = push.cached;
     }
@@ -2047,7 +2115,7 @@ impl BgFifoFillState {
     ) {
         self.pending = true;
         self.startup_dummy_pixels = startup_dummy_pixels;
-        self.startup_leading_pixel_skip = startup_leading_pixel_skip;
+        self.leading_pixel_skip = push.leading_pixel_skip.max(startup_leading_pixel_skip);
         self.includes_real_tile_pixels = true;
         self.cached = push.cached.with_origin(push.cached.queued_fill_origin());
     }

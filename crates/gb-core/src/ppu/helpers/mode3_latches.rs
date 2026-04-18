@@ -368,6 +368,17 @@ impl PpuMode3WindowActivationState {
         self.registers.wx == 166 && !self.force_x0_this_line
     }
 
+    pub(in crate::ppu) const fn low_wx_hidden_trigger_transfer_x(self) -> Option<u8> {
+        if self.force_x0_this_line {
+            return None;
+        }
+
+        match self.registers.wx {
+            1..=6 => Some(self.registers.wx + 1),
+            _ => None,
+        }
+    }
+
     pub(in crate::ppu) const fn trigger_x(self) -> Option<u8> {
         if self.force_x0_this_line {
             return Some(0);

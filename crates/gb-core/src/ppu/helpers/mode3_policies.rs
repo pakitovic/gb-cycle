@@ -301,6 +301,21 @@ impl PpuMode3WindowPolicy {
             return PpuMode3WindowStartDecision::NotReady;
         }
 
+        if let Some(hidden_trigger_transfer_x) = self.activation.low_wx_hidden_trigger_transfer_x()
+        {
+            let can_start_now = !self.started_this_line
+                && scx_discard_remaining == 0
+                && visible_pixels_output == 0
+                && current_transfer_x == hidden_trigger_transfer_x
+                && transfer_dot.kind == Mode3TransferDotKind::ServedHiddenTransfer;
+
+            return if can_start_now {
+                PpuMode3WindowStartDecision::StartNow
+            } else {
+                PpuMode3WindowStartDecision::NotReady
+            };
+        }
+
         let Some(trigger_x) = self.activation.trigger_x() else {
             return PpuMode3WindowStartDecision::NotReady;
         };

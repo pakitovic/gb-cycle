@@ -56,6 +56,7 @@ impl Ppu {
                 self.advance_mode3_output_phase_with_vram(vram)
             });
         observe_ppu_step_region(observer, PpuStepRegion::Mode3WindowFetch, || {
+            self.maybe_apply_pending_dmg_live_wx_trigger_glitch(output_dot);
             self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
             let _ = self.maybe_start_window_after_transfer_dot(output_dot);
             self.apply_dmg_late_window_enable_override_repaint_up_to(
@@ -223,6 +224,7 @@ impl Ppu {
     }
 
     pub(super) fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
+        self.maybe_apply_dmg_previsible_wx_retarget(vram);
         self.maybe_abort_window_fetcher_to_background(vram);
         self.maybe_recompute_pending_background_push(vram);
         let fetch_policy = self.mode3_bgwin_fetch_policy();
@@ -507,6 +509,10 @@ impl Ppu {
             }
         }
 
+        self.abort_window_fetcher_to_background_now(vram);
+    }
+
+    fn abort_window_fetcher_to_background_now(&mut self, vram: &VramBusView<'_>) {
         self.bg_pipeline_state.fetcher.abort_window_to_background();
         let fetch_x = self.bg_pipeline_state.fetcher.fetch_x;
         let context = self.background_fetch_context(fetch_x);
@@ -1028,10 +1034,7 @@ impl Ppu {
         }
         if fill.includes_real_tile_pixels {
             self.bg_pipeline_state
-                .push_cached_slice_fifo_pixels_with_skip(
-                    fill.cached,
-                    fill.startup_leading_pixel_skip,
-                );
+                .push_cached_slice_fifo_pixels_with_skip(fill.cached, fill.leading_pixel_skip);
         }
         self.bg_pipeline_state.fill.reset();
     }
@@ -1905,6 +1908,8 @@ impl Ppu {
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) {
+        self.maybe_expire_dmg_previsible_wx_retarget();
+        self.maybe_expire_pending_dmg_live_wx_trigger_glitch();
         if !self.mode3_window_policy().can_apply_wx0_shortening(
             transfer_dot,
             self.bg_pipeline_state.visible_pixels_output,
@@ -1916,6 +1921,147 @@ impl Ppu {
         }
 
         self.bg_pipeline_state.apply_wx0_scx_shortening();
+    }
+
+    pub(super) fn maybe_arm_dmg_previsible_wx_retarget(&mut self, wx: u8) {
+        if !self.console_model.is_dmg_family()
+            || self.current_access_mode() != PpuAccessMode::Drawing
+            || !self.bg_pipeline_state.window_started_this_line
+            || !self.bg_pipeline_state.window_wy_latch
+            || self.bg_pipeline_state.visible_pixels_output != 0
+            || !self.mode3_register_latches().visible().window_enabled()
+            || !self.mode3_register_latches().visible().bg_enabled()
+        {
+            self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+            return;
+        }
+
+        let trigger_x = match wx {
+            7..=165 => wx - 7,
+            _ => {
+                self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+                return;
+            }
+        };
+        let initial_hidden_skip = 7u8.saturating_sub(self.mode3_register_latches().pipeline().wx);
+        let window_pixel_offset = u16::from(initial_hidden_skip) + u16::from(trigger_x);
+
+        self.bg_pipeline_state.dmg_previsible_wx_retarget = Some(DmgPrevisibleWxRetarget::new(
+            trigger_x,
+            self.bg_pipeline_state.window_active_line_counter,
+            window_pixel_offset,
+        ));
+        self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+    }
+
+    pub(super) fn maybe_arm_dmg_live_wx_trigger_glitch(&mut self, wx: u8) {
+        if !self.console_model.is_dmg_family()
+            || self.current_access_mode() != PpuAccessMode::Drawing
+            || !self.bg_pipeline_state.window_started_this_line
+            || !self.bg_pipeline_state.window_wy_latch
+            || self.bg_pipeline_state.visible_pixels_output == 0
+            || !self.mode3_register_latches().visible().window_enabled()
+            || !self.mode3_register_latches().visible().bg_enabled()
+        {
+            return;
+        }
+
+        let trigger_x = match wx {
+            7..=166 => wx.saturating_sub(7),
+            _ => {
+                self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+                return;
+            }
+        };
+
+        if trigger_x < self.bg_pipeline_state.visible_pixels_output {
+            self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+            return;
+        }
+
+        if trigger_x == self.bg_pipeline_state.visible_pixels_output {
+            self.push_dmg_live_wx_trigger_glitch_pixel();
+            self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+            return;
+        }
+
+        self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch =
+            Some(DmgPendingLiveWxTriggerGlitch::new(trigger_x));
+    }
+
+    fn maybe_apply_dmg_previsible_wx_retarget(&mut self, vram: &VramBusView<'_>) {
+        let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget else {
+            return;
+        };
+
+        if !self.console_model.is_dmg_family()
+            || self.bg_pipeline_state.visible_pixels_output != 0
+            || self.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Window
+        {
+            return;
+        }
+
+        if matches!(
+            (
+                self.bg_pipeline_state.fetcher.stage,
+                self.bg_pipeline_state.fetcher.stage_dot,
+            ),
+            (PpuBgFetcherStage::WindowActivating, _) | (PpuBgFetcherStage::TileIndex, 0)
+        ) {
+            self.abort_window_fetcher_to_background_now(vram);
+            self.bg_pipeline_state.window_started_this_line = false;
+            self.bg_pipeline_state.window_active_line_counter = retarget.active_line_counter;
+            self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+        }
+    }
+
+    pub(super) fn maybe_apply_pending_dmg_live_wx_trigger_glitch(
+        &mut self,
+        transfer_dot: Mode3TransferDot,
+    ) {
+        let Some(glitch) = self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch else {
+            return;
+        };
+
+        if !self.console_model.is_dmg_family()
+            || transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel
+        {
+            return;
+        }
+
+        if self.bg_pipeline_state.visible_pixels_output == glitch.trigger_x {
+            self.push_dmg_live_wx_trigger_glitch_pixel();
+            self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+        } else if self.bg_pipeline_state.visible_pixels_output > glitch.trigger_x {
+            self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+        }
+    }
+
+    fn maybe_expire_dmg_previsible_wx_retarget(&mut self) {
+        let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget else {
+            return;
+        };
+
+        if !self.console_model.is_dmg_family()
+            || self.bg_pipeline_state.visible_pixels_output > retarget.trigger_x
+        {
+            self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+        }
+    }
+
+    fn maybe_expire_pending_dmg_live_wx_trigger_glitch(&mut self) {
+        let Some(glitch) = self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch else {
+            return;
+        };
+
+        if self.bg_pipeline_state.visible_pixels_output > glitch.trigger_x {
+            self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+        }
+    }
+
+    fn push_dmg_live_wx_trigger_glitch_pixel(&mut self) {
+        self.bg_pipeline_state.fifo.push_back(0);
+        self.bg_pipeline_state.fifo_cached_pixels.push_back(None);
     }
 
     pub(super) fn maybe_start_window_after_transfer_dot(
@@ -1946,7 +2092,15 @@ impl Ppu {
             PpuMode3WindowStartDecision::StartNow => {
                 self.bg_pipeline_state.dmg_pending_window_reenable_resume = None;
                 self.bg_pipeline_state.dmg_late_window_enable_override = None;
-                self.start_window_fetcher_restart();
+                self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+                if let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget.take() {
+                    self.start_window_fetcher_restart_preserving_row(
+                        retarget.active_line_counter,
+                        retarget.window_pixel_offset,
+                    );
+                } else {
+                    self.start_window_fetcher_restart();
+                }
                 true
             }
         }
@@ -2785,27 +2939,54 @@ impl Ppu {
     }
 
     pub(super) fn start_window_fetcher_restart(&mut self) {
-        let bg_resume_fetch_pixel = self.bg_pipeline_state.fetcher.next_fetch_pixel;
         let window_line_counter = self
             .window_state
             .window_line_counter
             .wrapping_add(self.bg_pipeline_state.window_start_count_this_line);
+        self.start_window_fetcher_restart_with_row(window_line_counter, true, 0);
+    }
+
+    fn start_window_fetcher_restart_preserving_row(
+        &mut self,
+        active_line_counter: u8,
+        window_pixel_offset: u16,
+    ) {
+        self.start_window_fetcher_restart_with_row(active_line_counter, false, window_pixel_offset);
+    }
+
+    fn start_window_fetcher_restart_with_row(
+        &mut self,
+        active_line_counter: u8,
+        increment_start_count: bool,
+        window_pixel_offset: u16,
+    ) {
+        let bg_resume_fetch_pixel = self.bg_pipeline_state.fetcher.next_fetch_pixel;
         self.bg_pipeline_state.fifo.clear();
         self.bg_pipeline_state.fifo_cached_pixels.clear();
         self.bg_pipeline_state.startup_fifo_placeholders = 0;
         self.bg_pipeline_state.push.reset();
         self.bg_pipeline_state.fill.reset();
-        self.bg_pipeline_state
-            .fetcher
-            .start_window(bg_resume_fetch_pixel);
+        if window_pixel_offset == 0 {
+            self.bg_pipeline_state
+                .fetcher
+                .start_window(bg_resume_fetch_pixel);
+        } else {
+            self.bg_pipeline_state
+                .fetcher
+                .start_window_with_pixel_offset(bg_resume_fetch_pixel, window_pixel_offset);
+        }
         self.bg_pipeline_state.scx_discard_remaining = 0;
         self.bg_pipeline_state.window_started_this_line = true;
-        self.bg_pipeline_state.window_active_line_counter = window_line_counter;
-        self.bg_pipeline_state.window_start_count_this_line = self
-            .bg_pipeline_state
-            .window_start_count_this_line
-            .wrapping_add(1);
+        self.bg_pipeline_state.window_active_line_counter = active_line_counter;
+        if increment_start_count {
+            self.bg_pipeline_state.window_start_count_this_line = self
+                .bg_pipeline_state
+                .window_start_count_this_line
+                .wrapping_add(1);
+        }
         self.bg_pipeline_state.window_force_x0_this_line = false;
+        self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+        self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
     }
 }
 

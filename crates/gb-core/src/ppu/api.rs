@@ -166,6 +166,11 @@ impl Ppu {
         let previous_mmio_registers = self.current_mmio_visible_registers();
         self.write_ppu_register(register, value, source);
 
+        if register == PpuRegister::Wx && self.current_access_mode() == PpuAccessMode::Drawing {
+            self.maybe_arm_dmg_previsible_wx_retarget(value);
+            self.maybe_arm_dmg_live_wx_trigger_glitch(value);
+        }
+
         if let Some(live_background_register) =
             PpuMode3LiveBackgroundRegister::from_register(register)
             && self.current_access_mode() == PpuAccessMode::Drawing
