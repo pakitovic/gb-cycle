@@ -246,26 +246,18 @@ impl CpuCore {
     }
 
     fn decode_arithmetic_opcode(&mut self, opcode: u8) -> Option<DecodedOpcode> {
-        if opcode & 0xCF == 0x03 {
-            return Some(DecodedOpcode::Execute(
-                CpuInstructionKind::IncrementRegisterPair {
-                    target: decode_register16((opcode >> 4) & 0x03),
-                },
-            ));
-        }
-
-        if opcode & 0xCF == 0x09 {
-            return Some(DecodedOpcode::Execute(CpuInstructionKind::AddHl {
-                source: decode_register16((opcode >> 4) & 0x03),
-            }));
-        }
-
-        if opcode & 0xCF == 0x0B {
-            return Some(DecodedOpcode::Execute(
-                CpuInstructionKind::DecrementRegisterPair {
-                    target: decode_register16((opcode >> 4) & 0x03),
-                },
-            ));
+        if (0x80..=0xBF).contains(&opcode) {
+            let operation = decode_alu_operation((opcode >> 3) & 0x07);
+            return Some(match decode_register8_operand(opcode & 0x07) {
+                Register8Operand::Register(source) => {
+                    let value = self.read_register8(source);
+                    self.apply_alu_operation(operation, value);
+                    DecodedOpcode::Complete
+                }
+                Register8Operand::IndirectHl => {
+                    DecodedOpcode::Execute(CpuInstructionKind::AluFromHl { operation })
+                }
+            });
         }
 
         if opcode & 0b1100_0111 == 0b0000_0100 {
@@ -307,18 +299,26 @@ impl CpuCore {
             }));
         }
 
-        if (0x80..=0xBF).contains(&opcode) {
-            let operation = decode_alu_operation((opcode >> 3) & 0x07);
-            return Some(match decode_register8_operand(opcode & 0x07) {
-                Register8Operand::Register(source) => {
-                    let value = self.read_register8(source);
-                    self.apply_alu_operation(operation, value);
-                    DecodedOpcode::Complete
-                }
-                Register8Operand::IndirectHl => {
-                    DecodedOpcode::Execute(CpuInstructionKind::AluFromHl { operation })
-                }
-            });
+        if opcode & 0xCF == 0x03 {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::IncrementRegisterPair {
+                    target: decode_register16((opcode >> 4) & 0x03),
+                },
+            ));
+        }
+
+        if opcode & 0xCF == 0x09 {
+            return Some(DecodedOpcode::Execute(CpuInstructionKind::AddHl {
+                source: decode_register16((opcode >> 4) & 0x03),
+            }));
+        }
+
+        if opcode & 0xCF == 0x0B {
+            return Some(DecodedOpcode::Execute(
+                CpuInstructionKind::DecrementRegisterPair {
+                    target: decode_register16((opcode >> 4) & 0x03),
+                },
+            ));
         }
 
         None
