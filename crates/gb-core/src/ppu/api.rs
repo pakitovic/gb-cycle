@@ -215,7 +215,7 @@ impl Ppu {
                     .mark_live_lcdc3_write_while_fifo_visible(
                         write_context,
                         self.bg_pipeline_state.fetcher,
-                        self.window_state.window_line_counter,
+                        self.current_window_line_counter(),
                     );
                 self.bg_pipeline_state
                     .apply_window_activation_tilemap_select_latch_to_seam_slices();
@@ -242,7 +242,7 @@ impl Ppu {
                     live_background_register,
                     write_context,
                     self.ly,
-                    self.window_state.window_line_counter,
+                    self.current_window_line_counter(),
                     scy_routing,
                 );
 

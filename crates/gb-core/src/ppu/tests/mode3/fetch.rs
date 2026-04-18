@@ -43,6 +43,18 @@ fn with_test_vram_view<T>(bytes: [u8; 0x2000], f: impl FnOnce(&VramBusView<'_>) 
     f(&VramBusView::new(BusMaster::Ppu, &mut vram))
 }
 
+fn dmg_live_window_restart_write_rig(lcdc: u8) -> PpuTestRig {
+    let mut ppu = dmg_fetch_startup_rig(lcdc);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 16;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.window_active_line_counter = 32;
+    ppu.window_state.window_line_counter = 0;
+    ppu
+}
+
 #[test]
 fn observed_scy_obj_phase_table_classifies_pending_refetch_by_obj_fetch_phase() {
     for sprite_x in 0..16 {
@@ -2219,6 +2231,64 @@ fn live_background_write_effects_do_not_arm_window_push_refetch_for_unsigned_to_
 
     assert!(!fetcher.needs_live_tile_data_refetch_on_push);
     assert!(fetcher.dmg_lcdc4_skip_window_current_low_glitch);
+}
+
+#[test]
+fn live_lcdc4_write_uses_the_active_window_row_after_a_same_scanline_restart() {
+    let mut ppu = dmg_live_window_restart_write_rig(0xB3);
+    ppu.bg_pipeline_state.fetcher = BgFetcherState {
+        source: PpuBgFetcherSource::Window,
+        stage: PpuBgFetcherStage::TileDataLow,
+        stage_dot: 1,
+        fetch_x: 8,
+        window_tilemap_x: 1,
+        tile_index: 0,
+        ..BgFetcherState::default()
+    };
+
+    assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
+
+    ppu.write_register(0xFF40, 0xA3);
+
+    assert!(
+        ppu.bg_pipeline_state
+            .fetcher
+            .dmg_lcdc4_skip_window_current_low_glitch
+    );
+}
+
+#[test]
+fn live_lcdc3_fifo_write_uses_the_active_window_row_after_a_same_scanline_restart() {
+    let mut ppu = dmg_live_window_restart_write_rig(0x91);
+    ppu.bg_pipeline_state.fetcher = BgFetcherState {
+        source: PpuBgFetcherSource::Window,
+        stage: PpuBgFetcherStage::Push,
+        ..BgFetcherState::default()
+    };
+    for pixel_index in [5, 6, 7, 0, 1] {
+        ppu.bg_pipeline_state
+            .fifo_cached_pixels
+            .push_back(Some(BgFifoPixelCached::new(
+                BgCachedSlice {
+                    source: PpuBgFetcherSource::Window,
+                    tile_map_address: if pixel_index >= 5 { 0x1800 } else { 0x1801 },
+                    ..BgCachedSlice::default()
+                },
+                pixel_index,
+            )));
+    }
+
+    assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
+
+    ppu.write_register(0xFF40, 0xD1);
+
+    assert!(
+        ppu.bg_pipeline_state
+            .fifo_cached_pixels
+            .iter()
+            .flatten()
+            .all(|cached| cached.cached.needs_live_tilemap_refetch)
+    );
 }
 
 #[test]
