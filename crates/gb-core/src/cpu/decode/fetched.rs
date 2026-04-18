@@ -6,13 +6,44 @@ use super::{
     decode_relative_jump_condition, decode_return_condition, decode_stack_register16,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpcodeDecodeGroup {
+    Misc,
+    Load,
+    Arithmetic,
+    ControlFlow,
+}
+
 impl CpuCore {
     pub(in crate::cpu) fn decode_fetched_opcode(&mut self, opcode: u8) -> DecodedOpcode {
+        if let Some(group) = decode_fast_group(opcode) {
+            return self
+                .decode_opcode_in_group(opcode, group)
+                .unwrap_or(DecodedOpcode::Unsupported);
+        }
+
+        self.decode_fetched_opcode_slow_path(opcode)
+    }
+
+    pub(in crate::cpu) fn decode_fetched_opcode_slow_path(&mut self, opcode: u8) -> DecodedOpcode {
         self.decode_misc_opcode(opcode)
             .or_else(|| self.decode_load_opcode(opcode))
             .or_else(|| self.decode_arithmetic_opcode(opcode))
             .or_else(|| self.decode_control_flow_opcode(opcode))
             .unwrap_or(DecodedOpcode::Unsupported)
+    }
+
+    fn decode_opcode_in_group(
+        &mut self,
+        opcode: u8,
+        group: OpcodeDecodeGroup,
+    ) -> Option<DecodedOpcode> {
+        match group {
+            OpcodeDecodeGroup::Misc => self.decode_misc_opcode(opcode),
+            OpcodeDecodeGroup::Load => self.decode_load_opcode(opcode),
+            OpcodeDecodeGroup::Arithmetic => self.decode_arithmetic_opcode(opcode),
+            OpcodeDecodeGroup::ControlFlow => self.decode_control_flow_opcode(opcode),
+        }
     }
 
     fn decode_misc_opcode(&mut self, opcode: u8) -> Option<DecodedOpcode> {
@@ -368,5 +399,63 @@ impl CpuCore {
         }
 
         None
+    }
+}
+
+const fn decode_fast_group(opcode: u8) -> Option<OpcodeDecodeGroup> {
+    match opcode {
+        0x00 | 0x07 | 0x0F | 0x10 | 0x17 | 0x1F | 0x27 | 0x2F | 0x37 | 0x3F | 0x76 | 0xAF
+        | 0xF3 | 0xFB => Some(OpcodeDecodeGroup::Misc),
+        0x40..=0x7F => Some(OpcodeDecodeGroup::Load),
+        0x80..=0xBF => Some(OpcodeDecodeGroup::Arithmetic),
+        0x18 | 0x20 | 0x28 | 0x30 | 0x38 | 0xC0 | 0xC1 | 0xC2 | 0xC3 | 0xC4 | 0xC5 | 0xC7
+        | 0xC8 | 0xC9 | 0xCA | 0xCB | 0xCC | 0xCD | 0xCF | 0xD0 | 0xD1 | 0xD2 | 0xD4 | 0xD5
+        | 0xD7 | 0xD8 | 0xD9 | 0xDA | 0xDC | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
+            Some(OpcodeDecodeGroup::ControlFlow)
+        }
+        _ if opcode & 0b1100_0111 == 0b0000_0110 => Some(OpcodeDecodeGroup::Load),
+        _ if opcode & 0b1100_0111 == 0b0000_0100
+            || opcode & 0b1100_0111 == 0b0000_0101
+            || opcode & 0xCF == 0x03
+            || opcode & 0xCF == 0x09
+            || opcode & 0xCF == 0x0B =>
+        {
+            Some(OpcodeDecodeGroup::Arithmetic)
+        }
+        _ if matches!(
+            opcode,
+            0x01 | 0x02
+                | 0x08
+                | 0x0A
+                | 0x11
+                | 0x12
+                | 0x1A
+                | 0x21
+                | 0x22
+                | 0x2A
+                | 0x31
+                | 0x32
+                | 0x3A
+                | 0xE0
+                | 0xE2
+                | 0xE8
+                | 0xEA
+                | 0xF0
+                | 0xF2
+                | 0xF8
+                | 0xF9
+                | 0xFA
+        ) =>
+        {
+            Some(OpcodeDecodeGroup::Load)
+        }
+        _ if matches!(
+            opcode,
+            0xC6 | 0xCE | 0xD6 | 0xDE | 0xE6 | 0xEE | 0xF6 | 0xFE
+        ) =>
+        {
+            Some(OpcodeDecodeGroup::Arithmetic)
+        }
+        _ => None,
     }
 }

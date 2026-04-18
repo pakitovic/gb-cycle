@@ -328,6 +328,39 @@ fn decode_fetched_opcode_covers_remaining_split_execute_variants() {
 }
 
 #[test]
+fn fast_decode_group_matches_the_linear_decode_path_for_every_opcode() {
+    let mut baseline = power_on_cpu();
+    baseline.registers.a = 0x96;
+    baseline.registers.b = 0x11;
+    baseline.registers.c = 0x22;
+    baseline.registers.d = 0x33;
+    baseline.registers.e = 0x44;
+    baseline.registers.h = 0x55;
+    baseline.registers.l = 0x66;
+    baseline.registers.f = FLAG_Z | FLAG_C;
+    baseline.set_ime_enabled();
+    baseline.schedule_delayed_ime_enable();
+
+    for opcode in u8::MIN..=u8::MAX {
+        let mut fast = baseline.clone();
+        let mut slow = baseline.clone();
+
+        let fast_result = fast.decode_fetched_opcode(opcode);
+        let slow_result = slow.decode_fetched_opcode_slow_path(opcode);
+
+        assert_eq!(
+            fast_result, slow_result,
+            "opcode {opcode:#04X} decode result"
+        );
+        assert_eq!(
+            fast.snapshot(),
+            slow.snapshot(),
+            "opcode {opcode:#04X} cpu state"
+        );
+    }
+}
+
+#[test]
 fn current_highest_pending_interrupt_queries_the_bus_mask_once() {
     let mut cpu = power_on_cpu();
     let mut pending_mask_queries = 0;
