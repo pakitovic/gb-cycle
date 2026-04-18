@@ -335,9 +335,6 @@ impl MachinePhaseRunner<'_> {
         let cpu_read_arbitration_state = arbitration_state.with_ppu(self.ppu.cpu_bus_state());
         let cpu_write_arbitration_state =
             arbitration_state.with_ppu(self.ppu.cpu_write_bus_state());
-        let interrupt_flag_pending_mask =
-            current_cycle_interrupt_read_mask(context, self.ppu, self.joypad);
-
         observe_machine_step_region(observer, MachineStepRegion::Cpu, || {
             let cpu = &mut self.cpu;
             let bus = &mut self.bus;
@@ -358,6 +355,11 @@ impl MachinePhaseRunner<'_> {
                         cpu_read_arbitration_state.with_ppu(ppu.cpu_oam_read_bus_state())
                     } else {
                         cpu_read_arbitration_state
+                    };
+                    let interrupt_flag_pending_mask = if address == 0xFF0F {
+                        current_cycle_interrupt_read_mask(context, ppu, joypad)
+                    } else {
+                        0
                     };
                     Some(bus.read_with_t_cycle_context(
                         address,
