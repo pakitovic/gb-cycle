@@ -98,12 +98,21 @@ impl CpuCore {
         value: u8,
         bus_operation: &mut CpuExternalCallback<'_>,
     ) {
+        self.write_byte_without_address_event(address, value, bus_operation);
+        self.record_address_event(CpuAddressEvent::write(address));
+    }
+
+    fn write_byte_without_address_event(
+        &mut self,
+        address: u16,
+        value: u8,
+        bus_operation: &mut CpuExternalCallback<'_>,
+    ) {
         let _ = bus_operation(CpuExternalOperation::Bus(CpuBusOperation::Write {
             address,
             value,
         }));
         self.record_bus_activity(CpuTraceBusAccessKind::DataWrite, address, value);
-        self.record_address_event(CpuAddressEvent::write(address));
     }
 
     pub(super) fn resolve_direct_address(&self, source: DirectAddressSource) -> u16 {
@@ -170,7 +179,8 @@ impl CpuCore {
         bus_operation: &mut CpuExternalCallback<'_>,
     ) -> u8 {
         let address = self.hl();
-        let value = self.read_byte(address, bus_operation);
+        let value =
+            self.read_byte_with_kind(address, bus_operation, CpuTraceBusAccessKind::DataRead);
         let updated = self.increment_or_decrement_register16(Register16::HL, direction);
         self.record_address_event(CpuAddressEvent::read_with_incdec(
             address, updated, direction,
@@ -185,7 +195,7 @@ impl CpuCore {
         bus_operation: &mut CpuExternalCallback<'_>,
     ) {
         let address = self.hl();
-        self.write_byte(address, value, bus_operation);
+        self.write_byte_without_address_event(address, value, bus_operation);
         let updated = self.increment_or_decrement_register16(Register16::HL, direction);
         self.record_address_event(CpuAddressEvent::write_with_incdec(
             address, updated, direction,
@@ -197,7 +207,8 @@ impl CpuCore {
         bus_operation: &mut CpuExternalCallback<'_>,
     ) -> u8 {
         let address = self.registers.sp;
-        let value = self.read_byte(address, bus_operation);
+        let value =
+            self.read_byte_with_kind(address, bus_operation, CpuTraceBusAccessKind::DataRead);
         self.registers.sp = self.registers.sp.wrapping_add(1);
         self.record_address_event(CpuAddressEvent::read_with_incdec(
             address,
@@ -230,7 +241,7 @@ impl CpuCore {
     ) {
         self.registers.sp = self.registers.sp.wrapping_sub(1);
         let address = self.registers.sp;
-        self.write_byte(address, value, bus_operation);
+        self.write_byte_without_address_event(address, value, bus_operation);
         self.record_address_event(CpuAddressEvent::write_with_incdec(
             address,
             address,
