@@ -49,6 +49,10 @@ fn current_cycle_interrupt_read_mask(context: &CycleContext, ppu: &Ppu, joypad: 
 }
 
 pub(super) fn cpu_write_targets_ppu_mmio(bus: &Bus, address: u16) -> bool {
+    if !(0xFF00..=0xFF7F).contains(&address) {
+        return false;
+    }
+
     bus.describe_io_register(address)
         .is_some_and(|info| info.owner() == IoRegisterOwner::Ppu)
 }
