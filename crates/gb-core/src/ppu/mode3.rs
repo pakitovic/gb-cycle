@@ -2,6 +2,7 @@ use super::*;
 
 impl Ppu {
     const DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS: [u8; 8] = [9, 10, 3, 4, 5, 6, 7, 8];
+    const DMG_LATE_WINDOW_ENABLE_SEGMENT_PIXELS: u8 = 24;
 
     pub(super) fn advance_mode3_pipeline<O>(
         &mut self,
@@ -57,6 +58,10 @@ impl Ppu {
         observe_ppu_step_region(observer, PpuStepRegion::Mode3WindowFetch, || {
             self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
             let _ = self.maybe_start_window_after_transfer_dot(output_dot);
+            self.apply_dmg_late_window_enable_override_repaint_up_to(
+                usize::from(self.bg_pipeline_state.visible_pixels_output),
+                vram,
+            );
         });
         let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
         let _ = observe_ppu_step_region(observer, bg_pipeline_region, || {
@@ -482,6 +487,8 @@ impl Ppu {
             return;
         }
 
+        self.maybe_record_dmg_window_reenable_resume();
+
         let low_wx_disable_seam = self.console_model.is_dmg_family()
             && self.bg_pipeline_state.window_started_this_line
             && self.bg_pipeline_state.visible_pixels_output == 0
@@ -615,6 +622,193 @@ impl Ppu {
                 dot.dmg_bg_forced_white = dmg_bg_forced_white;
             }
         }
+    }
+
+    fn maybe_record_dmg_window_reenable_resume(&mut self) {
+        let visible_wx = self.mode3_register_latches().visible().wx;
+        if !self.console_model.is_dmg_family()
+            || self
+                .bg_pipeline_state
+                .dmg_pending_window_reenable_resume
+                .is_some()
+            || !self
+                .mode3_register_latches()
+                .lcdc_bit_changed(LCDC_WINDOW_ENABLE_BIT)
+            || self.mode3_register_latches().visible().window_enabled()
+            || !matches!(visible_wx, 28 | 29 | 35)
+        {
+            return;
+        }
+
+        let Some(window_origin_x) = self.visible_window_origin_x() else {
+            return;
+        };
+        let emitted_window_pixels = self.count_emitted_window_pixels_this_line();
+        let whole_tiles_emitted = emitted_window_pixels.saturating_add(7) / 8;
+        let onset_x = window_origin_x.saturating_add(whole_tiles_emitted.saturating_mul(8));
+        self.bg_pipeline_state.dmg_pending_window_reenable_resume =
+            Some(DmgPendingWindowReenableResume::new(
+                onset_x,
+                window_origin_x,
+                emitted_window_pixels,
+                self.bg_pipeline_state.fetcher.stage,
+                self.bg_pipeline_state.fetcher.stage_dot,
+            ));
+    }
+
+    fn maybe_arm_dmg_late_window_enable_override_after_transfer_dot(
+        &mut self,
+        _transfer_dot: Mode3TransferDot,
+    ) {
+        let visible_wx = self.mode3_register_latches().visible().wx;
+        if !self.console_model.is_dmg_family()
+            || !self.bg_pipeline_state.window_wy_latch
+            || !self
+                .mode3_register_latches()
+                .lcdc_bit_changed(LCDC_WINDOW_ENABLE_BIT)
+            || !self.mode3_register_latches().visible().window_enabled()
+            || !self.mode3_register_latches().visible().bg_enabled()
+            || visible_wx < 15
+        {
+            return;
+        }
+
+        let visible_output = self.bg_pipeline_state.visible_pixels_output;
+        if let Some(pending_resume) = self
+            .bg_pipeline_state
+            .dmg_pending_window_reenable_resume
+            .take()
+        {
+            let segment_pixels = match visible_wx {
+                28 | 29 => 8,
+                35 => 8,
+                _ => 0,
+            };
+            let end_x = pending_resume.onset_x.saturating_add(segment_pixels);
+            self.arm_dmg_late_window_enable_override(
+                pending_resume.onset_x,
+                end_x,
+                pending_resume.window_origin_x,
+            );
+            return;
+        }
+
+        if self.count_emitted_window_pixels_this_line() != 0 {
+            return;
+        }
+
+        let Some(window_origin_x) = self.visible_window_origin_x() else {
+            return;
+        };
+
+        if (13..=14).contains(&visible_output) && matches!(visible_wx, 15..=21) {
+            if window_origin_x == 8 {
+                self.repaint_current_scanline_background_dot(8, 0);
+                return;
+            }
+
+            let onset_x = window_origin_x.max(10);
+            self.arm_dmg_late_window_enable_override(
+                onset_x,
+                onset_x.saturating_add(Self::DMG_LATE_WINDOW_ENABLE_SEGMENT_PIXELS),
+                window_origin_x,
+            );
+            return;
+        }
+
+        if (33..=34).contains(&visible_output) && visible_wx == 39 {
+            self.repaint_current_scanline_background_dot(32, 0);
+            return;
+        }
+
+        if (41..=42).contains(&visible_output) && matches!(visible_wx, 44..=49) {
+            let onset_x = window_origin_x.max(38);
+            self.arm_dmg_late_window_enable_override(onset_x, SCREEN_WIDTH as u8, window_origin_x);
+        }
+    }
+
+    fn arm_dmg_late_window_enable_override(&mut self, onset_x: u8, end_x: u8, window_origin_x: u8) {
+        let clamped_end = end_x.min(SCREEN_WIDTH as u8);
+        if onset_x >= clamped_end {
+            return;
+        }
+
+        self.bg_pipeline_state.dmg_late_window_enable_override = Some(
+            DmgLateWindowEnableOverride::new(onset_x, clamped_end, window_origin_x),
+        );
+    }
+
+    fn apply_dmg_late_window_enable_override_repaint_up_to(
+        &mut self,
+        visible_limit: usize,
+        vram: &VramBusView<'_>,
+    ) {
+        let Some(override_state) = self.bg_pipeline_state.dmg_late_window_enable_override else {
+            return;
+        };
+
+        let repaint_end = visible_limit.min(usize::from(override_state.end_x));
+        for visible_x in usize::from(override_state.onset_x)..repaint_end {
+            let Some(bg_pixel) = self.compute_window_override_pixel_for_screen_x(
+                override_state.window_origin_x,
+                visible_x as u8,
+                vram,
+            ) else {
+                continue;
+            };
+            self.repaint_current_scanline_background_dot(visible_x, bg_pixel);
+        }
+
+        if visible_limit >= usize::from(override_state.end_x) {
+            self.bg_pipeline_state.dmg_late_window_enable_override = None;
+        }
+    }
+
+    fn compute_window_override_pixel_for_screen_x(
+        &self,
+        window_origin_x: u8,
+        visible_x: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        if visible_x < window_origin_x {
+            return None;
+        }
+
+        let window_x = visible_x - window_origin_x;
+        let window_tilemap_x = window_x / BG_TILE_WIDTH;
+        let pixel_index = window_x & (BG_TILE_WIDTH - 1);
+        let context = self
+            .mode3_bgwin_fetch_policy()
+            .window_fetch_context(self.current_window_line_counter(), window_tilemap_x);
+        let tile_index = vram
+            .read(context.tile_index_address() as usize)
+            .unwrap_or(0);
+        let tile_low_address = context.tile_data_address(tile_index, 0);
+        let tile_high_address = context.tile_data_address(tile_index, 1);
+        let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
+        Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
+    }
+
+    fn visible_window_origin_x(&self) -> Option<u8> {
+        if self.bg_pipeline_state.window_force_x0_this_line {
+            return Some(0);
+        }
+
+        match self.mode3_register_latches().visible().wx {
+            0..=166 => Some(self.mode3_register_latches().visible().wx.saturating_sub(7)),
+            _ => None,
+        }
+    }
+
+    fn count_emitted_window_pixels_this_line(&self) -> u8 {
+        self.current_scanline_bg_dot_contexts
+            [..usize::from(self.bg_pipeline_state.visible_pixels_output)]
+            .iter()
+            .filter(|context| {
+                context.is_some_and(|context| context.source == PpuBgFetcherSource::Window)
+            })
+            .count() as u8
     }
 
     pub(super) fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
@@ -977,6 +1171,7 @@ impl Ppu {
                     dmg_bg_forced_white,
                 );
                 self.apply_dmg_wx0_window_disable_prefix_override(visible_x, bg_pixel);
+                self.apply_dmg_late_window_enable_override_repaint_up_to(visible_x + 1, vram);
                 self.consume_dmg_lcdc0_bg_enable_visible_hold();
                 self.consume_dmg_lcdc1_obj_enable_visible_hold();
                 self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
@@ -1401,6 +1596,24 @@ impl Ppu {
         self.apply_pending_dmg_window_lcdc4_output_repaint(vram);
     }
 
+    #[cfg(test)]
+    pub(super) fn test_apply_dmg_late_window_enable_override_repaint_up_to(
+        &mut self,
+        visible_limit: usize,
+        vram: &VramBusView<'_>,
+    ) {
+        self.apply_dmg_late_window_enable_override_repaint_up_to(visible_limit, vram);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_apply_dmg_wx0_window_disable_prefix_override(
+        &mut self,
+        visible_x: usize,
+        bg_pixel: u8,
+    ) {
+        self.apply_dmg_wx0_window_disable_prefix_override(visible_x, bg_pixel);
+    }
+
     pub(super) fn compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
         &self,
         cached: BgCachedSlice,
@@ -1709,7 +1922,7 @@ impl Ppu {
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) -> bool {
-        match self
+        let decision = self
             .mode3_window_policy()
             .start_decision_after_transfer_dot(
                 transfer_dot,
@@ -1718,14 +1931,21 @@ impl Ppu {
                 self.bg_pipeline_state.initial_scx_discard,
                 self.bg_pipeline_state.scx_discard_remaining,
                 self.bg_pipeline_state.wx166_armed_this_line,
-            ) {
-            PpuMode3WindowStartDecision::NotReady => false,
+            );
+
+        match decision {
+            PpuMode3WindowStartDecision::NotReady => {
+                self.maybe_arm_dmg_late_window_enable_override_after_transfer_dot(transfer_dot);
+                false
+            }
             PpuMode3WindowStartDecision::ArmWx166NextLine => {
                 self.window_state.pending_wx166_next_line = true;
                 self.bg_pipeline_state.wx166_armed_this_line = true;
                 false
             }
             PpuMode3WindowStartDecision::StartNow => {
+                self.bg_pipeline_state.dmg_pending_window_reenable_resume = None;
+                self.bg_pipeline_state.dmg_late_window_enable_override = None;
                 self.start_window_fetcher_restart();
                 true
             }

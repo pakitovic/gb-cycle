@@ -2473,111 +2473,40 @@ fn diag_m3_lcdc_win_en_change_multiple_wx_line0_trace() {
 #[test]
 #[ignore = "diagnostic-only probe for the remaining window blocker"]
 fn diag_m3_lcdc_win_en_change_multiple_wx_line2_trace() {
-    let mut machine = load_mealybug_window_diag_machine("m3_lcdc_win_en_change_multiple_wx");
-    const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
-
-    let mut stepped_t_cycles = 0_u64;
-    let mut frame_index = 0_u32;
-    let mut previous_at_frame_origin = true;
-    let mut previous_ly = machine.ppu().snapshot().ly;
-
-    let mut current_line_writes = Vec::new();
-    let mut current_line_trace = Vec::new();
-    let mut current_line_summary = None;
-
-    let mut last_completed_line_writes = Vec::new();
-    let mut last_completed_line_trace = Vec::new();
-    let mut last_completed_line_summary = None;
-
-    while stepped_t_cycles < RUNNER_CAPTURE_T_CYCLES {
-        machine.step_t_cycle();
-        stepped_t_cycles += 1;
-        let snapshot = machine.ppu().snapshot();
-        let at_frame_origin = snapshot.ly == 0 && snapshot.line_dot == 0;
-        if at_frame_origin && !previous_at_frame_origin {
-            frame_index = frame_index.wrapping_add(1);
-        }
-        previous_at_frame_origin = at_frame_origin;
-
-        if let Some(event) = machine.cpu().last_address_event()
-            && event.kind == CpuAddressEventKind::Write
-            && matches!(
-                event.access_address,
-                Some(0xFF40 | 0xFF47 | 0xFF4A | 0xFF4B)
-            )
-            && snapshot.ly == 2
-        {
-            let address = event
-                .access_address
-                .expect("filtered MMIO write should have address");
-            current_line_writes.push(format!(
-                "frame={} write {:04X}={:02X} at ly={} dot={} mode={:?} vis={}",
-                frame_index,
-                address,
-                machine.read_bus(address),
-                snapshot.ly,
-                snapshot.line_dot,
-                snapshot.mode,
-                snapshot.visible_pixels_output,
-            ));
-        }
-
-        if snapshot.ly == 2 {
-            if snapshot.mode == PpuAccessMode::Drawing
-                && snapshot.line_dot >= 80
-                && snapshot.visible_pixels_output <= 32
-            {
-                current_line_trace.push(format!(
-                    "frame={} {}",
-                    frame_index,
-                    format_window_trace_snapshot(&snapshot)
-                ));
-            }
-
-            if snapshot.mode == PpuAccessMode::HBlank {
-                let pixel_prefix = scanline_prefix(&snapshot, 32);
-                let mixed_prefix = mixed_color_prefix(&snapshot, 32);
-                let framebuffer_prefix = framebuffer_row_prefix(machine.ppu(), 2, 32);
-                current_line_summary = Some(format!(
-                    "frame={} line2_pixels={} line2_mixed={} line2_framebuffer={} window_started={} window_line_counter={} lcdc(vis/pipeline)={:#04X}/{:#04X}",
-                    frame_index,
-                    pixel_prefix,
-                    mixed_prefix,
-                    framebuffer_prefix,
-                    snapshot.window_started_this_line,
-                    snapshot.window_line_counter,
-                    snapshot.visible_lcdc,
-                    snapshot.pipeline_lcdc,
-                ));
-            }
-        }
-
-        if previous_ly == 2 && snapshot.ly != 2 {
-            last_completed_line_summary = current_line_summary.take();
-            last_completed_line_writes.clone_from(&current_line_writes);
-            last_completed_line_trace.clone_from(&current_line_trace);
-            current_line_writes.clear();
-            current_line_trace.clear();
-        }
-
-        previous_ly = snapshot.ly;
-    }
-
-    eprintln!("capture_t_cycles={stepped_t_cycles}");
-    eprintln!("last_completed_line2_summary: {last_completed_line_summary:?}");
-    eprintln!("last_completed_line2_register_writes:");
-    for write in &last_completed_line_writes {
-        eprintln!("  {write}");
-    }
-    eprintln!("last_completed_line2_trace:");
-    for entry in &last_completed_line_trace {
-        eprintln!("  {entry}");
-    }
+    trace_m3_lcdc_win_en_change_multiple_wx_line(2);
 }
 
 #[test]
 #[ignore = "diagnostic-only probe for the remaining window blocker"]
 fn diag_m3_lcdc_win_en_change_multiple_wx_line16_trace() {
+    trace_m3_lcdc_win_en_change_multiple_wx_line(16);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_en_change_multiple_wx_line28_trace() {
+    trace_m3_lcdc_win_en_change_multiple_wx_line(28);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_en_change_multiple_wx_line35_trace() {
+    trace_m3_lcdc_win_en_change_multiple_wx_line(35);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_en_change_multiple_wx_line39_trace() {
+    trace_m3_lcdc_win_en_change_multiple_wx_line(39);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_en_change_multiple_wx_line44_trace() {
+    trace_m3_lcdc_win_en_change_multiple_wx_line(44);
+}
+
+fn trace_m3_lcdc_win_en_change_multiple_wx_line(target_ly: u8) {
     let mut machine = load_mealybug_window_diag_machine("m3_lcdc_win_en_change_multiple_wx");
     const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
 
@@ -2610,7 +2539,7 @@ fn diag_m3_lcdc_win_en_change_multiple_wx_line16_trace() {
                 event.access_address,
                 Some(0xFF40 | 0xFF47 | 0xFF4A | 0xFF4B)
             )
-            && snapshot.ly == 16
+            && snapshot.ly == target_ly
         {
             let address = event
                 .access_address
@@ -2627,7 +2556,7 @@ fn diag_m3_lcdc_win_en_change_multiple_wx_line16_trace() {
             ));
         }
 
-        if snapshot.ly == 16 {
+        if snapshot.ly == target_ly {
             if snapshot.mode == PpuAccessMode::Drawing
                 && snapshot.line_dot >= 80
                 && snapshot.visible_pixels_output <= 32
@@ -2642,12 +2571,16 @@ fn diag_m3_lcdc_win_en_change_multiple_wx_line16_trace() {
             if snapshot.mode == PpuAccessMode::HBlank {
                 let pixel_prefix = scanline_prefix(&snapshot, 32);
                 let mixed_prefix = mixed_color_prefix(&snapshot, 32);
-                let framebuffer_prefix = framebuffer_row_prefix(machine.ppu(), 16, 32);
+                let framebuffer_prefix =
+                    framebuffer_row_prefix(machine.ppu(), target_ly.into(), 32);
                 current_line_summary = Some(format!(
-                    "frame={} line16_pixels={} line16_mixed={} line16_framebuffer={} window_started={} window_line_counter={} lcdc(vis/pipeline)={:#04X}/{:#04X}",
+                    "frame={} line{}_pixels={} line{}_mixed={} line{}_framebuffer={} window_started={} window_line_counter={} lcdc(vis/pipeline)={:#04X}/{:#04X}",
                     frame_index,
+                    target_ly,
                     pixel_prefix,
+                    target_ly,
                     mixed_prefix,
+                    target_ly,
                     framebuffer_prefix,
                     snapshot.window_started_this_line,
                     snapshot.window_line_counter,
@@ -2657,7 +2590,7 @@ fn diag_m3_lcdc_win_en_change_multiple_wx_line16_trace() {
             }
         }
 
-        if previous_ly == 16 && snapshot.ly != 16 {
+        if previous_ly == target_ly && snapshot.ly != target_ly {
             last_completed_line_summary = current_line_summary.take();
             last_completed_line_writes.clone_from(&current_line_writes);
             last_completed_line_trace.clone_from(&current_line_trace);
@@ -2669,12 +2602,12 @@ fn diag_m3_lcdc_win_en_change_multiple_wx_line16_trace() {
     }
 
     eprintln!("capture_t_cycles={stepped_t_cycles}");
-    eprintln!("last_completed_line16_summary: {last_completed_line_summary:?}");
-    eprintln!("last_completed_line16_register_writes:");
+    eprintln!("last_completed_line{target_ly}_summary: {last_completed_line_summary:?}");
+    eprintln!("last_completed_line{target_ly}_register_writes:");
     for write in &last_completed_line_writes {
         eprintln!("  {write}");
     }
-    eprintln!("last_completed_line16_trace:");
+    eprintln!("last_completed_line{target_ly}_trace:");
     for entry in &last_completed_line_trace {
         eprintln!("  {entry}");
     }

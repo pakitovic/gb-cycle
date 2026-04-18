@@ -431,6 +431,7 @@ pub(super) struct BgPipelineState {
     pub(super) window_activation_tilemap_select_latch: Option<bool>,
     pub(super) dmg_wx0_window_disable_prefix_state: Option<DmgWx0WindowDisablePrefixState>,
     pub(super) dmg_late_window_enable_override: Option<DmgLateWindowEnableOverride>,
+    pub(super) dmg_pending_window_reenable_resume: Option<DmgPendingWindowReenableResume>,
     pub(super) dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState,
 }
 
@@ -452,7 +453,45 @@ impl DmgWx0WindowDisablePrefixState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct DmgLateWindowEnableOverride {
     pub(super) onset_x: u8,
-    pub(super) end_x: Option<u8>,
+    pub(super) end_x: u8,
+    pub(super) window_origin_x: u8,
+}
+
+impl DmgLateWindowEnableOverride {
+    pub(super) const fn new(onset_x: u8, end_x: u8, window_origin_x: u8) -> Self {
+        Self {
+            onset_x,
+            end_x,
+            window_origin_x,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DmgPendingWindowReenableResume {
+    pub(super) onset_x: u8,
+    pub(super) window_origin_x: u8,
+    pub(super) emitted_window_pixels: u8,
+    pub(super) disable_stage: PpuBgFetcherStage,
+    pub(super) disable_stage_dot: u8,
+}
+
+impl DmgPendingWindowReenableResume {
+    pub(super) const fn new(
+        onset_x: u8,
+        window_origin_x: u8,
+        emitted_window_pixels: u8,
+        disable_stage: PpuBgFetcherStage,
+        disable_stage_dot: u8,
+    ) -> Self {
+        Self {
+            onset_x,
+            window_origin_x,
+            emitted_window_pixels,
+            disable_stage,
+            disable_stage_dot,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -921,6 +960,7 @@ impl BgPipelineState {
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
+        self.dmg_pending_window_reenable_resume = None;
     }
 
     pub(super) fn extend_mode3_by_one_dot(&mut self) {
@@ -1640,6 +1680,7 @@ impl Default for BgPipelineState {
             window_activation_tilemap_select_latch: None,
             dmg_wx0_window_disable_prefix_state: None,
             dmg_late_window_enable_override: None,
+            dmg_pending_window_reenable_resume: None,
             dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState::default(),
         }
     }

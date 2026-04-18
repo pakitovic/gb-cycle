@@ -319,6 +319,7 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - If the WY latch is already active for the current line and `LCDC.5` was active at line start but is cleared before the WX trigger point, the design should support the documented window-glitch pixel at the would-be window start.
 - If `WX` changes after the window has already started on the line and the new trigger position is reached again, the documented bug should be representable as a low-priority color-`0` pixel pushed into the BG FIFO path.
 - If `LCDC.5` is disabled during Mode `3` and then re-enabled later on the same scanline, do not model that as a generic "resume window where it left off" path. Keep the same-line reactivation explicitly gated on a new not-yet-served `WX` trigger, and keep room for the documented DMG behavior where the window may restart on the next window row rather than on the interrupted row.
+- On DMG, same-line `LCDC.5` re-enable after a missed or aborted window start can expose narrow late-enable seams: allow explicit bounded retroactive repaint of only the affected visible window segment, keyed by the observed onset class, instead of recomputing the whole scanline or resuming the interrupted tile blindly.
 - When an active window fetch aborts back to background, retarget the in-flight fetch registers immediately onto the resumed BG tile; do not let stale window `tile_index` / `tile_low` / `tile_high` leak into the first resumed BG tile.
 - These glitches should live in fetcher/FIFO/pipeline logic rather than as framebuffer post-processing rules.
 
@@ -556,14 +557,13 @@ Partial:
 - mid-frame `LCDC.1` / `LCDC.2` coverage exists for OBJ fetch cancellation, live Mode `2` size selection, and size-row safety, but not as complete external-oracle closure for all Mode `3` toggle cases
 - internal window line counter coverage includes increment-only-when-started behavior and reset through LCD pipeline reset paths; VBlank reset should remain visible as a dedicated assertion if this area changes again
 - mid-frame `WX`, `WY`, and `LCDC.5` writes have focused local coverage for latching, previous-dot WX, and window-fetch aborts, but not a complete glitch matrix
-- `LCDC.5` disable during active window fetch is covered; same-scanline re-enable with `WX` retargeting is not yet a complete closed case
+- `LCDC.5` disable during active window fetch is covered, and same-scanline re-enable with `WX` retargeting now has focused DMG closure for the observed late-enable and re-enable seams; broader live-`WX` glitch coverage is still incomplete
 - window-start plus OBJ mixing is covered without spurious OBJ FIFO reset; broader window-glitch continuation into later BG/OBJ mixing remains incomplete
 - line-start Mode `2` / LCD STAT chronology has focused local and synthetic-ROM coverage for raster-effect timing, but handler-writeback and first-line variants remain partly diagnostic
 - OAM corruption instruction-family routing is covered for `[hli]` / `[hld]`, `push`, interrupt service, and generic CPU address-event classes; `pop`, `call`, `ret`, `rst`, and executing code from OAM still need direct end-to-end coverage if they are claimed individually
 
 Open:
 - direct project-owned test for DMG `LCDC.0 = 0` suppressing window rendering when `LCDC.5 = 1`
-- complete same-scanline `LCDC.5` re-enable with `WX` retargeting test
 - direct end-to-end OAM-corruption fixtures for `pop`, `call`, `ret`, `rst`, and executing code from OAM
 - explicit project decision and matching test wording for whether the canonical fetcher `Sleep` phase is represented as a named state or as the current push-entry / retry timing
 
