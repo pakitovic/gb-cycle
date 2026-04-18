@@ -12,6 +12,8 @@ pub enum ApuSampleCaptureError {
 pub struct ApuSampleCapture {
     output_sample_rate_hz: u32,
     sample_phase_accumulator: u64,
+    integrated_left: i128,
+    integrated_right: i128,
     pending_samples: Vec<ApuHostSample>,
 }
 
@@ -24,6 +26,8 @@ impl ApuSampleCapture {
         Ok(Self {
             output_sample_rate_hz,
             sample_phase_accumulator: 0,
+            integrated_left: 0,
+            integrated_right: 0,
             pending_samples: Vec::new(),
         })
     }
@@ -41,10 +45,34 @@ impl ApuSampleCapture {
     }
 
     pub fn record_output_t_cycle(&mut self, sample: ApuHostSample) {
-        self.sample_phase_accumulator += u64::from(self.output_sample_rate_hz);
-        while self.sample_phase_accumulator >= DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64 {
-            self.sample_phase_accumulator -= DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64;
-            self.pending_samples.push(sample);
+        let mut remaining_phase = u64::from(self.output_sample_rate_hz);
+
+        while remaining_phase != 0 {
+            let phase_until_emit =
+                DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64 - self.sample_phase_accumulator;
+            let phase_step = remaining_phase.min(phase_until_emit);
+
+            self.integrated_left += i128::from(sample.left) * i128::from(phase_step);
+            self.integrated_right += i128::from(sample.right) * i128::from(phase_step);
+
+            self.sample_phase_accumulator += phase_step;
+            remaining_phase -= phase_step;
+
+            if self.sample_phase_accumulator == DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64 {
+                self.pending_samples.push(ApuHostSample {
+                    left: divide_and_round_to_i32(
+                        self.integrated_left,
+                        i128::from(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64),
+                    ),
+                    right: divide_and_round_to_i32(
+                        self.integrated_right,
+                        i128::from(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64),
+                    ),
+                });
+                self.sample_phase_accumulator = 0;
+                self.integrated_left = 0;
+                self.integrated_right = 0;
+            }
         }
     }
 
@@ -56,4 +84,18 @@ impl ApuSampleCapture {
         destination.clear();
         mem::swap(destination, &mut self.pending_samples);
     }
+}
+
+fn divide_and_round_to_i32(value: i128, divisor: i128) -> i32 {
+    debug_assert!(divisor > 0);
+
+    let rounded = if value >= 0 {
+        (value + divisor / 2) / divisor
+    } else {
+        (value - divisor / 2) / divisor
+    };
+
+    rounded
+        .try_into()
+        .expect("captured host sample must stay within i32 range")
 }

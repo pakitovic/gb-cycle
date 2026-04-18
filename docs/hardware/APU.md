@@ -219,9 +219,10 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 
 ## Sample-capture and normalization baseline
 
-- The project should keep an explicit sample-capture policy that snapshots the internal post-HPF stereo analog output into a host-facing stream.
+- The project should keep an explicit sample-capture policy that captures the internal post-HPF stereo analog output into a host-facing stream.
 - That sample-capture policy should remain independent from the T-cycle scheduler logic that advances the hardware itself.
 - Changing host output rate, such as `44.1` kHz versus `48` kHz, should not require changing the internal APU hardware model.
+- When the host-facing stream runs below the `4_194_304` Hz T-cycle rate, downsampling should integrate or otherwise filter the post-HPF T-cycle signal over the host interval rather than blindly choosing the last T-cycle value in that interval.
 - The design should leave room for replacing the host-facing resampler later without rewriting the DAC, mixer, or HPF logic.
 - Conversion from the core's internal analog representation into host `float` or `int16` output should be a final representation step after HPF, not part of the hardware model itself.
 - The core should keep a sufficiently precise internal analog representation so host-format conversion does not force the hardware model to clip or renormalize early.

@@ -330,8 +330,8 @@ fn sample_capture_emits_samples_at_the_requested_fractional_rate() {
     assert_eq!(
         capture.drain_samples(),
         vec![
-            ApuHostSample { left: 3, right: -3 },
-            ApuHostSample { left: 7, right: -7 },
+            ApuHostSample { left: 2, right: -2 },
+            ApuHostSample { left: 6, right: -6 },
         ]
     );
 }
