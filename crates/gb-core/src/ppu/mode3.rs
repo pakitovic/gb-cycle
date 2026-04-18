@@ -258,28 +258,28 @@ impl Ppu {
         let fetcher = self.bg_pipeline_state.fetcher;
         match (fetcher.stage, fetcher.stage_dot) {
             (PpuBgFetcherStage::TileIndex, 0) => {
-                self.bg_pipeline_state
-                    .fetcher
-                    .needs_live_tilemap_refetch_on_push = false;
-                self.bg_pipeline_state
-                    .fetcher
-                    .needs_live_tilemap_full_refetch_on_push = false;
-                self.bg_pipeline_state
-                    .fetcher
-                    .needs_live_tile_data_refetch_on_push = false;
-                self.bg_pipeline_state
-                    .fetcher
-                    .needs_live_tile_data_current_row_refetch_on_push = false;
-                self.bg_pipeline_state
-                    .fetcher
-                    .needs_live_tile_low_current_row_refetch_on_push = false;
-                self.bg_pipeline_state
-                    .fetcher
-                    .needs_live_tile_high_current_row_refetch_on_push = false;
                 if fetcher.source == PpuBgFetcherSource::Background {
                     self.bg_pipeline_state.fetcher.cached_origin = self
                         .bg_pipeline_state
                         .peek_startup_background_fetch_origin();
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tilemap_refetch_on_push = false;
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tilemap_full_refetch_on_push = false;
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tile_data_refetch_on_push = false;
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tile_data_current_row_refetch_on_push = false;
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tile_low_current_row_refetch_on_push = false;
+                    self.bg_pipeline_state
+                        .fetcher
+                        .needs_live_tile_high_current_row_refetch_on_push = false;
                 }
                 let tile_map_address =
                     self.compute_fetch_tile_index_address(fetcher.source, fetcher.fetch_x);
