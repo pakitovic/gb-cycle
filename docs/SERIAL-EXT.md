@@ -708,6 +708,27 @@ measured profiling and optimization pass, not more frontend surface area.
   - record the before/after numbers and decide whether Phase 8 can proceed on
     the new baseline
 
+### Phase 7.6.a status
+
+The desktop frontend now exposes a first reproducible measurement path for the
+linked-session profiling phase:
+
+- `--link-rom <path>` starts a local two-console `DMG-04` session directly from
+  the CLI without the interactive `GAME LINK` menu flow
+- `--exit-after-frames <n>` exits automatically after a fixed number of
+  presented frames so single and linked runs can be compared under the same
+  release build and host setup
+- sampled `GB_CYCLE_DESKTOP_EMU_PROFILE` summaries now tag the active session
+  shape as `session=single` or `session=linked-dmg04-2p`
+
+This baseline intentionally focuses on repeatable measurement before any
+optimization work:
+
+- it does not change linked timing or hardware behavior
+- it does not relax `strict` execution
+- it gives the next optimization subphase a stable single-versus-linked command
+  path to compare
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`

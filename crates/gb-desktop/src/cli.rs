@@ -16,6 +16,8 @@ pub enum CliAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopRunOptions {
     pub rom_path: Option<PathBuf>,
+    pub linked_peer_rom_path: Option<PathBuf>,
+    pub exit_after_frames: Option<u64>,
     pub config: DesktopConfig,
 }
 
@@ -38,6 +40,8 @@ where
 {
     let mut arguments = arguments.into_iter();
     let mut rom_path = None;
+    let mut linked_peer_rom_path = None;
+    let mut exit_after_frames = None;
 
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -112,6 +116,19 @@ where
                     ..config.audio
                 };
             }
+            "--link-rom" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--link-rom requires a value".to_string());
+                };
+                linked_peer_rom_path = Some(PathBuf::from(value.as_ref()));
+            }
+            "--exit-after-frames" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--exit-after-frames requires a value".to_string());
+                };
+                exit_after_frames =
+                    Some(parse_positive_u64("--exit-after-frames", value.as_ref())?);
+            }
             "--no-gamepad" => {
                 config.input.gamepad.enabled = false;
             }
@@ -177,8 +194,14 @@ where
         }
     }
 
+    if linked_peer_rom_path.is_some() && rom_path.is_none() {
+        return Err("--link-rom requires a primary ROM positional argument".to_string());
+    }
+
     Ok(CliAction::Run(Box::new(DesktopRunOptions {
         rom_path,
+        linked_peer_rom_path,
+        exit_after_frames,
         config,
     })))
 }
@@ -203,6 +226,8 @@ pub fn help_text() -> &'static str {
         "  --fullscreen                           Start in fullscreen mode\n",
         "  --no-vsync                             Disable presentation vsync hint\n",
         "  --mute                                 Start with audio disabled\n",
+        "  --link-rom <path>                      Start a local linked DMG-04 session with this secondary ROM\n",
+        "  --exit-after-frames <n>                Exit automatically after presenting n emulated frames\n",
         "  --no-gamepad                           Disable SDL gamepad input\n",
         "  --gamepad-direction <dpad-only|left-stick|both>\n",
         "                                         Choose which controller directions drive the joypad (default: both)\n",
@@ -377,6 +402,16 @@ fn parse_positive_u8(flag: &str, value: &str) -> Result<u8, String> {
     Ok(parsed)
 }
 
+fn parse_positive_u64(flag: &str, value: &str) -> Result<u64, String> {
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|error| format!("invalid {flag} value {value:?}: {error}"))?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be greater than zero"));
+    }
+    Ok(parsed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -390,6 +425,8 @@ mod tests {
             panic!("expected run action");
         };
         assert_eq!(options.rom_path, Some(PathBuf::from("roms/tetris.gb")));
+        assert_eq!(options.linked_peer_rom_path, None);
+        assert_eq!(options.exit_after_frames, None);
         assert_eq!(
             options.config.launch.console_model,
             DesktopConsoleModel::Dmg
@@ -416,6 +453,8 @@ mod tests {
             panic!("expected run action");
         };
         assert_eq!(options.rom_path, None);
+        assert_eq!(options.linked_peer_rom_path, None);
+        assert_eq!(options.exit_after_frames, None);
         assert_eq!(options.config.launch.startup_mode, StartupMode::RealBoot);
     }
 
@@ -586,6 +625,8 @@ mod tests {
         assert!(text.contains("--save-key <key>"));
         assert!(text.contains("--fullscreen"));
         assert!(text.contains("--mute"));
+        assert!(text.contains("--link-rom <path>"));
+        assert!(text.contains("--exit-after-frames <n>"));
         assert!(text.contains("--gamepad-preferred-path <path>"));
         assert!(text.contains("GB_CYCLE_DESKTOP_SETTINGS_PATH"));
         assert!(text.contains("GB_CYCLE_DESKTOP_AUDIO_LOG"));
@@ -614,6 +655,10 @@ mod tests {
             "--fullscreen",
             "--no-vsync",
             "--mute",
+            "--link-rom",
+            "linked.gb",
+            "--exit-after-frames",
+            "120",
         ])
         .expect("host overrides should parse");
 
@@ -622,6 +667,11 @@ mod tests {
         };
 
         assert_eq!(options.rom_path, Some(PathBuf::from("demo.gb")));
+        assert_eq!(
+            options.linked_peer_rom_path,
+            Some(PathBuf::from("linked.gb"))
+        );
+        assert_eq!(options.exit_after_frames, Some(120));
         assert_eq!(
             options.config.launch.console_model,
             DesktopConsoleModel::Dmg0
@@ -694,6 +744,14 @@ mod tests {
         assert_eq!(
             options.config.input.gamepad.bindings.right,
             GamepadButtonBinding::Back
+        );
+    }
+
+    #[test]
+    fn parse_rejects_a_linked_peer_without_a_primary_rom() {
+        assert_eq!(
+            parse_cli_arguments(["--link-rom", "linked.gb"]),
+            Err("--link-rom requires a primary ROM positional argument".to_string())
         );
     }
 
@@ -864,6 +922,9 @@ mod tests {
         assert_eq!(parse_positive_u8("--scale", "6"), Ok(6));
         assert!(parse_positive_u8("--scale", "0").is_err());
         assert!(parse_positive_u8("--scale", "wide").is_err());
+        assert_eq!(parse_positive_u64("--exit-after-frames", "6"), Ok(6));
+        assert!(parse_positive_u64("--exit-after-frames", "0").is_err());
+        assert!(parse_positive_u64("--exit-after-frames", "wide").is_err());
 
         assert_eq!(
             parse_save_key("SAVE_SLOT_1")
@@ -922,6 +983,16 @@ mod tests {
             "--scale requires a value"
         );
         assert_eq!(
+            parse_cli_arguments(["--link-rom"])
+                .expect_err("missing linked peer values should fail"),
+            "--link-rom requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--exit-after-frames"])
+                .expect_err("missing exit-after-frames values should fail"),
+            "--exit-after-frames requires a value"
+        );
+        assert_eq!(
             parse_cli_arguments(["--gamepad-direction"])
                 .expect_err("missing gamepad direction values should fail"),
             "--gamepad-direction requires a value"
@@ -954,6 +1025,7 @@ mod tests {
         assert!(parse_cli_arguments(["--save-key", "contains spaces"]).is_err());
         assert!(parse_cli_arguments(["--save-policy", "later"]).is_err());
         assert!(parse_cli_arguments(["--scale", "0"]).is_err());
+        assert!(parse_cli_arguments(["--exit-after-frames", "0"]).is_err());
         assert!(parse_cli_arguments(["--gamepad-direction", "stick-only"]).is_err());
         assert!(parse_cli_arguments(["--gamepad-face-layout", "north-a"]).is_err());
         assert!(parse_cli_arguments(["--gamepad-preferred-name", "   "]).is_err());

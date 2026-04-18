@@ -162,6 +162,21 @@ enum LoopSignal {
     Quit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmulationProfileSessionKind {
+    Single,
+    LinkedDmg04TwoPlayer,
+}
+
+impl EmulationProfileSessionKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::LinkedDmg04TwoPlayer => "linked-dmg04-2p",
+        }
+    }
+}
+
 enum HotkeyAction {
     None,
     ManualSave,
@@ -1203,6 +1218,7 @@ fn audio_queue_pacing_correction_with_policy(
 
 #[derive(Debug)]
 struct FramePerformanceSample {
+    session_kind: EmulationProfileSessionKind,
     emulation_duration: Duration,
     emulation_profile_request: Option<EmulationProfileRequest>,
     render_duration: Duration,
@@ -1268,6 +1284,7 @@ struct PerformanceCounter {
     emulation_profile_mode: EmulationProfileMode,
     emulation_profile_worker: Option<AsyncEmulationProfileWorker>,
     emulation_profile_request_in_flight: bool,
+    sample_session_kind: EmulationProfileSessionKind,
     presented_frames_total: u64,
     sample_started_at: Instant,
     frames_in_sample: u32,
@@ -1399,6 +1416,7 @@ impl PerformanceCounter {
                 .enabled()
                 .then(AsyncEmulationProfileWorker::new),
             emulation_profile_request_in_flight: false,
+            sample_session_kind: EmulationProfileSessionKind::Single,
             presented_frames_total: 0,
             sample_started_at: Instant::now(),
             frames_in_sample: 0,
@@ -1527,6 +1545,7 @@ impl PerformanceCounter {
             sample.emulation_duration,
         );
 
+        self.sample_session_kind = sample.session_kind;
         self.frames_in_sample += 1;
         self.sample_emulation_duration += sample.emulation_duration;
         self.sample_render_duration += sample.render_duration;
@@ -2285,7 +2304,8 @@ impl PerformanceCounter {
             };
 
         Some(format!(
-            "gb-desktop emu-profile fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            self.sample_session_kind.label(),
             snapshot.fps,
             snapshot.speed_percent,
             snapshot.frame_time_ms,
@@ -2599,6 +2619,23 @@ fn audio_source_machine(machine: &DesktopEmulationSession) -> &Machine<TraceSumm
     machine.primary_machine()
 }
 
+fn emulation_profile_session_kind(
+    machine: &DesktopEmulationSession,
+) -> EmulationProfileSessionKind {
+    if machine.is_linked_dmg04_two_player() {
+        EmulationProfileSessionKind::LinkedDmg04TwoPlayer
+    } else {
+        EmulationProfileSessionKind::Single
+    }
+}
+
+fn should_exit_after_presented_frames(
+    exit_after_frames: Option<u64>,
+    presented_frames_total: u64,
+) -> bool {
+    exit_after_frames.is_some_and(|limit| presented_frames_total >= limit)
+}
+
 fn sync_gamepad_rumble(
     runtime: &mut FrontendRuntime,
     machine: &Machine<TraceSummaryBuffer>,
@@ -2676,9 +2713,12 @@ fn run_desktop_with_startup_fallback_persistence(
     persist_startup_fallback: bool,
 ) -> Result<(), String> {
     let original_config = options.config.clone();
+    let exit_after_frames = options.exit_after_frames;
+    let startup_links_peer = options.linked_peer_rom_path.is_some();
     let current_dir =
         map_display_result(env::current_dir(), "failed to determine current directory")?;
     let loaded_rom = load_initial_rom(&options, &current_dir)?;
+    let linked_secondary_rom = load_initial_linked_secondary_rom(&options, &current_dir)?;
     let last_open_directory = match loaded_rom.as_ref() {
         Some(rom) => rom.path.parent().map(Path::to_path_buf),
         None => settings_store.last_open_directory().map(Path::to_path_buf),
@@ -2687,31 +2727,17 @@ fn run_desktop_with_startup_fallback_persistence(
         config: options.config,
         current_dir,
         loaded_rom,
-        linked_secondary_rom: None,
+        linked_secondary_rom,
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
-        external_port_selection: DesktopExternalPortSelection::None,
+        external_port_selection: if startup_links_peer {
+            DesktopExternalPortSelection::GameLink
+        } else {
+            DesktopExternalPortSelection::None
+        },
     };
 
-    let (mut machine, diagnostics) = match session.rom_bytes() {
-        Some(rom_bytes) => {
-            let loaded = load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?;
-            log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
-            session.config = loaded.effective_config;
-            let mut machine = DesktopEmulationSession::new_single(loaded.machine);
-            apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
-            (machine, loaded.diagnostics)
-        }
-        None => {
-            let prepared = prepare_machine_config(&session.config, &session.current_dir)?;
-            log_boot_rom_fallback_warning(prepared.boot_rom_fallback_warning.as_deref());
-            session.config = prepared.effective_config;
-            let mut machine =
-                DesktopEmulationSession::new_single(Machine::new_summary(prepared.machine_config));
-            apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
-            (machine, Vec::new())
-        }
-    };
+    let (mut machine, diagnostics) = load_initial_emulation_session(&mut session)?;
     if persist_startup_fallback && session.config != original_config {
         settings_store.persist_machine_preferences(&session.config)?;
     }
@@ -2720,7 +2746,12 @@ fn run_desktop_with_startup_fallback_persistence(
         settings_store.remember_loaded_rom(rom_path)?;
         session.recent_roms = settings_store.recent_roms().to_vec();
     }
-    let save_session = open_save_session_for_session(&session, &mut machine)?;
+    let save_session = open_save_session_for_session(&session, machine.primary_machine_mut())?;
+    let secondary_save_session = if let Some(secondary_machine) = machine.secondary_machine_mut() {
+        open_secondary_save_session_for_session(&session, secondary_machine)?
+    } else {
+        None
+    };
 
     if session.config.video.vsync {
         let _ = hint::set_with_priority(hint::names::RENDER_VSYNC, "1", &hint::Hint::Default);
@@ -2795,7 +2826,7 @@ fn run_desktop_with_startup_fallback_persistence(
         audio_output,
         gamepad_manager,
         save_session,
-        secondary_save_session: None,
+        secondary_save_session,
         rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
         open_rom_dialog_mode: OpenRomDialogMode::Primary,
@@ -3019,6 +3050,7 @@ fn run_desktop_with_startup_fallback_persistence(
         performance_counter.record_presented_frame(
             canvas.window_mut(),
             FramePerformanceSample {
+                session_kind: emulation_profile_session_kind(&machine),
                 emulation_duration,
                 emulation_profile_request: step_result.emulation_profile_request,
                 render_duration,
@@ -3093,6 +3125,12 @@ fn run_desktop_with_startup_fallback_persistence(
                 ),
             },
         )?;
+        if should_exit_after_presented_frames(
+            exit_after_frames,
+            performance_counter.presented_frames_total,
+        ) {
+            break 'running;
+        }
     }
 
     settings_store.set_fullscreen(canvas.window().fullscreen_state() != FullscreenType::Off)?;
@@ -3111,6 +3149,61 @@ fn run_desktop_with_startup_fallback_persistence(
     runtime.trace_capture.write_artifact()?;
 
     Ok(())
+}
+
+fn load_initial_emulation_session(
+    session: &mut DesktopSession,
+) -> Result<(DesktopEmulationSession, Vec<CartridgeDiagnostic>), String> {
+    match (
+        session.rom_bytes(),
+        session.linked_secondary_rom_bytes(),
+        session.external_port_selection,
+    ) {
+        (
+            Some(primary_rom_bytes),
+            Some(secondary_rom_bytes),
+            DesktopExternalPortSelection::GameLink,
+        ) => {
+            let primary_loaded =
+                load_machine_for_rom(&session.config, &session.current_dir, primary_rom_bytes)?;
+            let secondary_loaded =
+                load_machine_for_rom(&session.config, &session.current_dir, secondary_rom_bytes)?;
+            if primary_loaded.effective_config != secondary_loaded.effective_config {
+                return Err(
+                    "linked desktop startup produced divergent effective configs between the primary and secondary machines"
+                        .to_string(),
+                );
+            }
+
+            log_boot_rom_fallback_warning(primary_loaded.boot_rom_fallback_warning.as_deref());
+            log_boot_rom_fallback_warning(secondary_loaded.boot_rom_fallback_warning.as_deref());
+            session.config = primary_loaded.effective_config;
+            let machine = DesktopEmulationSession::new_linked_dmg04_two_player(
+                primary_loaded.machine,
+                secondary_loaded.machine,
+            )?;
+            let mut diagnostics = primary_loaded.diagnostics;
+            diagnostics.extend(secondary_loaded.diagnostics);
+            Ok((machine, diagnostics))
+        }
+        (Some(rom_bytes), _, _) => {
+            let loaded = load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?;
+            log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
+            session.config = loaded.effective_config;
+            let mut machine = DesktopEmulationSession::new_single(loaded.machine);
+            apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
+            Ok((machine, loaded.diagnostics))
+        }
+        (None, _, _) => {
+            let prepared = prepare_machine_config(&session.config, &session.current_dir)?;
+            log_boot_rom_fallback_warning(prepared.boot_rom_fallback_warning.as_deref());
+            session.config = prepared.effective_config;
+            let mut machine =
+                DesktopEmulationSession::new_single(Machine::new_summary(prepared.machine_config));
+            apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
+            Ok((machine, Vec::new()))
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -3266,21 +3359,39 @@ fn load_initial_rom(
     let Some(rom_path) = options.rom_path.as_ref() else {
         return Ok(None);
     };
+    load_rom_from_cli_path(current_dir, rom_path, "failed to read ROM").map(Some)
+}
+
+fn load_initial_linked_secondary_rom(
+    options: &DesktopRunOptions,
+    current_dir: &Path,
+) -> Result<Option<LoadedRom>, String> {
+    let Some(rom_path) = options.linked_peer_rom_path.as_ref() else {
+        return Ok(None);
+    };
+    load_rom_from_cli_path(current_dir, rom_path, "failed to read linked peer ROM").map(Some)
+}
+
+fn load_rom_from_cli_path(
+    current_dir: &Path,
+    rom_path: &Path,
+    read_error_label: &str,
+) -> Result<LoadedRom, String> {
     let rom_path = resolve_path(current_dir, rom_path);
     let rom_bytes = match fs::read(&rom_path) {
         Ok(rom_bytes) => rom_bytes,
         Err(error) => {
             return Err(format_path_error(
-                "failed to read ROM",
+                read_error_label,
                 &rom_path,
                 &error.to_string(),
             ));
         }
     };
-    Ok(Some(LoadedRom {
+    Ok(LoadedRom {
         path: rom_path,
         bytes: rom_bytes,
-    }))
+    })
 }
 
 fn open_save_session_for_session(
@@ -7692,6 +7803,7 @@ mod tests {
             .emulation_profile_summary(elapsed, snapshot)
             .expect("summary mode should render a profile line");
 
+        assert!(summary.contains("session=single"));
         assert!(summary.contains("emu_ms=11.00"));
         assert!(summary.contains("sampled_frames=2"));
         assert!(summary.contains(&format!(
@@ -8030,6 +8142,7 @@ mod tests {
             .record_presented_frame(
                 harness.canvas.window_mut(),
                 super::FramePerformanceSample {
+                    session_kind: super::EmulationProfileSessionKind::Single,
                     emulation_duration: Duration::from_millis(12),
                     emulation_profile_request: None,
                     render_duration: Duration::from_millis(2),
@@ -9292,6 +9405,8 @@ mod tests {
         run_desktop(
             DesktopRunOptions {
                 rom_path: None,
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config: launcher_config,
             },
             launcher_store,
@@ -9311,6 +9426,8 @@ mod tests {
         run_desktop(
             DesktopRunOptions {
                 rom_path: Some(rom_path),
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config: rom_config,
             },
             rom_store,
@@ -9319,6 +9436,37 @@ mod tests {
         rom_quit
             .join()
             .expect("ROM quit-event helper should finish");
+    }
+
+    #[test]
+    fn load_initial_emulation_session_supports_direct_linked_startup() {
+        let root = temp_test_root("direct-linked-startup");
+        let primary_rom_path = write_test_rom(&root, "primary.gb");
+        let secondary_rom_path = write_test_rom(&root, "secondary.gb");
+        let primary_bytes = fs::read(&primary_rom_path).expect("primary ROM should exist");
+        let secondary_bytes = fs::read(&secondary_rom_path).expect("secondary ROM should exist");
+        let mut session = super::DesktopSession {
+            config: DesktopConfig::default(),
+            current_dir: root.clone(),
+            loaded_rom: Some(super::LoadedRom {
+                path: primary_rom_path,
+                bytes: primary_bytes,
+            }),
+            linked_secondary_rom: Some(super::LoadedRom {
+                path: secondary_rom_path,
+                bytes: secondary_bytes,
+            }),
+            last_open_directory: Some(root.clone()),
+            recent_roms: Vec::new(),
+            external_port_selection: super::DesktopExternalPortSelection::GameLink,
+        };
+
+        let (machine, diagnostics) = super::load_initial_emulation_session(&mut session)
+            .expect("linked desktop startup helper should build a DMG-04 session");
+
+        assert!(diagnostics.is_empty());
+        assert!(machine.is_linked_dmg04_two_player());
+        assert!(machine.secondary_machine().is_some());
     }
 
     #[test]
@@ -9383,6 +9531,8 @@ mod tests {
         super::run_desktop_with_startup_fallback_persistence(
             DesktopRunOptions {
                 rom_path: None,
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config,
             },
             settings_store,
@@ -9433,6 +9583,8 @@ mod tests {
         run_desktop(
             DesktopRunOptions {
                 rom_path: Some(rom_path.clone()),
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config,
             },
             settings_store,
@@ -9495,6 +9647,8 @@ mod tests {
         run_desktop(
             DesktopRunOptions {
                 rom_path: Some(rom_path.clone()),
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config,
             },
             settings_store,
@@ -9551,6 +9705,7 @@ mod tests {
             .record_presented_frame(
                 harness.canvas.window_mut(),
                 super::FramePerformanceSample {
+                    session_kind: super::EmulationProfileSessionKind::Single,
                     emulation_duration: Duration::from_millis(10),
                     emulation_profile_request: None,
                     render_duration: Duration::from_millis(2),
@@ -9872,6 +10027,8 @@ mod tests {
         let loaded = super::load_initial_rom(
             &DesktopRunOptions {
                 rom_path: Some(relative_rom.clone()),
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config: DesktopConfig::default(),
             },
             &harness.root,
@@ -9883,6 +10040,8 @@ mod tests {
             super::load_initial_rom(
                 &DesktopRunOptions {
                     rom_path: None,
+                    linked_peer_rom_path: None,
+                    exit_after_frames: None,
                     config: DesktopConfig::default(),
                 },
                 &harness.root,
@@ -9890,6 +10049,21 @@ mod tests {
             .expect("missing ROM path should be allowed")
             .is_none()
         );
+        let linked_loaded = super::load_initial_linked_secondary_rom(
+            &DesktopRunOptions {
+                rom_path: Some(relative_rom.clone()),
+                linked_peer_rom_path: Some(relative_rom.clone()),
+                exit_after_frames: Some(8),
+                config: DesktopConfig::default(),
+            },
+            &harness.root,
+        )
+        .expect("relative linked peer path should load")
+        .expect("relative linked peer should exist");
+        assert_eq!(linked_loaded.path, relative_rom_path);
+        assert!(super::should_exit_after_presented_frames(Some(4), 4));
+        assert!(!super::should_exit_after_presented_frames(Some(5), 4));
+        assert!(!super::should_exit_after_presented_frames(None, 4));
 
         let mut reloaded_machine = super::load_machine_for_rom(
             &harness.session.config,
@@ -10143,6 +10317,10 @@ mod tests {
     fn audio_source_machine_is_primary_for_single_and_linked_sessions() {
         let _guard = crate::lock_sdl_test();
         let single = FrontendHarness::new("audio-source-single", true, false, false).machine;
+        assert_eq!(
+            super::emulation_profile_session_kind(&single),
+            super::EmulationProfileSessionKind::Single
+        );
         assert!(std::ptr::eq(
             super::audio_source_machine(&single),
             single.primary_machine()
@@ -10155,6 +10333,10 @@ mod tests {
         )
         .expect("linked desktop session should build");
 
+        assert_eq!(
+            super::emulation_profile_session_kind(&linked),
+            super::EmulationProfileSessionKind::LinkedDmg04TwoPlayer
+        );
         assert!(std::ptr::eq(
             super::audio_source_machine(&linked),
             linked.primary_machine()
