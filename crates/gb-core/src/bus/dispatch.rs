@@ -2,8 +2,8 @@ use crate::cartridge::{CartridgeExternalAccessInfo, CartridgeSlot};
 use crate::scheduler::TCycle;
 
 use super::{
-    Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution, BusAddressInfo,
-    BusArbitrationState, BusIoReadView, BusIoWriteView, BusRegion, BusRequester,
+    BLOCKED_READ_VALUE, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution,
+    BusAddressInfo, BusArbitrationState, BusIoReadView, BusIoWriteView, BusRegion, BusRequester,
     DmaCpuAccessPolicy,
 };
 
@@ -303,19 +303,16 @@ impl Bus {
             return None;
         }
 
-        let target = self.decode_address(address);
-        match target.region() {
-            BusRegion::CartridgeRomBank0
-            | BusRegion::CartridgeRomBankN
-            | BusRegion::CartridgeExternal => Some(self.read_cartridge_target_timed(
-                target.address(),
-                target.region(),
-                t_cycle,
-                cartridge.as_deref_mut(),
-            )),
-            BusRegion::WramBank0 | BusRegion::WramBankN | BusRegion::EchoRam => {
-                Some(self.wram.read(target.address()))
-            }
+        match address {
+            0x0000..=0x7FFF => Some(match cartridge.as_deref_mut() {
+                Some(cartridge) => cartridge.read_rom(address),
+                None => BLOCKED_READ_VALUE,
+            }),
+            0xA000..=0xBFFF => Some(match cartridge.as_deref_mut() {
+                Some(cartridge) => cartridge.read_ram_timed(address, t_cycle),
+                None => BLOCKED_READ_VALUE,
+            }),
+            0xC000..=0xFDFF => Some(self.wram.read(address)),
             _ => None,
         }
     }
