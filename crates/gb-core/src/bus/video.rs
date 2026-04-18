@@ -1,9 +1,10 @@
 use crate::ppu::{PpuAccessMode, PpuBusState};
 
+#[cfg(any(debug_assertions, test))]
+use super::DmaMemoryRegionImpact;
 use super::{
     BLOCKED_READ_VALUE, Bus, BusAccessDisposition, BusAccessKind, BusBlockReason, BusMaster,
-    BusRequester, DmaBusState, DmaCpuAccessPolicy, DmaMemoryRegionImpact, OAM_LEN, OamBusView,
-    VRAM_LEN, VramBusView,
+    BusRequester, DmaBusState, DmaCpuAccessPolicy, OAM_LEN, OamBusView, VRAM_LEN, VramBusView,
 };
 
 type BusMasterMask = u16;
@@ -46,14 +47,17 @@ impl OamDomain {
         &mut self.bytes
     }
 
+    #[cfg_attr(not(any(debug_assertions, test)), allow(dead_code))]
     pub(crate) fn acquire(&mut self, master: BusMaster) {
         self.acquired_by |= master_mask(master);
     }
 
+    #[cfg_attr(not(any(debug_assertions, test)), allow(dead_code))]
     pub(crate) fn release(&mut self, master: BusMaster) {
         self.acquired_by &= !master_mask(master);
     }
 
+    #[cfg_attr(not(any(debug_assertions, test)), allow(dead_code))]
     pub(crate) fn set_acquired(&mut self, master: BusMaster, acquired: bool) {
         if acquired {
             self.acquire(master);
@@ -136,14 +140,17 @@ impl VramDomain {
         &self.bytes
     }
 
+    #[cfg_attr(not(any(debug_assertions, test)), allow(dead_code))]
     pub(crate) fn acquire(&mut self, master: BusMaster) {
         self.acquired_by |= master_mask(master);
     }
 
+    #[cfg_attr(not(any(debug_assertions, test)), allow(dead_code))]
     pub(crate) fn release(&mut self, master: BusMaster) {
         self.acquired_by &= !master_mask(master);
     }
 
+    #[cfg_attr(not(any(debug_assertions, test)), allow(dead_code))]
     pub(crate) fn set_acquired(&mut self, master: BusMaster, acquired: bool) {
         if acquired {
             self.acquire(master);
@@ -194,6 +201,10 @@ impl Bus {
         )
     }
 
+    #[cfg(not(any(debug_assertions, test)))]
+    pub(crate) fn sync_video_domain_ownership(&mut self, _ppu: PpuBusState, _dma: DmaBusState) {}
+
+    #[cfg(any(debug_assertions, test))]
     pub(crate) fn sync_video_domain_ownership(&mut self, ppu: PpuBusState, dma: DmaBusState) {
         let ppu_vram = ppu.is_lcd_enabled() && ppu.mode() == PpuAccessMode::Drawing;
         let ppu_oam = ppu.is_lcd_enabled()
