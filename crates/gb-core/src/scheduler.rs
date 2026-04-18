@@ -3,6 +3,10 @@ use std::fmt;
 use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
 
 pub const SCHEDULER_PHASE_COUNT: usize = 9;
+const MAX_EXTERNAL_EVENTS_PER_CYCLE: usize = 16;
+const MAX_DERIVED_EDGES_PER_CYCLE: usize = 16;
+const MAX_SIDE_EFFECTS_PER_CYCLE: usize = 16;
+const MAX_INTERRUPT_REQUESTS_PER_CYCLE: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct TCycle(u64);
@@ -125,15 +129,55 @@ pub enum InterruptSource {
     Joypad,
 }
 
+#[derive(Debug, Clone)]
+struct CycleRecordBuffer<T: Copy, const N: usize> {
+    items: [T; N],
+    len: usize,
+}
+
+impl<T: Copy, const N: usize> CycleRecordBuffer<T, N> {
+    const fn new(filler: T) -> Self {
+        Self {
+            items: [filler; N],
+            len: 0,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    fn push(&mut self, item: T) {
+        assert!(
+            self.len < N,
+            "cycle record buffer capacity exceeded (capacity={N})"
+        );
+        self.items[self.len] = item;
+        self.len += 1;
+    }
+
+    fn as_slice(&self) -> &[T] {
+        &self.items[..self.len]
+    }
+}
+
+impl<T: Copy + PartialEq, const N: usize> PartialEq for CycleRecordBuffer<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+impl<T: Copy + Eq, const N: usize> Eq for CycleRecordBuffer<T, N> {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CycleContext {
     t_cycle: TCycle,
     phase: SchedulerPhase,
-    external_events: Vec<ExternalEvent>,
-    derived_edges: Vec<DerivedEdge>,
+    external_events: CycleRecordBuffer<ExternalEvent, MAX_EXTERNAL_EVENTS_PER_CYCLE>,
+    derived_edges: CycleRecordBuffer<DerivedEdge, MAX_DERIVED_EDGES_PER_CYCLE>,
     bus_owner: Option<BusOwner>,
-    queued_side_effects: Vec<SchedulerSideEffect>,
-    interrupt_requests: Vec<InterruptSource>,
+    queued_side_effects: CycleRecordBuffer<SchedulerSideEffect, MAX_SIDE_EFFECTS_PER_CYCLE>,
+    interrupt_requests: CycleRecordBuffer<InterruptSource, MAX_INTERRUPT_REQUESTS_PER_CYCLE>,
 }
 
 impl CycleContext {
@@ -141,11 +185,11 @@ impl CycleContext {
         Self {
             t_cycle,
             phase: SchedulerPhase::default(),
-            external_events: Vec::new(),
-            derived_edges: Vec::new(),
+            external_events: CycleRecordBuffer::new(ExternalEvent::HostInputChanged),
+            derived_edges: CycleRecordBuffer::new(DerivedEdge::DividerTick),
             bus_owner: None,
-            queued_side_effects: Vec::new(),
-            interrupt_requests: Vec::new(),
+            queued_side_effects: CycleRecordBuffer::new(SchedulerSideEffect::CommitMmioWrite),
+            interrupt_requests: CycleRecordBuffer::new(InterruptSource::VBlank),
         }
     }
 
@@ -168,11 +212,11 @@ impl CycleContext {
     }
 
     pub fn external_events(&self) -> &[ExternalEvent] {
-        &self.external_events
+        self.external_events.as_slice()
     }
 
     pub fn derived_edges(&self) -> &[DerivedEdge] {
-        &self.derived_edges
+        self.derived_edges.as_slice()
     }
 
     pub fn bus_owner(&self) -> Option<BusOwner> {
@@ -180,11 +224,11 @@ impl CycleContext {
     }
 
     pub fn queued_side_effects(&self) -> &[SchedulerSideEffect] {
-        &self.queued_side_effects
+        self.queued_side_effects.as_slice()
     }
 
     pub fn interrupt_requests(&self) -> &[InterruptSource] {
-        &self.interrupt_requests
+        self.interrupt_requests.as_slice()
     }
 
     pub fn enter_phase(&mut self, phase: SchedulerPhase) {

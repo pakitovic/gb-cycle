@@ -31,6 +31,44 @@ pub struct InterruptControllerSnapshot {
     pub interrupt_enable: u8,
 }
 
+impl InterruptSource {
+    pub const fn mask(self) -> u8 {
+        match self {
+            Self::VBlank => 0x01,
+            Self::LcdStat => 0x02,
+            Self::Timer => 0x04,
+            Self::Serial => 0x08,
+            Self::Joypad => 0x10,
+        }
+    }
+
+    pub const fn vector(self) -> u16 {
+        match self {
+            Self::VBlank => 0x0040,
+            Self::LcdStat => 0x0048,
+            Self::Timer => 0x0050,
+            Self::Serial => 0x0058,
+            Self::Joypad => 0x0060,
+        }
+    }
+
+    pub const fn highest_priority_from_mask(mask: u8) -> Option<Self> {
+        if mask & Self::VBlank.mask() != 0 {
+            Some(Self::VBlank)
+        } else if mask & Self::LcdStat.mask() != 0 {
+            Some(Self::LcdStat)
+        } else if mask & Self::Timer.mask() != 0 {
+            Some(Self::Timer)
+        } else if mask & Self::Serial.mask() != 0 {
+            Some(Self::Serial)
+        } else if mask & Self::Joypad.mask() != 0 {
+            Some(Self::Joypad)
+        } else {
+            None
+        }
+    }
+}
+
 impl InterruptController {
     pub fn new(console_model: ConsoleModel) -> Self {
         Self {
@@ -71,11 +109,11 @@ impl InterruptController {
     }
 
     pub fn request(&mut self, source: InterruptSource) {
-        self.interrupt_flags |= interrupt_bit(source);
+        self.interrupt_flags |= source.mask();
     }
 
     pub fn clear(&mut self, source: InterruptSource) {
-        self.interrupt_flags &= !interrupt_bit(source);
+        self.interrupt_flags &= !source.mask();
     }
 
     pub fn pending_mask(&self) -> u8 {
@@ -83,17 +121,7 @@ impl InterruptController {
     }
 
     pub fn highest_pending(&self) -> Option<InterruptSource> {
-        const PRIORITY_ORDER: [InterruptSource; 5] = [
-            InterruptSource::VBlank,
-            InterruptSource::LcdStat,
-            InterruptSource::Timer,
-            InterruptSource::Serial,
-            InterruptSource::Joypad,
-        ];
-
-        PRIORITY_ORDER
-            .into_iter()
-            .find(|source| self.pending_mask() & interrupt_bit(*source) != 0)
+        InterruptSource::highest_priority_from_mask(self.pending_mask())
     }
 
     pub fn apply_startup_state(&mut self, startup_state: InterruptStartupState) {
@@ -120,16 +148,6 @@ impl InterruptController {
             self.read_if(),
             self.read_ie(),
         )
-    }
-}
-
-const fn interrupt_bit(source: InterruptSource) -> u8 {
-    match source {
-        InterruptSource::VBlank => 0x01,
-        InterruptSource::LcdStat => 0x02,
-        InterruptSource::Timer => 0x04,
-        InterruptSource::Serial => 0x08,
-        InterruptSource::Joypad => 0x10,
     }
 }
 

@@ -151,28 +151,122 @@ impl CpuExecutionState {
     }
 }
 
-pub(super) const fn interrupt_vector(source: InterruptSource) -> u16 {
-    match source {
-        InterruptSource::VBlank => 0x0040,
-        InterruptSource::LcdStat => 0x0048,
-        InterruptSource::Timer => 0x0050,
-        InterruptSource::Serial => 0x0058,
-        InterruptSource::Joypad => 0x0060,
+impl InFlightInstruction {
+    pub(super) const fn opcode(self) -> Option<u8> {
+        self.opcode
+    }
+
+    pub(super) const fn execution_descriptor(
+        self,
+    ) -> Option<(CpuInstructionKind, InstructionExecutionGroup)> {
+        let kind = match self.kind {
+            Some(kind) => kind,
+            None => return None,
+        };
+
+        let execution_group = match self.execution_group {
+            Some(execution_group) => execution_group,
+            None => kind.execution_group(),
+        };
+
+        Some((kind, execution_group))
+    }
+
+    const fn clear_decoded_state(&mut self) {
+        self.kind = None;
+        self.execution_group = None;
+        self.cb_instruction_kind = None;
+        self.operand8_latch = 0;
+        self.operand16_latch = 0;
+    }
+
+    const fn clear(&mut self) {
+        self.opcode = None;
+        self.clear_decoded_state();
     }
 }
 
-pub(super) const fn highest_pending_interrupt_from_mask(mask: u8) -> Option<InterruptSource> {
-    if mask & 0x01 != 0 {
-        Some(InterruptSource::VBlank)
-    } else if mask & 0x02 != 0 {
-        Some(InterruptSource::LcdStat)
-    } else if mask & 0x04 != 0 {
-        Some(InterruptSource::Timer)
-    } else if mask & 0x08 != 0 {
-        Some(InterruptSource::Serial)
-    } else if mask & 0x10 != 0 {
-        Some(InterruptSource::Joypad)
-    } else {
-        None
+impl ImeState {
+    pub(super) const fn ime_enabled(self) -> bool {
+        matches!(self, Self::Enabled | Self::EnabledPendingEnable { .. })
+    }
+
+    pub(super) const fn delayed_enable_pending(self) -> bool {
+        matches!(
+            self,
+            Self::DisabledPendingEnable { .. } | Self::EnabledPendingEnable { .. }
+        )
+    }
+}
+
+impl CpuCore {
+    pub(super) fn ime_enabled(&self) -> bool {
+        self.ime_state.ime_enabled()
+    }
+
+    pub(super) fn set_ime_enabled(&mut self) {
+        self.ime_state = ImeState::Enabled;
+    }
+
+    pub(super) fn set_ime_disabled(&mut self) {
+        self.ime_state = ImeState::Disabled;
+    }
+
+    #[cfg(test)]
+    pub(super) fn force_delayed_ime_enable_for_test(&mut self, instructions_remaining: u8) {
+        self.ime_state = ImeState::DisabledPendingEnable {
+            instructions_remaining,
+        };
+    }
+
+    pub(super) fn request_halt_after_current_instruction(
+        &mut self,
+        ime_enabled: bool,
+        had_pending_ei: bool,
+    ) {
+        self.halt_control = HaltControlState::PendingRequest(HaltRequestContext {
+            ime_enabled,
+            had_pending_ei,
+        });
+    }
+
+    pub(super) fn take_halt_request(&mut self) -> Option<HaltRequestContext> {
+        match self.halt_control {
+            HaltControlState::PendingRequest(context) => {
+                self.halt_control = HaltControlState::Idle;
+                Some(context)
+            }
+            _ => None,
+        }
+    }
+
+    pub(super) fn halt_request_pending(&self) -> bool {
+        matches!(self.halt_control, HaltControlState::PendingRequest(_))
+    }
+
+    pub(super) fn arm_halt_bug(&mut self) {
+        self.halt_control = HaltControlState::HaltBugPending;
+    }
+
+    pub(super) fn consume_halt_bug_pending(&mut self) -> bool {
+        if matches!(self.halt_control, HaltControlState::HaltBugPending) {
+            self.halt_control = HaltControlState::Idle;
+            true
+        } else {
+            false
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn halt_request_pending_for_test(&self) -> bool {
+        matches!(self.halt_control, HaltControlState::PendingRequest(_))
+    }
+
+    pub(super) fn clear_decoded_instruction_state(&mut self) {
+        self.in_flight.clear_decoded_state();
+    }
+
+    pub(super) fn clear_in_flight_instruction_state(&mut self) {
+        self.in_flight.clear();
     }
 }

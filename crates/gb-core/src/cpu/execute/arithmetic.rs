@@ -7,16 +7,16 @@ impl CpuCore {
         kind: CpuInstructionKind,
         opcode: u8,
         step: u8,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) {
         match kind {
             CpuInstructionKind::LoadHlFromSpPlusImmediate => match step {
                 0 => {
-                    self.operand8_latch = self.read_pc_u8(bus_operation);
+                    self.in_flight.operand8_latch = self.read_pc_u8(bus_operation);
                     self.advance_instruction(opcode, 1);
                 }
                 1 => {
-                    let result = self.sp_plus_signed_immediate(self.operand8_latch);
+                    let result = self.sp_plus_signed_immediate(self.in_flight.operand8_latch);
                     self.write_register16(Register16::HL, result);
                     self.finish_instruction();
                 }
@@ -24,14 +24,14 @@ impl CpuCore {
             },
             CpuInstructionKind::AddSpImmediate => match step {
                 0 => {
-                    self.operand8_latch = self.read_pc_u8(bus_operation);
+                    self.in_flight.operand8_latch = self.read_pc_u8(bus_operation);
                     self.advance_instruction(opcode, 1);
                 }
                 1 => {
                     self.advance_instruction(opcode, 2);
                 }
                 2 => {
-                    let result = self.sp_plus_signed_immediate(self.operand8_latch);
+                    let result = self.sp_plus_signed_immediate(self.in_flight.operand8_latch);
                     self.write_register16(Register16::SP, result);
                     self.finish_instruction();
                 }
@@ -72,13 +72,13 @@ impl CpuCore {
             },
             CpuInstructionKind::IncrementHlMemory => match step {
                 0 => {
-                    self.operand8_latch = self.read_byte(self.hl(), bus_operation);
+                    self.in_flight.operand8_latch = self.read_byte(self.hl(), bus_operation);
                     self.advance_instruction(opcode, 1);
                 }
                 1 => {
-                    let before = self.operand8_latch;
+                    let before = self.in_flight.operand8_latch;
                     let result = before.wrapping_add(1);
-                    self.operand8_latch = result;
+                    self.in_flight.operand8_latch = result;
                     self.write_byte(self.hl(), result, bus_operation);
                     self.update_inc_flags(before, result);
                     self.finish_instruction();
@@ -87,13 +87,13 @@ impl CpuCore {
             },
             CpuInstructionKind::DecrementHlMemory => match step {
                 0 => {
-                    self.operand8_latch = self.read_byte(self.hl(), bus_operation);
+                    self.in_flight.operand8_latch = self.read_byte(self.hl(), bus_operation);
                     self.advance_instruction(opcode, 1);
                 }
                 1 => {
-                    let before = self.operand8_latch;
+                    let before = self.in_flight.operand8_latch;
                     let result = before.wrapping_sub(1);
-                    self.operand8_latch = result;
+                    self.in_flight.operand8_latch = result;
                     self.write_byte(self.hl(), result, bus_operation);
                     self.update_dec_flags(before, result);
                     self.finish_instruction();

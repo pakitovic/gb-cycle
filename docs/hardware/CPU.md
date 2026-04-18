@@ -173,6 +173,9 @@ Priority order:
 - If helper APIs summarize instruction timing, they should still expand into per-T-cycle execution internally.
 - Separate CPU state, decode tables, execution/micro-op planning, ALU helpers, interrupt control flow, and the fine-grained tick engine instead of letting one opcode table own everything.
 - Keep explicit state for the instruction in flight, including the current fetch/execute/service phase and any temporary bytes or addresses needed by the next micro-step.
+- In the current Phase `4` baseline for this repo, the fetched opcode, decoded base/CB instruction kind, and operand latches should live in one internal in-flight instruction record so debugger and scheduler snapshots can derive `current_opcode` from a single source of truth instead of a parallel shadow field.
+- In the current Phase `6` performance baseline for this repo, any cached execute-dispatch classification should also live in that in-flight record as a pure derivation of the decoded instruction kind so repeated machine-cycle dispatch can stay cheap without introducing a second semantic source of truth.
+- In the current post-Phase `5` cleanup baseline for this repo, `CpuExecutionState::Execute` should no longer shadow that opcode a second time; the in-flight instruction record remains the sole opcode source while execute state tracks only phase progression.
 - Keep the configured direct-boot startup snapshot separate from the live CPU
   register file so tests, debugger snapshots, and real execution can compare
   the handoff state against the current in-flight machine state explicitly.
@@ -181,6 +184,11 @@ Priority order:
   need extra immediate fetches, indirect memory traffic, or distinct read and
   write phases, so register-only and `(HL)` forms cannot accidentally collapse
   onto one fake timing path.
+- In the current post-Phase `6` cleanup baseline for this repo, fetched-opcode
+  decode should stay pure even for fetch-completing instructions: the decoder
+  returns a fetch-completion descriptor, and the fetch-phase engine applies the
+  semantic effect on that same M-cycle without making decode itself mutate CPU
+  state.
 - A shape like `FetchOpcode`, `ExecuteMicroOp`, `ServiceInterrupt`, `Halted`, and `Stopped` is a good conceptual fit even if final enum names differ.
 - Expose either a `tick_tcycle()`-style API or a micro-step API that expands explicitly into visible T-cycle progress; the scheduler should never need to wait for a whole instruction to retire before other hardware advances.
 - Decode and execution should stay distinct enough that base opcodes and CB-prefixed opcodes can reuse the same execution machinery without collapsing their separate fetches.
@@ -188,6 +196,7 @@ Priority order:
 - `PUSH`, `POP`, `CALL`, `RET`, `RST`, interrupt service, and `RETI` should share one bytewise stack-transfer model rather than parallel implementations.
 - Every CPU-visible memory access, including opcode fetch, immediate fetch, stack traffic, and `(HL)` access, should go through the central bus contract.
 - The CPU should own `IME`, delayed-IME-enable state, `halted`, `stopped`, and any `halt_bug_pending`-style fetch modifier state.
+- In the current Phase `5` baseline for this repo, `IME` and HALT-entry / HALT-bug control should live in typed internal CPU control-state enums, while the public snapshot surface still exports the derived boolean `ime` / `delayed_ime_enable` view.
 - The interrupt controller should own `IE` and `IF` as observable interrupt state, while bus/MMIO wiring exposes those registers at their mapped addresses.
 - The CPU should own `stopped` state and the resume point after `STOP`, but the detection of input-driven wake conditions should remain in the relevant hardware subsystem such as joypad.
 - A clear split such as `request_interrupt(kind)`, `pending_interrupts()`, and `consume_interrupt(kind)` is preferred over implicit cross-module mutation.

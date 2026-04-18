@@ -6,12 +6,12 @@ impl CpuCore {
         &mut self,
         opcode: u8,
         step: u8,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) {
         match step {
             0 => {
                 let cb_opcode = self.read_pc_u8(bus_operation);
-                self.operand8_latch = cb_opcode;
+                self.in_flight.operand8_latch = cb_opcode;
 
                 let kind = self.decode_cb_opcode(cb_opcode);
 
@@ -24,16 +24,16 @@ impl CpuCore {
                         self.finish_instruction();
                     }
                     Register8Operand::IndirectHl => {
-                        self.cb_instruction_kind = Some(kind);
+                        self.in_flight.cb_instruction_kind = Some(kind);
                         self.advance_instruction(opcode, 1);
                     }
                 }
             }
-            1 => match self.cb_instruction_kind {
+            1 => match self.in_flight.cb_instruction_kind {
                 Some(kind) if kind.target() == Register8Operand::IndirectHl => {
                     let value = self.read_byte(self.hl(), bus_operation);
                     if let Some(result) = self.apply_cb_operation(kind, value) {
-                        self.operand8_latch = result;
+                        self.in_flight.operand8_latch = result;
                         self.advance_instruction(opcode, 2);
                     } else {
                         self.finish_instruction();
@@ -41,12 +41,12 @@ impl CpuCore {
                 }
                 _ => self.stall_instruction(opcode, step),
             },
-            2 => match self.cb_instruction_kind {
+            2 => match self.in_flight.cb_instruction_kind {
                 Some(kind)
                     if kind.target() == Register8Operand::IndirectHl
                         && !matches!(kind, CbInstructionKind::BitTest { .. }) =>
                 {
-                    self.write_byte(self.hl(), self.operand8_latch, bus_operation);
+                    self.write_byte(self.hl(), self.in_flight.operand8_latch, bus_operation);
                     self.finish_instruction();
                 }
                 _ => self.stall_instruction(opcode, step),

@@ -1,4 +1,4 @@
-use super::decode::CpuInstructionKind;
+use super::decode::InstructionExecutionGroup;
 use super::*;
 
 mod arithmetic;
@@ -10,58 +10,53 @@ mod stack;
 impl CpuCore {
     pub(super) fn complete_execute_machine_cycle(
         &mut self,
-        opcode: u8,
         step: u8,
-        bus_operation: &mut CpuBusCallback<'_>,
+        bus_operation: &mut CpuExternalCallback<'_>,
     ) {
-        let Some(kind) = self.instruction_kind else {
+        if !cfg!(test) && self.in_flight.execution_group.is_some() {
+            debug_assert_eq!(
+                self.in_flight.execution_group,
+                self.in_flight.kind.map(CpuInstructionKind::execution_group),
+                "decoded execution group must stay coherent with the decoded instruction kind",
+            );
+        }
+
+        if !cfg!(test) {
+            debug_assert!(
+                self.in_flight.opcode().is_some() || self.in_flight.kind.is_none(),
+                "execute state should retain a latched opcode when a decoded instruction is still in flight",
+            );
+        }
+
+        let opcode = self.in_flight.opcode().unwrap_or(0);
+        let Some((kind, execution_group)) = self.in_flight.execution_descriptor() else {
+            if !cfg!(test) {
+                debug_assert!(
+                    false,
+                    "execute state should retain a decoded instruction descriptor while machine cycles are in flight",
+                );
+            }
             self.execution_state = CpuExecutionState::Execute {
-                opcode,
                 step,
                 t_cycle: LAST_MACHINE_CYCLE_T,
             };
             return;
         };
 
-        match kind {
-            CpuInstructionKind::LoadRegisterImmediate { .. }
-            | CpuInstructionKind::LoadRegisterPairImmediate { .. }
-            | CpuInstructionKind::LoadRegisterFromHl { .. }
-            | CpuInstructionKind::StoreRegisterToHl { .. }
-            | CpuInstructionKind::StoreImmediateToHl
-            | CpuInstructionKind::LoadAFromHlWithUpdate { .. }
-            | CpuInstructionKind::StoreAToHlWithUpdate { .. }
-            | CpuInstructionKind::LoadAFromAddress { .. }
-            | CpuInstructionKind::StoreAToAddress { .. }
-            | CpuInstructionKind::StoreSpToImmediate16
-            | CpuInstructionKind::LoadSpFromHl => {
+        match execution_group {
+            InstructionExecutionGroup::Load => {
                 self.execute_load_machine_cycle(kind, opcode, step, bus_operation);
             }
-            CpuInstructionKind::LoadHlFromSpPlusImmediate
-            | CpuInstructionKind::AddSpImmediate
-            | CpuInstructionKind::AddHl { .. }
-            | CpuInstructionKind::IncrementRegisterPair { .. }
-            | CpuInstructionKind::DecrementRegisterPair { .. }
-            | CpuInstructionKind::IncrementHlMemory
-            | CpuInstructionKind::DecrementHlMemory
-            | CpuInstructionKind::AluImmediate { .. }
-            | CpuInstructionKind::AluFromHl { .. } => {
+            InstructionExecutionGroup::Arithmetic => {
                 self.execute_arithmetic_machine_cycle(kind, opcode, step, bus_operation);
             }
-            CpuInstructionKind::RelativeJump { .. }
-            | CpuInstructionKind::AbsoluteJump { .. }
-            | CpuInstructionKind::Call { .. }
-            | CpuInstructionKind::Return { .. }
-            | CpuInstructionKind::ReturnFromInterrupt
-            | CpuInstructionKind::Stop
-            | CpuInstructionKind::Restart { .. } => {
+            InstructionExecutionGroup::ControlFlow => {
                 self.execute_control_flow_machine_cycle(kind, opcode, step, bus_operation);
             }
-            CpuInstructionKind::PushRegisterPair { .. }
-            | CpuInstructionKind::PopRegisterPair { .. } => {
+            InstructionExecutionGroup::Stack => {
                 self.execute_stack_machine_cycle(kind, opcode, step, bus_operation);
             }
-            CpuInstructionKind::CbPrefixed => {
+            InstructionExecutionGroup::CbPrefixed => {
                 self.execute_cb_prefixed_machine_cycle(opcode, step, bus_operation);
             }
         }

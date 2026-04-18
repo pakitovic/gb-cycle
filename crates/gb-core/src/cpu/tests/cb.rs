@@ -22,7 +22,6 @@ fn cb_prefix_register_and_hl_variants_keep_double_fetch_and_memory_timing_distin
     assert_eq!(
         register_cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xCB,
             step: 0,
             t_cycle: 0,
         }
@@ -60,7 +59,6 @@ fn cb_prefix_register_and_hl_variants_keep_double_fetch_and_memory_timing_distin
     assert_eq!(
         hl_cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xCB,
             step: 1,
             t_cycle: 0,
         }
@@ -72,7 +70,6 @@ fn cb_prefix_register_and_hl_variants_keep_double_fetch_and_memory_timing_distin
     assert_eq!(
         hl_cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xCB,
             step: 2,
             t_cycle: 0,
         }
@@ -128,7 +125,6 @@ fn cb_rr_and_srl_support_the_blargg_crc_runtime_path() {
     assert_eq!(
         srl_cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xCB,
             step: 2,
             t_cycle: 0,
         }
@@ -188,7 +184,6 @@ fn cb_rrc_register_and_hl_variants_support_the_external_bitop_paths() {
     assert_eq!(
         hl_cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xCB,
             step: 2,
             t_cycle: 0,
         }

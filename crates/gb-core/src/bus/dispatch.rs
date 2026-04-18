@@ -2,10 +2,28 @@ use crate::cartridge::{CartridgeExternalAccessInfo, CartridgeSlot};
 use crate::scheduler::TCycle;
 
 use super::{
-    Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution, BusAddressInfo,
-    BusArbitrationState, BusIoReadView, BusIoWriteView, BusRegion, BusRequester,
+    BLOCKED_READ_VALUE, Bus, BusAccessDisposition, BusAccessKind, BusAccessResolution,
+    BusAddressInfo, BusArbitrationState, BusIoReadView, BusIoWriteView, BusRegion, BusRequester,
     DmaCpuAccessPolicy,
 };
+
+const HOT_CPU_TIMED_ROM_BANK0_END: u16 = 0x3FFF;
+const HOT_CPU_TIMED_ROM_BANKN_START: u16 = 0x4000;
+const HOT_CPU_TIMED_ROM_END: u16 = 0x7FFF;
+const HOT_CPU_TIMED_EXTERNAL_START: u16 = 0xA000;
+const HOT_CPU_TIMED_EXTERNAL_END: u16 = 0xBFFF;
+const HOT_CPU_TIMED_WRAM_START: u16 = 0xC000;
+const HOT_CPU_TIMED_WRAM_ECHO_END: u16 = 0xFDFF;
+
+#[inline(always)]
+fn address_uses_hot_cpu_timed_fast_path(address: u16) -> bool {
+    matches!(
+        address,
+        0x0000..=HOT_CPU_TIMED_ROM_END
+            | HOT_CPU_TIMED_EXTERNAL_START..=HOT_CPU_TIMED_EXTERNAL_END
+            | HOT_CPU_TIMED_WRAM_START..=HOT_CPU_TIMED_WRAM_ECHO_END
+    )
+}
 
 impl Bus {
     // Public observability is CPU-visible. This surface is mapping-aware and
@@ -133,9 +151,15 @@ impl Bus {
         requester: BusRequester,
         state: &BusArbitrationState,
         t_cycle: TCycle,
-        cartridge: Option<&mut CartridgeSlot>,
+        mut cartridge: Option<&mut CartridgeSlot>,
         io: BusIoReadView<'_>,
     ) -> u8 {
+        if let Some(value) =
+            self.try_read_timed_fast_path(address, requester, state, t_cycle, &mut cartridge)
+        {
+            return value;
+        }
+
         let resolution = self.resolve_requester_access(
             requester,
             BusAccessKind::Read,
@@ -226,9 +250,14 @@ impl Bus {
         requester: BusRequester,
         state: &BusArbitrationState,
         t_cycle: TCycle,
-        cartridge: Option<&mut CartridgeSlot>,
+        mut cartridge: Option<&mut CartridgeSlot>,
         io: BusIoWriteView<'_>,
     ) {
+        if self.try_write_timed_fast_path(address, value, requester, state, t_cycle, &mut cartridge)
+        {
+            return;
+        }
+
         let resolution = self.resolve_requester_access(
             requester,
             BusAccessKind::Write,
@@ -256,25 +285,83 @@ impl Bus {
     ) -> Option<u16> {
         if requester != BusRequester::Cpu
             || state.dma.cpu_access_policy() != DmaCpuAccessPolicy::ExternalBusBlocked
-            || address >= 0xFE00
         {
             return None;
         }
 
-        let target = self.decode_address(address);
-        if !matches!(
-            target.region(),
-            BusRegion::CartridgeRomBank0
-                | BusRegion::CartridgeRomBankN
-                | BusRegion::CartridgeExternal
-                | BusRegion::WramBank0
-                | BusRegion::WramBankN
-                | BusRegion::EchoRam
-        ) {
+        if !address_uses_hot_cpu_timed_fast_path(address) {
             return None;
         }
 
         state.dma.cpu_conflict_source_address()
+    }
+
+    fn try_read_timed_fast_path(
+        &self,
+        address: u16,
+        requester: BusRequester,
+        state: &BusArbitrationState,
+        t_cycle: TCycle,
+        cartridge: &mut Option<&mut CartridgeSlot>,
+    ) -> Option<u8> {
+        if requester != BusRequester::Cpu
+            || state.dma.cpu_access_policy() != DmaCpuAccessPolicy::Unrestricted
+            || state.boot_rom.overlays_read(address)
+        {
+            return None;
+        }
+
+        match address {
+            0x0000..=HOT_CPU_TIMED_ROM_END => Some(match cartridge.as_deref_mut() {
+                Some(cartridge) => cartridge.read_rom(address),
+                None => BLOCKED_READ_VALUE,
+            }),
+            HOT_CPU_TIMED_EXTERNAL_START..=HOT_CPU_TIMED_EXTERNAL_END => {
+                Some(match cartridge.as_deref_mut() {
+                    Some(cartridge) => cartridge.read_ram_timed(address, t_cycle),
+                    None => BLOCKED_READ_VALUE,
+                })
+            }
+            HOT_CPU_TIMED_WRAM_START..=HOT_CPU_TIMED_WRAM_ECHO_END => Some(self.wram.read(address)),
+            _ => None,
+        }
+    }
+
+    fn try_write_timed_fast_path(
+        &mut self,
+        address: u16,
+        value: u8,
+        requester: BusRequester,
+        state: &BusArbitrationState,
+        t_cycle: TCycle,
+        cartridge: &mut Option<&mut CartridgeSlot>,
+    ) -> bool {
+        if requester != BusRequester::Cpu
+            || state.dma.cpu_access_policy() != DmaCpuAccessPolicy::Unrestricted
+        {
+            return false;
+        }
+
+        match address {
+            0x0000..=HOT_CPU_TIMED_ROM_BANK0_END
+            | HOT_CPU_TIMED_ROM_BANKN_START..=HOT_CPU_TIMED_ROM_END
+            | HOT_CPU_TIMED_EXTERNAL_START..=HOT_CPU_TIMED_EXTERNAL_END => {
+                let target = self.decode_address(address);
+                self.write_cartridge_target_timed(
+                    target.address(),
+                    target.region(),
+                    value,
+                    t_cycle,
+                    cartridge.as_deref_mut(),
+                );
+                true
+            }
+            HOT_CPU_TIMED_WRAM_START..=HOT_CPU_TIMED_WRAM_ECHO_END => {
+                self.wram.write(address, value);
+                true
+            }
+            _ => false,
+        }
     }
 
     fn resolve_nominal_target(
@@ -299,5 +386,21 @@ impl Bus {
             || CartridgeExternalAccessInfo::no_device(target.address()),
             |cartridge| cartridge.describe_external_access(target.address()),
         ))
+    }
+}
+
+#[cfg(test)]
+mod hot_path_tests {
+    use super::address_uses_hot_cpu_timed_fast_path;
+
+    #[test]
+    fn address_uses_hot_cpu_timed_fast_path_covers_the_fast_ranges() {
+        assert!(address_uses_hot_cpu_timed_fast_path(0x0000));
+        assert!(address_uses_hot_cpu_timed_fast_path(0x4000));
+        assert!(address_uses_hot_cpu_timed_fast_path(0xA000));
+        assert!(address_uses_hot_cpu_timed_fast_path(0xC000));
+        assert!(address_uses_hot_cpu_timed_fast_path(0xFDFF));
+        assert!(!address_uses_hot_cpu_timed_fast_path(0x9FFF));
+        assert!(!address_uses_hot_cpu_timed_fast_path(0xFE00));
     }
 }

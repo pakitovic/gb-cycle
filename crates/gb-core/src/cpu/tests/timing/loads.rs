@@ -41,7 +41,6 @@ fn register_only_and_hl_indirect_loads_have_distinct_timing_paths() {
     assert_eq!(
         hl_cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0x46,
             step: 0,
             t_cycle: 0,
         }
@@ -76,7 +75,6 @@ fn ld_bc_d16_fetches_low_then_high_in_order() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0x01,
             step: 1,
             t_cycle: 0,
         }
@@ -113,7 +111,6 @@ fn ld_hl_d8_fetches_the_immediate_before_writing_memory() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0x36,
             step: 1,
             t_cycle: 0,
         }
@@ -147,7 +144,6 @@ fn ld_a16_sp_writes_sp_little_endian_over_five_machine_cycles() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0x08,
             step: 2,
             t_cycle: 0,
         }
@@ -160,7 +156,6 @@ fn ld_a16_sp_writes_sp_little_endian_over_five_machine_cycles() {
     assert_eq!(
         cpu.execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0x08,
             step: 3,
             t_cycle: 0,
         }

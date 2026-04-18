@@ -116,7 +116,7 @@ impl Bus {
         }
     }
 
-    fn read_cartridge_target_timed(
+    pub(super) fn read_cartridge_target_timed(
         &self,
         address: u16,
         region: BusRegion,
@@ -153,7 +153,7 @@ impl Bus {
         }
     }
 
-    fn write_cartridge_target_timed(
+    pub(super) fn write_cartridge_target_timed(
         &mut self,
         address: u16,
         region: BusRegion,

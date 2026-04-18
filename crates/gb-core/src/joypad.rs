@@ -120,6 +120,10 @@ impl Joypad {
         was_pending
     }
 
+    pub(crate) fn stop_wake_event_pending(&self) -> bool {
+        self.stop_wake_pending
+    }
+
     pub(crate) fn stop_wake_line_asserted(&self) -> bool {
         self.visible_low_nibble() != 0x0F
     }

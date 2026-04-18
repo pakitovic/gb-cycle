@@ -2,6 +2,10 @@ use super::snapshot::*;
 use super::*;
 
 impl Ppu {
+    pub(crate) fn owns_mmio_register(address: u16) -> bool {
+        PpuRegister::from_address(address).is_some()
+    }
+
     pub fn new(console_model: ConsoleModel) -> Self {
         Self {
             console_model,
@@ -66,6 +70,28 @@ impl Ppu {
         }
     }
 
+    pub(crate) fn bus_state_snapshot(&self) -> PpuBusStateSnapshot {
+        if !self.is_lcd_enabled() {
+            let disabled = PpuBusState::lcd_disabled();
+            return PpuBusStateSnapshot {
+                owner: disabled,
+                cpu_read: disabled,
+                cpu_write: disabled,
+            };
+        }
+
+        let owner_mode = self.current_bus_access_mode();
+        let cpu_read_mode = self.current_published_bus_access_mode();
+        let cpu_write_mode = self.current_published_video_write_access_mode();
+
+        PpuBusStateSnapshot {
+            owner: PpuBusState::lcd_enabled(owner_mode),
+            cpu_read: PpuBusState::lcd_enabled(cpu_read_mode),
+            cpu_write: PpuBusState::lcd_enabled(cpu_write_mode),
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn cpu_bus_state(&self) -> PpuBusState {
         if self.is_lcd_enabled() {
             PpuBusState::lcd_enabled(self.current_published_bus_access_mode())
@@ -74,6 +100,7 @@ impl Ppu {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn cpu_write_bus_state(&self) -> PpuBusState {
         if self.is_lcd_enabled() {
             PpuBusState::lcd_enabled(self.current_published_video_write_access_mode())
@@ -989,14 +1016,8 @@ impl Ppu {
         )
     }
 
-    pub(crate) fn drain_pending_interrupt_requests(&mut self) -> Vec<InterruptSource> {
-        let mut requests = Vec::with_capacity(2);
-        if self.pending_interrupts & PPU_PENDING_VBLANK_INTERRUPT_BIT != 0 {
-            requests.push(InterruptSource::VBlank);
-        }
-        if self.pending_interrupts & PPU_PENDING_LCD_STAT_INTERRUPT_BIT != 0 {
-            requests.push(InterruptSource::LcdStat);
-        }
+    pub(crate) fn take_pending_interrupt_request_mask(&mut self) -> u8 {
+        let requests = self.pending_interrupt_request_mask();
         self.pending_interrupts = 0;
         requests
     }

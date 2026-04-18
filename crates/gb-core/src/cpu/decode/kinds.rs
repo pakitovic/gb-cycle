@@ -54,12 +54,50 @@ pub(in crate::cpu) enum Register8Operand {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(in crate::cpu) enum MemoryAddressSource {
+pub(in crate::cpu) enum DirectAddressSource {
     BC,
     DE,
-    Immediate16,
-    HighImmediate8,
     HighC,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(in crate::cpu) enum InstructionExecutionGroup {
+    Load,
+    Arithmetic,
+    ControlFlow,
+    Stack,
+    CbPrefixed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(in crate::cpu) enum FetchCompletionKind {
+    Nop,
+    DecimalAdjustAccumulator,
+    ComplementAccumulator,
+    SetCarryFlag,
+    ComplementCarryFlag,
+    RotateLeftAccumulatorCarry,
+    RotateLeftAccumulatorThroughCarry,
+    RotateRightAccumulatorCarry,
+    RotateRightAccumulatorThroughCarry,
+    Halt,
+    DisableInterrupts,
+    EnableInterrupts,
+    JumpHl,
+    LoadRegisterToRegister {
+        destination: Register8,
+        source: Register8,
+    },
+    IncrementRegister {
+        target: Register8,
+    },
+    DecrementRegister {
+        target: Register8,
+    },
+    AluRegister {
+        operation: AluOperation,
+        source: Register8,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -116,12 +154,16 @@ pub(in crate::cpu) enum CpuInstructionKind {
     StoreAToHlWithUpdate {
         direction: CpuAddressUpdateDirection,
     },
-    LoadAFromAddress {
-        source: MemoryAddressSource,
+    LoadAFromDirectAddress {
+        source: DirectAddressSource,
     },
-    StoreAToAddress {
-        destination: MemoryAddressSource,
+    LoadAFromImmediate16Address,
+    LoadAFromHighImmediateAddress,
+    StoreAToDirectAddress {
+        destination: DirectAddressSource,
     },
+    StoreAToImmediate16Address,
+    StoreAToHighImmediateAddress,
     StoreSpToImmediate16,
     LoadHlFromSpPlusImmediate,
     AddSpImmediate,
@@ -143,17 +185,21 @@ pub(in crate::cpu) enum CpuInstructionKind {
     AluFromHl {
         operation: AluOperation,
     },
-    RelativeJump {
-        condition: Option<ConditionCode>,
+    RelativeJump,
+    ConditionalRelativeJump {
+        condition: ConditionCode,
     },
-    AbsoluteJump {
-        condition: Option<ConditionCode>,
+    AbsoluteJump,
+    ConditionalAbsoluteJump {
+        condition: ConditionCode,
     },
-    Call {
-        condition: Option<ConditionCode>,
+    Call,
+    ConditionalCall {
+        condition: ConditionCode,
     },
-    Return {
-        condition: Option<ConditionCode>,
+    Return,
+    ConditionalReturn {
+        condition: ConditionCode,
     },
     ReturnFromInterrupt,
     Stop,
@@ -169,9 +215,55 @@ pub(in crate::cpu) enum CpuInstructionKind {
     CbPrefixed,
 }
 
+impl CpuInstructionKind {
+    pub(in crate::cpu) const fn execution_group(self) -> InstructionExecutionGroup {
+        match self {
+            Self::LoadRegisterImmediate { .. }
+            | Self::LoadRegisterPairImmediate { .. }
+            | Self::LoadRegisterFromHl { .. }
+            | Self::StoreRegisterToHl { .. }
+            | Self::StoreImmediateToHl
+            | Self::LoadAFromHlWithUpdate { .. }
+            | Self::StoreAToHlWithUpdate { .. }
+            | Self::LoadAFromDirectAddress { .. }
+            | Self::LoadAFromImmediate16Address
+            | Self::LoadAFromHighImmediateAddress
+            | Self::StoreAToDirectAddress { .. }
+            | Self::StoreAToImmediate16Address
+            | Self::StoreAToHighImmediateAddress
+            | Self::StoreSpToImmediate16
+            | Self::LoadSpFromHl => InstructionExecutionGroup::Load,
+            Self::LoadHlFromSpPlusImmediate
+            | Self::AddSpImmediate
+            | Self::AddHl { .. }
+            | Self::IncrementRegisterPair { .. }
+            | Self::DecrementRegisterPair { .. }
+            | Self::IncrementHlMemory
+            | Self::DecrementHlMemory
+            | Self::AluImmediate { .. }
+            | Self::AluFromHl { .. } => InstructionExecutionGroup::Arithmetic,
+            Self::RelativeJump
+            | Self::ConditionalRelativeJump { .. }
+            | Self::AbsoluteJump
+            | Self::ConditionalAbsoluteJump { .. }
+            | Self::Call
+            | Self::ConditionalCall { .. }
+            | Self::Return
+            | Self::ConditionalReturn { .. }
+            | Self::ReturnFromInterrupt
+            | Self::Stop
+            | Self::Restart { .. } => InstructionExecutionGroup::ControlFlow,
+            Self::PushRegisterPair { .. } | Self::PopRegisterPair { .. } => {
+                InstructionExecutionGroup::Stack
+            }
+            Self::CbPrefixed => InstructionExecutionGroup::CbPrefixed,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::cpu) enum DecodedOpcode {
-    Complete,
+    CompleteOnFetch(FetchCompletionKind),
     Execute(CpuInstructionKind),
     Unsupported,
 }

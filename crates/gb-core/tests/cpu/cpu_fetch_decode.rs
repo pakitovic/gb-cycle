@@ -16,9 +16,8 @@ fn skip_boot_fetches_the_entry_opcode_from_the_cartridge_bus_path() {
     assert_eq!(
         machine.cpu().execution_state(),
         CpuExecutionState::Execute {
-            opcode: 0xCB,
             step: 0,
-            t_cycle: 0,
+            t_cycle: 0
         }
     );
     assert_eq!(machine.cpu().current_opcode(), Some(0xCB));

@@ -14,14 +14,12 @@ mod trace;
 
 #[cfg(test)]
 use decode::{
-    AluOperation, ConditionCode, DecodedOpcode, MemoryAddressSource, Register8, Register8Operand,
+    AluOperation, ConditionCode, DecodedOpcode, DirectAddressSource, Register8, Register8Operand,
     Register16, StackRegister16, decode_absolute_jump_condition, decode_alu_operation,
     decode_call_condition, decode_hl_update_direction, decode_register8_operand, decode_register16,
     decode_relative_jump_condition, decode_return_condition, decode_stack_register16,
 };
-use decode::{CbInstructionKind, CpuInstructionKind};
-#[cfg(test)]
-use state::{highest_pending_interrupt_from_mask, interrupt_vector};
+use decode::{CbInstructionKind, CpuInstructionKind, InstructionExecutionGroup};
 use trace::CpuTraceBusActivity;
 
 const LAST_MACHINE_CYCLE_T: u8 = 3;
@@ -35,6 +33,11 @@ const FLAG_C: u8 = 0x10;
 pub(crate) enum CpuBusOperation {
     Read { address: u16 },
     Write { address: u16, value: u8 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum CpuExternalOperation {
+    Bus(CpuBusOperation),
     PendingInterruptMask,
     InterruptEnableMask,
     StopWakeLineAsserted,
@@ -42,7 +45,7 @@ pub(crate) enum CpuBusOperation {
     RequestInterrupt { source: InterruptSource },
 }
 
-type CpuBusCallback<'a> = dyn FnMut(CpuBusOperation) -> Option<u8> + 'a;
+type CpuExternalCallback<'a> = dyn FnMut(CpuExternalOperation) -> Option<u8> + 'a;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CpuStatus {
@@ -121,7 +124,6 @@ pub enum CpuExecutionState {
         t_cycle: u8,
     },
     Execute {
-        opcode: u8,
         step: u8,
         t_cycle: u8,
     },
@@ -147,6 +149,51 @@ pub enum CpuDiagnosticTrap {
     InvalidOpcode { opcode: u8, address: u16 },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StopEntryResolution {
+    CompleteOnCurrentMachineCycle,
+    EnterStoppedAfterPaddingFetch,
+    EnterZombieStopped,
+    EnterHaltAfterPaddingFetch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct InFlightInstruction {
+    opcode: Option<u8>,
+    kind: Option<CpuInstructionKind>,
+    execution_group: Option<InstructionExecutionGroup>,
+    cb_instruction_kind: Option<CbInstructionKind>,
+    operand8_latch: u8,
+    operand16_latch: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum ImeState {
+    #[default]
+    Disabled,
+    DisabledPendingEnable {
+        instructions_remaining: u8,
+    },
+    Enabled,
+    EnabledPendingEnable {
+        instructions_remaining: u8,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HaltRequestContext {
+    ime_enabled: bool,
+    had_pending_ei: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum HaltControlState {
+    #[default]
+    Idle,
+    PendingRequest(HaltRequestContext),
+    HaltBugPending,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CpuCore {
     console_model: ConsoleModel,
@@ -154,18 +201,9 @@ pub struct CpuCore {
     startup_state: CpuStartupState,
     registers: CpuRegisters,
     execution_state: CpuExecutionState,
-    current_opcode: Option<u8>,
-    ime: bool,
-    delayed_ime_enable: bool,
-    delayed_ime_enable_steps: u8,
-    halt_request_pending: bool,
-    halt_request_ime: bool,
-    halt_request_had_delayed_ei: bool,
-    halt_bug_pending: bool,
-    instruction_kind: Option<CpuInstructionKind>,
-    cb_instruction_kind: Option<CbInstructionKind>,
-    operand8_latch: u8,
-    operand16_latch: u16,
+    in_flight: InFlightInstruction,
+    ime_state: ImeState,
+    halt_control: HaltControlState,
     last_bus_activity: Option<CpuTraceBusActivity>,
     last_address_event: Option<CpuAddressEvent>,
     stop_div_reset_requested: bool,

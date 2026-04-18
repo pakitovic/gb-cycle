@@ -2596,7 +2596,6 @@ mod tests {
                 pc: 0x0150,
             },
             execution_state: CpuExecutionState::Execute {
-                opcode: 0x40,
                 step: 0,
                 t_cycle: 0,
             },
