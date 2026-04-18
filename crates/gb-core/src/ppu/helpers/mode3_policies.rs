@@ -480,7 +480,8 @@ impl PpuMode3LiveBackgroundWriteEffects {
                 || cached.same_cycle_live_tilemap_refetch_window_open
                 || cached.is_second_or_third_visible_post_startup_push());
         let lcdc_tiledata_refetch = matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
-            && write_context.bg_window_tile_data_select_changed();
+            && write_context.bg_window_tile_data_select_changed()
+            && (background_cached || cached.fetch_x != 0);
 
         Self {
             tilemap_refetch: lcdc_tilemap_refetch
@@ -559,7 +560,8 @@ impl PpuMode3LiveBackgroundWriteEffects {
             && (cached.same_cycle_live_tilemap_refetch_window_open
                 || cached.is_second_or_third_visible_post_startup_push());
         let lcdc_tiledata_refetch = matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
-            && write_context.bg_window_tile_data_select_changed();
+            && write_context.bg_window_tile_data_select_changed()
+            && (background_cached || cached.fetch_x != 0);
 
         Self {
             tilemap_refetch: lcdc_tilemap_refetch
@@ -619,6 +621,7 @@ impl PpuMode3LiveBackgroundWriteEffects {
         register: PpuMode3LiveBackgroundRegister,
         write_context: PpuMode3LiveRegisterWriteContext,
         ly: u8,
+        window_tile_row: u8,
         scy_routing: PpuMode3LiveScyWriteRouting,
     ) -> Self {
         let scy_uses_startup_visible_tile2_tilemap_row = scy_routing
@@ -661,6 +664,10 @@ impl PpuMode3LiveBackgroundWriteEffects {
         let window_tiledata_changed = matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
             && write_context.bg_window_tile_data_select_changed()
             && window_tile_data_fetch;
+        let window_unsigned_to_signed_tiledata_change = window_tiledata_changed
+            && window_tile_row >= 24
+            && write_context.previous_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0
+            && write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT == 0;
 
         Self {
             tilemap_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
@@ -718,7 +725,9 @@ impl PpuMode3LiveBackgroundWriteEffects {
                     PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
                 )
                 || scy_tilemap_row_changed,
-            fetcher_tile_data_refetch_on_push: window_tiledata_changed || scy_tile_data_row_changed,
+            fetcher_tile_data_refetch_on_push: window_tiledata_changed
+                && !window_unsigned_to_signed_tiledata_change
+                || scy_tile_data_row_changed,
             fetcher_tile_data_current_row_refetch_on_push: scy_tile_data_row_changed,
             fetcher_tile_low_current_row_refetch_on_push: false,
             fetcher_tile_high_current_row_refetch_on_push: false,

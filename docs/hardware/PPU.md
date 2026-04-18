@@ -289,6 +289,7 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - The window tilemap should be selected by `LCDC.6`, independent of the BG tilemap selection.
 - In DMG mode, paired live `LCDC.6` writes during window activation can leave explicit old/new tilemap selector seams on the first few activated window tiles; keep that behavior in fetcher/FIFO ownership rather than in framebuffer post-processing.
 - Window tile data addressing should follow `LCDC.4`, matching BG tile addressing rules while remaining separate from OBJ tile handling.
+- In DMG mode, paired live `LCDC.4` writes during window fetch can leave per-plane old/new tile-data selector seams on the first few affected window tiles; keep the future-pixel selector override explicit on cached window slices, and keep room for a same-scanline repaint path when the second write lands after some of those window pixels have already been driven.
 - The fetcher should have explicit BG and window fetch modes rather than reusing BG fetch implicitly through altered coordinates.
 - Window tile X should derive from a window-local X counter, not from `SCX`.
 - Window tile Y should derive from the internal window line counter, not from `LY + SCY`.

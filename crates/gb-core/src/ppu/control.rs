@@ -1625,6 +1625,17 @@ impl Ppu {
             return;
         }
 
+        if write_context.previous_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0
+            && write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT == 0
+            && self.window_state.window_line_counter >= 24
+        {
+            self.bg_pipeline_state
+                .apply_dmg_lcdc4_output_override_to_window_seam_slices(
+                    BgTileDataSelect::Unsigned8000,
+                );
+            self.pending_dmg_window_lcdc4_output_repaint = Some(BgTileDataSelect::Unsigned8000);
+        }
+
         let Some(policy) = self.dmg_single_selected_sprite_phase_policy() else {
             return;
         };
@@ -2063,12 +2074,16 @@ impl Ppu {
         self.current_scanline_bg_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
+        self.current_scanline_bg_dot_contexts.fill(None);
         self.current_scanline_dmg_bg_forced_white.fill(false);
+        self.pending_dmg_window_lcdc4_output_repaint = None;
     }
 
     pub(super) fn clear_visible_buffers(&mut self) {
+        self.current_scanline_bg_dot_contexts.fill(None);
         self.current_scanline_pixels.fill(0);
         self.framebuffer.fill(0);
+        self.pending_dmg_window_lcdc4_output_repaint = None;
     }
 
     pub(super) fn enter_lcd_disabled_state(&mut self) {

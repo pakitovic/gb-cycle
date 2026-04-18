@@ -46,10 +46,12 @@ impl Ppu {
             current_scanline_pixels: [0; SCREEN_WIDTH],
             current_scanline_bg_pixels: [0; SCREEN_WIDTH],
             current_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            current_scanline_bg_dot_contexts: [None; SCREEN_WIDTH],
             current_scanline_dmg_bg_forced_white: [false; SCREEN_WIDTH],
             previous_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
             previous_scanline_dmg_bg_forced_white: [false; SCREEN_WIDTH],
             previous_scanline_ly: None,
+            pending_dmg_window_lcdc4_output_repaint: None,
             framebuffer: vec![0; FRAMEBUFFER_PIXELS],
         }
     }
@@ -235,6 +237,7 @@ impl Ppu {
                     live_background_register,
                     write_context,
                     self.ly,
+                    self.window_state.window_line_counter,
                     scy_routing,
                 );
 
@@ -539,11 +542,13 @@ impl Ppu {
         self.current_scanline_bg_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
+        self.current_scanline_bg_dot_contexts.fill(None);
         self.current_scanline_dmg_bg_forced_white.fill(false);
         self.previous_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
         self.previous_scanline_dmg_bg_forced_white.fill(false);
         self.previous_scanline_ly = None;
+        self.pending_dmg_window_lcdc4_output_repaint = None;
         self.framebuffer.fill(0);
         self.reload_mode3_register_latches_from_mmio();
         self.startup_mode_latch = if self.lcd_state.is_enabled() {
@@ -666,9 +671,12 @@ impl Ppu {
                 self.dmg_panel_live_write_state
                     .reset_for_scanline_start(self.bgp);
                 self.current_scanline_pixels.fill(0);
+                self.current_scanline_bg_pixels.fill(0);
                 self.current_scanline_mixed_pixels
                     .fill(MixedPixel::background(0));
+                self.current_scanline_bg_dot_contexts.fill(None);
                 self.current_scanline_dmg_bg_forced_white.fill(false);
+                self.pending_dmg_window_lcdc4_output_repaint = None;
                 if wraps_to_frame_start && self.blank_frame_active {
                     self.blank_frame_active = false;
                     self.refresh_visible_output();

@@ -3674,3 +3674,23 @@ fn cgb_obp0_write_during_mode3_does_not_retroactively_recolor_recent_obj_pixels(
     assert_eq!(ppu.obp0, Some(0x04));
     assert_eq!(&ppu.framebuffer()[2..6], &[2, 2, 2, 2]);
 }
+
+#[test]
+fn mixed_pixel_override_keeps_background_palette_when_an_obj_register_is_overridden() {
+    let visible = PpuVisibleRegisters {
+        bgp: 0xE4,
+        obp0: Some(0x39),
+        ..PpuVisibleRegisters::default()
+    };
+
+    assert_eq!(
+        visible.palette_for_mixed_pixel_with_override(
+            MixedPixel::background(2),
+            PpuPaletteRegister::Obp0,
+            0x1B,
+            0xE4,
+            DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+        ),
+        0xE4
+    );
+}

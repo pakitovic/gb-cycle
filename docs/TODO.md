@@ -41,8 +41,8 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
-- The current external report snapshot is `.roms/test/test-report.md = 160/167`: `158` passed, `7` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make test-roms` is green at this checkpoint; rerun `make ci` after formatting/doc updates before closing the session.
-- `m3_window_timing.gb`, `m3_window_timing_wx_0.gb`, and `m3_lcdc_win_map_change.gb` are all green in the current tree. The strict PPU ladder now advances to `m3_lcdc_tile_sel_win_change.gb` (`order 43`) inside the window-mechanics block.
+- The current external report snapshot is `.roms/test/test-report.md = 160/167`: `158` passed, `7` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). Both `make ci` and `make test-roms` are green at this checkpoint.
+- `m3_window_timing.gb`, `m3_window_timing_wx_0.gb`, and `m3_lcdc_tile_sel_win_change.gb` are green in the current tree. The remaining window-mechanics failures start again at `m3_lcdc_win_map_change.gb` (`order 42`), followed by the later `LCDC.5` / `WX` cases.
 
 #### Open TODOs
 
@@ -52,7 +52,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
   | Tier | Orders | Remaining ROMs |
   | --- | --- | --- |
-  | Window mechanics | `43-49` | `m3_lcdc_tile_sel_win_change`, `m3_lcdc_win_en_change_multiple`, `m3_lcdc_win_en_change_multiple_wx`, `m3_wx_4_change`, `m3_wx_5_change`, `m3_wx_6_change`, `m3_wx_4_change_sprites` |
+  | Window mechanics | `42, 44-49` | `m3_lcdc_win_map_change`, `m3_lcdc_win_en_change_multiple`, `m3_lcdc_win_en_change_multiple_wx`, `m3_wx_4_change`, `m3_wx_5_change`, `m3_wx_6_change`, `m3_wx_4_change_sprites` |
 
 ##### Cleanup debt
 

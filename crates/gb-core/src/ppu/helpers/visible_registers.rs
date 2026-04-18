@@ -24,6 +24,14 @@ pub(in crate::ppu) struct PpuDmgBgpBoundaryRepaintWrite {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ppu) struct PpuRecentBgDotContext {
+    pub(in crate::ppu) source: PpuBgFetcherSource,
+    pub(in crate::ppu) fetch_x: u16,
+    pub(in crate::ppu) pixel_index: u8,
+    pub(in crate::ppu) tile_index: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::ppu) struct PpuRecentPanelDot {
     pub(in crate::ppu) visible_x: u8,
     pub(in crate::ppu) pixel: MixedPixel,

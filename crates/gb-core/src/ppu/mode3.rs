@@ -258,28 +258,28 @@ impl Ppu {
         let fetcher = self.bg_pipeline_state.fetcher;
         match (fetcher.stage, fetcher.stage_dot) {
             (PpuBgFetcherStage::TileIndex, 0) => {
+                self.bg_pipeline_state
+                    .fetcher
+                    .needs_live_tilemap_refetch_on_push = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .needs_live_tilemap_full_refetch_on_push = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .needs_live_tile_data_refetch_on_push = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .needs_live_tile_data_current_row_refetch_on_push = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .needs_live_tile_low_current_row_refetch_on_push = false;
+                self.bg_pipeline_state
+                    .fetcher
+                    .needs_live_tile_high_current_row_refetch_on_push = false;
                 if fetcher.source == PpuBgFetcherSource::Background {
                     self.bg_pipeline_state.fetcher.cached_origin = self
                         .bg_pipeline_state
                         .peek_startup_background_fetch_origin();
-                    self.bg_pipeline_state
-                        .fetcher
-                        .needs_live_tilemap_refetch_on_push = false;
-                    self.bg_pipeline_state
-                        .fetcher
-                        .needs_live_tilemap_full_refetch_on_push = false;
-                    self.bg_pipeline_state
-                        .fetcher
-                        .needs_live_tile_data_refetch_on_push = false;
-                    self.bg_pipeline_state
-                        .fetcher
-                        .needs_live_tile_data_current_row_refetch_on_push = false;
-                    self.bg_pipeline_state
-                        .fetcher
-                        .needs_live_tile_low_current_row_refetch_on_push = false;
-                    self.bg_pipeline_state
-                        .fetcher
-                        .needs_live_tile_high_current_row_refetch_on_push = false;
                 }
                 let tile_map_address =
                     self.compute_fetch_tile_index_address(fetcher.source, fetcher.fetch_x);
@@ -327,12 +327,36 @@ impl Ppu {
                 self.bg_pipeline_state.fetcher.stage_dot = 0;
             }
             (PpuBgFetcherStage::TileDataLow, 0) => {
-                let tile_data_address = self.compute_fetch_tile_data_address(
-                    fetcher.source,
-                    fetcher.fetch_x,
-                    fetcher.tile_index,
-                    0,
-                );
+                let tile_data_address = if fetcher.source == PpuBgFetcherSource::Window {
+                    self.bg_pipeline_state
+                        .fetcher
+                        .dmg_lcdc4_previous_tiledata_select_on_next_low
+                        .take()
+                        .map_or_else(
+                            || {
+                                self.compute_fetch_tile_data_address(
+                                    fetcher.source,
+                                    fetcher.fetch_x,
+                                    fetcher.tile_index,
+                                    0,
+                                )
+                            },
+                            |selector| {
+                                self.compute_window_fetch_tile_data_address_with_selector(
+                                    fetcher.tile_index,
+                                    0,
+                                    selector,
+                                )
+                            },
+                        )
+                } else {
+                    self.compute_fetch_tile_data_address(
+                        fetcher.source,
+                        fetcher.fetch_x,
+                        fetcher.tile_index,
+                        0,
+                    )
+                };
                 self.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
                 self.bg_pipeline_state.fetcher.tile_low_address = tile_data_address;
                 let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
@@ -730,6 +754,7 @@ impl Ppu {
         plan: Mode3TransferServicePlan,
         vram: &VramBusView<'_>,
     ) -> Mode3TransferDot {
+        self.apply_pending_dmg_window_lcdc4_output_repaint(vram);
         let pixel = if matches!(
             plan.execution,
             Mode3TransferServiceExecution::EmitVisiblePixel
@@ -829,8 +854,10 @@ impl Ppu {
     }
 
     pub(super) fn pop_visible_bg_fifo_pixel(&mut self, vram: &VramBusView<'_>) -> Option<u8> {
+        let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
         let mut pixel = self.bg_pipeline_state.pop_visible_fifo_pixel()?;
         let Some(cached) = pixel.cached.as_mut() else {
+            self.current_scanline_bg_dot_contexts[visible_x] = None;
             if let Some(override_pixel) = self.compute_startup_visible_tile2_scy_placeholder_pixel(
                 self.bg_pipeline_state.visible_pixels_output,
                 vram,
@@ -850,6 +877,12 @@ impl Ppu {
             cached.pixel_index,
             vram,
         );
+        let window_tiledata_selector_override = self
+            .compute_window_lcdc4_tiledata_selector_override(
+                cached.cached,
+                cached.pixel_index,
+                vram,
+            );
         let next_tile_output_retarget = self
             .compute_startup_visible_tile3_scx_boundary_next_tile_output_retarget_pixel(
                 cached.cached,
@@ -884,9 +917,16 @@ impl Ppu {
             vram,
             self.current_mode3_live_background_refetch_context(),
         ) else {
+            self.current_scanline_bg_dot_contexts[visible_x] = Some(PpuRecentBgDotContext {
+                source: cached.cached.source,
+                fetch_x: cached.cached.fetch_x,
+                pixel_index: cached.pixel_index,
+                tile_index: cached.cached.tile_index,
+            });
             return Some(
                 old_pixel_override
                     .or(window_activation_tilemap_override)
+                    .or(window_tiledata_selector_override)
                     .or(low_band_shifted_override)
                     .or(visible_tile2_scy_tilemap_override)
                     .or(visible_tile2_previous_row_override)
@@ -897,8 +937,15 @@ impl Ppu {
         };
 
         cached.cached = recomputed;
+        self.current_scanline_bg_dot_contexts[visible_x] = Some(PpuRecentBgDotContext {
+            source: cached.cached.source,
+            fetch_x: cached.cached.fetch_x,
+            pixel_index: cached.pixel_index,
+            tile_index: cached.cached.tile_index,
+        });
         pixel.color = old_pixel_override
             .or(window_activation_tilemap_override)
+            .or(window_tiledata_selector_override)
             .or(low_band_shifted_override)
             .or(visible_tile2_scy_tilemap_override)
             .or(visible_tile2_previous_row_override)
@@ -1021,6 +1068,202 @@ impl Ppu {
         let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
         let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
         bg_tile_pixel_value(tile_low, tile_high, pixel_index)
+    }
+
+    fn compute_window_lcdc4_tiledata_selector_override(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        let previous_select = cached.dmg_lcdc4_previous_tiledata_select_for_output_override?;
+        if cached.source != PpuBgFetcherSource::Window {
+            return None;
+        }
+
+        let previous_plane_masks = window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            cached.fetch_x,
+            self.window_state.window_line_counter,
+        )?;
+        Some(self.read_window_lcdc4_tiledata_selector_pixel(
+            cached,
+            pixel_index,
+            previous_select,
+            previous_plane_masks,
+            vram,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_compute_window_lcdc4_tiledata_selector_override(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        self.compute_window_lcdc4_tiledata_selector_override(cached, pixel_index, vram)
+    }
+
+    fn read_window_lcdc4_tiledata_selector_pixel(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        previous_select: BgTileDataSelect,
+        previous_plane_masks: PerPlane<u8>,
+        vram: &VramBusView<'_>,
+    ) -> u8 {
+        let bit = 0x80 >> pixel_index;
+        let current_lcdc = self.mode3_register_latches().visible().lcdc;
+        let previous_lcdc = previous_select.apply_to_lcdc(current_lcdc);
+        let current_tile_row = (self.window_state.window_line_counter & (BG_TILE_WIDTH - 1)) as u16;
+        let previous_tile_low_address =
+            bg_tile_data_base(previous_lcdc, cached.tile_index) + current_tile_row * TILE_ROW_BYTES;
+        let previous_tile_high_address = previous_tile_low_address + 1;
+        let current_tile_low_address =
+            bg_tile_data_base(current_lcdc, cached.tile_index) + current_tile_row * TILE_ROW_BYTES;
+        let current_tile_high_address = current_tile_low_address + 1;
+        let previous_tile_low = vram.read(previous_tile_low_address as usize).unwrap_or(0);
+        let previous_tile_high = vram.read(previous_tile_high_address as usize).unwrap_or(0);
+        let current_tile_low = vram.read(current_tile_low_address as usize).unwrap_or(0);
+        let current_tile_high = vram.read(current_tile_high_address as usize).unwrap_or(0);
+        let tile_low = if previous_plane_masks.low & bit != 0 {
+            previous_tile_low
+        } else {
+            current_tile_low
+        };
+        let tile_high = if previous_plane_masks.high & bit != 0 {
+            previous_tile_high
+        } else {
+            current_tile_high
+        };
+        bg_tile_pixel_value(tile_low, tile_high, pixel_index)
+    }
+
+    fn compute_window_lcdc4_tiledata_selector_override_from_context(
+        &self,
+        context: PpuRecentBgDotContext,
+        previous_select: BgTileDataSelect,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        if context.source != PpuBgFetcherSource::Window {
+            return None;
+        }
+
+        let previous_plane_masks = window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            context.fetch_x,
+            self.window_state.window_line_counter,
+        )?;
+        let bit = 0x80 >> context.pixel_index;
+        let current_lcdc = self.mode3_register_latches().visible().lcdc;
+        let previous_lcdc = previous_select.apply_to_lcdc(current_lcdc);
+        let current_tile_row = (self.window_state.window_line_counter & (BG_TILE_WIDTH - 1)) as u16;
+        let previous_tile_low_address = bg_tile_data_base(previous_lcdc, context.tile_index)
+            + current_tile_row * TILE_ROW_BYTES;
+        let previous_tile_high_address = previous_tile_low_address + 1;
+        let current_tile_low_address =
+            bg_tile_data_base(current_lcdc, context.tile_index) + current_tile_row * TILE_ROW_BYTES;
+        let current_tile_high_address = current_tile_low_address + 1;
+        let previous_tile_low = vram.read(previous_tile_low_address as usize).unwrap_or(0);
+        let previous_tile_high = vram.read(previous_tile_high_address as usize).unwrap_or(0);
+        let current_tile_low = vram.read(current_tile_low_address as usize).unwrap_or(0);
+        let current_tile_high = vram.read(current_tile_high_address as usize).unwrap_or(0);
+        let tile_low = if previous_plane_masks.low & bit != 0 {
+            previous_tile_low
+        } else {
+            current_tile_low
+        };
+        let tile_high = if previous_plane_masks.high & bit != 0 {
+            previous_tile_high
+        } else {
+            current_tile_high
+        };
+        Some(bg_tile_pixel_value(
+            tile_low,
+            tile_high,
+            context.pixel_index,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_compute_window_lcdc4_tiledata_selector_override_from_context(
+        &self,
+        context: PpuRecentBgDotContext,
+        previous_select: BgTileDataSelect,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        self.compute_window_lcdc4_tiledata_selector_override_from_context(
+            context,
+            previous_select,
+            vram,
+        )
+    }
+
+    fn apply_pending_dmg_window_lcdc4_output_repaint(&mut self, vram: &VramBusView<'_>) {
+        let Some(previous_select) = self.pending_dmg_window_lcdc4_output_repaint.take() else {
+            return;
+        };
+
+        let bg_enabled = self.pixel_transfer_bg_enabled();
+        let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
+        let row_start = self.ly as usize * SCREEN_WIDTH;
+        let visible_limit = usize::from(self.bg_pipeline_state.visible_pixels_output);
+
+        for visible_x in 0..visible_limit {
+            let Some(context) = self.current_scanline_bg_dot_contexts[visible_x] else {
+                continue;
+            };
+            let Some(bg_pixel) = self.compute_window_lcdc4_tiledata_selector_override_from_context(
+                context,
+                previous_select,
+                vram,
+            ) else {
+                continue;
+            };
+
+            self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+            if self.current_scanline_mixed_pixels[visible_x].source != MixedPixelSource::Background
+            {
+                continue;
+            }
+
+            let output_pixel = MixedPixel::background(bg_pixel);
+            let dmg_bg_forced_white =
+                self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+            let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
+                output_pixel.color
+            } else {
+                0
+            };
+            let panel_pixel = if visible_output_driving {
+                if dmg_bg_forced_white {
+                    0
+                } else {
+                    self.map_mixed_pixel_to_panel_shade(output_pixel)
+                }
+            } else {
+                0
+            };
+
+            self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+            self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
+            self.current_scanline_pixels[visible_x] = scanline_pixel;
+            self.framebuffer[row_start + visible_x] = panel_pixel;
+
+            for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
+                if usize::from(dot.visible_x) == visible_x {
+                    dot.pixel = output_pixel;
+                    dot.dmg_bg_forced_white = dmg_bg_forced_white;
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_apply_pending_dmg_window_lcdc4_output_repaint(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
+        self.apply_pending_dmg_window_lcdc4_output_repaint(vram);
     }
 
     pub(super) fn compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
@@ -2242,6 +2485,114 @@ const WINDOW_ACTIVATION_SECOND_TILE_CURRENT_TILEMAP_MASKS: [[u8; 8]; 15] = [
     [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
 ];
 
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_LOW_MASKS: [[u8; 8]; 15] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xE0, 0x10, 0xC8, 0x28, 0xC8, 0x28, 0x10, 0xE0],
+    [0xF0, 0x08, 0xE4, 0x94, 0xE4, 0x94, 0x08, 0xF0],
+    [0x78, 0x84, 0x72, 0x4A, 0x72, 0x4A, 0x84, 0x78],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+    [0x0F, 0x10, 0x2E, 0x29, 0x2E, 0x29, 0x10, 0x0F],
+    [0x07, 0x08, 0x17, 0x14, 0x17, 0x14, 0x08, 0x07],
+    [0x03, 0x04, 0x0B, 0x0A, 0x0B, 0x0A, 0x04, 0x03],
+    [0x01, 0x02, 0x05, 0x05, 0x05, 0x05, 0x02, 0x01],
+    [0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x01, 0x00],
+    [0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_HIGH_MASKS: [[u8; 8]; 15] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+    [0x0F, 0x10, 0x2E, 0x29, 0x2E, 0x29, 0x10, 0x0F],
+    [0x07, 0x08, 0x17, 0x14, 0x17, 0x14, 0x08, 0x07],
+    [0x03, 0x04, 0x0B, 0x0A, 0x0B, 0x0A, 0x04, 0x03],
+    [0x01, 0x02, 0x05, 0x05, 0x05, 0x05, 0x02, 0x01],
+    [0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x01, 0x00],
+    [0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_NEXT_TILE_PREVIOUS_LOW_MASKS: [[u8; 8]; 15] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
+    [0x00, 0x80, 0x40, 0x40, 0x40, 0x40, 0x80, 0x00],
+    [0x80, 0x40, 0x20, 0xA0, 0x20, 0xA0, 0x40, 0x80],
+    [0xC0, 0x20, 0x90, 0x50, 0x90, 0x50, 0x20, 0xC0],
+    [0xE0, 0x10, 0xC8, 0x28, 0xC8, 0x28, 0x10, 0xE0],
+    [0xF0, 0x08, 0xE4, 0x94, 0xE4, 0x94, 0x08, 0xF0],
+    [0x78, 0x84, 0x72, 0x4A, 0x72, 0x4A, 0x84, 0x78],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_NEXT_TILE_PREVIOUS_HIGH_MASKS: [[u8; 8]; 15] = [
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_LOW_MASKS: [[u8; 8]; 15] = [
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_HIGH_MASKS: [[u8; 8]; 15] = [
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
+];
+
 const fn window_activation_tile_current_tilemap_mask(
     fetch_x: u16,
     window_tile_row: u8,
@@ -2262,6 +2613,33 @@ const fn window_activation_tile_current_tilemap_mask(
             128..=143 => Some(0xFF),
             _ => None,
         },
+        _ => None,
+    }
+}
+
+pub(super) const fn window_lcdc4_unsigned_to_signed_previous_plane_masks(
+    fetch_x: u16,
+    window_tile_row: u8,
+) -> Option<PerPlane<u8>> {
+    if window_tile_row < 24 || window_tile_row >= 144 {
+        return None;
+    }
+
+    let block = ((window_tile_row - 24) / 8) as usize;
+    let row = (window_tile_row & 0x07) as usize;
+    match fetch_x {
+        0 => Some(PerPlane::new(
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_LOW_MASKS[block][row],
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_HIGH_MASKS[block][row],
+        )),
+        x if x == BG_TILE_WIDTH as u16 => Some(PerPlane::new(
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_NEXT_TILE_PREVIOUS_LOW_MASKS[block][row],
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_NEXT_TILE_PREVIOUS_HIGH_MASKS[block][row],
+        )),
+        x if x == BG_TILE_WIDTH as u16 * 2 => Some(PerPlane::new(
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_LOW_MASKS[block][row],
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_HIGH_MASKS[block][row],
+        )),
         _ => None,
     }
 }

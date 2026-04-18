@@ -31,6 +31,22 @@ impl Ppu {
         }
     }
 
+    pub(super) fn compute_window_fetch_tile_data_address_with_selector(
+        &self,
+        tile_index: u8,
+        plane: u16,
+        selector: BgTileDataSelect,
+    ) -> u16 {
+        let mut registers = self.mode3_register_latches().visible();
+        registers.lcdc = selector.apply_to_lcdc(registers.lcdc);
+        PpuMode3WindowFetchContext::new(
+            registers,
+            self.window_state.window_line_counter,
+            self.bg_pipeline_state.fetcher.window_tilemap_x,
+        )
+        .tile_data_address(tile_index, plane)
+    }
+
     pub(super) fn maybe_cache_unsigned_bgwin_tile_data_fetch(
         &mut self,
         source: PpuBgFetcherSource,
@@ -63,6 +79,19 @@ impl Ppu {
         source: PpuBgFetcherSource,
         plane: u16,
     ) {
+        if source == PpuBgFetcherSource::Window
+            && plane == 0
+            && self
+                .bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_skip_window_current_low_glitch
+        {
+            self.bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_skip_window_current_low_glitch = false;
+            return;
+        }
+
         let fetch_policy = self.mode3_bgwin_fetch_policy();
         if !fetch_policy.tile_data_selector_changed() {
             return;
