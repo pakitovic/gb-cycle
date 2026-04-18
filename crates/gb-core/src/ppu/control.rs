@@ -1526,6 +1526,9 @@ impl Ppu {
                 .startup_background_tiledata_uses_pipeline_snapshot(),
             self.bg_pipeline_state
                 .startup_background_tileindex_reads_on_stage_one(),
+            self.bg_pipeline_state
+                .fetcher
+                .same_cycle_window_tilemap_lcdc_hold,
         )
     }
 

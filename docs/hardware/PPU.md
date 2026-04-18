@@ -287,6 +287,7 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 ## Window tilemap and fetch baseline
 
 - The window tilemap should be selected by `LCDC.6`, independent of the BG tilemap selection.
+- In DMG mode, paired live `LCDC.6` writes during window activation can leave explicit old/new tilemap selector seams on the first few activated window tiles; keep that behavior in fetcher/FIFO ownership rather than in framebuffer post-processing.
 - Window tile data addressing should follow `LCDC.4`, matching BG tile addressing rules while remaining separate from OBJ tile handling.
 - The fetcher should have explicit BG and window fetch modes rather than reusing BG fetch implicitly through altered coordinates.
 - Window tile X should derive from a window-local X counter, not from `SCX`.
@@ -496,7 +497,7 @@ For DMG bring-up and PPU refactor closure, use the following finer-grained matur
 | 39 | Mode 3 LCDC OBJ toggles | mealybug-tearoom-tests | `ppu/m3_lcdc_obj_size_change_scx.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.2` size change with `SCX` discard | 152 |
 | 40 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_window_timing.gb` | PPU | VERY HIGH | Mode `3`, window start, fetcher restart | 162 |
 | 41 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_window_timing_wx_0.gb` | PPU | VERY HIGH | Mode `3`, window start with `WX = 0` edge case | 163 |
-| 42 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_win_map_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.6` window map | 157 |
+| 42 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_win_map_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.6` window map | 160 |
 | 43 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_tile_sel_win_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.4` with window fetch | 154 |
 | 44 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_win_en_change_multiple.gb` | PPU | VERY HIGH | Mode `3`, `LCDC.5` toggles, window restart | 155 |
 | 45 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_win_en_change_multiple_wx.gb` | PPU | VERY HIGH | Mode `3`, `LCDC.5` plus `WX` retarget | 156 |

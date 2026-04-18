@@ -32,7 +32,8 @@ fn mode3_latch_helpers_expose_the_expected_register_snapshots_and_accessors() {
     assert_eq!(latches.pipeline(), pipeline);
     assert_eq!(latches.bg_fetch_registers(false), visible);
     assert_eq!(latches.bg_fetch_registers(true), pipeline);
-    assert_eq!(latches.window_fetch_registers(), visible);
+    assert_eq!(latches.window_fetch_registers(false), visible);
+    assert_eq!(latches.window_fetch_registers(true), pipeline);
     assert_eq!(
         latches.window_activation_registers(ConsoleModel::Dmg),
         pipeline

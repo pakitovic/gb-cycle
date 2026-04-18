@@ -203,7 +203,15 @@ impl Ppu {
                 PpuMode3LiveBackgroundRegister::Lcdc
             ) {
                 self.bg_pipeline_state
-                    .mark_live_lcdc3_write_while_fifo_visible(write_context);
+                    .latch_window_activation_tilemap_select_if_unset(write_context);
+                self.bg_pipeline_state
+                    .mark_live_lcdc3_write_while_fifo_visible(
+                        write_context,
+                        self.bg_pipeline_state.fetcher,
+                        self.window_state.window_line_counter,
+                    );
+                self.bg_pipeline_state
+                    .apply_window_activation_tilemap_select_latch_to_seam_slices();
                 self.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
                 self.apply_dmg_lcdc4_live_bg_tiledata_write(write_context);
                 self.apply_dmg_lcdc0_live_bg_enable_write(write_context);

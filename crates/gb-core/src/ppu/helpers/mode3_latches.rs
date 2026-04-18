@@ -47,8 +47,15 @@ impl PpuMode3RegisterLatches {
         }
     }
 
-    pub(in crate::ppu) const fn window_fetch_registers(self) -> PpuVisibleRegisters {
-        self.visible
+    pub(in crate::ppu) const fn window_fetch_registers(
+        self,
+        use_pipeline_snapshot: bool,
+    ) -> PpuVisibleRegisters {
+        if use_pipeline_snapshot {
+            self.pipeline
+        } else {
+            self.visible
+        }
     }
 
     pub(in crate::ppu) const fn window_activation_registers(

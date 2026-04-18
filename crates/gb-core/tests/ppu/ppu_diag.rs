@@ -99,13 +99,37 @@ fn framebuffer_row_prefix(ppu: &gb_core::Ppu, row: usize, len: usize) -> String 
         .collect()
 }
 
+fn bg_fifo_cached_prefix(snapshot: &PpuSnapshot, len: usize) -> String {
+    snapshot
+        .bg_fifo_cached_pixels
+        .iter()
+        .take(len)
+        .map(|cached| match cached {
+            None => "-".to_string(),
+            Some(cached) => format!(
+                "{:?}:{:?}:fx{}:px{}:tm{}:tda{:#06X}",
+                cached.source,
+                cached.origin,
+                cached.fetch_x,
+                cached.pixel_index,
+                u8::from(cached.needs_live_tilemap_refetch),
+                cached.tile_data_address,
+            ),
+        })
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
 fn format_window_trace_snapshot(snapshot: &PpuSnapshot) -> String {
     format!(
         concat!(
             "ly={} dot={} mode={:?} vis={} transfer_x={} started={} ",
-            "fetcher={:?} stage={:?}/{} transfer_kind={:?} wx(vis/pipeline)={:#04X}/{:#04X} ",
+            "fetcher={:?} stage={:?}/{} transfer={:?}/{:?}/{:?}/{:?} ",
+            "wx(vis/pipeline)={:#04X}/{:#04X} ",
             "lcdc(vis/pipeline)={:#04X}/{:#04X} bg_map(win/bg)={}/{} ",
-            "tilemap={:#06X} bgp(vis/pipeline)={:#04X}/{:#04X} bgp_override={:?}/{} pixels={} mixed={}",
+            "tilemap={:#06X} tiledata={:#06X} tile_index={:#04X} tile_low={:#04X} tile_high={:#04X} ",
+            "bgp(vis/pipeline)={:#04X}/{:#04X} bgp_override={:?}/{} ",
+            "fifo_len={} fifo_cached={} pixels={} mixed={}",
         ),
         snapshot.ly,
         snapshot.line_dot,
@@ -116,6 +140,9 @@ fn format_window_trace_snapshot(snapshot: &PpuSnapshot) -> String {
         snapshot.bg_fetcher_source,
         snapshot.bg_fetcher_stage,
         snapshot.bg_fetcher_stage_dot,
+        snapshot.bg_current_transfer_lane,
+        snapshot.bg_current_transfer_source_window,
+        snapshot.bg_current_transfer_backing,
         snapshot.bg_current_transfer_kind,
         snapshot.visible_wx,
         snapshot.pipeline_wx,
@@ -124,12 +151,69 @@ fn format_window_trace_snapshot(snapshot: &PpuSnapshot) -> String {
         (snapshot.visible_lcdc & 0x40) != 0,
         (snapshot.visible_lcdc & 0x08) != 0,
         snapshot.bg_fetcher_tile_map_address,
+        snapshot.bg_fetcher_tile_data_address,
+        snapshot.bg_fetcher_tile_index,
+        snapshot.bg_fetcher_tile_low,
+        snapshot.bg_fetcher_tile_high,
         snapshot.visible_bgp,
         snapshot.pipeline_bgp,
         snapshot.dmg_bgp_cpu_commit_output_palette_override,
         snapshot.dmg_bgp_cpu_commit_output_delay_pixels_remaining,
+        snapshot.bg_fifo_pixels.len(),
+        bg_fifo_cached_prefix(snapshot, 8),
         scanline_prefix(snapshot, 24),
         mixed_color_prefix(snapshot, 24),
+    )
+}
+
+fn format_window_map_samples(machine: &mut Machine<gb_core::TraceSummaryBuffer>) -> String {
+    let mut bus = |address| machine.read_bus(address);
+    format!(
+        "9800=[{:02X},{:02X},{:02X},{:02X}] 9C00=[{:02X},{:02X},{:02X},{:02X}] tile0=[{:02X},{:02X},{:02X},{:02X},{:02X},{:02X},{:02X},{:02X}] tile1=[{:02X},{:02X},{:02X},{:02X},{:02X},{:02X},{:02X},{:02X}]",
+        bus(0x9860),
+        bus(0x9861),
+        bus(0x9862),
+        bus(0x9863),
+        bus(0x9C60),
+        bus(0x9C61),
+        bus(0x9C62),
+        bus(0x9C63),
+        bus(0x9000),
+        bus(0x9001),
+        bus(0x9002),
+        bus(0x9003),
+        bus(0x9004),
+        bus(0x9005),
+        bus(0x9006),
+        bus(0x9007),
+        bus(0x9010),
+        bus(0x9011),
+        bus(0x9012),
+        bus(0x9013),
+        bus(0x9014),
+        bus(0x9015),
+        bus(0x9016),
+        bus(0x9017),
+    )
+}
+
+fn format_window_map_row_samples(
+    machine: &mut Machine<gb_core::TraceSummaryBuffer>,
+    map_row: u8,
+) -> String {
+    let row_offset = u16::from(map_row) * 32;
+    let mut bus = |address| machine.read_bus(address);
+    format!(
+        "row={} 9800=[{:02X},{:02X},{:02X},{:02X}] 9C00=[{:02X},{:02X},{:02X},{:02X}]",
+        map_row,
+        bus(0x9800 + row_offset),
+        bus(0x9801 + row_offset),
+        bus(0x9802 + row_offset),
+        bus(0x9803 + row_offset),
+        bus(0x9C00 + row_offset),
+        bus(0x9C01 + row_offset),
+        bus(0x9C02 + row_offset),
+        bus(0x9C03 + row_offset),
     )
 }
 
@@ -1284,6 +1368,671 @@ fn diag_m3_lcdc_win_map_change_line8_trace() {
         eprintln!("  {write}");
     }
     eprintln!("last_completed_line8_trace:");
+    for entry in &last_completed_line_trace {
+        eprintln!("  {entry}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_map_change_line16_trace() {
+    let mut machine = load_mealybug_window_diag_machine("m3_lcdc_win_map_change");
+    const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
+
+    let mut stepped_t_cycles = 0_u64;
+    let mut frame_index = 0_u32;
+    let mut previous_at_frame_origin = true;
+    let mut previous_ly = machine.ppu().snapshot().ly;
+
+    let mut current_line_writes = Vec::new();
+    let mut current_line_trace = Vec::new();
+    let mut current_line_summary = None;
+
+    let mut last_completed_line_summary = None;
+    let mut last_completed_line_writes = Vec::new();
+    let mut last_completed_line_trace = Vec::new();
+
+    while stepped_t_cycles < RUNNER_CAPTURE_T_CYCLES {
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        let snapshot = machine.ppu().snapshot();
+        let at_frame_origin = snapshot.ly == 0 && snapshot.line_dot == 0;
+        if at_frame_origin && !previous_at_frame_origin {
+            frame_index = frame_index.wrapping_add(1);
+        }
+        previous_at_frame_origin = at_frame_origin;
+
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Write
+            && matches!(
+                event.access_address,
+                Some(0xFF40 | 0xFF47 | 0xFF4A | 0xFF4B)
+            )
+            && snapshot.ly == 16
+        {
+            let address = event
+                .access_address
+                .expect("filtered MMIO write should have address");
+            current_line_writes.push(format!(
+                "frame={} write {:04X}={:02X} at ly={} dot={} mode={:?} vis={}",
+                frame_index,
+                address,
+                machine.read_bus(address),
+                snapshot.ly,
+                snapshot.line_dot,
+                snapshot.mode,
+                snapshot.visible_pixels_output,
+            ));
+        }
+
+        if snapshot.ly == 16 {
+            if snapshot.mode == PpuAccessMode::Drawing
+                && snapshot.line_dot >= 80
+                && snapshot.visible_pixels_output <= 32
+            {
+                current_line_trace.push(format!(
+                    "frame={} {}",
+                    frame_index,
+                    format_window_trace_snapshot(&snapshot)
+                ));
+            }
+
+            if snapshot.mode == PpuAccessMode::HBlank {
+                let pixel_prefix = scanline_prefix(&snapshot, 32);
+                let mixed_prefix = mixed_color_prefix(&snapshot, 32);
+                let framebuffer_prefix = framebuffer_row_prefix(machine.ppu(), 16, 32);
+                let row_start = 16 * 160;
+                let row_end = row_start + 160;
+                let first_nonzero_pixel = machine.ppu().framebuffer()[row_start..row_end]
+                    .iter()
+                    .position(|pixel| *pixel != 0);
+                current_line_summary = Some(format!(
+                    "frame={} line16_pixels={} line16_mixed={} line16_framebuffer={} first_nonzero_framebuffer={:?} window_started={} lcdc(vis/pipeline)={:#04X}/{:#04X}",
+                    frame_index,
+                    pixel_prefix,
+                    mixed_prefix,
+                    framebuffer_prefix,
+                    first_nonzero_pixel,
+                    snapshot.window_started_this_line,
+                    snapshot.visible_lcdc,
+                    snapshot.pipeline_lcdc,
+                ));
+            }
+        }
+
+        if previous_ly == 16 && snapshot.ly != 16 {
+            last_completed_line_summary = current_line_summary.take();
+            last_completed_line_writes.clone_from(&current_line_writes);
+            last_completed_line_trace.clone_from(&current_line_trace);
+            current_line_writes.clear();
+            current_line_trace.clear();
+        }
+
+        previous_ly = snapshot.ly;
+    }
+
+    eprintln!("capture_t_cycles={stepped_t_cycles}");
+    eprintln!("last_completed_line16_summary: {last_completed_line_summary:?}");
+    eprintln!("last_completed_line16_register_writes:");
+    for write in &last_completed_line_writes {
+        eprintln!("  {write}");
+    }
+    eprintln!("last_completed_line16_trace:");
+    for entry in &last_completed_line_trace {
+        eprintln!("  {entry}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_map_change_line24_trace() {
+    let mut machine = load_mealybug_window_diag_machine("m3_lcdc_win_map_change");
+    const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
+
+    let mut stepped_t_cycles = 0_u64;
+    let mut frame_index = 0_u32;
+    let mut previous_at_frame_origin = true;
+    let mut previous_ly = machine.ppu().snapshot().ly;
+
+    let mut current_line_writes = Vec::new();
+    let mut current_line_trace = Vec::new();
+    let mut current_line_summary = None;
+
+    let mut last_completed_line_summary = None;
+    let mut last_completed_line_writes = Vec::new();
+    let mut last_completed_line_trace = Vec::new();
+
+    while stepped_t_cycles < RUNNER_CAPTURE_T_CYCLES {
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        let snapshot = machine.ppu().snapshot();
+        let at_frame_origin = snapshot.ly == 0 && snapshot.line_dot == 0;
+        if at_frame_origin && !previous_at_frame_origin {
+            frame_index = frame_index.wrapping_add(1);
+        }
+        previous_at_frame_origin = at_frame_origin;
+
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Write
+            && matches!(
+                event.access_address,
+                Some(0xFF40 | 0xFF47 | 0xFF4A | 0xFF4B)
+            )
+            && snapshot.ly == 24
+        {
+            let address = event
+                .access_address
+                .expect("filtered MMIO write should have address");
+            current_line_writes.push(format!(
+                "frame={} write {:04X}={:02X} at ly={} dot={} mode={:?} vis={}",
+                frame_index,
+                address,
+                machine.read_bus(address),
+                snapshot.ly,
+                snapshot.line_dot,
+                snapshot.mode,
+                snapshot.visible_pixels_output,
+            ));
+        }
+
+        if snapshot.ly == 24 {
+            if snapshot.mode == PpuAccessMode::Drawing
+                && snapshot.line_dot >= 80
+                && snapshot.visible_pixels_output <= 32
+            {
+                current_line_trace.push(format!(
+                    "frame={} {}",
+                    frame_index,
+                    format_window_trace_snapshot(&snapshot)
+                ));
+            }
+
+            if snapshot.mode == PpuAccessMode::HBlank {
+                let pixel_prefix = scanline_prefix(&snapshot, 32);
+                let mixed_prefix = mixed_color_prefix(&snapshot, 32);
+                let framebuffer_prefix = framebuffer_row_prefix(machine.ppu(), 24, 32);
+                let row_start = 24 * 160;
+                let row_end = row_start + 160;
+                let first_nonzero_pixel = machine.ppu().framebuffer()[row_start..row_end]
+                    .iter()
+                    .position(|pixel| *pixel != 0);
+                current_line_summary = Some(format!(
+                    "frame={} line24_pixels={} line24_mixed={} line24_framebuffer={} first_nonzero_framebuffer={:?} window_started={} lcdc(vis/pipeline)={:#04X}/{:#04X} {}",
+                    frame_index,
+                    pixel_prefix,
+                    mixed_prefix,
+                    framebuffer_prefix,
+                    first_nonzero_pixel,
+                    snapshot.window_started_this_line,
+                    snapshot.visible_lcdc,
+                    snapshot.pipeline_lcdc,
+                    format_window_map_samples(&mut machine),
+                ));
+            }
+        }
+
+        if previous_ly == 24 && snapshot.ly != 24 {
+            last_completed_line_summary = current_line_summary.take();
+            last_completed_line_writes.clone_from(&current_line_writes);
+            last_completed_line_trace.clone_from(&current_line_trace);
+            current_line_writes.clear();
+            current_line_trace.clear();
+        }
+
+        previous_ly = snapshot.ly;
+    }
+
+    eprintln!("capture_t_cycles={stepped_t_cycles}");
+    eprintln!("last_completed_line24_summary: {last_completed_line_summary:?}");
+    eprintln!("last_completed_line24_register_writes:");
+    for write in &last_completed_line_writes {
+        eprintln!("  {write}");
+    }
+    eprintln!("last_completed_line24_trace:");
+    for entry in &last_completed_line_trace {
+        eprintln!("  {entry}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_map_change_line25_trace() {
+    let mut machine = load_mealybug_window_diag_machine("m3_lcdc_win_map_change");
+    const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
+
+    let mut stepped_t_cycles = 0_u64;
+    let mut frame_index = 0_u32;
+    let mut previous_at_frame_origin = true;
+    let mut previous_ly = machine.ppu().snapshot().ly;
+
+    let mut current_line_writes = Vec::new();
+    let mut current_line_trace = Vec::new();
+    let mut current_line_summary = None;
+
+    let mut last_completed_line_summary = None;
+    let mut last_completed_line_writes = Vec::new();
+    let mut last_completed_line_trace = Vec::new();
+
+    while stepped_t_cycles < RUNNER_CAPTURE_T_CYCLES {
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        let snapshot = machine.ppu().snapshot();
+        let at_frame_origin = snapshot.ly == 0 && snapshot.line_dot == 0;
+        if at_frame_origin && !previous_at_frame_origin {
+            frame_index = frame_index.wrapping_add(1);
+        }
+        previous_at_frame_origin = at_frame_origin;
+
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Write
+            && matches!(
+                event.access_address,
+                Some(0xFF40 | 0xFF47 | 0xFF4A | 0xFF4B)
+            )
+            && snapshot.ly == 25
+        {
+            let address = event
+                .access_address
+                .expect("filtered MMIO write should have address");
+            current_line_writes.push(format!(
+                "frame={} write {:04X}={:02X} at ly={} dot={} mode={:?} vis={}",
+                frame_index,
+                address,
+                machine.read_bus(address),
+                snapshot.ly,
+                snapshot.line_dot,
+                snapshot.mode,
+                snapshot.visible_pixels_output,
+            ));
+        }
+
+        if snapshot.ly == 25 {
+            if snapshot.mode == PpuAccessMode::Drawing
+                && snapshot.line_dot >= 80
+                && snapshot.visible_pixels_output <= 32
+            {
+                current_line_trace.push(format!(
+                    "frame={} {}",
+                    frame_index,
+                    format_window_trace_snapshot(&snapshot)
+                ));
+            }
+
+            if snapshot.mode == PpuAccessMode::HBlank {
+                let pixel_prefix = scanline_prefix(&snapshot, 32);
+                let mixed_prefix = mixed_color_prefix(&snapshot, 32);
+                let framebuffer_prefix = framebuffer_row_prefix(machine.ppu(), 25, 32);
+                let row_start = 25 * 160;
+                let row_end = row_start + 160;
+                let first_nonzero_pixel = machine.ppu().framebuffer()[row_start..row_end]
+                    .iter()
+                    .position(|pixel| *pixel != 0);
+                current_line_summary = Some(format!(
+                    "frame={} line25_pixels={} line25_mixed={} line25_framebuffer={} first_nonzero_framebuffer={:?} window_started={} lcdc(vis/pipeline)={:#04X}/{:#04X} {}",
+                    frame_index,
+                    pixel_prefix,
+                    mixed_prefix,
+                    framebuffer_prefix,
+                    first_nonzero_pixel,
+                    snapshot.window_started_this_line,
+                    snapshot.visible_lcdc,
+                    snapshot.pipeline_lcdc,
+                    format_window_map_samples(&mut machine),
+                ));
+            }
+        }
+
+        if previous_ly == 25 && snapshot.ly != 25 {
+            last_completed_line_summary = current_line_summary.take();
+            last_completed_line_writes.clone_from(&current_line_writes);
+            last_completed_line_trace.clone_from(&current_line_trace);
+            current_line_writes.clear();
+            current_line_trace.clear();
+        }
+
+        previous_ly = snapshot.ly;
+    }
+
+    eprintln!("capture_t_cycles={stepped_t_cycles}");
+    eprintln!("last_completed_line25_summary: {last_completed_line_summary:?}");
+    eprintln!("last_completed_line25_register_writes:");
+    for write in &last_completed_line_writes {
+        eprintln!("  {write}");
+    }
+    eprintln!("last_completed_line25_trace:");
+    for entry in &last_completed_line_trace {
+        eprintln!("  {entry}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_map_change_line32_trace() {
+    let mut machine = load_mealybug_window_diag_machine("m3_lcdc_win_map_change");
+    const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
+
+    let mut stepped_t_cycles = 0_u64;
+    let mut frame_index = 0_u32;
+    let mut previous_at_frame_origin = true;
+    let mut previous_ly = machine.ppu().snapshot().ly;
+
+    let mut current_line_writes = Vec::new();
+    let mut current_line_trace = Vec::new();
+    let mut current_line_summary = None;
+
+    let mut last_completed_line_summary = None;
+    let mut last_completed_line_writes = Vec::new();
+    let mut last_completed_line_trace = Vec::new();
+
+    while stepped_t_cycles < RUNNER_CAPTURE_T_CYCLES {
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        let snapshot = machine.ppu().snapshot();
+        let at_frame_origin = snapshot.ly == 0 && snapshot.line_dot == 0;
+        if at_frame_origin && !previous_at_frame_origin {
+            frame_index = frame_index.wrapping_add(1);
+        }
+        previous_at_frame_origin = at_frame_origin;
+
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Write
+            && matches!(
+                event.access_address,
+                Some(0xFF40 | 0xFF47 | 0xFF4A | 0xFF4B)
+            )
+            && snapshot.ly == 32
+        {
+            let address = event
+                .access_address
+                .expect("filtered MMIO write should have address");
+            current_line_writes.push(format!(
+                "frame={} write {:04X}={:02X} at ly={} dot={} mode={:?} vis={}",
+                frame_index,
+                address,
+                machine.read_bus(address),
+                snapshot.ly,
+                snapshot.line_dot,
+                snapshot.mode,
+                snapshot.visible_pixels_output,
+            ));
+        }
+
+        if snapshot.ly == 32 {
+            if snapshot.mode == PpuAccessMode::Drawing
+                && snapshot.line_dot >= 80
+                && snapshot.visible_pixels_output <= 32
+            {
+                current_line_trace.push(format!(
+                    "frame={} {}",
+                    frame_index,
+                    format_window_trace_snapshot(&snapshot)
+                ));
+            }
+
+            if snapshot.mode == PpuAccessMode::HBlank {
+                let pixel_prefix = scanline_prefix(&snapshot, 32);
+                let mixed_prefix = mixed_color_prefix(&snapshot, 32);
+                let framebuffer_prefix = framebuffer_row_prefix(machine.ppu(), 32, 32);
+                let row_start = 32 * 160;
+                let row_end = row_start + 160;
+                let first_nonzero_pixel = machine.ppu().framebuffer()[row_start..row_end]
+                    .iter()
+                    .position(|pixel| *pixel != 0);
+                current_line_summary = Some(format!(
+                    "frame={} line32_pixels={} line32_mixed={} line32_framebuffer={} first_nonzero_framebuffer={:?} window_started={} lcdc(vis/pipeline)={:#04X}/{:#04X} {}",
+                    frame_index,
+                    pixel_prefix,
+                    mixed_prefix,
+                    framebuffer_prefix,
+                    first_nonzero_pixel,
+                    snapshot.window_started_this_line,
+                    snapshot.visible_lcdc,
+                    snapshot.pipeline_lcdc,
+                    format_window_map_row_samples(&mut machine, 4),
+                ));
+            }
+        }
+
+        if previous_ly == 32 && snapshot.ly != 32 {
+            last_completed_line_summary = current_line_summary.take();
+            last_completed_line_writes.clone_from(&current_line_writes);
+            last_completed_line_trace.clone_from(&current_line_trace);
+            current_line_writes.clear();
+            current_line_trace.clear();
+        }
+
+        previous_ly = snapshot.ly;
+    }
+
+    eprintln!("capture_t_cycles={stepped_t_cycles}");
+    eprintln!("last_completed_line32_summary: {last_completed_line_summary:?}");
+    eprintln!("last_completed_line32_register_writes:");
+    for write in &last_completed_line_writes {
+        eprintln!("  {write}");
+    }
+    eprintln!("last_completed_line32_trace:");
+    for entry in &last_completed_line_trace {
+        eprintln!("  {entry}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_map_change_line40_trace() {
+    let mut machine = load_mealybug_window_diag_machine("m3_lcdc_win_map_change");
+    const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
+
+    let mut stepped_t_cycles = 0_u64;
+    let mut frame_index = 0_u32;
+    let mut previous_at_frame_origin = true;
+    let mut previous_ly = machine.ppu().snapshot().ly;
+
+    let mut current_line_writes = Vec::new();
+    let mut current_line_trace = Vec::new();
+    let mut current_line_summary = None;
+
+    let mut last_completed_line_summary = None;
+    let mut last_completed_line_writes = Vec::new();
+    let mut last_completed_line_trace = Vec::new();
+
+    while stepped_t_cycles < RUNNER_CAPTURE_T_CYCLES {
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        let snapshot = machine.ppu().snapshot();
+        let at_frame_origin = snapshot.ly == 0 && snapshot.line_dot == 0;
+        if at_frame_origin && !previous_at_frame_origin {
+            frame_index = frame_index.wrapping_add(1);
+        }
+        previous_at_frame_origin = at_frame_origin;
+
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Write
+            && matches!(
+                event.access_address,
+                Some(0xFF40 | 0xFF47 | 0xFF4A | 0xFF4B)
+            )
+            && snapshot.ly == 40
+        {
+            let address = event
+                .access_address
+                .expect("filtered MMIO write should have address");
+            current_line_writes.push(format!(
+                "frame={} write {:04X}={:02X} at ly={} dot={} mode={:?} vis={}",
+                frame_index,
+                address,
+                machine.read_bus(address),
+                snapshot.ly,
+                snapshot.line_dot,
+                snapshot.mode,
+                snapshot.visible_pixels_output,
+            ));
+        }
+
+        if snapshot.ly == 40 {
+            if snapshot.mode == PpuAccessMode::Drawing
+                && snapshot.line_dot >= 80
+                && snapshot.visible_pixels_output <= 32
+            {
+                current_line_trace.push(format!(
+                    "frame={} {}",
+                    frame_index,
+                    format_window_trace_snapshot(&snapshot)
+                ));
+            }
+
+            if snapshot.mode == PpuAccessMode::HBlank {
+                let pixel_prefix = scanline_prefix(&snapshot, 32);
+                let mixed_prefix = mixed_color_prefix(&snapshot, 32);
+                let framebuffer_prefix = framebuffer_row_prefix(machine.ppu(), 40, 32);
+                let row_start = 40 * 160;
+                let row_end = row_start + 160;
+                let first_nonzero_pixel = machine.ppu().framebuffer()[row_start..row_end]
+                    .iter()
+                    .position(|pixel| *pixel != 0);
+                current_line_summary = Some(format!(
+                    "frame={} line40_pixels={} line40_mixed={} line40_framebuffer={} first_nonzero_framebuffer={:?} window_started={} lcdc(vis/pipeline)={:#04X}/{:#04X} {}",
+                    frame_index,
+                    pixel_prefix,
+                    mixed_prefix,
+                    framebuffer_prefix,
+                    first_nonzero_pixel,
+                    snapshot.window_started_this_line,
+                    snapshot.visible_lcdc,
+                    snapshot.pipeline_lcdc,
+                    format_window_map_row_samples(&mut machine, 5),
+                ));
+            }
+        }
+
+        if previous_ly == 40 && snapshot.ly != 40 {
+            last_completed_line_summary = current_line_summary.take();
+            last_completed_line_writes.clone_from(&current_line_writes);
+            last_completed_line_trace.clone_from(&current_line_trace);
+            current_line_writes.clear();
+            current_line_trace.clear();
+        }
+
+        previous_ly = snapshot.ly;
+    }
+
+    eprintln!("capture_t_cycles={stepped_t_cycles}");
+    eprintln!("last_completed_line40_summary: {last_completed_line_summary:?}");
+    eprintln!("last_completed_line40_register_writes:");
+    for write in &last_completed_line_writes {
+        eprintln!("  {write}");
+    }
+    eprintln!("last_completed_line40_trace:");
+    for entry in &last_completed_line_trace {
+        eprintln!("  {entry}");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_lcdc_win_map_change_line64_trace() {
+    let mut machine = load_mealybug_window_diag_machine("m3_lcdc_win_map_change");
+    const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
+
+    let mut stepped_t_cycles = 0_u64;
+    let mut frame_index = 0_u32;
+    let mut previous_at_frame_origin = true;
+    let mut previous_ly = machine.ppu().snapshot().ly;
+
+    let mut current_line_writes = Vec::new();
+    let mut current_line_trace = Vec::new();
+    let mut current_line_summary = None;
+
+    let mut last_completed_line_summary = None;
+    let mut last_completed_line_writes = Vec::new();
+    let mut last_completed_line_trace = Vec::new();
+
+    while stepped_t_cycles < RUNNER_CAPTURE_T_CYCLES {
+        machine.step_t_cycle();
+        stepped_t_cycles += 1;
+        let snapshot = machine.ppu().snapshot();
+        let at_frame_origin = snapshot.ly == 0 && snapshot.line_dot == 0;
+        if at_frame_origin && !previous_at_frame_origin {
+            frame_index = frame_index.wrapping_add(1);
+        }
+        previous_at_frame_origin = at_frame_origin;
+
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Write
+            && matches!(
+                event.access_address,
+                Some(0xFF40 | 0xFF47 | 0xFF4A | 0xFF4B)
+            )
+            && snapshot.ly == 64
+        {
+            let address = event
+                .access_address
+                .expect("filtered MMIO write should have address");
+            current_line_writes.push(format!(
+                "frame={} write {:04X}={:02X} at ly={} dot={} mode={:?} vis={}",
+                frame_index,
+                address,
+                machine.read_bus(address),
+                snapshot.ly,
+                snapshot.line_dot,
+                snapshot.mode,
+                snapshot.visible_pixels_output,
+            ));
+        }
+
+        if snapshot.ly == 64 {
+            if snapshot.mode == PpuAccessMode::Drawing
+                && snapshot.line_dot >= 80
+                && snapshot.visible_pixels_output <= 32
+            {
+                current_line_trace.push(format!(
+                    "frame={} {}",
+                    frame_index,
+                    format_window_trace_snapshot(&snapshot)
+                ));
+            }
+
+            if snapshot.mode == PpuAccessMode::HBlank {
+                let pixel_prefix = scanline_prefix(&snapshot, 32);
+                let mixed_prefix = mixed_color_prefix(&snapshot, 32);
+                let framebuffer_prefix = framebuffer_row_prefix(machine.ppu(), 64, 32);
+                let row_start = 64 * 160;
+                let row_end = row_start + 160;
+                let first_nonzero_pixel = machine.ppu().framebuffer()[row_start..row_end]
+                    .iter()
+                    .position(|pixel| *pixel != 0);
+                current_line_summary = Some(format!(
+                    "frame={} line64_pixels={} line64_mixed={} line64_framebuffer={} first_nonzero_framebuffer={:?} window_started={} lcdc(vis/pipeline)={:#04X}/{:#04X} {}",
+                    frame_index,
+                    pixel_prefix,
+                    mixed_prefix,
+                    framebuffer_prefix,
+                    first_nonzero_pixel,
+                    snapshot.window_started_this_line,
+                    snapshot.visible_lcdc,
+                    snapshot.pipeline_lcdc,
+                    format_window_map_row_samples(&mut machine, 8),
+                ));
+            }
+        }
+
+        if previous_ly == 64 && snapshot.ly != 64 {
+            last_completed_line_summary = current_line_summary.take();
+            last_completed_line_writes.clone_from(&current_line_writes);
+            last_completed_line_trace.clone_from(&current_line_trace);
+            current_line_writes.clear();
+            current_line_trace.clear();
+        }
+
+        previous_ly = snapshot.ly;
+    }
+
+    eprintln!("capture_t_cycles={stepped_t_cycles}");
+    eprintln!("last_completed_line64_summary: {last_completed_line_summary:?}");
+    eprintln!("last_completed_line64_register_writes:");
+    for write in &last_completed_line_writes {
+        eprintln!("  {write}");
+    }
+    eprintln!("last_completed_line64_trace:");
     for entry in &last_completed_line_trace {
         eprintln!("  {entry}");
     }

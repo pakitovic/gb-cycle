@@ -337,6 +337,7 @@ pub(in crate::ppu) struct PpuMode3BgWinFetchPolicy {
     background_tilemap_uses_pipeline_snapshot: bool,
     background_tiledata_uses_pipeline_snapshot: bool,
     background_tileindex_reads_on_stage_one: bool,
+    window_tilemap_uses_pipeline_snapshot: bool,
 }
 
 impl PpuMode3BgWinFetchPolicy {
@@ -346,6 +347,7 @@ impl PpuMode3BgWinFetchPolicy {
         background_tilemap_uses_pipeline_snapshot: bool,
         background_tiledata_uses_pipeline_snapshot: bool,
         background_tileindex_reads_on_stage_one: bool,
+        window_tilemap_uses_pipeline_snapshot: bool,
     ) -> Self {
         Self {
             register_latches,
@@ -353,6 +355,7 @@ impl PpuMode3BgWinFetchPolicy {
             background_tilemap_uses_pipeline_snapshot,
             background_tiledata_uses_pipeline_snapshot,
             background_tileindex_reads_on_stage_one,
+            window_tilemap_uses_pipeline_snapshot,
         }
     }
 
@@ -376,11 +379,12 @@ impl PpuMode3BgWinFetchPolicy {
         window_line_counter: u8,
         window_tilemap_x: u8,
     ) -> PpuMode3WindowFetchContext {
-        let mut registers = self.register_latches.window_fetch_registers();
-        if self.console_model.is_dmg_family() {
-            registers.lcdc = self.register_latches.pipeline().lcdc;
-        }
-        PpuMode3WindowFetchContext::new(registers, window_line_counter, window_tilemap_x)
+        PpuMode3WindowFetchContext::new(
+            self.register_latches
+                .window_fetch_registers(self.window_tilemap_uses_pipeline_snapshot),
+            window_line_counter,
+            window_tilemap_x,
+        )
     }
 
     pub(in crate::ppu) fn tile_data_selector_changed(self) -> bool {
@@ -651,6 +655,9 @@ impl PpuMode3LiveBackgroundWriteEffects {
                 fetcher.stage,
                 PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
             );
+        let window_tilemap_changed = matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
+            && write_context.bgwin_tilemap_select_changed(PpuBgFetcherSource::Window)
+            && window_tile_data_fetch;
         let window_tiledata_changed = matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
             && write_context.bg_window_tile_data_select_changed()
             && window_tile_data_fetch;
@@ -669,6 +676,7 @@ impl PpuMode3LiveBackgroundWriteEffects {
                     fetcher.stage,
                     PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
                 )
+                || window_tilemap_changed
                 || scy_tilemap_row_changed,
             tilemap_full_refetch: false,
             tile_data_refetch: window_tiledata_changed || scy_tile_data_row_changed,
@@ -697,6 +705,7 @@ impl PpuMode3LiveBackgroundWriteEffects {
                         fetcher.stage,
                         PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
                     )
+                || window_tilemap_changed
                 || scy_tilemap_row_changed,
             fetcher_tilemap_full_refetch_on_push: matches!(
                 register,

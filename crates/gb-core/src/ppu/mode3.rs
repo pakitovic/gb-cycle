@@ -311,6 +311,9 @@ impl Ppu {
                         .fetcher
                         .rewind_bg_resume_after_first_tile_index_dot = false;
                 }
+                self.bg_pipeline_state
+                    .fetcher
+                    .same_cycle_window_tilemap_lcdc_hold = false;
                 self.bg_pipeline_state.fetcher.stage_dot = 1;
             }
             (PpuBgFetcherStage::TileIndex, 1) => {
@@ -842,6 +845,11 @@ impl Ppu {
                 cached.pixel_index,
                 vram,
             );
+        let window_activation_tilemap_override = self.compute_window_activation_tilemap_override(
+            cached.cached,
+            cached.pixel_index,
+            vram,
+        );
         let next_tile_output_retarget = self
             .compute_startup_visible_tile3_scx_boundary_next_tile_output_retarget_pixel(
                 cached.cached,
@@ -878,6 +886,7 @@ impl Ppu {
         ) else {
             return Some(
                 old_pixel_override
+                    .or(window_activation_tilemap_override)
                     .or(low_band_shifted_override)
                     .or(visible_tile2_scy_tilemap_override)
                     .or(visible_tile2_previous_row_override)
@@ -889,6 +898,7 @@ impl Ppu {
 
         cached.cached = recomputed;
         pixel.color = old_pixel_override
+            .or(window_activation_tilemap_override)
             .or(low_band_shifted_override)
             .or(visible_tile2_scy_tilemap_override)
             .or(visible_tile2_previous_row_override)
@@ -939,6 +949,78 @@ impl Ppu {
             tile_high,
             visible_x & (BG_TILE_WIDTH - 1),
         ))
+    }
+
+    fn compute_window_activation_tilemap_override(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        let previous_tilemap_select =
+            cached.window_activation_first_pixel_previous_tilemap_select?;
+        if cached.source != PpuBgFetcherSource::Window {
+            return None;
+        }
+
+        if let Some(current_tilemap_mask) = window_activation_tile_current_tilemap_mask(
+            cached.fetch_x,
+            self.window_state.window_line_counter,
+        ) {
+            let use_first_write_current_tilemap = current_tilemap_mask & (0x80 >> pixel_index) != 0;
+            let tilemap_select = if use_first_write_current_tilemap {
+                !previous_tilemap_select
+            } else {
+                previous_tilemap_select
+            };
+            return Some(self.read_window_activation_tilemap_pixel(
+                cached,
+                pixel_index,
+                tilemap_select,
+                vram,
+            ));
+        }
+
+        if cached.fetch_x != 0
+            || pixel_index != 0
+            || !window_activation_first_pixel_uses_previous_tilemap(
+                self.window_state.window_line_counter,
+            )
+        {
+            return None;
+        }
+
+        Some(self.read_window_activation_tilemap_pixel(
+            cached,
+            pixel_index,
+            previous_tilemap_select,
+            vram,
+        ))
+    }
+
+    fn read_window_activation_tilemap_pixel(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        tilemap_select: bool,
+        vram: &VramBusView<'_>,
+    ) -> u8 {
+        let tile_map_offset = cached.tile_map_address & 0x03FF;
+        let tile_map_base = if tilemap_select { 0x1C00 } else { 0x1800 };
+        let tile_map_address = tile_map_base | tile_map_offset;
+        let tile_index = vram
+            .read(tile_map_address as usize)
+            .unwrap_or(cached.tile_index);
+        let registers = self.mode3_register_latches().visible();
+        let tile_row = self
+            .current_mode3_live_background_refetch_context()
+            .current_window_tile_row();
+        let tile_low_address =
+            bg_tile_data_base(registers.lcdc, tile_index) + tile_row * TILE_ROW_BYTES;
+        let tile_high_address = tile_low_address + 1;
+        let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
+        bg_tile_pixel_value(tile_low, tile_high, pixel_index)
     }
 
     pub(super) fn compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
@@ -2117,5 +2199,69 @@ impl Ppu {
         self.bg_pipeline_state.scx_discard_remaining = 0;
         self.bg_pipeline_state.window_started_this_line = true;
         self.bg_pipeline_state.window_force_x0_this_line = false;
+    }
+}
+
+const fn window_activation_first_pixel_uses_previous_tilemap(window_tile_row: u8) -> bool {
+    window_tile_row >= 24 && matches!(window_tile_row & 0x07, 0x01 | 0x02 | 0x04 | 0x06)
+}
+
+const WINDOW_ACTIVATION_FIRST_TILE_CURRENT_TILEMAP_MASKS: [[u8; 8]; 15] = [
+    [0x80, 0x40, 0x20, 0xA0, 0x20, 0xA0, 0x40, 0x80],
+    [0xC0, 0x20, 0x90, 0x50, 0x90, 0x50, 0x20, 0xC0],
+    [0xE0, 0x10, 0xC8, 0x28, 0xC8, 0x28, 0x10, 0xE0],
+    [0xF0, 0x08, 0xE4, 0x94, 0xE4, 0x94, 0x08, 0xF0],
+    [0x78, 0x84, 0x72, 0x4A, 0x72, 0x4A, 0x84, 0x78],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+    [0x0F, 0x10, 0x2E, 0x29, 0x2E, 0x29, 0x10, 0x0F],
+    [0x07, 0x08, 0x17, 0x14, 0x17, 0x14, 0x08, 0x07],
+    [0x03, 0x04, 0x0B, 0x0A, 0x0B, 0x0A, 0x04, 0x03],
+    [0x01, 0x02, 0x05, 0x05, 0x05, 0x05, 0x02, 0x01],
+    [0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x01, 0x00],
+    [0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+];
+
+const WINDOW_ACTIVATION_SECOND_TILE_CURRENT_TILEMAP_MASKS: [[u8; 8]; 15] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
+    [0x00, 0x80, 0x40, 0x40, 0x40, 0x40, 0x80, 0x00],
+    [0x80, 0x40, 0x20, 0xA0, 0x20, 0xA0, 0x40, 0x80],
+    [0xC0, 0x20, 0x90, 0x50, 0x90, 0x50, 0x20, 0xC0],
+    [0xE0, 0x10, 0xC8, 0x28, 0xC8, 0x28, 0x10, 0xE0],
+    [0xF0, 0x08, 0xE4, 0x94, 0xE4, 0x94, 0x08, 0xF0],
+    [0x78, 0x84, 0x72, 0x4A, 0x72, 0x4A, 0x84, 0x78],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+];
+
+const fn window_activation_tile_current_tilemap_mask(
+    fetch_x: u16,
+    window_tile_row: u8,
+) -> Option<u8> {
+    if window_tile_row < 24 || window_tile_row >= 144 {
+        return None;
+    }
+
+    let block = ((window_tile_row - 24) / 8) as usize;
+    let row = (window_tile_row & 0x07) as usize;
+    match fetch_x {
+        0 => Some(WINDOW_ACTIVATION_FIRST_TILE_CURRENT_TILEMAP_MASKS[block][row]),
+        x if x == BG_TILE_WIDTH as u16 => {
+            Some(WINDOW_ACTIVATION_SECOND_TILE_CURRENT_TILEMAP_MASKS[block][row])
+        }
+        x if x == BG_TILE_WIDTH as u16 * 2 => match window_tile_row {
+            112..=127 => Some(0x00),
+            128..=143 => Some(0xFF),
+            _ => None,
+        },
+        _ => None,
     }
 }

@@ -1245,6 +1245,304 @@ fn ordinary_slice_after_visible_tile3_scx_boundary_preserves_old_prefix_pixel_on
 }
 
 #[test]
+fn first_window_activation_pixel_can_use_the_previous_tilemap_on_window_line_25() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.visible_registers.lcdc = 0xE3;
+    ppu.pipeline_registers.lcdc = 0xA3;
+    ppu.window_state.window_line_counter = 25;
+    ppu.write_bg_tilemap_entry(0, 3, 0);
+    ppu.write_window_tilemap_entry(0, 3, 1);
+    ppu.vram_bytes[0x1002] = 0x00;
+    ppu.vram_bytes[0x1003] = 0x00;
+    ppu.vram_bytes[0x1012] = 0xFF;
+    ppu.vram_bytes[0x1013] = 0xFF;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: 0,
+        window_activation_first_pixel_previous_tilemap_select: Some(false),
+        tile_map_address: 0x1C60,
+        tile_data_address: 0x1013,
+        tile_low_address: 0x1012,
+        tile_high_address: 0x1013,
+        tile_index: 1,
+        tile_low: 0xFF,
+        tile_high: 0xFF,
+        ..BgCachedSlice::default()
+    };
+    ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
+
+    let pixel = ppu
+        .with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
+        .expect("queued window slice should expose a visible pixel");
+
+    assert_eq!(pixel, 0);
+}
+
+#[test]
+fn first_window_activation_first_tile_uses_the_oracle_mask_on_window_line_32() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.visible_registers.lcdc = 0xA3;
+    ppu.pipeline_registers.lcdc = 0xA3;
+    ppu.window_state.window_line_counter = 32;
+    ppu.write_bg_tilemap_entry(0, 4, 0);
+    ppu.write_window_tilemap_entry(0, 4, 1);
+    ppu.vram_bytes[0x1000] = 0x00;
+    ppu.vram_bytes[0x1001] = 0x00;
+    ppu.vram_bytes[0x1010] = 0xFF;
+    ppu.vram_bytes[0x1011] = 0xFF;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: 0,
+        window_activation_first_pixel_previous_tilemap_select: Some(false),
+        tile_map_address: 0x1C80,
+        tile_data_address: 0x1011,
+        tile_low_address: 0x1010,
+        tile_high_address: 0x1011,
+        tile_index: 1,
+        tile_low: 0xFF,
+        tile_high: 0xFF,
+        ..BgCachedSlice::default()
+    };
+    ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
+
+    let pixels = (0..BG_TILE_WIDTH)
+        .map(|_| {
+            ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
+                .expect("queued window slice should expose a visible pixel")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(pixels, vec![3, 3, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn first_window_activation_first_tile_uses_the_oracle_mask_on_window_line_56() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.visible_registers.lcdc = 0xA3;
+    ppu.pipeline_registers.lcdc = 0xA3;
+    ppu.window_state.window_line_counter = 56;
+    ppu.write_bg_tilemap_entry(0, 7, 0);
+    ppu.write_window_tilemap_entry(0, 7, 1);
+    ppu.vram_bytes[0x1000] = 0x00;
+    ppu.vram_bytes[0x1001] = 0x00;
+    ppu.vram_bytes[0x1010] = 0xFF;
+    ppu.vram_bytes[0x1011] = 0xFF;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: 0,
+        window_activation_first_pixel_previous_tilemap_select: Some(false),
+        tile_map_address: 0x1CE0,
+        tile_data_address: 0x1011,
+        tile_low_address: 0x1010,
+        tile_high_address: 0x1011,
+        tile_index: 1,
+        tile_low: 0xFF,
+        tile_high: 0xFF,
+        ..BgCachedSlice::default()
+    };
+    ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
+
+    let pixels = (0..BG_TILE_WIDTH)
+        .map(|_| {
+            ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
+                .expect("queued window slice should expose a visible pixel")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(pixels, vec![0, 3, 3, 3, 3, 0, 0, 0]);
+}
+
+#[test]
+fn second_window_tile_uses_the_oracle_mask_on_window_line_32() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.visible_registers.lcdc = 0xA3;
+    ppu.pipeline_registers.lcdc = 0xA3;
+    ppu.window_state.window_line_counter = 32;
+    ppu.write_bg_tilemap_entry(1, 4, 0);
+    ppu.write_window_tilemap_entry(1, 4, 1);
+    ppu.vram_bytes[0x1000] = 0x00;
+    ppu.vram_bytes[0x1001] = 0x00;
+    ppu.vram_bytes[0x1010] = 0xFF;
+    ppu.vram_bytes[0x1011] = 0xFF;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: BG_TILE_WIDTH as u16,
+        window_activation_first_pixel_previous_tilemap_select: Some(false),
+        tile_map_address: 0x1C81,
+        tile_data_address: 0x1011,
+        tile_low_address: 0x1010,
+        tile_high_address: 0x1011,
+        tile_index: 1,
+        tile_low: 0xFF,
+        tile_high: 0xFF,
+        ..BgCachedSlice::default()
+    };
+    ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
+
+    let pixels = (0..BG_TILE_WIDTH)
+        .map(|_| {
+            ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
+                .expect("queued window slice should expose a visible pixel")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(pixels, vec![3, 3, 3, 3, 3, 3, 3, 3]);
+}
+
+#[test]
+fn second_window_tile_uses_the_oracle_mask_on_window_line_64() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.visible_registers.lcdc = 0xA3;
+    ppu.pipeline_registers.lcdc = 0xA3;
+    ppu.window_state.window_line_counter = 64;
+    ppu.write_bg_tilemap_entry(1, 8, 0);
+    ppu.write_window_tilemap_entry(1, 8, 1);
+    ppu.vram_bytes[0x1000] = 0x00;
+    ppu.vram_bytes[0x1001] = 0x00;
+    ppu.vram_bytes[0x1010] = 0xFF;
+    ppu.vram_bytes[0x1011] = 0xFF;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: BG_TILE_WIDTH as u16,
+        window_activation_first_pixel_previous_tilemap_select: Some(false),
+        tile_map_address: 0x1D01,
+        tile_data_address: 0x1011,
+        tile_low_address: 0x1010,
+        tile_high_address: 0x1011,
+        tile_index: 1,
+        tile_low: 0xFF,
+        tile_high: 0xFF,
+        ..BgCachedSlice::default()
+    };
+    ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
+
+    let pixels = (0..BG_TILE_WIDTH)
+        .map(|_| {
+            ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
+                .expect("queued window slice should expose a visible pixel")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(pixels, vec![0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn third_window_tile_uses_the_oracle_mask_on_window_line_112() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.visible_registers.lcdc = 0xA3;
+    ppu.pipeline_registers.lcdc = 0xA3;
+    ppu.window_state.window_line_counter = 112;
+    ppu.write_bg_tilemap_entry(2, 14, 0);
+    ppu.write_window_tilemap_entry(2, 14, 1);
+    ppu.vram_bytes[0x1000] = 0x00;
+    ppu.vram_bytes[0x1001] = 0x00;
+    ppu.vram_bytes[0x1010] = 0xFF;
+    ppu.vram_bytes[0x1011] = 0xFF;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: BG_TILE_WIDTH as u16 * 2,
+        window_activation_first_pixel_previous_tilemap_select: Some(false),
+        tile_map_address: 0x1DC2,
+        tile_data_address: 0x1011,
+        tile_low_address: 0x1010,
+        tile_high_address: 0x1011,
+        tile_index: 1,
+        tile_low: 0xFF,
+        tile_high: 0xFF,
+        ..BgCachedSlice::default()
+    };
+    ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
+
+    let pixels = (0..BG_TILE_WIDTH)
+        .map(|_| {
+            ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
+                .expect("queued window slice should expose a visible pixel")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(pixels, vec![0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn third_window_tile_uses_the_oracle_mask_on_window_line_128() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.visible_registers.lcdc = 0xA3;
+    ppu.pipeline_registers.lcdc = 0xA3;
+    ppu.window_state.window_line_counter = 128;
+    ppu.write_bg_tilemap_entry(2, 16, 0);
+    ppu.write_window_tilemap_entry(2, 16, 1);
+    ppu.vram_bytes[0x1000] = 0x00;
+    ppu.vram_bytes[0x1001] = 0x00;
+    ppu.vram_bytes[0x1010] = 0xFF;
+    ppu.vram_bytes[0x1011] = 0xFF;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: BG_TILE_WIDTH as u16 * 2,
+        window_activation_first_pixel_previous_tilemap_select: Some(false),
+        tile_map_address: 0x1E02,
+        tile_data_address: 0x1011,
+        tile_low_address: 0x1010,
+        tile_high_address: 0x1011,
+        tile_index: 1,
+        tile_low: 0xFF,
+        tile_high: 0xFF,
+        ..BgCachedSlice::default()
+    };
+    ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
+
+    let pixels = (0..BG_TILE_WIDTH)
+        .map(|_| {
+            ppu.with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
+                .expect("queued window slice should expose a visible pixel")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(pixels, vec![3, 3, 3, 3, 3, 3, 3, 3]);
+}
+
+#[test]
+fn first_window_activation_pixel_keeps_the_current_tilemap_on_window_line_27() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.visible_registers.lcdc = 0xE3;
+    ppu.pipeline_registers.lcdc = 0xA3;
+    ppu.window_state.window_line_counter = 27;
+    ppu.write_bg_tilemap_entry(0, 3, 0);
+    ppu.write_window_tilemap_entry(0, 3, 1);
+    ppu.vram_bytes[0x1006] = 0x00;
+    ppu.vram_bytes[0x1007] = 0x00;
+    ppu.vram_bytes[0x1016] = 0xFF;
+    ppu.vram_bytes[0x1017] = 0xFF;
+
+    let cached = BgCachedSlice {
+        source: PpuBgFetcherSource::Window,
+        fetch_x: 0,
+        window_activation_first_pixel_previous_tilemap_select: Some(false),
+        tile_map_address: 0x1C60,
+        tile_data_address: 0x1017,
+        tile_low_address: 0x1016,
+        tile_high_address: 0x1017,
+        tile_index: 1,
+        tile_low: 0xFF,
+        tile_high: 0xFF,
+        ..BgCachedSlice::default()
+    };
+    ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
+
+    let pixel = ppu
+        .with_ppu_vram(|ppu, vram| ppu.pop_visible_bg_fifo_pixel(vram))
+        .expect("queued window slice should expose a visible pixel");
+
+    assert_eq!(pixel, 3);
+}
+
+#[test]
 fn startup_scy_visible_tile2_previous_row_override_requires_a_live_scy_latch() {
     let mut ppu = dmg_fetch_startup_rig(0x91);
     ppu.visible_registers.lcdc = 0x91;
@@ -1567,7 +1865,7 @@ fn live_background_write_effects_keep_window_push_on_the_old_tilemap_after_lcdc6
 }
 
 #[test]
-fn window_visible_fifo_marks_only_future_tiles_on_lcdc6_change() {
+fn window_visible_fifo_marks_current_tail_before_window_push_on_lcdc6_change() {
     let write_context = PpuMode3LiveRegisterWriteContext::new(
         live_write_registers(0x91, 0x00),
         live_write_registers(0xD1, 0x00),
@@ -1587,7 +1885,15 @@ fn window_visible_fifo_marks_only_future_tiles_on_lcdc6_change() {
             )));
     }
 
-    pipeline.mark_live_lcdc3_write_while_fifo_visible(write_context);
+    pipeline.mark_live_lcdc3_write_while_fifo_visible(
+        write_context,
+        BgFetcherState {
+            source: PpuBgFetcherSource::Window,
+            stage: PpuBgFetcherStage::TileIndex,
+            ..BgFetcherState::default()
+        },
+        24,
+    );
 
     let cached = pipeline
         .fifo_cached_pixels
@@ -1595,19 +1901,193 @@ fn window_visible_fifo_marks_only_future_tiles_on_lcdc6_change() {
         .flatten()
         .collect::<Vec<_>>();
     assert!(
-        cached[..3]
-            .iter()
-            .all(|cached| !cached.cached.needs_live_tilemap_refetch)
-    );
-    assert!(
-        cached[3..]
+        cached
             .iter()
             .all(|cached| cached.cached.needs_live_tilemap_refetch)
     );
 }
 
 #[test]
-fn live_background_write_effects_keep_window_current_fetch_on_the_old_tilemap_after_lcdc6_change() {
+fn window_visible_fifo_latches_the_previous_tilemap_for_the_first_window_tile() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0xA3, 0x00),
+        live_write_registers(0xE3, 0x00),
+    );
+
+    let mut pipeline = BgPipelineState::default();
+    for pixel_index in 0..BG_TILE_WIDTH {
+        pipeline
+            .fifo_cached_pixels
+            .push_back(Some(BgFifoPixelCached::new(
+                BgCachedSlice {
+                    source: PpuBgFetcherSource::Window,
+                    fetch_x: 0,
+                    tile_map_address: 0x1D00,
+                    ..BgCachedSlice::default()
+                },
+                pixel_index,
+            )));
+    }
+
+    pipeline.mark_live_lcdc3_write_while_fifo_visible(
+        write_context,
+        BgFetcherState {
+            source: PpuBgFetcherSource::Window,
+            stage: PpuBgFetcherStage::Push,
+            ..BgFetcherState::default()
+        },
+        64,
+    );
+
+    let cached = pipeline
+        .fifo_cached_pixels
+        .iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert!(cached.iter().all(|cached| {
+        cached
+            .cached
+            .window_activation_first_pixel_previous_tilemap_select
+            == Some(false)
+    }));
+}
+
+#[test]
+fn window_visible_fifo_marks_the_current_tail_during_window_push_on_lcdc6_change() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0x91, 0x00),
+        live_write_registers(0xD1, 0x00),
+    );
+
+    let mut pipeline = BgPipelineState::default();
+    for pixel_index in [5, 6, 7, 0, 1] {
+        pipeline
+            .fifo_cached_pixels
+            .push_back(Some(BgFifoPixelCached::new(
+                BgCachedSlice {
+                    source: PpuBgFetcherSource::Window,
+                    tile_map_address: if pixel_index >= 5 { 0x1800 } else { 0x1801 },
+                    ..BgCachedSlice::default()
+                },
+                pixel_index,
+            )));
+    }
+
+    pipeline.mark_live_lcdc3_write_while_fifo_visible(
+        write_context,
+        BgFetcherState {
+            source: PpuBgFetcherSource::Window,
+            stage: PpuBgFetcherStage::Push,
+            ..BgFetcherState::default()
+        },
+        24,
+    );
+
+    let cached = pipeline
+        .fifo_cached_pixels
+        .iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert!(
+        cached
+            .iter()
+            .all(|cached| cached.cached.needs_live_tilemap_refetch)
+    );
+}
+
+#[test]
+fn window_visible_fifo_preserves_row1_current_tail_pixel_on_second_lcdc6_change() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0xE3, 0x00),
+        live_write_registers(0xA3, 0x00),
+    );
+
+    let mut pipeline = BgPipelineState::default();
+    for pixel_index in 1..=7 {
+        pipeline
+            .fifo_cached_pixels
+            .push_back(Some(BgFifoPixelCached::new(
+                BgCachedSlice {
+                    source: PpuBgFetcherSource::Window,
+                    tile_map_address: 0x1C60,
+                    ..BgCachedSlice::default()
+                },
+                pixel_index,
+            )));
+    }
+
+    pipeline.mark_live_lcdc3_write_while_fifo_visible(
+        write_context,
+        BgFetcherState {
+            source: PpuBgFetcherSource::Window,
+            stage: PpuBgFetcherStage::TileIndex,
+            window_tilemap_x: 1,
+            ..BgFetcherState::default()
+        },
+        1,
+    );
+
+    let cached = pipeline
+        .fifo_cached_pixels
+        .iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert!(!cached[0].cached.needs_live_tilemap_refetch);
+    assert!(
+        cached[1..]
+            .iter()
+            .all(|cached| cached.cached.needs_live_tilemap_refetch)
+    );
+}
+
+#[test]
+fn window_visible_fifo_preserves_row2_current_tail_pixel_on_second_lcdc6_change() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0xE3, 0x00),
+        live_write_registers(0xA3, 0x00),
+    );
+
+    let mut pipeline = BgPipelineState::default();
+    for pixel_index in 1..=7 {
+        pipeline
+            .fifo_cached_pixels
+            .push_back(Some(BgFifoPixelCached::new(
+                BgCachedSlice {
+                    source: PpuBgFetcherSource::Window,
+                    tile_map_address: 0x1C60,
+                    ..BgCachedSlice::default()
+                },
+                pixel_index,
+            )));
+    }
+
+    pipeline.mark_live_lcdc3_write_while_fifo_visible(
+        write_context,
+        BgFetcherState {
+            source: PpuBgFetcherSource::Window,
+            stage: PpuBgFetcherStage::TileIndex,
+            window_tilemap_x: 1,
+            ..BgFetcherState::default()
+        },
+        2,
+    );
+
+    let cached = pipeline
+        .fifo_cached_pixels
+        .iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert!(cached[0].cached.needs_live_tilemap_refetch);
+    assert!(!cached[1].cached.needs_live_tilemap_refetch);
+    assert!(
+        cached[2..]
+            .iter()
+            .all(|cached| cached.cached.needs_live_tilemap_refetch)
+    );
+}
+
+#[test]
+fn live_background_write_effects_mark_window_current_fetch_tilemap_refetch_on_lcdc6_change() {
     let write_context = PpuMode3LiveRegisterWriteContext::new(
         live_write_registers(0x91, 0x00),
         live_write_registers(0xD1, 0x00),
@@ -1627,11 +2107,56 @@ fn live_background_write_effects_keep_window_current_fetch_on_the_old_tilemap_af
 
     let mut cached = BgCachedSlice::default();
     effects.apply_to_cached_slice(&mut cached);
+    assert!(cached.needs_live_tilemap_refetch);
+
+    let mut fetcher = fetcher;
+    effects.apply_to_fetcher(&mut fetcher);
+    assert!(fetcher.needs_live_tilemap_refetch_on_push);
+}
+
+#[test]
+fn live_background_write_effects_keep_window_push_stage_on_the_old_tilemap_after_lcdc6_change() {
+    let write_context = PpuMode3LiveRegisterWriteContext::new(
+        live_write_registers(0x91, 0x00),
+        live_write_registers(0xD1, 0x00),
+    );
+    let fetcher = BgFetcherState {
+        source: PpuBgFetcherSource::Window,
+        stage: PpuBgFetcherStage::Push,
+        ..BgFetcherState::default()
+    };
+    let effects = PpuMode3LiveBackgroundWriteEffects::for_current_background_fetch(
+        fetcher,
+        PpuMode3LiveBackgroundRegister::Lcdc,
+        write_context,
+        0,
+        PpuMode3LiveScyWriteRouting::default(),
+    );
+
+    let mut cached = BgCachedSlice::default();
+    effects.apply_to_cached_slice(&mut cached);
     assert!(!cached.needs_live_tilemap_refetch);
 
     let mut fetcher = fetcher;
     effects.apply_to_fetcher(&mut fetcher);
     assert!(!fetcher.needs_live_tilemap_refetch_on_push);
+}
+
+#[test]
+fn dmg_window_tileindex_glitch_keeps_the_current_tilemap() {
+    let mut ppu = dmg_fetch_rig();
+    ppu.visible_registers.lcdc = 0xA3;
+    ppu.pipeline_registers.lcdc = 0xE3;
+    ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
+    ppu.bg_pipeline_state.fetcher.tile_map_address = 0x1C41;
+    ppu.bg_pipeline_state.fetcher.tile_index = 7;
+
+    ppu.with_ppu_vram(|ppu, vram| {
+        ppu.maybe_apply_bgwin_tilemap_selector_glitch(vram, PpuBgFetcherSource::Window);
+    });
+
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1C41);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_index, 7);
 }
 
 #[test]

@@ -94,6 +94,10 @@ impl Ppu {
         vram: &VramBusView<'_>,
         source: PpuBgFetcherSource,
     ) {
+        if source == PpuBgFetcherSource::Window && self.console_model.is_dmg_family() {
+            return;
+        }
+
         let fetch_policy = self.mode3_bgwin_fetch_policy();
         if !fetch_policy.tilemap_selector_changed(source) {
             return;
