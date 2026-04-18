@@ -1133,7 +1133,13 @@ impl Ppu {
 
     pub(super) fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
         let published_mode = self.current_published_video_write_access_mode();
+        self.current_published_oam_write_access_mode_from(published_mode)
+    }
 
+    pub(super) fn current_published_oam_write_access_mode_from(
+        &self,
+        published_mode: PpuAccessMode,
+    ) -> PpuAccessMode {
         if published_mode == PpuAccessMode::OamScan
             && self.ly < VISIBLE_SCANLINES
             && self.line_dot == MODE2_DOTS
@@ -1146,7 +1152,13 @@ impl Ppu {
 
     pub(super) fn current_published_oam_read_access_mode(&self) -> PpuAccessMode {
         let published_mode = self.current_published_bus_access_mode();
+        self.current_published_oam_read_access_mode_from(published_mode)
+    }
 
+    pub(super) fn current_published_oam_read_access_mode_from(
+        &self,
+        published_mode: PpuAccessMode,
+    ) -> PpuAccessMode {
         if published_mode == PpuAccessMode::Drawing
             && !self.blank_frame_active
             && self.ly < VISIBLE_SCANLINES

@@ -186,6 +186,13 @@ impl Default for PpuBusState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct PpuBusStateSnapshot {
+    pub(crate) owner: PpuBusState,
+    pub(crate) cpu_read: PpuBusState,
+    pub(crate) cpu_write: PpuBusState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct PpuDmaOamConflict {
     address: u16,
     value: u8,

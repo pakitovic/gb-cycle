@@ -66,6 +66,28 @@ impl Ppu {
         }
     }
 
+    pub(crate) fn bus_state_snapshot(&self) -> PpuBusStateSnapshot {
+        if !self.is_lcd_enabled() {
+            let disabled = PpuBusState::lcd_disabled();
+            return PpuBusStateSnapshot {
+                owner: disabled,
+                cpu_read: disabled,
+                cpu_write: disabled,
+            };
+        }
+
+        let owner_mode = self.current_bus_access_mode();
+        let cpu_read_mode = self.current_published_bus_access_mode();
+        let cpu_write_mode = self.current_published_video_write_access_mode();
+
+        PpuBusStateSnapshot {
+            owner: PpuBusState::lcd_enabled(owner_mode),
+            cpu_read: PpuBusState::lcd_enabled(cpu_read_mode),
+            cpu_write: PpuBusState::lcd_enabled(cpu_write_mode),
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn cpu_bus_state(&self) -> PpuBusState {
         if self.is_lcd_enabled() {
             PpuBusState::lcd_enabled(self.current_published_bus_access_mode())
@@ -74,6 +96,7 @@ impl Ppu {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn cpu_write_bus_state(&self) -> PpuBusState {
         if self.is_lcd_enabled() {
             PpuBusState::lcd_enabled(self.current_published_video_write_access_mode())

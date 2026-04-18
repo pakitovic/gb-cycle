@@ -13,7 +13,7 @@ use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
 use crate::dma::DmaController;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
-use crate::ppu::{Ppu, PpuDmaOamConflict};
+use crate::ppu::{Ppu, PpuBusStateSnapshot, PpuDmaOamConflict};
 use crate::scheduler::{
     CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
 };
@@ -108,7 +108,15 @@ struct MachinePhaseRunner<'a> {
     cartridge: &'a mut CartridgeSlot,
     pending_external_events: &'a mut PendingExternalEvents,
     pending_ppu_mmio_write: Option<PendingPpuMmioWrite>,
-    cached_pre_cpu_bus_arbitration_state: Option<BusArbitrationState>,
+    cached_ppu_bus_state_snapshot: Option<PpuBusStateSnapshot>,
+    cached_cpu_bus_arbitration_states: Option<CpuBusArbitrationStates>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CpuBusArbitrationStates {
+    pre_cpu: BusArbitrationState,
+    cpu_read: BusArbitrationState,
+    cpu_write: BusArbitrationState,
 }
 
 impl MachinePhaseRunner<'_> {
@@ -275,7 +283,8 @@ impl MachinePhaseRunner<'_> {
                 dma_oam_conflict,
                 observer,
             );
-            let ppu_owner_bus_state_after = self.ppu.owner_bus_state();
+            let ppu_bus_states_after = self.ppu_bus_state_snapshot();
+            let ppu_owner_bus_state_after = ppu_bus_states_after.owner;
             self.bus
                 .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
             observer.end_region(MachineStepRegion::Ppu);
@@ -316,7 +325,7 @@ impl MachinePhaseRunner<'_> {
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
     ) {
-        let arbitration_state = self.pre_cpu_bus_arbitration_state();
+        let arbitration_state = self.cpu_bus_arbitration_states().pre_cpu;
         tracer.emit_with(TraceSubsystem::Bus, TraceLevel::Trace, || {
             self.bus
                 .scheduler_trace_message(context, &arbitration_state)
@@ -335,10 +344,7 @@ impl MachinePhaseRunner<'_> {
         S: TraceSink,
         O: MachineStepObserver,
     {
-        let arbitration_state = self.pre_cpu_bus_arbitration_state();
-        let cpu_read_arbitration_state = arbitration_state.with_ppu(self.ppu.cpu_bus_state());
-        let cpu_write_arbitration_state =
-            arbitration_state.with_ppu(self.ppu.cpu_write_bus_state());
+        let arbitration_states = self.cpu_bus_arbitration_states();
         let stop_active_before = self.cpu_stop_active();
         observe_machine_step_region(observer, MachineStepRegion::Cpu, || {
             let cpu = &mut self.cpu;
@@ -357,9 +363,11 @@ impl MachinePhaseRunner<'_> {
             cpu.tick_t_cycle(|operation| match operation {
                 CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
                     let read_arbitration_state = if (0xFE00..=0xFE9F).contains(&address) {
-                        cpu_read_arbitration_state.with_ppu(ppu.cpu_oam_read_bus_state())
+                        arbitration_states
+                            .pre_cpu
+                            .with_ppu(ppu.cpu_oam_read_bus_state())
                     } else {
-                        cpu_read_arbitration_state
+                        arbitration_states.cpu_read
                     };
                     let interrupt_flag_pending_mask = if address == 0xFF0F {
                         current_cycle_interrupt_read_mask(context, ppu, joypad)
@@ -392,9 +400,11 @@ impl MachinePhaseRunner<'_> {
                         context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
                     } else {
                         let write_arbitration_state = if (0xFE00..=0xFE9F).contains(&address) {
-                            cpu_write_arbitration_state.with_ppu(ppu.cpu_oam_write_bus_state())
+                            arbitration_states
+                                .pre_cpu
+                                .with_ppu(ppu.cpu_oam_write_bus_state())
                         } else {
-                            cpu_write_arbitration_state
+                            arbitration_states.cpu_write
                         };
                         bus.write_with_t_cycle_context(
                             address,
@@ -433,7 +443,7 @@ impl MachinePhaseRunner<'_> {
             });
 
             if let Some(event) = cpu.last_address_event() {
-                bus.route_cpu_address_event(event, &arbitration_state, ppu);
+                bus.route_cpu_address_event(event, &arbitration_states.pre_cpu, ppu);
             }
 
             if cpu.take_stop_div_reset_request() {
@@ -548,17 +558,33 @@ impl MachinePhaseRunner<'_> {
         });
     }
 
-    fn pre_cpu_bus_arbitration_state(&mut self) -> BusArbitrationState {
-        if let Some(state) = self.cached_pre_cpu_bus_arbitration_state {
-            return state;
+    fn ppu_bus_state_snapshot(&mut self) -> PpuBusStateSnapshot {
+        if let Some(snapshot) = self.cached_ppu_bus_state_snapshot {
+            return snapshot;
         }
 
-        let state = BusArbitrationState::default()
+        let snapshot = self.ppu.bus_state_snapshot();
+        self.cached_ppu_bus_state_snapshot = Some(snapshot);
+        snapshot
+    }
+
+    fn cpu_bus_arbitration_states(&mut self) -> CpuBusArbitrationStates {
+        if let Some(states) = self.cached_cpu_bus_arbitration_states {
+            return states;
+        }
+
+        let ppu_bus_states = self.ppu_bus_state_snapshot();
+        let pre_cpu = BusArbitrationState::default()
             .with_boot_rom(self.boot.bus_state())
-            .with_ppu(self.ppu.bus_state())
+            .with_ppu(ppu_bus_states.owner)
             .with_dma(self.dma.bus_state());
-        self.cached_pre_cpu_bus_arbitration_state = Some(state);
-        state
+        let states = CpuBusArbitrationStates {
+            pre_cpu,
+            cpu_read: pre_cpu.with_ppu(ppu_bus_states.cpu_read),
+            cpu_write: pre_cpu.with_ppu(ppu_bus_states.cpu_write),
+        };
+        self.cached_cpu_bus_arbitration_states = Some(states);
+        states
     }
 
     fn cpu_stop_active(&self) -> bool {
@@ -594,7 +620,8 @@ impl<S: TraceSink> Machine<S> {
             cartridge: &mut self.cartridge,
             pending_external_events: &mut self.pending_external_events,
             pending_ppu_mmio_write: None,
-            cached_pre_cpu_bus_arbitration_state: None,
+            cached_ppu_bus_state_snapshot: None,
+            cached_cpu_bus_arbitration_states: None,
         };
 
         scheduler.step_with_trace(tracer, |context, tracer| {
