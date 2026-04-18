@@ -174,6 +174,7 @@ Priority order:
 - Separate CPU state, decode tables, execution/micro-op planning, ALU helpers, interrupt control flow, and the fine-grained tick engine instead of letting one opcode table own everything.
 - Keep explicit state for the instruction in flight, including the current fetch/execute/service phase and any temporary bytes or addresses needed by the next micro-step.
 - In the current Phase `4` baseline for this repo, the fetched opcode, decoded base/CB instruction kind, and operand latches should live in one internal in-flight instruction record so debugger and scheduler snapshots can derive `current_opcode` from a single source of truth instead of a parallel shadow field.
+- In the current Phase `6` performance baseline for this repo, any cached execute-dispatch classification should also live in that in-flight record as a pure derivation of the decoded instruction kind so repeated machine-cycle dispatch can stay cheap without introducing a second semantic source of truth.
 - In the current post-Phase `5` cleanup baseline for this repo, `CpuExecutionState::Execute` should no longer shadow that opcode a second time; the in-flight instruction record remains the sole opcode source while execute state tracks only phase progression.
 - Keep the configured direct-boot startup snapshot separate from the live CPU
   register file so tests, debugger snapshots, and real execution can compare

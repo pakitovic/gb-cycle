@@ -19,7 +19,7 @@ use decode::{
     decode_call_condition, decode_hl_update_direction, decode_register8_operand, decode_register16,
     decode_relative_jump_condition, decode_return_condition, decode_stack_register16,
 };
-use decode::{CbInstructionKind, CpuInstructionKind};
+use decode::{CbInstructionKind, CpuInstructionKind, InstructionExecutionGroup};
 use trace::CpuTraceBusActivity;
 
 const LAST_MACHINE_CYCLE_T: u8 = 3;
@@ -161,6 +161,7 @@ enum StopEntryResolution {
 struct InFlightInstruction {
     opcode: Option<u8>,
     kind: Option<CpuInstructionKind>,
+    execution_group: Option<InstructionExecutionGroup>,
     cb_instruction_kind: Option<CbInstructionKind>,
     operand8_latch: u8,
     operand16_latch: u16,

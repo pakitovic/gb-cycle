@@ -1,4 +1,4 @@
-use super::decode::CpuInstructionKind;
+use super::decode::InstructionExecutionGroup;
 use super::*;
 
 mod arithmetic;
@@ -21,54 +21,25 @@ impl CpuCore {
             };
             return;
         };
+        let execution_group = self
+            .in_flight
+            .execution_group
+            .unwrap_or_else(|| kind.execution_group());
 
-        match kind {
-            CpuInstructionKind::LoadRegisterImmediate { .. }
-            | CpuInstructionKind::LoadRegisterPairImmediate { .. }
-            | CpuInstructionKind::LoadRegisterFromHl { .. }
-            | CpuInstructionKind::StoreRegisterToHl { .. }
-            | CpuInstructionKind::StoreImmediateToHl
-            | CpuInstructionKind::LoadAFromHlWithUpdate { .. }
-            | CpuInstructionKind::StoreAToHlWithUpdate { .. }
-            | CpuInstructionKind::LoadAFromDirectAddress { .. }
-            | CpuInstructionKind::LoadAFromImmediate16Address
-            | CpuInstructionKind::LoadAFromHighImmediateAddress
-            | CpuInstructionKind::StoreAToDirectAddress { .. }
-            | CpuInstructionKind::StoreAToImmediate16Address
-            | CpuInstructionKind::StoreAToHighImmediateAddress
-            | CpuInstructionKind::StoreSpToImmediate16
-            | CpuInstructionKind::LoadSpFromHl => {
+        match execution_group {
+            InstructionExecutionGroup::Load => {
                 self.execute_load_machine_cycle(kind, opcode, step, bus_operation);
             }
-            CpuInstructionKind::LoadHlFromSpPlusImmediate
-            | CpuInstructionKind::AddSpImmediate
-            | CpuInstructionKind::AddHl { .. }
-            | CpuInstructionKind::IncrementRegisterPair { .. }
-            | CpuInstructionKind::DecrementRegisterPair { .. }
-            | CpuInstructionKind::IncrementHlMemory
-            | CpuInstructionKind::DecrementHlMemory
-            | CpuInstructionKind::AluImmediate { .. }
-            | CpuInstructionKind::AluFromHl { .. } => {
+            InstructionExecutionGroup::Arithmetic => {
                 self.execute_arithmetic_machine_cycle(kind, opcode, step, bus_operation);
             }
-            CpuInstructionKind::RelativeJump
-            | CpuInstructionKind::ConditionalRelativeJump { .. }
-            | CpuInstructionKind::AbsoluteJump
-            | CpuInstructionKind::ConditionalAbsoluteJump { .. }
-            | CpuInstructionKind::Call
-            | CpuInstructionKind::ConditionalCall { .. }
-            | CpuInstructionKind::Return
-            | CpuInstructionKind::ConditionalReturn { .. }
-            | CpuInstructionKind::ReturnFromInterrupt
-            | CpuInstructionKind::Stop
-            | CpuInstructionKind::Restart { .. } => {
+            InstructionExecutionGroup::ControlFlow => {
                 self.execute_control_flow_machine_cycle(kind, opcode, step, bus_operation);
             }
-            CpuInstructionKind::PushRegisterPair { .. }
-            | CpuInstructionKind::PopRegisterPair { .. } => {
+            InstructionExecutionGroup::Stack => {
                 self.execute_stack_machine_cycle(kind, opcode, step, bus_operation);
             }
-            CpuInstructionKind::CbPrefixed => {
+            InstructionExecutionGroup::CbPrefixed => {
                 self.execute_cb_prefixed_machine_cycle(opcode, step, bus_operation);
             }
         }

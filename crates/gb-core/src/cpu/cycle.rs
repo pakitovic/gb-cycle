@@ -141,6 +141,7 @@ impl CpuCore {
     fn begin_instruction(&mut self, opcode: u8, kind: CpuInstructionKind) {
         self.in_flight.opcode = Some(opcode);
         self.in_flight.kind = Some(kind);
+        self.in_flight.execution_group = Some(kind.execution_group());
         self.in_flight.cb_instruction_kind = None;
         self.execution_state = CpuExecutionState::Execute {
             step: 0,

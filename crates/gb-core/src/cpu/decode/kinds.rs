@@ -61,6 +61,15 @@ pub(in crate::cpu) enum DirectAddressSource {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(in crate::cpu) enum InstructionExecutionGroup {
+    Load,
+    Arithmetic,
+    ControlFlow,
+    Stack,
+    CbPrefixed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::cpu) enum CbInstructionKind {
     RotateLeftCarry { target: Register8Operand },
     RotateRightCarry { target: Register8Operand },
@@ -173,6 +182,52 @@ pub(in crate::cpu) enum CpuInstructionKind {
         target: StackRegister16,
     },
     CbPrefixed,
+}
+
+impl CpuInstructionKind {
+    pub(in crate::cpu) const fn execution_group(self) -> InstructionExecutionGroup {
+        match self {
+            Self::LoadRegisterImmediate { .. }
+            | Self::LoadRegisterPairImmediate { .. }
+            | Self::LoadRegisterFromHl { .. }
+            | Self::StoreRegisterToHl { .. }
+            | Self::StoreImmediateToHl
+            | Self::LoadAFromHlWithUpdate { .. }
+            | Self::StoreAToHlWithUpdate { .. }
+            | Self::LoadAFromDirectAddress { .. }
+            | Self::LoadAFromImmediate16Address
+            | Self::LoadAFromHighImmediateAddress
+            | Self::StoreAToDirectAddress { .. }
+            | Self::StoreAToImmediate16Address
+            | Self::StoreAToHighImmediateAddress
+            | Self::StoreSpToImmediate16
+            | Self::LoadSpFromHl => InstructionExecutionGroup::Load,
+            Self::LoadHlFromSpPlusImmediate
+            | Self::AddSpImmediate
+            | Self::AddHl { .. }
+            | Self::IncrementRegisterPair { .. }
+            | Self::DecrementRegisterPair { .. }
+            | Self::IncrementHlMemory
+            | Self::DecrementHlMemory
+            | Self::AluImmediate { .. }
+            | Self::AluFromHl { .. } => InstructionExecutionGroup::Arithmetic,
+            Self::RelativeJump
+            | Self::ConditionalRelativeJump { .. }
+            | Self::AbsoluteJump
+            | Self::ConditionalAbsoluteJump { .. }
+            | Self::Call
+            | Self::ConditionalCall { .. }
+            | Self::Return
+            | Self::ConditionalReturn { .. }
+            | Self::ReturnFromInterrupt
+            | Self::Stop
+            | Self::Restart { .. } => InstructionExecutionGroup::ControlFlow,
+            Self::PushRegisterPair { .. } | Self::PopRegisterPair { .. } => {
+                InstructionExecutionGroup::Stack
+            }
+            Self::CbPrefixed => InstructionExecutionGroup::CbPrefixed,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

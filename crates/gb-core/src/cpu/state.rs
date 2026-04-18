@@ -154,6 +154,7 @@ impl CpuExecutionState {
 impl InFlightInstruction {
     const fn clear_decoded_state(&mut self) {
         self.kind = None;
+        self.execution_group = None;
         self.cb_instruction_kind = None;
         self.operand8_latch = 0;
         self.operand16_latch = 0;
