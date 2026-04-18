@@ -338,6 +338,10 @@ fn same_scanline_low_wx_previsible_retarget_keeps_the_tile_boundary_carry_pixel(
         ppu.bg_pipeline_state.dmg_previsible_wx_retarget,
         Some(DmgPrevisibleWxRetarget::new(5, 3, 7))
     );
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
+        Some(5)
+    );
     assert_eq!(ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry, None);
 }
 
@@ -404,6 +408,10 @@ fn same_scanline_low_wx_boundary_retarget_keeps_boundary_restart_and_carry_span(
     assert_eq!(
         ppu.bg_pipeline_state.dmg_previsible_wx_retarget,
         Some(DmgPrevisibleWxRetarget::new(13, 3, 15))
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
+        Some(13)
     );
     assert_eq!(
         ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry,
@@ -639,6 +647,8 @@ fn previsible_wx_cancel_background_override_forces_white_fifo_output_at_its_onse
     let mut vram = crate::bus::VramDomain::from_bytes(&[0; TEST_VRAM_BYTES]);
     vram.set_acquired(BusMaster::Ppu, true);
 
+    ppu.visible_registers.bgp = 0x1B;
+    ppu.pipeline_registers.bgp = 0x1B;
     ppu.bg_pipeline_state.visible_pixels_output = 3;
     ppu.bg_pipeline_state
         .dmg_previsible_wx_cancel_background_override_onset_x = Some(3);
@@ -647,7 +657,7 @@ fn previsible_wx_cancel_background_override_forces_white_fifo_output_at_its_onse
 
     assert_eq!(
         ppu.pop_visible_bg_fifo_pixel(&VramBusView::new(BusMaster::Ppu, &mut vram)),
-        Some(0)
+        Some(3)
     );
     assert_eq!(ppu.current_scanline_bg_dot_contexts[3], None);
 }
@@ -818,13 +828,18 @@ fn previsible_wx_carry_expires_once_visible_output_has_passed_the_trigger() {
 #[test]
 fn previsible_wx_onset_glitch_repaint_waits_until_visible_output_has_passed_the_trigger() {
     let mut ppu = PpuTestRig::dmg();
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; TEST_VRAM_BYTES]);
+    vram.set_acquired(BusMaster::Ppu, true);
     ppu.visible_output = PpuVisibleOutputState::Driving;
     ppu.current_scanline_bg_pixels[3] = 1;
     ppu.current_scanline_mixed_pixels[3] = MixedPixel::background(1);
     ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch = Some(3);
     ppu.bg_pipeline_state.visible_pixels_output = 3;
 
-    ppu.test_apply_pending_dmg_previsible_wx_onset_glitch_repaint();
+    ppu.test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(&VramBusView::new(
+        BusMaster::Ppu,
+        &mut vram,
+    ));
     assert_eq!(ppu.current_scanline_bg_pixels[3], 1);
     assert_eq!(
         ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
@@ -832,13 +847,196 @@ fn previsible_wx_onset_glitch_repaint_waits_until_visible_output_has_passed_the_
     );
 
     ppu.bg_pipeline_state.visible_pixels_output = 4;
-    ppu.test_apply_pending_dmg_previsible_wx_onset_glitch_repaint();
+    ppu.test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(&VramBusView::new(
+        BusMaster::Ppu,
+        &mut vram,
+    ));
 
     assert_eq!(ppu.current_scanline_bg_pixels[3], 0);
     assert_eq!(
         ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
         None
     );
+}
+
+#[test]
+fn previsible_wx_onset_glitch_repaint_can_reveal_a_behind_bg_object_pixel() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 0,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.visible_registers.obp0 = Some(0xE4);
+    ppu.pipeline_registers.obp0 = Some(0xE4);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.obj_pipeline_state.mode3_line_start_obj_height = 8;
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 11,
+        tile_index: 0,
+        attributes: 0x80,
+    });
+    ppu.current_scanline_bg_pixels[3] = 3;
+    ppu.current_scanline_mixed_pixels[3] = MixedPixel::background(3);
+    ppu.current_scanline_pixels[3] = 3;
+    ppu.framebuffer[3] = 3;
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch = Some(3);
+    ppu.bg_pipeline_state.visible_pixels_output = 4;
+
+    let mut vram_bytes = [0; TEST_VRAM_BYTES];
+    vram_bytes[1] = 0x80;
+    let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(&VramBusView::new(
+        BusMaster::Ppu,
+        &mut vram,
+    ));
+
+    assert_eq!(ppu.current_scanline_bg_pixels[3], 0);
+    assert_eq!(
+        ppu.current_scanline_mixed_pixels[3],
+        MixedPixel::object(2, false)
+    );
+    assert_eq!(ppu.current_scanline_pixels[3], 2);
+    assert_eq!(ppu.framebuffer[3], 2);
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
+        None
+    );
+}
+
+#[test]
+fn previsible_wx_onset_glitch_repaint_updates_recent_panel_history_while_forced_blank() {
+    let mut ppu = PpuTestRig::dmg();
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; TEST_VRAM_BYTES]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers.lcdc = 0x91;
+    ppu.visible_output = PpuVisibleOutputState::ForcedBlank;
+    ppu.current_scanline_bg_pixels[3] = 1;
+    ppu.current_scanline_mixed_pixels[3] = MixedPixel::background(1);
+    ppu.current_scanline_pixels[3] = 1;
+    ppu.framebuffer[3] = 1;
+    ppu.dmg_panel_live_write_state
+        .recent_panel_dots
+        .push_back(PpuRecentPanelDot {
+            visible_x: 3,
+            pixel: MixedPixel::background(1),
+            dmg_bg_forced_white: true,
+        });
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch = Some(3);
+    ppu.bg_pipeline_state.visible_pixels_output = 4;
+
+    ppu.test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(&VramBusView::new(
+        BusMaster::Ppu,
+        &mut vram,
+    ));
+
+    assert_eq!(ppu.current_scanline_bg_pixels[3], 0);
+    assert_eq!(
+        ppu.current_scanline_mixed_pixels[3],
+        MixedPixel::background(0)
+    );
+    assert_eq!(ppu.current_scanline_pixels[3], 0);
+    assert_eq!(ppu.framebuffer[3], 0);
+    assert_eq!(
+        ppu.dmg_panel_live_write_state.recent_panel_dots[0],
+        PpuRecentPanelDot {
+            visible_x: 3,
+            pixel: MixedPixel::background(0),
+            dmg_bg_forced_white: false,
+        }
+    );
+}
+
+#[test]
+fn previsible_wx_onset_glitch_repaint_uses_current_obj_height_and_keeps_front_priority() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 0,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.visible_registers.obp0 = Some(0xE4);
+    ppu.pipeline_registers.obp0 = Some(0xE4);
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.obj_pipeline_state.mode3_line_start_obj_height = 0;
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 40,
+        x: 11,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 40,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 2,
+        y: 16,
+        x: 11,
+        tile_index: 0,
+        attributes: 0x20,
+    });
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 3,
+        y: 16,
+        x: 11,
+        tile_index: 1,
+        attributes: 0x20,
+    });
+    ppu.current_scanline_bg_pixels[3] = 3;
+    ppu.current_scanline_mixed_pixels[3] = MixedPixel::background(3);
+    ppu.current_scanline_pixels[3] = 3;
+    ppu.framebuffer[3] = 3;
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch = Some(3);
+    ppu.bg_pipeline_state.visible_pixels_output = 4;
+
+    let mut vram_bytes = [0; TEST_VRAM_BYTES];
+    vram_bytes[1] = 0x01;
+    vram_bytes[16] = 0x01;
+    vram_bytes[17] = 0x01;
+    let mut vram = crate::bus::VramDomain::from_bytes(&vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(&VramBusView::new(
+        BusMaster::Ppu,
+        &mut vram,
+    ));
+
+    assert_eq!(ppu.current_scanline_bg_pixels[3], 0);
+    assert_eq!(
+        ppu.current_scanline_mixed_pixels[3],
+        MixedPixel::object(2, false)
+    );
+    assert_eq!(ppu.current_scanline_pixels[3], 2);
+    assert_eq!(ppu.framebuffer[3], 2);
 }
 
 #[test]

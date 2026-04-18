@@ -60,7 +60,7 @@ impl Ppu {
             self.maybe_apply_pending_dmg_previsible_wx_carry(output_dot, vram);
             self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
             let _ = self.maybe_start_window_after_transfer_dot(output_dot);
-            self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint();
+            self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(vram);
             self.apply_dmg_late_window_enable_override_repaint_up_to(
                 usize::from(self.bg_pipeline_state.visible_pixels_output),
                 vram,
@@ -632,6 +632,95 @@ impl Ppu {
                 dot.dmg_bg_forced_white = dmg_bg_forced_white;
             }
         }
+    }
+
+    fn repaint_current_scanline_dot_with_bg_override(
+        &mut self,
+        visible_x: usize,
+        bg_pixel: u8,
+        vram: &VramBusView<'_>,
+    ) {
+        let bg_enabled = self.pixel_transfer_bg_enabled();
+        let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
+        let obj_pixel = self.observed_obj_pixel_for_visible_x(visible_x as u8, vram);
+        let effective_bg_priority_pixel = if bg_enabled { bg_pixel } else { 0 };
+        let output_pixel = self.mix_bg_and_obj(bg_pixel, effective_bg_priority_pixel, obj_pixel);
+        let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+        let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
+            output_pixel.color
+        } else {
+            0
+        };
+        let panel_pixel = if visible_output_driving {
+            if dmg_bg_forced_white {
+                0
+            } else {
+                self.map_mixed_pixel_to_panel_shade(output_pixel)
+            }
+        } else {
+            0
+        };
+
+        self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+        self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+        self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
+        self.current_scanline_pixels[visible_x] = scanline_pixel;
+        self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+
+        for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
+            if usize::from(dot.visible_x) == visible_x {
+                dot.pixel = output_pixel;
+                dot.dmg_bg_forced_white = dmg_bg_forced_white;
+            }
+        }
+    }
+
+    fn observed_obj_pixel_for_visible_x(&self, visible_x: u8, vram: &VramBusView<'_>) -> ObjPixel {
+        if !self.pixel_transfer_obj_enabled() {
+            return ObjPixel::transparent();
+        }
+
+        let obj_height = match self.obj_pipeline_state.mode3_line_start_obj_height {
+            0 => self.current_obj_height(),
+            height => height,
+        };
+        let mut front = ObjPixel::transparent();
+        for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
+            let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
+                continue;
+            };
+            let sprite_screen_x = sprite_screen_x(sprite);
+            let tile_pixel = i16::from(visible_x) - sprite_screen_x;
+            if !(0..BG_TILE_WIDTH as i16).contains(&tile_pixel) {
+                continue;
+            }
+
+            let Some((tile_index, tile_row)) =
+                self.obj_tile_index_and_row_for_height(sprite, obj_height)
+            else {
+                continue;
+            };
+            let tile_address = tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES;
+            let tile_low = vram.read(tile_address as usize).unwrap_or(0);
+            let tile_high = vram.read(tile_address as usize + 1).unwrap_or(0);
+            let bit = if sprite.attributes & 0x20 != 0 {
+                tile_pixel as u8
+            } else {
+                7 - tile_pixel as u8
+            };
+            let candidate = ObjPixel {
+                color: (((tile_high >> bit) & 0x01) << 1) | ((tile_low >> bit) & 0x01),
+                palette_obp1: sprite.attributes & 0x10 != 0,
+                bg_over_obj: sprite.attributes & 0x80 != 0,
+                sprite_x: sprite.x,
+                oam_index: sprite.oam_index,
+            };
+            if obj_pixel_has_priority(candidate, front) {
+                front = candidate;
+            }
+        }
+
+        front
     }
 
     fn maybe_record_dmg_window_reenable_resume(&mut self) {
@@ -1212,7 +1301,7 @@ impl Ppu {
             .is_some_and(|onset_x| self.bg_pipeline_state.visible_pixels_output >= onset_x)
         {
             self.current_scanline_bg_dot_contexts[visible_x] = None;
-            return Some(0);
+            return Some(self.dmg_bg_color_for_panel_shade(0));
         }
         let Some(cached) = pixel.cached.as_mut() else {
             self.current_scanline_bg_dot_contexts[visible_x] = None;
@@ -1652,8 +1741,11 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(&mut self) {
-        self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint();
+    pub(super) fn test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
+        self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(vram);
     }
 
     #[cfg(test)]
@@ -2055,8 +2147,7 @@ impl Ppu {
                 window_pixel_offset -= 1;
             }
             self.bg_pipeline_state
-                .dmg_pending_previsible_wx_onset_glitch =
-                (boundary_restart && visible_gap_len != 0).then_some(trigger_x);
+                .dmg_pending_previsible_wx_onset_glitch = boundary_restart.then_some(trigger_x);
 
             if visible_gap_len != 0 {
                 self.bg_pipeline_state.dmg_pending_previsible_wx_carry =
@@ -2202,13 +2293,16 @@ impl Ppu {
         }
     }
 
-    fn maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(&mut self) {
+    fn maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
         if let Some(trigger_x) = self
             .bg_pipeline_state
             .dmg_pending_previsible_wx_onset_glitch
             && self.bg_pipeline_state.visible_pixels_output > trigger_x
         {
-            self.repaint_current_scanline_background_dot(usize::from(trigger_x), 0);
+            self.repaint_current_scanline_dot_with_bg_override(usize::from(trigger_x), 0, vram);
             self.bg_pipeline_state
                 .dmg_pending_previsible_wx_onset_glitch = None;
         }

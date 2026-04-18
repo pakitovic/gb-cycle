@@ -392,4 +392,10 @@ impl Ppu {
     pub(super) fn apply_dmg_palette(&self, palette: u8, color: u8) -> u8 {
         (palette >> (u32::from(color & 0x03) * 2)) & 0x03
     }
+
+    pub(super) fn dmg_bg_color_for_panel_shade(&self, panel_shade: u8) -> u8 {
+        (0..=3)
+            .find(|color| self.apply_dmg_palette(self.pixel_pipeline_bgp(), *color) == panel_shade)
+            .unwrap_or(0)
+    }
 }

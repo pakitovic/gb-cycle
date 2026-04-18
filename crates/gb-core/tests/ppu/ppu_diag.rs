@@ -126,6 +126,7 @@ fn format_window_trace_snapshot(snapshot: &PpuSnapshot) -> String {
             "ly={} dot={} mode={:?} vis={} transfer_x={} started={} ",
             "previsible_wx={:?}/{:?} carry={:?}->{:?}@{:?} ",
             "fetcher={:?} stage={:?}/{} transfer={:?}/{:?}/{:?}/{:?} ",
+            "obj(match_x={:?} pending={} front={:?} fifo={} fetch={:?}/{:?}/{:?}) ",
             "wx(vis/pipeline)={:#04X}/{:#04X} ",
             "lcdc(vis/pipeline)={:#04X}/{:#04X} bg_map(win/bg)={}/{} ",
             "tilemap={:#06X} tiledata={:#06X} tile_index={:#04X} tile_low={:#04X} tile_high={:#04X} ",
@@ -150,6 +151,13 @@ fn format_window_trace_snapshot(snapshot: &PpuSnapshot) -> String {
         snapshot.bg_current_transfer_source_window,
         snapshot.bg_current_transfer_backing,
         snapshot.bg_current_transfer_kind,
+        snapshot.obj_pending_hit_match_x,
+        snapshot.obj_pending_hit_len,
+        snapshot.obj_pending_hit_front_sprite_slot,
+        obj_fifo_prefix(snapshot, 8),
+        snapshot.obj_fetcher_stage,
+        snapshot.obj_fetcher_requested_sprite,
+        snapshot.obj_fetcher_resolved_sprite,
         snapshot.visible_wx,
         snapshot.pipeline_wx,
         snapshot.visible_lcdc,
@@ -170,6 +178,18 @@ fn format_window_trace_snapshot(snapshot: &PpuSnapshot) -> String {
         scanline_prefix(snapshot, 24),
         mixed_color_prefix(snapshot, 24),
     )
+}
+
+fn obj_fifo_prefix(snapshot: &PpuSnapshot, len: usize) -> String {
+    snapshot
+        .obj_fifo_pixels
+        .iter()
+        .take(len)
+        .map(|pixel| match pixel {
+            Some(pixel) => char::from(b'0' + *pixel),
+            None => '.',
+        })
+        .collect()
 }
 
 fn format_window_map_samples(machine: &mut Machine<gb_core::TraceSummaryBuffer>) -> String {
@@ -3269,11 +3289,20 @@ fn diag_m3_wx_4_change_line100_right_trace() {
 }
 
 fn trace_m3_wx_4_change_line(target_ly: u8) {
-    trace_m3_wx_4_change_line_window(target_ly, 0, 48);
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_4_change", target_ly, 0, 48);
 }
 
 fn trace_m3_wx_4_change_line_window(target_ly: u8, vis_start: u8, vis_end: u8) {
-    let mut machine = load_mealybug_window_diag_machine("m3_wx_4_change");
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_4_change", target_ly, vis_start, vis_end);
+}
+
+fn trace_m3_wx_4_change_line_window_for_rom(
+    rom_name: &str,
+    target_ly: u8,
+    vis_start: u8,
+    vis_end: u8,
+) {
+    let mut machine = load_mealybug_window_diag_machine(rom_name);
     const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
 
     let mut stepped_t_cycles = 0_u64;
@@ -3367,6 +3396,7 @@ fn trace_m3_wx_4_change_line_window(target_ly: u8, vis_start: u8, vis_end: u8) {
     }
 
     eprintln!("capture_t_cycles={stepped_t_cycles}");
+    eprintln!("rom_name={rom_name}");
     eprintln!("last_completed_line{target_ly}_summary: {last_completed_line_summary:?}");
     eprintln!("last_completed_line{target_ly}_register_writes:");
     for write in &last_completed_line_writes {
@@ -3376,4 +3406,22 @@ fn trace_m3_wx_4_change_line_window(target_ly: u8, vis_start: u8, vis_end: u8) {
     for entry in &last_completed_line_trace {
         eprintln!("  {entry}");
     }
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_sprites_line12_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_4_change_sprites", 12, 0, 24);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_sprites_line36_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_4_change_sprites", 36, 16, 40);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_sprites_line99_right_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_4_change_sprites", 99, 80, 128);
 }
