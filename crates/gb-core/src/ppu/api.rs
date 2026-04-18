@@ -831,7 +831,7 @@ impl Ppu {
             dmg_previsible_wx_retarget_trigger_x: self
                 .bg_pipeline_state
                 .dmg_previsible_wx_retarget
-                .map(|retarget| retarget.trigger_x),
+                .and_then(|retarget| retarget.trigger_x),
             dmg_previsible_wx_retarget_window_pixel_offset: self
                 .bg_pipeline_state
                 .dmg_previsible_wx_retarget
