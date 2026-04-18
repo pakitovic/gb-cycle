@@ -421,6 +421,8 @@ pub(super) struct BgPipelineState {
     pub(super) window_wy_latch: bool,
     pub(super) window_force_x0_this_line: bool,
     pub(super) window_started_this_line: bool,
+    pub(super) window_active_line_counter: u8,
+    pub(super) window_start_count_this_line: u8,
     pub(super) wx0_scx_shortening_applied: bool,
     pub(super) wx166_armed_this_line: bool,
     pub(super) startup_visible_tile3_scx_boundary_next_slice_previous_scx: Option<u8>,
@@ -802,6 +804,8 @@ impl BgPipelineState {
         self.window_wy_latch = false;
         self.window_force_x0_this_line = false;
         self.window_started_this_line = false;
+        self.window_active_line_counter = 0;
+        self.window_start_count_this_line = 0;
         self.wx0_scx_shortening_applied = false;
         self.wx166_armed_this_line = false;
         self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
@@ -1601,6 +1605,8 @@ impl Default for BgPipelineState {
             window_wy_latch: false,
             window_force_x0_this_line: false,
             window_started_this_line: false,
+            window_active_line_counter: 0,
+            window_start_count_this_line: 0,
             wx0_scx_shortening_applied: false,
             wx166_armed_this_line: false,
             startup_visible_tile3_scx_boundary_next_slice_previous_scx: None,

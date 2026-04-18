@@ -651,9 +651,11 @@ impl Ppu {
             if self.line_dot == self.current_scanline_length() {
                 let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
                 self.finalize_dmg_bgp_cpu_commit_scanline();
-                if self.bg_pipeline_state.window_started_this_line {
-                    self.window_state.window_line_counter =
-                        self.window_state.window_line_counter.wrapping_add(1);
+                if self.bg_pipeline_state.window_start_count_this_line != 0 {
+                    self.window_state.window_line_counter = self
+                        .window_state
+                        .window_line_counter
+                        .wrapping_add(self.bg_pipeline_state.window_start_count_this_line);
                 }
                 self.line_dot = 0;
                 self.ly = if self.ly + 1 == TOTAL_SCANLINES {

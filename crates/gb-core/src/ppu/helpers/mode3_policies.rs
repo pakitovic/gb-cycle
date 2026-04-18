@@ -284,15 +284,14 @@ impl PpuMode3WindowPolicy {
         scx_discard_remaining: u8,
         wx166_armed_this_line: bool,
     ) -> PpuMode3WindowStartDecision {
-        if !transfer_dot.is_served()
-            || self.started_this_line
-            || !self.wy_latch
-            || !self.activation.runtime_enabled()
-        {
+        if !transfer_dot.is_served() || !self.wy_latch || !self.activation.runtime_enabled() {
             return PpuMode3WindowStartDecision::NotReady;
         }
 
         if self.activation.is_wx_166() {
+            if self.started_this_line {
+                return PpuMode3WindowStartDecision::NotReady;
+            }
             if visible_pixels_output as usize == SCREEN_WIDTH
                 && scx_discard_remaining == 0
                 && !wx166_armed_this_line

@@ -251,6 +251,43 @@ fn window_fetcher_aborts_to_background_and_restores_bg_progress_when_win_enable_
 }
 
 #[test]
+fn mid_tile_window_abort_retargets_the_fetch_registers_to_background_bytes() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.write_bg_tilemap_entry(1, 0, 0x11);
+    ppu.write_bg_tile_row(0x11, 0, 0x12, 0x34);
+    let mut vram = crate::bus::VramDomain::from_bytes(&ppu.vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.bg_pipeline_state.fetcher.fetch_x = 0;
+    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 0;
+    ppu.bg_pipeline_state.fetcher.bg_resume_fetch_pixel = 8;
+    ppu.bg_pipeline_state.fetcher.tile_index = 0x22;
+    ppu.bg_pipeline_state.fetcher.tile_low = 0xAA;
+    ppu.bg_pipeline_state.fetcher.tile_high = 0xBB;
+
+    assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+    assert_eq!(
+        ppu.bg_pipeline_state.fetcher.source,
+        PpuBgFetcherSource::Background
+    );
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1801);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_index, 0x11);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0x12);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x34);
+    assert_eq!(
+        ppu.bg_pipeline_state.fetcher.stage,
+        PpuBgFetcherStage::TileDataLow
+    );
+    assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
+}
+
+#[test]
 fn first_window_tile_index_dot_rewinds_bg_resume_progress_by_one_tile() {
     let mut ppu = PpuTestRig::dmg();
 
@@ -508,6 +545,29 @@ fn window_line_counter_advances_only_on_lines_where_window_actually_starts() {
     ppu.advance_until_line_start(2);
     let line_2_start = ppu.snapshot();
     assert_eq!(line_2_start.window_line_counter, 1);
+}
+
+#[test]
+fn same_scanline_window_restart_advances_to_the_next_internal_row() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.window_state.window_line_counter = 6;
+    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 24;
+    ppu.start_window_fetcher_restart();
+    assert_eq!(ppu.bg_pipeline_state.window_active_line_counter, 6);
+    assert_eq!(ppu.bg_pipeline_state.window_start_count_this_line, 1);
+
+    ppu.bg_pipeline_state.fetcher.abort_window_to_background();
+    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 24;
+    ppu.start_window_fetcher_restart();
+    assert_eq!(ppu.bg_pipeline_state.window_active_line_counter, 7);
+    assert_eq!(ppu.bg_pipeline_state.window_start_count_this_line, 2);
+    assert_eq!(
+        ppu.window_state
+            .window_line_counter
+            .wrapping_add(ppu.bg_pipeline_state.window_start_count_this_line),
+        8
+    );
 }
 
 #[test]

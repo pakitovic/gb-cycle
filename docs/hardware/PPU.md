@@ -309,6 +309,7 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - The PPU should keep an explicit internal window line counter.
 - That counter should reset during VBlank.
 - The counter should increment only on scanlines where the window actually begins rendering.
+- If the same scanline starts the window more than once, advance the internal counter by the number of starts on that line rather than by a flat single step.
 - Hiding the window mid-frame via `WX` manipulation or `LCDC.5` should be able to prevent the increment for affected lines.
 - Do not define the window row globally as `LY - WY`; that shortcut is not valid for status bars and mid-frame show/hide behavior.
 
@@ -318,6 +319,7 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - If the WY latch is already active for the current line and `LCDC.5` was active at line start but is cleared before the WX trigger point, the design should support the documented window-glitch pixel at the would-be window start.
 - If `WX` changes after the window has already started on the line and the new trigger position is reached again, the documented bug should be representable as a low-priority color-`0` pixel pushed into the BG FIFO path.
 - If `LCDC.5` is disabled during Mode `3` and then re-enabled later on the same scanline, do not model that as a generic "resume window where it left off" path. Keep the same-line reactivation explicitly gated on a new not-yet-served `WX` trigger, and keep room for the documented DMG behavior where the window may restart on the next window row rather than on the interrupted row.
+- When an active window fetch aborts back to background, retarget the in-flight fetch registers immediately onto the resumed BG tile; do not let stale window `tile_index` / `tile_low` / `tile_high` leak into the first resumed BG tile.
 - These glitches should live in fetcher/FIFO/pipeline logic rather than as framebuffer post-processing rules.
 
 ## Window edge-case baseline

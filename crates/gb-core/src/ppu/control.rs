@@ -14,6 +14,14 @@ struct DmgPanelRepaintContext {
 }
 
 impl Ppu {
+    pub(super) const fn current_window_line_counter(&self) -> u8 {
+        if self.bg_pipeline_state.window_started_this_line {
+            self.bg_pipeline_state.window_active_line_counter
+        } else {
+            self.window_state.window_line_counter
+        }
+    }
+
     pub(super) const fn current_mmio_visible_registers(&self) -> PpuVisibleRegisters {
         PpuVisibleRegisters {
             lcdc: self.lcdc,
@@ -47,7 +55,7 @@ impl Ppu {
         PpuMode3LiveBackgroundRefetchContext::new(
             self.current_mmio_visible_registers(),
             self.ly,
-            self.window_state.window_line_counter,
+            self.current_window_line_counter(),
             self.last_unsigned_tile_data_low_fetch,
             self.last_unsigned_tile_data_high_fetch,
         )
@@ -1542,7 +1550,7 @@ impl Ppu {
 
     pub(super) fn window_fetch_context(&self) -> PpuMode3WindowFetchContext {
         self.mode3_bgwin_fetch_policy().window_fetch_context(
-            self.window_state.window_line_counter,
+            self.current_window_line_counter(),
             self.bg_pipeline_state.fetcher.window_tilemap_x,
         )
     }
@@ -1627,7 +1635,7 @@ impl Ppu {
 
         if write_context.previous_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0
             && write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT == 0
-            && self.window_state.window_line_counter >= 24
+            && self.current_window_line_counter() >= 24
         {
             self.bg_pipeline_state
                 .apply_dmg_lcdc4_output_override_to_window_seam_slices(

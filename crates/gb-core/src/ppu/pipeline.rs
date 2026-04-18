@@ -41,7 +41,7 @@ impl Ppu {
         registers.lcdc = selector.apply_to_lcdc(registers.lcdc);
         PpuMode3WindowFetchContext::new(
             registers,
-            self.window_state.window_line_counter,
+            self.current_window_line_counter(),
             self.bg_pipeline_state.fetcher.window_tilemap_x,
         )
         .tile_data_address(tile_index, plane)

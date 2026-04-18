@@ -216,7 +216,7 @@ impl Ppu {
     }
 
     pub(super) fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
-        self.maybe_abort_window_fetcher_to_background();
+        self.maybe_abort_window_fetcher_to_background(vram);
         self.maybe_recompute_pending_background_push(vram);
         let fetch_policy = self.mode3_bgwin_fetch_policy();
 
@@ -471,7 +471,7 @@ impl Ppu {
         false
     }
 
-    pub(super) fn maybe_abort_window_fetcher_to_background(&mut self) {
+    pub(super) fn maybe_abort_window_fetcher_to_background(&mut self, vram: &VramBusView<'_>) {
         if self.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Window {
             return;
         }
@@ -481,6 +481,20 @@ impl Ppu {
         }
 
         self.bg_pipeline_state.fetcher.abort_window_to_background();
+        let fetch_x = self.bg_pipeline_state.fetcher.fetch_x;
+        let context = self.background_fetch_context(fetch_x);
+        let tile_map_address = context.tile_index_address();
+        let tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+        let tile_low_address = context.tile_data_address(tile_index, 0);
+        let tile_high_address = context.tile_data_address(tile_index, 1);
+        self.bg_pipeline_state.fetcher.tile_map_address = tile_map_address;
+        self.bg_pipeline_state.fetcher.tile_index = tile_index;
+        self.bg_pipeline_state.fetcher.tile_data_address = tile_low_address;
+        self.bg_pipeline_state.fetcher.tile_low_address = tile_low_address;
+        self.bg_pipeline_state.fetcher.tile_high_address = tile_high_address;
+        self.bg_pipeline_state.fetcher.tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        self.bg_pipeline_state.fetcher.tile_high =
+            vram.read(tile_high_address as usize).unwrap_or(0);
     }
 
     pub(super) fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
@@ -1012,7 +1026,7 @@ impl Ppu {
 
         if let Some(current_tilemap_mask) = window_activation_tile_current_tilemap_mask(
             cached.fetch_x,
-            self.window_state.window_line_counter,
+            self.current_window_line_counter(),
         ) {
             let use_first_write_current_tilemap = current_tilemap_mask & (0x80 >> pixel_index) != 0;
             let tilemap_select = if use_first_write_current_tilemap {
@@ -1031,7 +1045,7 @@ impl Ppu {
         if cached.fetch_x != 0
             || pixel_index != 0
             || !window_activation_first_pixel_uses_previous_tilemap(
-                self.window_state.window_line_counter,
+                self.current_window_line_counter(),
             )
         {
             return None;
@@ -1083,7 +1097,7 @@ impl Ppu {
 
         let previous_plane_masks = window_lcdc4_unsigned_to_signed_previous_plane_masks(
             cached.fetch_x,
-            self.window_state.window_line_counter,
+            self.current_window_line_counter(),
         )?;
         Some(self.read_window_lcdc4_tiledata_selector_pixel(
             cached,
@@ -1115,7 +1129,7 @@ impl Ppu {
         let bit = 0x80 >> pixel_index;
         let current_lcdc = self.mode3_register_latches().visible().lcdc;
         let previous_lcdc = previous_select.apply_to_lcdc(current_lcdc);
-        let current_tile_row = (self.window_state.window_line_counter & (BG_TILE_WIDTH - 1)) as u16;
+        let current_tile_row = (self.current_window_line_counter() & (BG_TILE_WIDTH - 1)) as u16;
         let previous_tile_low_address =
             bg_tile_data_base(previous_lcdc, cached.tile_index) + current_tile_row * TILE_ROW_BYTES;
         let previous_tile_high_address = previous_tile_low_address + 1;
@@ -1151,12 +1165,12 @@ impl Ppu {
 
         let previous_plane_masks = window_lcdc4_unsigned_to_signed_previous_plane_masks(
             context.fetch_x,
-            self.window_state.window_line_counter,
+            self.current_window_line_counter(),
         )?;
         let bit = 0x80 >> context.pixel_index;
         let current_lcdc = self.mode3_register_latches().visible().lcdc;
         let previous_lcdc = previous_select.apply_to_lcdc(current_lcdc);
-        let current_tile_row = (self.window_state.window_line_counter & (BG_TILE_WIDTH - 1)) as u16;
+        let current_tile_row = (self.current_window_line_counter() & (BG_TILE_WIDTH - 1)) as u16;
         let previous_tile_low_address = bg_tile_data_base(previous_lcdc, context.tile_index)
             + current_tile_row * TILE_ROW_BYTES;
         let previous_tile_high_address = previous_tile_low_address + 1;
@@ -2431,6 +2445,10 @@ impl Ppu {
 
     pub(super) fn start_window_fetcher_restart(&mut self) {
         let bg_resume_fetch_pixel = self.bg_pipeline_state.fetcher.next_fetch_pixel;
+        let window_line_counter = self
+            .window_state
+            .window_line_counter
+            .wrapping_add(self.bg_pipeline_state.window_start_count_this_line);
         self.bg_pipeline_state.fifo.clear();
         self.bg_pipeline_state.fifo_cached_pixels.clear();
         self.bg_pipeline_state.startup_fifo_placeholders = 0;
@@ -2441,6 +2459,11 @@ impl Ppu {
             .start_window(bg_resume_fetch_pixel);
         self.bg_pipeline_state.scx_discard_remaining = 0;
         self.bg_pipeline_state.window_started_this_line = true;
+        self.bg_pipeline_state.window_active_line_counter = window_line_counter;
+        self.bg_pipeline_state.window_start_count_this_line = self
+            .bg_pipeline_state
+            .window_start_count_this_line
+            .wrapping_add(1);
         self.bg_pipeline_state.window_force_x0_this_line = false;
     }
 }
