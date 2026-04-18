@@ -2595,6 +2595,10 @@ fn emulation_paused(machine: &Machine<TraceSummaryBuffer>, runtime: &FrontendRun
     machine.cartridge().is_empty() || runtime.paused || runtime.menu_state.is_open()
 }
 
+fn audio_source_machine(machine: &DesktopEmulationSession) -> &Machine<TraceSummaryBuffer> {
+    machine.primary_machine()
+}
+
 fn sync_gamepad_rumble(
     runtime: &mut FrontendRuntime,
     machine: &Machine<TraceSummaryBuffer>,
@@ -3838,7 +3842,7 @@ fn step_until_next_frame(
                 .record_t_cycle(context.machine);
 
             if let Some(audio_output) = &mut context.runtime.audio_output {
-                audio_output.capture_t_cycle(context.machine.apu());
+                audio_output.capture_t_cycle(audio_source_machine(context.machine).apu());
             }
 
             let rumble_result =
@@ -6192,14 +6196,14 @@ fn apply_canvas_video_options_for_dimensions(
 }
 
 fn sync_audio_playback_state(
-    machine: &Machine<TraceSummaryBuffer>,
+    machine: &DesktopEmulationSession,
     runtime: &FrontendRuntime,
 ) -> Result<(), String> {
     let Some(audio_output) = runtime.audio_output.as_ref() else {
         return Ok(());
     };
 
-    if emulation_paused(machine, runtime) {
+    if emulation_paused(audio_source_machine(machine), runtime) {
         audio_output.pause()
     } else {
         audio_output.resume()
@@ -10133,6 +10137,28 @@ mod tests {
                 .pressed_mask,
             0
         );
+    }
+
+    #[test]
+    fn audio_source_machine_is_primary_for_single_and_linked_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let single = FrontendHarness::new("audio-source-single", true, false, false).machine;
+        assert!(std::ptr::eq(
+            super::audio_source_machine(&single),
+            single.primary_machine()
+        ));
+
+        let primary = dmg_skip_boot_summary_machine();
+        let secondary = dmg_skip_boot_summary_machine();
+        let linked = super::linked_session::DesktopEmulationSession::new_linked_dmg04_two_player(
+            primary, secondary,
+        )
+        .expect("linked desktop session should build");
+
+        assert!(std::ptr::eq(
+            super::audio_source_machine(&linked),
+            linked.primary_machine()
+        ));
     }
 
     #[test]

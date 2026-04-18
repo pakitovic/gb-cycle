@@ -622,6 +622,22 @@ This keeps the scope intentionally narrow:
 - no player-slot abstraction or persistent per-player rebinding exists yet
 - gamepad input remains primary-only until the later player-slot phase
 
+### Phase 7.5 status
+
+Desktop now makes its current linked-session audio policy explicit:
+
+- audio capture and submission in a two-console `DMG-04` session use only the
+  primary machine
+- the secondary machine remains muted by frontend policy
+- one `DesktopAudioOutput` still owns the host audio stream
+
+This intentionally keeps audio simpler than the future player-slot model:
+
+- no per-player mixer exists yet
+- no UI toggle exists yet to unmute or mix the second console
+- a later phase can revisit multi-console audio policy once player slots and
+  per-player host controls exist
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`
