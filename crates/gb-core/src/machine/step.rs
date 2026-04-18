@@ -335,6 +335,7 @@ impl MachinePhaseRunner<'_> {
         let cpu_read_arbitration_state = arbitration_state.with_ppu(self.ppu.cpu_bus_state());
         let cpu_write_arbitration_state =
             arbitration_state.with_ppu(self.ppu.cpu_write_bus_state());
+        let stop_active_before = self.cpu_stop_active();
         observe_machine_step_region(observer, MachineStepRegion::Cpu, || {
             let cpu = &mut self.cpu;
             let bus = &mut self.bus;
@@ -436,7 +437,10 @@ impl MachinePhaseRunner<'_> {
             }
         });
 
-        self.update_ppu_stop_state();
+        let stop_active_after = self.cpu_stop_active();
+        if stop_active_before != stop_active_after {
+            self.ppu.set_system_stop_active(stop_active_after);
+        }
         tracer.emit_with(TraceSubsystem::Cpu, TraceLevel::Trace, || {
             self.cpu.scheduler_trace_message(context)
         });
@@ -514,6 +518,7 @@ impl MachinePhaseRunner<'_> {
         S: TraceSink,
         O: MachineStepObserver,
     {
+        let stop_active_before = self.cpu_stop_active();
         observe_machine_step_region(observer, MachineStepRegion::Cpu, || {
             let cpu = &mut self.cpu;
             let interrupts = &mut self.interrupts;
@@ -521,7 +526,10 @@ impl MachinePhaseRunner<'_> {
             cpu.evaluate_wake_and_interrupts(interrupts, joypad);
         });
 
-        self.update_ppu_stop_state();
+        let stop_active_after = self.cpu_stop_active();
+        if stop_active_before != stop_active_after {
+            self.ppu.set_system_stop_active(stop_active_after);
+        }
 
         if self.joypad.should_emit_scheduler_trace() {
             tracer.emit_with(TraceSubsystem::Joypad, TraceLevel::Trace, || {
@@ -554,10 +562,6 @@ impl MachinePhaseRunner<'_> {
             self.cpu.execution_state(),
             CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
         )
-    }
-
-    fn update_ppu_stop_state(&mut self) {
-        self.ppu.set_system_stop_active(self.cpu_stop_active());
     }
 }
 
