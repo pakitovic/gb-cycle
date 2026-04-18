@@ -221,10 +221,13 @@ impl MachinePhaseRunner<'_> {
                 observe_machine_step_region(observer, MachineStepRegion::Dma, || {
                     self.dma.tick_t_cycle(context)
                 });
+            let boot_bus_state = self.boot.bus_state();
+            let dma_bus_state = self.dma.bus_state();
+            let ppu_owner_bus_state_before = self.ppu.owner_bus_state();
             let dma_arbitration_state = BusArbitrationState::default()
-                .with_boot_rom(self.boot.bus_state())
-                .with_ppu(self.ppu.bus_state())
-                .with_dma(self.dma.bus_state());
+                .with_boot_rom(boot_bus_state)
+                .with_ppu(ppu_owner_bus_state_before)
+                .with_dma(dma_bus_state);
             let dma_transfer_byte =
                 observe_machine_step_region(observer, MachineStepRegion::Dma, || {
                     dma_transfer_work.map(|transfer_work| {
@@ -258,11 +261,11 @@ impl MachinePhaseRunner<'_> {
                             .contains(&destination_address)
                             .then_some(PpuDmaOamConflict::new(destination_address, value))
                     });
-            let dma_oam_active = self.dma.bus_state().active_region().is_some();
+            let dma_oam_active = dma_bus_state.active_region().is_some();
 
             observer.begin_region(MachineStepRegion::Ppu);
             self.bus
-                .sync_video_domain_ownership(self.ppu.owner_bus_state(), self.dma.bus_state());
+                .sync_video_domain_ownership(ppu_owner_bus_state_before, dma_bus_state);
             let (oam_view, vram_view) = self.bus.video_views(BusMaster::Ppu);
             self.ppu.tick_t_cycle_with_observer(
                 context,
@@ -272,8 +275,9 @@ impl MachinePhaseRunner<'_> {
                 dma_oam_conflict,
                 observer,
             );
+            let ppu_owner_bus_state_after = self.ppu.owner_bus_state();
             self.bus
-                .sync_video_domain_ownership(self.ppu.owner_bus_state(), self.dma.bus_state());
+                .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
             observer.end_region(MachineStepRegion::Ppu);
             observe_machine_step_region(observer, MachineStepRegion::Serial, || {
                 self.serial.tick_t_cycle(context);
