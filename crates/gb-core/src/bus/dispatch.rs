@@ -133,9 +133,15 @@ impl Bus {
         requester: BusRequester,
         state: &BusArbitrationState,
         t_cycle: TCycle,
-        cartridge: Option<&mut CartridgeSlot>,
+        mut cartridge: Option<&mut CartridgeSlot>,
         io: BusIoReadView<'_>,
     ) -> u8 {
+        if let Some(value) =
+            self.try_read_timed_fast_path(address, requester, state, t_cycle, &mut cartridge)
+        {
+            return value;
+        }
+
         let resolution = self.resolve_requester_access(
             requester,
             BusAccessKind::Read,
@@ -226,9 +232,14 @@ impl Bus {
         requester: BusRequester,
         state: &BusArbitrationState,
         t_cycle: TCycle,
-        cartridge: Option<&mut CartridgeSlot>,
+        mut cartridge: Option<&mut CartridgeSlot>,
         io: BusIoWriteView<'_>,
     ) {
+        if self.try_write_timed_fast_path(address, value, requester, state, t_cycle, &mut cartridge)
+        {
+            return;
+        }
+
         let resolution = self.resolve_requester_access(
             requester,
             BusAccessKind::Write,
@@ -275,6 +286,75 @@ impl Bus {
         }
 
         state.dma.cpu_conflict_source_address()
+    }
+
+    fn try_read_timed_fast_path(
+        &self,
+        address: u16,
+        requester: BusRequester,
+        state: &BusArbitrationState,
+        t_cycle: TCycle,
+        cartridge: &mut Option<&mut CartridgeSlot>,
+    ) -> Option<u8> {
+        if requester != BusRequester::Cpu
+            || state.dma.cpu_access_policy() != DmaCpuAccessPolicy::Unrestricted
+            || state.boot_rom.overlays_read(address)
+        {
+            return None;
+        }
+
+        let target = self.decode_address(address);
+        match target.region() {
+            BusRegion::CartridgeRomBank0
+            | BusRegion::CartridgeRomBankN
+            | BusRegion::CartridgeExternal => Some(self.read_cartridge_target_timed(
+                target.address(),
+                target.region(),
+                t_cycle,
+                cartridge.as_deref_mut(),
+            )),
+            BusRegion::WramBank0 | BusRegion::WramBankN | BusRegion::EchoRam => {
+                Some(self.wram.read(target.address()))
+            }
+            _ => None,
+        }
+    }
+
+    fn try_write_timed_fast_path(
+        &mut self,
+        address: u16,
+        value: u8,
+        requester: BusRequester,
+        state: &BusArbitrationState,
+        t_cycle: TCycle,
+        cartridge: &mut Option<&mut CartridgeSlot>,
+    ) -> bool {
+        if requester != BusRequester::Cpu
+            || state.dma.cpu_access_policy() != DmaCpuAccessPolicy::Unrestricted
+        {
+            return false;
+        }
+
+        let target = self.decode_address(address);
+        match target.region() {
+            BusRegion::CartridgeRomBank0
+            | BusRegion::CartridgeRomBankN
+            | BusRegion::CartridgeExternal => {
+                self.write_cartridge_target_timed(
+                    target.address(),
+                    target.region(),
+                    value,
+                    t_cycle,
+                    cartridge.as_deref_mut(),
+                );
+                true
+            }
+            BusRegion::WramBank0 | BusRegion::WramBankN | BusRegion::EchoRam => {
+                self.wram.write(target.address(), value);
+                true
+            }
+            _ => false,
+        }
     }
 
     fn resolve_nominal_target(
