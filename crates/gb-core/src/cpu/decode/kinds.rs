@@ -70,6 +70,37 @@ pub(in crate::cpu) enum InstructionExecutionGroup {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(in crate::cpu) enum FetchCompletionKind {
+    Nop,
+    DecimalAdjustAccumulator,
+    ComplementAccumulator,
+    SetCarryFlag,
+    ComplementCarryFlag,
+    RotateLeftAccumulatorCarry,
+    RotateLeftAccumulatorThroughCarry,
+    RotateRightAccumulatorCarry,
+    RotateRightAccumulatorThroughCarry,
+    Halt,
+    DisableInterrupts,
+    EnableInterrupts,
+    JumpHl,
+    LoadRegisterToRegister {
+        destination: Register8,
+        source: Register8,
+    },
+    IncrementRegister {
+        target: Register8,
+    },
+    DecrementRegister {
+        target: Register8,
+    },
+    AluRegister {
+        operation: AluOperation,
+        source: Register8,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::cpu) enum CbInstructionKind {
     RotateLeftCarry { target: Register8Operand },
     RotateRightCarry { target: Register8Operand },
@@ -232,7 +263,7 @@ impl CpuInstructionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::cpu) enum DecodedOpcode {
-    Complete,
+    CompleteOnFetch(FetchCompletionKind),
     Execute(CpuInstructionKind),
     Unsupported,
 }

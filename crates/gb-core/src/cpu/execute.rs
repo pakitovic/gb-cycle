@@ -13,18 +13,35 @@ impl CpuCore {
         step: u8,
         bus_operation: &mut CpuExternalCallback<'_>,
     ) {
-        let opcode = self.current_opcode().unwrap_or(0);
-        let Some(kind) = self.in_flight.kind else {
+        if !cfg!(test) && self.in_flight.execution_group.is_some() {
+            debug_assert_eq!(
+                self.in_flight.execution_group,
+                self.in_flight.kind.map(CpuInstructionKind::execution_group),
+                "decoded execution group must stay coherent with the decoded instruction kind",
+            );
+        }
+
+        if !cfg!(test) {
+            debug_assert!(
+                self.in_flight.opcode().is_some() || self.in_flight.kind.is_none(),
+                "execute state should retain a latched opcode when a decoded instruction is still in flight",
+            );
+        }
+
+        let opcode = self.in_flight.opcode().unwrap_or(0);
+        let Some((kind, execution_group)) = self.in_flight.execution_descriptor() else {
+            if !cfg!(test) {
+                debug_assert!(
+                    false,
+                    "execute state should retain a decoded instruction descriptor while machine cycles are in flight",
+                );
+            }
             self.execution_state = CpuExecutionState::Execute {
                 step,
                 t_cycle: LAST_MACHINE_CYCLE_T,
             };
             return;
         };
-        let execution_group = self
-            .in_flight
-            .execution_group
-            .unwrap_or_else(|| kind.execution_group());
 
         match execution_group {
             InstructionExecutionGroup::Load => {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::cpu::decode::FetchCompletionKind;
 
 #[test]
 fn execute_without_instruction_kind_restalls_last_machine_cycle() {
@@ -504,28 +505,23 @@ fn remaining_private_decode_and_address_helpers_stay_explicit() {
     let mut cpu = power_on_cpu();
 
     cpu.registers.a = 0x81;
-    assert!(matches!(
-        cpu.decode_fetched_opcode(0x07),
-        DecodedOpcode::Complete
-    ));
+    cpu.complete_fetch_completion(FetchCompletionKind::RotateLeftAccumulatorCarry);
     assert_eq!(cpu.registers.a, 0x03);
     assert_eq!(cpu.registers.f, FLAG_C);
 
+    let mut cpu = power_on_cpu();
     cpu.registers.a = 0x80;
     cpu.registers.f = FLAG_C;
-    assert!(matches!(
-        cpu.decode_fetched_opcode(0x17),
-        DecodedOpcode::Complete
-    ));
+    cpu.complete_fetch_completion(FetchCompletionKind::RotateLeftAccumulatorThroughCarry);
     assert_eq!(cpu.registers.a, 0x01);
     assert_eq!(cpu.registers.f, FLAG_C);
 
+    let mut cpu = power_on_cpu();
     cpu.registers.f = 0;
     cpu.registers.d = 0x01;
-    assert!(matches!(
-        cpu.decode_fetched_opcode(0x15),
-        DecodedOpcode::Complete
-    ));
+    cpu.complete_fetch_completion(FetchCompletionKind::DecrementRegister {
+        target: Register8::D,
+    });
     assert_eq!(cpu.registers.d, 0x00);
     assert_eq!(cpu.registers.f, FLAG_Z | FLAG_N);
     assert!(matches!(

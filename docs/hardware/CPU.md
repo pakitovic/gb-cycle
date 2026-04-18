@@ -184,6 +184,11 @@ Priority order:
   need extra immediate fetches, indirect memory traffic, or distinct read and
   write phases, so register-only and `(HL)` forms cannot accidentally collapse
   onto one fake timing path.
+- In the current post-Phase `6` cleanup baseline for this repo, fetched-opcode
+  decode should stay pure even for fetch-completing instructions: the decoder
+  returns a fetch-completion descriptor, and the fetch-phase engine applies the
+  semantic effect on that same M-cycle without making decode itself mutate CPU
+  state.
 - A shape like `FetchOpcode`, `ExecuteMicroOp`, `ServiceInterrupt`, `Halted`, and `Stopped` is a good conceptual fit even if final enum names differ.
 - Expose either a `tick_tcycle()`-style API or a micro-step API that expands explicitly into visible T-cycle progress; the scheduler should never need to wait for a whole instruction to retire before other hardware advances.
 - Decode and execution should stay distinct enough that base opcodes and CB-prefixed opcodes can reuse the same execution machinery without collapsing their separate fetches.

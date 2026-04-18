@@ -49,6 +49,25 @@ impl StopPhase {
     }
 }
 
+const CALL_STEP_READ_LOW: u8 = 0;
+const CALL_STEP_READ_HIGH: u8 = 1;
+const CALL_STEP_PREPARE_STACK_PUSH: u8 = 2;
+const CALL_STEP_PUSH_PC_HIGH: u8 = 3;
+const CALL_STEP_PUSH_PC_LOW_AND_COMMIT_TARGET: u8 = 4;
+
+const RETURN_STEP_READ_LOW: u8 = 0;
+const RETURN_STEP_READ_HIGH: u8 = 1;
+const RETURN_STEP_COMMIT_TARGET: u8 = 2;
+
+const CONDITIONAL_RETURN_STEP_EVALUATE_CONDITION: u8 = 0;
+const CONDITIONAL_RETURN_STEP_READ_LOW: u8 = 1;
+const CONDITIONAL_RETURN_STEP_READ_HIGH: u8 = 2;
+const CONDITIONAL_RETURN_STEP_COMMIT_TARGET: u8 = 3;
+
+const RESTART_STEP_PREPARE_STACK_PUSH: u8 = 0;
+const RESTART_STEP_PUSH_PC_HIGH: u8 = 1;
+const RESTART_STEP_PUSH_PC_LOW_AND_COMMIT_VECTOR: u8 = 2;
+
 impl CpuCore {
     pub(super) fn execute_control_flow_machine_cycle(
         &mut self,
@@ -131,24 +150,24 @@ impl CpuCore {
                 }
             }
             CpuInstructionKind::Call => match step {
-                0 => {
+                CALL_STEP_READ_LOW => {
                     self.in_flight.operand16_latch = u16::from(self.read_pc_u8(bus_operation));
-                    self.advance_instruction(opcode, 1);
+                    self.advance_instruction(opcode, CALL_STEP_READ_HIGH);
                 }
-                1 => {
+                CALL_STEP_READ_HIGH => {
                     let high = self.read_pc_u8(bus_operation);
                     self.in_flight.operand16_latch |= u16::from(high) << 8;
-                    self.advance_instruction(opcode, 2);
+                    self.advance_instruction(opcode, CALL_STEP_PREPARE_STACK_PUSH);
                 }
-                2 => {
+                CALL_STEP_PREPARE_STACK_PUSH => {
                     self.prepare_pc_stack_push();
-                    self.advance_instruction(opcode, 3);
+                    self.advance_instruction(opcode, CALL_STEP_PUSH_PC_HIGH);
                 }
-                3 => {
+                CALL_STEP_PUSH_PC_HIGH => {
                     self.push_pc_high_at_sp(bus_operation);
-                    self.advance_instruction(opcode, 4);
+                    self.advance_instruction(opcode, CALL_STEP_PUSH_PC_LOW_AND_COMMIT_TARGET);
                 }
-                4 => {
+                CALL_STEP_PUSH_PC_LOW_AND_COMMIT_TARGET => {
                     self.push_latched_low_with_decremented_sp(bus_operation);
                     self.registers.pc = self.in_flight.operand16_latch;
                     self.finish_instruction();
@@ -156,28 +175,28 @@ impl CpuCore {
                 _ => self.stall_instruction(opcode, step),
             },
             CpuInstructionKind::ConditionalCall { condition } => match step {
-                0 => {
+                CALL_STEP_READ_LOW => {
                     self.in_flight.operand16_latch = u16::from(self.read_pc_u8(bus_operation));
-                    self.advance_instruction(opcode, 1);
+                    self.advance_instruction(opcode, CALL_STEP_READ_HIGH);
                 }
-                1 => {
+                CALL_STEP_READ_HIGH => {
                     let high = self.read_pc_u8(bus_operation);
                     self.in_flight.operand16_latch |= u16::from(high) << 8;
                     if self.condition_is_met(Some(condition)) {
-                        self.advance_instruction(opcode, 2);
+                        self.advance_instruction(opcode, CALL_STEP_PREPARE_STACK_PUSH);
                     } else {
                         self.finish_instruction();
                     }
                 }
-                2 => {
+                CALL_STEP_PREPARE_STACK_PUSH => {
                     self.prepare_pc_stack_push();
-                    self.advance_instruction(opcode, 3);
+                    self.advance_instruction(opcode, CALL_STEP_PUSH_PC_HIGH);
                 }
-                3 => {
+                CALL_STEP_PUSH_PC_HIGH => {
                     self.push_pc_high_at_sp(bus_operation);
-                    self.advance_instruction(opcode, 4);
+                    self.advance_instruction(opcode, CALL_STEP_PUSH_PC_LOW_AND_COMMIT_TARGET);
                 }
-                4 => {
+                CALL_STEP_PUSH_PC_LOW_AND_COMMIT_TARGET => {
                     self.push_latched_low_with_decremented_sp(bus_operation);
                     self.registers.pc = self.in_flight.operand16_latch;
                     self.finish_instruction();
@@ -185,52 +204,52 @@ impl CpuCore {
                 _ => self.stall_instruction(opcode, step),
             },
             CpuInstructionKind::Return => match step {
-                0 => {
+                RETURN_STEP_READ_LOW => {
                     self.read_latched_stack_low_byte(bus_operation);
-                    self.advance_instruction(opcode, 1);
+                    self.advance_instruction(opcode, RETURN_STEP_READ_HIGH);
                 }
-                1 => {
+                RETURN_STEP_READ_HIGH => {
                     self.read_latched_stack_high_byte(bus_operation);
-                    self.advance_instruction(opcode, 2);
+                    self.advance_instruction(opcode, RETURN_STEP_COMMIT_TARGET);
                 }
-                2 => {
+                RETURN_STEP_COMMIT_TARGET => {
                     self.registers.pc = self.in_flight.operand16_latch;
                     self.finish_instruction();
                 }
                 _ => self.stall_instruction(opcode, step),
             },
             CpuInstructionKind::ConditionalReturn { condition } => match step {
-                0 => {
+                CONDITIONAL_RETURN_STEP_EVALUATE_CONDITION => {
                     if self.condition_is_met(Some(condition)) {
-                        self.advance_instruction(opcode, 1);
+                        self.advance_instruction(opcode, CONDITIONAL_RETURN_STEP_READ_LOW);
                     } else {
                         self.finish_instruction();
                     }
                 }
-                1 => {
+                CONDITIONAL_RETURN_STEP_READ_LOW => {
                     self.read_latched_stack_low_byte(bus_operation);
-                    self.advance_instruction(opcode, 2);
+                    self.advance_instruction(opcode, CONDITIONAL_RETURN_STEP_READ_HIGH);
                 }
-                2 => {
+                CONDITIONAL_RETURN_STEP_READ_HIGH => {
                     self.read_latched_stack_high_byte(bus_operation);
-                    self.advance_instruction(opcode, 3);
+                    self.advance_instruction(opcode, CONDITIONAL_RETURN_STEP_COMMIT_TARGET);
                 }
-                3 => {
+                CONDITIONAL_RETURN_STEP_COMMIT_TARGET => {
                     self.registers.pc = self.in_flight.operand16_latch;
                     self.finish_instruction();
                 }
                 _ => self.stall_instruction(opcode, step),
             },
             CpuInstructionKind::ReturnFromInterrupt => match step {
-                0 => {
+                RETURN_STEP_READ_LOW => {
                     self.read_latched_stack_low_byte(bus_operation);
-                    self.advance_instruction(opcode, 1);
+                    self.advance_instruction(opcode, RETURN_STEP_READ_HIGH);
                 }
-                1 => {
+                RETURN_STEP_READ_HIGH => {
                     self.read_latched_stack_high_byte(bus_operation);
-                    self.advance_instruction(opcode, 2);
+                    self.advance_instruction(opcode, RETURN_STEP_COMMIT_TARGET);
                 }
-                2 => {
+                RETURN_STEP_COMMIT_TARGET => {
                     self.registers.pc = self.in_flight.operand16_latch;
                     self.set_ime_enabled();
                     self.cancel_delayed_ime_enable();
@@ -273,15 +292,15 @@ impl CpuCore {
                 None => self.stall_instruction(opcode, step),
             },
             CpuInstructionKind::Restart { vector } => match step {
-                0 => {
+                RESTART_STEP_PREPARE_STACK_PUSH => {
                     self.prepare_pc_stack_push();
-                    self.advance_instruction(opcode, 1);
+                    self.advance_instruction(opcode, RESTART_STEP_PUSH_PC_HIGH);
                 }
-                1 => {
+                RESTART_STEP_PUSH_PC_HIGH => {
                     self.push_pc_high_at_sp(bus_operation);
-                    self.advance_instruction(opcode, 2);
+                    self.advance_instruction(opcode, RESTART_STEP_PUSH_PC_LOW_AND_COMMIT_VECTOR);
                 }
-                2 => {
+                RESTART_STEP_PUSH_PC_LOW_AND_COMMIT_VECTOR => {
                     self.push_latched_low_with_decremented_sp(bus_operation);
                     self.registers.pc = vector;
                     self.finish_instruction();

@@ -1,6 +1,6 @@
-use super::super::{CpuCore, FLAG_C};
+use super::super::CpuCore;
 use super::{
-    CpuInstructionKind, DecodedOpcode, DirectAddressSource, Register8Operand,
+    CpuInstructionKind, DecodedOpcode, DirectAddressSource, FetchCompletionKind, Register8Operand,
     decode_absolute_jump_condition, decode_alu_operation, decode_call_condition,
     decode_hl_update_direction, decode_register8_operand, decode_register16,
     decode_relative_jump_condition, decode_return_condition, decode_stack_register16,
@@ -48,65 +48,38 @@ impl CpuCore {
 
     fn decode_misc_opcode(&mut self, opcode: u8) -> Option<DecodedOpcode> {
         match opcode {
-            0x00 => Some(DecodedOpcode::Complete),
-            0xAF => {
-                self.registers.a = 0;
-                self.write_flags(true, false, false, false);
-                Some(DecodedOpcode::Complete)
-            }
-            0x27 => {
-                self.decimal_adjust_a();
-                Some(DecodedOpcode::Complete)
-            }
-            0x2F => {
-                self.complement_a();
-                Some(DecodedOpcode::Complete)
-            }
-            0x37 => {
-                self.set_carry_flag();
-                Some(DecodedOpcode::Complete)
-            }
-            0x3F => {
-                self.complement_carry_flag();
-                Some(DecodedOpcode::Complete)
-            }
-            0x07 => {
-                let result = self.rotate_left_carry(self.registers.a);
-                self.registers.a = result;
-                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
-                Some(DecodedOpcode::Complete)
-            }
-            0x17 => {
-                let result = self.rotate_left_through_carry(self.registers.a);
-                self.registers.a = result;
-                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
-                Some(DecodedOpcode::Complete)
-            }
-            0x0F => {
-                let result = self.rotate_right_carry(self.registers.a);
-                self.registers.a = result;
-                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
-                Some(DecodedOpcode::Complete)
-            }
-            0x1F => {
-                let result = self.rotate_right_through_carry(self.registers.a);
-                self.registers.a = result;
-                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
-                Some(DecodedOpcode::Complete)
-            }
-            0x76 => {
-                self.finish_and_request_halt();
-                Some(DecodedOpcode::Complete)
-            }
-            0xF3 => {
-                self.set_ime_disabled();
-                self.cancel_delayed_ime_enable();
-                Some(DecodedOpcode::Complete)
-            }
-            0xFB => {
-                self.schedule_delayed_ime_enable();
-                Some(DecodedOpcode::Complete)
-            }
+            0x00 => Some(DecodedOpcode::CompleteOnFetch(FetchCompletionKind::Nop)),
+            0x27 => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::DecimalAdjustAccumulator,
+            )),
+            0x2F => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::ComplementAccumulator,
+            )),
+            0x37 => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::SetCarryFlag,
+            )),
+            0x3F => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::ComplementCarryFlag,
+            )),
+            0x07 => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::RotateLeftAccumulatorCarry,
+            )),
+            0x17 => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::RotateLeftAccumulatorThroughCarry,
+            )),
+            0x0F => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::RotateRightAccumulatorCarry,
+            )),
+            0x1F => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::RotateRightAccumulatorThroughCarry,
+            )),
+            0x76 => Some(DecodedOpcode::CompleteOnFetch(FetchCompletionKind::Halt)),
+            0xF3 => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::DisableInterrupts,
+            )),
+            0xFB => Some(DecodedOpcode::CompleteOnFetch(
+                FetchCompletionKind::EnableInterrupts,
+            )),
             0x10 => Some(DecodedOpcode::Execute(CpuInstructionKind::Stop)),
             _ => None,
         }
@@ -138,9 +111,10 @@ impl CpuCore {
 
             return Some(match (destination, source) {
                 (Register8Operand::Register(destination), Register8Operand::Register(source)) => {
-                    let value = self.read_register8(source);
-                    self.write_register8(destination, value);
-                    DecodedOpcode::Complete
+                    DecodedOpcode::CompleteOnFetch(FetchCompletionKind::LoadRegisterToRegister {
+                        destination,
+                        source,
+                    })
                 }
                 (Register8Operand::Register(target), Register8Operand::IndirectHl) => {
                     DecodedOpcode::Execute(CpuInstructionKind::LoadRegisterFromHl { target })
@@ -250,9 +224,10 @@ impl CpuCore {
             let operation = decode_alu_operation((opcode >> 3) & 0x07);
             return Some(match decode_register8_operand(opcode & 0x07) {
                 Register8Operand::Register(source) => {
-                    let value = self.read_register8(source);
-                    self.apply_alu_operation(operation, value);
-                    DecodedOpcode::Complete
+                    DecodedOpcode::CompleteOnFetch(FetchCompletionKind::AluRegister {
+                        operation,
+                        source,
+                    })
                 }
                 Register8Operand::IndirectHl => {
                     DecodedOpcode::Execute(CpuInstructionKind::AluFromHl { operation })
@@ -263,11 +238,9 @@ impl CpuCore {
         if opcode & 0b1100_0111 == 0b0000_0100 {
             return Some(match decode_register8_operand((opcode >> 3) & 0x07) {
                 Register8Operand::Register(target) => {
-                    let before = self.read_register8(target);
-                    let result = before.wrapping_add(1);
-                    self.write_register8(target, result);
-                    self.update_inc_flags(before, result);
-                    DecodedOpcode::Complete
+                    DecodedOpcode::CompleteOnFetch(FetchCompletionKind::IncrementRegister {
+                        target,
+                    })
                 }
                 Register8Operand::IndirectHl => {
                     DecodedOpcode::Execute(CpuInstructionKind::IncrementHlMemory)
@@ -278,11 +251,9 @@ impl CpuCore {
         if opcode & 0b1100_0111 == 0b0000_0101 {
             return Some(match decode_register8_operand((opcode >> 3) & 0x07) {
                 Register8Operand::Register(target) => {
-                    let before = self.read_register8(target);
-                    let result = before.wrapping_sub(1);
-                    self.write_register8(target, result);
-                    self.update_dec_flags(before, result);
-                    DecodedOpcode::Complete
+                    DecodedOpcode::CompleteOnFetch(FetchCompletionKind::DecrementRegister {
+                        target,
+                    })
                 }
                 Register8Operand::IndirectHl => {
                     DecodedOpcode::Execute(CpuInstructionKind::DecrementHlMemory)
@@ -326,8 +297,7 @@ impl CpuCore {
 
     fn decode_control_flow_opcode(&mut self, opcode: u8) -> Option<DecodedOpcode> {
         if opcode == 0xE9 {
-            self.registers.pc = self.hl();
-            return Some(DecodedOpcode::Complete);
+            return Some(DecodedOpcode::CompleteOnFetch(FetchCompletionKind::JumpHl));
         }
 
         if opcode == 0xCB {
@@ -404,8 +374,8 @@ impl CpuCore {
 
 const fn decode_fast_group(opcode: u8) -> Option<OpcodeDecodeGroup> {
     match opcode {
-        0x00 | 0x07 | 0x0F | 0x10 | 0x17 | 0x1F | 0x27 | 0x2F | 0x37 | 0x3F | 0x76 | 0xAF
-        | 0xF3 | 0xFB => Some(OpcodeDecodeGroup::Misc),
+        0x00 | 0x07 | 0x0F | 0x10 | 0x17 | 0x1F | 0x27 | 0x2F | 0x37 | 0x3F | 0x76 | 0xF3
+        | 0xFB => Some(OpcodeDecodeGroup::Misc),
         0x40..=0x7F => Some(OpcodeDecodeGroup::Load),
         0x80..=0xBF => Some(OpcodeDecodeGroup::Arithmetic),
         0x18 | 0x20 | 0x28 | 0x30 | 0x38 | 0xC0 | 0xC1 | 0xC2 | 0xC3 | 0xC4 | 0xC5 | 0xC7

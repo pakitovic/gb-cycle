@@ -40,17 +40,17 @@ impl Bus {
             | CpuAddressEventKind::ReadWithIncDec
             | CpuAddressEventKind::WriteWithIncDec => {
                 let access_address = event.access_address?;
-                let idu_hits_fe_range = matches!(
+                let idu_may_hit_oam_corruption = matches!(
                     event.kind,
                     CpuAddressEventKind::ReadWithIncDec | CpuAddressEventKind::WriteWithIncDec
                 ) && idu_glitched_address(event)
-                    .is_some_and(address_may_reach_oam_corruption);
+                    .is_some_and(address_may_hit_oam_corruption);
 
-                if !address_may_reach_oam_corruption(access_address) && !idu_hits_fe_range {
+                if !address_may_hit_oam_corruption(access_address) && !idu_may_hit_oam_corruption {
                     return None;
                 }
 
-                let access_hits_corruption = if address_may_reach_oam_corruption(access_address) {
+                let access_hits_corruption = if address_may_hit_oam_corruption(access_address) {
                     let access_kind = access_kind_for_cpu_address_event(event.kind);
                     let resolution = self.resolve_access(access_kind, access_address, state, None);
 
@@ -100,7 +100,7 @@ impl Bus {
 
     fn idu_event_reaches_oam(&self, address: u16, state: &BusArbitrationState) -> bool {
         let _ = state;
-        self.console_model.is_dmg_family() && (0xFE00..=0xFEFF).contains(&address)
+        self.console_model.is_dmg_family() && address_may_hit_oam_corruption(address)
     }
 }
 
@@ -132,6 +132,21 @@ fn idu_glitched_address(event: CpuAddressEvent) -> Option<u16> {
     }
 }
 
-fn address_may_reach_oam_corruption(address: u16) -> bool {
+#[inline(always)]
+fn address_may_hit_oam_corruption(address: u16) -> bool {
     (address & 0xFF00) == 0xFE00
+}
+
+#[cfg(test)]
+mod tests {
+    use super::address_may_hit_oam_corruption;
+
+    #[test]
+    fn address_may_hit_oam_corruption_matches_the_fe_page_only() {
+        assert!(address_may_hit_oam_corruption(0xFE00));
+        assert!(address_may_hit_oam_corruption(0xFE9F));
+        assert!(address_may_hit_oam_corruption(0xFEFF));
+        assert!(!address_may_hit_oam_corruption(0xFDFF));
+        assert!(!address_may_hit_oam_corruption(0xFF00));
+    }
 }

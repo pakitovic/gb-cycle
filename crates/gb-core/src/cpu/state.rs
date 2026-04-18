@@ -152,6 +152,26 @@ impl CpuExecutionState {
 }
 
 impl InFlightInstruction {
+    pub(super) const fn opcode(self) -> Option<u8> {
+        self.opcode
+    }
+
+    pub(super) const fn execution_descriptor(
+        self,
+    ) -> Option<(CpuInstructionKind, InstructionExecutionGroup)> {
+        let kind = match self.kind {
+            Some(kind) => kind,
+            None => return None,
+        };
+
+        let execution_group = match self.execution_group {
+            Some(execution_group) => execution_group,
+            None => kind.execution_group(),
+        };
+
+        Some((kind, execution_group))
+    }
+
     const fn clear_decoded_state(&mut self) {
         self.kind = None;
         self.execution_group = None;

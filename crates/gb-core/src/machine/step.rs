@@ -19,36 +19,104 @@ use crate::scheduler::{
 use crate::serial::Serial;
 use crate::timer::Timer;
 
+const CPU_OAM_ADDRESS_START: u16 = 0xFE00;
+const CPU_OAM_ADDRESS_END: u16 = 0xFE9F;
+const CPU_MMIO_ADDRESS_START: u16 = 0xFF00;
+const CPU_MMIO_ADDRESS_END: u16 = 0xFF7F;
+const INTERRUPT_FLAG_ADDRESS: u16 = 0xFF0F;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PendingPpuMmioWrite {
     pub(super) address: u16,
     pub(super) value: u8,
 }
 
-fn interrupt_source_bit(source: InterruptSource) -> u8 {
-    match source {
-        InterruptSource::VBlank => 0x01,
-        InterruptSource::LcdStat => 0x02,
-        InterruptSource::Timer => 0x04,
-        InterruptSource::Serial => 0x08,
-        InterruptSource::Joypad => 0x10,
-    }
+#[inline(always)]
+fn address_hits_cpu_oam_window(address: u16) -> bool {
+    (CPU_OAM_ADDRESS_START..=CPU_OAM_ADDRESS_END).contains(&address)
+}
+
+#[inline(always)]
+fn address_is_cpu_mmio(address: u16) -> bool {
+    (CPU_MMIO_ADDRESS_START..=CPU_MMIO_ADDRESS_END).contains(&address)
 }
 
 fn current_cycle_interrupt_read_mask(context: &CycleContext, ppu: &Ppu, joypad: &Joypad) -> u8 {
     let mut mask = 0;
     for &source in context.interrupt_requests() {
-        mask |= interrupt_source_bit(source);
+        mask |= source.mask();
     }
     mask |= ppu.pending_interrupt_request_mask();
     if joypad.interrupt_request_pending() {
-        mask |= 0x10;
+        mask |= InterruptSource::Joypad.mask();
     }
     mask
 }
 
+#[inline(always)]
+fn cpu_interrupt_mask_for_if_read(
+    address: u16,
+    context: &CycleContext,
+    ppu: &Ppu,
+    joypad: &Joypad,
+) -> u8 {
+    if address == INTERRUPT_FLAG_ADDRESS {
+        current_cycle_interrupt_read_mask(context, ppu, joypad)
+    } else {
+        0
+    }
+}
+
+#[inline(always)]
+fn cpu_read_arbitration_state(
+    address: u16,
+    arbitration_states: CpuBusArbitrationStates,
+    ppu: &Ppu,
+) -> BusArbitrationState {
+    if address_hits_cpu_oam_window(address) {
+        arbitration_states
+            .pre_cpu
+            .with_ppu(ppu.cpu_oam_read_bus_state())
+    } else {
+        arbitration_states.cpu_read
+    }
+}
+
+#[inline(always)]
+fn cpu_write_arbitration_state(
+    address: u16,
+    arbitration_states: CpuBusArbitrationStates,
+    ppu: &Ppu,
+) -> BusArbitrationState {
+    if address_hits_cpu_oam_window(address) {
+        arbitration_states
+            .pre_cpu
+            .with_ppu(ppu.cpu_oam_write_bus_state())
+    } else {
+        arbitration_states.cpu_write
+    }
+}
+
+#[inline(always)]
+fn finalize_cpu_micro_operation(
+    cpu: &mut CpuCore,
+    bus: &mut Bus,
+    apu: &mut Apu,
+    ppu: &mut Ppu,
+    timer: &mut Timer,
+    arbitration_state: &BusArbitrationState,
+) {
+    if let Some(event) = cpu.last_address_event() {
+        bus.route_cpu_address_event(event, arbitration_state, ppu);
+    }
+
+    if cpu.take_stop_div_reset_request() {
+        apply_stop_div_reset(apu, timer);
+    }
+}
+
 pub(super) fn cpu_write_targets_ppu_mmio(address: u16) -> bool {
-    if !(0xFF00..=0xFF7F).contains(&address) {
+    if !address_is_cpu_mmio(address) {
         return false;
     }
 
@@ -263,8 +331,7 @@ impl MachinePhaseRunner<'_> {
                     .zip(dma_transfer_byte)
                     .and_then(|(transfer_work, value)| {
                         let destination_address = transfer_work.destination_address();
-                        (0xFE00..=0xFE9F)
-                            .contains(&destination_address)
+                        address_hits_cpu_oam_window(destination_address)
                             .then_some(PpuDmaOamConflict::new(destination_address, value))
                     });
             let dma_oam_active = dma_bus_state.active_region().is_some();
@@ -360,18 +427,11 @@ impl MachinePhaseRunner<'_> {
 
             cpu.tick_t_cycle(|operation| match operation {
                 CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
-                    let read_arbitration_state = if (0xFE00..=0xFE9F).contains(&address) {
-                        arbitration_states
-                            .pre_cpu
-                            .with_ppu(ppu.cpu_oam_read_bus_state())
-                    } else {
-                        arbitration_states.cpu_read
-                    };
-                    let interrupt_flag_pending_mask = if address == 0xFF0F {
-                        current_cycle_interrupt_read_mask(context, ppu, joypad)
-                    } else {
-                        0
-                    };
+                    let read_arbitration_state =
+                        cpu_read_arbitration_state(address, arbitration_states, ppu);
+                    let interrupt_flag_pending_mask =
+                        cpu_interrupt_mask_for_if_read(address, context, ppu, joypad);
+
                     Some(bus.read_with_t_cycle_context(
                         address,
                         BusRequester::Cpu,
@@ -397,13 +457,8 @@ impl MachinePhaseRunner<'_> {
                         *pending_ppu_mmio_write = Some(PendingPpuMmioWrite { address, value });
                         context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
                     } else {
-                        let write_arbitration_state = if (0xFE00..=0xFE9F).contains(&address) {
-                            arbitration_states
-                                .pre_cpu
-                                .with_ppu(ppu.cpu_oam_write_bus_state())
-                        } else {
-                            arbitration_states.cpu_write
-                        };
+                        let write_arbitration_state =
+                            cpu_write_arbitration_state(address, arbitration_states, ppu);
                         bus.write_with_t_cycle_context(
                             address,
                             value,
@@ -440,13 +495,7 @@ impl MachinePhaseRunner<'_> {
                 }
             });
 
-            if let Some(event) = cpu.last_address_event() {
-                bus.route_cpu_address_event(event, &arbitration_states.pre_cpu, ppu);
-            }
-
-            if cpu.take_stop_div_reset_request() {
-                apply_stop_div_reset(apu, timer);
-            }
+            finalize_cpu_micro_operation(cpu, bus, apu, ppu, timer, &arbitration_states.pre_cpu);
         });
 
         let stop_active_after = self.cpu_stop_active();

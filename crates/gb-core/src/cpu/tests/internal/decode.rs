@@ -1,4 +1,5 @@
 use super::*;
+use crate::cpu::decode::FetchCompletionKind;
 
 #[test]
 fn interrupt_vectors_and_pending_priority_helpers_are_explicit() {
@@ -123,23 +124,19 @@ fn decoder_table_helpers_cover_remaining_private_paths() {
 #[test]
 fn decode_fetched_opcode_covers_private_complete_and_execute_variants() {
     let mut cpu = power_on_cpu();
+    let baseline = cpu.snapshot();
 
-    cpu.registers.a = 0x01;
     assert!(matches!(
         cpu.decode_fetched_opcode(0x0F),
-        DecodedOpcode::Complete
+        DecodedOpcode::CompleteOnFetch(FetchCompletionKind::RotateRightAccumulatorCarry)
     ));
-    assert_eq!(cpu.registers.a, 0x80);
-    assert_eq!(cpu.registers.f, FLAG_C);
+    assert_eq!(cpu.snapshot(), baseline);
 
-    cpu.registers.a = 0x80;
-    cpu.registers.f = FLAG_C;
     assert!(matches!(
         cpu.decode_fetched_opcode(0x1F),
-        DecodedOpcode::Complete
+        DecodedOpcode::CompleteOnFetch(FetchCompletionKind::RotateRightAccumulatorThroughCarry)
     ));
-    assert_eq!(cpu.registers.a, 0xC0);
-    assert_eq!(cpu.registers.f, 0);
+    assert_eq!(cpu.snapshot(), baseline);
 
     assert!(matches!(
         cpu.decode_fetched_opcode(0x10),
@@ -356,6 +353,33 @@ fn fast_decode_group_matches_the_linear_decode_path_for_every_opcode() {
             fast.snapshot(),
             slow.snapshot(),
             "opcode {opcode:#04X} cpu state"
+        );
+    }
+}
+
+#[test]
+fn fetched_opcode_decoder_is_pure_for_fetch_completing_instructions() {
+    let mut cpu = power_on_cpu();
+    cpu.registers.a = 0x81;
+    cpu.registers.d = 0x01;
+    cpu.registers.b = 0x12;
+    cpu.registers.c = 0x34;
+    cpu.registers.f = FLAG_C;
+    cpu.set_ime_enabled();
+    cpu.schedule_delayed_ime_enable();
+    let baseline = cpu.snapshot();
+
+    for opcode in [0x07, 0x17, 0x15, 0x41, 0xAF, 0xE9, 0xF3, 0xFB, 0x76] {
+        let mut candidate = cpu.clone();
+        let decoded = candidate.decode_fetched_opcode(opcode);
+        assert!(
+            matches!(decoded, DecodedOpcode::CompleteOnFetch(_)),
+            "opcode {opcode:#04X} should complete on fetch"
+        );
+        assert_eq!(
+            candidate.snapshot(),
+            baseline,
+            "opcode {opcode:#04X} mutated cpu state during decode"
         );
     }
 }

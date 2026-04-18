@@ -1,4 +1,4 @@
-use super::decode::{CpuInstructionKind, DecodedOpcode};
+use super::decode::{CpuInstructionKind, DecodedOpcode, FetchCompletionKind};
 use super::*;
 
 impl CpuCore {
@@ -106,9 +106,98 @@ impl CpuCore {
         }
 
         match self.decode_fetched_opcode(opcode) {
-            DecodedOpcode::Complete => self.finish_instruction(),
+            DecodedOpcode::CompleteOnFetch(completion) => {
+                self.complete_fetch_completion(completion);
+            }
             DecodedOpcode::Execute(kind) => self.begin_instruction(opcode, kind),
             DecodedOpcode::Unsupported => self.enter_invalid_opcode_trap(opcode),
+        }
+    }
+
+    pub(super) fn complete_fetch_completion(&mut self, completion: FetchCompletionKind) {
+        match completion {
+            FetchCompletionKind::Nop => self.finish_instruction(),
+            FetchCompletionKind::DecimalAdjustAccumulator => {
+                self.decimal_adjust_a();
+                self.finish_instruction();
+            }
+            FetchCompletionKind::ComplementAccumulator => {
+                self.complement_a();
+                self.finish_instruction();
+            }
+            FetchCompletionKind::SetCarryFlag => {
+                self.set_carry_flag();
+                self.finish_instruction();
+            }
+            FetchCompletionKind::ComplementCarryFlag => {
+                self.complement_carry_flag();
+                self.finish_instruction();
+            }
+            FetchCompletionKind::RotateLeftAccumulatorCarry => {
+                let result = self.rotate_left_carry(self.registers.a);
+                self.registers.a = result;
+                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+                self.finish_instruction();
+            }
+            FetchCompletionKind::RotateLeftAccumulatorThroughCarry => {
+                let result = self.rotate_left_through_carry(self.registers.a);
+                self.registers.a = result;
+                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+                self.finish_instruction();
+            }
+            FetchCompletionKind::RotateRightAccumulatorCarry => {
+                let result = self.rotate_right_carry(self.registers.a);
+                self.registers.a = result;
+                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+                self.finish_instruction();
+            }
+            FetchCompletionKind::RotateRightAccumulatorThroughCarry => {
+                let result = self.rotate_right_through_carry(self.registers.a);
+                self.registers.a = result;
+                self.write_flags(false, false, false, self.registers.f & FLAG_C != 0);
+                self.finish_instruction();
+            }
+            FetchCompletionKind::Halt => self.finish_and_request_halt(),
+            FetchCompletionKind::DisableInterrupts => {
+                self.set_ime_disabled();
+                self.cancel_delayed_ime_enable();
+                self.finish_instruction();
+            }
+            FetchCompletionKind::EnableInterrupts => {
+                self.schedule_delayed_ime_enable();
+                self.finish_instruction();
+            }
+            FetchCompletionKind::JumpHl => {
+                self.registers.pc = self.hl();
+                self.finish_instruction();
+            }
+            FetchCompletionKind::LoadRegisterToRegister {
+                destination,
+                source,
+            } => {
+                let value = self.read_register8(source);
+                self.write_register8(destination, value);
+                self.finish_instruction();
+            }
+            FetchCompletionKind::IncrementRegister { target } => {
+                let before = self.read_register8(target);
+                let result = before.wrapping_add(1);
+                self.write_register8(target, result);
+                self.update_inc_flags(before, result);
+                self.finish_instruction();
+            }
+            FetchCompletionKind::DecrementRegister { target } => {
+                let before = self.read_register8(target);
+                let result = before.wrapping_sub(1);
+                self.write_register8(target, result);
+                self.update_dec_flags(before, result);
+                self.finish_instruction();
+            }
+            FetchCompletionKind::AluRegister { operation, source } => {
+                let value = self.read_register8(source);
+                self.apply_alu_operation(operation, value);
+                self.finish_instruction();
+            }
         }
     }
 

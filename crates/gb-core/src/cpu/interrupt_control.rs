@@ -3,6 +3,18 @@ use crate::joypad::Joypad;
 
 use super::*;
 
+const INTERRUPT_SERVICE_STEP_INTERNAL_0: u8 = 0;
+const INTERRUPT_SERVICE_STEP_INTERNAL_1: u8 = 1;
+const INTERRUPT_SERVICE_STEP_PREPARE_STACK_PUSH: u8 = 2;
+const INTERRUPT_SERVICE_STEP_PUSH_PC_HIGH: u8 = 3;
+const INTERRUPT_SERVICE_STEP_PUSH_PC_LOW_AND_COMMIT_VECTOR: u8 = 4;
+
+const STOP_WAKE_BUGGED_INTERRUPT_STEP_INTERNAL_0: u8 = 0;
+const STOP_WAKE_BUGGED_INTERRUPT_STEP_INTERNAL_1: u8 = 1;
+const STOP_WAKE_BUGGED_INTERRUPT_STEP_PREPARE_STACK_PUSH: u8 = 2;
+const STOP_WAKE_BUGGED_INTERRUPT_STEP_PUSH_PC_HIGH: u8 = 3;
+const STOP_WAKE_BUGGED_INTERRUPT_STEP_CORRUPT_STACK_AND_VECTOR: u8 = 4;
+
 impl CpuCore {
     fn is_stop_sleep_state(&self) -> bool {
         matches!(
@@ -172,12 +184,14 @@ impl CpuCore {
         bus_operation: &mut CpuExternalCallback<'_>,
     ) {
         match step {
-            0 | 1 => self.advance_interrupt_service(source, step + 1),
-            2 => {
-                self.prepare_pc_stack_push();
-                self.advance_interrupt_service(source, 3);
+            INTERRUPT_SERVICE_STEP_INTERNAL_0 | INTERRUPT_SERVICE_STEP_INTERNAL_1 => {
+                self.advance_interrupt_service(source, step + 1)
             }
-            3 => {
+            INTERRUPT_SERVICE_STEP_PREPARE_STACK_PUSH => {
+                self.prepare_pc_stack_push();
+                self.advance_interrupt_service(source, INTERRUPT_SERVICE_STEP_PUSH_PC_HIGH);
+            }
+            INTERRUPT_SERVICE_STEP_PUSH_PC_HIGH => {
                 let upper_pc_push_targets_ie = self.registers.sp == 0xFFFF;
                 self.push_pc_high_at_sp(bus_operation);
                 if upper_pc_push_targets_ie {
@@ -196,17 +210,23 @@ impl CpuCore {
                             self.request_interrupt(source, bus_operation);
                             self.acknowledge_interrupt(next_source, bus_operation);
                         }
-                        self.advance_interrupt_service(next_source, 4);
+                        self.advance_interrupt_service(
+                            next_source,
+                            INTERRUPT_SERVICE_STEP_PUSH_PC_LOW_AND_COMMIT_VECTOR,
+                        );
                     } else {
                         self.request_interrupt(source, bus_operation);
                         self.registers.pc = 0x0000;
                         self.finish_interrupt_service();
                     }
                 } else {
-                    self.advance_interrupt_service(source, 4);
+                    self.advance_interrupt_service(
+                        source,
+                        INTERRUPT_SERVICE_STEP_PUSH_PC_LOW_AND_COMMIT_VECTOR,
+                    );
                 }
             }
-            4 => {
+            INTERRUPT_SERVICE_STEP_PUSH_PC_LOW_AND_COMMIT_VECTOR => {
                 self.push_latched_low_with_decremented_sp(bus_operation);
                 self.registers.pc = source.vector();
                 self.finish_interrupt_service();
@@ -221,16 +241,23 @@ impl CpuCore {
         bus_operation: &mut CpuExternalCallback<'_>,
     ) {
         match step {
-            0 | 1 => self.advance_stop_wake_bugged_interrupt_service(step + 1),
-            2 => {
+            STOP_WAKE_BUGGED_INTERRUPT_STEP_INTERNAL_0
+            | STOP_WAKE_BUGGED_INTERRUPT_STEP_INTERNAL_1 => {
+                self.advance_stop_wake_bugged_interrupt_service(step + 1)
+            }
+            STOP_WAKE_BUGGED_INTERRUPT_STEP_PREPARE_STACK_PUSH => {
                 self.prepare_pc_stack_push();
-                self.advance_stop_wake_bugged_interrupt_service(3);
+                self.advance_stop_wake_bugged_interrupt_service(
+                    STOP_WAKE_BUGGED_INTERRUPT_STEP_PUSH_PC_HIGH,
+                );
             }
-            3 => {
+            STOP_WAKE_BUGGED_INTERRUPT_STEP_PUSH_PC_HIGH => {
                 self.push_pc_high_at_sp(bus_operation);
-                self.advance_stop_wake_bugged_interrupt_service(4);
+                self.advance_stop_wake_bugged_interrupt_service(
+                    STOP_WAKE_BUGGED_INTERRUPT_STEP_CORRUPT_STACK_AND_VECTOR,
+                );
             }
-            4 => {
+            STOP_WAKE_BUGGED_INTERRUPT_STEP_CORRUPT_STACK_AND_VECTOR => {
                 // Hardware research describes STOP wake with IME=1 as a bugged
                 // interrupt that vectors to 0x0000 and often corrupts the stack.
                 // The current repo baseline makes that corruption deterministic
