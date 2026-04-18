@@ -3,6 +3,7 @@ use super::*;
 impl Ppu {
     const DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS: [u8; 8] = [9, 10, 3, 4, 5, 6, 7, 8];
     const DMG_LATE_WINDOW_ENABLE_SEGMENT_PIXELS: u8 = 24;
+    const DMG_PREVISIBLE_WX_CANCEL_ONLY_TRIGGER_X: u8 = SCREEN_WIDTH as u8;
 
     pub(super) fn advance_mode3_pipeline<O>(
         &mut self,
@@ -2064,9 +2065,35 @@ impl Ppu {
             .bg_pipeline_state
             .dmg_previsible_wx_retarget
             .map(|retarget| retarget.trigger_x);
+        let pending_one_hidden_prefix_resume = self
+            .bg_pipeline_state
+            .dmg_previsible_wx_retarget
+            .is_some_and(|retarget| retarget.one_hidden_prefix_resume);
         let late_visible_write = self.console_model.is_dmg_family()
             && self.current_access_mode() == PpuAccessMode::Drawing
             && self.bg_pipeline_state.visible_pixels_output != 0;
+        if late_visible_write
+            && pending_one_hidden_prefix_resume
+            && !self.dmg_live_wx_write_can_still_start_later_this_line(wx)
+        {
+            let pending_distance = pending_previsible_trigger_x
+                .unwrap_or(self.bg_pipeline_state.visible_pixels_output)
+                .saturating_sub(self.bg_pipeline_state.visible_pixels_output);
+            self.bg_pipeline_state
+                .dmg_previsible_wx_cancel_uses_visible_wx_once = false;
+            self.bg_pipeline_state
+                .dmg_previsible_wx_cancel_background_override_onset_x = None;
+            self.bg_pipeline_state
+                .dmg_previsible_wx_retained_trigger_glitch_x = None;
+            if pending_distance <= 3 {
+                return;
+            }
+            self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+            self.bg_pipeline_state
+                .dmg_pending_previsible_wx_onset_glitch = None;
+            self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
+            return;
+        }
         self.bg_pipeline_state
             .dmg_previsible_wx_cancel_uses_visible_wx_once = late_visible_write
             && pending_previsible_trigger_x
@@ -2126,8 +2153,17 @@ impl Ppu {
             return;
         }
 
+        let hidden_prefix_x0_restart = false;
+        let low_wx_hidden_restart = false;
+        let cancel_only_low_wx =
+            previous_wx >= 6 && wx < 7 && self.bg_pipeline_state.visible_pixels_output == 0;
+        if wx == previous_wx {
+            return;
+        }
         let trigger_x = match wx {
             7..=165 => wx - 7,
+            _ if low_wx_hidden_restart => 0,
+            _ if cancel_only_low_wx => Self::DMG_PREVISIBLE_WX_CANCEL_ONLY_TRIGGER_X,
             _ => {
                 self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
                 self.bg_pipeline_state
@@ -2137,11 +2173,34 @@ impl Ppu {
             }
         };
         let initial_hidden_skip = 7u8.saturating_sub(previous_wx);
-        let raw_window_pixel_offset = u16::from(initial_hidden_skip) + u16::from(trigger_x);
-        let mut window_pixel_offset = raw_window_pixel_offset;
         let visible_tail_len = BG_TILE_WIDTH.saturating_sub(initial_hidden_skip);
+        let retained_fifo_prefix_resume = wx == 7
+            && trigger_x == 0
+            && initial_hidden_skip > 1
+            && self.bg_pipeline_state.visible_pixels_output == 0
+            && self.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Window;
+        let one_hidden_prefix_resume_offset = (initial_hidden_skip == 1 && !cancel_only_low_wx)
+            .then_some(if trigger_x <= visible_tail_len {
+                0
+            } else {
+                u16::from(BG_TILE_WIDTH)
+            });
+        let raw_window_pixel_offset = if low_wx_hidden_restart {
+            u16::from(7u8.saturating_sub(wx))
+        } else if cancel_only_low_wx || trigger_x == 0 {
+            0
+        } else if let Some(resume_offset) = one_hidden_prefix_resume_offset {
+            resume_offset
+        } else {
+            u16::from(initial_hidden_skip) + u16::from(trigger_x)
+        };
+        let mut window_pixel_offset = raw_window_pixel_offset;
         let visible_gap_len = trigger_x.saturating_sub(visible_tail_len);
-        if initial_hidden_skip != 0 && window_pixel_offset != 0 {
+        if !cancel_only_low_wx
+            && one_hidden_prefix_resume_offset.is_none()
+            && initial_hidden_skip != 0
+            && window_pixel_offset != 0
+        {
             let boundary_restart = window_pixel_offset % u16::from(BG_TILE_WIDTH) == 0;
             if boundary_restart {
                 window_pixel_offset -= 1;
@@ -2166,11 +2225,33 @@ impl Ppu {
             self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
         }
 
-        self.bg_pipeline_state.dmg_previsible_wx_retarget = Some(DmgPrevisibleWxRetarget::new(
-            trigger_x,
-            self.bg_pipeline_state.window_active_line_counter,
-            window_pixel_offset,
-        ));
+        let retarget = if hidden_prefix_x0_restart {
+            DmgPrevisibleWxRetarget::new_hidden_prefix_x0_restart(
+                trigger_x,
+                self.bg_pipeline_state.window_active_line_counter,
+                window_pixel_offset,
+            )
+        } else if retained_fifo_prefix_resume {
+            DmgPrevisibleWxRetarget::new_retained_fifo_prefix_resume(
+                trigger_x,
+                self.bg_pipeline_state.window_active_line_counter,
+                window_pixel_offset,
+                initial_hidden_skip > 2,
+            )
+        } else if one_hidden_prefix_resume_offset.is_some() {
+            DmgPrevisibleWxRetarget::new_one_hidden_prefix_resume(
+                trigger_x,
+                self.bg_pipeline_state.window_active_line_counter,
+                window_pixel_offset,
+            )
+        } else {
+            DmgPrevisibleWxRetarget::new(
+                trigger_x,
+                self.bg_pipeline_state.window_active_line_counter,
+                window_pixel_offset,
+            )
+        };
+        self.bg_pipeline_state.dmg_previsible_wx_retarget = Some(retarget);
         self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
     }
 
@@ -2228,10 +2309,36 @@ impl Ppu {
             ),
             (PpuBgFetcherStage::WindowActivating, _) | (PpuBgFetcherStage::TileIndex, 0)
         ) {
+            if retarget.hidden_prefix_x0_restart {
+                self.start_window_fetcher_restart_preserving_row(
+                    retarget.active_line_counter,
+                    retarget.window_pixel_offset,
+                );
+                return;
+            }
             self.abort_window_fetcher_to_background_now(vram);
             self.bg_pipeline_state.window_started_this_line = false;
             self.bg_pipeline_state.window_active_line_counter = retarget.active_line_counter;
             self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+            if retarget.one_hidden_prefix_resume {
+                let cached = BgCachedSlice::from_fetcher(self.bg_pipeline_state.fetcher);
+                self.bg_pipeline_state.fifo.clear();
+                self.bg_pipeline_state.fifo_cached_pixels.clear();
+                self.bg_pipeline_state
+                    .push_cached_slice_fifo_pixels_with_skip(cached, 0);
+            }
+            if retarget.trigger_x == Self::DMG_PREVISIBLE_WX_CANCEL_ONLY_TRIGGER_X {
+                let cached = BgCachedSlice::from_fetcher(self.bg_pipeline_state.fetcher);
+                self.bg_pipeline_state.fifo.clear();
+                self.bg_pipeline_state.fifo_cached_pixels.clear();
+                self.bg_pipeline_state
+                    .push_cached_slice_fifo_pixels_with_skip(cached, 0);
+                self.bg_pipeline_state.window_start_count_this_line = self
+                    .bg_pipeline_state
+                    .window_start_count_this_line
+                    .saturating_sub(1);
+                self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+            }
         }
     }
 
@@ -2382,10 +2489,24 @@ impl Ppu {
             } else {
                 retarget.window_pixel_offset
             };
-            self.start_window_fetcher_restart_preserving_row(
-                retarget.active_line_counter,
-                retained_window_pixel_offset,
-            );
+            if retarget.retained_fifo_prefix_resume {
+                self.start_window_fetcher_restart_preserving_row_and_fifo(
+                    retarget.active_line_counter,
+                    retained_window_pixel_offset,
+                );
+                if retarget.retained_fifo_prefix_resume_next_tilemap {
+                    self.bg_pipeline_state.fetcher.window_tilemap_x = self
+                        .bg_pipeline_state
+                        .fetcher
+                        .window_tilemap_x
+                        .wrapping_add(1);
+                }
+            } else {
+                self.start_window_fetcher_restart_preserving_row(
+                    retarget.active_line_counter,
+                    retained_window_pixel_offset,
+                );
+            }
             return true;
         }
 
@@ -2417,10 +2538,24 @@ impl Ppu {
                 self.bg_pipeline_state.dmg_late_window_enable_override = None;
                 self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
                 if let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget.take() {
-                    self.start_window_fetcher_restart_preserving_row(
-                        retarget.active_line_counter,
-                        retarget.window_pixel_offset,
-                    );
+                    if retarget.retained_fifo_prefix_resume {
+                        self.start_window_fetcher_restart_preserving_row_and_fifo(
+                            retarget.active_line_counter,
+                            retarget.window_pixel_offset,
+                        );
+                        if retarget.retained_fifo_prefix_resume_next_tilemap {
+                            self.bg_pipeline_state.fetcher.window_tilemap_x = self
+                                .bg_pipeline_state
+                                .fetcher
+                                .window_tilemap_x
+                                .wrapping_add(1);
+                        }
+                    } else {
+                        self.start_window_fetcher_restart_preserving_row(
+                            retarget.active_line_counter,
+                            retarget.window_pixel_offset,
+                        );
+                    }
                 } else {
                     self.start_window_fetcher_restart();
                 }
@@ -3275,6 +3410,39 @@ impl Ppu {
         window_pixel_offset: u16,
     ) {
         self.start_window_fetcher_restart_with_row(active_line_counter, false, window_pixel_offset);
+    }
+
+    fn start_window_fetcher_restart_preserving_row_and_fifo(
+        &mut self,
+        active_line_counter: u8,
+        window_pixel_offset: u16,
+    ) {
+        let bg_resume_fetch_pixel = self.bg_pipeline_state.fetcher.next_fetch_pixel;
+        self.bg_pipeline_state.startup_fifo_placeholders = 0;
+        self.bg_pipeline_state.push.reset();
+        self.bg_pipeline_state.fill.reset();
+        if window_pixel_offset == 0 {
+            self.bg_pipeline_state
+                .fetcher
+                .start_window(bg_resume_fetch_pixel);
+        } else {
+            self.bg_pipeline_state
+                .fetcher
+                .start_window_with_pixel_offset(bg_resume_fetch_pixel, window_pixel_offset);
+        }
+        self.bg_pipeline_state.scx_discard_remaining = 0;
+        self.bg_pipeline_state.window_started_this_line = true;
+        self.bg_pipeline_state.window_active_line_counter = active_line_counter;
+        self.bg_pipeline_state.window_force_x0_this_line = false;
+        self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once = false;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_background_override_onset_x = None;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_retained_trigger_glitch_x = None;
+        self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
+        self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
     }
 
     fn start_window_fetcher_restart_with_row(

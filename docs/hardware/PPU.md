@@ -530,6 +530,7 @@ Covered:
 - top-edge and bottom-edge partial sprite visibility such as `Y = 2` and `Y = 154`
 - WY latch timing at Mode `2` start and WX-trigger timing during Mode `3`
 - window fetcher reset and BG FIFO clear when the window starts mid-scanline
+- DMG same-scanline low-`WX` window retarget seams: cancel-only previsible aborts before `x = 0` restore the background FIFO, retained-prefix restarts preserve the observed left-edge tail, and the `WX 4 -> 7` resume continues from the next window tilemap entry after that preserved tail
 - `WX = 0` and `WX = 166` special behavior
 - live `STAT` readback composition: documented writable enable bits, live mode/coincidence bits, and the chosen bit-`7` model
 - `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
@@ -562,7 +563,7 @@ Partial:
 - mid-frame `LCDC.1` / `LCDC.2` coverage exists for OBJ fetch cancellation, live Mode `2` size selection, and size-row safety, but not as complete external-oracle closure for all Mode `3` toggle cases
 - internal window line counter coverage includes increment-only-when-started behavior and reset through LCD pipeline reset paths; VBlank reset should remain visible as a dedicated assertion if this area changes again
 - mid-frame `WX`, `WY`, and `LCDC.5` writes have focused local coverage for latching, previous-dot WX, and window-fetch aborts, but not a complete glitch matrix
-- `LCDC.5` disable during active window fetch is covered, and same-scanline re-enable with `WX` retargeting now has focused DMG closure for the observed late-enable and re-enable seams; broader live-`WX` glitch coverage is still incomplete
+- `LCDC.5` disable during active window fetch is covered, and the current DMG Mealybug window block is green for same-scanline re-enable plus low-`WX` / live-`WX` retarget seams (`m3_lcdc_win_en_change_multiple*`, `m3_wx_4/5/6_change*`); a complete hardware glitch matrix for arbitrary mid-frame `WX` / `WY` / `LCDC.5` interactions is still incomplete
 - window-start plus OBJ mixing is covered without spurious OBJ FIFO reset; broader window-glitch continuation into later BG/OBJ mixing remains incomplete
 - line-start Mode `2` / LCD STAT chronology has focused local and synthetic-ROM coverage for raster-effect timing, but handler-writeback and first-line variants remain partly diagnostic
 - OAM corruption instruction-family routing is covered for `[hli]` / `[hld]`, `push`, interrupt service, and generic CPU address-event classes; `pop`, `call`, `ret`, `rst`, and executing code from OAM still need direct end-to-end coverage if they are claimed individually

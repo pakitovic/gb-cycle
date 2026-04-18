@@ -3212,6 +3212,12 @@ fn diag_m3_wx_4_change_line4_trace() {
 
 #[test]
 #[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line5_trace() {
+    trace_m3_wx_4_change_line(5);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
 fn diag_m3_wx_4_change_line7_trace() {
     trace_m3_wx_4_change_line(7);
 }
@@ -3410,6 +3416,36 @@ fn trace_m3_wx_4_change_line_window_for_rom(
 
 #[test]
 #[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_5_change_line4_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_5_change", 4, 0, 48);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_5_change_line5_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_5_change", 5, 0, 48);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_5_change_line7_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_5_change", 7, 0, 48);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_5_change_line8_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_5_change", 8, 0, 48);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_5_change_line10_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_5_change", 10, 0, 48);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
 fn diag_m3_wx_4_change_sprites_line12_trace() {
     trace_m3_wx_4_change_line_window_for_rom("m3_wx_4_change_sprites", 12, 0, 24);
 }
@@ -3424,4 +3460,58 @@ fn diag_m3_wx_4_change_sprites_line36_trace() {
 #[ignore = "diagnostic-only probe for the remaining window blocker"]
 fn diag_m3_wx_4_change_sprites_line99_right_trace() {
     trace_m3_wx_4_change_line_window_for_rom("m3_wx_4_change_sprites", 99, 80, 128);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_6_change_line4_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_6_change", 4, 0, 32);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_6_change_line8_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_6_change", 8, 0, 40);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_6_change_line9_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_6_change", 9, 0, 40);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_6_change_line10_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_6_change", 10, 0, 40);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_6_change_line11_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_6_change", 11, 0, 32);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_6_change_line15_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_6_change", 15, 0, 40);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_6_change_line16_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_6_change", 16, 0, 40);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_6_change_line99_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_6_change", 99, 80, 128);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_6_change_line102_trace() {
+    trace_m3_wx_4_change_line_window_for_rom("m3_wx_6_change", 102, 80, 128);
 }

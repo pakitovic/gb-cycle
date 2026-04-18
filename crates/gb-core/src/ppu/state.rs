@@ -479,6 +479,10 @@ pub(super) struct DmgPrevisibleWxRetarget {
     pub(super) trigger_x: u8,
     pub(super) active_line_counter: u8,
     pub(super) window_pixel_offset: u16,
+    pub(super) one_hidden_prefix_resume: bool,
+    pub(super) hidden_prefix_x0_restart: bool,
+    pub(super) retained_fifo_prefix_resume: bool,
+    pub(super) retained_fifo_prefix_resume_next_tilemap: bool,
 }
 
 impl DmgPrevisibleWxRetarget {
@@ -491,6 +495,59 @@ impl DmgPrevisibleWxRetarget {
             trigger_x,
             active_line_counter,
             window_pixel_offset,
+            one_hidden_prefix_resume: false,
+            hidden_prefix_x0_restart: false,
+            retained_fifo_prefix_resume: false,
+            retained_fifo_prefix_resume_next_tilemap: false,
+        }
+    }
+
+    pub(super) const fn new_one_hidden_prefix_resume(
+        trigger_x: u8,
+        active_line_counter: u8,
+        window_pixel_offset: u16,
+    ) -> Self {
+        Self {
+            trigger_x,
+            active_line_counter,
+            window_pixel_offset,
+            one_hidden_prefix_resume: true,
+            hidden_prefix_x0_restart: false,
+            retained_fifo_prefix_resume: false,
+            retained_fifo_prefix_resume_next_tilemap: false,
+        }
+    }
+
+    pub(super) const fn new_hidden_prefix_x0_restart(
+        trigger_x: u8,
+        active_line_counter: u8,
+        window_pixel_offset: u16,
+    ) -> Self {
+        Self {
+            trigger_x,
+            active_line_counter,
+            window_pixel_offset,
+            one_hidden_prefix_resume: false,
+            hidden_prefix_x0_restart: true,
+            retained_fifo_prefix_resume: false,
+            retained_fifo_prefix_resume_next_tilemap: false,
+        }
+    }
+
+    pub(super) const fn new_retained_fifo_prefix_resume(
+        trigger_x: u8,
+        active_line_counter: u8,
+        window_pixel_offset: u16,
+        next_tilemap: bool,
+    ) -> Self {
+        Self {
+            trigger_x,
+            active_line_counter,
+            window_pixel_offset,
+            one_hidden_prefix_resume: false,
+            hidden_prefix_x0_restart: false,
+            retained_fifo_prefix_resume: true,
+            retained_fifo_prefix_resume_next_tilemap: next_tilemap,
         }
     }
 }

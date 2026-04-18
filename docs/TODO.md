@@ -41,18 +41,14 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
-- The current external report snapshot is `.roms/test/test-report.md = 166/167`: `164` passed, `1` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint; keep both green as the acceptance gate for each follow-up PPU fix.
-- `m3_window_timing.gb`, `m3_window_timing_wx_0.gb`, `m3_lcdc_win_map_change.gb`, `m3_lcdc_tile_sel_win_change.gb`, `m3_lcdc_win_en_change_multiple.gb`, `m3_lcdc_win_en_change_multiple_wx.gb`, `m3_wx_4_change.gb`, `m3_wx_4_change_sprites.gb`, and `m3_wx_5_change.gb` are green in the current tree. The only remaining window-mechanics failure is the final live-`WX` tail case: `m3_wx_6_change.gb`.
+- The current external report snapshot is `.roms/test/test-report.md = 167/167`: `165` passed, `0` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint; keep both green as the acceptance gate for follow-up PPU work.
+- The full active Mealybug DMG window-mechanics block is green in the current tree: `m3_window_timing.gb`, `m3_window_timing_wx_0.gb`, `m3_lcdc_win_map_change.gb`, `m3_lcdc_tile_sel_win_change.gb`, `m3_lcdc_win_en_change_multiple.gb`, `m3_lcdc_win_en_change_multiple_wx.gb`, `m3_wx_4_change.gb`, `m3_wx_4_change_sprites.gb`, `m3_wx_5_change.gb`, and `m3_wx_6_change.gb`.
 
 #### Open TODOs
 
 ##### Active blockers
 
-- [PPU][MEALYBUG-MODE3-LIVE-WRITES] Still-red families, in PPU.md ladder order:
-
-  | Tier | Orders | Remaining ROMs |
-  | --- | --- | --- |
-  | Window mechanics | `48` | `m3_wx_6_change` |
+- None currently.
 
 ##### Cleanup debt
 
@@ -61,6 +57,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 ##### Oracle-needed follow-ups
 
 - [PPU][WINDOW-GLITCH-ORACLE] The active window ROM block now covers part of this surface (`m3_window_timing`, `m3_window_timing_wx_0`, `m3_lcdc_win_en_change_multiple*`, `m3_wx_*`), but the stricter oracle question remains open. After the remaining window ROMs are green, re-check whether `WX = 0`, `WX = 166`, `WX`/`WY`, and `LCDC.5` mid-frame glitch behavior still need an explicit hardware or trusted-oracle pass, especially the DMG-specific `WX = 0 && (SCX & 7) > 0` path. Does not block Phase `5`; needed for Phase `9`.
+- [PPU][WINDOW-GLITCH-ORACLE] The active window ROM block is now fully green (`m3_window_timing`, `m3_window_timing_wx_0`, `m3_lcdc_win_en_change_multiple*`, `m3_wx_*`), but the stricter oracle question remains open. Re-check whether `WX = 0`, `WX = 166`, `WX`/`WY`, and `LCDC.5` mid-frame glitch behavior still need an explicit hardware or trusted-oracle pass, especially the DMG-specific `WX = 0 && (SCX & 7) > 0` path. Does not block Phase `5`; needed for Phase `9`.
 
 - [PPU][OAM-CORRUPTION-ORACLE] Deterministic unit/integration coverage is shipped for Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]`/`[hld]`, stack/interrupt paths, DMG variants, and the CGB negative path. The last-row and first-scanline blargg windows (`oam_bug/4`, `oam_bug/5`) are green again after moving trigger classification away from the coarse blocked-access flag and back to live `Mode 2` ownership in the PPU. Still lacks an independent oracle comparison. The curated `oam_bug` subset still excludes `oam_bug.gb` multi-ROM and `7-timing_effect.gb`. Needed for Phase `9`.
 
@@ -68,7 +65,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 ##### Phase `9` hardening
 
-- [PPU][LCDC2-8X16-ARTIFACTS] Core `8x16` rules and the mid-frame `LCDC.2` shrink crash are fixed, and the active OBJ-toggle block (`m3_lcdc_obj_size_change`, `m3_lcdc_obj_size_change_scx`) is green. The closure is intentionally narrow: a line-start `OBJ`-height latch, observed per-phase bitplane selection, a queued-FIFO rewrite seam for future tail pixels, and a retroactive scanline repaint seam for already-emitted pixels when the shrink lands after the low-half rows have started drawing. After the remaining window ROMs are green, re-check whether finer DMG-visible artifacts from mid-frame size changes still need targeted ROM or oracle coverage. Does not block Phase `5`; needed for Phase `9`.
+- [PPU][LCDC2-8X16-ARTIFACTS] Core `8x16` rules and the mid-frame `LCDC.2` shrink crash are fixed, and the active OBJ-toggle block (`m3_lcdc_obj_size_change`, `m3_lcdc_obj_size_change_scx`) is green. The closure is intentionally narrow: a line-start `OBJ`-height latch, observed per-phase bitplane selection, a queued-FIFO rewrite seam for future tail pixels, and a retroactive scanline repaint seam for already-emitted pixels when the shrink lands after the low-half rows have started drawing. With the Mealybug window block now green, re-check whether finer DMG-visible artifacts from mid-frame size changes still need targeted ROM or oracle coverage. Does not block Phase `5`; needed for Phase `9`.
 
 - [PPU][SKIPBOOT-ORACLE] `SkipBoot` startup-mode latch is validated only against repo-local continuity tests. Before Phase `9` hardening, it still needs a trusted-oracle or hardware comparison proving that the first LCD-visible dots after `SkipBoot` are coherent with published `LCDC`, `STAT`, and `LY` state. Does not block Phase `5`.
 
@@ -76,8 +73,8 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 ##### Strategy
 
-- Resume from one failing family at a time. Prefer the smallest oracle-backed reproduction that distinguishes the suspected same-T-cycle window.
-- Working hypothesis: the remaining Mode `3` debt sits around startup dummy / first-fetch / restart-lane timing and live-write onset classes, not another broad visible-FIFO retargeting pass.
+- If a new PPU regression appears, resume from one failing family at a time. Prefer the smallest oracle-backed reproduction that distinguishes the suspected same-T-cycle window.
+- Working hypothesis: the remaining Mode `3` debt is now oracle-hardening debt around startup dummy / first-fetch / restart-lane timing and live-write onset classes, not another broad visible-FIFO retargeting pass.
 - Recent green Mode `3` seams are intentionally narrow: DMG-only `BGP`/`OBP0` live-write panel paths, sprite-coupled `STAT` publication seams, `SCX` startup carry handling, curated `SkipBoot` DMG boot-trademark seeding for the `LCDC.3` / `LCDC.4` closures, and startup-continuation overrides on `VisibleTile2` / `VisibleTile3`. Treat these as targeted hardware hypotheses, not generic FIFO rewrite permissions.
 
 ##### Do not retry first
