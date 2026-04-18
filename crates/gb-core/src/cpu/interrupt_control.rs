@@ -16,7 +16,20 @@ impl CpuCore {
         interrupts: &mut InterruptController,
         joypad: &mut Joypad,
     ) {
-        if !self.is_stop_sleep_state() {
+        let stop_sleep_state = self.is_stop_sleep_state();
+        if !(stop_sleep_state
+            || joypad.stop_wake_event_pending()
+            || matches!(
+                self.execution_state,
+                CpuExecutionState::DiagnosticTrap { .. } | CpuExecutionState::Halted
+            )
+            || self.halt_request_pending()
+            || self.ime() && self.can_accept_interrupt())
+        {
+            return;
+        }
+
+        if !stop_sleep_state {
             let _ = joypad.consume_stop_wake_event();
         }
 
@@ -27,7 +40,7 @@ impl CpuCore {
             return;
         }
 
-        if self.is_stop_sleep_state() {
+        if stop_sleep_state {
             if joypad.consume_stop_wake_event() {
                 if matches!(self.execution_state, CpuExecutionState::Stopped)
                     && self.ime()

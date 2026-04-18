@@ -220,6 +220,10 @@ impl CpuCore {
         }
     }
 
+    pub(super) fn halt_request_pending(&self) -> bool {
+        matches!(self.halt_control, HaltControlState::PendingRequest(_))
+    }
+
     pub(super) fn arm_halt_bug(&mut self) {
         self.halt_control = HaltControlState::HaltBugPending;
     }
