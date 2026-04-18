@@ -301,7 +301,7 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - Starting the window should reset the fetcher to its initial fetch step rather than continuing from the current BG fetch phase.
 - The window-start event should alter the remaining pixel sequence of the current scanline without replaying or recomputing the whole line.
 - The DMG special case `WX = 0 && (SCX & 7) > 0` should be modeled as an explicit path that shortens Mode 3 by `1` dot.
-- Once the window fetcher is already active, turning `LCDC.5` off should not cut away the in-flight window tile immediately.
+- On DMG, there is an explicit low-`WX` seam where turning `LCDC.5` off after the window has already started does not cut away the in-flight window tile immediately; let the current tile complete, then abort back to background from the next fetch boundary.
 - That disable should take effect at the end of the current window tile, after which background fetch resumes on a tile boundary from explicit saved BG-side progress.
 
 ## Window line-counter baseline

@@ -429,7 +429,30 @@ pub(super) struct BgPipelineState {
     pub(super) startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: u8,
     pub(super) startup_scy_tiledata_latch: Option<BgStartupScyTiledataLatch>,
     pub(super) window_activation_tilemap_select_latch: Option<bool>,
+    pub(super) dmg_wx0_window_disable_prefix_state: Option<DmgWx0WindowDisablePrefixState>,
+    pub(super) dmg_late_window_enable_override: Option<DmgLateWindowEnableOverride>,
     pub(super) dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DmgWx0WindowDisablePrefixState {
+    pub(super) desired_prefix_pixels: u8,
+    pub(super) prefix_bg_pixel: Option<u8>,
+}
+
+impl DmgWx0WindowDisablePrefixState {
+    pub(super) const fn new(desired_prefix_pixels: u8) -> Self {
+        Self {
+            desired_prefix_pixels,
+            prefix_bg_pixel: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DmgLateWindowEnableOverride {
+    pub(super) onset_x: u8,
+    pub(super) end_x: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -896,6 +919,8 @@ impl BgPipelineState {
         self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
         self.startup_scy_tiledata_latch = None;
         self.window_activation_tilemap_select_latch = None;
+        self.dmg_wx0_window_disable_prefix_state = None;
+        self.dmg_late_window_enable_override = None;
     }
 
     pub(super) fn extend_mode3_by_one_dot(&mut self) {
@@ -1613,6 +1638,8 @@ impl Default for BgPipelineState {
             startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: 0,
             startup_scy_tiledata_latch: None,
             window_activation_tilemap_select_latch: None,
+            dmg_wx0_window_disable_prefix_state: None,
+            dmg_late_window_enable_override: None,
             dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState::default(),
         }
     }

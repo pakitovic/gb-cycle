@@ -1,6 +1,8 @@
 use super::*;
 
 impl Ppu {
+    const DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS: [u8; 8] = [9, 10, 3, 4, 5, 6, 7, 8];
+
     pub(super) fn advance_mode3_pipeline<O>(
         &mut self,
         oam: &OamBusView<'_>,
@@ -480,6 +482,24 @@ impl Ppu {
             return;
         }
 
+        let low_wx_disable_seam = self.console_model.is_dmg_family()
+            && self.bg_pipeline_state.window_started_this_line
+            && self.bg_pipeline_state.visible_pixels_output == 0
+            && self.mode3_register_latches().visible().wx < 8;
+        if low_wx_disable_seam {
+            self.maybe_arm_dmg_wx0_window_disable_prefix_override();
+
+            if !matches!(
+                (
+                    self.bg_pipeline_state.fetcher.stage,
+                    self.bg_pipeline_state.fetcher.stage_dot,
+                ),
+                (PpuBgFetcherStage::TileIndex, 0)
+            ) {
+                return;
+            }
+        }
+
         self.bg_pipeline_state.fetcher.abort_window_to_background();
         let fetch_x = self.bg_pipeline_state.fetcher.fetch_x;
         let context = self.background_fetch_context(fetch_x);
@@ -495,6 +515,106 @@ impl Ppu {
         self.bg_pipeline_state.fetcher.tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
         self.bg_pipeline_state.fetcher.tile_high =
             vram.read(tile_high_address as usize).unwrap_or(0);
+    }
+
+    fn maybe_arm_dmg_wx0_window_disable_prefix_override(&mut self) {
+        if !self.console_model.is_dmg_family()
+            || self
+                .bg_pipeline_state
+                .dmg_wx0_window_disable_prefix_state
+                .is_some()
+            || !self.bg_pipeline_state.window_started_this_line
+            || self.bg_pipeline_state.visible_pixels_output != 0
+        {
+            return;
+        }
+
+        let wx = self.mode3_register_latches().visible().wx;
+        if wx >= 8 {
+            return;
+        }
+
+        let desired_prefix_pixels = Self::DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS[usize::from(wx)];
+        if desired_prefix_pixels == 8 {
+            return;
+        }
+
+        self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state =
+            Some(DmgWx0WindowDisablePrefixState::new(desired_prefix_pixels));
+    }
+
+    fn apply_dmg_wx0_window_disable_prefix_override(&mut self, visible_x: usize, bg_pixel: u8) {
+        let Some(mut seam) = self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state else {
+            return;
+        };
+
+        seam.prefix_bg_pixel
+            .get_or_insert(self.current_scanline_bg_pixels[visible_x]);
+
+        let desired_prefix_pixels = usize::from(seam.desired_prefix_pixels);
+        if desired_prefix_pixels > 8 {
+            if let Some(prefix_bg_pixel) = seam.prefix_bg_pixel
+                && (8..desired_prefix_pixels).contains(&visible_x)
+            {
+                self.repaint_current_scanline_background_dot(visible_x, prefix_bg_pixel);
+            }
+
+            if visible_x + 1 >= desired_prefix_pixels {
+                self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state = None;
+                return;
+            }
+        } else if visible_x >= 8 {
+            let retro_shift = 8 - desired_prefix_pixels;
+            if visible_x < 8 + retro_shift {
+                let target_visible_x = visible_x - retro_shift;
+                self.repaint_current_scanline_background_dot(target_visible_x, bg_pixel);
+            }
+
+            if visible_x + 1 >= 8 + retro_shift {
+                self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state = None;
+                return;
+            }
+        }
+
+        self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state = Some(seam);
+    }
+
+    fn repaint_current_scanline_background_dot(&mut self, visible_x: usize, bg_pixel: u8) {
+        if self.current_scanline_mixed_pixels[visible_x].source != MixedPixelSource::Background {
+            return;
+        }
+
+        let bg_enabled = self.pixel_transfer_bg_enabled();
+        let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
+        let output_pixel = MixedPixel::background(bg_pixel);
+        let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+        let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
+            output_pixel.color
+        } else {
+            0
+        };
+        let panel_pixel = if visible_output_driving {
+            if dmg_bg_forced_white {
+                0
+            } else {
+                self.map_mixed_pixel_to_panel_shade(output_pixel)
+            }
+        } else {
+            0
+        };
+
+        self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+        self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+        self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
+        self.current_scanline_pixels[visible_x] = scanline_pixel;
+        self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+
+        for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
+            if usize::from(dot.visible_x) == visible_x {
+                dot.pixel = output_pixel;
+                dot.dmg_bg_forced_white = dmg_bg_forced_white;
+            }
+        }
     }
 
     pub(super) fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
@@ -856,6 +976,7 @@ impl Ppu {
                     output_pixel,
                     dmg_bg_forced_white,
                 );
+                self.apply_dmg_wx0_window_disable_prefix_override(visible_x, bg_pixel);
                 self.consume_dmg_lcdc0_bg_enable_visible_hold();
                 self.consume_dmg_lcdc1_obj_enable_visible_hold();
                 self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
