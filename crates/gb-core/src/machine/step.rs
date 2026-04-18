@@ -108,6 +108,7 @@ struct MachinePhaseRunner<'a> {
     cartridge: &'a mut CartridgeSlot,
     pending_external_events: &'a mut PendingExternalEvents,
     pending_ppu_mmio_write: Option<PendingPpuMmioWrite>,
+    cached_pre_cpu_bus_arbitration_state: Option<BusArbitrationState>,
 }
 
 impl MachinePhaseRunner<'_> {
@@ -311,7 +312,7 @@ impl MachinePhaseRunner<'_> {
         context: &mut CycleContext,
         tracer: &mut Tracer<S>,
     ) {
-        let arbitration_state = self.current_bus_arbitration_state();
+        let arbitration_state = self.pre_cpu_bus_arbitration_state();
         tracer.emit_with(TraceSubsystem::Bus, TraceLevel::Trace, || {
             self.bus
                 .scheduler_trace_message(context, &arbitration_state)
@@ -330,7 +331,7 @@ impl MachinePhaseRunner<'_> {
         S: TraceSink,
         O: MachineStepObserver,
     {
-        let arbitration_state = self.current_bus_arbitration_state();
+        let arbitration_state = self.pre_cpu_bus_arbitration_state();
         let cpu_read_arbitration_state = arbitration_state.with_ppu(self.ppu.cpu_bus_state());
         let cpu_write_arbitration_state =
             arbitration_state.with_ppu(self.ppu.cpu_write_bus_state());
@@ -533,11 +534,17 @@ impl MachinePhaseRunner<'_> {
         });
     }
 
-    fn current_bus_arbitration_state(&self) -> BusArbitrationState {
-        BusArbitrationState::default()
+    fn pre_cpu_bus_arbitration_state(&mut self) -> BusArbitrationState {
+        if let Some(state) = self.cached_pre_cpu_bus_arbitration_state {
+            return state;
+        }
+
+        let state = BusArbitrationState::default()
             .with_boot_rom(self.boot.bus_state())
             .with_ppu(self.ppu.bus_state())
-            .with_dma(self.dma.bus_state())
+            .with_dma(self.dma.bus_state());
+        self.cached_pre_cpu_bus_arbitration_state = Some(state);
+        state
     }
 
     fn cpu_stop_active(&self) -> bool {
@@ -577,6 +584,7 @@ impl<S: TraceSink> Machine<S> {
             cartridge: &mut self.cartridge,
             pending_external_events: &mut self.pending_external_events,
             pending_ppu_mmio_write: None,
+            cached_pre_cpu_bus_arbitration_state: None,
         };
 
         scheduler.step_with_trace(tracer, |context, tracer| {
