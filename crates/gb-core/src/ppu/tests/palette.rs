@@ -1541,7 +1541,7 @@ fn cpu_mmio_bgp_second_write_after_wx0_window_restart_caps_the_row_onset_by_the_
 }
 
 #[test]
-fn cpu_mmio_bgp_second_write_after_wx0_window_restart_tracks_the_window_tile_row() {
+fn cpu_mmio_bgp_second_write_after_wx0_window_restart_uses_the_active_window_tile_row() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -1562,6 +1562,7 @@ fn cpu_mmio_bgp_second_write_after_wx0_window_restart_tracks_the_window_tile_row
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
     ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.window_active_line_counter = 7;
     ppu.bg_pipeline_state.window_wy_latch = true;
     ppu.visible_registers.lcdc = 0xB1;
     ppu.pipeline_registers.lcdc = 0xB1;
@@ -1570,7 +1571,7 @@ fn cpu_mmio_bgp_second_write_after_wx0_window_restart_tracks_the_window_tile_row
     ppu.visible_registers.wx = 0x00;
     ppu.pipeline_registers.wx = 0x00;
     ppu.bgp = 0x00;
-    ppu.window_state.window_line_counter = 7;
+    ppu.window_state.window_line_counter = 0;
     for _ in 0..8 {
         ppu.bg_pipeline_state.fifo.push_back(3);
     }
@@ -1589,6 +1590,8 @@ fn cpu_mmio_bgp_second_write_after_wx0_window_restart_tracks_the_window_tile_row
         transfer_lead_pixels: 0,
         value: 0x00,
     }];
+
+    assert_eq!(ppu.current_window_line_counter(), 7);
 
     ppu.write_register_with_source(0xFF47, 0xFF, PpuRegisterWriteSource::CpuMmioCommit);
 

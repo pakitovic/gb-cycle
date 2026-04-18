@@ -584,7 +584,7 @@ impl Ppu {
         let desired_onset_x = if self.visible_registers.wx == 0 {
             const WX0_SECOND_WRITE_ONSETS: [u8; 8] = [11, 9, 8, 7, 6, 5, 4, 3];
             let row_capped_onset =
-                WX0_SECOND_WRITE_ONSETS[self.window_state.window_line_counter as usize % 8];
+                WX0_SECOND_WRITE_ONSETS[self.current_window_line_counter() as usize % 8];
             row_capped_onset.min(visible_pixels_output.saturating_sub(4).max(3))
         } else {
             self.visible_registers.wx.saturating_sub(7).clamp(3, 9)
