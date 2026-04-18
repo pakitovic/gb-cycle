@@ -296,7 +296,15 @@ pub(super) fn tick_ppu_with_vram_and_dma(
 }
 
 pub(super) fn drain_ppu_interrupts(ppu: &mut Ppu) -> Vec<InterruptSource> {
-    ppu.drain_pending_interrupt_requests()
+    let mut requests = Vec::with_capacity(2);
+    let mask = ppu.take_pending_interrupt_request_mask();
+    if mask & 0x01 != 0 {
+        requests.push(InterruptSource::VBlank);
+    }
+    if mask & 0x02 != 0 {
+        requests.push(InterruptSource::LcdStat);
+    }
+    requests
 }
 
 pub(super) fn seed_hacktix_dmg_boot_logo_vram(machine: &mut Machine<TraceSummaryBuffer>) {

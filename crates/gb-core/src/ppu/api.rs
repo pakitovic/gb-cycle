@@ -989,14 +989,8 @@ impl Ppu {
         )
     }
 
-    pub(crate) fn drain_pending_interrupt_requests(&mut self) -> Vec<InterruptSource> {
-        let mut requests = Vec::with_capacity(2);
-        if self.pending_interrupts & PPU_PENDING_VBLANK_INTERRUPT_BIT != 0 {
-            requests.push(InterruptSource::VBlank);
-        }
-        if self.pending_interrupts & PPU_PENDING_LCD_STAT_INTERRUPT_BIT != 0 {
-            requests.push(InterruptSource::LcdStat);
-        }
+    pub(crate) fn take_pending_interrupt_request_mask(&mut self) -> u8 {
+        let requests = self.pending_interrupt_request_mask();
         self.pending_interrupts = 0;
         requests
     }

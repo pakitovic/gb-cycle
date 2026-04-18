@@ -481,8 +481,12 @@ impl MachinePhaseRunner<'_> {
             for &source in context.interrupt_requests() {
                 interrupts.request(source);
             }
-            for source in ppu.drain_pending_interrupt_requests() {
-                interrupts.request(source);
+            let ppu_pending_interrupts = ppu.take_pending_interrupt_request_mask();
+            if ppu_pending_interrupts & 0x01 != 0 {
+                interrupts.request(InterruptSource::VBlank);
+            }
+            if ppu_pending_interrupts & 0x02 != 0 {
+                interrupts.request(InterruptSource::LcdStat);
             }
             if joypad.consume_interrupt_request() {
                 interrupts.request(InterruptSource::Joypad);
