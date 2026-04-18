@@ -655,6 +655,81 @@ This intentionally keeps audio simpler than the future player-slot model:
 - `gb-desktop` can run a real local `DMG-04` linked session for two consoles
   on top of the already-validated core and harness infrastructure.
 
+## Phase 7.6 — Linked desktop profiling and optimization
+
+### Goal
+
+Improve local two-console `DMG-04` desktop performance without changing
+hardware semantics, linked timing, determinism, or the default `strict`
+execution model.
+
+### Why this phase exists
+
+Current release measurements show a clear split between the single-console and
+linked two-console desktop paths:
+
+- single-console desktop reaches full speed on representative hardware
+- linked two-console `DMG-04` desktop falls below realtime in `strict` mode
+- render and pacing costs remain negligible compared with the emulation cost
+
+That means the next step before expanding multiplayer UX further should be a
+measured profiling and optimization pass, not more frontend surface area.
+
+### Desktop outcomes
+
+- Establish a reproducible single-versus-linked release benchmark
+- Attribute linked runtime cost between core stepping, linked-session
+  coordination, audio capture, and desktop host overhead
+- Apply only low-risk optimizations that preserve timing and determinism
+- Finish with an explicit decision about whether performance is sufficient to
+  move on to Phase 8
+
+### Design guidance
+
+- Measure first, optimize second
+- Preserve the existing linked hardware model and `strict` semantics
+- Do not relax fidelity or timing just to improve headline FPS
+- Prefer removing avoidable host-side overhead and clearly measured linked-path
+  costs before larger architectural changes
+- Avoid speculative threading or major runtime redesign unless profiling proves
+  they are necessary
+
+### Suggested subphases
+
+- **7.6.a — Benchmark and profiling baseline**
+  - fix a reproducible release measurement path for single versus linked
+  - capture the dominant hotspots in the desktop and core linked paths
+- **7.6.b — Remove avoidable frontend overhead**
+  - trim host-side work inside the linked desktop loop that does not affect
+    fidelity
+- **7.6.c — Optimize measured hotspots**
+  - apply small, reviewable optimizations only where measurements justify them
+- **7.6.d — Re-evaluate and decide**
+  - record the before/after numbers and decide whether Phase 8 can proceed on
+    the new baseline
+
+### Crates / files
+
+- `crates/gb-desktop/src/main.rs`
+- `crates/gb-desktop/src/linked_session.rs`
+- `crates/gb-core/src/link/`
+- `crates/gb-core/src/machine/`
+- `docs/SERIAL-EXT.md`
+
+### Validation gate
+
+- reproducible release measurements for single and linked desktop sessions
+- before/after numbers for each accepted optimization
+- `cargo test` and `clippy` remain green for touched crates
+- no regressions in linked-session behavior, timing, or existing harness tests
+
+### Done criteria
+
+- the team knows where the linked desktop time budget is going
+- obvious host-side and linked-session overhead has been removed where safe
+- measured improvements have been recorded
+- the project has an evidence-based go/no-go decision for Phase 8
+
 ## Phase 8 — Player-slot abstraction and per-player host policy
 
 ### Goal
