@@ -177,3 +177,30 @@ fn overlapped_obj_fetch_uses_explicit_one_dot_stage_progression() {
     assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
     assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
 }
+
+#[test]
+fn startup_stage_dot_zero_advances_to_dot_one_before_resolving_metadata() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
+    ppu.obj_pipeline_state.fetch.stage_dot = 0;
+
+    assert!(ppu.advance_object_fetch_with_ppu_video(None));
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::Startup
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+}
+
+#[test]
+fn startup_ready_without_a_latched_sprite_falls_back_to_fifo_readiness() {
+    let mut ppu = PpuTestRig::dmg();
+
+    assert!(!ppu.obj_fetch_startup_ready());
+
+    ppu.bg_pipeline_state.fifo.push_back(0);
+
+    assert!(ppu.obj_fetch_startup_ready());
+}
