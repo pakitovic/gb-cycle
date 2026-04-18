@@ -167,7 +167,7 @@ impl Ppu {
         self.write_ppu_register(register, value, source);
 
         if register == PpuRegister::Wx && self.current_access_mode() == PpuAccessMode::Drawing {
-            self.maybe_arm_dmg_previsible_wx_retarget(value);
+            self.maybe_arm_dmg_previsible_wx_retarget(previous_mmio_registers.wx, value);
             self.maybe_arm_dmg_live_wx_trigger_glitch(value);
         }
 
@@ -828,6 +828,26 @@ impl Ppu {
             window_wy_latch: self.bg_pipeline_state.window_wy_latch,
             window_started_this_line: self.bg_pipeline_state.window_started_this_line,
             window_line_counter: self.window_state.window_line_counter,
+            dmg_previsible_wx_retarget_trigger_x: self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retarget
+                .map(|retarget| retarget.trigger_x),
+            dmg_previsible_wx_retarget_window_pixel_offset: self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retarget
+                .map(|retarget| retarget.window_pixel_offset),
+            dmg_pending_previsible_wx_carry_next_trigger_x: self
+                .bg_pipeline_state
+                .dmg_pending_previsible_wx_carry
+                .map(|carry| carry.next_trigger_x),
+            dmg_pending_previsible_wx_carry_end_trigger_x: self
+                .bg_pipeline_state
+                .dmg_pending_previsible_wx_carry
+                .map(|carry| carry.end_trigger_x),
+            dmg_pending_previsible_wx_carry_next_window_pixel_offset: self
+                .bg_pipeline_state
+                .dmg_pending_previsible_wx_carry
+                .map(|carry| carry.next_window_pixel_offset),
             current_scanline_mixed_colors: self
                 .current_scanline_mixed_pixels
                 .iter()

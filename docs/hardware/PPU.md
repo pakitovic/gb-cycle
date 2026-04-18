@@ -316,10 +316,12 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 ## Window mid-frame write and glitch baseline
 
 - Writes to `WX`, `WY`, and `LCDC.5` during the frame must be visible to the live pipeline rather than deferred until the next frame.
+- On DMG, before the first visible pixel of the scanline has been emitted, a low-`WX` (`WX < 8`) same-line retarget or re-enable should be allowed to see the current visible `WX` write rather than only the delayed previous-dot pipeline snapshot, so the previsible trigger can start from the matching hidden or previsible transfer dot.
 - If the WY latch is already active for the current line and `LCDC.5` was active at line start but is cleared before the WX trigger point, the design should support the documented window-glitch pixel at the would-be window start.
 - If `WX` changes after the window has already started on the line and the new trigger position is reached again, the documented bug should be representable as a low-priority color-`0` pixel pushed into the BG FIFO path.
 - If `LCDC.5` is disabled during Mode `3` and then re-enabled later on the same scanline, do not model that as a generic "resume window where it left off" path. Keep the same-line reactivation explicitly gated on a new not-yet-served `WX` trigger, and keep room for the documented DMG behavior where the window may restart on the next window row rather than on the interrupted row.
 - On DMG, same-line `LCDC.5` re-enable after a missed or aborted window start can expose narrow late-enable seams: allow explicit bounded retroactive repaint of only the affected visible window segment, keyed by the observed onset class, instead of recomputing the whole scanline or resuming the interrupted tile blindly.
+- In the DMG low-`WX` disable/re-enable seam, treat the retained left-edge artifact as a full observed prefix span, not just as a tail extension past pixel `8`; when the observed prefix grows beyond `8` pixels, the retroactive repaint may need to repaint the whole retained prefix span.
 - When an active window fetch aborts back to background, retarget the in-flight fetch registers immediately onto the resumed BG tile; do not let stale window `tile_index` / `tile_low` / `tile_high` leak into the first resumed BG tile.
 - These glitches should live in fetcher/FIFO/pipeline logic rather than as framebuffer post-processing rules.
 

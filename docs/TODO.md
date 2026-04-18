@@ -41,8 +41,8 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 #### Current checkpoint
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
-- The current external report snapshot is `.roms/test/test-report.md = 163/167`: `161` passed, `4` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make test-roms` is green at this checkpoint; keep `make ci` green as the acceptance gate for each follow-up PPU fix.
-- `m3_window_timing.gb`, `m3_window_timing_wx_0.gb`, `m3_lcdc_win_map_change.gb`, `m3_lcdc_tile_sel_win_change.gb`, `m3_lcdc_win_en_change_multiple.gb`, and `m3_lcdc_win_en_change_multiple_wx.gb` are green in the current tree. The remaining window-mechanics failures start at `m3_wx_4_change.gb` (`order 46`) and then continue through the later live-`WX` cases.
+- The current external report snapshot is `.roms/test/test-report.md = 164/167`: `162` passed, `3` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint; keep both green as the acceptance gate for each follow-up PPU fix.
+- `m3_window_timing.gb`, `m3_window_timing_wx_0.gb`, `m3_lcdc_win_map_change.gb`, `m3_lcdc_tile_sel_win_change.gb`, `m3_lcdc_win_en_change_multiple.gb`, `m3_lcdc_win_en_change_multiple_wx.gb`, and `m3_wx_4_change.gb` are green in the current tree. The remaining window-mechanics failures are the live-`WX` tail: `m3_wx_4_change_sprites.gb`, `m3_wx_5_change.gb`, and `m3_wx_6_change.gb`.
 
 #### Open TODOs
 
@@ -52,7 +52,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
   | Tier | Orders | Remaining ROMs |
   | --- | --- | --- |
-  | Window mechanics | `46-49` | `m3_wx_4_change`, `m3_wx_5_change`, `m3_wx_6_change`, `m3_wx_4_change_sprites` |
+  | Window mechanics | `47-49` | `m3_wx_4_change_sprites`, `m3_wx_5_change`, `m3_wx_6_change` |
 
 ##### Cleanup debt
 

@@ -1394,8 +1394,24 @@ impl Ppu {
     }
 
     pub(super) fn window_activation_registers(&self) -> PpuVisibleRegisters {
-        self.mode3_register_latches()
-            .window_activation_registers(self.console_model)
+        let register_latches = self.mode3_register_latches();
+        let mut registers = register_latches.window_activation_registers(self.console_model);
+        if self.console_model.is_dmg_family()
+            && self.bg_pipeline_state.visible_pixels_output == 0
+            && !self.bg_pipeline_state.window_started_this_line
+            && register_latches.visible().wx < 8
+            && register_latches.visible().wx != register_latches.pipeline().wx
+        {
+            registers.wx = register_latches.visible().wx;
+        }
+        if self.console_model.is_dmg_family()
+            && self
+                .bg_pipeline_state
+                .dmg_previsible_wx_cancel_uses_visible_wx_once
+        {
+            registers.wx = register_latches.visible().wx;
+        }
+        registers
     }
 
     pub(super) fn window_activation_state(&self) -> PpuMode3WindowActivationState {

@@ -307,7 +307,11 @@ impl PpuMode3WindowPolicy {
                 && scx_discard_remaining == 0
                 && visible_pixels_output == 0
                 && current_transfer_x == hidden_trigger_transfer_x
-                && transfer_dot.kind == Mode3TransferDotKind::ServedHiddenTransfer;
+                && matches!(
+                    transfer_dot.kind,
+                    Mode3TransferDotKind::ServedPreVisibleTransfer
+                        | Mode3TransferDotKind::ServedHiddenTransfer
+                );
 
             return if can_start_now {
                 PpuMode3WindowStartDecision::StartNow

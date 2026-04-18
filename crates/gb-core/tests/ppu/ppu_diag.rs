@@ -124,6 +124,7 @@ fn format_window_trace_snapshot(snapshot: &PpuSnapshot) -> String {
     format!(
         concat!(
             "ly={} dot={} mode={:?} vis={} transfer_x={} started={} ",
+            "previsible_wx={:?}/{:?} carry={:?}->{:?}@{:?} ",
             "fetcher={:?} stage={:?}/{} transfer={:?}/{:?}/{:?}/{:?} ",
             "wx(vis/pipeline)={:#04X}/{:#04X} ",
             "lcdc(vis/pipeline)={:#04X}/{:#04X} bg_map(win/bg)={}/{} ",
@@ -137,6 +138,11 @@ fn format_window_trace_snapshot(snapshot: &PpuSnapshot) -> String {
         snapshot.visible_pixels_output,
         snapshot.bg_current_transfer_x,
         snapshot.window_started_this_line,
+        snapshot.dmg_previsible_wx_retarget_trigger_x,
+        snapshot.dmg_previsible_wx_retarget_window_pixel_offset,
+        snapshot.dmg_pending_previsible_wx_carry_next_trigger_x,
+        snapshot.dmg_pending_previsible_wx_carry_end_trigger_x,
+        snapshot.dmg_pending_previsible_wx_carry_next_window_pixel_offset,
         snapshot.bg_fetcher_source,
         snapshot.bg_fetcher_stage,
         snapshot.bg_fetcher_stage_dot,
@@ -3202,7 +3208,71 @@ fn diag_m3_wx_4_change_line9_trace() {
     trace_m3_wx_4_change_line(9);
 }
 
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line12_trace() {
+    trace_m3_wx_4_change_line(12);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line13_trace() {
+    trace_m3_wx_4_change_line(13);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line14_trace() {
+    trace_m3_wx_4_change_line(14);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line15_trace() {
+    trace_m3_wx_4_change_line(15);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line20_trace() {
+    trace_m3_wx_4_change_line(20);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line44_trace() {
+    trace_m3_wx_4_change_line(44);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line92_trace() {
+    trace_m3_wx_4_change_line(92);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line92_right_trace() {
+    trace_m3_wx_4_change_line_window(92, 72, 96);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line99_right_trace() {
+    trace_m3_wx_4_change_line_window(99, 80, 128);
+}
+
+#[test]
+#[ignore = "diagnostic-only probe for the remaining window blocker"]
+fn diag_m3_wx_4_change_line100_right_trace() {
+    trace_m3_wx_4_change_line_window(100, 80, 128);
+}
+
 fn trace_m3_wx_4_change_line(target_ly: u8) {
+    trace_m3_wx_4_change_line_window(target_ly, 0, 48);
+}
+
+fn trace_m3_wx_4_change_line_window(target_ly: u8, vis_start: u8, vis_end: u8) {
     let mut machine = load_mealybug_window_diag_machine("m3_wx_4_change");
     const RUNNER_CAPTURE_T_CYCLES: u64 = 2_106_720;
 
@@ -3252,7 +3322,8 @@ fn trace_m3_wx_4_change_line(target_ly: u8) {
         if snapshot.ly == target_ly {
             if snapshot.mode == PpuAccessMode::Drawing
                 && snapshot.line_dot >= 80
-                && snapshot.visible_pixels_output <= 48
+                && snapshot.visible_pixels_output >= vis_start
+                && snapshot.visible_pixels_output <= vis_end
             {
                 current_line_trace.push(format!(
                     "frame={} {}",
@@ -3262,10 +3333,11 @@ fn trace_m3_wx_4_change_line(target_ly: u8) {
             }
 
             if snapshot.mode == PpuAccessMode::HBlank {
-                let pixel_prefix = scanline_prefix(&snapshot, 48);
-                let mixed_prefix = mixed_color_prefix(&snapshot, 48);
+                let prefix_len = usize::from(vis_end.max(48));
+                let pixel_prefix = scanline_prefix(&snapshot, prefix_len);
+                let mixed_prefix = mixed_color_prefix(&snapshot, prefix_len);
                 let framebuffer_prefix =
-                    framebuffer_row_prefix(machine.ppu(), usize::from(target_ly), 48);
+                    framebuffer_row_prefix(machine.ppu(), usize::from(target_ly), prefix_len);
                 current_line_summary = Some(format!(
                     "frame={} line{}_pixels={} line{}_mixed={} line{}_framebuffer={} window_started={} window_line_counter={} lcdc(vis/pipeline)={:#04X}/{:#04X}",
                     frame_index,

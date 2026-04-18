@@ -195,6 +195,60 @@ fn wx_four_starts_window_from_the_hidden_transfer_dot_that_matches_the_raw_coord
 }
 
 #[test]
+fn wx_two_starts_window_from_the_previsible_transfer_dot_that_matches_the_low_wx_trigger() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0xF1;
+    ppu.visible_registers.wx = 2;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.ly = 0;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = 1;
+    ppu.bg_pipeline_state.current_transfer_x = 3;
+
+    let transfer_dot =
+        Mode3TransferDot::served(Mode3TransferDotKind::ServedPreVisibleTransfer, false);
+
+    assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+    assert!(ppu.bg_pipeline_state.window_started_this_line);
+    assert_eq!(
+        ppu.bg_pipeline_state.fetcher.source,
+        PpuBgFetcherSource::Window
+    );
+}
+
+#[test]
+fn low_wx_previsible_window_start_uses_the_current_visible_wx_write_before_visible_output() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0xF1;
+    ppu.visible_registers.wx = 2;
+    ppu.pipeline_registers.lcdc = 0xF1;
+    ppu.pipeline_registers.wx = 1;
+    ppu.ly = 0;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state.current_transfer_x = 2;
+
+    assert!(
+        !ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+            Mode3TransferDotKind::ServedPreVisibleTransfer,
+            false,
+        ))
+    );
+    assert!(!ppu.bg_pipeline_state.window_started_this_line);
+
+    ppu.bg_pipeline_state.current_transfer_x = 3;
+
+    assert!(
+        ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+            Mode3TransferDotKind::ServedPreVisibleTransfer,
+            false,
+        ))
+    );
+    assert!(ppu.bg_pipeline_state.window_started_this_line);
+}
+
+#[test]
 fn dmg_window_trigger_uses_the_previous_dot_wx_snapshot() {
     let mut ppu = PpuTestRig::dmg();
     ppu.visible_registers.lcdc = 0xF1;
@@ -243,7 +297,7 @@ fn same_scanline_live_wx_write_before_visible_output_arms_a_previsible_retarget(
     ppu.bg_pipeline_state.window_active_line_counter = 3;
     ppu.bg_pipeline_state.visible_pixels_output = 0;
 
-    ppu.maybe_arm_dmg_previsible_wx_retarget(9);
+    ppu.maybe_arm_dmg_previsible_wx_retarget(4, 9);
 
     assert_eq!(
         ppu.bg_pipeline_state.dmg_previsible_wx_retarget,
@@ -252,6 +306,108 @@ fn same_scanline_live_wx_write_before_visible_output_arms_a_previsible_retarget(
     assert_eq!(
         ppu.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch,
         None
+    );
+}
+
+#[test]
+fn same_scanline_low_wx_previsible_retarget_keeps_the_tile_boundary_carry_pixel() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 4,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + 12;
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.window_active_line_counter = 3;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+
+    ppu.maybe_arm_dmg_previsible_wx_retarget(4, 12);
+
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_previsible_wx_retarget,
+        Some(DmgPrevisibleWxRetarget::new(5, 3, 7))
+    );
+    assert_eq!(ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry, None);
+}
+
+#[test]
+fn same_scanline_low_wx_previsible_retarget_arms_a_pretrigger_carry_for_later_onsets() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 4,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + 12;
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.window_active_line_counter = 3;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+
+    ppu.maybe_arm_dmg_previsible_wx_retarget(4, 14);
+
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_previsible_wx_retarget,
+        Some(DmgPrevisibleWxRetarget::new(7, 3, 10))
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry,
+        Some(DmgPendingPrevisibleWxCarry::new(5, 7, 3, 8))
+    );
+}
+
+#[test]
+fn same_scanline_low_wx_boundary_retarget_keeps_boundary_restart_and_carry_span() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 4,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + 12;
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.window_active_line_counter = 3;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+
+    ppu.maybe_arm_dmg_previsible_wx_retarget(4, 20);
+
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_previsible_wx_retarget,
+        Some(DmgPrevisibleWxRetarget::new(13, 3, 15))
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry,
+        Some(DmgPendingPrevisibleWxCarry::new(5, 13, 3, 8))
     );
 }
 
@@ -284,6 +440,438 @@ fn same_scanline_previsible_wx_retarget_restarts_on_the_existing_window_row() {
         PpuBgFetcherSource::Window
     );
     assert_eq!(ppu.bg_pipeline_state.dmg_previsible_wx_retarget, None);
+}
+
+#[test]
+fn same_scanline_previsible_wx_retarget_uses_its_own_trigger_even_after_a_later_wx_write() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.visible_registers.wx = 0x50;
+    ppu.pipeline_registers.wx = 0x50;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = false;
+    ppu.bg_pipeline_state.window_start_count_this_line = 1;
+    ppu.bg_pipeline_state.window_active_line_counter = 96;
+    ppu.bg_pipeline_state.visible_pixels_output = 93;
+    ppu.bg_pipeline_state.current_transfer_x = 101;
+    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 24;
+    ppu.bg_pipeline_state.dmg_previsible_wx_retarget =
+        Some(DmgPrevisibleWxRetarget::new(93, 96, 95));
+
+    assert!(
+        ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+            Mode3TransferDotKind::ServedVisiblePixel,
+            false,
+        ))
+    );
+    assert!(ppu.bg_pipeline_state.window_started_this_line);
+    assert_eq!(ppu.bg_pipeline_state.window_active_line_counter, 96);
+    assert_eq!(ppu.bg_pipeline_state.dmg_previsible_wx_retarget, None);
+}
+
+#[test]
+fn retained_same_scanline_previsible_wx_retarget_skips_a_single_leftover_window_pixel() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.visible_registers.wx = 0x50;
+    ppu.pipeline_registers.wx = 0x50;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = false;
+    ppu.bg_pipeline_state.window_start_count_this_line = 1;
+    ppu.bg_pipeline_state.window_active_line_counter = 96;
+    ppu.bg_pipeline_state.visible_pixels_output = 93;
+    ppu.bg_pipeline_state.current_transfer_x = 101;
+    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 24;
+    ppu.bg_pipeline_state.dmg_previsible_wx_retarget =
+        Some(DmgPrevisibleWxRetarget::new(93, 96, 95));
+    ppu.bg_pipeline_state
+        .dmg_previsible_wx_retained_trigger_glitch_x = Some(93);
+
+    assert!(
+        ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+            Mode3TransferDotKind::ServedVisiblePixel,
+            false,
+        ))
+    );
+    assert!(ppu.bg_pipeline_state.window_started_this_line);
+    assert_eq!(ppu.bg_pipeline_state.window_active_line_counter, 96);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.window_tilemap_x, 12);
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .fetcher
+            .first_window_tile_leading_pixel_skip,
+        0
+    );
+}
+
+#[test]
+fn retained_same_scanline_previsible_wx_retarget_keeps_nonterminal_partial_window_offsets() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.visible_registers.wx = 0x50;
+    ppu.pipeline_registers.wx = 0x50;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = false;
+    ppu.bg_pipeline_state.window_start_count_this_line = 1;
+    ppu.bg_pipeline_state.window_active_line_counter = 96;
+    ppu.bg_pipeline_state.visible_pixels_output = 93;
+    ppu.bg_pipeline_state.current_transfer_x = 101;
+    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 24;
+    ppu.bg_pipeline_state.dmg_previsible_wx_retarget =
+        Some(DmgPrevisibleWxRetarget::new(93, 96, 94));
+    ppu.bg_pipeline_state
+        .dmg_previsible_wx_retained_trigger_glitch_x = Some(93);
+
+    assert!(
+        ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+            Mode3TransferDotKind::ServedVisiblePixel,
+            false,
+        ))
+    );
+    assert!(ppu.bg_pipeline_state.window_started_this_line);
+    assert_eq!(ppu.bg_pipeline_state.window_active_line_counter, 96);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.window_tilemap_x, 11);
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .fetcher
+            .first_window_tile_leading_pixel_skip,
+        6
+    );
+}
+
+#[test]
+fn same_scanline_late_wx_write_cancels_the_next_pending_previsible_start() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 0x63,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + 108;
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.visible_registers.wx = 0x50;
+    ppu.pipeline_registers.wx = 0x63;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = false;
+    ppu.bg_pipeline_state.visible_pixels_output = 91;
+    ppu.bg_pipeline_state.current_transfer_x = 100;
+    ppu.bg_pipeline_state.dmg_previsible_wx_retarget =
+        Some(DmgPrevisibleWxRetarget::new(92, 95, 95));
+
+    ppu.maybe_arm_dmg_previsible_wx_retarget(0x63, 0x50);
+
+    assert_eq!(ppu.bg_pipeline_state.dmg_previsible_wx_retarget, None);
+    assert!(
+        ppu.bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once
+    );
+    assert!(
+        !ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+            Mode3TransferDotKind::ServedVisiblePixel,
+            false,
+        ))
+    );
+    assert!(!ppu.bg_pipeline_state.window_started_this_line);
+    assert!(
+        !ppu.bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once
+    );
+}
+
+#[test]
+fn same_scanline_late_wx_write_keeps_a_previsible_restart_armed_until_the_trigger_dot() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 0x64,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + 108;
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.visible_registers.wx = 0x50;
+    ppu.pipeline_registers.wx = 0x64;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = false;
+    ppu.bg_pipeline_state.visible_pixels_output = 91;
+    ppu.bg_pipeline_state.dmg_previsible_wx_retarget =
+        Some(DmgPrevisibleWxRetarget::new(93, 96, 95));
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry =
+        Some(DmgPendingPrevisibleWxCarry::new(92, 93, 96, 95));
+
+    ppu.maybe_arm_dmg_previsible_wx_retarget(0x64, 0x50);
+
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_previsible_wx_retarget,
+        Some(DmgPrevisibleWxRetarget::new(93, 96, 95))
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry,
+        Some(DmgPendingPrevisibleWxCarry::new(92, 93, 96, 95))
+    );
+    assert!(
+        !ppu.bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once
+    );
+}
+
+#[test]
+fn previsible_wx_cancel_background_override_forces_white_fifo_output_at_its_onset() {
+    let mut ppu = PpuTestRig::dmg();
+    let mut vram = crate::bus::VramDomain::from_bytes(&[0; TEST_VRAM_BYTES]);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.bg_pipeline_state.visible_pixels_output = 3;
+    ppu.bg_pipeline_state
+        .dmg_previsible_wx_cancel_background_override_onset_x = Some(3);
+    ppu.bg_pipeline_state.fifo.push_back(2);
+    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
+
+    assert_eq!(
+        ppu.pop_visible_bg_fifo_pixel(&VramBusView::new(BusMaster::Ppu, &mut vram)),
+        Some(0)
+    );
+    assert_eq!(ppu.current_scanline_bg_dot_contexts[3], None);
+}
+
+#[test]
+fn same_scanline_previsible_wx_retarget_invalid_wx_clears_pending_gap_artifacts() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 4,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + 12;
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch = Some(5);
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry =
+        Some(DmgPendingPrevisibleWxCarry::new(1, 2, 0, 3));
+
+    ppu.maybe_arm_dmg_previsible_wx_retarget(4, 2);
+
+    assert_eq!(ppu.bg_pipeline_state.dmg_previsible_wx_retarget, None);
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
+        None
+    );
+    assert_eq!(ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry, None);
+}
+
+#[test]
+fn same_scanline_previsible_wx_retarget_without_a_hidden_skip_clears_gap_artifacts() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 7,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + 12;
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.window_active_line_counter = 6;
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch = Some(5);
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry =
+        Some(DmgPendingPrevisibleWxCarry::new(1, 2, 0, 3));
+
+    ppu.maybe_arm_dmg_previsible_wx_retarget(7, 9);
+
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_previsible_wx_retarget,
+        Some(DmgPrevisibleWxRetarget::new(2, 6, 2))
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
+        None
+    );
+    assert_eq!(ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry, None);
+}
+
+#[test]
+fn previsible_wx_carry_noops_cleanly_when_no_carry_is_pending() {
+    let mut ppu = PpuTestRig::dmg();
+    let mut vram = crate::bus::VramDomain::from_bytes(&ppu.vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.test_apply_pending_dmg_previsible_wx_carry(
+        Mode3TransferDot::served(Mode3TransferDotKind::ServedVisiblePixel, false),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+    );
+
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
+    assert_eq!(ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry, None);
+}
+
+#[test]
+fn previsible_wx_carry_ignores_non_visible_transfer_dots() {
+    let mut ppu = PpuTestRig::dmg();
+    let mut vram = crate::bus::VramDomain::from_bytes(&ppu.vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry =
+        Some(DmgPendingPrevisibleWxCarry::new(4, 6, 0, 0));
+    ppu.bg_pipeline_state.visible_pixels_output = 4;
+
+    ppu.test_apply_pending_dmg_previsible_wx_carry(
+        Mode3TransferDot::served(Mode3TransferDotKind::ServedHiddenTransfer, false),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+    );
+
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry,
+        Some(DmgPendingPrevisibleWxCarry::new(4, 6, 0, 0))
+    );
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
+}
+
+#[test]
+fn previsible_wx_carry_pushes_window_pixels_and_expires_at_the_end_of_the_span() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.write_window_tilemap_entry(0, 0, 0x01);
+    ppu.write_bg_tile_row(0x01, 0, 0xFF, 0x00);
+    let mut vram = crate::bus::VramDomain::from_bytes(&ppu.vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry =
+        Some(DmgPendingPrevisibleWxCarry::new(4, 6, 0, 0));
+    ppu.bg_pipeline_state.visible_pixels_output = 4;
+
+    ppu.test_apply_pending_dmg_previsible_wx_carry(
+        Mode3TransferDot::served(Mode3TransferDotKind::ServedVisiblePixel, false),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+    );
+
+    assert_eq!(ppu.bg_pipeline_state.fifo.len(), 1);
+    assert_eq!(
+        ppu.bg_pipeline_state.fifo_cached_pixels.front().copied(),
+        Some(None)
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry,
+        Some(DmgPendingPrevisibleWxCarry::new(5, 6, 0, 1))
+    );
+
+    ppu.bg_pipeline_state.visible_pixels_output = 5;
+    ppu.test_apply_pending_dmg_previsible_wx_carry(
+        Mode3TransferDot::served(Mode3TransferDotKind::ServedVisiblePixel, false),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+    );
+
+    assert_eq!(ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry, None);
+}
+
+#[test]
+fn previsible_wx_carry_expires_once_visible_output_has_passed_the_trigger() {
+    let mut ppu = PpuTestRig::dmg();
+    let mut vram = crate::bus::VramDomain::from_bytes(&ppu.vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry =
+        Some(DmgPendingPrevisibleWxCarry::new(4, 6, 0, 0));
+    ppu.bg_pipeline_state.visible_pixels_output = 5;
+
+    ppu.test_apply_pending_dmg_previsible_wx_carry(
+        Mode3TransferDot::served(Mode3TransferDotKind::ServedVisiblePixel, false),
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+    );
+
+    assert_eq!(ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry, None);
+}
+
+#[test]
+fn previsible_wx_onset_glitch_repaint_waits_until_visible_output_has_passed_the_trigger() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.current_scanline_bg_pixels[3] = 1;
+    ppu.current_scanline_mixed_pixels[3] = MixedPixel::background(1);
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch = Some(3);
+    ppu.bg_pipeline_state.visible_pixels_output = 3;
+
+    ppu.test_apply_pending_dmg_previsible_wx_onset_glitch_repaint();
+    assert_eq!(ppu.current_scanline_bg_pixels[3], 1);
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
+        Some(3)
+    );
+
+    ppu.bg_pipeline_state.visible_pixels_output = 4;
+    ppu.test_apply_pending_dmg_previsible_wx_onset_glitch_repaint();
+
+    assert_eq!(ppu.current_scanline_bg_pixels[3], 0);
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
+        None
+    );
+}
+
+#[test]
+fn previsible_wx_retarget_expiry_clears_all_companion_state_once_the_trigger_is_past() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.bg_pipeline_state.dmg_previsible_wx_retarget = Some(DmgPrevisibleWxRetarget::new(3, 0, 0));
+    ppu.bg_pipeline_state
+        .dmg_previsible_wx_cancel_background_override_onset_x = Some(3);
+    ppu.bg_pipeline_state
+        .dmg_previsible_wx_retained_trigger_glitch_x = Some(3);
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch = Some(3);
+    ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry =
+        Some(DmgPendingPrevisibleWxCarry::new(3, 4, 0, 0));
+    ppu.bg_pipeline_state.visible_pixels_output = 4;
+
+    ppu.test_expire_dmg_previsible_wx_retarget();
+
+    assert_eq!(ppu.bg_pipeline_state.dmg_previsible_wx_retarget, None);
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .dmg_previsible_wx_cancel_background_override_onset_x,
+        None
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .dmg_previsible_wx_retained_trigger_glitch_x,
+        None
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_previsible_wx_onset_glitch,
+        None
+    );
+    assert_eq!(ppu.bg_pipeline_state.dmg_pending_previsible_wx_carry, None);
 }
 
 #[test]
@@ -521,6 +1109,36 @@ fn wx0_window_disable_prefix_override_repaints_the_extended_prefix_tail() {
     ppu.test_apply_dmg_wx0_window_disable_prefix_override(9, 1);
     assert_eq!(ppu.framebuffer[9], 2);
     assert_eq!(ppu.current_scanline_bg_pixels[9], 2);
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_wx0_window_disable_prefix_state,
+        None
+    );
+}
+
+#[test]
+fn wx0_window_disable_prefix_override_can_repaint_the_full_wx1_prefix_span() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers.lcdc = 0x91;
+    ppu.visible_registers.bgp = 0xE4;
+    ppu.pipeline_registers.bgp = 0xE4;
+    ppu.current_scanline_bg_pixels[0] = 2;
+    ppu.current_scanline_mixed_pixels[0] = MixedPixel::background(2);
+    for visible_x in 1..10 {
+        ppu.current_scanline_mixed_pixels[visible_x] = MixedPixel::background(0);
+    }
+    ppu.bg_pipeline_state.dmg_wx0_window_disable_prefix_state =
+        Some(DmgWx0WindowDisablePrefixState::new(10));
+
+    ppu.test_apply_dmg_wx0_window_disable_prefix_override(0, 2);
+    for visible_x in 1..10 {
+        ppu.test_apply_dmg_wx0_window_disable_prefix_override(visible_x, 1);
+    }
+
+    assert_eq!(&ppu.framebuffer[..10], &[2; 10]);
+    assert_eq!(&ppu.current_scanline_bg_pixels[..10], &[2; 10]);
     assert_eq!(
         ppu.bg_pipeline_state.dmg_wx0_window_disable_prefix_state,
         None

@@ -57,8 +57,10 @@ impl Ppu {
             });
         observe_ppu_step_region(observer, PpuStepRegion::Mode3WindowFetch, || {
             self.maybe_apply_pending_dmg_live_wx_trigger_glitch(output_dot);
+            self.maybe_apply_pending_dmg_previsible_wx_carry(output_dot, vram);
             self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
             let _ = self.maybe_start_window_after_transfer_dot(output_dot);
+            self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint();
             self.apply_dmg_late_window_enable_override_repaint_up_to(
                 usize::from(self.bg_pipeline_state.visible_pixels_output),
                 vram,
@@ -567,9 +569,11 @@ impl Ppu {
         let desired_prefix_pixels = usize::from(seam.desired_prefix_pixels);
         if desired_prefix_pixels > 8 {
             if let Some(prefix_bg_pixel) = seam.prefix_bg_pixel
-                && (8..desired_prefix_pixels).contains(&visible_x)
+                && visible_x < desired_prefix_pixels
             {
-                self.repaint_current_scanline_background_dot(visible_x, prefix_bg_pixel);
+                for target_visible_x in 0..=visible_x {
+                    self.repaint_current_scanline_background_dot(target_visible_x, prefix_bg_pixel);
+                }
             }
 
             if visible_x + 1 >= desired_prefix_pixels {
@@ -781,11 +785,24 @@ impl Ppu {
         }
 
         let window_x = visible_x - window_origin_x;
-        let window_tilemap_x = window_x / BG_TILE_WIDTH;
-        let pixel_index = window_x & (BG_TILE_WIDTH - 1);
+        self.compute_window_pixel_for_logical_offset(
+            self.current_window_line_counter(),
+            u16::from(window_x),
+            vram,
+        )
+    }
+
+    fn compute_window_pixel_for_logical_offset(
+        &self,
+        window_line_counter: u8,
+        window_x: u16,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        let window_tilemap_x = (window_x / u16::from(BG_TILE_WIDTH)) as u8;
+        let pixel_index = (window_x % u16::from(BG_TILE_WIDTH)) as u8;
         let context = self
             .mode3_bgwin_fetch_policy()
-            .window_fetch_context(self.current_window_line_counter(), window_tilemap_x);
+            .window_fetch_context(window_line_counter, window_tilemap_x);
         let tile_index = vram
             .read(context.tile_index_address() as usize)
             .unwrap_or(0);
@@ -1189,6 +1206,14 @@ impl Ppu {
     pub(super) fn pop_visible_bg_fifo_pixel(&mut self, vram: &VramBusView<'_>) -> Option<u8> {
         let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
         let mut pixel = self.bg_pipeline_state.pop_visible_fifo_pixel()?;
+        if self
+            .bg_pipeline_state
+            .dmg_previsible_wx_cancel_background_override_onset_x
+            .is_some_and(|onset_x| self.bg_pipeline_state.visible_pixels_output >= onset_x)
+        {
+            self.current_scanline_bg_dot_contexts[visible_x] = None;
+            return Some(0);
+        }
         let Some(cached) = pixel.cached.as_mut() else {
             self.current_scanline_bg_dot_contexts[visible_x] = None;
             if let Some(override_pixel) = self.compute_startup_visible_tile2_scy_placeholder_pixel(
@@ -1617,6 +1642,25 @@ impl Ppu {
         self.apply_dmg_wx0_window_disable_prefix_override(visible_x, bg_pixel);
     }
 
+    #[cfg(test)]
+    pub(super) fn test_apply_pending_dmg_previsible_wx_carry(
+        &mut self,
+        transfer_dot: Mode3TransferDot,
+        vram: &VramBusView<'_>,
+    ) {
+        self.maybe_apply_pending_dmg_previsible_wx_carry(transfer_dot, vram);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(&mut self) {
+        self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint();
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_expire_dmg_previsible_wx_retarget(&mut self) {
+        self.maybe_expire_dmg_previsible_wx_retarget();
+    }
+
     pub(super) fn compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
         &self,
         cached: BgCachedSlice,
@@ -1923,16 +1967,70 @@ impl Ppu {
         self.bg_pipeline_state.apply_wx0_scx_shortening();
     }
 
-    pub(super) fn maybe_arm_dmg_previsible_wx_retarget(&mut self, wx: u8) {
+    pub(super) fn maybe_arm_dmg_previsible_wx_retarget(&mut self, previous_wx: u8, wx: u8) {
+        let pending_previsible_trigger_x = self
+            .bg_pipeline_state
+            .dmg_previsible_wx_retarget
+            .map(|retarget| retarget.trigger_x);
+        let late_visible_write = self.console_model.is_dmg_family()
+            && self.current_access_mode() == PpuAccessMode::Drawing
+            && self.bg_pipeline_state.visible_pixels_output != 0;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once = late_visible_write
+            && pending_previsible_trigger_x
+                == Some(
+                    self.bg_pipeline_state
+                        .visible_pixels_output
+                        .saturating_add(1),
+                );
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_background_override_onset_x = if self
+            .bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once
+            && !self.dmg_live_wx_write_can_still_start_later_this_line(wx)
+        {
+            pending_previsible_trigger_x
+        } else {
+            None
+        };
+        self.bg_pipeline_state
+            .dmg_previsible_wx_retained_trigger_glitch_x = if late_visible_write
+            && pending_previsible_trigger_x.is_some()
+            && !self
+                .bg_pipeline_state
+                .dmg_previsible_wx_cancel_uses_visible_wx_once
+        {
+            pending_previsible_trigger_x
+        } else {
+            None
+        };
+        if late_visible_write {
+            if self
+                .bg_pipeline_state
+                .dmg_previsible_wx_cancel_uses_visible_wx_once
+            {
+                self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+                self.bg_pipeline_state
+                    .dmg_pending_previsible_wx_onset_glitch = None;
+                self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
+            } else if pending_previsible_trigger_x.is_some() {
+                self.bg_pipeline_state
+                    .dmg_pending_previsible_wx_onset_glitch = None;
+            }
+            return;
+        }
+
         if !self.console_model.is_dmg_family()
             || self.current_access_mode() != PpuAccessMode::Drawing
             || !self.bg_pipeline_state.window_started_this_line
             || !self.bg_pipeline_state.window_wy_latch
-            || self.bg_pipeline_state.visible_pixels_output != 0
             || !self.mode3_register_latches().visible().window_enabled()
             || !self.mode3_register_latches().visible().bg_enabled()
         {
             self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+            self.bg_pipeline_state
+                .dmg_pending_previsible_wx_onset_glitch = None;
+            self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
             return;
         }
 
@@ -1940,11 +2038,42 @@ impl Ppu {
             7..=165 => wx - 7,
             _ => {
                 self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+                self.bg_pipeline_state
+                    .dmg_pending_previsible_wx_onset_glitch = None;
+                self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
                 return;
             }
         };
-        let initial_hidden_skip = 7u8.saturating_sub(self.mode3_register_latches().pipeline().wx);
-        let window_pixel_offset = u16::from(initial_hidden_skip) + u16::from(trigger_x);
+        let initial_hidden_skip = 7u8.saturating_sub(previous_wx);
+        let raw_window_pixel_offset = u16::from(initial_hidden_skip) + u16::from(trigger_x);
+        let mut window_pixel_offset = raw_window_pixel_offset;
+        let visible_tail_len = BG_TILE_WIDTH.saturating_sub(initial_hidden_skip);
+        let visible_gap_len = trigger_x.saturating_sub(visible_tail_len);
+        if initial_hidden_skip != 0 && window_pixel_offset != 0 {
+            let boundary_restart = window_pixel_offset % u16::from(BG_TILE_WIDTH) == 0;
+            if boundary_restart {
+                window_pixel_offset -= 1;
+            }
+            self.bg_pipeline_state
+                .dmg_pending_previsible_wx_onset_glitch =
+                (boundary_restart && visible_gap_len != 0).then_some(trigger_x);
+
+            if visible_gap_len != 0 {
+                self.bg_pipeline_state.dmg_pending_previsible_wx_carry =
+                    Some(DmgPendingPrevisibleWxCarry::new(
+                        visible_tail_len,
+                        trigger_x,
+                        self.bg_pipeline_state.window_active_line_counter,
+                        raw_window_pixel_offset - u16::from(visible_gap_len),
+                    ));
+            } else {
+                self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
+            }
+        } else {
+            self.bg_pipeline_state
+                .dmg_pending_previsible_wx_onset_glitch = None;
+            self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
+        }
 
         self.bg_pipeline_state.dmg_previsible_wx_retarget = Some(DmgPrevisibleWxRetarget::new(
             trigger_x,
@@ -2037,6 +2166,54 @@ impl Ppu {
         }
     }
 
+    fn maybe_apply_pending_dmg_previsible_wx_carry(
+        &mut self,
+        transfer_dot: Mode3TransferDot,
+        vram: &VramBusView<'_>,
+    ) {
+        let Some(mut carry) = self.bg_pipeline_state.dmg_pending_previsible_wx_carry else {
+            return;
+        };
+
+        if !self.console_model.is_dmg_family()
+            || transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel
+        {
+            return;
+        }
+
+        if self.bg_pipeline_state.visible_pixels_output == carry.next_trigger_x {
+            if let Some(pixel) = self.compute_window_pixel_for_logical_offset(
+                carry.active_line_counter,
+                carry.next_window_pixel_offset,
+                vram,
+            ) {
+                self.bg_pipeline_state.fifo.push_front(pixel);
+                self.bg_pipeline_state.fifo_cached_pixels.push_front(None);
+            }
+            carry.next_trigger_x = carry.next_trigger_x.saturating_add(1);
+            carry.next_window_pixel_offset = carry.next_window_pixel_offset.saturating_add(1);
+            if carry.next_trigger_x >= carry.end_trigger_x {
+                self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
+            } else {
+                self.bg_pipeline_state.dmg_pending_previsible_wx_carry = Some(carry);
+            }
+        } else if self.bg_pipeline_state.visible_pixels_output > carry.next_trigger_x {
+            self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
+        }
+    }
+
+    fn maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(&mut self) {
+        if let Some(trigger_x) = self
+            .bg_pipeline_state
+            .dmg_pending_previsible_wx_onset_glitch
+            && self.bg_pipeline_state.visible_pixels_output > trigger_x
+        {
+            self.repaint_current_scanline_background_dot(usize::from(trigger_x), 0);
+            self.bg_pipeline_state
+                .dmg_pending_previsible_wx_onset_glitch = None;
+        }
+    }
+
     fn maybe_expire_dmg_previsible_wx_retarget(&mut self) {
         let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget else {
             return;
@@ -2046,6 +2223,13 @@ impl Ppu {
             || self.bg_pipeline_state.visible_pixels_output > retarget.trigger_x
         {
             self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+            self.bg_pipeline_state
+                .dmg_previsible_wx_cancel_background_override_onset_x = None;
+            self.bg_pipeline_state
+                .dmg_previsible_wx_retained_trigger_glitch_x = None;
+            self.bg_pipeline_state
+                .dmg_pending_previsible_wx_onset_glitch = None;
+            self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
         }
     }
 
@@ -2064,10 +2248,53 @@ impl Ppu {
         self.bg_pipeline_state.fifo_cached_pixels.push_back(None);
     }
 
+    fn dmg_live_wx_write_can_still_start_later_this_line(&self, wx: u8) -> bool {
+        matches!(wx, 7..=165) && wx.saturating_sub(7) > self.bg_pipeline_state.visible_pixels_output
+    }
+
     pub(super) fn maybe_start_window_after_transfer_dot(
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) -> bool {
+        if self.console_model.is_dmg_family()
+            && transfer_dot.kind == Mode3TransferDotKind::ServedVisiblePixel
+            && self.bg_pipeline_state.scx_discard_remaining == 0
+            && self.bg_pipeline_state.window_wy_latch
+            && self.mode3_register_latches().visible().window_enabled()
+            && self.mode3_register_latches().visible().bg_enabled()
+            && self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retarget
+                .is_some_and(|retarget| {
+                    self.bg_pipeline_state.visible_pixels_output == retarget.trigger_x
+                })
+        {
+            self.bg_pipeline_state.dmg_pending_window_reenable_resume = None;
+            self.bg_pipeline_state.dmg_late_window_enable_override = None;
+            self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+            let retarget = self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retarget
+                .take()
+                .expect("checked above");
+            let retained_same_scanline_trigger = self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retained_trigger_glitch_x
+                .is_some();
+            let retained_window_pixel_offset = if retained_same_scanline_trigger
+                && retarget.window_pixel_offset % u16::from(BG_TILE_WIDTH) == 7
+            {
+                retarget.window_pixel_offset.saturating_add(1)
+            } else {
+                retarget.window_pixel_offset
+            };
+            self.start_window_fetcher_restart_preserving_row(
+                retarget.active_line_counter,
+                retained_window_pixel_offset,
+            );
+            return true;
+        }
+
         let decision = self
             .mode3_window_policy()
             .start_decision_after_transfer_dot(
@@ -2078,6 +2305,8 @@ impl Ppu {
                 self.bg_pipeline_state.scx_discard_remaining,
                 self.bg_pipeline_state.wx166_armed_this_line,
             );
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once = false;
 
         match decision {
             PpuMode3WindowStartDecision::NotReady => {
@@ -2986,6 +3215,13 @@ impl Ppu {
         }
         self.bg_pipeline_state.window_force_x0_this_line = false;
         self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once = false;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_background_override_onset_x = None;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_retained_trigger_glitch_x = None;
+        self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
         self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
     }
 }
