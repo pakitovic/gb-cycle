@@ -1810,6 +1810,16 @@ impl Ppu {
         self.maybe_expire_dmg_previsible_wx_retarget();
     }
 
+    #[cfg(test)]
+    pub(super) fn test_apply_dmg_previsible_wx_retarget(&mut self, vram: &VramBusView<'_>) {
+        self.maybe_apply_dmg_previsible_wx_retarget(vram);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_expire_pending_dmg_live_wx_trigger_glitch(&mut self) {
+        self.maybe_expire_pending_dmg_live_wx_trigger_glitch();
+    }
+
     pub(super) fn compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
         &self,
         cached: BgCachedSlice,
