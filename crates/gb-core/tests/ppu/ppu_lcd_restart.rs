@@ -196,31 +196,6 @@ fn cpu_path_lcd_enable_read_probe_matches_the_mooneye_probe_points() {
 }
 
 #[test]
-#[ignore = "diag: CPU-path LCDC.7 write chronology probe is retained only for re-entry work"]
-fn cpu_path_lcd_enable_write_probe_matches_the_mooneye_probe_points() {
-    const NOP_COUNTS: [u16; 19] = [
-        0, 17, 18, 60, 61, 110, 111, 112, 130, 131, 132, 174, 175, 224, 225, 226, 244, 245, 246,
-    ];
-    const EXPECTED_OAM: [u8; 19] = [
-        0x81, 0x81, 0x00, 0x00, 0x81, 0x81, 0x81, 0x00, 0x00, 0x81, 0x00, 0x00, 0x81, 0x81, 0x81,
-        0x00, 0x00, 0x81, 0x00,
-    ];
-    const EXPECTED_VRAM: [u8; 19] = [
-        0x81, 0x81, 0x00, 0x00, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x00, 0x00, 0x81, 0x81, 0x81,
-        0x81, 0x81, 0x81, 0x00,
-    ];
-
-    let actual_oam = NOP_COUNTS
-        .map(|delay| run_lcd_enable_write_probe_observation(0xFE00, delay).observed_value);
-    let actual_vram = NOP_COUNTS
-        .map(|delay| run_lcd_enable_write_probe_observation(0x8000, delay).observed_value);
-
-    if actual_oam != EXPECTED_OAM || actual_vram != EXPECTED_VRAM {
-        panic!("actual_oam={actual_oam:?}\nactual_vram={actual_vram:?}");
-    }
-}
-
-#[test]
 fn lcd_off_releases_ppu_mode_restrictions_without_overriding_dma_hram_only_blocking() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),

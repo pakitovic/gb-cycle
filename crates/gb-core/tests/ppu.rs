@@ -14,8 +14,6 @@ include!("ppu/ppu_probe_intr20.rs");
 include!("ppu/ppu_probe_stat_mode.rs");
 include!("ppu/ppu_probe_hblank_scx.rs");
 
-#[path = "ppu/ppu_diag.rs"]
-mod ppu_diag;
 #[path = "ppu/ppu_lcd_restart.rs"]
 mod ppu_lcd_restart;
 #[path = "ppu/ppu_mode_edges.rs"]
