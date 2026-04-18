@@ -5,7 +5,6 @@ use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::{
     Bus, BusArbitrationState, BusIoReadView, BusIoWriteView, BusMaster, BusRequester,
-    IoRegisterOwner,
 };
 use crate::cartridge::CartridgeSlot;
 use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState, CpuExternalOperation};
@@ -48,13 +47,12 @@ fn current_cycle_interrupt_read_mask(context: &CycleContext, ppu: &Ppu, joypad: 
     mask
 }
 
-pub(super) fn cpu_write_targets_ppu_mmio(bus: &Bus, address: u16) -> bool {
+pub(super) fn cpu_write_targets_ppu_mmio(address: u16) -> bool {
     if !(0xFF00..=0xFF7F).contains(&address) {
         return false;
     }
 
-    bus.describe_io_register(address)
-        .is_some_and(|info| info.owner() == IoRegisterOwner::Ppu)
+    Ppu::owns_mmio_register(address)
 }
 
 pub(super) fn commit_pending_ppu_mmio_write(
@@ -395,7 +393,7 @@ impl MachinePhaseRunner<'_> {
                     ))
                 }
                 CpuExternalOperation::Bus(CpuBusOperation::Write { address, value }) => {
-                    if cpu_write_targets_ppu_mmio(bus, address) {
+                    if cpu_write_targets_ppu_mmio(address) {
                         *pending_ppu_mmio_write = Some(PendingPpuMmioWrite { address, value });
                         context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
                     } else {

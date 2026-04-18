@@ -2,6 +2,10 @@ use super::snapshot::*;
 use super::*;
 
 impl Ppu {
+    pub(crate) fn owns_mmio_register(address: u16) -> bool {
+        PpuRegister::from_address(address).is_some()
+    }
+
     pub fn new(console_model: ConsoleModel) -> Self {
         Self {
             console_model,

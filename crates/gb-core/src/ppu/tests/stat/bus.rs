@@ -136,3 +136,14 @@ fn bus_state_snapshot_matches_the_individual_bus_state_helpers() {
     assert_eq!(disabled_snapshot.cpu_read, ppu.cpu_bus_state());
     assert_eq!(disabled_snapshot.cpu_write, ppu.cpu_write_bus_state());
 }
+
+#[test]
+fn owns_mmio_register_matches_the_dmg_ppu_register_window() {
+    for address in 0xFF00..=0xFF7F {
+        let expected = matches!(
+            address,
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B
+        );
+        assert_eq!(Ppu::owns_mmio_register(address), expected, "{address:#06X}");
+    }
+}
