@@ -42,36 +42,28 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 - The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
 - The current external report snapshot is `.roms/test/test-report.md = 167/167`: `165` passed, `0` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint; keep both green as the acceptance gate for follow-up PPU work.
-- The full active Mealybug DMG window-mechanics block is green in the current tree: `m3_window_timing.gb`, `m3_window_timing_wx_0.gb`, `m3_lcdc_win_map_change.gb`, `m3_lcdc_tile_sel_win_change.gb`, `m3_lcdc_win_en_change_multiple.gb`, `m3_lcdc_win_en_change_multiple_wx.gb`, `m3_wx_4_change.gb`, `m3_wx_4_change_sprites.gb`, `m3_wx_5_change.gb`, and `m3_wx_6_change.gb`.
+- The full active Mealybug DMG window-mechanics ladder is green in the current tree (orders `40..49` in `docs/hardware/PPU.md`).
 
-#### Open TODOs
-
-##### Active blockers
-
-- None currently.
+#### Remaining follow-ups
 
 ##### Cleanup debt
 
 - [PPU][MODE3-SCY-OBJ-PHASE-POLICY] `m3_scy_change.gb` is green and the current closure already lives in `PpuMode3ScyObjPhasePolicy` plus `PpuMode3ObservedScyObjPhaseTable`. This is cleanup debt, not a blocker: if a later oracle resolves the exact BG/OBJ handoff phase, replace the remaining observed-table ranges with direct shared BG/OBJ fetcher arbitration instead of extending the table further.
 
-##### Oracle-needed follow-ups
+##### Oracle follow-ups
 
-- [PPU][WINDOW-GLITCH-ORACLE] The active window ROM block now covers part of this surface (`m3_window_timing`, `m3_window_timing_wx_0`, `m3_lcdc_win_en_change_multiple*`, `m3_wx_*`), but the stricter oracle question remains open. After the remaining window ROMs are green, re-check whether `WX = 0`, `WX = 166`, `WX`/`WY`, and `LCDC.5` mid-frame glitch behavior still need an explicit hardware or trusted-oracle pass, especially the DMG-specific `WX = 0 && (SCX & 7) > 0` path. Does not block Phase `5`; needed for Phase `9`.
 - [PPU][WINDOW-GLITCH-ORACLE] The active window ROM block is now fully green (`m3_window_timing`, `m3_window_timing_wx_0`, `m3_lcdc_win_en_change_multiple*`, `m3_wx_*`), but the stricter oracle question remains open. Re-check whether `WX = 0`, `WX = 166`, `WX`/`WY`, and `LCDC.5` mid-frame glitch behavior still need an explicit hardware or trusted-oracle pass, especially the DMG-specific `WX = 0 && (SCX & 7) > 0` path. Does not block Phase `5`; needed for Phase `9`.
-
 - [PPU][OAM-CORRUPTION-ORACLE] Deterministic unit/integration coverage is shipped for Mode `2` OAM access, `FEA0-FEFF` reads, `inc rr`, `[hli]`/`[hld]`, stack/interrupt paths, DMG variants, and the CGB negative path. The last-row and first-scanline blargg windows (`oam_bug/4`, `oam_bug/5`) are green again after moving trigger classification away from the coarse blocked-access flag and back to live `Mode 2` ownership in the PPU. Still lacks an independent oracle comparison. The curated `oam_bug` subset still excludes `oam_bug.gb` multi-ROM and `7-timing_effect.gb`. Needed for Phase `9`.
-
 - [PPU][FF44-HBLANK-SEAM] The exact DMG `FF44` advance point inside late HBlank is still hypothesis-only. The docs prefer the "last machine cycle of HBlank" wording, but a direct retune to later dots regressed `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` from green to red while leaving the rest of the model unchanged. Re-entry should start from a narrow trace or oracle comparison around the late-HBlank `LY/SCX` polling seam, not from another blind constant change. Hard gate: `mooneye acceptance/ppu/hblank_ly_scx_timing-GS` must stay green.
 
 ##### Phase `9` hardening
 
 - [PPU][LCDC2-8X16-ARTIFACTS] Core `8x16` rules and the mid-frame `LCDC.2` shrink crash are fixed, and the active OBJ-toggle block (`m3_lcdc_obj_size_change`, `m3_lcdc_obj_size_change_scx`) is green. The closure is intentionally narrow: a line-start `OBJ`-height latch, observed per-phase bitplane selection, a queued-FIFO rewrite seam for future tail pixels, and a retroactive scanline repaint seam for already-emitted pixels when the shrink lands after the low-half rows have started drawing. With the Mealybug window block now green, re-check whether finer DMG-visible artifacts from mid-frame size changes still need targeted ROM or oracle coverage. Does not block Phase `5`; needed for Phase `9`.
-
 - [PPU][SKIPBOOT-ORACLE] `SkipBoot` startup-mode latch is validated only against repo-local continuity tests. Before Phase `9` hardening, it still needs a trusted-oracle or hardware comparison proving that the first LCD-visible dots after `SkipBoot` are coherent with published `LCDC`, `STAT`, and `LY` state. Does not block Phase `5`.
 
-#### Re-entry rules
+#### If Phase 4 is reopened
 
-##### Strategy
+##### Start here
 
 - If a new PPU regression appears, resume from one failing family at a time. Prefer the smallest oracle-backed reproduction that distinguishes the suspected same-T-cycle window.
 - Working hypothesis: the remaining Mode `3` debt is now oracle-hardening debt around startup dummy / first-fetch / restart-lane timing and live-write onset classes, not another broad visible-FIFO retargeting pass.
@@ -81,16 +73,16 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 - Do not reopen generic startup realignment, broad tilemap rereads, broad cached-slice / visible-FIFO retargeting, broad `SCX`/`SCY` retargeting, fill-only `LCDC.0` overrides, materialized-slice-only `LCDC.0` overrides, synthetic `visible_tile2_window` repaint windows, or isolated "strict push" experiments before a new oracle shows the fault starts there.
 - Do not retry broad dummy-startup fill retiming without a new oracle; a previous discard-first-BG-fetch experiment improved one ROM but regressed baseline raster gates.
-- For the remaining `LCDC` live-write families, keep onset rules localized per write class and per boundary; do not retry a fill-only or generic materialized-slice override.
+- If a future `LCDC` or live-write regression appears, keep onset rules localized per write class and per boundary; do not retry a fill-only or generic materialized-slice override.
 
-##### Validation baseline
+##### Validation minimum
 
 - Capture baseline and final `.roms/test/test-report.md` for exploratory reruns, especially `mealybug-tearoom-dmg-curated`, `acid-dmg-curated`, and `mooneye-acceptance-dmg-curated`.
 - Always rerun these baseline PPU smoke gates before accepting any PPU behavior change, even if the local target ROM improves:
   - `acid/dmg-acid2.gb` (`VERY LOW`, order `2`): base raster / smoke coverage for general `Mode 3` raster, BG/WIN/OBJ mixing, and left-edge startup behavior.
   - `daid/ppu_scanline_bgp.gb` (`MEDIUM`, order `41`): visible raster and post-boot state coverage for per-scanline `BGP`.
   - `hacktix/bully.gb` (`HIGH`, order `139`): visible raster and post-boot state coverage for visible VRAM / tilemap seed after boot.
-- Keep the following focused no-regression set while touching panel-path palette behavior, startup/restart timing, sprite-coupled mode boundaries, `SCX/SCY`, or remaining live-write families: `mealybug ppu/{m3_bgp_change,m3_bgp_change_sprites,m3_obp0_change,m3_scx_low_3_bits,m3_scx_high_5_bits,m3_scy_change}.gb`, `mooneye acceptance/ppu/{hblank_ly_scx_timing-GS,intr_2_mode0_timing_sprites,lcdon_timing-GS,lcdon_write_timing-GS}.gb`, `hacktix/strikethrough.gb`, and `blargg oam_bug/{4-scanline_timing,5-timing_bug}.gb`.
+- Keep the following focused no-regression set while touching panel-path palette behavior, startup/restart timing, sprite-coupled mode boundaries, `SCX/SCY`, or live-write behavior: `mealybug ppu/{m3_bgp_change,m3_bgp_change_sprites,m3_obp0_change,m3_scx_low_3_bits,m3_scx_high_5_bits,m3_scy_change}.gb`, `mooneye acceptance/ppu/{hblank_ly_scx_timing-GS,intr_2_mode0_timing_sprites,lcdon_timing-GS,lcdon_write_timing-GS}.gb`, `hacktix/strikethrough.gb`, and `blargg oam_bug/{4-scanline_timing,5-timing_bug}.gb`.
 - When a candidate fix touches `STAT`, LCD restart, or sprite-coupled mode boundaries, rerun the narrow mooneye LCD timing slice before trusting any localized improvement.
 
 ### Phase 5 — Input and simple peripherals
