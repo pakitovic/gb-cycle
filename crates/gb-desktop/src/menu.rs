@@ -3175,6 +3175,11 @@ mod tests {
             presentation.recent_rom_labels[index] = CompactRecentRomLabel::from_text(label);
         }
         assert_eq!(presentation.item_label(MenuItem::RecentRom1), "TETRIS");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom3), "DRMARIO");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom4), "KIRBY");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom5), "ZELDA");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom6), "WARIO");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom7), "METROID");
         assert_eq!(presentation.item_label(MenuItem::RecentRom8), "TENNIS");
         assert_eq!(
             presentation.item_label(MenuItem::ClearRecentList),
@@ -3251,6 +3256,11 @@ mod tests {
         presentation.audio_volume_percent = 250;
         assert_eq!(presentation.item_label(MenuItem::AudioVolume), "VOL 100%");
 
+        assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT NONE");
+        assert_eq!(
+            presentation.item_label(MenuItem::ExternalPortNone),
+            "NONE ON"
+        );
         presentation.external_port_selection = DesktopExternalPortSelection::Printer;
         assert_eq!(
             presentation.item_label(MenuItem::ExtPortMenu),
@@ -3271,6 +3281,10 @@ mod tests {
         );
         assert!(presentation.item_enabled(MenuItem::ExternalPortGameLink));
         assert!(!presentation.item_enabled(MenuItem::ExternalPortFourPlayerAdapter));
+        presentation.external_port_selection = DesktopExternalPortSelection::GameLink;
+        assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT LINK");
+        presentation.external_port_selection = DesktopExternalPortSelection::FourPlayerAdapter;
+        assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT 4P");
 
         presentation.gamepad_directional_source = GamepadDirectionalSource::DpadOnly;
         assert_eq!(
@@ -3310,6 +3324,16 @@ mod tests {
         assert_eq!(
             presentation.item_label(MenuItem::GamepadActive),
             "ACTIVE SWITCH"
+        );
+        presentation.active_gamepad_connected = false;
+        presentation.active_gamepad_label = CompactMenuLabel::default();
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadActive),
+            "ACTIVE NONE"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::GamepadPreferred),
+            "PREF AUTO"
         );
         presentation.preferred_gamepad_configured = true;
         assert_eq!(
