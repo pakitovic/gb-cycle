@@ -290,6 +290,7 @@ struct PathSelectionDialog {
 }
 
 struct DesktopTraceCapture {
+    enabled: bool,
     output_path: Option<PathBuf>,
     max_t_cycles: usize,
     records: VecDeque<DesktopTraceRecord>,
@@ -815,16 +816,19 @@ impl DesktopTraceCapture {
             DEFAULT_TRACE_CAPTURE_T_CYCLES
         };
         Ok(Self {
+            enabled: output_path.is_some() && max_t_cycles > 0,
             output_path,
             max_t_cycles,
             records: VecDeque::new(),
         })
     }
 
+    fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
-        if self.output_path.is_none() || self.max_t_cycles == 0 {
-            return;
-        }
+        debug_assert!(self.enabled);
 
         if self.records.len() == self.max_t_cycles {
             self.records.pop_front();
@@ -2304,7 +2308,7 @@ impl PerformanceCounter {
             };
 
         Some(format!(
-            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
             self.sample_session_kind.label(),
             snapshot.fps,
             snapshot.speed_percent,
@@ -2326,6 +2330,42 @@ impl PerformanceCounter {
             ),
             scaled_average_duration_ms(
                 breakdown.core_other_duration(),
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_external_events_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_timer_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_apu_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_dma_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_serial_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_interrupts_duration,
                 breakdown.core_duration(),
                 estimated_core_duration,
                 profiled_frames_f64,
@@ -2641,12 +2681,25 @@ fn sync_gamepad_rumble(
     machine: &Machine<TraceSummaryBuffer>,
     now: Instant,
 ) -> Result<(), String> {
-    let rumble_requested = !emulation_paused(machine, runtime)
-        && machine.cartridge().has_rumble()
-        && machine.cartridge().rumble_on();
-    if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-        gamepad_manager.update_rumble(rumble_requested, now)?;
+    let paused = emulation_paused(machine, runtime);
+    let Some(gamepad_manager) = &mut runtime.gamepad_manager else {
+        return Ok(());
+    };
+
+    if !machine.cartridge().has_rumble() {
+        if !gamepad_manager.has_active_rumble_effect() {
+            return Ok(());
+        }
+        gamepad_manager.update_rumble(false, now)?;
+        return Ok(());
     }
+
+    if !gamepad_manager.can_deliver_rumble() && !gamepad_manager.has_active_rumble_effect() {
+        return Ok(());
+    }
+
+    let rumble_requested = !paused && machine.cartridge().rumble_on();
+    gamepad_manager.update_rumble(rumble_requested, now)?;
 
     Ok(())
 }
@@ -3947,10 +4000,12 @@ fn step_until_next_frame(
                 context.runtime,
                 context.machine,
             );
-            context
-                .runtime
-                .trace_capture
-                .record_t_cycle(context.machine);
+            context.runtime.trace_capture.is_enabled().then(|| {
+                context
+                    .runtime
+                    .trace_capture
+                    .record_t_cycle(context.machine)
+            });
 
             if let Some(audio_output) = &mut context.runtime.audio_output {
                 audio_output.capture_t_cycle(audio_source_machine(context.machine).apu());
@@ -7431,6 +7486,7 @@ mod tests {
                 boot_rom_directory_dialog: super::PathSelectionDialog::new(),
                 save_directory_dialog: super::PathSelectionDialog::new(),
                 trace_capture: super::DesktopTraceCapture {
+                    enabled: false,
                     output_path: None,
                     max_t_cycles: super::DEFAULT_TRACE_CAPTURE_T_CYCLES,
                     records: VecDeque::new(),
@@ -7796,20 +7852,25 @@ mod tests {
         counter.sample_profiled_frames = 2;
         counter.sample_profiled_emulation_duration = Duration::from_millis(24);
         counter.sample_profiled_emulation_breakdown = super::EmulationBreakdownSample {
-            core_cpu_duration: Duration::from_millis(4),
-            core_ppu_duration: Duration::from_millis(16),
+            core_external_events_duration: Duration::from_millis(1),
+            core_timer_duration: Duration::from_millis(1),
+            core_apu_duration: Duration::from_millis(1),
+            core_dma_duration: Duration::from_millis(1),
+            core_ppu_duration: Duration::from_millis(10),
             core_ppu_mode0_1_duration: Duration::from_millis(2),
             core_ppu_mode2_duration: Duration::from_millis(1),
             core_ppu_mode3_startup_duration: Duration::from_millis(1),
-            core_ppu_bg_fetch_duration: Duration::from_millis(4),
-            core_ppu_window_fetch_duration: Duration::from_millis(2),
-            core_ppu_push_duration: Duration::from_millis(3),
-            core_ppu_obj_fetch_duration: Duration::from_millis(2),
-            core_ppu_pixel_transfer_duration: Duration::from_millis(1),
+            core_ppu_bg_fetch_duration: Duration::from_millis(2),
+            core_ppu_window_fetch_duration: Duration::from_millis(1),
+            core_ppu_push_duration: Duration::from_millis(1),
+            core_ppu_obj_fetch_duration: Duration::from_millis(1),
+            core_ppu_pixel_transfer_duration: Duration::from_millis(0),
+            core_cpu_duration: Duration::from_millis(4),
+            core_serial_duration: Duration::from_millis(1),
+            core_interrupts_duration: Duration::from_millis(1),
             host_event_poll_duration: Duration::from_millis(2),
             host_audio_submit_duration: Duration::from_millis(1),
             host_save_flush_duration: Duration::from_millis(1),
-            ..Default::default()
         };
         let elapsed = Duration::from_millis(34);
         let snapshot = counter.snapshot_from_elapsed(elapsed);
@@ -7826,18 +7887,24 @@ mod tests {
         )));
         assert!(summary.contains("sampled_emu_ms=12.00"));
         assert!(summary.contains("core_est_ms=10.00"));
-        assert!(summary.contains("ppu_ms=8.00"));
+        assert!(summary.contains("ppu_ms=5.00"));
         assert!(summary.contains("cpu_ms=2.00"));
-        assert!(summary.contains("core_other_ms=0.00"));
+        assert!(summary.contains("core_other_ms=3.00"));
+        assert!(summary.contains("ext_ms=0.50"));
+        assert!(summary.contains("timer_ms=0.50"));
+        assert!(summary.contains("apu_ms=0.50"));
+        assert!(summary.contains("dma_ms=0.50"));
+        assert!(summary.contains("serial_ms=0.50"));
+        assert!(summary.contains("irq_ms=0.50"));
         assert!(summary.contains("ppu_mode0_1_ms=1.00"));
         assert!(summary.contains("ppu_mode2_ms=0.50"));
         assert!(summary.contains("ppu_mode3_startup_ms=0.50"));
-        assert!(summary.contains("ppu_bg_ms=2.00"));
-        assert!(summary.contains("ppu_win_ms=1.00"));
-        assert!(summary.contains("ppu_push_ms=1.50"));
-        assert!(summary.contains("ppu_obj_ms=1.00"));
-        assert!(summary.contains("ppu_px_ms=0.50"));
-        assert!(summary.contains("ppu_other_ms=0.00"));
+        assert!(summary.contains("ppu_bg_ms=1.00"));
+        assert!(summary.contains("ppu_win_ms=0.50"));
+        assert!(summary.contains("ppu_push_ms=0.50"));
+        assert!(summary.contains("ppu_obj_ms=0.50"));
+        assert!(summary.contains("ppu_px_ms=0.00"));
+        assert!(summary.contains("ppu_other_ms=0.50"));
         assert!(summary.contains("host_ms=2.00"));
         assert!(summary.contains("poll_ms=1.00"));
         assert!(summary.contains("audsubmit_ms=0.50"));
@@ -8519,6 +8586,7 @@ mod tests {
         }
 
         assert_eq!(capture.output_path.as_deref(), Some(output_path.as_path()));
+        assert!(capture.is_enabled());
         assert_eq!(capture.max_t_cycles, 2);
 
         let mut machine = Machine::new_summary(
@@ -8539,6 +8607,7 @@ mod tests {
         assert!(rendered.contains("apu.nr50=0x77"));
 
         super::DesktopTraceCapture {
+            enabled: false,
             output_path: None,
             max_t_cycles: 2,
             records: std::collections::VecDeque::new(),

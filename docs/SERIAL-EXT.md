@@ -755,10 +755,18 @@ that advances linked machines every `T-cycle`:
 - linked desktop emulation profiling now replays the real linked observer path,
   so sampled `CPU`, `PPU`, and `core_other` buckets stay populated for
   two-console `DMG-04` sessions
+- the desktop loop now also skips trace-capture recording entirely when the
+  trace artifact is disabled and avoids repeated rumble synchronization work
+  for non-rumble cartridges unless a host rumble effect still needs clearing
 
 This keeps the existing linked timing model intact while removing avoidable
 linked-session host/core coordination overhead and making the next optimization
 pass measurable.
+
+For follow-up non-`PPU` work, the desktop profiler now also exposes the
+previous `core_other` remainder split into external-event ingress, timer, APU,
+DMA, serial, and interrupt buckets, so later optimizations can target a
+specific linked-session cost center instead of a single opaque aggregate.
 
 ### Crates / files
 
