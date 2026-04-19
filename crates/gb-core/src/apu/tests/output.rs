@@ -22,7 +22,7 @@ fn enabled_dac_output_remains_distinct_from_dac_off_even_when_the_channel_is_ina
 }
 
 #[test]
-fn disabling_the_last_dac_disconnects_the_output_immediately() {
+fn disabling_the_last_dac_keeps_the_previous_analog_level_alive_until_the_fade_advances() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
@@ -37,14 +37,20 @@ fn disabling_the_last_dac_disconnects_the_output_immediately() {
     apu.write_register(0xFF12, 0x00);
     let dac_off = apu.snapshot().output;
 
-    assert_eq!(dac_off.channel_dac_outputs[0], 0);
-    assert_eq!(dac_off.hpf_output.left, 0);
-    assert_eq!(dac_off.hpf_output.right, 0);
+    assert_eq!(dac_off.channel_digital_outputs[0], 0);
+    assert_eq!(apu.snapshot().channel_dac_mask, 0x00);
+    assert!(dac_off.channel_dac_outputs[0] > 0);
+    assert_eq!(
+        dac_off.channel_dac_outputs[0],
+        charged.channel_dac_outputs[0]
+    );
+    assert!(dac_off.hpf_output.left > 0);
+    assert!(dac_off.hpf_output.right > 0);
     assert_eq!(dac_off.hpf_capacitor, charged.hpf_capacitor);
 }
 
 #[test]
-fn hpf_capacitor_freezes_while_all_dacs_are_off() {
+fn hpf_capacitor_keeps_evolving_while_the_last_dac_fades_and_then_freezes_after_settling() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
@@ -60,20 +66,50 @@ fn hpf_capacitor_freezes_while_all_dacs_are_off() {
     tick_apu_with_edges(&mut apu, 2, &[]);
     let after_second_dac_off_tick = apu.snapshot().output;
 
-    assert_eq!(after_write.hpf_output.left, 0);
-    assert_eq!(after_write.hpf_output.right, 0);
-    assert_eq!(after_first_dac_off_tick.hpf_output.left, 0);
-    assert_eq!(after_first_dac_off_tick.hpf_output.right, 0);
-    assert_eq!(after_second_dac_off_tick.hpf_output.left, 0);
-    assert_eq!(after_second_dac_off_tick.hpf_output.right, 0);
-    assert_eq!(
+    assert!(after_write.channel_dac_outputs[0] > after_first_dac_off_tick.channel_dac_outputs[0]);
+    assert!(
+        after_first_dac_off_tick.channel_dac_outputs[0]
+            > after_second_dac_off_tick.channel_dac_outputs[0]
+    );
+    assert!(after_first_dac_off_tick.hpf_output.left < after_write.hpf_output.left);
+    assert!(after_first_dac_off_tick.hpf_output.right < after_write.hpf_output.right);
+    assert_ne!(
         after_first_dac_off_tick.hpf_capacitor,
         after_write.hpf_capacitor
     );
-    assert_eq!(
-        after_second_dac_off_tick.hpf_capacitor,
-        after_write.hpf_capacitor
+
+    let mut settled = after_second_dac_off_tick;
+    let mut settled_tick = None;
+    for t_cycle in 3..=1024 {
+        tick_apu_with_edges(&mut apu, t_cycle, &[]);
+        settled = apu.snapshot().output;
+        if settled.channel_dac_outputs[0] == 0 {
+            settled_tick = Some(t_cycle);
+            break;
+        }
+    }
+
+    assert!(
+        settled_tick.is_some(),
+        "expected DAC-off fade to settle within a bounded number of T-cycles"
     );
+    assert_eq!(settled.hpf_output.left, 0);
+    assert_eq!(settled.hpf_output.right, 0);
+
+    let frozen_capacitor = settled.hpf_capacitor;
+    tick_apu_with_edges(&mut apu, settled_tick.unwrap() + 1, &[]);
+    let after_settled_first_tick = apu.snapshot().output;
+    tick_apu_with_edges(&mut apu, settled_tick.unwrap() + 2, &[]);
+    let after_settled_second_tick = apu.snapshot().output;
+
+    assert_eq!(after_settled_first_tick.channel_dac_outputs[0], 0);
+    assert_eq!(after_settled_second_tick.channel_dac_outputs[0], 0);
+    assert_eq!(after_settled_first_tick.hpf_output.left, 0);
+    assert_eq!(after_settled_first_tick.hpf_output.right, 0);
+    assert_eq!(after_settled_second_tick.hpf_output.left, 0);
+    assert_eq!(after_settled_second_tick.hpf_output.right, 0);
+    assert_eq!(after_settled_first_tick.hpf_capacitor, frozen_capacitor);
+    assert_eq!(after_settled_second_tick.hpf_capacitor, frozen_capacitor);
 }
 
 #[test]
@@ -316,24 +352,65 @@ fn sample_capture_can_emit_one_sample_per_t_cycle() {
 }
 
 #[test]
-fn sample_capture_emits_samples_at_the_requested_fractional_rate() {
+fn sample_capture_emits_constant_samples_at_the_requested_fractional_rate() {
     let mut capture =
         ApuSampleCapture::new(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ / 4).expect("valid sample rate");
 
-    for sample_index in 0..8 {
-        capture.record_output_t_cycle(ApuHostSample {
-            left: sample_index,
-            right: -sample_index,
-        });
+    for _ in 0..8 {
+        capture.record_output_t_cycle(ApuHostSample { left: 7, right: -7 });
     }
 
     assert_eq!(
         capture.drain_samples(),
         vec![
-            ApuHostSample { left: 2, right: -2 },
-            ApuHostSample { left: 6, right: -6 },
+            ApuHostSample { left: 7, right: -7 },
+            ApuHostSample { left: 7, right: -7 },
         ]
     );
+}
+
+#[test]
+fn sample_capture_bandlimits_mid_interval_step_changes() {
+    let mut capture =
+        ApuSampleCapture::new(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ / 4).expect("valid sample rate");
+
+    for sample in [
+        ApuHostSample { left: 0, right: 0 },
+        ApuHostSample { left: 0, right: 0 },
+        ApuHostSample { left: 0, right: 0 },
+        ApuHostSample {
+            left: 100,
+            right: -100,
+        },
+    ] {
+        capture.record_output_t_cycle(sample);
+    }
+
+    for _ in 0..28 {
+        capture.record_output_t_cycle(ApuHostSample {
+            left: 100,
+            right: -100,
+        });
+    }
+
+    let captured = capture.drain_samples();
+
+    assert!(
+        captured.len() >= 8,
+        "expected enough host samples to observe the delayed band-limited transition"
+    );
+
+    assert!(captured[0].left <= 0);
+    assert!(captured[1].left <= 0);
+    assert!(captured[3].left < 25);
+    assert!(captured[4].left > 25);
+    assert!(captured[4].left < 100);
+    assert!(captured[5].left > 100);
+    assert_eq!(captured[7].left, 100);
+
+    assert!(captured[0].right >= 0);
+    assert!(captured[5].right < -100);
+    assert_eq!(captured[7].right, -100);
 }
 
 #[test]

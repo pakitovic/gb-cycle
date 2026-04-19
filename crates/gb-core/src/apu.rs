@@ -23,10 +23,7 @@ use self::output::HpfChargeModel;
 pub use self::output::{
     ApuHostSample, ApuHpfCapacitorSnapshot, ApuOutputSnapshot, ApuStereoOutputSnapshot,
 };
-use self::output::{
-    MasterControlState, OutputMixState, OutputPathState, mix_output, preview_output_path,
-    tick_output_path,
-};
+use self::output::{MasterControlState, OutputPathState};
 pub use self::sample_capture::{ApuSampleCapture, ApuSampleCaptureError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,12 +76,11 @@ pub struct ApuSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::apu) struct ApuOutputResolution {
     pub(in crate::apu) channel_output: ChannelOutputState,
-    pub(in crate::apu) output_mix: OutputMixState,
 }
 
 impl ApuOutputResolution {
     pub(in crate::apu) fn snapshot(self, output_path: &OutputPathState) -> ApuOutputSnapshot {
-        self.output_mix.snapshot(output_path)
+        output_path.snapshot(self.channel_output.digital_outputs)
     }
 }
 
@@ -186,23 +182,21 @@ impl Apu {
     }
 
     pub(in crate::apu) fn resolve_output_state(&self) -> ApuOutputResolution {
-        let channel_output = self.channel_output_state();
-        let output_mix = mix_output(&self.master, channel_output);
-
         ApuOutputResolution {
-            channel_output,
-            output_mix,
+            channel_output: self.channel_output_state(),
         }
     }
 
     fn preview_output_path(&mut self) {
         let output_resolution = self.resolve_output_state();
-        preview_output_path(&mut self.output_path, output_resolution.output_mix);
+        self.output_path
+            .preview(&self.master, output_resolution.channel_output);
     }
 
     fn tick_output_path(&mut self) {
         let output_resolution = self.resolve_output_state();
-        tick_output_path(&mut self.output_path, output_resolution.output_mix);
+        self.output_path
+            .tick(&self.master, output_resolution.channel_output);
     }
 
     fn advance_frame_sequencer(&mut self) {

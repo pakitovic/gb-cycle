@@ -160,6 +160,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - An inactive channel with its DAC still enabled should therefore contribute the analog level corresponding to digital `0`; "inactive" must stay distinct from "DAC off".
 - The DAC-off path should remain explicit rather than being faked as one more ordinary `0..15` digital conversion case.
 - Pan Docs documents the per-channel DAC-off transition toward analog `0` as model-dependent; do not overclaim a final DMG fade shape until a stronger oracle exists.
+- Repo-local current policy: keep a short explicit per-channel DAC-off discharge toward analog `0` on the shared T-cycle timeline, rather than collapsing DAC disable into an instantaneous zero-output step.
 - `NR52` low bits should continue to report channel-active state rather than DAC-enabled state.
 
 ## NR51 stereo-routing baseline
@@ -178,7 +179,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Writes to `NR50` should affect output immediately on the shared T-cycle timeline.
 - `NR50` changes should remain part of the same DC-offset / pop-sensitive hardware path as routing and DAC-enable changes rather than being deferred to host-buffer boundaries.
 - Keep an explicit routed slot for `VIN` in the master mixer path even if the current DMG target leaves it neutral at analog `0`.
-- That explicit `VIN` lane should still feed the pre-master mixer stage, but it should not bypass the documented all-DACs-off disconnect of the master-volume and later output stages.
+- That explicit `VIN` lane should still feed the pre-master mixer stage, but it should not bypass the all-DACs-off disconnect of the master-volume and later output stages once any residual DAC-off discharge has settled to `0`.
 
 ## HPF, DC-offset, and pops baseline
 
@@ -187,7 +188,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The HPF must keep persistent state across captured samples; it is not a memoryless per-sample transform.
 - Leaving the HPF out may exist as a temporary debug mode, but not as the target DMG-family behavior.
 - HPF charge behavior should remain model-driven rather than hard-wired to one global constant: `DMG0/DMG` use the documented `0.999958` factor, while `MGB/CGB` use the more aggressive `0.998943` factor, both applied on the shared `4_194_304 Hz` T-cycle timeline.
-- When all four channel DACs are off, the master-volume path should disconnect from the output: `master_output` and post-HPF output both become `0`, and the HPF capacitor stops evolving until some channel DAC is enabled again. Routed `VIN` should not override that global disconnect.
+- When all four channel DACs are off and their residual DAC-off discharges have settled to analog `0`, the master-volume path should disconnect from the output: `master_output` and post-HPF output both become `0`, and the HPF capacitor stops evolving until some channel DAC is enabled again. Routed `VIN` should not override that global disconnect.
 - Documented pops caused by DAC enable changes, `NR51` routing changes, or `NR50` volume changes should emerge from the modeled DC-offset step plus HPF response rather than from ad hoc smoothing or suppression in the host backend.
 - A debug tool may visualize DC offset or pop-inducing events, but the default emulation path should not erase those hardware-visible artifacts.
 
@@ -222,7 +223,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The project should keep an explicit sample-capture policy that captures the internal post-HPF stereo analog output into a host-facing stream.
 - That sample-capture policy should remain independent from the T-cycle scheduler logic that advances the hardware itself.
 - Changing host output rate, such as `44.1` kHz versus `48` kHz, should not require changing the internal APU hardware model.
-- When the host-facing stream runs below the `4_194_304` Hz T-cycle rate, downsampling should integrate or otherwise filter the post-HPF T-cycle signal over the host interval rather than blindly choosing the last T-cycle value in that interval.
+- When the host-facing stream runs below the `4_194_304` Hz T-cycle rate, downsampling should low-pass filter the post-HPF T-cycle signal over the host interval rather than blindly choosing the last T-cycle value in that interval; a band-limited host resampler is the current preferred shape for that boundary.
 - The design should leave room for replacing the host-facing resampler later without rewriting the DAC, mixer, or HPF logic.
 - Conversion from the core's internal analog representation into host `float` or `int16` output should be a final representation step after HPF, not part of the hardware model itself.
 - The core should keep a sufficiently precise internal analog representation so host-format conversion does not force the hardware model to clip or renormalize early.
