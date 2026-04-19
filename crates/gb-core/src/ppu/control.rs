@@ -14,6 +14,14 @@ struct DmgPanelRepaintContext {
 }
 
 impl Ppu {
+    pub(super) const fn current_window_line_counter(&self) -> u8 {
+        if self.bg_pipeline_state.window_started_this_line {
+            self.bg_pipeline_state.window_active_line_counter
+        } else {
+            self.window_state.window_line_counter
+        }
+    }
+
     pub(super) const fn current_mmio_visible_registers(&self) -> PpuVisibleRegisters {
         PpuVisibleRegisters {
             lcdc: self.lcdc,
@@ -47,6 +55,7 @@ impl Ppu {
         PpuMode3LiveBackgroundRefetchContext::new(
             self.current_mmio_visible_registers(),
             self.ly,
+            self.current_window_line_counter(),
             self.last_unsigned_tile_data_low_fetch,
             self.last_unsigned_tile_data_high_fetch,
         )
@@ -1385,8 +1394,24 @@ impl Ppu {
     }
 
     pub(super) fn window_activation_registers(&self) -> PpuVisibleRegisters {
-        self.mode3_register_latches()
-            .window_activation_registers(self.console_model)
+        let register_latches = self.mode3_register_latches();
+        let mut registers = register_latches.window_activation_registers(self.console_model);
+        if self.console_model.is_dmg_family()
+            && self.bg_pipeline_state.visible_pixels_output == 0
+            && !self.bg_pipeline_state.window_started_this_line
+            && register_latches.visible().wx < 8
+            && register_latches.visible().wx != register_latches.pipeline().wx
+        {
+            registers.wx = register_latches.visible().wx;
+        }
+        if self.console_model.is_dmg_family()
+            && self
+                .bg_pipeline_state
+                .dmg_previsible_wx_cancel_uses_visible_wx_once
+        {
+            registers.wx = register_latches.visible().wx;
+        }
+        registers
     }
 
     pub(super) fn window_activation_state(&self) -> PpuMode3WindowActivationState {
@@ -1525,6 +1550,9 @@ impl Ppu {
                 .startup_background_tiledata_uses_pipeline_snapshot(),
             self.bg_pipeline_state
                 .startup_background_tileindex_reads_on_stage_one(),
+            self.bg_pipeline_state
+                .fetcher
+                .same_cycle_window_tilemap_lcdc_hold,
         )
     }
 
@@ -1538,7 +1566,7 @@ impl Ppu {
 
     pub(super) fn window_fetch_context(&self) -> PpuMode3WindowFetchContext {
         self.mode3_bgwin_fetch_policy().window_fetch_context(
-            self.window_state.window_line_counter,
+            self.current_window_line_counter(),
             self.bg_pipeline_state.fetcher.window_tilemap_x,
         )
     }
@@ -1619,6 +1647,17 @@ impl Ppu {
             || !write_context.lcdc_changed(LCDC_BG_WINDOW_TILE_DATA_BIT)
         {
             return;
+        }
+
+        if write_context.previous_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0
+            && write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT == 0
+            && self.current_window_line_counter() >= 24
+        {
+            self.bg_pipeline_state
+                .apply_dmg_lcdc4_output_override_to_window_seam_slices(
+                    BgTileDataSelect::Unsigned8000,
+                );
+            self.pending_dmg_window_lcdc4_output_repaint = Some(BgTileDataSelect::Unsigned8000);
         }
 
         let Some(policy) = self.dmg_single_selected_sprite_phase_policy() else {
@@ -2059,12 +2098,16 @@ impl Ppu {
         self.current_scanline_bg_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
+        self.current_scanline_bg_dot_contexts.fill(None);
         self.current_scanline_dmg_bg_forced_white.fill(false);
+        self.pending_dmg_window_lcdc4_output_repaint = None;
     }
 
     pub(super) fn clear_visible_buffers(&mut self) {
+        self.current_scanline_bg_dot_contexts.fill(None);
         self.current_scanline_pixels.fill(0);
         self.framebuffer.fill(0);
+        self.pending_dmg_window_lcdc4_output_repaint = None;
     }
 
     pub(super) fn enter_lcd_disabled_state(&mut self) {

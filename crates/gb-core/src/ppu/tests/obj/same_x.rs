@@ -390,6 +390,124 @@ fn hidden_x_mod_8_eq_4_late_same_x_chain_skips_first_low_half_step() {
 }
 
 #[test]
+fn hidden_same_x_cluster_restart_helper_tracks_hidden_fifo_backed_tile_data_high() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 8;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 4;
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = 0;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+    fill_bg_fifo(&mut ppu, 1);
+
+    assert!(ppu.hidden_same_x_cluster_restart_skips_first_low_half_step());
+}
+
+#[test]
+fn visible_periodic_same_x_cluster_restart_helper_tracks_late_visible_tile_data_high() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 32;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 10;
+    ppu.bg_pipeline_state.visible_pixels_output = 24;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+    fill_bg_fifo(&mut ppu, 1);
+
+    assert!(ppu.visible_periodic_same_x_cluster_restart_skips_first_low_half_step());
+}
+
+#[test]
+fn first_late_visible_push_backed_same_x_cluster_helper_detects_the_restart_window() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS + 18;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 10;
+    ppu.bg_pipeline_state.visible_pixels_output = 2;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    fill_bg_fifo(&mut ppu, 2);
+
+    push_same_x_test_sprites(&mut ppu, 10, 2);
+    ppu.obj_pipeline_state.mark_fetched(0);
+    ppu.obj_pipeline_state.pending_match_x = Some(10);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(1);
+
+    assert!(ppu.first_late_visible_push_backed_same_x_cluster_chains_after_push());
+}
+
+#[test]
+fn right_edge_visible_same_x_cluster_helpers_track_pending_and_fetched_state() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 1;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 167;
+    ppu.bg_pipeline_state.visible_pixels_output = 159;
+    fill_bg_fifo(&mut ppu, 1);
+
+    push_same_x_test_sprites(&mut ppu, 167, 6);
+    for sprite_slot in 0..5_u8 {
+        ppu.obj_pipeline_state.mark_fetched(sprite_slot);
+    }
+    ppu.obj_pipeline_state.pending_match_x = Some(167);
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(5);
+
+    assert!(ppu.right_edge_visible_same_x_cluster_pays_startup_dot());
+
+    ppu.obj_pipeline_state.pending_sprite_slots.push_back(4);
+
+    assert!(ppu.right_edge_visible_same_x_cluster_continues_after_push());
+}
+
+#[test]
+fn terminal_right_edge_same_x_chain_can_skip_directly_to_tile_data_high_half_step() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.write_oam_entry(0, 16, 167, 0);
+    ppu.write_oam_entry(1, 16, 167, 1);
+    ppu.write_bg_tile_row(0, 0, 0x55, 0x33);
+    ppu.visible_registers.lcdc = 0x82;
+    ppu.line_dot = MODE0_START_DOT;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 1;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 167;
+    ppu.bg_pipeline_state.visible_pixels_output = 159;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    fill_bg_fifo(&mut ppu, 1);
+
+    let fetched_sprite = same_x_test_sprite(0, 167);
+    let active_sprite = same_x_test_sprite(1, 167);
+    let obj_height = ppu.current_obj_height();
+    ppu.mode2_scan_state.push(fetched_sprite);
+    ppu.mode2_scan_state.push(active_sprite);
+    ppu.obj_pipeline_state.mark_fetched(0);
+    ppu.obj_pipeline_state
+        .start_fetch(1, active_sprite, obj_height, obj_height);
+    ppu.obj_pipeline_state.fetch.stage = PpuObjFetcherStage::Startup;
+    ppu.obj_pipeline_state.fetch.stage_dot = 1;
+
+    assert!(ppu.advance_object_fetch_with_ppu_video(None));
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::TileDataHigh
+    );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+}
+
+#[test]
 #[ignore = "diagnostic count=3 same-x push1 restart for x mod 8 == 2"]
 fn x_mod_8_eq_2_count3_same_x_chain_logs_post_push1_restart_state() {
     let mut ppu = PpuTestRig::dmg();

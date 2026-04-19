@@ -31,6 +31,22 @@ impl Ppu {
         }
     }
 
+    pub(super) fn compute_window_fetch_tile_data_address_with_selector(
+        &self,
+        tile_index: u8,
+        plane: u16,
+        selector: BgTileDataSelect,
+    ) -> u16 {
+        let mut registers = self.mode3_register_latches().visible();
+        registers.lcdc = selector.apply_to_lcdc(registers.lcdc);
+        PpuMode3WindowFetchContext::new(
+            registers,
+            self.current_window_line_counter(),
+            self.bg_pipeline_state.fetcher.window_tilemap_x,
+        )
+        .tile_data_address(tile_index, plane)
+    }
+
     pub(super) fn maybe_cache_unsigned_bgwin_tile_data_fetch(
         &mut self,
         source: PpuBgFetcherSource,
@@ -63,6 +79,19 @@ impl Ppu {
         source: PpuBgFetcherSource,
         plane: u16,
     ) {
+        if source == PpuBgFetcherSource::Window
+            && plane == 0
+            && self
+                .bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_skip_window_current_low_glitch
+        {
+            self.bg_pipeline_state
+                .fetcher
+                .dmg_lcdc4_skip_window_current_low_glitch = false;
+            return;
+        }
+
         let fetch_policy = self.mode3_bgwin_fetch_policy();
         if !fetch_policy.tile_data_selector_changed() {
             return;
@@ -94,6 +123,10 @@ impl Ppu {
         vram: &VramBusView<'_>,
         source: PpuBgFetcherSource,
     ) {
+        if source == PpuBgFetcherSource::Window && self.console_model.is_dmg_family() {
+            return;
+        }
+
         let fetch_policy = self.mode3_bgwin_fetch_policy();
         if !fetch_policy.tilemap_selector_changed(source) {
             return;
@@ -358,5 +391,11 @@ impl Ppu {
 
     pub(super) fn apply_dmg_palette(&self, palette: u8, color: u8) -> u8 {
         (palette >> (u32::from(color & 0x03) * 2)) & 0x03
+    }
+
+    pub(super) fn dmg_bg_color_for_panel_shade(&self, panel_shade: u8) -> u8 {
+        (0..=3)
+            .find(|color| self.apply_dmg_palette(self.pixel_pipeline_bgp(), *color) == panel_shade)
+            .unwrap_or(0)
     }
 }

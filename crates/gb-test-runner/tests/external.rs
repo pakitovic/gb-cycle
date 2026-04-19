@@ -534,7 +534,7 @@ fn acid_curated_suite_passes_from_repo_store() {
 
 #[test]
 #[ignore = "requires curated test ROM assets under .roms/test or GB_CYCLE_TEST_ROM_ROOT"]
-fn mealybug_curated_suite_updates_report_from_repo_store() {
+fn mealybug_curated_suite_passes_from_repo_store() {
     let suite = mealybug_tearoom_dmg_curated_suite();
     let expected_case_count = suite.cases.len();
     let Some(report) = run_curated_suite(&suite, "curated mealybug suite", true) else {
@@ -546,6 +546,7 @@ fn mealybug_curated_suite_updates_report_from_repo_store() {
         "{report:#?}"
     );
     assert_eq!(report.cases.len(), expected_case_count, "{report:#?}");
+    assert!(report.all_passed(), "{report:#?}");
 }
 
 #[test]

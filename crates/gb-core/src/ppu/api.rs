@@ -46,10 +46,12 @@ impl Ppu {
             current_scanline_pixels: [0; SCREEN_WIDTH],
             current_scanline_bg_pixels: [0; SCREEN_WIDTH],
             current_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            current_scanline_bg_dot_contexts: [None; SCREEN_WIDTH],
             current_scanline_dmg_bg_forced_white: [false; SCREEN_WIDTH],
             previous_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
             previous_scanline_dmg_bg_forced_white: [false; SCREEN_WIDTH],
             previous_scanline_ly: None,
+            pending_dmg_window_lcdc4_output_repaint: None,
             framebuffer: vec![0; FRAMEBUFFER_PIXELS],
         }
     }
@@ -164,6 +166,11 @@ impl Ppu {
         let previous_mmio_registers = self.current_mmio_visible_registers();
         self.write_ppu_register(register, value, source);
 
+        if register == PpuRegister::Wx && self.current_access_mode() == PpuAccessMode::Drawing {
+            self.maybe_arm_dmg_previsible_wx_retarget(previous_mmio_registers.wx, value);
+            self.maybe_arm_dmg_live_wx_trigger_glitch(value);
+        }
+
         if let Some(live_background_register) =
             PpuMode3LiveBackgroundRegister::from_register(register)
             && self.current_access_mode() == PpuAccessMode::Drawing
@@ -203,7 +210,15 @@ impl Ppu {
                 PpuMode3LiveBackgroundRegister::Lcdc
             ) {
                 self.bg_pipeline_state
-                    .mark_live_lcdc3_write_while_fifo_visible(write_context);
+                    .latch_window_activation_tilemap_select_if_unset(write_context);
+                self.bg_pipeline_state
+                    .mark_live_lcdc3_write_while_fifo_visible(
+                        write_context,
+                        self.bg_pipeline_state.fetcher,
+                        self.current_window_line_counter(),
+                    );
+                self.bg_pipeline_state
+                    .apply_window_activation_tilemap_select_latch_to_seam_slices();
                 self.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
                 self.apply_dmg_lcdc4_live_bg_tiledata_write(write_context);
                 self.apply_dmg_lcdc0_live_bg_enable_write(write_context);
@@ -227,6 +242,7 @@ impl Ppu {
                     live_background_register,
                     write_context,
                     self.ly,
+                    self.current_window_line_counter(),
                     scy_routing,
                 );
 
@@ -531,11 +547,13 @@ impl Ppu {
         self.current_scanline_bg_pixels.fill(0);
         self.current_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
+        self.current_scanline_bg_dot_contexts.fill(None);
         self.current_scanline_dmg_bg_forced_white.fill(false);
         self.previous_scanline_mixed_pixels
             .fill(MixedPixel::background(0));
         self.previous_scanline_dmg_bg_forced_white.fill(false);
         self.previous_scanline_ly = None;
+        self.pending_dmg_window_lcdc4_output_repaint = None;
         self.framebuffer.fill(0);
         self.reload_mode3_register_latches_from_mmio();
         self.startup_mode_latch = if self.lcd_state.is_enabled() {
@@ -638,9 +656,11 @@ impl Ppu {
             if self.line_dot == self.current_scanline_length() {
                 let wraps_to_frame_start = self.ly + 1 == TOTAL_SCANLINES;
                 self.finalize_dmg_bgp_cpu_commit_scanline();
-                if self.bg_pipeline_state.window_started_this_line {
-                    self.window_state.window_line_counter =
-                        self.window_state.window_line_counter.wrapping_add(1);
+                if self.bg_pipeline_state.window_start_count_this_line != 0 {
+                    self.window_state.window_line_counter = self
+                        .window_state
+                        .window_line_counter
+                        .wrapping_add(self.bg_pipeline_state.window_start_count_this_line);
                 }
                 self.line_dot = 0;
                 self.ly = if self.ly + 1 == TOTAL_SCANLINES {
@@ -658,9 +678,12 @@ impl Ppu {
                 self.dmg_panel_live_write_state
                     .reset_for_scanline_start(self.bgp);
                 self.current_scanline_pixels.fill(0);
+                self.current_scanline_bg_pixels.fill(0);
                 self.current_scanline_mixed_pixels
                     .fill(MixedPixel::background(0));
+                self.current_scanline_bg_dot_contexts.fill(None);
                 self.current_scanline_dmg_bg_forced_white.fill(false);
+                self.pending_dmg_window_lcdc4_output_repaint = None;
                 if wraps_to_frame_start && self.blank_frame_active {
                     self.blank_frame_active = false;
                     self.refresh_visible_output();
@@ -805,6 +828,26 @@ impl Ppu {
             window_wy_latch: self.bg_pipeline_state.window_wy_latch,
             window_started_this_line: self.bg_pipeline_state.window_started_this_line,
             window_line_counter: self.window_state.window_line_counter,
+            dmg_previsible_wx_retarget_trigger_x: self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retarget
+                .and_then(|retarget| retarget.trigger_x),
+            dmg_previsible_wx_retarget_window_pixel_offset: self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retarget
+                .map(|retarget| retarget.window_pixel_offset),
+            dmg_pending_previsible_wx_carry_next_trigger_x: self
+                .bg_pipeline_state
+                .dmg_pending_previsible_wx_carry
+                .map(|carry| carry.next_trigger_x),
+            dmg_pending_previsible_wx_carry_end_trigger_x: self
+                .bg_pipeline_state
+                .dmg_pending_previsible_wx_carry
+                .map(|carry| carry.end_trigger_x),
+            dmg_pending_previsible_wx_carry_next_window_pixel_offset: self
+                .bg_pipeline_state
+                .dmg_pending_previsible_wx_carry
+                .map(|carry| carry.next_window_pixel_offset),
             current_scanline_mixed_colors: self
                 .current_scanline_mixed_pixels
                 .iter()

@@ -1,5 +1,64 @@
 use super::*;
 
+mod low_wx;
+mod reenable;
+mod retained_prefix;
+mod trigger_glitch;
+
+const DMG_WINDOW_TEST_LCDC: u8 = 0xF3;
+const DMG_WINDOW_TEST_STAT: u8 = 0x83;
+const DMG_WINDOW_TEST_BGP: u8 = 0xE4;
+
+fn dmg_window_startup(wx: u8) -> PpuTestRig {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: DMG_WINDOW_TEST_LCDC,
+        stat: DMG_WINDOW_TEST_STAT,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: DMG_WINDOW_TEST_BGP,
+        wy: 0,
+        wx,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_registers.lcdc = DMG_WINDOW_TEST_LCDC;
+    ppu.pipeline_registers.lcdc = DMG_WINDOW_TEST_LCDC;
+    ppu.visible_registers.bgp = DMG_WINDOW_TEST_BGP;
+    ppu.pipeline_registers.bgp = DMG_WINDOW_TEST_BGP;
+    ppu.visible_registers.wx = wx;
+    ppu.pipeline_registers.wx = wx;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu
+}
+
+fn make_window_fetcher_state(
+    stage: PpuBgFetcherStage,
+    stage_dot: u8,
+    fetch_x: u16,
+) -> BgFetcherState {
+    BgFetcherState {
+        source: PpuBgFetcherSource::Window,
+        stage,
+        stage_dot,
+        fetch_x,
+        next_fetch_pixel: fetch_x,
+        bg_resume_fetch_pixel: fetch_x,
+        ..BgFetcherState::default()
+    }
+}
+
+fn arm_previsible_retarget_fixture(wx: u8, line_dot: u16, active_line_counter: u8) -> PpuTestRig {
+    let mut ppu = dmg_window_startup(wx);
+    ppu.line_dot = line_dot;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.window_active_line_counter = active_line_counter;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state.fetcher = make_window_fetcher_state(PpuBgFetcherStage::TileIndex, 0, 0);
+    ppu
+}
+
 #[test]
 fn first_window_tile_skips_the_normal_push_entry_delay() {
     let mut ppu = PpuTestRig::dmg();
@@ -170,6 +229,85 @@ fn wx_seven_starts_window_from_the_first_served_x0_transfer_dot() {
 }
 
 #[test]
+fn wx_four_starts_window_from_the_hidden_transfer_dot_that_matches_the_raw_coordinate() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0xF1;
+    ppu.visible_registers.wx = 4;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.ly = 0;
+    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 4;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = 0;
+    ppu.bg_pipeline_state.current_transfer_x = 4;
+    ppu.bg_pipeline_state.fifo.push_back(0);
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
+
+    let transfer_dot = ppu.advance_mode3_output_phase();
+
+    assert_eq!(
+        transfer_dot.kind,
+        Mode3TransferDotKind::ServedHiddenTransfer
+    );
+    assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+    assert!(ppu.bg_pipeline_state.window_started_this_line);
+}
+
+#[test]
+fn wx_two_starts_window_from_the_previsible_transfer_dot_that_matches_the_low_wx_trigger() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0xF1;
+    ppu.visible_registers.wx = 2;
+    ppu.pipeline_registers = ppu.visible_registers;
+    ppu.ly = 0;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = 1;
+    ppu.bg_pipeline_state.current_transfer_x = 3;
+
+    let transfer_dot =
+        Mode3TransferDot::served(Mode3TransferDotKind::ServedPreVisibleTransfer, false);
+
+    assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
+    assert!(ppu.bg_pipeline_state.window_started_this_line);
+    assert_eq!(
+        ppu.bg_pipeline_state.fetcher.source,
+        PpuBgFetcherSource::Window
+    );
+}
+
+#[test]
+fn low_wx_previsible_window_start_uses_the_current_visible_wx_write_before_visible_output() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.visible_registers.lcdc = 0xF1;
+    ppu.visible_registers.wx = 2;
+    ppu.pipeline_registers.lcdc = 0xF1;
+    ppu.pipeline_registers.wx = 1;
+    ppu.ly = 0;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state.current_transfer_x = 2;
+
+    assert!(
+        !ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+            Mode3TransferDotKind::ServedPreVisibleTransfer,
+            false,
+        ))
+    );
+    assert!(!ppu.bg_pipeline_state.window_started_this_line);
+
+    ppu.bg_pipeline_state.current_transfer_x = 3;
+
+    assert!(
+        ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::served(
+            Mode3TransferDotKind::ServedPreVisibleTransfer,
+            false,
+        ))
+    );
+    assert!(ppu.bg_pipeline_state.window_started_this_line);
+}
+
+#[test]
 fn dmg_window_trigger_uses_the_previous_dot_wx_snapshot() {
     let mut ppu = PpuTestRig::dmg();
     ppu.visible_registers.lcdc = 0xF1;
@@ -216,38 +354,6 @@ fn pending_obj_hit_blocks_window_start_because_the_output_dot_is_not_served() {
     assert_eq!(transfer_dot.kind, Mode3TransferDotKind::NotServed);
     assert!(!ppu.maybe_start_window_after_transfer_dot(transfer_dot));
     assert!(!ppu.bg_pipeline_state.window_started_this_line);
-}
-
-#[test]
-fn window_fetcher_aborts_to_background_and_restores_bg_progress_when_win_enable_turns_off() {
-    let mut ppu = PpuTestRig::dmg();
-
-    ppu.write_bg_tilemap_entry(1, 0, 0x11);
-    ppu.write_window_tilemap_entry(0, 0, 0x22);
-    let mut vram = crate::bus::VramDomain::from_bytes(&ppu.vram_bytes);
-    vram.set_acquired(BusMaster::Ppu, true);
-
-    ppu.visible_registers.lcdc = 0x91;
-    ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
-    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
-    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
-    ppu.bg_pipeline_state.fetcher.fetch_x = 0;
-    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 0;
-    ppu.bg_pipeline_state.fetcher.bg_resume_fetch_pixel = 8;
-
-    assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
-    assert_eq!(
-        ppu.bg_pipeline_state.fetcher.source,
-        PpuBgFetcherSource::Background
-    );
-    assert_eq!(ppu.bg_pipeline_state.fetcher.next_fetch_pixel, 8);
-    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_index, 0x11);
-    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1801);
-    assert_eq!(
-        ppu.bg_pipeline_state.fetcher.stage,
-        PpuBgFetcherStage::TileIndex
-    );
-    assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 1);
 }
 
 #[test]
@@ -314,8 +420,8 @@ fn window_fetcher_rereads_the_unsigned_tile_data_byte_when_tile_selector_flips_t
     let mut vram = crate::bus::VramDomain::from_bytes(&ppu.vram_bytes);
     vram.set_acquired(BusMaster::Ppu, true);
 
-    ppu.visible_registers.lcdc = 0x81;
-    ppu.pipeline_registers.lcdc = 0x81;
+    ppu.visible_registers.lcdc = 0xA1;
+    ppu.pipeline_registers.lcdc = 0xA1;
     ppu.window_state.window_line_counter = 0;
     ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
@@ -326,12 +432,84 @@ fn window_fetcher_rereads_the_unsigned_tile_data_byte_when_tile_selector_flips_t
     assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x34);
     assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x1011);
 
-    ppu.pipeline_registers.lcdc = 0x81;
-    ppu.visible_registers.lcdc = 0x91;
+    ppu.pipeline_registers.lcdc = 0xA1;
+    ppu.visible_registers.lcdc = 0xB1;
     assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
     assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x78);
     assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x0011);
     assert!(ppu.bg_pipeline_state.push.pending);
+}
+
+#[test]
+fn window_fetcher_consumes_previous_tiledata_selector_latch_on_low0_after_lcdc4_flip() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.vram_bytes[0x0000] = 0xFF;
+    ppu.vram_bytes[0x1000] = 0x00;
+    let mut vram = crate::bus::VramDomain::from_bytes(&ppu.vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.visible_registers.lcdc = 0xA3;
+    ppu.pipeline_registers.lcdc = 0xB3;
+    ppu.window_state.window_line_counter = 8;
+    ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.bg_pipeline_state.fetcher.window_tilemap_x = 1;
+    ppu.bg_pipeline_state.fetcher.tile_index = 0;
+    ppu.bg_pipeline_state
+        .fetcher
+        .dmg_lcdc4_previous_tiledata_select_on_next_low = Some(BgTileDataSelect::Unsigned8000);
+
+    assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0xFF);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x0000);
+    assert_eq!(
+        ppu.bg_pipeline_state
+            .fetcher
+            .dmg_lcdc4_previous_tiledata_select_on_next_low,
+        None
+    );
+}
+
+#[test]
+fn window_fetcher_keeps_the_current_low_plane_after_unsigned_to_signed_flip_on_low1() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.vram_bytes[0x0000] = 0xFF;
+    ppu.vram_bytes[0x1000] = 0x00;
+    let mut vram = crate::bus::VramDomain::from_bytes(&ppu.vram_bytes);
+    vram.set_acquired(BusMaster::Ppu, true);
+
+    ppu.visible_registers.lcdc = 0xA3;
+    ppu.pipeline_registers.lcdc = 0xB3;
+    ppu.window_state.window_line_counter = 32;
+    ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Window;
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
+    ppu.bg_pipeline_state.fetcher.window_tilemap_x = 1;
+    ppu.bg_pipeline_state.fetcher.tile_index = 0;
+    ppu.bg_pipeline_state.fetcher.tile_data_address = 0x0000;
+    ppu.bg_pipeline_state.fetcher.tile_low_address = 0x0000;
+    ppu.bg_pipeline_state.fetcher.tile_low = 0xFF;
+    ppu.bg_pipeline_state
+        .fetcher
+        .dmg_lcdc4_skip_window_current_low_glitch = true;
+
+    ppu.maybe_apply_bgwin_tile_data_selector_glitch(
+        &VramBusView::new(BusMaster::Ppu, &mut vram),
+        PpuBgFetcherSource::Window,
+        0,
+    );
+
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0xFF);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x0000);
+    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low_address, 0x0000);
+    assert!(
+        !ppu.bg_pipeline_state
+            .fetcher
+            .dmg_lcdc4_skip_window_current_low_glitch
+    );
 }
 
 #[test]
@@ -436,6 +614,29 @@ fn window_line_counter_advances_only_on_lines_where_window_actually_starts() {
     ppu.advance_until_line_start(2);
     let line_2_start = ppu.snapshot();
     assert_eq!(line_2_start.window_line_counter, 1);
+}
+
+#[test]
+fn same_scanline_window_restart_advances_to_the_next_internal_row() {
+    let mut ppu = PpuTestRig::dmg();
+
+    ppu.window_state.window_line_counter = 6;
+    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 24;
+    ppu.start_window_fetcher_restart();
+    assert_eq!(ppu.bg_pipeline_state.window_active_line_counter, 6);
+    assert_eq!(ppu.bg_pipeline_state.window_start_count_this_line, 1);
+
+    ppu.bg_pipeline_state.fetcher.abort_window_to_background();
+    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 24;
+    ppu.start_window_fetcher_restart();
+    assert_eq!(ppu.bg_pipeline_state.window_active_line_counter, 7);
+    assert_eq!(ppu.bg_pipeline_state.window_start_count_this_line, 2);
+    assert_eq!(
+        ppu.window_state
+            .window_line_counter
+            .wrapping_add(ppu.bg_pipeline_state.window_start_count_this_line),
+        8
+    );
 }
 
 #[test]

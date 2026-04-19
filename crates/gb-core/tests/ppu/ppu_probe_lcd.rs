@@ -16,33 +16,6 @@ fn build_lcd_enable_read_probe_rom(address: u16, delay_nops: usize) -> Vec<u8> {
     build_test_rom(&program, 0x00)
 }
 
-fn build_lcd_enable_write_probe_rom(address: u16, delay_nops: usize) -> Vec<u8> {
-    let mut program = Vec::new();
-    program.push(0xF3); // di
-    program.push(0xAF); // xor a
-    program.extend_from_slice(&[0xE0, 0x0F]); // ldh ($0F),a
-    program.extend_from_slice(&[0xEA, 0xFF, 0xFF]); // ld ($FFFF),a
-    program.extend_from_slice(&[0x11, address as u8, (address >> 8) as u8]); // ld de,addr
-    program.extend_from_slice(&[0x3E, 0x81]); // ld a,$81
-    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
-    program.extend(std::iter::repeat_n(0x00, delay_nops)); // nops
-    program.push(0x12); // ld (de),a
-
-    let wait_ly_144_pc = 0x0100_u16 + program.len() as u16;
-    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,($44)
-    program.extend_from_slice(&[0xFE, 0x90]); // cp $90
-    emit_jr_nz(&mut program, wait_ly_144_pc); // jr nz,wait_ly_144
-
-    program.push(0xAF); // xor a
-    program.extend_from_slice(&[0xE0, 0x40]); // ldh ($40),a
-    program.push(0x1A); // ld a,(de)
-    program.push(0x47); // ld b,a
-    program.push(0x76); // halt
-    let done_loop_pc = 0x0100_u16 + program.len() as u16;
-    emit_jr(&mut program, done_loop_pc); // jr .
-    build_test_rom(&program, 0x00)
-}
-
 fn build_lcd_reenable_lyc_irq_probe_rom(
     lyc_before_disable: u8,
     lyc_while_off: Option<u8>,
@@ -150,69 +123,5 @@ fn observe_lcd_reenable_lyc_irq_service_window(
         machine.ppu().snapshot().ly,
         machine.ppu().snapshot().line_dot,
         machine.read_bus(0xFF41)
-    );
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct LcdEnableWriteProbeObservation {
-    observed_value: u8,
-    write_ly: u8,
-    write_line_dot: u16,
-    write_mode: PpuAccessMode,
-    write_visible_pixels_output: u8,
-}
-
-fn run_lcd_enable_write_probe_observation(
-    address: u16,
-    delay_nops: u16,
-) -> LcdEnableWriteProbeObservation {
-    let mut machine = Machine::new(
-        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
-    );
-    machine
-        .load_cartridge(build_lcd_enable_write_probe_rom(
-            address,
-            delay_nops as usize,
-        ))
-        .expect("probe ROM should load");
-    machine.write_bus(0xFF40, 0x00);
-    machine.write_bus(address, 0x00);
-
-    let mut write_snapshot = None;
-
-    for _ in 0..10_000_000 {
-        machine.step_t_cycle();
-
-        if write_snapshot.is_none()
-            && let Some(event) = machine.cpu().last_address_event()
-            && event.kind == CpuAddressEventKind::Write
-            && event.access_address == Some(address)
-        {
-            let snapshot = machine.ppu().snapshot();
-            write_snapshot = Some((
-                snapshot.ly,
-                snapshot.line_dot,
-                snapshot.mode,
-                snapshot.visible_pixels_output,
-            ));
-        }
-
-        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted {
-            let (write_ly, write_line_dot, write_mode, write_visible_pixels_output) =
-                write_snapshot.expect("probe should observe the target write");
-            return LcdEnableWriteProbeObservation {
-                observed_value: machine.cpu().registers().b,
-                write_ly,
-                write_line_dot,
-                write_mode,
-                write_visible_pixels_output,
-            };
-        }
-    }
-
-    panic!(
-        "write probe did not halt; address={address:#06X} delay_nops={delay_nops} pc={:#06X} state={:?}",
-        machine.cpu().registers().pc,
-        machine.cpu().execution_state()
     );
 }

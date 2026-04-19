@@ -77,6 +77,7 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - On DMG-family hardware, writes to `BGP`, `OBP0`, and `OBP1` during Mode `3` should not be treated as ordinary "new value is visible only from the next pixel onward" MMIO updates. The PPU design should leave room for documented palette-conflict artifacts, including transient write values, limited retroactive recoloring, and the observed early-HBlank tail where such conflicts may still remain panel-visible.
 - Keep the DMG BG palette-output model split from the raw current-scanline color pipeline. The CPU-path `BGP` model should keep three behaviors explicit and separate: delayed pipeline-visible writes, a narrow previous-line boundary repaint seam fed only by that delayed class, and retroactive panel recolor when either the first visible-line write lands at `visible_pixels_output == 0` / `current_transfer_x == 0` with no selected sprites or the already-visible BG tail is entirely color `0`. When a BG dot was already presented as `LCDC.0`-forced white, that retroactive recolor must leave the panel dot white instead of remapping it through `BGP`.
 - Keep the sprite-coupled DMG `BGP` live-write follow-up explicit too: a single left sprite can shift the first two CPU-path write onsets by sprite phase and can expose a short transient left-edge range on the second write before the final palette wins; if that second write lands before the seam window opens, keep the previous palette active until the transient or final onset begins.
+- Keep the DMG window-restart `BGP` follow-up explicit as a separate seam from the left-sprite case: the first write can backdate the recent BG tail to a clamped window onset, while the second write may need scanline-position repaint even when recent panel history has stalled. For `WX = 0`, the second-write onset depends on both the internal window tile row and the write arrival point, so model it as a row-dependent cap further limited by the current visible output position instead of as one fixed left-edge threshold.
 - Keep BG and OBJ palette-conflict handling separable; do not assume `BGP` and `OBP*` share the same retroactive span or the same conflict window over already-mixed pixels.
 
 ## LCD master-control baseline
@@ -286,7 +287,9 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 ## Window tilemap and fetch baseline
 
 - The window tilemap should be selected by `LCDC.6`, independent of the BG tilemap selection.
+- In DMG mode, paired live `LCDC.6` writes during window activation can leave explicit old/new tilemap selector seams on the first few activated window tiles; keep that behavior in fetcher/FIFO ownership rather than in framebuffer post-processing.
 - Window tile data addressing should follow `LCDC.4`, matching BG tile addressing rules while remaining separate from OBJ tile handling.
+- In DMG mode, paired live `LCDC.4` writes during window fetch can leave per-plane old/new tile-data selector seams on the first few affected window tiles; keep the future-pixel selector override explicit on cached window slices, and keep room for a same-scanline repaint path when the second write lands after some of those window pixels have already been driven.
 - The fetcher should have explicit BG and window fetch modes rather than reusing BG fetch implicitly through altered coordinates.
 - Window tile X should derive from a window-local X counter, not from `SCX`.
 - Window tile Y should derive from the internal window line counter, not from `LY + SCY`.
@@ -298,7 +301,7 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - Starting the window should reset the fetcher to its initial fetch step rather than continuing from the current BG fetch phase.
 - The window-start event should alter the remaining pixel sequence of the current scanline without replaying or recomputing the whole line.
 - The DMG special case `WX = 0 && (SCX & 7) > 0` should be modeled as an explicit path that shortens Mode 3 by `1` dot.
-- Once the window fetcher is already active, turning `LCDC.5` off should not cut away the in-flight window tile immediately.
+- On DMG, there is an explicit low-`WX` seam where turning `LCDC.5` off after the window has already started does not cut away the in-flight window tile immediately; let the current tile complete, then abort back to background from the next fetch boundary.
 - That disable should take effect at the end of the current window tile, after which background fetch resumes on a tile boundary from explicit saved BG-side progress.
 
 ## Window line-counter baseline
@@ -306,15 +309,23 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 - The PPU should keep an explicit internal window line counter.
 - That counter should reset during VBlank.
 - The counter should increment only on scanlines where the window actually begins rendering.
+- If the same scanline starts the window more than once, advance the internal counter by the number of starts on that line rather than by a flat single step.
 - Hiding the window mid-frame via `WX` manipulation or `LCDC.5` should be able to prevent the increment for affected lines.
 - Do not define the window row globally as `LY - WY`; that shortcut is not valid for status bars and mid-frame show/hide behavior.
 
 ## Window mid-frame write and glitch baseline
 
 - Writes to `WX`, `WY`, and `LCDC.5` during the frame must be visible to the live pipeline rather than deferred until the next frame.
+- On DMG, before the first visible pixel of the scanline has been emitted, a low-`WX` (`WX < 8`) same-line retarget or re-enable should be allowed to see the current visible `WX` write rather than only the delayed previous-dot pipeline snapshot, so the previsible trigger can start from the matching hidden or previsible transfer dot.
 - If the WY latch is already active for the current line and `LCDC.5` was active at line start but is cleared before the WX trigger point, the design should support the documented window-glitch pixel at the would-be window start.
 - If `WX` changes after the window has already started on the line and the new trigger position is reached again, the documented bug should be representable as a low-priority color-`0` pixel pushed into the BG FIFO path.
 - If `LCDC.5` is disabled during Mode `3` and then re-enabled later on the same scanline, do not model that as a generic "resume window where it left off" path. Keep the same-line reactivation explicitly gated on a new not-yet-served `WX` trigger, and keep room for the documented DMG behavior where the window may restart on the next window row rather than on the interrupted row.
+- On DMG, same-line `LCDC.5` re-enable after a missed or aborted window start can expose narrow late-enable seams: allow explicit bounded retroactive repaint of only the affected visible window segment, keyed by the observed onset class, instead of recomputing the whole scanline or resuming the interrupted tile blindly.
+- In the DMG low-`WX` disable/re-enable seam, treat the retained left-edge artifact as a full observed prefix span, not just as a tail extension past pixel `8`; when the observed prefix grows beyond `8` pixels, the retroactive repaint may need to repaint the whole retained prefix span.
+- In the DMG low-`WX` live-`WX` restart seam, keep the onset-glitch repaint armed for boundary restarts even when there is no visible gap, because the first trigger pixel can still glitch.
+- Model the DMG previsible-cancel override as a panel-white contract, not as a hardcoded raw BG color `0`: the override should emit whichever BG raw color maps to panel shade `0` under the current `BGP`.
+- When repainting an already-emitted DMG onset-glitch dot, recompute full BG+OBJ mixing and refresh recent panel-dot history for that visible `x`; repainting only the background color is not sufficient once a behind-BG OBJ can become visible.
+- When an active window fetch aborts back to background, retarget the in-flight fetch registers immediately onto the resumed BG tile; do not let stale window `tile_index` / `tile_low` / `tile_high` leak into the first resumed BG tile.
 - These glitches should live in fetcher/FIFO/pipeline logic rather than as framebuffer post-processing rules.
 
 ## Window edge-case baseline
@@ -495,7 +506,7 @@ For DMG bring-up and PPU refactor closure, use the following finer-grained matur
 | 39 | Mode 3 LCDC OBJ toggles | mealybug-tearoom-tests | `ppu/m3_lcdc_obj_size_change_scx.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.2` size change with `SCX` discard | 152 |
 | 40 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_window_timing.gb` | PPU | VERY HIGH | Mode `3`, window start, fetcher restart | 162 |
 | 41 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_window_timing_wx_0.gb` | PPU | VERY HIGH | Mode `3`, window start with `WX = 0` edge case | 163 |
-| 42 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_win_map_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.6` window map | 157 |
+| 42 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_win_map_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.6` window map | 160 |
 | 43 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_tile_sel_win_change.gb` | PPU | VERY HIGH | Mode `3`, live `LCDC.4` with window fetch | 154 |
 | 44 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_win_en_change_multiple.gb` | PPU | VERY HIGH | Mode `3`, `LCDC.5` toggles, window restart | 155 |
 | 45 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_lcdc_win_en_change_multiple_wx.gb` | PPU | VERY HIGH | Mode `3`, `LCDC.5` plus `WX` retarget | 156 |
@@ -519,6 +530,7 @@ Covered:
 - top-edge and bottom-edge partial sprite visibility such as `Y = 2` and `Y = 154`
 - WY latch timing at Mode `2` start and WX-trigger timing during Mode `3`
 - window fetcher reset and BG FIFO clear when the window starts mid-scanline
+- DMG same-scanline low-`WX` window retarget seams: cancel-only previsible aborts before `x = 0` restore the background FIFO, retained-prefix restarts preserve the observed left-edge tail, and the `WX 4 -> 7` resume continues from the next window tilemap entry after that preserved tail
 - `WX = 0` and `WX = 166` special behavior
 - live `STAT` readback composition: documented writable enable bits, live mode/coincidence bits, and the chosen bit-`7` model
 - `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
@@ -551,14 +563,13 @@ Partial:
 - mid-frame `LCDC.1` / `LCDC.2` coverage exists for OBJ fetch cancellation, live Mode `2` size selection, and size-row safety, but not as complete external-oracle closure for all Mode `3` toggle cases
 - internal window line counter coverage includes increment-only-when-started behavior and reset through LCD pipeline reset paths; VBlank reset should remain visible as a dedicated assertion if this area changes again
 - mid-frame `WX`, `WY`, and `LCDC.5` writes have focused local coverage for latching, previous-dot WX, and window-fetch aborts, but not a complete glitch matrix
-- `LCDC.5` disable during active window fetch is covered; same-scanline re-enable with `WX` retargeting is not yet a complete closed case
+- `LCDC.5` disable during active window fetch is covered, and the current DMG Mealybug window block is green for same-scanline re-enable plus low-`WX` / live-`WX` retarget seams (`m3_lcdc_win_en_change_multiple*`, `m3_wx_4/5/6_change*`); a complete hardware glitch matrix for arbitrary mid-frame `WX` / `WY` / `LCDC.5` interactions is still incomplete
 - window-start plus OBJ mixing is covered without spurious OBJ FIFO reset; broader window-glitch continuation into later BG/OBJ mixing remains incomplete
 - line-start Mode `2` / LCD STAT chronology has focused local and synthetic-ROM coverage for raster-effect timing, but handler-writeback and first-line variants remain partly diagnostic
 - OAM corruption instruction-family routing is covered for `[hli]` / `[hld]`, `push`, interrupt service, and generic CPU address-event classes; `pop`, `call`, `ret`, `rst`, and executing code from OAM still need direct end-to-end coverage if they are claimed individually
 
 Open:
 - direct project-owned test for DMG `LCDC.0 = 0` suppressing window rendering when `LCDC.5 = 1`
-- complete same-scanline `LCDC.5` re-enable with `WX` retargeting test
 - direct end-to-end OAM-corruption fixtures for `pop`, `call`, `ret`, `rst`, and executing code from OAM
 - explicit project decision and matching test wording for whether the canonical fetcher `Sleep` phase is represented as a named state or as the current push-entry / retry timing
 

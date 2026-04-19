@@ -1,6 +1,66 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DmgPrevisibleWxRetargetPlanContext {
+    is_dmg_family: bool,
+    drawing_mode: bool,
+    window_started_this_line: bool,
+    window_wy_latch: bool,
+    window_enabled: bool,
+    bg_enabled: bool,
+    visible_pixels_output: u8,
+    window_active_line_counter: u8,
+    pending_previsible_trigger_x: Option<u8>,
+    pending_one_hidden_prefix_resume: bool,
+    live_wx_can_still_start_later_this_line: bool,
+    fetcher_source: PpuBgFetcherSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DmgPrevisibleWxFollowupMarkers {
+    cancel_uses_visible_wx_once: bool,
+    cancel_background_override_onset_x: Option<u8>,
+    retained_trigger_glitch_x: Option<u8>,
+}
+
+impl DmgPrevisibleWxFollowupMarkers {
+    const fn cleared() -> Self {
+        Self {
+            cancel_uses_visible_wx_once: false,
+            cancel_background_override_onset_x: None,
+            retained_trigger_glitch_x: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DmgPrevisibleWxPlanAction {
+    KeepState,
+    ClearOnsetGlitch,
+    ClearRetargetAndGapArtifacts,
+    ArmRetarget {
+        retarget: DmgPrevisibleWxRetarget,
+        onset_glitch: Option<u8>,
+        carry: Option<DmgPendingPrevisibleWxCarry>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DmgPrevisibleWxPlan {
+    followup_markers: DmgPrevisibleWxFollowupMarkers,
+    action: DmgPrevisibleWxPlanAction,
+}
+
 impl Ppu {
+    const DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS: [u8; 8] = [9, 10, 3, 4, 5, 6, 7, 8];
+    const DMG_LATE_WINDOW_ENABLE_SEGMENT_PIXELS: u8 = 24;
+    const DMG_VISIBLE_WINDOW_ORIGIN_WX: u8 = 7;
+    const DMG_LOW_WX_CANCEL_ONLY_PREVIOUS_WX_MIN: u8 = 6;
+    const DMG_ONE_HIDDEN_PREFIX_SKIP: u8 = 1;
+    const DMG_RETAINED_FIFO_PREFIX_RESUME_MIN_HIDDEN_SKIP: u8 = 2;
+    const DMG_RETAINED_FIFO_PREFIX_NEXT_TILEMAP_MIN_HIDDEN_SKIP: u8 = 3;
+    const DMG_LATE_WRITE_ONE_HIDDEN_PREFIX_KEEP_DISTANCE: u8 = 3;
+
     pub(super) fn advance_mode3_pipeline<O>(
         &mut self,
         oam: &OamBusView<'_>,
@@ -53,8 +113,15 @@ impl Ppu {
                 self.advance_mode3_output_phase_with_vram(vram)
             });
         observe_ppu_step_region(observer, PpuStepRegion::Mode3WindowFetch, || {
+            self.maybe_apply_pending_dmg_live_wx_trigger_glitch(output_dot);
+            self.maybe_apply_pending_dmg_previsible_wx_carry(output_dot, vram);
             self.maybe_apply_wx0_shortening_after_transfer_dot(output_dot);
             let _ = self.maybe_start_window_after_transfer_dot(output_dot);
+            self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(vram);
+            self.apply_dmg_late_window_enable_override_repaint_up_to(
+                usize::from(self.bg_pipeline_state.visible_pixels_output),
+                vram,
+            );
         });
         let bg_pipeline_region = self.current_mode3_bg_pipeline_region();
         let _ = observe_ppu_step_region(observer, bg_pipeline_region, || {
@@ -216,7 +283,8 @@ impl Ppu {
     }
 
     pub(super) fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
-        self.maybe_abort_window_fetcher_to_background();
+        self.maybe_apply_dmg_previsible_wx_retarget(vram);
+        self.maybe_abort_window_fetcher_to_background(vram);
         self.maybe_recompute_pending_background_push(vram);
         let fetch_policy = self.mode3_bgwin_fetch_policy();
 
@@ -311,6 +379,9 @@ impl Ppu {
                         .fetcher
                         .rewind_bg_resume_after_first_tile_index_dot = false;
                 }
+                self.bg_pipeline_state
+                    .fetcher
+                    .same_cycle_window_tilemap_lcdc_hold = false;
                 self.bg_pipeline_state.fetcher.stage_dot = 1;
             }
             (PpuBgFetcherStage::TileIndex, 1) => {
@@ -324,12 +395,36 @@ impl Ppu {
                 self.bg_pipeline_state.fetcher.stage_dot = 0;
             }
             (PpuBgFetcherStage::TileDataLow, 0) => {
-                let tile_data_address = self.compute_fetch_tile_data_address(
-                    fetcher.source,
-                    fetcher.fetch_x,
-                    fetcher.tile_index,
-                    0,
-                );
+                let tile_data_address = if fetcher.source == PpuBgFetcherSource::Window {
+                    self.bg_pipeline_state
+                        .fetcher
+                        .dmg_lcdc4_previous_tiledata_select_on_next_low
+                        .take()
+                        .map_or_else(
+                            || {
+                                self.compute_fetch_tile_data_address(
+                                    fetcher.source,
+                                    fetcher.fetch_x,
+                                    fetcher.tile_index,
+                                    0,
+                                )
+                            },
+                            |selector| {
+                                self.compute_window_fetch_tile_data_address_with_selector(
+                                    fetcher.tile_index,
+                                    0,
+                                    selector,
+                                )
+                            },
+                        )
+                } else {
+                    self.compute_fetch_tile_data_address(
+                        fetcher.source,
+                        fetcher.fetch_x,
+                        fetcher.tile_index,
+                        0,
+                    )
+                };
                 self.bg_pipeline_state.fetcher.tile_data_address = tile_data_address;
                 self.bg_pipeline_state.fetcher.tile_low_address = tile_data_address;
                 let tile_data = vram.read(tile_data_address as usize).unwrap_or(0);
@@ -444,7 +539,7 @@ impl Ppu {
         false
     }
 
-    pub(super) fn maybe_abort_window_fetcher_to_background(&mut self) {
+    pub(super) fn maybe_abort_window_fetcher_to_background(&mut self, vram: &VramBusView<'_>) {
         if self.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Window {
             return;
         }
@@ -453,7 +548,436 @@ impl Ppu {
             return;
         }
 
+        self.maybe_record_dmg_window_reenable_resume();
+
+        let low_wx_disable_seam = self.console_model.is_dmg_family()
+            && self.bg_pipeline_state.window_started_this_line
+            && self.bg_pipeline_state.visible_pixels_output == 0
+            && self.mode3_register_latches().visible().wx < 8;
+        if low_wx_disable_seam {
+            self.maybe_arm_dmg_wx0_window_disable_prefix_override();
+
+            if !matches!(
+                (
+                    self.bg_pipeline_state.fetcher.stage,
+                    self.bg_pipeline_state.fetcher.stage_dot,
+                ),
+                (PpuBgFetcherStage::TileIndex, 0)
+            ) {
+                return;
+            }
+        }
+
+        self.abort_window_fetcher_to_background_now(vram);
+    }
+
+    fn abort_window_fetcher_to_background_now(&mut self, vram: &VramBusView<'_>) {
         self.bg_pipeline_state.fetcher.abort_window_to_background();
+        let fetch_x = self.bg_pipeline_state.fetcher.fetch_x;
+        let context = self.background_fetch_context(fetch_x);
+        let tile_map_address = context.tile_index_address();
+        let tile_index = vram.read(tile_map_address as usize).unwrap_or(0);
+        let tile_low_address = context.tile_data_address(tile_index, 0);
+        let tile_high_address = context.tile_data_address(tile_index, 1);
+        self.bg_pipeline_state.fetcher.tile_map_address = tile_map_address;
+        self.bg_pipeline_state.fetcher.tile_index = tile_index;
+        self.bg_pipeline_state.fetcher.tile_data_address = tile_low_address;
+        self.bg_pipeline_state.fetcher.tile_low_address = tile_low_address;
+        self.bg_pipeline_state.fetcher.tile_high_address = tile_high_address;
+        self.bg_pipeline_state.fetcher.tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        self.bg_pipeline_state.fetcher.tile_high =
+            vram.read(tile_high_address as usize).unwrap_or(0);
+    }
+
+    fn maybe_arm_dmg_wx0_window_disable_prefix_override(&mut self) {
+        if !self.console_model.is_dmg_family()
+            || self
+                .bg_pipeline_state
+                .dmg_wx0_window_disable_prefix_state
+                .is_some()
+            || !self.bg_pipeline_state.window_started_this_line
+            || self.bg_pipeline_state.visible_pixels_output != 0
+        {
+            return;
+        }
+
+        let wx = self.mode3_register_latches().visible().wx;
+        if wx >= 8 {
+            return;
+        }
+
+        let desired_prefix_pixels = Self::DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS[usize::from(wx)];
+        if desired_prefix_pixels == 8 {
+            return;
+        }
+
+        self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state =
+            Some(DmgWx0WindowDisablePrefixState::new(desired_prefix_pixels));
+    }
+
+    fn apply_dmg_wx0_window_disable_prefix_override(&mut self, visible_x: usize, bg_pixel: u8) {
+        let Some(mut seam) = self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state else {
+            return;
+        };
+
+        seam.prefix_bg_pixel
+            .get_or_insert(self.current_scanline_bg_pixels[visible_x]);
+
+        let desired_prefix_pixels = usize::from(seam.desired_prefix_pixels);
+        if desired_prefix_pixels > 8 {
+            if let Some(prefix_bg_pixel) = seam.prefix_bg_pixel
+                && visible_x < desired_prefix_pixels
+            {
+                for target_visible_x in 0..=visible_x {
+                    self.repaint_current_scanline_background_dot(target_visible_x, prefix_bg_pixel);
+                }
+            }
+
+            if visible_x + 1 >= desired_prefix_pixels {
+                self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state = None;
+                return;
+            }
+        } else if visible_x >= 8 {
+            let retro_shift = 8 - desired_prefix_pixels;
+            if visible_x < 8 + retro_shift {
+                let target_visible_x = visible_x - retro_shift;
+                self.repaint_current_scanline_background_dot(target_visible_x, bg_pixel);
+            }
+
+            if visible_x + 1 >= 8 + retro_shift {
+                self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state = None;
+                return;
+            }
+        }
+
+        self.bg_pipeline_state.dmg_wx0_window_disable_prefix_state = Some(seam);
+    }
+
+    fn repaint_current_scanline_background_dot(&mut self, visible_x: usize, bg_pixel: u8) {
+        if self.current_scanline_mixed_pixels[visible_x].source != MixedPixelSource::Background {
+            return;
+        }
+
+        let bg_enabled = self.pixel_transfer_bg_enabled();
+        let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
+        let output_pixel = MixedPixel::background(bg_pixel);
+        let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+        let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
+            output_pixel.color
+        } else {
+            0
+        };
+        let panel_pixel = if visible_output_driving {
+            if dmg_bg_forced_white {
+                0
+            } else {
+                self.map_mixed_pixel_to_panel_shade(output_pixel)
+            }
+        } else {
+            0
+        };
+
+        self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+        self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+        self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
+        self.current_scanline_pixels[visible_x] = scanline_pixel;
+        self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+
+        for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
+            if usize::from(dot.visible_x) == visible_x {
+                dot.pixel = output_pixel;
+                dot.dmg_bg_forced_white = dmg_bg_forced_white;
+            }
+        }
+    }
+
+    fn repaint_current_scanline_dot_with_bg_override(
+        &mut self,
+        visible_x: usize,
+        bg_pixel: u8,
+        vram: &VramBusView<'_>,
+    ) {
+        let bg_enabled = self.pixel_transfer_bg_enabled();
+        let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
+        let obj_pixel = self.observed_obj_pixel_for_visible_x(visible_x as u8, vram);
+        let effective_bg_priority_pixel = if bg_enabled { bg_pixel } else { 0 };
+        let output_pixel = self.mix_bg_and_obj(bg_pixel, effective_bg_priority_pixel, obj_pixel);
+        let dmg_bg_forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+        let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
+            output_pixel.color
+        } else {
+            0
+        };
+        let panel_pixel = if visible_output_driving {
+            if dmg_bg_forced_white {
+                0
+            } else {
+                self.map_mixed_pixel_to_panel_shade(output_pixel)
+            }
+        } else {
+            0
+        };
+
+        self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+        self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+        self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
+        self.current_scanline_pixels[visible_x] = scanline_pixel;
+        self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+
+        for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
+            if usize::from(dot.visible_x) == visible_x {
+                dot.pixel = output_pixel;
+                dot.dmg_bg_forced_white = dmg_bg_forced_white;
+            }
+        }
+    }
+
+    fn observed_obj_pixel_for_visible_x(&self, visible_x: u8, vram: &VramBusView<'_>) -> ObjPixel {
+        if !self.pixel_transfer_obj_enabled() {
+            return ObjPixel::transparent();
+        }
+
+        let obj_height = match self.obj_pipeline_state.mode3_line_start_obj_height {
+            0 => self.current_obj_height(),
+            height => height,
+        };
+        let mut front = ObjPixel::transparent();
+        for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
+            let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
+                continue;
+            };
+            let sprite_screen_x = sprite_screen_x(sprite);
+            let tile_pixel = i16::from(visible_x) - sprite_screen_x;
+            if !(0..BG_TILE_WIDTH as i16).contains(&tile_pixel) {
+                continue;
+            }
+
+            let Some((tile_index, tile_row)) =
+                self.obj_tile_index_and_row_for_height(sprite, obj_height)
+            else {
+                continue;
+            };
+            let tile_address = tile_index as u16 * TILE_BYTES + tile_row as u16 * TILE_ROW_BYTES;
+            let tile_low = vram.read(tile_address as usize).unwrap_or(0);
+            let tile_high = vram.read(tile_address as usize + 1).unwrap_or(0);
+            let bit = if sprite.attributes & 0x20 != 0 {
+                tile_pixel as u8
+            } else {
+                7 - tile_pixel as u8
+            };
+            let candidate = ObjPixel {
+                color: (((tile_high >> bit) & 0x01) << 1) | ((tile_low >> bit) & 0x01),
+                palette_obp1: sprite.attributes & 0x10 != 0,
+                bg_over_obj: sprite.attributes & 0x80 != 0,
+                sprite_x: sprite.x,
+                oam_index: sprite.oam_index,
+            };
+            if obj_pixel_has_priority(candidate, front) {
+                front = candidate;
+            }
+        }
+
+        front
+    }
+
+    fn maybe_record_dmg_window_reenable_resume(&mut self) {
+        let visible_wx = self.mode3_register_latches().visible().wx;
+        if !self.console_model.is_dmg_family()
+            || self
+                .bg_pipeline_state
+                .dmg_pending_window_reenable_resume
+                .is_some()
+            || !self
+                .mode3_register_latches()
+                .lcdc_bit_changed(LCDC_WINDOW_ENABLE_BIT)
+            || self.mode3_register_latches().visible().window_enabled()
+            || !matches!(visible_wx, 28 | 29 | 35)
+        {
+            return;
+        }
+
+        let Some(window_origin_x) = self.visible_window_origin_x() else {
+            return;
+        };
+        let emitted_window_pixels = self.count_emitted_window_pixels_this_line();
+        let whole_tiles_emitted = emitted_window_pixels.saturating_add(7) / 8;
+        let onset_x = window_origin_x.saturating_add(whole_tiles_emitted.saturating_mul(8));
+        self.bg_pipeline_state.dmg_pending_window_reenable_resume =
+            Some(DmgPendingWindowReenableResume::new(
+                onset_x,
+                window_origin_x,
+                emitted_window_pixels,
+                self.bg_pipeline_state.fetcher.stage,
+                self.bg_pipeline_state.fetcher.stage_dot,
+            ));
+    }
+
+    fn maybe_arm_dmg_late_window_enable_override_after_transfer_dot(
+        &mut self,
+        _transfer_dot: Mode3TransferDot,
+    ) {
+        let visible_wx = self.mode3_register_latches().visible().wx;
+        if !self.console_model.is_dmg_family()
+            || !self.bg_pipeline_state.window_wy_latch
+            || !self
+                .mode3_register_latches()
+                .lcdc_bit_changed(LCDC_WINDOW_ENABLE_BIT)
+            || !self.mode3_register_latches().visible().window_enabled()
+            || !self.mode3_register_latches().visible().bg_enabled()
+            || visible_wx < 15
+        {
+            return;
+        }
+
+        let visible_output = self.bg_pipeline_state.visible_pixels_output;
+        if let Some(pending_resume) = self
+            .bg_pipeline_state
+            .dmg_pending_window_reenable_resume
+            .take()
+        {
+            let segment_pixels = match visible_wx {
+                28 | 29 => 8,
+                35 => 8,
+                _ => 0,
+            };
+            let end_x = pending_resume.onset_x.saturating_add(segment_pixels);
+            self.arm_dmg_late_window_enable_override(
+                pending_resume.onset_x,
+                end_x,
+                pending_resume.window_origin_x,
+            );
+            return;
+        }
+
+        if self.count_emitted_window_pixels_this_line() != 0 {
+            return;
+        }
+
+        let Some(window_origin_x) = self.visible_window_origin_x() else {
+            return;
+        };
+
+        if (13..=14).contains(&visible_output) && matches!(visible_wx, 15..=21) {
+            if window_origin_x == 8 {
+                self.repaint_current_scanline_background_dot(8, 0);
+                return;
+            }
+
+            let onset_x = window_origin_x.max(10);
+            self.arm_dmg_late_window_enable_override(
+                onset_x,
+                onset_x.saturating_add(Self::DMG_LATE_WINDOW_ENABLE_SEGMENT_PIXELS),
+                window_origin_x,
+            );
+            return;
+        }
+
+        if (33..=34).contains(&visible_output) && visible_wx == 39 {
+            self.repaint_current_scanline_background_dot(32, 0);
+            return;
+        }
+
+        if (41..=42).contains(&visible_output) && matches!(visible_wx, 44..=49) {
+            let onset_x = window_origin_x.max(38);
+            self.arm_dmg_late_window_enable_override(onset_x, SCREEN_WIDTH as u8, window_origin_x);
+        }
+    }
+
+    fn arm_dmg_late_window_enable_override(&mut self, onset_x: u8, end_x: u8, window_origin_x: u8) {
+        let clamped_end = end_x.min(SCREEN_WIDTH as u8);
+        if onset_x >= clamped_end {
+            return;
+        }
+
+        self.bg_pipeline_state.dmg_late_window_enable_override = Some(
+            DmgLateWindowEnableOverride::new(onset_x, clamped_end, window_origin_x),
+        );
+    }
+
+    fn apply_dmg_late_window_enable_override_repaint_up_to(
+        &mut self,
+        visible_limit: usize,
+        vram: &VramBusView<'_>,
+    ) {
+        let Some(override_state) = self.bg_pipeline_state.dmg_late_window_enable_override else {
+            return;
+        };
+
+        let repaint_end = visible_limit.min(usize::from(override_state.end_x));
+        for visible_x in usize::from(override_state.onset_x)..repaint_end {
+            let Some(bg_pixel) = self.compute_window_override_pixel_for_screen_x(
+                override_state.window_origin_x,
+                visible_x as u8,
+                vram,
+            ) else {
+                continue;
+            };
+            self.repaint_current_scanline_background_dot(visible_x, bg_pixel);
+        }
+
+        if visible_limit >= usize::from(override_state.end_x) {
+            self.bg_pipeline_state.dmg_late_window_enable_override = None;
+        }
+    }
+
+    fn compute_window_override_pixel_for_screen_x(
+        &self,
+        window_origin_x: u8,
+        visible_x: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        if visible_x < window_origin_x {
+            return None;
+        }
+
+        let window_x = visible_x - window_origin_x;
+        self.compute_window_pixel_for_logical_offset(
+            self.current_window_line_counter(),
+            u16::from(window_x),
+            vram,
+        )
+    }
+
+    fn compute_window_pixel_for_logical_offset(
+        &self,
+        window_line_counter: u8,
+        window_x: u16,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        let window_tilemap_x = (window_x / u16::from(BG_TILE_WIDTH)) as u8;
+        let pixel_index = (window_x % u16::from(BG_TILE_WIDTH)) as u8;
+        let context = self
+            .mode3_bgwin_fetch_policy()
+            .window_fetch_context(window_line_counter, window_tilemap_x);
+        let tile_index = vram
+            .read(context.tile_index_address() as usize)
+            .unwrap_or(0);
+        let tile_low_address = context.tile_data_address(tile_index, 0);
+        let tile_high_address = context.tile_data_address(tile_index, 1);
+        let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
+        Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
+    }
+
+    fn visible_window_origin_x(&self) -> Option<u8> {
+        if self.bg_pipeline_state.window_force_x0_this_line {
+            return Some(0);
+        }
+
+        match self.mode3_register_latches().visible().wx {
+            0..=166 => Some(self.mode3_register_latches().visible().wx.saturating_sub(7)),
+            _ => None,
+        }
+    }
+
+    fn count_emitted_window_pixels_this_line(&self) -> u8 {
+        self.current_scanline_bg_dot_contexts
+            [..usize::from(self.bg_pipeline_state.visible_pixels_output)]
+            .iter()
+            .filter(|context| {
+                context.is_some_and(|context| context.source == PpuBgFetcherSource::Window)
+            })
+            .count() as u8
     }
 
     pub(super) fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
@@ -673,17 +1197,13 @@ impl Ppu {
         }
         if fill.includes_real_tile_pixels {
             self.bg_pipeline_state
-                .push_cached_slice_fifo_pixels_with_skip(
-                    fill.cached,
-                    fill.startup_leading_pixel_skip,
-                );
+                .push_cached_slice_fifo_pixels_with_skip(fill.cached, fill.leading_pixel_skip);
         }
         self.bg_pipeline_state.fill.reset();
     }
 
     pub(super) fn maybe_recompute_pending_background_fill(&mut self, vram: &VramBusView<'_>) {
         if !self.bg_pipeline_state.fill.pending
-            || self.bg_pipeline_state.fill.cached.source != PpuBgFetcherSource::Background
             || !self.bg_pipeline_state.fill.includes_real_tile_pixels
         {
             return;
@@ -701,9 +1221,7 @@ impl Ppu {
     }
 
     pub(super) fn maybe_recompute_pending_background_push(&mut self, vram: &VramBusView<'_>) {
-        if !self.bg_pipeline_state.push.pending
-            || self.bg_pipeline_state.push.cached.source != PpuBgFetcherSource::Background
-        {
+        if !self.bg_pipeline_state.push.pending {
             return;
         }
 
@@ -730,6 +1248,7 @@ impl Ppu {
         plan: Mode3TransferServicePlan,
         vram: &VramBusView<'_>,
     ) -> Mode3TransferDot {
+        self.apply_pending_dmg_window_lcdc4_output_repaint(vram);
         let pixel = if matches!(
             plan.execution,
             Mode3TransferServiceExecution::EmitVisiblePixel
@@ -817,6 +1336,8 @@ impl Ppu {
                     output_pixel,
                     dmg_bg_forced_white,
                 );
+                self.apply_dmg_wx0_window_disable_prefix_override(visible_x, bg_pixel);
+                self.apply_dmg_late_window_enable_override_repaint_up_to(visible_x + 1, vram);
                 self.consume_dmg_lcdc0_bg_enable_visible_hold();
                 self.consume_dmg_lcdc1_obj_enable_visible_hold();
                 self.consume_dmg_bgp_cpu_commit_bg_visible_hold(output_pixel);
@@ -829,8 +1350,18 @@ impl Ppu {
     }
 
     pub(super) fn pop_visible_bg_fifo_pixel(&mut self, vram: &VramBusView<'_>) -> Option<u8> {
+        let visible_x = self.bg_pipeline_state.visible_pixels_output as usize;
         let mut pixel = self.bg_pipeline_state.pop_visible_fifo_pixel()?;
+        if self
+            .bg_pipeline_state
+            .dmg_previsible_wx_cancel_background_override_onset_x
+            .is_some_and(|onset_x| self.bg_pipeline_state.visible_pixels_output >= onset_x)
+        {
+            self.current_scanline_bg_dot_contexts[visible_x] = None;
+            return Some(self.dmg_bg_color_for_panel_shade(0));
+        }
         let Some(cached) = pixel.cached.as_mut() else {
+            self.current_scanline_bg_dot_contexts[visible_x] = None;
             if let Some(override_pixel) = self.compute_startup_visible_tile2_scy_placeholder_pixel(
                 self.bg_pipeline_state.visible_pixels_output,
                 vram,
@@ -841,6 +1372,17 @@ impl Ppu {
         };
         let visible_tile2_scy_tilemap_override = self
             .compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
+                cached.cached,
+                cached.pixel_index,
+                vram,
+            );
+        let window_activation_tilemap_override = self.compute_window_activation_tilemap_override(
+            cached.cached,
+            cached.pixel_index,
+            vram,
+        );
+        let window_tiledata_selector_override = self
+            .compute_window_lcdc4_tiledata_selector_override(
                 cached.cached,
                 cached.pixel_index,
                 vram,
@@ -879,8 +1421,16 @@ impl Ppu {
             vram,
             self.current_mode3_live_background_refetch_context(),
         ) else {
+            self.current_scanline_bg_dot_contexts[visible_x] = Some(PpuRecentBgDotContext {
+                source: cached.cached.source,
+                fetch_x: cached.cached.fetch_x,
+                pixel_index: cached.pixel_index,
+                tile_index: cached.cached.tile_index,
+            });
             return Some(
                 old_pixel_override
+                    .or(window_activation_tilemap_override)
+                    .or(window_tiledata_selector_override)
                     .or(low_band_shifted_override)
                     .or(visible_tile2_scy_tilemap_override)
                     .or(visible_tile2_previous_row_override)
@@ -891,7 +1441,15 @@ impl Ppu {
         };
 
         cached.cached = recomputed;
+        self.current_scanline_bg_dot_contexts[visible_x] = Some(PpuRecentBgDotContext {
+            source: cached.cached.source,
+            fetch_x: cached.cached.fetch_x,
+            pixel_index: cached.pixel_index,
+            tile_index: cached.cached.tile_index,
+        });
         pixel.color = old_pixel_override
+            .or(window_activation_tilemap_override)
+            .or(window_tiledata_selector_override)
             .or(low_band_shifted_override)
             .or(visible_tile2_scy_tilemap_override)
             .or(visible_tile2_previous_row_override)
@@ -942,6 +1500,324 @@ impl Ppu {
             tile_high,
             visible_x & (BG_TILE_WIDTH - 1),
         ))
+    }
+
+    fn compute_window_activation_tilemap_override(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        let previous_tilemap_select =
+            cached.window_activation_first_pixel_previous_tilemap_select?;
+        if cached.source != PpuBgFetcherSource::Window {
+            return None;
+        }
+
+        if let Some(current_tilemap_mask) = window_activation_tile_current_tilemap_mask(
+            cached.fetch_x,
+            self.current_window_line_counter(),
+        ) {
+            let use_first_write_current_tilemap = current_tilemap_mask & (0x80 >> pixel_index) != 0;
+            let tilemap_select = if use_first_write_current_tilemap {
+                !previous_tilemap_select
+            } else {
+                previous_tilemap_select
+            };
+            return Some(self.read_window_activation_tilemap_pixel(
+                cached,
+                pixel_index,
+                tilemap_select,
+                vram,
+            ));
+        }
+
+        if cached.fetch_x != 0
+            || pixel_index != 0
+            || !window_activation_first_pixel_uses_previous_tilemap(
+                self.current_window_line_counter(),
+            )
+        {
+            return None;
+        }
+
+        Some(self.read_window_activation_tilemap_pixel(
+            cached,
+            pixel_index,
+            previous_tilemap_select,
+            vram,
+        ))
+    }
+
+    fn read_window_activation_tilemap_pixel(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        tilemap_select: bool,
+        vram: &VramBusView<'_>,
+    ) -> u8 {
+        let tile_map_offset = cached.tile_map_address & 0x03FF;
+        let tile_map_base = if tilemap_select { 0x1C00 } else { 0x1800 };
+        let tile_map_address = tile_map_base | tile_map_offset;
+        let tile_index = vram
+            .read(tile_map_address as usize)
+            .unwrap_or(cached.tile_index);
+        let registers = self.mode3_register_latches().visible();
+        let tile_row = self
+            .current_mode3_live_background_refetch_context()
+            .current_window_tile_row();
+        let tile_low_address =
+            bg_tile_data_base(registers.lcdc, tile_index) + tile_row * TILE_ROW_BYTES;
+        let tile_high_address = tile_low_address + 1;
+        let tile_low = vram.read(tile_low_address as usize).unwrap_or(0);
+        let tile_high = vram.read(tile_high_address as usize).unwrap_or(0);
+        bg_tile_pixel_value(tile_low, tile_high, pixel_index)
+    }
+
+    fn compute_window_lcdc4_tiledata_selector_override(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        let previous_select = cached.dmg_lcdc4_previous_tiledata_select_for_output_override?;
+        if cached.source != PpuBgFetcherSource::Window {
+            return None;
+        }
+
+        let previous_plane_masks = window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            cached.fetch_x,
+            self.current_window_line_counter(),
+        )?;
+        Some(self.read_window_lcdc4_tiledata_selector_pixel(
+            cached,
+            pixel_index,
+            previous_select,
+            previous_plane_masks,
+            vram,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_compute_window_lcdc4_tiledata_selector_override(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        self.compute_window_lcdc4_tiledata_selector_override(cached, pixel_index, vram)
+    }
+
+    fn read_window_lcdc4_tiledata_selector_pixel(
+        &self,
+        cached: BgCachedSlice,
+        pixel_index: u8,
+        previous_select: BgTileDataSelect,
+        previous_plane_masks: PerPlane<u8>,
+        vram: &VramBusView<'_>,
+    ) -> u8 {
+        let bit = 0x80 >> pixel_index;
+        let current_lcdc = self.mode3_register_latches().visible().lcdc;
+        let previous_lcdc = previous_select.apply_to_lcdc(current_lcdc);
+        let current_tile_row = (self.current_window_line_counter() & (BG_TILE_WIDTH - 1)) as u16;
+        let previous_tile_low_address =
+            bg_tile_data_base(previous_lcdc, cached.tile_index) + current_tile_row * TILE_ROW_BYTES;
+        let previous_tile_high_address = previous_tile_low_address + 1;
+        let current_tile_low_address =
+            bg_tile_data_base(current_lcdc, cached.tile_index) + current_tile_row * TILE_ROW_BYTES;
+        let current_tile_high_address = current_tile_low_address + 1;
+        let previous_tile_low = vram.read(previous_tile_low_address as usize).unwrap_or(0);
+        let previous_tile_high = vram.read(previous_tile_high_address as usize).unwrap_or(0);
+        let current_tile_low = vram.read(current_tile_low_address as usize).unwrap_or(0);
+        let current_tile_high = vram.read(current_tile_high_address as usize).unwrap_or(0);
+        let tile_low = if previous_plane_masks.low & bit != 0 {
+            previous_tile_low
+        } else {
+            current_tile_low
+        };
+        let tile_high = if previous_plane_masks.high & bit != 0 {
+            previous_tile_high
+        } else {
+            current_tile_high
+        };
+        bg_tile_pixel_value(tile_low, tile_high, pixel_index)
+    }
+
+    fn compute_window_lcdc4_tiledata_selector_override_from_context(
+        &self,
+        context: PpuRecentBgDotContext,
+        previous_select: BgTileDataSelect,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        if context.source != PpuBgFetcherSource::Window {
+            return None;
+        }
+
+        let previous_plane_masks = window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            context.fetch_x,
+            self.current_window_line_counter(),
+        )?;
+        let bit = 0x80 >> context.pixel_index;
+        let current_lcdc = self.mode3_register_latches().visible().lcdc;
+        let previous_lcdc = previous_select.apply_to_lcdc(current_lcdc);
+        let current_tile_row = (self.current_window_line_counter() & (BG_TILE_WIDTH - 1)) as u16;
+        let previous_tile_low_address = bg_tile_data_base(previous_lcdc, context.tile_index)
+            + current_tile_row * TILE_ROW_BYTES;
+        let previous_tile_high_address = previous_tile_low_address + 1;
+        let current_tile_low_address =
+            bg_tile_data_base(current_lcdc, context.tile_index) + current_tile_row * TILE_ROW_BYTES;
+        let current_tile_high_address = current_tile_low_address + 1;
+        let previous_tile_low = vram.read(previous_tile_low_address as usize).unwrap_or(0);
+        let previous_tile_high = vram.read(previous_tile_high_address as usize).unwrap_or(0);
+        let current_tile_low = vram.read(current_tile_low_address as usize).unwrap_or(0);
+        let current_tile_high = vram.read(current_tile_high_address as usize).unwrap_or(0);
+        let tile_low = if previous_plane_masks.low & bit != 0 {
+            previous_tile_low
+        } else {
+            current_tile_low
+        };
+        let tile_high = if previous_plane_masks.high & bit != 0 {
+            previous_tile_high
+        } else {
+            current_tile_high
+        };
+        Some(bg_tile_pixel_value(
+            tile_low,
+            tile_high,
+            context.pixel_index,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_compute_window_lcdc4_tiledata_selector_override_from_context(
+        &self,
+        context: PpuRecentBgDotContext,
+        previous_select: BgTileDataSelect,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
+        self.compute_window_lcdc4_tiledata_selector_override_from_context(
+            context,
+            previous_select,
+            vram,
+        )
+    }
+
+    fn apply_pending_dmg_window_lcdc4_output_repaint(&mut self, vram: &VramBusView<'_>) {
+        let Some(previous_select) = self.pending_dmg_window_lcdc4_output_repaint.take() else {
+            return;
+        };
+
+        let bg_enabled = self.pixel_transfer_bg_enabled();
+        let visible_output_driving = self.visible_output == PpuVisibleOutputState::Driving;
+        let row_start = self.ly as usize * SCREEN_WIDTH;
+        let visible_limit = usize::from(self.bg_pipeline_state.visible_pixels_output);
+
+        for visible_x in 0..visible_limit {
+            let Some(context) = self.current_scanline_bg_dot_contexts[visible_x] else {
+                continue;
+            };
+            let Some(bg_pixel) = self.compute_window_lcdc4_tiledata_selector_override_from_context(
+                context,
+                previous_select,
+                vram,
+            ) else {
+                continue;
+            };
+
+            self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+            if self.current_scanline_mixed_pixels[visible_x].source != MixedPixelSource::Background
+            {
+                continue;
+            }
+
+            let output_pixel = MixedPixel::background(bg_pixel);
+            let dmg_bg_forced_white =
+                self.dmg_bg_panel_dot_is_forced_white(bg_enabled, output_pixel);
+            let scanline_pixel = if visible_output_driving && !dmg_bg_forced_white {
+                output_pixel.color
+            } else {
+                0
+            };
+            let panel_pixel = if visible_output_driving {
+                if dmg_bg_forced_white {
+                    0
+                } else {
+                    self.map_mixed_pixel_to_panel_shade(output_pixel)
+                }
+            } else {
+                0
+            };
+
+            self.current_scanline_mixed_pixels[visible_x] = output_pixel;
+            self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
+            self.current_scanline_pixels[visible_x] = scanline_pixel;
+            self.framebuffer[row_start + visible_x] = panel_pixel;
+
+            for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
+                if usize::from(dot.visible_x) == visible_x {
+                    dot.pixel = output_pixel;
+                    dot.dmg_bg_forced_white = dmg_bg_forced_white;
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_apply_pending_dmg_window_lcdc4_output_repaint(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
+        self.apply_pending_dmg_window_lcdc4_output_repaint(vram);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_apply_dmg_late_window_enable_override_repaint_up_to(
+        &mut self,
+        visible_limit: usize,
+        vram: &VramBusView<'_>,
+    ) {
+        self.apply_dmg_late_window_enable_override_repaint_up_to(visible_limit, vram);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_apply_dmg_wx0_window_disable_prefix_override(
+        &mut self,
+        visible_x: usize,
+        bg_pixel: u8,
+    ) {
+        self.apply_dmg_wx0_window_disable_prefix_override(visible_x, bg_pixel);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_apply_pending_dmg_previsible_wx_carry(
+        &mut self,
+        transfer_dot: Mode3TransferDot,
+        vram: &VramBusView<'_>,
+    ) {
+        self.maybe_apply_pending_dmg_previsible_wx_carry(transfer_dot, vram);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
+        self.maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(vram);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_expire_dmg_previsible_wx_retarget(&mut self) {
+        self.maybe_expire_dmg_previsible_wx_retarget();
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_apply_dmg_previsible_wx_retarget(&mut self, vram: &VramBusView<'_>) {
+        self.maybe_apply_dmg_previsible_wx_retarget(vram);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_expire_pending_dmg_live_wx_trigger_glitch(&mut self) {
+        self.maybe_expire_pending_dmg_live_wx_trigger_glitch();
     }
 
     pub(super) fn compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
@@ -1235,6 +2111,8 @@ impl Ppu {
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) {
+        self.maybe_expire_dmg_previsible_wx_retarget();
+        self.maybe_expire_pending_dmg_live_wx_trigger_glitch();
         if !self.mode3_window_policy().can_apply_wx0_shortening(
             transfer_dot,
             self.bg_pipeline_state.visible_pixels_output,
@@ -1248,11 +2126,265 @@ impl Ppu {
         self.bg_pipeline_state.apply_wx0_scx_shortening();
     }
 
+    pub(super) fn maybe_arm_dmg_previsible_wx_retarget(&mut self, previous_wx: u8, wx: u8) {
+        let pending_previsible_trigger_x = self
+            .bg_pipeline_state
+            .dmg_previsible_wx_retarget
+            .and_then(|retarget| retarget.trigger_x);
+        let pending_one_hidden_prefix_resume = self
+            .bg_pipeline_state
+            .dmg_previsible_wx_retarget
+            .is_some_and(|retarget| {
+                matches!(
+                    retarget.kind,
+                    DmgPrevisibleWxRetargetKind::OneHiddenPrefixResume
+                )
+            });
+        let visible_registers = self.mode3_register_latches().visible();
+        let plan = Self::plan_dmg_previsible_wx_retarget(
+            DmgPrevisibleWxRetargetPlanContext {
+                is_dmg_family: self.console_model.is_dmg_family(),
+                drawing_mode: self.current_access_mode() == PpuAccessMode::Drawing,
+                window_started_this_line: self.bg_pipeline_state.window_started_this_line,
+                window_wy_latch: self.bg_pipeline_state.window_wy_latch,
+                window_enabled: visible_registers.window_enabled(),
+                bg_enabled: visible_registers.bg_enabled(),
+                visible_pixels_output: self.bg_pipeline_state.visible_pixels_output,
+                window_active_line_counter: self.bg_pipeline_state.window_active_line_counter,
+                pending_previsible_trigger_x,
+                pending_one_hidden_prefix_resume,
+                live_wx_can_still_start_later_this_line: self
+                    .dmg_live_wx_write_can_still_start_later_this_line(wx),
+                fetcher_source: self.bg_pipeline_state.fetcher.source,
+            },
+            previous_wx,
+            wx,
+        );
+        self.apply_dmg_previsible_wx_plan(plan);
+    }
+
+    pub(super) fn maybe_arm_dmg_live_wx_trigger_glitch(&mut self, wx: u8) {
+        if !self.console_model.is_dmg_family()
+            || self.current_access_mode() != PpuAccessMode::Drawing
+            || !self.bg_pipeline_state.window_started_this_line
+            || !self.bg_pipeline_state.window_wy_latch
+            || self.bg_pipeline_state.visible_pixels_output == 0
+            || !self.mode3_register_latches().visible().window_enabled()
+            || !self.mode3_register_latches().visible().bg_enabled()
+        {
+            return;
+        }
+
+        let trigger_x = match wx {
+            7..=166 => wx.saturating_sub(7),
+            _ => {
+                self.clear_dmg_previsible_wx_live_trigger_glitch();
+                return;
+            }
+        };
+
+        if trigger_x < self.bg_pipeline_state.visible_pixels_output {
+            self.clear_dmg_previsible_wx_live_trigger_glitch();
+            return;
+        }
+
+        if trigger_x == self.bg_pipeline_state.visible_pixels_output {
+            self.push_dmg_live_wx_trigger_glitch_pixel();
+            self.clear_dmg_previsible_wx_live_trigger_glitch();
+            return;
+        }
+
+        self.arm_dmg_previsible_wx_live_trigger_glitch(trigger_x);
+    }
+
+    fn maybe_apply_dmg_previsible_wx_retarget(&mut self, vram: &VramBusView<'_>) {
+        let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget else {
+            return;
+        };
+
+        if !self.console_model.is_dmg_family()
+            || self.bg_pipeline_state.visible_pixels_output != 0
+            || self.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Window
+        {
+            return;
+        }
+
+        if matches!(
+            (
+                self.bg_pipeline_state.fetcher.stage,
+                self.bg_pipeline_state.fetcher.stage_dot,
+            ),
+            (PpuBgFetcherStage::WindowActivating, _) | (PpuBgFetcherStage::TileIndex, 0)
+        ) {
+            self.abort_window_fetcher_to_background_now(vram);
+            self.bg_pipeline_state.window_started_this_line = false;
+            self.bg_pipeline_state.window_active_line_counter = retarget.active_line_counter;
+            self.clear_dmg_previsible_wx_live_trigger_glitch();
+            if matches!(
+                retarget.kind,
+                DmgPrevisibleWxRetargetKind::OneHiddenPrefixResume
+            ) {
+                self.restore_current_fetcher_cached_slice_to_fifo();
+            }
+            if matches!(retarget.kind, DmgPrevisibleWxRetargetKind::CancelOnly) {
+                self.restore_current_fetcher_cached_slice_to_fifo();
+                self.bg_pipeline_state.window_start_count_this_line = self
+                    .bg_pipeline_state
+                    .window_start_count_this_line
+                    .saturating_sub(1);
+                self.clear_dmg_previsible_wx_retarget_state();
+            }
+        }
+    }
+
+    pub(super) fn maybe_apply_pending_dmg_live_wx_trigger_glitch(
+        &mut self,
+        transfer_dot: Mode3TransferDot,
+    ) {
+        let Some(glitch) = self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch else {
+            return;
+        };
+
+        if !self.console_model.is_dmg_family()
+            || transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel
+        {
+            return;
+        }
+
+        if self.bg_pipeline_state.visible_pixels_output == glitch.trigger_x {
+            self.push_dmg_live_wx_trigger_glitch_pixel();
+            self.clear_dmg_previsible_wx_live_trigger_glitch();
+        } else if self.bg_pipeline_state.visible_pixels_output > glitch.trigger_x {
+            self.clear_dmg_previsible_wx_live_trigger_glitch();
+        }
+    }
+
+    fn maybe_apply_pending_dmg_previsible_wx_carry(
+        &mut self,
+        transfer_dot: Mode3TransferDot,
+        vram: &VramBusView<'_>,
+    ) {
+        let Some(mut carry) = self.bg_pipeline_state.dmg_pending_previsible_wx_carry else {
+            return;
+        };
+
+        if !self.console_model.is_dmg_family()
+            || transfer_dot.kind != Mode3TransferDotKind::ServedVisiblePixel
+        {
+            return;
+        }
+
+        if self.bg_pipeline_state.visible_pixels_output == carry.next_trigger_x {
+            if let Some(pixel) = self.compute_window_pixel_for_logical_offset(
+                carry.active_line_counter,
+                carry.next_window_pixel_offset,
+                vram,
+            ) {
+                self.bg_pipeline_state.fifo.push_front(pixel);
+                self.bg_pipeline_state.fifo_cached_pixels.push_front(None);
+            }
+            carry.next_trigger_x = carry.next_trigger_x.saturating_add(1);
+            carry.next_window_pixel_offset = carry.next_window_pixel_offset.saturating_add(1);
+            if carry.next_trigger_x >= carry.end_trigger_x {
+                self.clear_dmg_previsible_wx_carry();
+            } else {
+                self.bg_pipeline_state.dmg_pending_previsible_wx_carry = Some(carry);
+            }
+        } else if self.bg_pipeline_state.visible_pixels_output > carry.next_trigger_x {
+            self.clear_dmg_previsible_wx_carry();
+        }
+    }
+
+    fn maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
+        if let Some(trigger_x) = self
+            .bg_pipeline_state
+            .dmg_pending_previsible_wx_onset_glitch
+            && self.bg_pipeline_state.visible_pixels_output > trigger_x
+        {
+            self.repaint_current_scanline_dot_with_bg_override(usize::from(trigger_x), 0, vram);
+            self.clear_dmg_previsible_wx_onset_glitch();
+        }
+    }
+
+    fn maybe_expire_dmg_previsible_wx_retarget(&mut self) {
+        let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget else {
+            return;
+        };
+
+        if !self.console_model.is_dmg_family()
+            || retarget
+                .trigger_x
+                .is_some_and(|trigger_x| self.bg_pipeline_state.visible_pixels_output > trigger_x)
+            || matches!(retarget.kind, DmgPrevisibleWxRetargetKind::CancelOnly)
+                && self.bg_pipeline_state.visible_pixels_output != 0
+        {
+            self.clear_dmg_previsible_wx_expired_retarget_state();
+        }
+    }
+
+    fn maybe_expire_pending_dmg_live_wx_trigger_glitch(&mut self) {
+        let Some(glitch) = self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch else {
+            return;
+        };
+
+        if self.bg_pipeline_state.visible_pixels_output > glitch.trigger_x {
+            self.clear_dmg_previsible_wx_live_trigger_glitch();
+        }
+    }
+
+    fn push_dmg_live_wx_trigger_glitch_pixel(&mut self) {
+        self.bg_pipeline_state.fifo.push_back(0);
+        self.bg_pipeline_state.fifo_cached_pixels.push_back(None);
+    }
+
+    fn dmg_live_wx_write_can_still_start_later_this_line(&self, wx: u8) -> bool {
+        matches!(wx, 7..=165) && wx.saturating_sub(7) > self.bg_pipeline_state.visible_pixels_output
+    }
+
     pub(super) fn maybe_start_window_after_transfer_dot(
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) -> bool {
-        match self
+        if self.console_model.is_dmg_family()
+            && transfer_dot.kind == Mode3TransferDotKind::ServedVisiblePixel
+            && self.bg_pipeline_state.scx_discard_remaining == 0
+            && self.bg_pipeline_state.window_wy_latch
+            && self.mode3_register_latches().visible().window_enabled()
+            && self.mode3_register_latches().visible().bg_enabled()
+            && self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retarget
+                .is_some_and(|retarget| {
+                    retarget.trigger_x == Some(self.bg_pipeline_state.visible_pixels_output)
+                })
+        {
+            self.bg_pipeline_state.dmg_pending_window_reenable_resume = None;
+            self.bg_pipeline_state.dmg_late_window_enable_override = None;
+            self.clear_dmg_previsible_wx_live_trigger_glitch();
+            let retarget = self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retarget
+                .take()
+                .expect("checked above");
+            let retained_same_scanline_trigger = self
+                .bg_pipeline_state
+                .dmg_previsible_wx_retained_trigger_glitch_x
+                .is_some();
+            let retained_window_pixel_offset = if retained_same_scanline_trigger
+                && retarget.window_pixel_offset % u16::from(BG_TILE_WIDTH) == 7
+            {
+                retarget.window_pixel_offset.saturating_add(1)
+            } else {
+                retarget.window_pixel_offset
+            };
+            self.apply_dmg_previsible_wx_restart(retarget, retained_window_pixel_offset);
+            return true;
+        }
+
+        let decision = self
             .mode3_window_policy()
             .start_decision_after_transfer_dot(
                 transfer_dot,
@@ -1261,15 +2393,29 @@ impl Ppu {
                 self.bg_pipeline_state.initial_scx_discard,
                 self.bg_pipeline_state.scx_discard_remaining,
                 self.bg_pipeline_state.wx166_armed_this_line,
-            ) {
-            PpuMode3WindowStartDecision::NotReady => false,
+            );
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once = false;
+
+        match decision {
+            PpuMode3WindowStartDecision::NotReady => {
+                self.maybe_arm_dmg_late_window_enable_override_after_transfer_dot(transfer_dot);
+                false
+            }
             PpuMode3WindowStartDecision::ArmWx166NextLine => {
                 self.window_state.pending_wx166_next_line = true;
                 self.bg_pipeline_state.wx166_armed_this_line = true;
                 false
             }
             PpuMode3WindowStartDecision::StartNow => {
-                self.start_window_fetcher_restart();
+                self.bg_pipeline_state.dmg_pending_window_reenable_resume = None;
+                self.bg_pipeline_state.dmg_late_window_enable_override = None;
+                self.clear_dmg_previsible_wx_live_trigger_glitch();
+                if let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget.take() {
+                    self.apply_dmg_previsible_wx_restart(retarget, retarget.window_pixel_offset);
+                } else {
+                    self.start_window_fetcher_restart();
+                }
                 true
             }
         }
@@ -2108,17 +3254,592 @@ impl Ppu {
     }
 
     pub(super) fn start_window_fetcher_restart(&mut self) {
+        let window_line_counter = self
+            .window_state
+            .window_line_counter
+            .wrapping_add(self.bg_pipeline_state.window_start_count_this_line);
+        self.start_window_fetcher_restart_with_row_mode(window_line_counter, true, 0, false);
+    }
+
+    fn apply_dmg_previsible_wx_restart(
+        &mut self,
+        retarget: DmgPrevisibleWxRetarget,
+        window_pixel_offset: u16,
+    ) {
+        let (preserve_fifo, advance_tilemap) = match retarget.kind {
+            DmgPrevisibleWxRetargetKind::RetainedFifoPrefixResume { advance_tilemap } => {
+                (true, advance_tilemap)
+            }
+            DmgPrevisibleWxRetargetKind::CancelOnly
+            | DmgPrevisibleWxRetargetKind::OneHiddenPrefixResume
+            | DmgPrevisibleWxRetargetKind::PlainRestart => (false, false),
+        };
+        self.start_window_fetcher_restart_with_row_mode(
+            retarget.active_line_counter,
+            false,
+            window_pixel_offset,
+            preserve_fifo,
+        );
+        if advance_tilemap {
+            self.bg_pipeline_state.fetcher.window_tilemap_x = self
+                .bg_pipeline_state
+                .fetcher
+                .window_tilemap_x
+                .wrapping_add(1);
+        }
+    }
+
+    fn plan_dmg_previsible_wx_retarget(
+        ctx: DmgPrevisibleWxRetargetPlanContext,
+        previous_wx: u8,
+        wx: u8,
+    ) -> DmgPrevisibleWxPlan {
+        let late_visible_write =
+            ctx.is_dmg_family && ctx.drawing_mode && ctx.visible_pixels_output != 0;
+        if late_visible_write
+            && ctx.pending_one_hidden_prefix_resume
+            && !ctx.live_wx_can_still_start_later_this_line
+        {
+            let pending_distance = ctx
+                .pending_previsible_trigger_x
+                .unwrap_or(ctx.visible_pixels_output)
+                .saturating_sub(ctx.visible_pixels_output);
+            return DmgPrevisibleWxPlan {
+                followup_markers: DmgPrevisibleWxFollowupMarkers::cleared(),
+                action: if Self::dmg_late_write_keeps_one_hidden_prefix_resume(pending_distance) {
+                    DmgPrevisibleWxPlanAction::KeepState
+                } else {
+                    DmgPrevisibleWxPlanAction::ClearRetargetAndGapArtifacts
+                },
+            };
+        }
+
+        let cancel_uses_visible_wx_once = late_visible_write
+            && ctx.pending_previsible_trigger_x
+                == Some(ctx.visible_pixels_output.saturating_add(1));
+        let followup_markers = DmgPrevisibleWxFollowupMarkers {
+            cancel_uses_visible_wx_once,
+            cancel_background_override_onset_x: if cancel_uses_visible_wx_once
+                && !ctx.live_wx_can_still_start_later_this_line
+            {
+                ctx.pending_previsible_trigger_x
+            } else {
+                None
+            },
+            retained_trigger_glitch_x: if late_visible_write
+                && ctx.pending_previsible_trigger_x.is_some()
+                && !cancel_uses_visible_wx_once
+            {
+                ctx.pending_previsible_trigger_x
+            } else {
+                None
+            },
+        };
+
+        if late_visible_write {
+            return DmgPrevisibleWxPlan {
+                followup_markers,
+                action: if cancel_uses_visible_wx_once {
+                    DmgPrevisibleWxPlanAction::ClearRetargetAndGapArtifacts
+                } else if ctx.pending_previsible_trigger_x.is_some() {
+                    DmgPrevisibleWxPlanAction::ClearOnsetGlitch
+                } else {
+                    DmgPrevisibleWxPlanAction::KeepState
+                },
+            };
+        }
+
+        if !ctx.is_dmg_family
+            || !ctx.drawing_mode
+            || !ctx.window_started_this_line
+            || !ctx.window_wy_latch
+            || !ctx.window_enabled
+            || !ctx.bg_enabled
+        {
+            return DmgPrevisibleWxPlan {
+                followup_markers,
+                action: DmgPrevisibleWxPlanAction::ClearRetargetAndGapArtifacts,
+            };
+        }
+
+        if wx == previous_wx {
+            return DmgPrevisibleWxPlan {
+                followup_markers,
+                action: DmgPrevisibleWxPlanAction::KeepState,
+            };
+        }
+
+        let cancel_only_low_wx =
+            Self::is_dmg_low_wx_cancel_only_retarget(previous_wx, wx, ctx.visible_pixels_output);
+        let trigger_x = match wx {
+            Self::DMG_VISIBLE_WINDOW_ORIGIN_WX..=165 => {
+                Some(wx - Self::DMG_VISIBLE_WINDOW_ORIGIN_WX)
+            }
+            _ if cancel_only_low_wx => None,
+            _ => {
+                return DmgPrevisibleWxPlan {
+                    followup_markers,
+                    action: DmgPrevisibleWxPlanAction::ClearRetargetAndGapArtifacts,
+                };
+            }
+        };
+        let initial_hidden_skip = 7u8.saturating_sub(previous_wx);
+        let visible_tail_len = BG_TILE_WIDTH.saturating_sub(initial_hidden_skip);
+        let retained_fifo_prefix_resume = wx == Self::DMG_VISIBLE_WINDOW_ORIGIN_WX
+            && trigger_x == Some(0)
+            && Self::can_retain_dmg_fifo_prefix_resume(initial_hidden_skip)
+            && ctx.visible_pixels_output == 0
+            && ctx.fetcher_source == PpuBgFetcherSource::Window;
+        let one_hidden_prefix_resume_offset =
+            Self::uses_dmg_one_hidden_prefix_resume(initial_hidden_skip, cancel_only_low_wx)
+                .then_some(
+                    if trigger_x.is_some_and(|trigger_x| trigger_x <= visible_tail_len) {
+                        0
+                    } else {
+                        u16::from(BG_TILE_WIDTH)
+                    },
+                );
+        let raw_window_pixel_offset = if cancel_only_low_wx || trigger_x == Some(0) {
+            0
+        } else if let Some(resume_offset) = one_hidden_prefix_resume_offset {
+            resume_offset
+        } else {
+            u16::from(initial_hidden_skip)
+                + u16::from(trigger_x.expect("non-cancel retargets have a visible trigger"))
+        };
+        let visible_gap_len = trigger_x.unwrap_or(0).saturating_sub(visible_tail_len);
+        let (window_pixel_offset, onset_glitch, carry) = if !cancel_only_low_wx
+            && one_hidden_prefix_resume_offset.is_none()
+            && initial_hidden_skip != 0
+            && raw_window_pixel_offset != 0
+        {
+            let mut window_pixel_offset = raw_window_pixel_offset;
+            let boundary_restart = window_pixel_offset % u16::from(BG_TILE_WIDTH) == 0;
+            if boundary_restart {
+                window_pixel_offset -= 1;
+            }
+            let onset_glitch = boundary_restart
+                .then_some(trigger_x.expect("boundary restarts have a visible trigger"));
+            let carry = (visible_gap_len != 0).then_some(DmgPendingPrevisibleWxCarry::new(
+                visible_tail_len,
+                trigger_x.expect("carry spans have a visible trigger"),
+                ctx.window_active_line_counter,
+                raw_window_pixel_offset - u16::from(visible_gap_len),
+            ));
+            (window_pixel_offset, onset_glitch, carry)
+        } else {
+            (raw_window_pixel_offset, None, None)
+        };
+
+        let retarget = if cancel_only_low_wx {
+            DmgPrevisibleWxRetarget::new_cancel_only(
+                ctx.window_active_line_counter,
+                window_pixel_offset,
+            )
+        } else if retained_fifo_prefix_resume {
+            DmgPrevisibleWxRetarget::new_retained_fifo_prefix_resume(
+                trigger_x.expect("retained FIFO restarts have a visible trigger"),
+                ctx.window_active_line_counter,
+                window_pixel_offset,
+                Self::dmg_retained_fifo_prefix_resume_advances_next_tilemap(initial_hidden_skip),
+            )
+        } else if one_hidden_prefix_resume_offset.is_some() {
+            DmgPrevisibleWxRetarget::new_one_hidden_prefix_resume(
+                trigger_x.expect("one-hidden-prefix resumes have a visible trigger"),
+                ctx.window_active_line_counter,
+                window_pixel_offset,
+            )
+        } else {
+            DmgPrevisibleWxRetarget::new(
+                trigger_x.expect("plain restarts have a visible trigger"),
+                ctx.window_active_line_counter,
+                window_pixel_offset,
+            )
+        };
+
+        DmgPrevisibleWxPlan {
+            followup_markers,
+            action: DmgPrevisibleWxPlanAction::ArmRetarget {
+                retarget,
+                onset_glitch,
+                carry,
+            },
+        }
+    }
+
+    fn dmg_late_write_keeps_one_hidden_prefix_resume(pending_distance: u8) -> bool {
+        pending_distance <= Self::DMG_LATE_WRITE_ONE_HIDDEN_PREFIX_KEEP_DISTANCE
+    }
+
+    fn is_dmg_low_wx_cancel_only_retarget(
+        previous_wx: u8,
+        wx: u8,
+        visible_pixels_output: u8,
+    ) -> bool {
+        previous_wx >= Self::DMG_LOW_WX_CANCEL_ONLY_PREVIOUS_WX_MIN
+            && wx < Self::DMG_VISIBLE_WINDOW_ORIGIN_WX
+            && visible_pixels_output == 0
+    }
+
+    fn can_retain_dmg_fifo_prefix_resume(initial_hidden_skip: u8) -> bool {
+        initial_hidden_skip >= Self::DMG_RETAINED_FIFO_PREFIX_RESUME_MIN_HIDDEN_SKIP
+    }
+
+    fn uses_dmg_one_hidden_prefix_resume(
+        initial_hidden_skip: u8,
+        cancel_only_low_wx: bool,
+    ) -> bool {
+        initial_hidden_skip == Self::DMG_ONE_HIDDEN_PREFIX_SKIP && !cancel_only_low_wx
+    }
+
+    fn dmg_retained_fifo_prefix_resume_advances_next_tilemap(initial_hidden_skip: u8) -> bool {
+        initial_hidden_skip >= Self::DMG_RETAINED_FIFO_PREFIX_NEXT_TILEMAP_MIN_HIDDEN_SKIP
+    }
+
+    fn apply_dmg_previsible_wx_plan(&mut self, plan: DmgPrevisibleWxPlan) {
+        self.apply_dmg_previsible_wx_followup_markers(plan.followup_markers);
+
+        match plan.action {
+            DmgPrevisibleWxPlanAction::KeepState => {}
+            DmgPrevisibleWxPlanAction::ClearOnsetGlitch => {
+                self.clear_dmg_previsible_wx_onset_glitch();
+            }
+            DmgPrevisibleWxPlanAction::ClearRetargetAndGapArtifacts => {
+                self.clear_dmg_previsible_wx_retarget_and_gap_artifacts();
+            }
+            DmgPrevisibleWxPlanAction::ArmRetarget {
+                retarget,
+                onset_glitch,
+                carry,
+            } => {
+                self.arm_dmg_previsible_wx_retarget_state(retarget, onset_glitch, carry);
+            }
+        }
+    }
+
+    fn start_window_fetcher_restart_with_row_mode(
+        &mut self,
+        active_line_counter: u8,
+        increment_start_count: bool,
+        window_pixel_offset: u16,
+        preserve_fifo: bool,
+    ) {
         let bg_resume_fetch_pixel = self.bg_pipeline_state.fetcher.next_fetch_pixel;
-        self.bg_pipeline_state.fifo.clear();
-        self.bg_pipeline_state.fifo_cached_pixels.clear();
+        if !preserve_fifo {
+            self.bg_pipeline_state.fifo.clear();
+            self.bg_pipeline_state.fifo_cached_pixels.clear();
+        }
         self.bg_pipeline_state.startup_fifo_placeholders = 0;
         self.bg_pipeline_state.push.reset();
         self.bg_pipeline_state.fill.reset();
-        self.bg_pipeline_state
-            .fetcher
-            .start_window(bg_resume_fetch_pixel);
+        if window_pixel_offset == 0 {
+            self.bg_pipeline_state
+                .fetcher
+                .start_window(bg_resume_fetch_pixel);
+        } else {
+            self.bg_pipeline_state
+                .fetcher
+                .start_window_with_pixel_offset(bg_resume_fetch_pixel, window_pixel_offset);
+        }
         self.bg_pipeline_state.scx_discard_remaining = 0;
         self.bg_pipeline_state.window_started_this_line = true;
+        self.bg_pipeline_state.window_active_line_counter = active_line_counter;
+        if increment_start_count {
+            self.bg_pipeline_state.window_start_count_this_line = self
+                .bg_pipeline_state
+                .window_start_count_this_line
+                .wrapping_add(1);
+        }
         self.bg_pipeline_state.window_force_x0_this_line = false;
+        self.clear_dmg_previsible_wx_restart_transients();
+    }
+
+    fn clear_dmg_previsible_wx_restart_transients(&mut self) {
+        self.clear_dmg_previsible_wx_retarget_state();
+        self.clear_dmg_previsible_wx_followup_markers();
+        self.clear_dmg_previsible_wx_carry();
+        self.clear_dmg_previsible_wx_live_trigger_glitch();
+    }
+
+    fn restore_current_fetcher_cached_slice_to_fifo(&mut self) {
+        let cached = BgCachedSlice::from_fetcher(self.bg_pipeline_state.fetcher);
+        self.bg_pipeline_state.fifo.clear();
+        self.bg_pipeline_state.fifo_cached_pixels.clear();
+        self.bg_pipeline_state
+            .push_cached_slice_fifo_pixels_with_skip(cached, 0);
+    }
+
+    fn apply_dmg_previsible_wx_followup_markers(
+        &mut self,
+        markers: DmgPrevisibleWxFollowupMarkers,
+    ) {
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_uses_visible_wx_once = markers.cancel_uses_visible_wx_once;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_background_override_onset_x =
+            markers.cancel_background_override_onset_x;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_retained_trigger_glitch_x = markers.retained_trigger_glitch_x;
+    }
+
+    fn arm_dmg_previsible_wx_retarget_state(
+        &mut self,
+        retarget: DmgPrevisibleWxRetarget,
+        onset_glitch: Option<u8>,
+        carry: Option<DmgPendingPrevisibleWxCarry>,
+    ) {
+        self.bg_pipeline_state.dmg_previsible_wx_retarget = Some(retarget);
+        self.bg_pipeline_state
+            .dmg_pending_previsible_wx_onset_glitch = onset_glitch;
+        self.bg_pipeline_state.dmg_pending_previsible_wx_carry = carry;
+        self.clear_dmg_previsible_wx_live_trigger_glitch();
+    }
+
+    fn arm_dmg_previsible_wx_live_trigger_glitch(&mut self, trigger_x: u8) {
+        self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch =
+            Some(DmgPendingLiveWxTriggerGlitch::new(trigger_x));
+    }
+
+    fn clear_dmg_previsible_wx_followup_markers(&mut self) {
+        self.apply_dmg_previsible_wx_followup_markers(DmgPrevisibleWxFollowupMarkers::cleared());
+    }
+
+    fn clear_dmg_previsible_wx_followup_overrides(&mut self) {
+        self.bg_pipeline_state
+            .dmg_previsible_wx_cancel_background_override_onset_x = None;
+        self.bg_pipeline_state
+            .dmg_previsible_wx_retained_trigger_glitch_x = None;
+    }
+
+    fn clear_dmg_previsible_wx_retarget_and_gap_artifacts(&mut self) {
+        self.clear_dmg_previsible_wx_retarget_state();
+        self.clear_dmg_previsible_wx_gap_artifacts();
+    }
+
+    fn clear_dmg_previsible_wx_expired_retarget_state(&mut self) {
+        self.clear_dmg_previsible_wx_retarget_state();
+        self.clear_dmg_previsible_wx_followup_overrides();
+        self.clear_dmg_previsible_wx_gap_artifacts();
+    }
+
+    fn clear_dmg_previsible_wx_gap_artifacts(&mut self) {
+        self.clear_dmg_previsible_wx_onset_glitch();
+        self.clear_dmg_previsible_wx_carry();
+    }
+
+    fn clear_dmg_previsible_wx_retarget_state(&mut self) {
+        self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+    }
+
+    fn clear_dmg_previsible_wx_carry(&mut self) {
+        self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
+    }
+
+    fn clear_dmg_previsible_wx_live_trigger_glitch(&mut self) {
+        self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+    }
+
+    fn clear_dmg_previsible_wx_onset_glitch(&mut self) {
+        self.bg_pipeline_state
+            .dmg_pending_previsible_wx_onset_glitch = None;
+    }
+}
+
+const fn window_activation_first_pixel_uses_previous_tilemap(window_tile_row: u8) -> bool {
+    window_tile_row >= 24 && matches!(window_tile_row & 0x07, 0x01 | 0x02 | 0x04 | 0x06)
+}
+
+const WINDOW_ACTIVATION_FIRST_TILE_CURRENT_TILEMAP_MASKS: [[u8; 8]; 15] = [
+    [0x80, 0x40, 0x20, 0xA0, 0x20, 0xA0, 0x40, 0x80],
+    [0xC0, 0x20, 0x90, 0x50, 0x90, 0x50, 0x20, 0xC0],
+    [0xE0, 0x10, 0xC8, 0x28, 0xC8, 0x28, 0x10, 0xE0],
+    [0xF0, 0x08, 0xE4, 0x94, 0xE4, 0x94, 0x08, 0xF0],
+    [0x78, 0x84, 0x72, 0x4A, 0x72, 0x4A, 0x84, 0x78],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+    [0x0F, 0x10, 0x2E, 0x29, 0x2E, 0x29, 0x10, 0x0F],
+    [0x07, 0x08, 0x17, 0x14, 0x17, 0x14, 0x08, 0x07],
+    [0x03, 0x04, 0x0B, 0x0A, 0x0B, 0x0A, 0x04, 0x03],
+    [0x01, 0x02, 0x05, 0x05, 0x05, 0x05, 0x02, 0x01],
+    [0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x01, 0x00],
+    [0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+];
+
+const WINDOW_ACTIVATION_SECOND_TILE_CURRENT_TILEMAP_MASKS: [[u8; 8]; 15] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
+    [0x00, 0x80, 0x40, 0x40, 0x40, 0x40, 0x80, 0x00],
+    [0x80, 0x40, 0x20, 0xA0, 0x20, 0xA0, 0x40, 0x80],
+    [0xC0, 0x20, 0x90, 0x50, 0x90, 0x50, 0x20, 0xC0],
+    [0xE0, 0x10, 0xC8, 0x28, 0xC8, 0x28, 0x10, 0xE0],
+    [0xF0, 0x08, 0xE4, 0x94, 0xE4, 0x94, 0x08, 0xF0],
+    [0x78, 0x84, 0x72, 0x4A, 0x72, 0x4A, 0x84, 0x78],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_LOW_MASKS: [[u8; 8]; 15] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xE0, 0x10, 0xC8, 0x28, 0xC8, 0x28, 0x10, 0xE0],
+    [0xF0, 0x08, 0xE4, 0x94, 0xE4, 0x94, 0x08, 0xF0],
+    [0x78, 0x84, 0x72, 0x4A, 0x72, 0x4A, 0x84, 0x78],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+    [0x0F, 0x10, 0x2E, 0x29, 0x2E, 0x29, 0x10, 0x0F],
+    [0x07, 0x08, 0x17, 0x14, 0x17, 0x14, 0x08, 0x07],
+    [0x03, 0x04, 0x0B, 0x0A, 0x0B, 0x0A, 0x04, 0x03],
+    [0x01, 0x02, 0x05, 0x05, 0x05, 0x05, 0x02, 0x01],
+    [0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x01, 0x00],
+    [0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_HIGH_MASKS: [[u8; 8]; 15] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+    [0x0F, 0x10, 0x2E, 0x29, 0x2E, 0x29, 0x10, 0x0F],
+    [0x07, 0x08, 0x17, 0x14, 0x17, 0x14, 0x08, 0x07],
+    [0x03, 0x04, 0x0B, 0x0A, 0x0B, 0x0A, 0x04, 0x03],
+    [0x01, 0x02, 0x05, 0x05, 0x05, 0x05, 0x02, 0x01],
+    [0x00, 0x01, 0x02, 0x02, 0x02, 0x02, 0x01, 0x00],
+    [0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_NEXT_TILE_PREVIOUS_LOW_MASKS: [[u8; 8]; 15] = [
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
+    [0x00, 0x80, 0x40, 0x40, 0x40, 0x40, 0x80, 0x00],
+    [0x80, 0x40, 0x20, 0xA0, 0x20, 0xA0, 0x40, 0x80],
+    [0xC0, 0x20, 0x90, 0x50, 0x90, 0x50, 0x20, 0xC0],
+    [0xE0, 0x10, 0xC8, 0x28, 0xC8, 0x28, 0x10, 0xE0],
+    [0xF0, 0x08, 0xE4, 0x94, 0xE4, 0x94, 0x08, 0xF0],
+    [0x78, 0x84, 0x72, 0x4A, 0x72, 0x4A, 0x84, 0x78],
+    [0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C],
+    [0x1E, 0x21, 0x5C, 0x52, 0x5C, 0x52, 0x21, 0x1E],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_NEXT_TILE_PREVIOUS_HIGH_MASKS: [[u8; 8]; 15] = [
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_LOW_MASKS: [[u8; 8]; 15] = [
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+];
+
+const WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_HIGH_MASKS: [[u8; 8]; 15] = [
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    [0x00, 0x00, 0x80, 0x80, 0x80, 0x80, 0x00, 0x00],
+];
+
+const fn window_activation_tile_current_tilemap_mask(
+    fetch_x: u16,
+    window_tile_row: u8,
+) -> Option<u8> {
+    if window_tile_row < 24 || window_tile_row >= 144 {
+        return None;
+    }
+
+    let block = ((window_tile_row - 24) / 8) as usize;
+    let row = (window_tile_row & 0x07) as usize;
+    match fetch_x {
+        0 => Some(WINDOW_ACTIVATION_FIRST_TILE_CURRENT_TILEMAP_MASKS[block][row]),
+        x if x == BG_TILE_WIDTH as u16 => {
+            Some(WINDOW_ACTIVATION_SECOND_TILE_CURRENT_TILEMAP_MASKS[block][row])
+        }
+        x if x == BG_TILE_WIDTH as u16 * 2 => match window_tile_row {
+            112..=127 => Some(0x00),
+            128..=143 => Some(0xFF),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub(super) const fn window_lcdc4_unsigned_to_signed_previous_plane_masks(
+    fetch_x: u16,
+    window_tile_row: u8,
+) -> Option<PerPlane<u8>> {
+    if window_tile_row < 24 || window_tile_row >= 144 {
+        return None;
+    }
+
+    let block = ((window_tile_row - 24) / 8) as usize;
+    let row = (window_tile_row & 0x07) as usize;
+    match fetch_x {
+        0 => Some(PerPlane::new(
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_LOW_MASKS[block][row],
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_CURRENT_TILE_PREVIOUS_HIGH_MASKS[block][row],
+        )),
+        x if x == BG_TILE_WIDTH as u16 => Some(PerPlane::new(
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_NEXT_TILE_PREVIOUS_LOW_MASKS[block][row],
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_NEXT_TILE_PREVIOUS_HIGH_MASKS[block][row],
+        )),
+        x if x == BG_TILE_WIDTH as u16 * 2 => Some(PerPlane::new(
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_LOW_MASKS[block][row],
+            WINDOW_LCDC4_UNSIGNED_TO_SIGNED_THIRD_TILE_PREVIOUS_HIGH_MASKS[block][row],
+        )),
+        _ => None,
     }
 }

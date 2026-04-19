@@ -358,10 +358,12 @@ pub struct Ppu {
     current_scanline_pixels: [u8; SCREEN_WIDTH],
     current_scanline_bg_pixels: [u8; SCREEN_WIDTH],
     current_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
+    current_scanline_bg_dot_contexts: [Option<PpuRecentBgDotContext>; SCREEN_WIDTH],
     current_scanline_dmg_bg_forced_white: [bool; SCREEN_WIDTH],
     previous_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
     previous_scanline_dmg_bg_forced_white: [bool; SCREEN_WIDTH],
     previous_scanline_ly: Option<u8>,
+    pending_dmg_window_lcdc4_output_repaint: Option<BgTileDataSelect>,
     framebuffer: Vec<u8>,
 }
 

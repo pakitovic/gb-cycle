@@ -92,4 +92,4 @@ run-cpp:
 
 run-mealybug:
 	$(MAKE) fetch-test-roms FAMILIES=mealybug-tearoom-tests
-	cargo test --release -p gb-test-runner --test external -- --ignored --exact mealybug_curated_suite_updates_report_from_repo_store --no-capture
+	cargo test --release -p gb-test-runner --test external -- --ignored --exact mealybug_curated_suite_passes_from_repo_store --no-capture

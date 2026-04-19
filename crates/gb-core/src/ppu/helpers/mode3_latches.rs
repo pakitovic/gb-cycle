@@ -47,8 +47,15 @@ impl PpuMode3RegisterLatches {
         }
     }
 
-    pub(in crate::ppu) const fn window_fetch_registers(self) -> PpuVisibleRegisters {
-        self.visible
+    pub(in crate::ppu) const fn window_fetch_registers(
+        self,
+        use_pipeline_snapshot: bool,
+    ) -> PpuVisibleRegisters {
+        if use_pipeline_snapshot {
+            self.pipeline
+        } else {
+            self.visible
+        }
     }
 
     pub(in crate::ppu) const fn window_activation_registers(
@@ -149,6 +156,16 @@ impl PpuMode3LiveRegisterWriteContext {
         self.lcdc_changed(LCDC_BG_TILE_MAP_BIT)
     }
 
+    pub(in crate::ppu) const fn bgwin_tilemap_select_changed(
+        self,
+        source: PpuBgFetcherSource,
+    ) -> bool {
+        self.lcdc_changed(match source {
+            PpuBgFetcherSource::Background => LCDC_BG_TILE_MAP_BIT,
+            PpuBgFetcherSource::Window => LCDC_WINDOW_TILE_MAP_BIT,
+        })
+    }
+
     pub(in crate::ppu) const fn bg_window_tile_data_select_changed(self) -> bool {
         self.lcdc_changed(LCDC_BG_WINDOW_TILE_DATA_BIT)
     }
@@ -183,6 +200,7 @@ impl PpuMode3LiveRegisterWriteContext {
 pub(in crate::ppu) struct PpuMode3LiveBackgroundRefetchContext {
     registers: PpuVisibleRegisters,
     ly: u8,
+    window_line_counter: u8,
     last_unsigned_tile_data_low_fetch: u8,
     last_unsigned_tile_data_high_fetch: u8,
 }
@@ -191,12 +209,14 @@ impl PpuMode3LiveBackgroundRefetchContext {
     pub(in crate::ppu) const fn new(
         registers: PpuVisibleRegisters,
         ly: u8,
+        window_line_counter: u8,
         last_unsigned_tile_data_low_fetch: u8,
         last_unsigned_tile_data_high_fetch: u8,
     ) -> Self {
         Self {
             registers,
             ly,
+            window_line_counter,
             last_unsigned_tile_data_low_fetch,
             last_unsigned_tile_data_high_fetch,
         }
@@ -212,6 +232,10 @@ impl PpuMode3LiveBackgroundRefetchContext {
 
     pub(in crate::ppu) const fn current_scanline_tile_row(self) -> u16 {
         (self.registers.scy.wrapping_add(self.ly) % BG_TILE_WIDTH) as u16
+    }
+
+    pub(in crate::ppu) const fn current_window_tile_row(self) -> u16 {
+        (self.window_line_counter % BG_TILE_WIDTH) as u16
     }
 
     pub(in crate::ppu) const fn last_unsigned_tile_data_low_fetch(self) -> u8 {
@@ -342,6 +366,17 @@ impl PpuMode3WindowActivationState {
 
     pub(in crate::ppu) const fn is_wx_166(self) -> bool {
         self.registers.wx == 166 && !self.force_x0_this_line
+    }
+
+    pub(in crate::ppu) const fn low_wx_hidden_trigger_transfer_x(self) -> Option<u8> {
+        if self.force_x0_this_line {
+            return None;
+        }
+
+        match self.registers.wx {
+            1..=6 => Some(self.registers.wx + 1),
+            _ => None,
+        }
     }
 
     pub(in crate::ppu) const fn trigger_x(self) -> Option<u8> {
