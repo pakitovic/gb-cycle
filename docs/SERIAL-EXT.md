@@ -742,6 +742,24 @@ behavior:
 - the optimization only removes per-`T-cycle` desktop telemetry work when the
   investigative profiler is disabled
 
+### Phase 7.6.c status
+
+The first measured linked-session core optimization now targets the desktop path
+that advances linked machines every `T-cycle`:
+
+- `LinkedMachines` now reuses per-machine `CycleContext` scratch state instead
+  of allocating fresh context vectors for every linked `T-cycle`
+- `gb-desktop` and the linked test runner now use the no-result linked stepping
+  path when they only need to advance time, so they avoid cloning
+  `LinkedStepResult` state on every cycle
+- linked desktop emulation profiling now replays the real linked observer path,
+  so sampled `CPU`, `PPU`, and `core_other` buckets stay populated for
+  two-console `DMG-04` sessions
+
+This keeps the existing linked timing model intact while removing avoidable
+linked-session host/core coordination overhead and making the next optimization
+pass measurable.
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`

@@ -288,10 +288,10 @@ impl RunnerLinkedMachines {
     fn step_t_cycle(&mut self) {
         self.with_linked_mut(
             |linked| {
-                linked.step_t_cycle();
+                linked.advance_t_cycle();
             },
             |linked| {
-                linked.step_t_cycle();
+                linked.advance_t_cycle();
             },
         );
     }

@@ -123,7 +123,7 @@ impl DesktopEmulationSession {
                 let _ = machine.step_t_cycle();
             }
             Self::LinkedDmg04TwoPlayer(linked) => {
-                let _ = linked.step_t_cycle();
+                linked.advance_t_cycle();
             }
         }
     }
@@ -134,7 +134,7 @@ impl DesktopEmulationSession {
                 let _ = machine.step_t_cycle_with_observer(observer);
             }
             Self::LinkedDmg04TwoPlayer(linked) => {
-                let _ = linked.step_t_cycle();
+                linked.advance_t_cycle_with_observer(observer);
             }
         }
     }

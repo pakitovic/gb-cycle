@@ -8060,6 +8060,27 @@ mod tests {
     }
 
     #[test]
+    fn linked_emulation_profile_request_replays_core_regions() {
+        let primary = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let secondary = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let linked =
+            super::DesktopEmulationSession::new_linked_dmg04_two_player(primary, secondary)
+                .expect("matching machines should create a linked desktop session");
+        let request = super::EmulationProfileRequest::new(linked);
+
+        let completed =
+            super::profile_emulation_work_item(request.into_work_item(Duration::from_millis(11)));
+
+        assert_eq!(completed.emulation_duration, Duration::from_millis(11));
+        assert!(completed.breakdown.core_duration() > Duration::ZERO);
+        assert!(completed.breakdown.core_ppu_duration > Duration::ZERO);
+    }
+
+    #[test]
     fn async_emulation_profile_worker_and_counter_collect_samples() {
         let machine = Machine::new_summary(
             MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),

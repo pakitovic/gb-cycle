@@ -55,6 +55,10 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 - The detailed frame-boundary, scanline, and `LY=0` stall counters are only
   collected while `GB_CYCLE_DESKTOP_EMU_PROFILE` is enabled, so normal desktop
   gameplay does not pay that extra per-`T-cycle` frontend bookkeeping cost.
+- Linked-session profile replays now also use the linked observer stepping
+  path, so sampled `CPU`, `PPU`, and `core_other` buckets remain populated for
+  local `DMG-04` runs instead of collapsing to zero during the background
+  replay.
 - Override the sampling stride with `GB_CYCLE_DESKTOP_EMU_PROFILE=summary:<frames>` when you need denser or lighter sampling during an investigation.
 - That profiler is investigative timing only: it does not alter emulation semantics, it is disabled by default, and it is designed to minimize main-thread intrusion while still separating likely core cost from host overhead when a commercial ROM path drops below full speed.
 

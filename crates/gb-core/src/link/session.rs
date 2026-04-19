@@ -1,7 +1,7 @@
 use super::dmg04::Dmg04Cable;
 use crate::debugger::{TraceBuffer, TraceSink};
 use crate::external_port::ExternalPortAttachmentKind;
-use crate::machine::{Machine, NoopMachineStepObserver};
+use crate::machine::{Machine, MachineStepObserver, NoopMachineStepObserver};
 use crate::scheduler::{CycleContext, GlobalScheduler, SchedulerPhase, TCycle};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,14 +53,14 @@ pub struct LinkedMachines<S = TraceBuffer> {
     scheduler: GlobalScheduler,
     machines: Vec<Machine<S>>,
     topology: LinkTopology,
+    contexts: Vec<CycleContext>,
 }
 
 impl<S: TraceSink> LinkedMachines<S> {
     pub fn new(machines: Vec<Machine<S>>) -> Result<Self, LinkedMachinesError> {
-        if machines.len() < 2 {
-            return Err(LinkedMachinesError::TooFewMachines {
-                count: machines.len(),
-            });
+        let count = machines.len();
+        if count < 2 {
+            return Err(LinkedMachinesError::TooFewMachines { count });
         }
 
         let expected = machines[0].next_t_cycle();
@@ -82,6 +82,7 @@ impl<S: TraceSink> LinkedMachines<S> {
             scheduler,
             machines,
             topology: LinkTopology::None,
+            contexts: vec![CycleContext::for_cycle(expected); count],
         })
     }
 
@@ -149,21 +150,32 @@ impl<S: TraceSink> LinkedMachines<S> {
     }
 
     pub fn step_t_cycle(&mut self) -> LinkedStepResult {
+        self.advance_t_cycle_with_observer(&mut NoopMachineStepObserver);
+        LinkedStepResult {
+            contexts: self.contexts.clone(),
+        }
+    }
+
+    pub fn advance_t_cycle(&mut self) {
+        self.advance_t_cycle_with_observer(&mut NoopMachineStepObserver);
+    }
+
+    pub fn advance_t_cycle_with_observer<O: MachineStepObserver>(&mut self, observer: &mut O) {
         let t_cycle = self.scheduler.next_t_cycle();
-        let mut contexts = Vec::with_capacity(self.machines.len());
-        for _ in 0..self.machines.len() {
-            contexts.push(CycleContext::for_cycle(t_cycle));
+        debug_assert_eq!(self.contexts.len(), self.machines.len());
+        for context in &mut self.contexts {
+            context.reset_for_cycle(t_cycle);
         }
 
         for &phase in SchedulerPhase::all() {
-            for context in &mut contexts {
+            for context in &mut self.contexts {
                 context.enter_phase(phase);
             }
 
             self.prepare_phase(phase);
 
-            for (machine, context) in self.machines.iter_mut().zip(contexts.iter_mut()) {
-                machine.step_phase_with_context(context, &mut NoopMachineStepObserver);
+            for (machine, context) in self.machines.iter_mut().zip(self.contexts.iter_mut()) {
+                machine.step_phase_with_context(context, observer);
             }
         }
 
@@ -172,8 +184,6 @@ impl<S: TraceSink> LinkedMachines<S> {
         for machine in &mut self.machines {
             machine.sync_scheduler_next_t_cycle(next_t_cycle);
         }
-
-        LinkedStepResult { contexts }
     }
 
     fn prepare_phase(&mut self, phase: SchedulerPhase) {
@@ -196,10 +206,27 @@ impl LinkTopology {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::machine::MachineStepObserver;
     use crate::model::{ConsoleModel, MachineConfig, StartupMode};
 
     fn dmg_skip_boot_machine() -> Machine {
         Machine::new(MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot))
+    }
+
+    #[derive(Default)]
+    struct RegionCountObserver {
+        machine_regions: usize,
+        ppu_regions: usize,
+    }
+
+    impl MachineStepObserver for RegionCountObserver {
+        fn begin_region(&mut self, _region: crate::machine::MachineStepRegion) {
+            self.machine_regions += 1;
+        }
+
+        fn begin_ppu_region(&mut self, _region: crate::ppu::PpuStepRegion) {
+            self.ppu_regions += 1;
+        }
     }
 
     #[test]
@@ -255,6 +282,20 @@ mod tests {
             linked.machine(1).map(Machine::next_t_cycle),
             Some(TCycle::new(1))
         );
+    }
+
+    #[test]
+    fn linked_machines_can_step_with_an_observer_without_materializing_a_result() {
+        let mut linked =
+            LinkedMachines::new(vec![dmg_skip_boot_machine(), dmg_skip_boot_machine()])
+                .expect("matching machines should link");
+        let mut observer = RegionCountObserver::default();
+
+        linked.advance_t_cycle_with_observer(&mut observer);
+
+        assert_eq!(linked.next_t_cycle(), TCycle::new(1));
+        assert!(observer.machine_regions > 0);
+        assert!(observer.ppu_regions > 0);
     }
 
     #[test]
