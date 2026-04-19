@@ -290,6 +290,98 @@ mod tests {
     }
 
     #[test]
+    fn open_restores_existing_battery_backed_save_from_disk() {
+        let root = temp_save_root();
+        let key = CartridgeSaveKey::new("restore".to_string()).expect("key should be valid");
+        let mut saved_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        mutate_mbc2_persistent_state(&mut saved_machine, 0x0A);
+        let expected_state = saved_machine.cartridge().persistent_state();
+
+        let mut backend = FilesystemCartridgeSaveBackend::new(&root);
+        backend
+            .save(
+                &key,
+                saved_machine.cartridge().persistence_metadata(),
+                &expected_state,
+            )
+            .expect("pre-existing save should write");
+
+        let mut restored_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let session = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::Manual,
+            Some(key.clone()),
+            &mut restored_machine,
+        )
+        .expect("save session should load an existing save")
+        .expect("battery-backed cartridge should create a session");
+
+        assert_eq!(
+            session.save_path(),
+            root.join(format!("{}.gbsav", key.as_str()))
+        );
+        assert_eq!(
+            restored_machine.cartridge().persistent_state(),
+            expected_state
+        );
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn open_surfaces_corrupt_existing_save_files() {
+        let root = temp_save_root();
+        let key = CartridgeSaveKey::new("corrupt".to_string()).expect("key should be valid");
+        let backend = FilesystemCartridgeSaveBackend::new(&root);
+        fs::write(backend.path_for_key(&key), b"not-a-valid-save")
+            .expect("corrupt save payload should write");
+        let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+
+        let error = match DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::Manual,
+            Some(key),
+            &mut machine,
+        ) {
+            Ok(_) => panic!("corrupt save payloads should surface as load errors"),
+            Err(error) => error,
+        };
+        assert!(error.contains("failed to load save"));
+        assert!(error.contains(".gbsav"));
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn on_close_policy_defers_frame_boundary_flushes_but_flushes_when_closed() {
+        let root = temp_save_root();
+        let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let mut session = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::OnClose,
+            Some(CartridgeSaveKey::new("on-close".to_string()).expect("key should be valid")),
+            &mut machine,
+        )
+        .expect("on-close save session should open")
+        .expect("battery-backed cartridge should create a session");
+        mutate_mbc2_persistent_state(&mut machine, 0x05);
+
+        assert!(
+            !session
+                .maybe_flush_at_frame_boundary(&machine, Instant::now())
+                .expect("frame-boundary checks should be skipped for on-close sessions")
+        );
+        assert!(!session.save_path().exists());
+
+        session
+            .close(&machine)
+            .expect("on-close sessions should flush when the session closes");
+        assert!(session.save_path().is_file());
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
     fn open_returns_none_without_a_root_key_or_battery_backed_cartridge() {
         let root = temp_save_root();
         let mut battery_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
