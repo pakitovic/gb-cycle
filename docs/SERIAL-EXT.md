@@ -729,6 +729,19 @@ optimization work:
 - it gives the next optimization subphase a stable single-versus-linked command
   path to compare
 
+### Phase 7.6.b status
+
+The first low-risk linked desktop optimization now trims frontend-only
+bookkeeping from normal gameplay without changing linked timing or hardware
+behavior:
+
+- detailed frame-boundary, scanline, and `LY=0` stall telemetry inside
+  `gb-desktop` is now gated behind `GB_CYCLE_DESKTOP_EMU_PROFILE`
+- linked and single sessions still step through the same `strict`
+  `gb-core`/`LinkedMachines` path
+- the optimization only removes per-`T-cycle` desktop telemetry work when the
+  investigative profiler is disabled
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`

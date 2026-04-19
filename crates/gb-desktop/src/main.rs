@@ -3847,6 +3847,7 @@ fn step_until_next_frame(
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<StepUntilNextFrameResult, String> {
+    let collect_frame_telemetry = context.performance_counter.emulation_profile_enabled();
     let frame_start_ly = context.machine.ppu().ly();
     let frame_start_dot = context.machine.ppu().line_dot();
     let mut current_scanline_ly = frame_start_ly;
@@ -3946,7 +3947,6 @@ fn step_until_next_frame(
                 context.runtime,
                 context.machine,
             );
-            current_scanline_t_cycles += 1;
             context
                 .runtime
                 .trace_capture
@@ -3962,148 +3962,158 @@ fn step_until_next_frame(
 
             let current_ly = context.machine.ppu().ly();
             let current_dot = context.machine.ppu().line_dot();
-            let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
-            let current_access_mode = context.machine.ppu().access_mode();
-            let current_mode_dot = context.machine.ppu().mode_dot();
-            let startup_mode0_active = context.machine.ppu().is_startup_mode0_window_active();
-            let blank_frame_active = context.machine.ppu().is_blank_frame_active();
-            let current_lcd_enabled = context.machine.ppu().lcd_state().is_enabled();
-            let current_cpu_execution_state = context.machine.cpu().execution_state();
-            if !current_lcd_enabled {
-                lcd_disabled_t_cycles = lcd_disabled_t_cycles.saturating_add(1);
-                if current_ly == 0 {
-                    ly_0_lcd_disabled_t_cycles = ly_0_lcd_disabled_t_cycles.saturating_add(1);
-                }
-            }
-            match (previous_lcd_enabled, current_lcd_enabled) {
-                (true, false) => {
-                    lcd_disable_transitions = lcd_disable_transitions.saturating_add(1);
-                }
-                (false, true) => {
-                    lcd_enable_transitions = lcd_enable_transitions.saturating_add(1);
-                }
-                _ => {}
-            }
-            match current_cpu_execution_state {
-                CpuExecutionState::Stopped => {
-                    cpu_stop_t_cycles = cpu_stop_t_cycles.saturating_add(1);
-                    if current_ly == 0 {
-                        ly_0_cpu_stop_t_cycles = ly_0_cpu_stop_t_cycles.saturating_add(1);
-                    }
-                }
-                CpuExecutionState::ZombieStopped => {
-                    cpu_zombie_stop_t_cycles = cpu_zombie_stop_t_cycles.saturating_add(1);
-                    if current_ly == 0 {
-                        ly_0_cpu_zombie_stop_t_cycles =
-                            ly_0_cpu_zombie_stop_t_cycles.saturating_add(1);
-                    }
-                }
-                _ => {}
-            }
-            if current_mode0_start_dot > max_mode0_start_dot {
-                max_mode0_start_dot = current_mode0_start_dot;
-                max_mode0_start_dot_ly = current_ly;
-            }
-            if current_ly == 0 {
-                ly_0_max_mode0_start_dot = ly_0_max_mode0_start_dot.max(current_mode0_start_dot);
-            }
-            if current_ly == 0 && current_ly == previous_ly && current_dot == previous_dot {
-                ly_0_stall_t_cycles = ly_0_stall_t_cycles.saturating_add(1);
-                match current_access_mode {
-                    PpuAccessMode::HBlank => {
-                        ly_0_stall_hblank_t_cycles = ly_0_stall_hblank_t_cycles.saturating_add(1);
-                    }
-                    PpuAccessMode::OamScan => {
-                        ly_0_stall_oam_t_cycles = ly_0_stall_oam_t_cycles.saturating_add(1);
-                    }
-                    PpuAccessMode::Drawing => {
-                        ly_0_stall_drawing_t_cycles = ly_0_stall_drawing_t_cycles.saturating_add(1);
-                    }
-                    PpuAccessMode::VBlank => {}
-                }
-                if startup_mode0_active {
-                    ly_0_stall_startup_mode0_t_cycles =
-                        ly_0_stall_startup_mode0_t_cycles.saturating_add(1);
-                }
-                if blank_frame_active {
-                    ly_0_stall_blank_frame_t_cycles =
-                        ly_0_stall_blank_frame_t_cycles.saturating_add(1);
-                }
+            if collect_frame_telemetry {
+                let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
+                let current_access_mode = context.machine.ppu().access_mode();
+                let current_mode_dot = context.machine.ppu().mode_dot();
+                let startup_mode0_active = context.machine.ppu().is_startup_mode0_window_active();
+                let blank_frame_active = context.machine.ppu().is_blank_frame_active();
+                let current_lcd_enabled = context.machine.ppu().lcd_state().is_enabled();
+                let current_cpu_execution_state = context.machine.cpu().execution_state();
+                current_scanline_t_cycles += 1;
                 if !current_lcd_enabled {
-                    ly_0_stall_lcd_disabled_t_cycles =
-                        ly_0_stall_lcd_disabled_t_cycles.saturating_add(1);
+                    lcd_disabled_t_cycles = lcd_disabled_t_cycles.saturating_add(1);
+                    if current_ly == 0 {
+                        ly_0_lcd_disabled_t_cycles = ly_0_lcd_disabled_t_cycles.saturating_add(1);
+                    }
+                }
+                match (previous_lcd_enabled, current_lcd_enabled) {
+                    (true, false) => {
+                        lcd_disable_transitions = lcd_disable_transitions.saturating_add(1);
+                    }
+                    (false, true) => {
+                        lcd_enable_transitions = lcd_enable_transitions.saturating_add(1);
+                    }
+                    _ => {}
                 }
                 match current_cpu_execution_state {
                     CpuExecutionState::Stopped => {
-                        ly_0_stall_cpu_stop_t_cycles =
-                            ly_0_stall_cpu_stop_t_cycles.saturating_add(1);
+                        cpu_stop_t_cycles = cpu_stop_t_cycles.saturating_add(1);
+                        if current_ly == 0 {
+                            ly_0_cpu_stop_t_cycles = ly_0_cpu_stop_t_cycles.saturating_add(1);
+                        }
                     }
                     CpuExecutionState::ZombieStopped => {
-                        ly_0_stall_cpu_zombie_stop_t_cycles =
-                            ly_0_stall_cpu_zombie_stop_t_cycles.saturating_add(1);
+                        cpu_zombie_stop_t_cycles = cpu_zombie_stop_t_cycles.saturating_add(1);
+                        if current_ly == 0 {
+                            ly_0_cpu_zombie_stop_t_cycles =
+                                ly_0_cpu_zombie_stop_t_cycles.saturating_add(1);
+                        }
                     }
                     _ => {}
                 }
-                if ly_0_current_stall_run_t_cycles == 0 {
-                    ly_0_stall_runs = ly_0_stall_runs.saturating_add(1);
+                if current_mode0_start_dot > max_mode0_start_dot {
+                    max_mode0_start_dot = current_mode0_start_dot;
+                    max_mode0_start_dot_ly = current_ly;
                 }
-                ly_0_current_stall_run_t_cycles = ly_0_current_stall_run_t_cycles.saturating_add(1);
-                if ly_0_current_stall_run_t_cycles > ly_0_max_stall_run_t_cycles {
-                    ly_0_max_stall_run_t_cycles = ly_0_current_stall_run_t_cycles;
-                    ly_0_max_stall_dot = current_dot;
-                    ly_0_max_stall_mode_dot = current_mode_dot;
+                if current_ly == 0 {
+                    ly_0_max_mode0_start_dot =
+                        ly_0_max_mode0_start_dot.max(current_mode0_start_dot);
                 }
-            } else {
-                ly_0_current_stall_run_t_cycles = 0;
-            }
-            if current_dot == 0 && previous_dot != 0 {
-                match (previous_ly, current_ly) {
-                    (153, 0) => {
-                        ly_153_to_0_transitions = ly_153_to_0_transitions.saturating_add(1);
-                        if startup_mode0_active {
-                            ly_153_to_0_startup_mode0 = ly_153_to_0_startup_mode0.saturating_add(1);
+                if current_ly == 0 && current_ly == previous_ly && current_dot == previous_dot {
+                    ly_0_stall_t_cycles = ly_0_stall_t_cycles.saturating_add(1);
+                    match current_access_mode {
+                        PpuAccessMode::HBlank => {
+                            ly_0_stall_hblank_t_cycles =
+                                ly_0_stall_hblank_t_cycles.saturating_add(1);
                         }
-                        if blank_frame_active {
-                            ly_153_to_0_blank_frame = ly_153_to_0_blank_frame.saturating_add(1);
+                        PpuAccessMode::OamScan => {
+                            ly_0_stall_oam_t_cycles = ly_0_stall_oam_t_cycles.saturating_add(1);
                         }
+                        PpuAccessMode::Drawing => {
+                            ly_0_stall_drawing_t_cycles =
+                                ly_0_stall_drawing_t_cycles.saturating_add(1);
+                        }
+                        PpuAccessMode::VBlank => {}
                     }
-                    (0, 0) => {
-                        ly_0_self_wraps = ly_0_self_wraps.saturating_add(1);
-                        if startup_mode0_active {
-                            ly_0_self_wrap_startup_mode0 =
-                                ly_0_self_wrap_startup_mode0.saturating_add(1);
-                        }
-                        if blank_frame_active {
-                            ly_0_self_wrap_blank_frame =
-                                ly_0_self_wrap_blank_frame.saturating_add(1);
-                        }
+                    if startup_mode0_active {
+                        ly_0_stall_startup_mode0_t_cycles =
+                            ly_0_stall_startup_mode0_t_cycles.saturating_add(1);
                     }
-                    (0, 1) => {
-                        ly_0_to_1_transitions = ly_0_to_1_transitions.saturating_add(1);
-                        ly_0_scanline_t_cycles = current_scanline_t_cycles;
+                    if blank_frame_active {
+                        ly_0_stall_blank_frame_t_cycles =
+                            ly_0_stall_blank_frame_t_cycles.saturating_add(1);
                     }
-                    _ => {}
+                    if !current_lcd_enabled {
+                        ly_0_stall_lcd_disabled_t_cycles =
+                            ly_0_stall_lcd_disabled_t_cycles.saturating_add(1);
+                    }
+                    match current_cpu_execution_state {
+                        CpuExecutionState::Stopped => {
+                            ly_0_stall_cpu_stop_t_cycles =
+                                ly_0_stall_cpu_stop_t_cycles.saturating_add(1);
+                        }
+                        CpuExecutionState::ZombieStopped => {
+                            ly_0_stall_cpu_zombie_stop_t_cycles =
+                                ly_0_stall_cpu_zombie_stop_t_cycles.saturating_add(1);
+                        }
+                        _ => {}
+                    }
+                    if ly_0_current_stall_run_t_cycles == 0 {
+                        ly_0_stall_runs = ly_0_stall_runs.saturating_add(1);
+                    }
+                    ly_0_current_stall_run_t_cycles =
+                        ly_0_current_stall_run_t_cycles.saturating_add(1);
+                    if ly_0_current_stall_run_t_cycles > ly_0_max_stall_run_t_cycles {
+                        ly_0_max_stall_run_t_cycles = ly_0_current_stall_run_t_cycles;
+                        ly_0_max_stall_dot = current_dot;
+                        ly_0_max_stall_mode_dot = current_mode_dot;
+                    }
+                } else {
+                    ly_0_current_stall_run_t_cycles = 0;
                 }
+                if current_dot == 0 && previous_dot != 0 {
+                    match (previous_ly, current_ly) {
+                        (153, 0) => {
+                            ly_153_to_0_transitions = ly_153_to_0_transitions.saturating_add(1);
+                            if startup_mode0_active {
+                                ly_153_to_0_startup_mode0 =
+                                    ly_153_to_0_startup_mode0.saturating_add(1);
+                            }
+                            if blank_frame_active {
+                                ly_153_to_0_blank_frame = ly_153_to_0_blank_frame.saturating_add(1);
+                            }
+                        }
+                        (0, 0) => {
+                            ly_0_self_wraps = ly_0_self_wraps.saturating_add(1);
+                            if startup_mode0_active {
+                                ly_0_self_wrap_startup_mode0 =
+                                    ly_0_self_wrap_startup_mode0.saturating_add(1);
+                            }
+                            if blank_frame_active {
+                                ly_0_self_wrap_blank_frame =
+                                    ly_0_self_wrap_blank_frame.saturating_add(1);
+                            }
+                        }
+                        (0, 1) => {
+                            ly_0_to_1_transitions = ly_0_to_1_transitions.saturating_add(1);
+                            ly_0_scanline_t_cycles = current_scanline_t_cycles;
+                        }
+                        _ => {}
+                    }
+                }
+                if current_dot == 0 && current_ly != current_scanline_ly {
+                    scanline_transitions = scanline_transitions.saturating_add(1);
+                    if current_scanline_t_cycles > max_scanline_t_cycles {
+                        max_scanline_t_cycles = current_scanline_t_cycles;
+                        max_scanline_ly = current_scanline_ly;
+                    }
+                    if current_scanline_t_cycles > EXPECTED_SCANLINE_T_CYCLES {
+                        scanlines_over_456 = scanlines_over_456.saturating_add(1);
+                    }
+                    current_scanline_ly = current_ly;
+                    current_scanline_t_cycles = 0;
+                }
+                previous_ly = current_ly;
+                previous_dot = current_dot;
+                previous_lcd_enabled = current_lcd_enabled;
             }
-            if current_dot == 0 && current_ly != current_scanline_ly {
-                scanline_transitions = scanline_transitions.saturating_add(1);
-                if current_scanline_t_cycles > max_scanline_t_cycles {
-                    max_scanline_t_cycles = current_scanline_t_cycles;
-                    max_scanline_ly = current_scanline_ly;
-                }
-                if current_scanline_t_cycles > EXPECTED_SCANLINE_T_CYCLES {
-                    scanlines_over_456 = scanlines_over_456.saturating_add(1);
-                }
-                current_scanline_ly = current_ly;
-                current_scanline_t_cycles = 0;
-            }
-            previous_ly = current_ly;
-            previous_dot = current_dot;
-            previous_lcd_enabled = current_lcd_enabled;
 
             let now_at_frame_origin = current_ly == 0 && current_dot == 0;
             if now_at_frame_origin && !at_frame_origin {
-                frame_origin_crossings = frame_origin_crossings.saturating_add(1);
+                if collect_frame_telemetry {
+                    frame_origin_crossings = frame_origin_crossings.saturating_add(1);
+                }
                 if let Some(audio_output) = &mut context.runtime.audio_output {
                     let audio_submit_started_at = profile_request.as_ref().map(|_| Instant::now());
                     audio_output.submit_captured_samples()?;
@@ -4129,49 +4139,53 @@ fn step_until_next_frame(
                 return Ok(StepUntilNextFrameResult {
                     signal: LoopSignal::Continue,
                     emulation_profile_request: profile_request,
-                    frame_loop_telemetry: FrameLoopTelemetry {
-                        start_ly: frame_start_ly,
-                        start_dot: frame_start_dot,
-                        end_ly: current_ly,
-                        end_dot: current_dot,
-                        stepped_t_cycles,
-                        frame_origin_crossings,
-                        scanline_transitions,
-                        scanlines_over_456,
-                        max_scanline_t_cycles,
-                        max_scanline_ly,
-                        max_mode0_start_dot,
-                        max_mode0_start_dot_ly,
-                        ly_153_to_0_transitions,
-                        ly_153_to_0_startup_mode0,
-                        ly_153_to_0_blank_frame,
-                        ly_0_self_wraps,
-                        ly_0_self_wrap_startup_mode0,
-                        ly_0_self_wrap_blank_frame,
-                        ly_0_to_1_transitions,
-                        ly_0_scanline_t_cycles,
-                        ly_0_max_mode0_start_dot,
-                        ly_0_stall_t_cycles,
-                        ly_0_stall_hblank_t_cycles,
-                        ly_0_stall_oam_t_cycles,
-                        ly_0_stall_drawing_t_cycles,
-                        ly_0_stall_startup_mode0_t_cycles,
-                        ly_0_stall_blank_frame_t_cycles,
-                        ly_0_stall_runs,
-                        ly_0_max_stall_run_t_cycles,
-                        ly_0_max_stall_dot,
-                        ly_0_max_stall_mode_dot,
-                        cpu_stop_t_cycles,
-                        cpu_zombie_stop_t_cycles,
-                        ly_0_cpu_stop_t_cycles,
-                        ly_0_cpu_zombie_stop_t_cycles,
-                        ly_0_stall_cpu_stop_t_cycles,
-                        ly_0_stall_cpu_zombie_stop_t_cycles,
-                        lcd_disabled_t_cycles,
-                        lcd_disable_transitions,
-                        lcd_enable_transitions,
-                        ly_0_lcd_disabled_t_cycles,
-                        ly_0_stall_lcd_disabled_t_cycles,
+                    frame_loop_telemetry: if collect_frame_telemetry {
+                        FrameLoopTelemetry {
+                            start_ly: frame_start_ly,
+                            start_dot: frame_start_dot,
+                            end_ly: current_ly,
+                            end_dot: current_dot,
+                            stepped_t_cycles,
+                            frame_origin_crossings,
+                            scanline_transitions,
+                            scanlines_over_456,
+                            max_scanline_t_cycles,
+                            max_scanline_ly,
+                            max_mode0_start_dot,
+                            max_mode0_start_dot_ly,
+                            ly_153_to_0_transitions,
+                            ly_153_to_0_startup_mode0,
+                            ly_153_to_0_blank_frame,
+                            ly_0_self_wraps,
+                            ly_0_self_wrap_startup_mode0,
+                            ly_0_self_wrap_blank_frame,
+                            ly_0_to_1_transitions,
+                            ly_0_scanline_t_cycles,
+                            ly_0_max_mode0_start_dot,
+                            ly_0_stall_t_cycles,
+                            ly_0_stall_hblank_t_cycles,
+                            ly_0_stall_oam_t_cycles,
+                            ly_0_stall_drawing_t_cycles,
+                            ly_0_stall_startup_mode0_t_cycles,
+                            ly_0_stall_blank_frame_t_cycles,
+                            ly_0_stall_runs,
+                            ly_0_max_stall_run_t_cycles,
+                            ly_0_max_stall_dot,
+                            ly_0_max_stall_mode_dot,
+                            cpu_stop_t_cycles,
+                            cpu_zombie_stop_t_cycles,
+                            ly_0_cpu_stop_t_cycles,
+                            ly_0_cpu_zombie_stop_t_cycles,
+                            ly_0_stall_cpu_stop_t_cycles,
+                            ly_0_stall_cpu_zombie_stop_t_cycles,
+                            lcd_disabled_t_cycles,
+                            lcd_disable_transitions,
+                            lcd_enable_transitions,
+                            ly_0_lcd_disabled_t_cycles,
+                            ly_0_stall_lcd_disabled_t_cycles,
+                        }
+                    } else {
+                        FrameLoopTelemetry::default()
                     },
                 });
             }
@@ -8339,6 +8353,43 @@ mod tests {
         };
         let result = super::step_until_next_frame(event_pump, canvas, &mut context)
             .expect("paused stepping should succeed");
+        assert_eq!(result.signal, super::LoopSignal::Continue);
+        assert!(result.emulation_profile_request.is_none());
+        assert_eq!(
+            result.frame_loop_telemetry,
+            super::FrameLoopTelemetry::default()
+        );
+    }
+
+    #[test]
+    fn step_until_next_frame_skips_detailed_frame_telemetry_when_emulation_profiling_is_disabled() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("step-no-telemetry", true, true, false);
+        harness.performance_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | step-no-telemetry".to_string(),
+            super::EmulationProfileMode::Disabled,
+        );
+        let FrontendHarness {
+            event_pump,
+            canvas,
+            session,
+            machine,
+            runtime,
+            settings_store,
+            performance_counter,
+            frame_pacer,
+            ..
+        } = &mut harness;
+        let mut context = super::FrontendActionContext {
+            session,
+            machine,
+            runtime,
+            performance_counter,
+            frame_pacer,
+            settings_store,
+        };
+        let result = super::step_until_next_frame(event_pump, canvas, &mut context)
+            .expect("stepping should still succeed without emulation profiling");
         assert_eq!(result.signal, super::LoopSignal::Continue);
         assert!(result.emulation_profile_request.is_none());
         assert_eq!(
