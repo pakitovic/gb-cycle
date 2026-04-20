@@ -1,4 +1,15 @@
 use super::*;
+use crate::apu::common::APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE;
+
+#[test]
+fn host_normalization_reference_keeps_explicit_pcm_headroom() {
+    assert_eq!(APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE, ANALOG_ONE * 4 * 8);
+    assert_eq!(APU_HOST_MAX_ABS_SAMPLE, 963_735_294);
+
+    let normalized_peak =
+        APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE as f64 / APU_HOST_MAX_ABS_SAMPLE as f64;
+    assert!((normalized_peak - (16_320.0 / 32_767.0)).abs() < 1.0e-9);
+}
 
 #[test]
 fn enabled_dac_output_remains_distinct_from_dac_off_even_when_the_channel_is_inactive() {

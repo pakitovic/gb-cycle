@@ -25,6 +25,9 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 
 ## Audio investigation
 
+- Use `--audio-record path/to/capture.wav` to export direct digital stereo APU output to `WAV` or `AIFC` without going through speakers, room acoustics, the macOS microphone path, or the frontend mute/volume controls.
+- `--audio-record-rate <hz>` overrides the recording sink sample rate; the default is `96000` Hz so SameBoy-vs-`gb-cycle` commercial-ROM captures can be compared at the same host rate when desired.
+- Recording taps the same typed post-HPF `ApuHostSample` boundary that feeds SDL playback, but on an independent host sink, so it still works when normal desktop playback is muted or disabled for investigation.
 - Set `GB_CYCLE_DESKTOP_AUDIO_LOG=1` to emit opt-in SDL audio telemetry to `stderr` with lightweight event logging only.
 - Use `GB_CYCLE_DESKTOP_AUDIO_LOG=verbose` when you explicitly need one submit line per queued audio batch with queued-byte and queued-duration estimates.
 - Set `GB_CYCLE_DESKTOP_AUDIO_DISABLE_AUTO_CLEAR=1` to disable the automatic oversized-queue recovery path entirely while investigating whether audible cuts come from host-side queue clears or from `gb-core`.
@@ -38,6 +41,7 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 - Set `GB_CYCLE_DESKTOP_TRACE_PATH=/tmp/gb-desktop-trace.txt` to dump a rolling per-T-cycle CPU/APU/interrupt/joypad/bus trace when the frontend exits.
 - Override the rolling window with `GB_CYCLE_DESKTOP_TRACE_T_CYCLES=<count>` when you need a narrower or wider final interaction window; the default is `8192` T-cycles.
 - Cycles that include an APU MMIO write in `FF10..FF26` append `apu.last_write=... before(...) after(...)` so you can correlate audible glitches with the exact register transition that just occurred.
+- Set `GB_CYCLE_DESKTOP_CH4_NR43_TRACE_PATH=/tmp/gb-desktop-ch4-nr43-trace.txt` to dump a condensed event trace containing only live `NR43` writes plus the CH4 internal glitch/debug snapshot, which is more useful than the rolling trace when isolating Zelda-style tail-noise mismatches.
 - This capture is intended for interactive commercial-ROM investigation when reproducing the issue directly in `gb-desktop` is easier than scripting the same input path in `gb-test-runner`.
 - When trace capture is disabled, the desktop loop now skips the trace-record path entirely instead of calling into the ring-buffer helper on every `T-cycle`.
 

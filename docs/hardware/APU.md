@@ -227,6 +227,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The design should leave room for replacing the host-facing resampler later without rewriting the DAC, mixer, or HPF logic.
 - Conversion from the core's internal analog representation into host `float` or `int16` output should be a final representation step after HPF, not part of the hardware model itself.
 - The core should keep a sufficiently precise internal analog representation so host-format conversion does not force the hardware model to clip or renormalize early.
+- Repo-local current policy: the final PCM normalization step intentionally leaves fixed headroom instead of mapping the theoretical raw post-HPF peak to host full scale, so direct WAV exports stay comparable with SameBoy-style captures without changing the internal DAC/mixer/HPF model.
 
 ## CH1 baseline (pulse + sweep)
 
@@ -261,7 +262,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The waveform should remain an `8`-step pulse waveform selected by `NR11` duty.
 - The duty-step counter should not reset when CH1 is retriggered; only powering the APU off should reset the pulse duty-step state.
 - Retriggering CH1 should reset the pulse period/frequency timer instead.
-- When a pulse channel is first started, the digital output should begin at `0`.
+- Triggering CH1 from an inactive state should make the digital output begin at `0` until the first real duty-step advance; retriggering while CH1 is already active should not inject that extra suppression.
 - Just after APU power-on, the first CH1/CH2 trigger should suppress the initial duty output until the first real duty-step advance, and duty clocking should remain disabled until that first trigger.
 
 ## CH1 period value and timer baseline
@@ -288,7 +289,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - current volume should become the initial volume from `NR12`
   - expired length state should be restored to a valid running state
   - sweep should perform its trigger-time initialization
-- Triggering CH1 should preserve the low two bits of the in-flight frequency timer.
+- Triggering CH1 should preserve the low two bits of the in-flight hardware frequency timer; in the repo's T-cycle countdown representation this means preserving the underlying timer phase, not blindly copying the low two bits of the remaining countdown value.
 
 ## CH1 length and envelope baseline
 
@@ -374,7 +375,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The waveform should remain an `8`-step pulse waveform selected by `NR21` duty.
 - The duty-step counter should not reset when CH2 is retriggered; only powering the APU off should reset the pulse duty-step state.
 - Retriggering CH2 should reset the pulse period/frequency timer instead.
-- When a pulse channel is first started, the digital output should begin at `0`.
+- Triggering CH2 from an inactive state should make the digital output begin at `0` until the first real duty-step advance; retriggering while CH2 is already active should not inject that extra suppression.
 - Just after APU power-on, the first CH1/CH2 trigger should suppress the initial duty output until the first real duty-step advance, and duty clocking should remain disabled until that first trigger.
 
 ## CH2 period value and timer baseline
@@ -399,7 +400,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - the envelope timer should reset
   - current volume should become the initial volume from `NR22`
   - expired length state should be restored to a valid running state
-- Triggering CH2 should preserve the low two bits of the in-flight frequency timer.
+- Triggering CH2 should preserve the low two bits of the in-flight hardware frequency timer; in the repo's T-cycle countdown representation this means preserving the underlying timer phase, not blindly copying the low two bits of the remaining countdown value.
 
 ## CH2 length and envelope baseline
 
@@ -564,7 +565,9 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - envelope timer / pace / direction / current volume
   - `lfsr_state`
   - `noise_timer`
+  - a hidden `14`-bit noise counter plus its base-divider countdown and reload-seam flag, because some live `NR43` quirks depend on the internal counter phase rather than only on the visible `noise_timer`
   - decoded `NR43` state such as clock shift, width mode, and clock divider
+- In the repo's current architecture, that ownership is grouped explicitly into a visible CH4 noise-signal block (`NR43` decode, `noise_timer`, `lfsr_state`) plus a hidden live-write phase block (noise-counter phase, base-divider countdown, reload-seam flag, and last traced live-write decision) so future `NR43` refactors can deepen the glitch matrix without blurring the ordinary signal path.
 - CH4 should explicitly not inherit pulse-only state such as duty-step progression or CH1 sweep state.
 
 ## CH4 MMIO ownership baseline
@@ -591,16 +594,25 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Clock divider `0` should be treated as divider `0.5` on the documented CH4 timer formula rather than as literal `0` or silently coerced to `1`.
 - Clock shift values `14` and `15` should prevent CH4 from receiving LFSR clocks rather than being approximated as merely "very slow noise".
 - Live writes to `NR43` should update the decoded CH4 noise parameters and affect the running channel on its own timer path rather than waiting for the next trigger.
-- If a live `NR43` write moves CH4 into or out of the `14`/`15` no-clocks state, the explicit `noise_timer` should be reloaded from the new decoded `NR43` state so the channel does not later resume from a stale pre-suppression countdown.
+- In the repo's current conservative DMG-oriented CH4 model, a live `NR43` write should reload the explicit `noise_timer` from the new decoded state immediately so the running channel does not wait out a stale pre-write cadence.
+- The same repo-local model now also keeps a hidden `14`-bit noise counter, a base-divider countdown, and an explicit `countdown_reloaded` seam flag so a live `NR43` write can inspect counter phase as well as the just-reloaded edge case.
+- That hidden live-write policy should remain isolated behind a dedicated CH4 `NR43` resolver block rather than being smeared across the ordinary fast-timer / signal-generation path; future matrix work should deepen that resolver, not re-entangle the visible CH4 signal state.
+- Current inferred live-glitch policy is a conservative DMG-oriented subset cross-checked against SameBoy rather than a claim that the full hardware-specific matrix is solved:
+  - a write that changes the selected clock-shift bit can inject one immediate extra CH4 LFSR step when the old selected counter bit is low and the new selected counter bit is already high
+  - if the write lands on the hidden-counter reload seam, the current and previous counter values may jointly contribute one extra seam step before the ordinary live-write transition logic runs
+  - the current repo subset also models a simplified pre-`CGB-D` intermediate-value path by treating a live write as `old -> 0xFF -> new`, which allows some low-shift writes to produce two immediate steps or a step plus feedback-bit corruption
+  - because the repo still lacks the richer multi-intermediate matrix from SameBoy, the current subset explicitly suppresses the category-2 `old -> 0xFF` step for high-shift narrow staircase writes (`shift >= 5` with width mode already narrow); this is a repo-local Zelda-tail tuning guard rather than a claim that the full DMG hardware rule is solved
 
 ## CH4 noise-timer baseline
 
 - CH4 should keep an explicit `noise_timer` separate from the LFSR state itself.
 - The `noise_timer` should be derived from decoded `NR43` state and should produce exactly one LFSR step whenever it expires.
 - The frame sequencer must not be used as CH4's noise clock; only the fast CH4 timer path should advance the LFSR.
+- The hidden noise-counter countdown is a separate internal phase tracker for `NR43` live-write quirks; it must not replace or blur the explicit CH4 `noise_timer` contract used by the rest of the APU model.
+- The hidden counter's `countdown_reloaded` seam is also a separate explicit state; do not collapse it into the visible `noise_timer` or assume that the ordinary timer reload alone is enough to reproduce live `NR43` quirks.
 - Writes to `NR43` should alter CH4's effective timer configuration, not swap in a different abstract "noise texture".
 - Updating `NR43` should not retroactively inject an extra LFSR tick into an in-flight timer interval; the new effective timing should apply through the explicit timer/reload path rather than by mutating past channel time.
-- The explicit timer hand-off for `14`/`15` suppression transitions should therefore reload the stored `noise_timer` from the new decoded state, but should not synthesize an immediate extra LFSR step at write time.
+- The current repo policy therefore reloads the stored `noise_timer` from the new decoded state for any live `NR43` write, while additionally allowing the conservative hidden-counter subset above to synthesize one seam step, one ordinary immediate step, or a two-step / feedback-corruption case on some low-shift writes; high-shift narrow staircase writes intentionally keep a narrower subset until a stronger oracle closes the remaining Zelda-tail gap.
 
 ## CH4 width-mode and lock-up baseline
 
@@ -704,7 +716,7 @@ Priority order:
   - ownership and MMIO readback rules
   - duty-step timing, period-write delay, and DAC-off trigger behavior
   - envelope progression, saturation stop, and the conservative live zombie-mode increment path
-  - low frequency-timer bits preserved on trigger, extra length clocking, and the post-power-on first-trigger quirk
+  - low frequency-timer bits preserved on trigger, inactive-start output suppression, extra length clocking, and the post-power-on first-trigger quirk
   - CH1 sweep trigger-time state, timed writeback, second overflow check, and live `NR10` edge cases
 - Maintain CH3 coverage for:
   - ownership and MMIO readback rules

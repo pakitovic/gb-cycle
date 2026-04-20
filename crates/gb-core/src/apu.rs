@@ -45,6 +45,42 @@ impl WaveRamStartupPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApuCh4Nr43LiveWriteTrace {
+    pub runtime_active: bool,
+    pub same_shift_group: bool,
+    pub old_nr43: u8,
+    pub new_nr43: u8,
+    pub old_shift: u8,
+    pub new_shift: u8,
+    pub effective_counter: u16,
+    pub countdown_reloaded: bool,
+    pub reload_seam_step: bool,
+    pub old_to_ff_step: bool,
+    pub old_to_ff_forced_short_width: bool,
+    pub ff_to_new_step: bool,
+    pub ff_to_new_forced_short_width: bool,
+    pub low_shift_extra_step: bool,
+    pub feedback_corruption: bool,
+    pub lfsr_before: u16,
+    pub lfsr_after: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApuCh4DebugSnapshot {
+    pub nr43: u8,
+    pub clock_shift: u8,
+    pub short_width_mode: bool,
+    pub clock_divider_code: u8,
+    pub counter_timer: u32,
+    pub noise_counter: u16,
+    pub countdown_reloaded: bool,
+    pub period_timer: u32,
+    pub lfsr_state: u16,
+    pub current_digital_output: u8,
+    pub last_nr43_live_write: Option<ApuCh4Nr43LiveWriteTrace>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Apu {
     console_model: ConsoleModel,
@@ -150,6 +186,14 @@ impl Apu {
 
     pub fn host_output_sample(&self) -> ApuHostSample {
         self.output_path.current_output.into()
+    }
+
+    pub fn last_register_write(&self) -> Option<&ApuRegisterWriteObservation> {
+        self.last_register_write.as_ref()
+    }
+
+    pub fn channel_4_debug_snapshot(&self) -> ApuCh4DebugSnapshot {
+        self.channels.channel_4.debug_snapshot()
     }
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {

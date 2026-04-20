@@ -1,4 +1,5 @@
 mod audio;
+mod audio_recording;
 mod bootrom;
 mod cli;
 mod input;
@@ -10,12 +11,14 @@ mod screenshot_output;
 mod settings;
 
 use audio::{AudioSubmitTelemetry, DesktopAudioOutput};
+use audio_recording::DesktopAudioRecorder;
 use bootrom::{load_boot_rom_assets, missing_boot_rom_asset_path, resolve_path};
 use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base_config};
 use gb_core::{
-    ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot, CartridgeDiagnostic,
-    CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
-    CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, CpuSnapshot, ExecutionMode,
+    ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuRegisterWriteObservation,
+    ApuRegisterWriteState, ApuSnapshot, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
+    CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,
+    CpuBusActivitySnapshot, CpuExecutionState, CpuSnapshot, ExecutionMode,
     InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
     MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuFramebufferLayerSource,
     PpuStepRegion, StartupMode, TraceSummaryBuffer,
@@ -119,6 +122,8 @@ const DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR: &str =
 const DESKTOP_EMU_PROFILE_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EMU_PROFILE";
 const DESKTOP_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_PATH";
 const DESKTOP_TRACE_T_CYCLES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_T_CYCLES";
+const DESKTOP_CH4_NR43_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CH4_NR43_TRACE_PATH";
+const CH4_NR43_ADDRESS: u16 = 0xFF22;
 const ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
     DialogFileFilter {
         name: "Game Boy ROMs",
@@ -204,6 +209,7 @@ struct FrontendRuntime {
     video_options: VideoOptions,
     audio_volume_percent: u8,
     audio_output: Option<DesktopAudioOutput>,
+    audio_recorder: Option<DesktopAudioRecorder>,
     gamepad_manager: Option<GamepadManager>,
     save_session: Option<DesktopSaveSession>,
     secondary_save_session: Option<DesktopSaveSession>,
@@ -214,6 +220,7 @@ struct FrontendRuntime {
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
     trace_capture: DesktopTraceCapture,
+    ch4_nr43_trace: DesktopCh4Nr43TraceCapture,
     printer_output: PrinterOutputState,
 }
 
@@ -306,6 +313,11 @@ struct DesktopTraceCapture {
     records: VecDeque<DesktopTraceRecord>,
 }
 
+struct DesktopCh4Nr43TraceCapture {
+    output_path: Option<PathBuf>,
+    records: Vec<DesktopCh4Nr43TraceRecord>,
+}
+
 #[derive(Debug, Clone)]
 struct DesktopTraceRecord {
     t_cycle: u64,
@@ -313,6 +325,14 @@ struct DesktopTraceRecord {
     apu: ApuSnapshot,
     interrupts: InterruptControllerSnapshot,
     joypad: JoypadSnapshot,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopCh4Nr43TraceRecord {
+    t_cycle: u64,
+    cpu: CpuSnapshot,
+    apu_write: ApuRegisterWriteObservation,
+    ch4: ApuCh4DebugSnapshot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -875,6 +895,62 @@ impl DesktopTraceCapture {
     }
 }
 
+impl DesktopCh4Nr43TraceCapture {
+    fn from_env() -> Result<Self, String> {
+        Ok(Self {
+            output_path: env::var_os(DESKTOP_CH4_NR43_TRACE_PATH_ENV_VAR).map(PathBuf::from),
+            records: Vec::new(),
+        })
+    }
+
+    fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
+        if self.output_path.is_none() {
+            return;
+        }
+
+        let Some(apu_write) = machine
+            .apu()
+            .last_register_write()
+            .filter(|observation| observation.address == CH4_NR43_ADDRESS)
+            .cloned()
+        else {
+            return;
+        };
+
+        self.records.push(DesktopCh4Nr43TraceRecord {
+            t_cycle: machine.next_t_cycle().get().saturating_sub(1),
+            cpu: machine.cpu().snapshot(),
+            apu_write,
+            ch4: machine.apu().channel_4_debug_snapshot(),
+        });
+    }
+
+    fn write_artifact(&self) -> Result<(), String> {
+        let Some(path) = self.output_path.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "failed to create condensed CH4 NR43 trace artifact directory {parent:?}: {error}"
+                )
+            })?;
+        }
+
+        let mut rendered = String::new();
+        for record in &self.records {
+            rendered.push_str(&render_desktop_ch4_nr43_trace_record(record));
+            rendered.push('\n');
+        }
+        fs::write(path, rendered).map_err(|error| {
+            format!("failed to write condensed CH4 NR43 trace artifact {path:?}: {error}")
+        })
+    }
+}
+
 fn render_desktop_trace_record(record: &DesktopTraceRecord) -> String {
     format!(
         "t_cycle={} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?} cpu.ime={} cpu.delayed_ime_enable={} cpu.last_bus_activity={} cpu.last_address_event={} apu.powered={} apu.nr50={:#04X} apu.nr51={:#04X} apu.nr52={:#04X} apu.div_apu={} apu.active_mask={:#04X} apu.dac_mask={:#04X} apu.channel_outputs=[{:#04X},{:#04X},{:#04X},{:#04X}] apu.mixer=({}, {}) apu.hpf=({}, {}) irq.if={:#04X} irq.ie={:#04X} joypad.p1={:#04X} joypad.selection_bits={:#04X} joypad.pressed_mask={:#04X}{}",
@@ -907,6 +983,17 @@ fn render_desktop_trace_record(record: &DesktopTraceRecord) -> String {
         record.joypad.selection_bits,
         record.joypad.pressed_mask,
         format_apu_last_register_write(record.apu.last_register_write.as_ref()),
+    )
+}
+
+fn render_desktop_ch4_nr43_trace_record(record: &DesktopCh4Nr43TraceRecord) -> String {
+    format!(
+        "t_cycle={} cpu.pc={:#06X} cpu.execution_state={:?}{} {}",
+        record.t_cycle,
+        record.cpu.registers.pc,
+        record.cpu.execution_state,
+        format_apu_last_register_write(Some(&record.apu_write)),
+        format_ch4_debug_snapshot(&record.ch4),
     )
 }
 
@@ -1002,6 +1089,50 @@ fn format_apu_register_write_state(state: &ApuRegisterWriteState) -> String {
         state.output.mixer_output.right,
         state.output.hpf_output.left,
         state.output.hpf_output.right,
+    )
+}
+
+fn format_ch4_debug_snapshot(snapshot: &ApuCh4DebugSnapshot) -> String {
+    format!(
+        "ch4.nr43={:#04X} ch4.shift={} ch4.short_width={} ch4.divider={} ch4.counter_timer={} ch4.noise_counter={:#06X} ch4.countdown_reloaded={} ch4.period_timer={} ch4.lfsr={:#06X} ch4.output={:#04X}{}",
+        snapshot.nr43,
+        snapshot.clock_shift,
+        snapshot.short_width_mode,
+        snapshot.clock_divider_code,
+        snapshot.counter_timer,
+        snapshot.noise_counter,
+        snapshot.countdown_reloaded,
+        snapshot.period_timer,
+        snapshot.lfsr_state,
+        snapshot.current_digital_output,
+        format_ch4_live_nr43_trace(snapshot.last_nr43_live_write.as_ref()),
+    )
+}
+
+fn format_ch4_live_nr43_trace(trace: Option<&ApuCh4Nr43LiveWriteTrace>) -> String {
+    let Some(trace) = trace else {
+        return " ch4.last_nr43_live_write=none".to_string();
+    };
+
+    format!(
+        " ch4.last_nr43_live_write=old({:#04X}/shift={}) new({:#04X}/shift={}) runtime_active={} same_shift_group={} effective_counter={:#06X} countdown_reloaded={} steps=[reload_seam:{},old_to_ff:{},old_to_ff_short:{},ff_to_new:{},ff_to_new_short:{},low_shift_extra:{},feedback_corruption:{}] lfsr={:#06X}->{:#06X}",
+        trace.old_nr43,
+        trace.old_shift,
+        trace.new_nr43,
+        trace.new_shift,
+        trace.runtime_active,
+        trace.same_shift_group,
+        trace.effective_counter,
+        trace.countdown_reloaded,
+        trace.reload_seam_step,
+        trace.old_to_ff_step,
+        trace.old_to_ff_forced_short_width,
+        trace.ff_to_new_step,
+        trace.ff_to_new_forced_short_width,
+        trace.low_shift_extra_step,
+        trace.feedback_corruption,
+        trace.lfsr_before,
+        trace.lfsr_after,
     )
 }
 
@@ -2836,6 +2967,10 @@ fn run_desktop_with_startup_fallback_persistence(
     } else {
         None
     };
+    let audio_recorder = match options.audio_recording.as_ref() {
+        Some(audio_recording) => Some(DesktopAudioRecorder::new(audio_recording)?),
+        None => None,
+    };
     let gamepad_manager = if session.config.input.gamepad.enabled {
         Some(GamepadManager::new(
             &map_display_result(sdl.gamepad(), "failed to initialize SDL3 gamepad subsystem")?,
@@ -2887,6 +3022,7 @@ fn run_desktop_with_startup_fallback_persistence(
         video_options: session.config.video.clone(),
         audio_volume_percent: session.config.audio.volume_percent,
         audio_output,
+        audio_recorder,
         gamepad_manager,
         save_session,
         secondary_save_session,
@@ -2897,6 +3033,7 @@ fn run_desktop_with_startup_fallback_persistence(
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
         trace_capture: DesktopTraceCapture::from_env()?,
+        ch4_nr43_trace: DesktopCh4Nr43TraceCapture::from_env()?,
         printer_output: PrinterOutputState::default(),
     };
     apply_canvas_video_options_for_dimensions(
@@ -3321,7 +3458,11 @@ fn run_desktop_with_startup_fallback_persistence(
     if let Some(audio_output) = &runtime.audio_output {
         audio_output.flush()?;
     }
+    if let Some(audio_recorder) = &mut runtime.audio_recorder {
+        audio_recorder.finish()?;
+    }
     runtime.trace_capture.write_artifact()?;
+    runtime.ch4_nr43_trace.write_artifact()?;
 
     Ok(())
 }
@@ -4126,11 +4267,18 @@ fn step_until_next_frame(
                 context
                     .runtime
                     .trace_capture
-                    .record_t_cycle(context.machine)
+                    .record_t_cycle(audio_source_machine(context.machine))
             });
+            context
+                .runtime
+                .ch4_nr43_trace
+                .record_t_cycle(audio_source_machine(context.machine));
 
             if let Some(audio_output) = &mut context.runtime.audio_output {
                 audio_output.capture_t_cycle(audio_source_machine(context.machine).apu());
+            }
+            if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+                audio_recorder.capture_t_cycle(audio_source_machine(context.machine).apu());
             }
 
             let rumble_result =
@@ -4291,9 +4439,16 @@ fn step_until_next_frame(
                 if collect_frame_telemetry {
                     frame_origin_crossings = frame_origin_crossings.saturating_add(1);
                 }
-                if let Some(audio_output) = &mut context.runtime.audio_output {
+                if context.runtime.audio_output.is_some()
+                    || context.runtime.audio_recorder.is_some()
+                {
                     let audio_submit_started_at = profile_request.as_ref().map(|_| Instant::now());
-                    audio_output.submit_captured_samples()?;
+                    if let Some(audio_output) = &mut context.runtime.audio_output {
+                        audio_output.submit_captured_samples()?;
+                    }
+                    if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+                        audio_recorder.write_captured_samples()?;
+                    }
                     if let Some(audio_submit_started_at) = audio_submit_started_at
                         && let Some(profile_request) = &mut profile_request
                     {
@@ -7742,6 +7897,7 @@ mod tests {
                 video_options: config.video.clone(),
                 audio_volume_percent: config.audio.volume_percent,
                 audio_output,
+                audio_recorder: None,
                 gamepad_manager,
                 save_session,
                 secondary_save_session: None,
@@ -7756,6 +7912,10 @@ mod tests {
                     output_path: None,
                     max_t_cycles: super::DEFAULT_TRACE_CAPTURE_T_CYCLES,
                     records: VecDeque::new(),
+                },
+                ch4_nr43_trace: super::DesktopCh4Nr43TraceCapture {
+                    output_path: None,
+                    records: Vec::new(),
                 },
                 printer_output: super::PrinterOutputState::default(),
             };
@@ -9815,6 +9975,7 @@ mod tests {
                 linked_peer_rom_path: None,
                 exit_after_frames: None,
                 config: launcher_config,
+                audio_recording: None,
             },
             launcher_store,
         )
@@ -9836,6 +9997,7 @@ mod tests {
                 linked_peer_rom_path: None,
                 exit_after_frames: None,
                 config: rom_config,
+                audio_recording: None,
             },
             rom_store,
         )
@@ -9941,6 +10103,7 @@ mod tests {
                 linked_peer_rom_path: None,
                 exit_after_frames: None,
                 config,
+                audio_recording: None,
             },
             settings_store,
             true,
@@ -9993,6 +10156,7 @@ mod tests {
                 linked_peer_rom_path: None,
                 exit_after_frames: None,
                 config,
+                audio_recording: None,
             },
             settings_store,
         )
@@ -10057,6 +10221,7 @@ mod tests {
                 linked_peer_rom_path: None,
                 exit_after_frames: None,
                 config,
+                audio_recording: None,
             },
             settings_store,
         )
@@ -10647,6 +10812,7 @@ mod tests {
                 linked_peer_rom_path: None,
                 exit_after_frames: None,
                 config: DesktopConfig::default(),
+                audio_recording: None,
             },
             &harness.root,
         )
@@ -10660,6 +10826,7 @@ mod tests {
                     linked_peer_rom_path: None,
                     exit_after_frames: None,
                     config: DesktopConfig::default(),
+                    audio_recording: None,
                 },
                 &harness.root,
             )
@@ -10672,6 +10839,7 @@ mod tests {
                 linked_peer_rom_path: Some(relative_rom.clone()),
                 exit_after_frames: Some(8),
                 config: DesktopConfig::default(),
+                audio_recording: None,
             },
             &harness.root,
         )

@@ -3,8 +3,8 @@ use crate::model::ConsoleModel;
 use super::super::common::{
     ChannelRuntimeState, EnvelopeState, ExtraLengthClockingContext, LENGTH_ENABLE_BIT,
     PULSE_DUTY_MASK, PULSE_DUTY_SHIFT, PULSE_DUTY_STEP_MASK, PULSE_LENGTH_COUNTER_RELOAD,
-    PULSE_PERIOD_TIMER_LOW_BITS_MASK, apply_extra_length_clocking_u8, clock_length_counter_u8,
-    pulse_length_counter_from_load, pulse_timer_reload, pulse_waveform_high,
+    apply_extra_length_clocking_u8, clock_length_counter_u8, pulse_length_counter_from_load,
+    pulse_timer_reload, pulse_timer_reload_preserving_trigger_phase, pulse_waveform_high,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -142,6 +142,7 @@ impl PulseChannelState {
         envelope_value: u8,
         next_step_clocks_envelope: bool,
     ) -> bool {
+        let was_active = self.runtime.active;
         let reloaded_zero_length = self.length_counter == 0;
         if self.length_counter == 0 {
             self.length_counter = PULSE_LENGTH_COUNTER_RELOAD;
@@ -149,14 +150,16 @@ impl PulseChannelState {
         }
 
         self.apply_envelope_write(envelope_value);
-        let preserved_period_timer_low_bits = self.period_timer & PULSE_PERIOD_TIMER_LOW_BITS_MASK;
-        self.period_timer = pulse_timer_reload(period_value) | preserved_period_timer_low_bits;
+        self.period_timer =
+            pulse_timer_reload_preserving_trigger_phase(period_value, self.period_timer);
         self.envelope.reload(next_step_clocks_envelope);
-        if self.first_trigger_after_power_on_pending {
+        self.runtime.trigger();
+        if self.runtime.active && !was_active {
             self.suppress_initial_trigger_output = true;
+        }
+        if self.first_trigger_after_power_on_pending {
             self.first_trigger_after_power_on_pending = false;
         }
-        self.runtime.trigger();
         reloaded_zero_length
     }
 

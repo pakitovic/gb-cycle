@@ -140,8 +140,14 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    recovery from that lock-up, explicit timer hand-off into / out of the
    shift-`14` / `15` no-clocks state, inactive-channel slow-control clocking
    for CH1 sweep and CH1 / CH2 / CH4 envelopes, inactive-channel fast-timer
-   continuation for CH1 / CH2 / CH3 / CH4, and DMG powered-off `NR41` length
-   writes, while machine integration coverage
+   continuation for CH1 / CH2 / CH3 / CH4, DMG-oriented hidden-noise-counter
+   phase tracking plus a dedicated live-`NR43` resolver block and a
+   conservative DMG-oriented live-write subset that covers one
+   reload-seam step, an `old -> 0xFF -> new` intermediate-value path, and some
+   low-shift two-step / feedback-corruption cases plus a high-shift narrow
+   staircase suppression guard for the `old -> 0xFF` category-2 step, and DMG powered-off `NR41`
+   length writes, while machine
+   integration coverage
    includes DMG `NR41` length persistence through an `NR52` power cycle.
 7. `Phase 7.6` — DAC, mixer, HPF, and host boundary
    Scope: channel digital-output ownership, per-channel DAC conversion,
