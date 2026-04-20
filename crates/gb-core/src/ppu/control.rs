@@ -1943,24 +1943,27 @@ impl Ppu {
             0
         };
 
+        let framebuffer_index = context.row_start + x;
+        let bgwin_source = match self.current_scanline_bg_dot_contexts[x].map(|dot| dot.source) {
+            Some(PpuBgFetcherSource::Background) => PpuFramebufferLayerSource::Background,
+            Some(PpuBgFetcherSource::Window) => PpuFramebufferLayerSource::Window,
+            None => PpuFramebufferLayerSource::Backdrop,
+        };
+
         self.current_scanline_dmg_bg_forced_white[x] = dmg_bg_forced_white;
         self.current_scanline_pixels[x] = scanline_pixel;
-        self.framebuffer[context.row_start + x] = panel_pixel;
-        self.framebuffer_bgwin_colors[context.row_start + x] = pixel_color;
-        self.framebuffer_bgwin_forced_white[context.row_start + x] = dmg_bg_forced_white;
-        self.framebuffer_bgwin_panel_shades[context.row_start + x] = panel_pixel;
-        self.framebuffer_backdrop_panel_shades[context.row_start + x] =
+        self.framebuffer[framebuffer_index] = panel_pixel;
+        self.framebuffer_layer_sources[framebuffer_index] = bgwin_source;
+        self.framebuffer_bgwin_colors[framebuffer_index] = pixel_color;
+        self.framebuffer_bgwin_forced_white[framebuffer_index] = dmg_bg_forced_white;
+        self.framebuffer_bgwin_panel_shades[framebuffer_index] = panel_pixel;
+        self.framebuffer_backdrop_panel_shades[framebuffer_index] =
             if context.visible_output_driving {
                 self.apply_dmg_palette(context.historical_bgp, 0)
             } else {
                 0
             };
-        self.framebuffer_bgwin_layer_sources[context.row_start + x] =
-            match self.current_scanline_bg_dot_contexts[x].map(|dot| dot.source) {
-                Some(PpuBgFetcherSource::Background) => PpuFramebufferLayerSource::Background,
-                Some(PpuBgFetcherSource::Window) => PpuFramebufferLayerSource::Window,
-                None => PpuFramebufferLayerSource::Backdrop,
-            };
+        self.framebuffer_bgwin_layer_sources[framebuffer_index] = bgwin_source;
     }
 
     pub(super) fn pixel_transfer_obj_enabled(&self) -> bool {
