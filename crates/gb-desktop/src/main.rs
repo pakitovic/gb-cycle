@@ -4875,7 +4875,6 @@ fn open_selected_rom(
     flush_pending_printer_output(canvas.window(), context.session, context.runtime);
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
-    let had_loaded_rom = context.session.has_loaded_rom();
     let next_loaded_rom = load_selected_rom(selected_path, context.session)?;
     let loaded = load_machine_for_rom(
         &context.session.config,
@@ -4933,9 +4932,7 @@ fn open_selected_rom(
         canvas.window_mut(),
         window_title(context.session, &context.session.config),
     )?;
-    if !had_loaded_rom {
-        context.runtime.paused = false;
-    }
+    context.runtime.paused = false;
 
     if context.runtime.menu_state.is_open() {
         close_menu(event_pump, context.machine, context.runtime)?;
@@ -5106,7 +5103,8 @@ fn execute_menu_action(
     context: &mut FrontendActionContext<'_>,
 ) -> Result<Option<LoopSignal>, String> {
     match action {
-        MenuAction::Close => {
+        MenuAction::Resume => {
+            context.runtime.paused = false;
             close_menu(event_pump, context.machine, context.runtime)?;
             Ok(None)
         }
@@ -10419,6 +10417,216 @@ mod tests {
             .expect("dialog actions should persist settings");
         assert!(persisted.contains(&boot_dir.display().to_string()));
         assert!(persisted.contains(&save_dir.display().to_string()));
+    }
+
+    #[test]
+    fn resume_action_clears_manual_pause_after_screenshot_for_dialog_loaded_rom() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("resume-after-screenshot", false, false, false);
+        let rom_name = "picked.gb";
+        let rom_path = harness.root.join(rom_name);
+        fs::write(&rom_path, build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
+            .expect("dialog test ROM should be writable");
+
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(rom_name)))
+            .expect("open ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("selected ROM should load");
+        assert_eq!(harness.session.rom_path(), Some(rom_path.as_path()));
+
+        harness.runtime.paused = true;
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                harness.machine.primary_machine(),
+                &harness.session,
+            ));
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SaveScreenshot)
+                .expect("screenshot should save while paused")
+                .is_none()
+        );
+
+        let resume_action = harness
+            .runtime
+            .menu_state
+            .handle_input(
+                super::MenuInput::Confirm,
+                super::current_menu_presentation(
+                    harness.canvas.window(),
+                    &harness.runtime,
+                    harness.machine.primary_machine(),
+                    &harness.session,
+                ),
+            )
+            .expect("root RESUME should stay available after taking a screenshot");
+        assert_eq!(resume_action, super::MenuAction::Resume);
+
+        assert!(
+            harness
+                .execute_action(resume_action)
+                .expect("resume action should succeed")
+                .is_none()
+        );
+        assert!(harness.session.has_loaded_rom());
+        assert!(!harness.runtime.paused);
+        assert!(!harness.runtime.menu_state.is_open());
+        assert!(!super::emulation_paused(
+            harness.machine.primary_machine(),
+            &harness.runtime,
+        ));
+    }
+
+    #[test]
+    fn escape_resumes_after_screenshot_when_the_session_was_manually_paused() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("escape-after-screenshot", false, false, false);
+        let rom_name = "picked.gb";
+        let rom_path = harness.root.join(rom_name);
+        fs::write(&rom_path, build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
+            .expect("dialog test ROM should be writable");
+
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(rom_name)))
+            .expect("open ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("selected ROM should load");
+        assert_eq!(harness.session.rom_path(), Some(rom_path.as_path()));
+
+        harness.runtime.paused = true;
+        harness.push_key(Keycode::Escape, true);
+        harness.process_events().expect("menu open should process");
+        assert!(harness.runtime.menu_state.is_open());
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SaveScreenshot)
+                .expect("screenshot should save while paused")
+                .is_none()
+        );
+
+        harness.push_key(Keycode::Escape, true);
+        harness.process_events().expect("menu close should process");
+
+        assert!(harness.session.has_loaded_rom());
+        assert!(!harness.runtime.paused);
+        assert!(!harness.runtime.menu_state.is_open());
+        assert!(!super::emulation_paused(
+            harness.machine.primary_machine(),
+            &harness.runtime,
+        ));
+    }
+
+    #[test]
+    fn opening_a_new_primary_rom_clears_manual_pause_state() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("open-rom-clears-pause", false, false, false);
+        let first_rom_name = "first.gb";
+        let first_rom_path = harness.root.join(first_rom_name);
+        fs::write(&first_rom_path, build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
+            .expect("first ROM should be writable");
+
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(first_rom_name)))
+            .expect("first open ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("first ROM should load");
+        assert_eq!(harness.session.rom_path(), Some(first_rom_path.as_path()));
+
+        harness.runtime.paused = true;
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                harness.machine.primary_machine(),
+                &harness.session,
+            ));
+
+        let second_rom_name = "second.gb";
+        let second_rom_path = harness.root.join(second_rom_name);
+        fs::write(
+            &second_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("second ROM should be writable");
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(second_rom_name)))
+            .expect("second open ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("second ROM should load");
+
+        assert_eq!(harness.session.rom_path(), Some(second_rom_path.as_path()));
+        assert!(harness.session.has_loaded_rom());
+        assert!(!harness.runtime.paused);
+        assert!(!harness.runtime.menu_state.is_open());
+        assert!(!super::emulation_paused(
+            harness.machine.primary_machine(),
+            &harness.runtime,
+        ));
+    }
+
+    #[test]
+    fn opening_a_recent_rom_clears_manual_pause_state() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("recent-rom-clears-pause", true, false, false);
+        let recent_rom_path = harness.root.join("recent.gb");
+        fs::write(
+            &recent_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("recent ROM should be writable");
+        harness.session.recent_roms = vec![recent_rom_path.clone()];
+
+        harness.runtime.paused = true;
+        harness
+            .runtime
+            .menu_state
+            .open(super::current_menu_presentation(
+                harness.canvas.window(),
+                &harness.runtime,
+                harness.machine.primary_machine(),
+                &harness.session,
+            ));
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::OpenRecentRom(0))
+                .expect("recent ROM should open")
+                .is_none()
+        );
+
+        assert_eq!(harness.session.rom_path(), Some(recent_rom_path.as_path()));
+        assert!(harness.session.has_loaded_rom());
+        assert!(!harness.runtime.paused);
+        assert!(!harness.runtime.menu_state.is_open());
+        assert!(!super::emulation_paused(
+            harness.machine.primary_machine(),
+            &harness.runtime,
+        ));
     }
 
     #[test]

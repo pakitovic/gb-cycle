@@ -112,6 +112,7 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - In launcher mode without a loaded ROM, that shared back/cancel behavior does not dismiss the root overlay.
 - While a native file dialog is pending from the overlay, the triggering entry stays selected but disabled until the dialog resolves.
 - Root overlay also exposes `QUIT` directly at the first menu level.
+- `RESUME` and root-level back/cancel (`Escape` / `Guide`) both clear an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
 - **`VIDEO`** — fullscreen, vsync, window scale, integer presentation, host-side presentation filter, screenshot capture, stats HUD visibility.
 - **`AUDIO`** — toggle mute, cycle host volume.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).

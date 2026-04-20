@@ -192,7 +192,7 @@ pub enum MenuInput {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuAction {
-    Close,
+    Resume,
     OpenRom,
     OpenRecentRom(usize),
     ClearRecentList,
@@ -1460,7 +1460,7 @@ impl OverlayMenuState {
         match item {
             MenuItem::Resume => {
                 self.close();
-                Some(MenuAction::Close)
+                Some(MenuAction::Resume)
             }
             MenuItem::OpenRom => Some(MenuAction::OpenRom),
             MenuItem::RecentMenu => {
@@ -1836,7 +1836,7 @@ impl OverlayMenuState {
             None
         } else {
             self.close();
-            Some(MenuAction::Close)
+            Some(MenuAction::Resume)
         }
     }
 
@@ -2384,7 +2384,7 @@ mod tests {
 
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
-            Some(MenuAction::Close)
+            Some(MenuAction::Resume)
         );
     }
 

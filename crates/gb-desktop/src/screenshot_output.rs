@@ -287,6 +287,78 @@ mod tests {
     }
 
     #[test]
+    fn resolve_next_screenshot_output_path_falls_back_to_current_dir_without_a_rom() {
+        let root = temp_screenshot_root("fallback-path");
+        let expected_relative = PathBuf::from("screenshots").join("gb-cycle-0.png");
+
+        let first = resolve_next_screenshot_output_path(None, root.as_path())
+            .expect("launcher screenshot path should resolve");
+        assert_eq!(
+            first
+                .strip_prefix(&root)
+                .expect("path should live under the temp root"),
+            expected_relative.as_path()
+        );
+
+        fs::write(&first, b"placeholder").expect("first launcher screenshot should be writable");
+        let second = resolve_next_screenshot_output_path(None, root.as_path())
+            .expect("second launcher screenshot path should resolve");
+        assert_eq!(
+            second.file_name().and_then(|name| name.to_str()),
+            Some("gb-cycle-1.png")
+        );
+
+        fs::remove_dir_all(root).expect("temporary screenshot root should be removable");
+    }
+
+    #[test]
+    fn resolve_next_screenshot_output_path_reports_directory_creation_failures() {
+        let root = temp_screenshot_root("path-error");
+        let blocking_path = root.join("blocking");
+        fs::write(&blocking_path, b"not-a-directory").expect("blocking file should be writable");
+
+        let error = resolve_next_screenshot_output_path(None, blocking_path.as_path())
+            .expect_err("non-directory screenshot root should fail");
+        assert!(error.contains("failed to create screenshot output directory"));
+
+        fs::remove_dir_all(root).expect("temporary screenshot root should be removable");
+    }
+
+    #[test]
+    fn save_rendered_screenshot_png_reports_file_creation_failures() {
+        let root = temp_screenshot_root("png-create-error");
+        let output_path = root.join("missing").join("shot.png");
+        let rendered = RenderedScreenshot {
+            width: 1,
+            height: 1,
+            rgb_pixels: vec![255, 255, 255],
+        };
+
+        let error = save_rendered_screenshot_png(&rendered, &output_path)
+            .expect_err("missing parent directory should fail");
+        assert!(error.contains("failed to create screenshot output file"));
+
+        fs::remove_dir_all(root).expect("temporary screenshot root should be removable");
+    }
+
+    #[test]
+    fn save_rendered_screenshot_png_reports_encoding_failures() {
+        let root = temp_screenshot_root("png-encode-error");
+        let output_path = root.join("shot.png");
+        let rendered = RenderedScreenshot {
+            width: 2,
+            height: 1,
+            rgb_pixels: vec![255, 255, 255],
+        };
+
+        let error = save_rendered_screenshot_png(&rendered, &output_path)
+            .expect_err("short pixel payload should fail PNG encoding");
+        assert!(error.contains("failed to write screenshot PNG"));
+
+        fs::remove_dir_all(root).expect("temporary screenshot root should be removable");
+    }
+
+    #[test]
     fn render_screenshot_reveals_bgwin_pixels_when_objects_are_hidden() {
         let primary = vec![3_u8; (crate::FRAMEBUFFER_WIDTH * crate::FRAMEBUFFER_HEIGHT) as usize];
         let primary_sources = vec![PpuFramebufferLayerSource::Object; primary.len()];
