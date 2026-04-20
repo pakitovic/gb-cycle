@@ -567,7 +567,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
   - `noise_timer`
   - a hidden `14`-bit noise counter plus its base-divider countdown and reload-seam flag, because some live `NR43` quirks depend on the internal counter phase rather than only on the visible `noise_timer`
   - decoded `NR43` state such as clock shift, width mode, and clock divider
-- In the repo's current architecture, that ownership is grouped explicitly into a visible CH4 noise-signal block (`NR43` decode, `noise_timer`, `lfsr_state`) plus a hidden live-write phase block (noise-counter phase, base-divider countdown, reload-seam flag, and last traced live-write decision) so future `NR43` refactors can deepen the glitch matrix without blurring the ordinary signal path.
+- In the repo's current architecture, that ownership is grouped explicitly into a visible CH4 noise-signal block (`NR43` decode, `noise_timer`, `lfsr_state`) plus a hidden live-write phase block (noise-counter phase, divider alignment, base-divider countdown, reload-seam flag, and last traced live-write decision) so future `NR43` refactors can deepen the glitch matrix without blurring the ordinary signal path.
 - CH4 should explicitly not inherit pulse-only state such as duty-step progression or CH1 sweep state.
 
 ## CH4 MMIO ownership baseline
@@ -610,9 +610,11 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - The frame sequencer must not be used as CH4's noise clock; only the fast CH4 timer path should advance the LFSR.
 - The hidden noise-counter countdown is a separate internal phase tracker for `NR43` live-write quirks; it must not replace or blur the explicit CH4 `noise_timer` contract used by the rest of the APU model.
 - The hidden counter's `countdown_reloaded` seam is also a separate explicit state; do not collapse it into the visible `noise_timer` or assume that the ordinary timer reload alone is enough to reproduce live `NR43` quirks.
+- The hidden live-write tracker should also keep the running divider alignment explicitly, because a write that lands exactly on the hidden-counter reload seam can reload the base countdown with an alignment-dependent offset instead of the plain divider reload.
+- Outside that seam, a live `NR43` write should preserve the in-flight hidden countdown rather than pretending the base-divider phase restarted immediately; only the visible repo-local `noise_timer` reload is unconditional.
 - Writes to `NR43` should alter CH4's effective timer configuration, not swap in a different abstract "noise texture".
 - Updating `NR43` should not retroactively inject an extra LFSR tick into an in-flight timer interval; the new effective timing should apply through the explicit timer/reload path rather than by mutating past channel time.
-- The current repo policy therefore reloads the stored `noise_timer` from the new decoded state for any live `NR43` write, while additionally allowing the conservative hidden-counter subset above to synthesize one seam step, one ordinary immediate step, or a two-step / feedback-corruption case on some low-shift writes; high-shift narrow staircase writes intentionally keep a narrower subset until a stronger oracle closes the remaining Zelda-tail gap.
+- The current repo policy therefore reloads the stored `noise_timer` from the new decoded state for any live `NR43` write, while additionally allowing the conservative hidden-counter subset above to synthesize one seam step, one ordinary immediate step, or a two-step / feedback-corruption case on some low-shift writes. The hidden countdown itself only resets on the seam path; otherwise it keeps its in-flight phase. If the write lands on the hidden-counter reload seam, that hidden countdown reload also uses an alignment-aware pre-`CGB-D` offset instead of a plain divider reset. High-shift narrow staircase writes intentionally keep a narrower subset until a stronger oracle closes the remaining Zelda-tail gap.
 
 ## CH4 width-mode and lock-up baseline
 

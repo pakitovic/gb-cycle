@@ -263,6 +263,7 @@ fn channel_4_live_nr43_write_can_take_the_reload_seam_and_then_step_again_via_th
     channel.envelope.current_volume = 0x0F;
     channel.noise.lfsr_state = NOISE_LFSR_INITIAL_STATE;
     channel.write_nr43(0x40);
+    channel.nr43_live_write.alignment = 2;
     channel.nr43_live_write.noise_counter = 0x01A0;
     channel.nr43_live_write.countdown_reloaded = true;
 
@@ -270,6 +271,7 @@ fn channel_4_live_nr43_write_can_take_the_reload_seam_and_then_step_again_via_th
 
     assert_eq!(channel.noise.lfsr_state, 0x6040);
     assert_eq!(channel.noise.period_timer, noise_timer_reload(5, 0));
+    assert_eq!(channel.nr43_live_write.counter_timer, 2);
     assert!(!channel.nr43_live_write.countdown_reloaded);
     let trace = channel
         .nr43_live_write
@@ -278,6 +280,33 @@ fn channel_4_live_nr43_write_can_take_the_reload_seam_and_then_step_again_via_th
     assert!(trace.reload_seam_step);
     assert!(trace.ff_to_new_step);
     assert!(!trace.feedback_corruption);
+}
+
+#[test]
+fn channel_4_live_nr43_write_reloads_the_hidden_counter_timer_with_alignment_after_a_reload_seam() {
+    let mut channel = Channel4State::default();
+    channel.write_nr43(0x00);
+    channel.nr43_live_write.alignment = 3;
+    channel.nr43_live_write.countdown_reloaded = true;
+
+    channel.write_nr43(0x01);
+
+    assert_eq!(channel.nr43_live_write.counter_timer, 7);
+    assert!(!channel.nr43_live_write.countdown_reloaded);
+}
+
+#[test]
+fn channel_4_live_nr43_write_preserves_the_hidden_counter_timer_outside_the_reload_seam() {
+    let mut channel = Channel4State::default();
+    channel.write_nr43(0x4C);
+    channel.nr43_live_write.counter_timer = 11;
+    channel.nr43_live_write.alignment = 2;
+    channel.nr43_live_write.countdown_reloaded = false;
+
+    channel.write_nr43(0x5C);
+
+    assert_eq!(channel.nr43_live_write.counter_timer, 11);
+    assert!(!channel.nr43_live_write.countdown_reloaded);
 }
 
 #[test]

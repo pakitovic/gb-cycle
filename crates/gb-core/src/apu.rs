@@ -72,6 +72,7 @@ pub struct ApuCh4DebugSnapshot {
     pub clock_shift: u8,
     pub short_width_mode: bool,
     pub clock_divider_code: u8,
+    pub alignment: u8,
     pub counter_timer: u32,
     pub noise_counter: u16,
     pub countdown_reloaded: bool,

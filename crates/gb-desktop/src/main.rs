@@ -1094,11 +1094,12 @@ fn format_apu_register_write_state(state: &ApuRegisterWriteState) -> String {
 
 fn format_ch4_debug_snapshot(snapshot: &ApuCh4DebugSnapshot) -> String {
     format!(
-        "ch4.nr43={:#04X} ch4.shift={} ch4.short_width={} ch4.divider={} ch4.counter_timer={} ch4.noise_counter={:#06X} ch4.countdown_reloaded={} ch4.period_timer={} ch4.lfsr={:#06X} ch4.output={:#04X}{}",
+        "ch4.nr43={:#04X} ch4.shift={} ch4.short_width={} ch4.divider={} ch4.alignment={} ch4.counter_timer={} ch4.noise_counter={:#06X} ch4.countdown_reloaded={} ch4.period_timer={} ch4.lfsr={:#06X} ch4.output={:#04X}{}",
         snapshot.nr43,
         snapshot.clock_shift,
         snapshot.short_width_mode,
         snapshot.clock_divider_code,
+        snapshot.alignment,
         snapshot.counter_timer,
         snapshot.noise_counter,
         snapshot.countdown_reloaded,

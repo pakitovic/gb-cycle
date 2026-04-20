@@ -19,6 +19,21 @@ pub(super) fn trace_channel4_live_nr43_write(
         .resolve()
 }
 
+pub(super) fn resolve_channel4_noise_counter_timer_after_live_write(
+    new_nr43: u8,
+    nr43_live_write: &Channel4Nr43LiveWriteState,
+) -> u32 {
+    if !nr43_live_write.countdown_reloaded && nr43_live_write.counter_timer != 0 {
+        return nr43_live_write.counter_timer;
+    }
+
+    let divisor = decode_nr43_noise_counter_reload(new_nr43);
+    if divisor == 2 {
+        return divisor;
+    }
+    divisor + [2, 1, 4, 3][usize::from(nr43_live_write.alignment & 0x03)]
+}
+
 pub(super) fn step_channel4_lfsr(noise: &mut Channel4NoiseSignalState) {
     let feedback_bit = u16::from(
         (noise.lfsr_state & (1 << NOISE_LFSR_OUTPUT_BIT))
@@ -214,6 +229,11 @@ impl<'a> Channel4Nr43LiveWriteResolver<'a> {
 
 fn decode_nr43_clock_shift(value: u8) -> u8 {
     (value >> NOISE_CLOCK_SHIFT_SHIFT) & NOISE_CLOCK_SHIFT_MASK
+}
+
+fn decode_nr43_noise_counter_reload(value: u8) -> u32 {
+    let divisor = u32::from(value & 0x07) << 2;
+    if divisor == 0 { 2 } else { divisor }
 }
 
 fn suppress_high_shift_narrow_old_to_ff_step(old_nr43: u8) -> bool {

@@ -25,6 +25,7 @@ pub(in crate::apu) struct Channel4NoiseSignalState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(in crate::apu) struct Channel4Nr43LiveWriteState {
+    pub(in crate::apu) alignment: u8,
     pub(in crate::apu) counter_timer: u32,
     pub(in crate::apu) noise_counter: u16,
     pub(in crate::apu) countdown_reloaded: bool,
@@ -114,7 +115,11 @@ impl Channel4State {
         self.nr43_live_write.last_trace = Some(trace);
         self.nr43 = value;
         self.decode_nr43(value);
-        self.nr43_live_write.counter_timer = self.noise_counter_timer_reload();
+        self.nr43_live_write.counter_timer =
+            super::ch4_live_write::resolve_channel4_noise_counter_timer_after_live_write(
+                value,
+                &self.nr43_live_write,
+            );
         self.nr43_live_write.countdown_reloaded = false;
         self.noise.period_timer = self.noise_timer_reload();
     }
@@ -167,6 +172,7 @@ impl Channel4State {
         self.apply_envelope_write(self.nr42);
         self.decode_nr43(self.nr43);
         self.envelope.reload(false);
+        self.nr43_live_write.alignment = 0;
         self.nr43_live_write.counter_timer = self.noise_counter_timer_reload();
         self.nr43_live_write.noise_counter =
             noise_counter_phase_after_trigger(self.noise.clock_shift);
@@ -190,6 +196,7 @@ impl Channel4State {
         self.noise.clock_shift = 0;
         self.noise.short_width_mode = false;
         self.noise.clock_divider_code = 0;
+        self.nr43_live_write.alignment = 0;
         self.nr43_live_write.counter_timer = 0;
         self.nr43_live_write.noise_counter = 0;
         self.nr43_live_write.countdown_reloaded = false;
@@ -271,6 +278,7 @@ impl Channel4State {
         }
 
         self.apply_envelope_write(self.nr42);
+        self.nr43_live_write.alignment = 0;
         self.nr43_live_write.counter_timer = self.noise_counter_timer_reload();
         self.nr43_live_write.noise_counter =
             noise_counter_phase_after_trigger(self.noise.clock_shift);
@@ -283,6 +291,7 @@ impl Channel4State {
     }
 
     pub(in crate::apu) fn tick_fast_timer(&mut self) {
+        self.nr43_live_write.alignment = (self.nr43_live_write.alignment + 1) & 0x03;
         self.tick_noise_counter_phase();
 
         if noise_clocking_suppressed(self.noise.clock_shift) {
@@ -350,6 +359,7 @@ impl Channel4State {
             clock_shift: self.noise.clock_shift,
             short_width_mode: self.noise.short_width_mode,
             clock_divider_code: self.noise.clock_divider_code,
+            alignment: self.nr43_live_write.alignment,
             counter_timer: self.nr43_live_write.counter_timer,
             noise_counter: self.nr43_live_write.noise_counter,
             countdown_reloaded: self.nr43_live_write.countdown_reloaded,
