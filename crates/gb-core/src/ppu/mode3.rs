@@ -678,10 +678,21 @@ impl Ppu {
         };
 
         self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+        self.write_bgwin_framebuffer_pixel(
+            self.ly as usize * SCREEN_WIDTH,
+            visible_x,
+            bg_pixel,
+            bg_enabled,
+        );
         self.current_scanline_mixed_pixels[visible_x] = output_pixel;
         self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
         self.current_scanline_pixels[visible_x] = scanline_pixel;
-        self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+        self.write_framebuffer_pixel(
+            self.ly as usize * SCREEN_WIDTH,
+            visible_x,
+            output_pixel,
+            panel_pixel,
+        );
 
         for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
             if usize::from(dot.visible_x) == visible_x {
@@ -719,10 +730,21 @@ impl Ppu {
         };
 
         self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+        self.write_bgwin_framebuffer_pixel(
+            self.ly as usize * SCREEN_WIDTH,
+            visible_x,
+            bg_pixel,
+            bg_enabled,
+        );
         self.current_scanline_mixed_pixels[visible_x] = output_pixel;
         self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
         self.current_scanline_pixels[visible_x] = scanline_pixel;
-        self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+        self.write_framebuffer_pixel(
+            self.ly as usize * SCREEN_WIDTH,
+            visible_x,
+            output_pixel,
+            panel_pixel,
+        );
 
         for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
             if usize::from(dot.visible_x) == visible_x {
@@ -1327,10 +1349,21 @@ impl Ppu {
                 };
                 let visible_x = visible_x as usize;
                 self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+                self.write_bgwin_framebuffer_pixel(
+                    self.ly as usize * SCREEN_WIDTH,
+                    visible_x,
+                    bg_pixel,
+                    bg_enabled,
+                );
                 self.current_scanline_mixed_pixels[visible_x] = output_pixel;
                 self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
                 self.current_scanline_pixels[visible_x] = scanline_pixel;
-                self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+                self.write_framebuffer_pixel(
+                    self.ly as usize * SCREEN_WIDTH,
+                    visible_x,
+                    output_pixel,
+                    panel_pixel,
+                );
                 self.record_dmg_recent_panel_dot(
                     visible_x as u8,
                     output_pixel,
@@ -1725,6 +1758,7 @@ impl Ppu {
             };
 
             self.current_scanline_bg_pixels[visible_x] = bg_pixel;
+            self.write_bgwin_framebuffer_pixel(row_start, visible_x, bg_pixel, bg_enabled);
             if self.current_scanline_mixed_pixels[visible_x].source != MixedPixelSource::Background
             {
                 continue;
@@ -1751,7 +1785,7 @@ impl Ppu {
             self.current_scanline_mixed_pixels[visible_x] = output_pixel;
             self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
             self.current_scanline_pixels[visible_x] = scanline_pixel;
-            self.framebuffer[row_start + visible_x] = panel_pixel;
+            self.write_framebuffer_pixel(row_start, visible_x, output_pixel, panel_pixel);
 
             for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
                 if usize::from(dot.visible_x) == visible_x {
@@ -2839,7 +2873,12 @@ impl Ppu {
             self.current_scanline_mixed_pixels[visible_x] = output_pixel;
             self.current_scanline_dmg_bg_forced_white[visible_x] = dmg_bg_forced_white;
             self.current_scanline_pixels[visible_x] = scanline_pixel;
-            self.framebuffer[self.ly as usize * SCREEN_WIDTH + visible_x] = panel_pixel;
+            self.write_framebuffer_pixel(
+                self.ly as usize * SCREEN_WIDTH,
+                visible_x,
+                output_pixel,
+                panel_pixel,
+            );
 
             for dot in &mut self.dmg_panel_live_write_state.recent_panel_dots {
                 if usize::from(dot.visible_x) == visible_x {

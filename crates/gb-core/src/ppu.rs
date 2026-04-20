@@ -255,6 +255,15 @@ pub enum PpuBgFetcherSource {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum PpuFramebufferLayerSource {
+    #[default]
+    Backdrop,
+    Background,
+    Window,
+    Object,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PpuObjFetcherStage {
     #[default]
     Idle,
@@ -365,6 +374,12 @@ pub struct Ppu {
     previous_scanline_ly: Option<u8>,
     pending_dmg_window_lcdc4_output_repaint: Option<BgTileDataSelect>,
     framebuffer: Vec<u8>,
+    framebuffer_layer_sources: Vec<PpuFramebufferLayerSource>,
+    framebuffer_bgwin_colors: Vec<u8>,
+    framebuffer_bgwin_forced_white: Vec<bool>,
+    framebuffer_bgwin_panel_shades: Vec<u8>,
+    framebuffer_backdrop_panel_shades: Vec<u8>,
+    framebuffer_bgwin_layer_sources: Vec<PpuFramebufferLayerSource>,
 }
 
 #[cfg(test)]

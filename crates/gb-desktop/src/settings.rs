@@ -97,6 +97,42 @@ impl DesktopSettingsStore {
         self.save()
     }
 
+    pub fn set_presentation_filter(&mut self, presentation_filter: bool) -> Result<(), String> {
+        if self.settings.video.presentation_filter == presentation_filter {
+            return Ok(());
+        }
+
+        self.settings.video.presentation_filter = presentation_filter;
+        self.save()
+    }
+
+    pub fn set_show_background(&mut self, show_background: bool) -> Result<(), String> {
+        if self.settings.video.show_background == show_background {
+            return Ok(());
+        }
+
+        self.settings.video.show_background = show_background;
+        self.save()
+    }
+
+    pub fn set_show_window(&mut self, show_window: bool) -> Result<(), String> {
+        if self.settings.video.show_window == show_window {
+            return Ok(());
+        }
+
+        self.settings.video.show_window = show_window;
+        self.save()
+    }
+
+    pub fn set_show_objects(&mut self, show_objects: bool) -> Result<(), String> {
+        if self.settings.video.show_objects == show_objects {
+            return Ok(());
+        }
+
+        self.settings.video.show_objects = show_objects;
+        self.save()
+    }
+
     pub fn set_show_performance_hud(&mut self, show_performance_hud: bool) -> Result<(), String> {
         if self.settings.video.show_performance_hud == show_performance_hud {
             return Ok(());
@@ -832,6 +868,10 @@ mod tests {
         settings.saves.flush_policy = DesktopSaveFlushPolicy::OnClose;
         settings.video.window_scale = 6;
         settings.video.integer_scale = false;
+        settings.video.presentation_filter = true;
+        settings.video.show_background = false;
+        settings.video.show_window = false;
+        settings.video.show_objects = false;
         settings.video.fullscreen = true;
         settings.video.show_performance_hud = false;
         settings.video.vsync = false;
@@ -880,6 +920,10 @@ mod tests {
         assert_eq!(config.saves.flush_policy, DesktopSaveFlushPolicy::OnClose);
         assert_eq!(config.video.window_scale, 6);
         assert!(!config.video.integer_scale);
+        assert!(config.video.presentation_filter);
+        assert!(!config.video.show_background);
+        assert!(!config.video.show_window);
+        assert!(!config.video.show_objects);
         assert!(config.video.fullscreen);
         assert!(!config.video.show_performance_hud);
         assert!(!config.video.vsync);
@@ -1065,6 +1109,18 @@ mod tests {
             .set_integer_scale(false)
             .expect("integer scale should persist");
         store
+            .set_presentation_filter(true)
+            .expect("presentation filter should persist");
+        store
+            .set_show_background(false)
+            .expect("background layer visibility should persist");
+        store
+            .set_show_window(false)
+            .expect("window layer visibility should persist");
+        store
+            .set_show_objects(false)
+            .expect("object layer visibility should persist");
+        store
             .set_show_performance_hud(false)
             .expect("performance HUD visibility should persist");
         store.set_vsync(false).expect("vsync toggle should persist");
@@ -1119,6 +1175,10 @@ mod tests {
         assert!(reloaded.video.fullscreen);
         assert_eq!(reloaded.video.window_scale, 6);
         assert!(!reloaded.video.integer_scale);
+        assert!(reloaded.video.presentation_filter);
+        assert!(!reloaded.video.show_background);
+        assert!(!reloaded.video.show_window);
+        assert!(!reloaded.video.show_objects);
         assert!(!reloaded.video.show_performance_hud);
         assert!(!reloaded.video.vsync);
         assert_eq!(reloaded.audio.volume_percent, 75);
@@ -1169,6 +1229,9 @@ mod tests {
         store
             .set_integer_scale(false)
             .expect("integer scale should persist");
+        store
+            .set_presentation_filter(true)
+            .expect("presentation filter should persist");
         store
             .set_show_performance_hud(false)
             .expect("HUD visibility should persist");

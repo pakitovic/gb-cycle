@@ -134,6 +134,53 @@ fn disabling_lcdc1_retroactively_repaints_object_dots_from_the_observed_onset() 
 }
 
 #[test]
+fn disabling_lcdc1_retroactive_repaint_updates_the_final_framebuffer_layer_source() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x83,
+        stat: 0x82,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0,
+        lyc: 0x00,
+        bgp: 0xE4,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.visible_output = PpuVisibleOutputState::Driving;
+    ppu.bg_pipeline_state.visible_pixels_output = 5;
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 1,
+        tile_index: 25,
+        attributes: 0,
+    });
+    ppu.current_scanline_bg_pixels[0] = 2;
+    ppu.current_scanline_bg_dot_contexts[0] = Some(PpuRecentBgDotContext {
+        source: PpuBgFetcherSource::Background,
+        fetch_x: 0,
+        pixel_index: 0,
+        tile_index: 0,
+    });
+    ppu.current_scanline_mixed_pixels[0] = MixedPixel::object(1, false);
+    ppu.current_scanline_pixels[0] = 1;
+    ppu.framebuffer_layer_sources[0] = PpuFramebufferLayerSource::Object;
+
+    ppu.apply_dmg_lcdc1_live_obj_enable_write(lcdc_write_context(0x83, 0x81));
+
+    assert_eq!(
+        ppu.framebuffer_layer_sources[0],
+        PpuFramebufferLayerSource::Background
+    );
+    assert_eq!(
+        ppu.framebuffer_bgwin_layer_sources[0],
+        PpuFramebufferLayerSource::Background
+    );
+}
+
+#[test]
 fn disabling_lcdc1_on_the_last_visible_dot_clamps_the_repaint_window() {
     let mut ppu = PpuTestRig::dmg();
     ppu.apply_startup_state(PpuStartupState {

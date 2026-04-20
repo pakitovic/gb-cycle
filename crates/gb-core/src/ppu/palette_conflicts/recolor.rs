@@ -14,6 +14,7 @@ impl Ppu {
         }
 
         let mut transient_palette_pending = matches!(register, PpuPaletteRegister::Bgp);
+        let row_start = self.ly as usize * SCREEN_WIDTH;
         if !self.dmg_panel_live_write_state.recent_panel_dots.is_empty()
             && !self.use_scanline_palette_conflict_positions(register)
         {
@@ -36,11 +37,16 @@ impl Ppu {
                 } else {
                     final_palette
                 };
+                if register == PpuPaletteRegister::Bgp {
+                    self.recolor_bgwin_framebuffer_pixel_with_palette(
+                        row_start + usize::from(dot.visible_x),
+                        palette,
+                    );
+                }
                 let panel_pixel = self.map_mixed_pixel_to_panel_shade_with_palette_override(
                     dot.pixel, register, palette,
                 );
-                self.framebuffer[self.ly as usize * SCREEN_WIDTH + usize::from(dot.visible_x)] =
-                    panel_pixel;
+                self.framebuffer[row_start + usize::from(dot.visible_x)] = panel_pixel;
             }
             return;
         }
@@ -64,12 +70,15 @@ impl Ppu {
             } else {
                 final_palette
             };
+            if register == PpuPaletteRegister::Bgp {
+                self.recolor_bgwin_framebuffer_pixel_with_palette(row_start + x, palette);
+            }
             let panel_pixel = self.map_mixed_pixel_to_panel_shade_with_palette_override(
                 mixed_pixel,
                 register,
                 palette,
             );
-            self.framebuffer[self.ly as usize * SCREEN_WIDTH + x] = panel_pixel;
+            self.framebuffer[row_start + x] = panel_pixel;
         }
     }
 

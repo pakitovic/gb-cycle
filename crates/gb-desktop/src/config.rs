@@ -305,6 +305,10 @@ impl SaveKeyPolicy {
 pub struct VideoOptions {
     pub window_scale: u8,
     pub integer_scale: bool,
+    pub presentation_filter: bool,
+    pub show_background: bool,
+    pub show_window: bool,
+    pub show_objects: bool,
     pub vsync: bool,
     pub fullscreen: bool,
     pub show_performance_hud: bool,
@@ -315,6 +319,10 @@ impl Default for VideoOptions {
         Self {
             window_scale: DEFAULT_WINDOW_SCALE,
             integer_scale: true,
+            presentation_filter: false,
+            show_background: true,
+            show_window: true,
+            show_objects: true,
             vsync: true,
             fullscreen: false,
             show_performance_hud: true,
@@ -675,6 +683,10 @@ mod tests {
         assert_eq!(config.saves.flush_policy, DesktopSaveFlushPolicy::Debounced);
         assert_eq!(config.video.window_scale, DEFAULT_WINDOW_SCALE);
         assert!(config.video.integer_scale);
+        assert!(!config.video.presentation_filter);
+        assert!(config.video.show_background);
+        assert!(config.video.show_window);
+        assert!(config.video.show_objects);
         assert!(config.video.vsync);
         assert!(config.video.show_performance_hud);
         assert!(config.audio.enabled);

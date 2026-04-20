@@ -53,6 +53,18 @@ impl Ppu {
             previous_scanline_ly: None,
             pending_dmg_window_lcdc4_output_repaint: None,
             framebuffer: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_layer_sources: vec![
+                PpuFramebufferLayerSource::Backdrop;
+                FRAMEBUFFER_PIXELS
+            ],
+            framebuffer_bgwin_colors: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_bgwin_forced_white: vec![false; FRAMEBUFFER_PIXELS],
+            framebuffer_bgwin_panel_shades: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_backdrop_panel_shades: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_bgwin_layer_sources: vec![
+                PpuFramebufferLayerSource::Backdrop;
+                FRAMEBUFFER_PIXELS
+            ],
         }
     }
 
@@ -943,6 +955,112 @@ impl Ppu {
 
     pub fn framebuffer(&self) -> &[u8] {
         &self.framebuffer
+    }
+
+    pub fn framebuffer_layer_sources(&self) -> &[PpuFramebufferLayerSource] {
+        &self.framebuffer_layer_sources
+    }
+
+    pub fn framebuffer_bgwin_panel_shades(&self) -> &[u8] {
+        &self.framebuffer_bgwin_panel_shades
+    }
+
+    pub fn framebuffer_backdrop_panel_shades(&self) -> &[u8] {
+        &self.framebuffer_backdrop_panel_shades
+    }
+
+    pub fn framebuffer_bgwin_layer_sources(&self) -> &[PpuFramebufferLayerSource] {
+        &self.framebuffer_bgwin_layer_sources
+    }
+
+    pub(super) fn framebuffer_layer_source_for_output_pixel(
+        &self,
+        visible_x: usize,
+        output_pixel: MixedPixel,
+    ) -> PpuFramebufferLayerSource {
+        match output_pixel.source {
+            MixedPixelSource::Object { .. } => PpuFramebufferLayerSource::Object,
+            MixedPixelSource::Background => match self.current_scanline_bg_dot_contexts[visible_x]
+                .map(|context| context.source)
+                .unwrap_or(PpuBgFetcherSource::Background)
+            {
+                PpuBgFetcherSource::Background => PpuFramebufferLayerSource::Background,
+                PpuBgFetcherSource::Window => PpuFramebufferLayerSource::Window,
+            },
+        }
+    }
+
+    pub(super) fn write_framebuffer_pixel(
+        &mut self,
+        row_start: usize,
+        visible_x: usize,
+        output_pixel: MixedPixel,
+        panel_pixel: u8,
+    ) {
+        let framebuffer_index = row_start + visible_x;
+        self.framebuffer[framebuffer_index] = panel_pixel;
+        self.framebuffer_layer_sources[framebuffer_index] =
+            self.framebuffer_layer_source_for_output_pixel(visible_x, output_pixel);
+    }
+
+    pub(super) fn write_bgwin_framebuffer_pixel(
+        &mut self,
+        row_start: usize,
+        visible_x: usize,
+        bg_pixel: u8,
+        bg_enabled: bool,
+    ) {
+        let framebuffer_index = row_start + visible_x;
+        let pixel = MixedPixel::background(bg_pixel);
+        let forced_white = self.dmg_bg_panel_dot_is_forced_white(bg_enabled, pixel);
+        let historical_bgp =
+            self.mode3_register_latches()
+                .pixel_pipeline_bgp(self.console_model, None, None);
+        let panel_shade = if self.visible_output == PpuVisibleOutputState::Driving {
+            if forced_white {
+                0
+            } else {
+                self.map_mixed_pixel_to_panel_shade(pixel)
+            }
+        } else {
+            0
+        };
+        let backdrop_panel_shade = if self.visible_output == PpuVisibleOutputState::Driving {
+            self.apply_dmg_palette(historical_bgp, 0)
+        } else {
+            0
+        };
+        let source =
+            match self.current_scanline_bg_dot_contexts[visible_x].map(|context| context.source) {
+                Some(PpuBgFetcherSource::Background) => PpuFramebufferLayerSource::Background,
+                Some(PpuBgFetcherSource::Window) => PpuFramebufferLayerSource::Window,
+                None => PpuFramebufferLayerSource::Backdrop,
+            };
+
+        self.framebuffer_bgwin_colors[framebuffer_index] = bg_pixel;
+        self.framebuffer_bgwin_forced_white[framebuffer_index] = forced_white;
+        self.framebuffer_bgwin_panel_shades[framebuffer_index] = panel_shade;
+        self.framebuffer_backdrop_panel_shades[framebuffer_index] = backdrop_panel_shade;
+        self.framebuffer_bgwin_layer_sources[framebuffer_index] = source;
+    }
+
+    pub(super) fn recolor_bgwin_framebuffer_pixel_with_palette(
+        &mut self,
+        framebuffer_index: usize,
+        palette: u8,
+    ) {
+        self.framebuffer_backdrop_panel_shades[framebuffer_index] =
+            self.apply_dmg_palette(palette, 0);
+        if self.framebuffer_bgwin_layer_sources[framebuffer_index]
+            == PpuFramebufferLayerSource::Backdrop
+            || self.framebuffer_bgwin_forced_white[framebuffer_index]
+        {
+            self.framebuffer_bgwin_panel_shades[framebuffer_index] = 0;
+            return;
+        }
+
+        self.framebuffer_bgwin_panel_shades[framebuffer_index] =
+            self.apply_dmg_palette(palette, self.framebuffer_bgwin_colors[framebuffer_index]);
     }
 
     pub(crate) fn set_system_stop_active(&mut self, active: bool) {
