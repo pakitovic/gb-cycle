@@ -1946,6 +1946,21 @@ impl Ppu {
         self.current_scanline_dmg_bg_forced_white[x] = dmg_bg_forced_white;
         self.current_scanline_pixels[x] = scanline_pixel;
         self.framebuffer[context.row_start + x] = panel_pixel;
+        self.framebuffer_bgwin_colors[context.row_start + x] = pixel_color;
+        self.framebuffer_bgwin_forced_white[context.row_start + x] = dmg_bg_forced_white;
+        self.framebuffer_bgwin_panel_shades[context.row_start + x] = panel_pixel;
+        self.framebuffer_backdrop_panel_shades[context.row_start + x] =
+            if context.visible_output_driving {
+                self.apply_dmg_palette(context.historical_bgp, 0)
+            } else {
+                0
+            };
+        self.framebuffer_bgwin_layer_sources[context.row_start + x] =
+            match self.current_scanline_bg_dot_contexts[x].map(|dot| dot.source) {
+                Some(PpuBgFetcherSource::Background) => PpuFramebufferLayerSource::Background,
+                Some(PpuBgFetcherSource::Window) => PpuFramebufferLayerSource::Window,
+                None => PpuFramebufferLayerSource::Backdrop,
+            };
     }
 
     pub(super) fn pixel_transfer_obj_enabled(&self) -> bool {
@@ -2107,6 +2122,14 @@ impl Ppu {
         self.current_scanline_bg_dot_contexts.fill(None);
         self.current_scanline_pixels.fill(0);
         self.framebuffer.fill(0);
+        self.framebuffer_layer_sources
+            .fill(PpuFramebufferLayerSource::Backdrop);
+        self.framebuffer_bgwin_colors.fill(0);
+        self.framebuffer_bgwin_forced_white.fill(false);
+        self.framebuffer_bgwin_panel_shades.fill(0);
+        self.framebuffer_backdrop_panel_shades.fill(0);
+        self.framebuffer_bgwin_layer_sources
+            .fill(PpuFramebufferLayerSource::Backdrop);
         self.pending_dmg_window_lcdc4_output_repaint = None;
     }
 

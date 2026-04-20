@@ -44,6 +44,9 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 ## Display and performance
 
 - Opens a desktop window and renders the live `160x144` framebuffer.
+- Host-side presentation filtering now defaults to `OFF`, so the SDL texture is sampled with nearest-neighbor scaling unless `VIDEO -> FILTER` is enabled for linear smoothing.
+- `VIDEO -> BACKGROUND`, `VIDEO -> WINDOW`, and `VIDEO -> OBJECTS` are debug presentation masks that do not touch core timing or `LCDC` state. Disabling `OBJECTS` reveals the stored BG/WIN plane underneath in both the live window and screenshots; if `BACKGROUND` and/or `WINDOW` are also masked away, the uncovered area now falls back to the per-pixel DMG backdrop shade (palette entry `0` under the historical `BGP` value) instead of a fixed solid fill, so OBJ-only captures track SameBoy's changing diagnostic backdrop more closely. Disabling `BACKGROUND` or `WINDOW` still masks that plane by source rather than recomputing a fresh behind-window raster.
+- `VIDEO -> SCREENSHOT` saves a native-size PNG next to the running ROM inside a `screenshots/` subdirectory using an `8-bit RGB` layout similar to SameBoy’s raw screenshots, without baking in host-side scaling, filtering, HUD, or menu overlays.
 - Window title reports live FPS, average frame time, relative emulation speed, and a frontend-side breakdown of average emulation, render, pacing, and audio-queue timing.
 - Compact in-window performance HUD with those same frontend metrics, toggleable from `VIDEO` or through a dedicated remappable hotkey.
 - Set `GB_CYCLE_DESKTOP_EMU_PROFILE=1` or `GB_CYCLE_DESKTOP_EMU_PROFILE=summary` to emit opt-in sampled `EMU` breakdowns to `stderr`.
@@ -109,7 +112,7 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - In launcher mode without a loaded ROM, that shared back/cancel behavior does not dismiss the root overlay.
 - While a native file dialog is pending from the overlay, the triggering entry stays selected but disabled until the dialog resolves.
 - Root overlay also exposes `QUIT` directly at the first menu level.
-- **`VIDEO`** — fullscreen, vsync, window scale, integer presentation, stats HUD visibility.
+- **`VIDEO`** — fullscreen, vsync, window scale, integer presentation, host-side presentation filter, screenshot capture, stats HUD visibility.
 - **`AUDIO`** — toggle mute, cycle host volume.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).
 - **`SYSTEM`** — system-level options such as console model, startup mode, boot ROM paths, save policy, and reset.
@@ -133,7 +136,7 @@ Persisted under the platform config directory by default, or under `GB_CYCLE_DES
 
 Persisted settings include:
 
-- Frontend video: scale, vsync, integer-presentation, stats-HUD visibility.
+- Frontend video: scale, vsync, integer-presentation, host-side presentation filter, stats-HUD visibility.
 - Frontend audio: volume, mute state.
 - Keyboard joypad bindings and keyboard menu bindings.
 - Frontend hotkeys.

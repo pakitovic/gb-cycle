@@ -631,6 +631,7 @@ impl Ppu {
         if desired_onset_x < visible_pixels_output {
             let row_start = self.ly as usize * SCREEN_WIDTH;
             for x in usize::from(desired_onset_x)..usize::from(visible_pixels_output) {
+                self.recolor_bgwin_framebuffer_pixel_with_palette(row_start + x, value);
                 let mixed_pixel = self.current_scanline_mixed_pixels[x];
                 if !register_affects_pixel(register, mixed_pixel) {
                     continue;
@@ -811,7 +812,9 @@ impl Ppu {
         );
 
         if desired_onset_x < visible_pixels_output {
+            let row_start = self.ly as usize * SCREEN_WIDTH;
             for x in usize::from(desired_onset_x)..usize::from(visible_pixels_output) {
+                self.recolor_bgwin_framebuffer_pixel_with_palette(row_start + x, value);
                 let mixed_pixel = self.current_scanline_mixed_pixels[x];
                 if !register_affects_pixel(register, mixed_pixel) {
                     continue;
@@ -856,16 +859,17 @@ impl Ppu {
 
         let row_start = self.ly as usize * SCREEN_WIDTH;
         for x in usize::from(transient_start_x)..usize::from(visible_pixels_output) {
-            let mixed_pixel = self.current_scanline_mixed_pixels[x];
-            if !register_affects_pixel(register, mixed_pixel) {
-                continue;
-            }
-
             let palette = if x < usize::from(final_onset_x) {
                 transient_palette
             } else {
                 value
             };
+            self.recolor_bgwin_framebuffer_pixel_with_palette(row_start + x, palette);
+            let mixed_pixel = self.current_scanline_mixed_pixels[x];
+            if !register_affects_pixel(register, mixed_pixel) {
+                continue;
+            }
+
             let panel_pixel = self.map_mixed_pixel_to_panel_shade_with_palette_override(
                 mixed_pixel,
                 register,

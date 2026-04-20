@@ -6,6 +6,7 @@ mod linked_session;
 mod menu;
 mod printer_output;
 mod save_session;
+mod screenshot_output;
 mod settings;
 
 use audio::{AudioSubmitTelemetry, DesktopAudioOutput};
@@ -16,8 +17,8 @@ use gb_core::{
     CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
     CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, CpuSnapshot, ExecutionMode,
     InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
-    MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuStepRegion, StartupMode,
-    TraceSummaryBuffer,
+    MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuFramebufferLayerSource,
+    PpuStepRegion, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel,
@@ -49,7 +50,7 @@ use sdl3::hint;
 use sdl3::keyboard::{Keycode, Scancode};
 use sdl3::messagebox::{MessageBoxFlag, show_simple_message_box};
 use sdl3::pixels::{Color, PixelFormat};
-use sdl3::render::{Canvas, TextureCreator};
+use sdl3::render::{Canvas, ScaleMode, TextureCreator};
 use sdl3::sys;
 use sdl3::video::{FullscreenType, Window, WindowContext};
 use settings::DesktopSettingsStore;
@@ -97,10 +98,19 @@ struct FramebufferDimensions {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct FramebufferPanelInput<'a> {
+    framebuffer: &'a [u8],
+    framebuffer_layer_sources: &'a [PpuFramebufferLayerSource],
+    bgwin_framebuffer: &'a [u8],
+    backdrop_framebuffer: &'a [u8],
+    bgwin_framebuffer_layer_sources: &'a [PpuFramebufferLayerSource],
+}
+
+#[derive(Debug, Clone, Copy)]
 struct FramebufferRenderInput<'a> {
     dimensions: FramebufferDimensions,
-    primary_framebuffer: &'a [u8],
-    secondary_framebuffer: Option<&'a [u8]>,
+    primary: FramebufferPanelInput<'a>,
+    secondary: Option<FramebufferPanelInput<'a>>,
 }
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
@@ -2922,10 +2932,36 @@ fn run_desktop_with_startup_fallback_persistence(
         &mut rgb_frame,
         FramebufferRenderInput {
             dimensions: current_framebuffer_dimensions,
-            primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
-            secondary_framebuffer: machine
+            primary: FramebufferPanelInput {
+                framebuffer: machine.primary_machine().ppu().framebuffer(),
+                framebuffer_layer_sources: machine
+                    .primary_machine()
+                    .ppu()
+                    .framebuffer_layer_sources(),
+                bgwin_framebuffer: machine
+                    .primary_machine()
+                    .ppu()
+                    .framebuffer_bgwin_panel_shades(),
+                backdrop_framebuffer: machine
+                    .primary_machine()
+                    .ppu()
+                    .framebuffer_backdrop_panel_shades(),
+                bgwin_framebuffer_layer_sources: machine
+                    .primary_machine()
+                    .ppu()
+                    .framebuffer_bgwin_layer_sources(),
+            },
+            secondary: machine
                 .secondary_machine()
-                .map(|secondary| secondary.ppu().framebuffer()),
+                .map(|secondary| FramebufferPanelInput {
+                    framebuffer: secondary.ppu().framebuffer(),
+                    framebuffer_layer_sources: secondary.ppu().framebuffer_layer_sources(),
+                    bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
+                    backdrop_framebuffer: secondary.ppu().framebuffer_backdrop_panel_shades(),
+                    bgwin_framebuffer_layer_sources: secondary
+                        .ppu()
+                        .framebuffer_bgwin_layer_sources(),
+                }),
         },
         &runtime.video_options,
         initial_menu_presentation,
@@ -2986,10 +3022,40 @@ fn run_desktop_with_startup_fallback_persistence(
                     &mut rgb_frame,
                     FramebufferRenderInput {
                         dimensions: current_framebuffer_dimensions,
-                        primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
-                        secondary_framebuffer: machine
-                            .secondary_machine()
-                            .map(|secondary| secondary.ppu().framebuffer()),
+                        primary: FramebufferPanelInput {
+                            framebuffer: machine.primary_machine().ppu().framebuffer(),
+                            framebuffer_layer_sources: machine
+                                .primary_machine()
+                                .ppu()
+                                .framebuffer_layer_sources(),
+                            bgwin_framebuffer: machine
+                                .primary_machine()
+                                .ppu()
+                                .framebuffer_bgwin_panel_shades(),
+                            backdrop_framebuffer: machine
+                                .primary_machine()
+                                .ppu()
+                                .framebuffer_backdrop_panel_shades(),
+                            bgwin_framebuffer_layer_sources: machine
+                                .primary_machine()
+                                .ppu()
+                                .framebuffer_bgwin_layer_sources(),
+                        },
+                        secondary: machine.secondary_machine().map(|secondary| {
+                            FramebufferPanelInput {
+                                framebuffer: secondary.ppu().framebuffer(),
+                                framebuffer_layer_sources: secondary
+                                    .ppu()
+                                    .framebuffer_layer_sources(),
+                                bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
+                                backdrop_framebuffer: secondary
+                                    .ppu()
+                                    .framebuffer_backdrop_panel_shades(),
+                                bgwin_framebuffer_layer_sources: secondary
+                                    .ppu()
+                                    .framebuffer_bgwin_layer_sources(),
+                            }
+                        }),
                     },
                     &runtime.video_options,
                     menu_presentation,
@@ -3043,10 +3109,40 @@ fn run_desktop_with_startup_fallback_persistence(
                     &mut rgb_frame,
                     FramebufferRenderInput {
                         dimensions: current_framebuffer_dimensions,
-                        primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
-                        secondary_framebuffer: machine
-                            .secondary_machine()
-                            .map(|secondary| secondary.ppu().framebuffer()),
+                        primary: FramebufferPanelInput {
+                            framebuffer: machine.primary_machine().ppu().framebuffer(),
+                            framebuffer_layer_sources: machine
+                                .primary_machine()
+                                .ppu()
+                                .framebuffer_layer_sources(),
+                            bgwin_framebuffer: machine
+                                .primary_machine()
+                                .ppu()
+                                .framebuffer_bgwin_panel_shades(),
+                            backdrop_framebuffer: machine
+                                .primary_machine()
+                                .ppu()
+                                .framebuffer_backdrop_panel_shades(),
+                            bgwin_framebuffer_layer_sources: machine
+                                .primary_machine()
+                                .ppu()
+                                .framebuffer_bgwin_layer_sources(),
+                        },
+                        secondary: machine.secondary_machine().map(|secondary| {
+                            FramebufferPanelInput {
+                                framebuffer: secondary.ppu().framebuffer(),
+                                framebuffer_layer_sources: secondary
+                                    .ppu()
+                                    .framebuffer_layer_sources(),
+                                bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
+                                backdrop_framebuffer: secondary
+                                    .ppu()
+                                    .framebuffer_backdrop_panel_shades(),
+                                bgwin_framebuffer_layer_sources: secondary
+                                    .ppu()
+                                    .framebuffer_bgwin_layer_sources(),
+                            }
+                        }),
                     },
                     &runtime.video_options,
                     menu_presentation,
@@ -3073,10 +3169,36 @@ fn run_desktop_with_startup_fallback_persistence(
             &mut rgb_frame,
             FramebufferRenderInput {
                 dimensions: current_framebuffer_dimensions,
-                primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
-                secondary_framebuffer: machine
+                primary: FramebufferPanelInput {
+                    framebuffer: machine.primary_machine().ppu().framebuffer(),
+                    framebuffer_layer_sources: machine
+                        .primary_machine()
+                        .ppu()
+                        .framebuffer_layer_sources(),
+                    bgwin_framebuffer: machine
+                        .primary_machine()
+                        .ppu()
+                        .framebuffer_bgwin_panel_shades(),
+                    backdrop_framebuffer: machine
+                        .primary_machine()
+                        .ppu()
+                        .framebuffer_backdrop_panel_shades(),
+                    bgwin_framebuffer_layer_sources: machine
+                        .primary_machine()
+                        .ppu()
+                        .framebuffer_bgwin_layer_sources(),
+                },
+                secondary: machine
                     .secondary_machine()
-                    .map(|secondary| secondary.ppu().framebuffer()),
+                    .map(|secondary| FramebufferPanelInput {
+                        framebuffer: secondary.ppu().framebuffer(),
+                        framebuffer_layer_sources: secondary.ppu().framebuffer_layer_sources(),
+                        bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
+                        backdrop_framebuffer: secondary.ppu().framebuffer_backdrop_panel_shades(),
+                        bgwin_framebuffer_layer_sources: secondary
+                            .ppu()
+                            .framebuffer_bgwin_layer_sources(),
+                    }),
             },
             &runtime.video_options,
             None,
@@ -5112,6 +5234,22 @@ fn execute_menu_action(
             flush_runtime_save_sessions_if_changed(context.runtime, context.machine, "menu")?;
             Ok(None)
         }
+        MenuAction::SaveScreenshot => {
+            match save_screenshot_for_session(
+                context.session,
+                context.machine,
+                &context.runtime.video_options,
+            ) {
+                Ok(path) => {
+                    eprintln!("info: screenshot saved to {}", path.display());
+                }
+                Err(error) => {
+                    show_warning_message(Some(canvas.window()), "Screenshot", &error);
+                    eprintln!("warning: {error}");
+                }
+            }
+            Ok(None)
+        }
         MenuAction::ToggleFullscreen => {
             toggle_fullscreen(canvas.window_mut())?;
             context.runtime.video_options.fullscreen =
@@ -5161,6 +5299,37 @@ fn execute_menu_action(
             context
                 .settings_store
                 .set_integer_scale(context.runtime.video_options.integer_scale)?;
+            Ok(None)
+        }
+        MenuAction::TogglePresentationFilter => {
+            context.runtime.video_options.presentation_filter =
+                !context.runtime.video_options.presentation_filter;
+            context
+                .settings_store
+                .set_presentation_filter(context.runtime.video_options.presentation_filter)?;
+            Ok(None)
+        }
+        MenuAction::ToggleBackgroundLayer => {
+            context.runtime.video_options.show_background =
+                !context.runtime.video_options.show_background;
+            context
+                .settings_store
+                .set_show_background(context.runtime.video_options.show_background)?;
+            Ok(None)
+        }
+        MenuAction::ToggleWindowLayer => {
+            context.runtime.video_options.show_window = !context.runtime.video_options.show_window;
+            context
+                .settings_store
+                .set_show_window(context.runtime.video_options.show_window)?;
+            Ok(None)
+        }
+        MenuAction::ToggleObjectLayer => {
+            context.runtime.video_options.show_objects =
+                !context.runtime.video_options.show_objects;
+            context
+                .settings_store
+                .set_show_objects(context.runtime.video_options.show_objects)?;
             Ok(None)
         }
         MenuAction::TogglePerformanceHud => {
@@ -5468,6 +5637,10 @@ fn current_menu_presentation(
         vsync: runtime.video_options.vsync,
         window_scale: runtime.video_options.window_scale.max(1),
         integer_scale: runtime.video_options.integer_scale,
+        presentation_filter: runtime.video_options.presentation_filter,
+        show_background: runtime.video_options.show_background,
+        show_window: runtime.video_options.show_window,
+        show_objects: runtime.video_options.show_objects,
         show_performance_hud: runtime.video_options.show_performance_hud,
         muted: runtime
             .audio_output
@@ -6285,6 +6458,38 @@ fn reset_machine(
     Ok(())
 }
 
+fn save_screenshot_for_session(
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+    video_options: &VideoOptions,
+) -> Result<PathBuf, String> {
+    let rendered = screenshot_output::render_screenshot(
+        FramebufferPanelInput {
+            framebuffer: machine.ppu().framebuffer(),
+            framebuffer_layer_sources: machine.ppu().framebuffer_layer_sources(),
+            bgwin_framebuffer: machine.ppu().framebuffer_bgwin_panel_shades(),
+            backdrop_framebuffer: machine.ppu().framebuffer_backdrop_panel_shades(),
+            bgwin_framebuffer_layer_sources: machine.ppu().framebuffer_bgwin_layer_sources(),
+        },
+        machine
+            .secondary_machine()
+            .map(|secondary| FramebufferPanelInput {
+                framebuffer: secondary.ppu().framebuffer(),
+                framebuffer_layer_sources: secondary.ppu().framebuffer_layer_sources(),
+                bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
+                backdrop_framebuffer: secondary.ppu().framebuffer_backdrop_panel_shades(),
+                bgwin_framebuffer_layer_sources: secondary.ppu().framebuffer_bgwin_layer_sources(),
+            }),
+        video_options,
+    );
+    let output_path = screenshot_output::resolve_next_screenshot_output_path(
+        session.rom_path(),
+        session.current_dir.as_path(),
+    )?;
+    screenshot_output::save_rendered_screenshot_png(&rendered, &output_path)?;
+    Ok(output_path)
+}
+
 fn toggle_fullscreen(window: &mut Window) -> Result<(), String> {
     let target_state = window.fullscreen_state() == FullscreenType::Off;
     map_display_result(
@@ -6405,6 +6610,57 @@ fn framebuffer_pitch_bytes_for_dimensions(dimensions: FramebufferDimensions) -> 
     dimensions.width as usize * 3
 }
 
+fn bgwin_layer_source_visible(
+    video_options: &VideoOptions,
+    source: PpuFramebufferLayerSource,
+) -> bool {
+    match source {
+        PpuFramebufferLayerSource::Backdrop => false,
+        PpuFramebufferLayerSource::Background => video_options.show_background,
+        PpuFramebufferLayerSource::Window => video_options.show_window,
+        PpuFramebufferLayerSource::Object => false,
+    }
+}
+
+fn composite_framebuffer_panel_shade(
+    final_shade: u8,
+    final_source: PpuFramebufferLayerSource,
+    bgwin_shade: u8,
+    bgwin_source: PpuFramebufferLayerSource,
+    backdrop_shade: u8,
+    video_options: &VideoOptions,
+) -> u8 {
+    let bgwin_panel_shade = if bgwin_layer_source_visible(video_options, bgwin_source) {
+        bgwin_shade
+    } else {
+        backdrop_shade
+    };
+
+    if video_options.show_objects && final_source == PpuFramebufferLayerSource::Object {
+        final_shade
+    } else {
+        bgwin_panel_shade
+    }
+}
+
+fn framebuffer_texture_scale_mode(video_options: &VideoOptions) -> ScaleMode {
+    if video_options.presentation_filter {
+        ScaleMode::Linear
+    } else {
+        ScaleMode::Nearest
+    }
+}
+
+fn sync_framebuffer_texture_video_options(
+    texture: &mut sdl3::render::Texture<'_>,
+    video_options: &VideoOptions,
+) {
+    let expected_scale_mode = framebuffer_texture_scale_mode(video_options);
+    if texture.scale_mode() != expected_scale_mode {
+        texture.set_scale_mode(expected_scale_mode);
+    }
+}
+
 fn create_framebuffer_texture<'a>(
     texture_creator: &'a TextureCreator<WindowContext>,
     dimensions: FramebufferDimensions,
@@ -6454,7 +6710,8 @@ fn write_monochrome_framebuffer_region(
     target_rgb_frame: &mut [u8],
     target_dimensions: FramebufferDimensions,
     target_origin_x: usize,
-    source_framebuffer: &[u8],
+    source_panel: FramebufferPanelInput<'_>,
+    video_options: &VideoOptions,
 ) {
     let target_pitch_bytes = framebuffer_pitch_bytes_for_dimensions(target_dimensions);
     let target_width = target_dimensions.width as usize;
@@ -6467,7 +6724,15 @@ fn write_monochrome_framebuffer_region(
 
             let source_index = y * FRAMEBUFFER_WIDTH as usize + x;
             let target_pixel_index = y * target_pitch_bytes + ((target_origin_x + x) * 3);
-            let shade = framebuffer_pixel_to_grayscale(source_framebuffer[source_index]);
+            let panel_shade = composite_framebuffer_panel_shade(
+                source_panel.framebuffer[source_index],
+                source_panel.framebuffer_layer_sources[source_index],
+                source_panel.bgwin_framebuffer[source_index],
+                source_panel.bgwin_framebuffer_layer_sources[source_index],
+                source_panel.backdrop_framebuffer[source_index],
+                video_options,
+            );
+            let shade = framebuffer_pixel_to_grayscale(panel_shade);
             target_rgb_frame[target_pixel_index] = shade;
             target_rgb_frame[target_pixel_index + 1] = shade;
             target_rgb_frame[target_pixel_index + 2] = shade;
@@ -6485,19 +6750,22 @@ fn render_frame(
     performance_hud: Option<PerformanceHudSnapshot>,
 ) -> Result<Duration, String> {
     apply_canvas_video_options_for_dimensions(canvas, video_options, framebuffer.dimensions)?;
+    sync_framebuffer_texture_video_options(texture, video_options);
     rgb_frame.fill(0);
     write_monochrome_framebuffer_region(
         rgb_frame,
         framebuffer.dimensions,
         0,
-        framebuffer.primary_framebuffer,
+        framebuffer.primary,
+        video_options,
     );
-    if let Some(secondary_framebuffer) = framebuffer.secondary_framebuffer {
+    if let Some(secondary_panel) = framebuffer.secondary {
         write_monochrome_framebuffer_region(
             rgb_frame,
             framebuffer.dimensions,
             FRAMEBUFFER_WIDTH as usize,
-            secondary_framebuffer,
+            secondary_panel,
+            video_options,
         );
     }
     if let Some((menu_state, menu_presentation)) = menu_state {
@@ -6768,8 +7036,8 @@ mod tests {
         CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
         CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
         ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
-        MachineConfig, MachineStepRegion, PersistentCartState, PpuStepRegion, PrinterCommand,
-        StartupMode, TraceSummaryBuffer,
+        MachineConfig, MachineStepRegion, PersistentCartState, PpuFramebufferLayerSource,
+        PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
@@ -10347,8 +10615,17 @@ mod tests {
                     width: super::FRAMEBUFFER_WIDTH,
                     height: super::FRAMEBUFFER_HEIGHT,
                 },
-                primary_framebuffer: harness.machine.ppu().framebuffer(),
-                secondary_framebuffer: None,
+                primary: super::FramebufferPanelInput {
+                    framebuffer: harness.machine.ppu().framebuffer(),
+                    framebuffer_layer_sources: harness.machine.ppu().framebuffer_layer_sources(),
+                    bgwin_framebuffer: harness.machine.ppu().framebuffer_bgwin_panel_shades(),
+                    backdrop_framebuffer: harness.machine.ppu().framebuffer_backdrop_panel_shades(),
+                    bgwin_framebuffer_layer_sources: harness
+                        .machine
+                        .ppu()
+                        .framebuffer_bgwin_layer_sources(),
+                },
+                secondary: None,
             },
             &harness.runtime.video_options,
             Some((&harness.runtime.menu_state, open_menu_presentation)),
@@ -10368,8 +10645,17 @@ mod tests {
                     width: super::FRAMEBUFFER_WIDTH,
                     height: super::FRAMEBUFFER_HEIGHT,
                 },
-                primary_framebuffer: harness.machine.ppu().framebuffer(),
-                secondary_framebuffer: None,
+                primary: super::FramebufferPanelInput {
+                    framebuffer: harness.machine.ppu().framebuffer(),
+                    framebuffer_layer_sources: harness.machine.ppu().framebuffer_layer_sources(),
+                    bgwin_framebuffer: harness.machine.ppu().framebuffer_bgwin_panel_shades(),
+                    backdrop_framebuffer: harness.machine.ppu().framebuffer_backdrop_panel_shades(),
+                    bgwin_framebuffer_layer_sources: harness
+                        .machine
+                        .ppu()
+                        .framebuffer_bgwin_layer_sources(),
+                },
+                secondary: None,
             },
             &harness.runtime.video_options,
             None,
@@ -10510,6 +10796,10 @@ mod tests {
             vec![0_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
         let secondary_framebuffer =
             vec![3_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+        let primary_sources =
+            vec![PpuFramebufferLayerSource::Background; primary_framebuffer.len()];
+        let secondary_sources =
+            vec![PpuFramebufferLayerSource::Background; secondary_framebuffer.len()];
 
         let _ = super::render_frame(
             &mut harness.canvas,
@@ -10517,8 +10807,20 @@ mod tests {
             &mut rgb_frame,
             super::FramebufferRenderInput {
                 dimensions: linked_dimensions,
-                primary_framebuffer: &primary_framebuffer,
-                secondary_framebuffer: Some(&secondary_framebuffer),
+                primary: super::FramebufferPanelInput {
+                    framebuffer: &primary_framebuffer,
+                    framebuffer_layer_sources: &primary_sources,
+                    bgwin_framebuffer: &primary_framebuffer,
+                    backdrop_framebuffer: &primary_framebuffer,
+                    bgwin_framebuffer_layer_sources: &primary_sources,
+                },
+                secondary: Some(super::FramebufferPanelInput {
+                    framebuffer: &secondary_framebuffer,
+                    framebuffer_layer_sources: &secondary_sources,
+                    bgwin_framebuffer: &secondary_framebuffer,
+                    backdrop_framebuffer: &secondary_framebuffer,
+                    bgwin_framebuffer_layer_sources: &secondary_sources,
+                }),
             },
             &harness.runtime.video_options,
             None,
@@ -10533,6 +10835,174 @@ mod tests {
         assert_eq!(left_pixel, &[super::framebuffer_pixel_to_grayscale(0); 3]);
         assert_eq!(right_pixel, &[super::framebuffer_pixel_to_grayscale(3); 3]);
         assert_eq!(rgb_frame.len(), linked_dimensions.height as usize * pitch);
+    }
+
+    #[test]
+    fn render_frame_reveals_bgwin_pixels_when_objects_are_hidden() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("layer-mask-render", true, false, false);
+        let texture_creator = harness.canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl3::pixels::PixelFormat::RGB24,
+                super::FRAMEBUFFER_WIDTH,
+                super::FRAMEBUFFER_HEIGHT,
+            )
+            .expect("runtime texture should be creatable");
+        let mut rgb_frame =
+            vec![0_u8; super::FRAMEBUFFER_HEIGHT as usize * super::FRAMEBUFFER_PITCH_BYTES];
+        let framebuffer =
+            vec![3_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+        let layer_sources = vec![PpuFramebufferLayerSource::Object; framebuffer.len()];
+        let bgwin_framebuffer =
+            vec![1_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+        let bgwin_layer_sources = vec![PpuFramebufferLayerSource::Window; framebuffer.len()];
+        let mut video_options = harness.runtime.video_options.clone();
+        video_options.show_objects = false;
+
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut rgb_frame,
+            super::FramebufferRenderInput {
+                dimensions: super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                },
+                primary: super::FramebufferPanelInput {
+                    framebuffer: &framebuffer,
+                    framebuffer_layer_sources: &layer_sources,
+                    bgwin_framebuffer: &bgwin_framebuffer,
+                    backdrop_framebuffer: &bgwin_framebuffer,
+                    bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
+                },
+                secondary: None,
+            },
+            &video_options,
+            None,
+            None,
+        )
+        .expect("layer-masked frame should render");
+
+        assert_eq!(&rgb_frame[..3], &[170, 170, 170]);
+    }
+
+    #[test]
+    fn render_frame_uses_dynamic_backdrop_when_bgwin_layers_are_hidden() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("layer-mask-dynamic-backdrop", true, false, false);
+        let texture_creator = harness.canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl3::pixels::PixelFormat::RGB24,
+                super::FRAMEBUFFER_WIDTH,
+                super::FRAMEBUFFER_HEIGHT,
+            )
+            .expect("runtime texture should be creatable");
+        let mut rgb_frame =
+            vec![0_u8; super::FRAMEBUFFER_HEIGHT as usize * super::FRAMEBUFFER_PITCH_BYTES];
+        let mut framebuffer =
+            vec![0_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+        let mut layer_sources = vec![PpuFramebufferLayerSource::Background; framebuffer.len()];
+        let bgwin_framebuffer =
+            vec![1_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+        let bgwin_layer_sources = vec![PpuFramebufferLayerSource::Window; framebuffer.len()];
+        let mut backdrop_framebuffer =
+            vec![2_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+        let mut video_options = harness.runtime.video_options.clone();
+        video_options.show_background = false;
+        video_options.show_window = false;
+        backdrop_framebuffer[0] = 1;
+        framebuffer[1] = 3;
+        layer_sources[1] = PpuFramebufferLayerSource::Object;
+
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut rgb_frame,
+            super::FramebufferRenderInput {
+                dimensions: super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                },
+                primary: super::FramebufferPanelInput {
+                    framebuffer: &framebuffer,
+                    framebuffer_layer_sources: &layer_sources,
+                    bgwin_framebuffer: &bgwin_framebuffer,
+                    backdrop_framebuffer: &backdrop_framebuffer,
+                    bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
+                },
+                secondary: None,
+            },
+            &video_options,
+            None,
+            None,
+        )
+        .expect("OBJ-only frame should render with a dynamic backdrop");
+
+        assert_eq!(&rgb_frame[..3], &[170, 170, 170]);
+        assert_eq!(&rgb_frame[3..6], &[0, 0, 0]);
+        assert_eq!(&rgb_frame[6..9], &[85, 85, 85]);
+    }
+
+    #[test]
+    fn render_frame_applies_the_selected_presentation_filter_to_the_texture() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("render-scale-mode", true, false, false);
+        let texture_creator = harness.canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl3::pixels::PixelFormat::RGB24,
+                super::FRAMEBUFFER_WIDTH,
+                super::FRAMEBUFFER_HEIGHT,
+            )
+            .expect("runtime texture should be creatable");
+        let mut rgb_frame =
+            vec![0_u8; super::FRAMEBUFFER_HEIGHT as usize * super::FRAMEBUFFER_PITCH_BYTES];
+        let framebuffer = super::FramebufferRenderInput {
+            dimensions: super::FramebufferDimensions {
+                width: super::FRAMEBUFFER_WIDTH,
+                height: super::FRAMEBUFFER_HEIGHT,
+            },
+            primary: super::FramebufferPanelInput {
+                framebuffer: harness.machine.ppu().framebuffer(),
+                framebuffer_layer_sources: harness.machine.ppu().framebuffer_layer_sources(),
+                bgwin_framebuffer: harness.machine.ppu().framebuffer_bgwin_panel_shades(),
+                backdrop_framebuffer: harness.machine.ppu().framebuffer_backdrop_panel_shades(),
+                bgwin_framebuffer_layer_sources: harness
+                    .machine
+                    .ppu()
+                    .framebuffer_bgwin_layer_sources(),
+            },
+            secondary: None,
+        };
+        let mut video_options = harness.runtime.video_options.clone();
+
+        video_options.presentation_filter = false;
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut rgb_frame,
+            framebuffer,
+            &video_options,
+            None,
+            None,
+        )
+        .expect("nearest-neighbor frame should render");
+        assert_eq!(texture.scale_mode(), sdl3::render::ScaleMode::Nearest);
+
+        video_options.presentation_filter = true;
+        super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut rgb_frame,
+            framebuffer,
+            &video_options,
+            None,
+            None,
+        )
+        .expect("filtered frame should render");
+        assert_eq!(texture.scale_mode(), sdl3::render::ScaleMode::Linear);
     }
 
     #[test]
@@ -11159,6 +11629,51 @@ mod tests {
                 .is_none()
         );
         assert!(!harness.runtime.video_options.integer_scale);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::TogglePresentationFilter)
+                .unwrap()
+                .is_none()
+        );
+        assert!(harness.runtime.video_options.presentation_filter);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleBackgroundLayer)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.runtime.video_options.show_background);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleWindowLayer)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.runtime.video_options.show_window);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleObjectLayer)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!harness.runtime.video_options.show_objects);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SaveScreenshot)
+                .unwrap()
+                .is_none()
+        );
+        let screenshot_path = harness.root.join("screenshots").join("actions-0.png");
+        let encoded = fs::read(&screenshot_path).expect("screenshot PNG should exist");
+        let decoder = png::Decoder::new(std::io::Cursor::new(encoded));
+        let mut reader = decoder.read_info().expect("PNG header should decode");
+        let mut buffer = vec![0; reader.output_buffer_size()];
+        let info = reader
+            .next_frame(&mut buffer)
+            .expect("PNG payload should decode");
+        assert_eq!(info.width, super::FRAMEBUFFER_WIDTH);
+        assert_eq!(info.height, super::FRAMEBUFFER_HEIGHT);
+        assert_eq!(info.color_type, png::ColorType::Rgb);
         assert!(
             harness
                 .execute_action(super::MenuAction::TogglePerformanceHud)

@@ -82,11 +82,16 @@ const RECENT_MENU_ITEMS: [MenuItem; RECENT_ROM_MENU_CAPACITY + 2] = [
     MenuItem::ClearRecentList,
     MenuItem::Return,
 ];
-const VIDEO_MENU_ITEMS: [MenuItem; 7] = [
+const VIDEO_MENU_ITEMS: [MenuItem; 12] = [
     MenuItem::Fullscreen,
     MenuItem::Vsync,
     MenuItem::WindowScale,
     MenuItem::IntegerScale,
+    MenuItem::PresentationFilter,
+    MenuItem::ShowBackground,
+    MenuItem::ShowWindow,
+    MenuItem::ShowObjects,
+    MenuItem::Screenshot,
     MenuItem::PerformanceHud,
     MenuItem::VideoDefaults,
     MenuItem::Return,
@@ -192,6 +197,7 @@ pub enum MenuAction {
     OpenRecentRom(usize),
     ClearRecentList,
     SaveBattery,
+    SaveScreenshot,
     CycleConsoleModel,
     CycleStartupMode,
     CycleExecutionMode,
@@ -207,6 +213,10 @@ pub enum MenuAction {
     ToggleVsync,
     CycleWindowScale,
     ToggleIntegerScale,
+    TogglePresentationFilter,
+    ToggleBackgroundLayer,
+    ToggleWindowLayer,
+    ToggleObjectLayer,
     TogglePerformanceHud,
     ToggleMute,
     CycleAudioVolume,
@@ -387,6 +397,10 @@ pub struct MenuPresentation {
     pub vsync: bool,
     pub window_scale: u8,
     pub integer_scale: bool,
+    pub presentation_filter: bool,
+    pub show_background: bool,
+    pub show_window: bool,
+    pub show_objects: bool,
     pub show_performance_hud: bool,
     pub muted: bool,
     pub audio_available: bool,
@@ -429,7 +443,7 @@ impl MenuPresentation {
 
     fn item_enabled(self, item: MenuItem) -> bool {
         match item {
-            MenuItem::Resume | MenuItem::Reset => self.rom_loaded,
+            MenuItem::Resume | MenuItem::Reset | MenuItem::Screenshot => self.rom_loaded,
             MenuItem::OpenRom
             | MenuItem::RecentMenu
             | MenuItem::RecentRom1
@@ -508,6 +522,10 @@ impl MenuPresentation {
             | MenuItem::Vsync
             | MenuItem::WindowScale
             | MenuItem::IntegerScale
+            | MenuItem::PresentationFilter
+            | MenuItem::ShowBackground
+            | MenuItem::ShowWindow
+            | MenuItem::ShowObjects
             | MenuItem::PerformanceHud
             | MenuItem::VideoDefaults
             | MenuItem::AudioDefaults
@@ -621,6 +639,35 @@ impl MenuPresentation {
                     "INTEGER OFF".to_string()
                 }
             }
+            MenuItem::PresentationFilter => {
+                if self.presentation_filter {
+                    "FILTER ON".to_string()
+                } else {
+                    "FILTER OFF".to_string()
+                }
+            }
+            MenuItem::ShowBackground => {
+                if self.show_background {
+                    "BACKGROUND ON".to_string()
+                } else {
+                    "BACKGROUND OFF".to_string()
+                }
+            }
+            MenuItem::ShowWindow => {
+                if self.show_window {
+                    "WINDOW ON".to_string()
+                } else {
+                    "WINDOW OFF".to_string()
+                }
+            }
+            MenuItem::ShowObjects => {
+                if self.show_objects {
+                    "OBJECTS ON".to_string()
+                } else {
+                    "OBJECTS OFF".to_string()
+                }
+            }
+            MenuItem::Screenshot => "SCREENSHOT".to_string(),
             MenuItem::PerformanceHud => {
                 if self.show_performance_hud {
                     "STATS ON".to_string()
@@ -896,6 +943,11 @@ enum MenuItem {
     Vsync,
     WindowScale,
     IntegerScale,
+    PresentationFilter,
+    ShowBackground,
+    ShowWindow,
+    ShowObjects,
+    Screenshot,
     PerformanceHud,
     VideoDefaults,
     ToggleMute,
@@ -1480,6 +1532,11 @@ impl OverlayMenuState {
             MenuItem::Vsync => Some(MenuAction::ToggleVsync),
             MenuItem::WindowScale => Some(MenuAction::CycleWindowScale),
             MenuItem::IntegerScale => Some(MenuAction::ToggleIntegerScale),
+            MenuItem::PresentationFilter => Some(MenuAction::TogglePresentationFilter),
+            MenuItem::ShowBackground => Some(MenuAction::ToggleBackgroundLayer),
+            MenuItem::ShowWindow => Some(MenuAction::ToggleWindowLayer),
+            MenuItem::ShowObjects => Some(MenuAction::ToggleObjectLayer),
+            MenuItem::Screenshot => Some(MenuAction::SaveScreenshot),
             MenuItem::PerformanceHud => Some(MenuAction::TogglePerformanceHud),
             MenuItem::VideoDefaults => Some(MenuAction::ResetVideoDefaults),
             MenuItem::ToggleMute => Some(MenuAction::ToggleMute),
@@ -2291,6 +2348,10 @@ mod tests {
             vsync: true,
             window_scale: 4,
             integer_scale: true,
+            presentation_filter: false,
+            show_background: true,
+            show_window: true,
+            show_objects: true,
             show_performance_hud: true,
             muted: false,
             audio_available: false,
@@ -2422,9 +2483,86 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::TogglePerformanceHud)
+        );
+    }
+
+    #[test]
+    fn video_submenu_toggles_the_presentation_filter() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::TogglePresentationFilter)
+        );
+    }
+
+    #[test]
+    fn video_submenu_saves_a_screenshot_after_filter() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::SaveScreenshot)
+        );
+    }
+
+    #[test]
+    fn video_submenu_exposes_layer_toggles_after_filter() {
+        let presentation = test_presentation();
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ToggleBackgroundLayer)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ToggleWindowLayer)
+        );
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ToggleObjectLayer)
         );
     }
 
@@ -2453,6 +2591,11 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -3246,6 +3389,24 @@ mod tests {
             presentation.item_label(MenuItem::IntegerScale),
             "INTEGER OFF"
         );
+        presentation.presentation_filter = true;
+        assert_eq!(
+            presentation.item_label(MenuItem::PresentationFilter),
+            "FILTER ON"
+        );
+        presentation.show_background = false;
+        assert_eq!(
+            presentation.item_label(MenuItem::ShowBackground),
+            "BACKGROUND OFF"
+        );
+        presentation.show_window = false;
+        assert_eq!(presentation.item_label(MenuItem::ShowWindow), "WINDOW OFF");
+        presentation.show_objects = false;
+        assert_eq!(
+            presentation.item_label(MenuItem::ShowObjects),
+            "OBJECTS OFF"
+        );
+        assert_eq!(presentation.item_label(MenuItem::Screenshot), "SCREENSHOT");
         presentation.show_performance_hud = false;
         assert_eq!(
             presentation.item_label(MenuItem::PerformanceHud),

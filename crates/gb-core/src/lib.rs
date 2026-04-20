@@ -80,8 +80,8 @@ pub use model::{
 };
 pub use ppu::{
     DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBgFetcherSource, PpuBgFetcherStage,
-    PpuBusState, PpuLcdState, PpuObjFetcherStage, PpuSelectedSprite, PpuSnapshot, PpuStartupState,
-    PpuStatus, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
+    PpuBusState, PpuFramebufferLayerSource, PpuLcdState, PpuObjFetcherStage, PpuSelectedSprite,
+    PpuSnapshot, PpuStartupState, PpuStatus, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
 };
 pub use scheduler::{
     BusOwner, CycleContext, DerivedEdge, ExternalEvent, GlobalScheduler, InterruptSource,

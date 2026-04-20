@@ -134,6 +134,7 @@ impl Ppu {
                 allow_zero_start_retroactive_panel_writes,
                 earliest_pipeline_delayed_repaint_x,
             );
+            self.recolor_bgwin_framebuffer_pixel_with_palette(row_start + x, palette);
             if self.previous_scanline_dmg_bg_forced_white[x] {
                 continue;
             }
