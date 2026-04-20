@@ -5,18 +5,19 @@ use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::Bus;
 use crate::cartridge::{CartridgePersistentStateError, CartridgeSlot, PersistentCartState};
-use crate::cpu::CpuCore;
+use crate::cpu::{CpuCore, CpuExecutionState};
 use crate::debugger::{
     DebugControl, MachineSnapshot, TraceBuffer, TraceSink, TraceSnapshotProvider,
     TraceSummaryBuffer, Tracer,
 };
 use crate::dma::DmaController;
+use crate::external_port::{ExternalPort, ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::interrupts::InterruptController;
 use crate::joypad::{Joypad, JoypadButton, button_mask};
 use crate::model::MachineConfig;
 use crate::ppu::{Ppu, PpuStepObserver, PpuStepRegion};
 use crate::scheduler::GlobalScheduler;
-use crate::serial::{Serial, SerialPeer};
+use crate::serial::{Serial, SerialClockMode, SerialTransferState};
 use crate::timer::Timer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +94,15 @@ impl Default for PendingExternalEvents {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub(crate) struct Dmg04EndpointState {
+    pub attached: bool,
+    pub active_transfer: bool,
+    pub staged_outgoing_byte: u8,
+    pub waiting_for_external_clock: bool,
+    pub internal_clock_edge_pending: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct Machine<S = TraceBuffer> {
     config: MachineConfig,
@@ -106,11 +116,13 @@ pub struct Machine<S = TraceBuffer> {
     dma: DmaController,
     timer: Timer,
     serial: Serial,
+    external_port: ExternalPort,
     boot: BootController,
     interrupts: InterruptController,
     joypad: Joypad,
     cartridge: CartridgeSlot,
     pending_external_events: PendingExternalEvents,
+    pending_ppu_mmio_write: Option<step::PendingPpuMmioWrite>,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +138,7 @@ pub struct MachineParts<S = TraceBuffer> {
     pub dma: DmaController,
     pub timer: Timer,
     pub serial: Serial,
+    pub external_port: ExternalPort,
     pub boot: BootController,
     pub interrupts: InterruptController,
     pub joypad: Joypad,
@@ -198,6 +211,7 @@ impl<S: TraceSink + TraceSnapshotProvider> Machine<S> {
             dma: self.dma.snapshot(),
             timer: self.timer.snapshot(),
             serial: self.serial.snapshot(),
+            external_port: self.external_port.snapshot(),
             boot: self.boot.snapshot(),
             interrupts: self.interrupts.snapshot(),
             joypad: self.joypad.snapshot(),
@@ -224,11 +238,13 @@ impl<S: TraceSink> Machine<S> {
             dma: DmaController::new(console_model),
             timer: Timer::new(console_model),
             serial: Serial::new(console_model),
+            external_port: ExternalPort::new(),
             boot: BootController::new(console_model, startup_mode, boot_rom_assets),
             interrupts: InterruptController::new(console_model),
             joypad: Joypad::new(console_model),
             cartridge: CartridgeSlot::empty(),
             pending_external_events: PendingExternalEvents::default(),
+            pending_ppu_mmio_write: None,
         };
 
         machine.apply_startup_configuration(0);
@@ -287,8 +303,20 @@ impl<S: TraceSink> Machine<S> {
         &self.serial
     }
 
-    pub fn set_serial_peer(&mut self, peer: SerialPeer) {
-        self.serial.set_peer(peer);
+    pub fn external_port(&self) -> &ExternalPort {
+        &self.external_port
+    }
+
+    pub fn set_external_port_attachment(
+        &mut self,
+        attachment_kind: crate::external_port::ExternalPortAttachmentKind,
+    ) {
+        self.external_port.set_attachment_kind(attachment_kind);
+        self.sync_serial_peer_from_external_port();
+    }
+
+    pub fn set_external_port_reset_policy(&mut self, reset_policy: ExternalPortResetPolicy) {
+        self.external_port.set_reset_policy(reset_policy);
     }
 
     pub fn queue_external_serial_clock(&mut self) {
@@ -297,6 +325,10 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn take_serial_output_bytes(&mut self) -> Vec<u8> {
         self.serial.take_completed_output_bytes()
+    }
+
+    pub fn take_printed_pages(&mut self) -> Vec<crate::external_port::PrintedPage> {
+        self.external_port.take_printed_pages()
     }
 
     pub fn boot(&self) -> &BootController {
@@ -344,11 +376,49 @@ impl<S: TraceSink> Machine<S> {
             dma: self.dma,
             timer: self.timer,
             serial: self.serial,
+            external_port: self.external_port,
             boot: self.boot,
             interrupts: self.interrupts,
             joypad: self.joypad,
             cartridge: self.cartridge,
         }
+    }
+
+    pub(crate) fn dmg04_endpoint_state(&self) -> Dmg04EndpointState {
+        let attached =
+            self.external_port.attachment_kind() == ExternalPortAttachmentKind::GameLinkDmg04;
+        let transfer_requested = matches!(
+            self.serial.transfer_state(),
+            SerialTransferState::TransferRequested { .. }
+        );
+        let active_transfer = attached && transfer_requested && !self.cpu_stop_active();
+
+        Dmg04EndpointState {
+            attached,
+            active_transfer,
+            staged_outgoing_byte: self.serial.endpoint_outgoing_byte(),
+            waiting_for_external_clock: active_transfer
+                && self.serial.clock_mode() == SerialClockMode::External,
+            internal_clock_edge_pending: active_transfer
+                && self.serial.clock_mode() == SerialClockMode::Internal
+                && self.serial.internal_clock_edge_pending_this_t_cycle(),
+        }
+    }
+
+    pub(crate) fn set_dmg04_incoming_byte(&mut self, incoming_byte: Option<u8>) {
+        self.external_port.set_dmg04_incoming_byte(incoming_byte);
+        self.sync_serial_peer_from_external_port();
+    }
+
+    pub(super) fn sync_serial_peer_from_external_port(&mut self) {
+        self.serial.set_peer(self.external_port.serial_peer());
+    }
+
+    fn cpu_stop_active(&self) -> bool {
+        matches!(
+            self.cpu.execution_state(),
+            CpuExecutionState::Stopped | CpuExecutionState::ZombieStopped
+        )
     }
 }
 

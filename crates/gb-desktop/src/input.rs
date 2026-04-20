@@ -85,6 +85,10 @@ impl FrontendInputState {
         }
     }
 
+    pub fn reset(&mut self) {
+        *self = Self::new();
+    }
+
     pub fn set_keyboard_button(
         &mut self,
         machine: &mut Machine<TraceSummaryBuffer>,
@@ -443,6 +447,15 @@ impl GamepadManager {
     pub fn active_gamepad_has_rumble(&self) -> bool {
         self.active_gamepad()
             .is_some_and(|gamepad| gamepad.supports_rumble)
+    }
+
+    pub fn has_active_rumble_effect(&self) -> bool {
+        self.rumble.applied.is_some()
+    }
+
+    pub fn can_deliver_rumble(&self) -> bool {
+        self.active_gamepad_has_rumble()
+            && !matches!(self.options.rumble_mode, GamepadRumbleMode::Off)
     }
 
     pub fn set_directional_source(
@@ -1091,6 +1104,8 @@ mod tests {
 
         assert_eq!(manager.rumble_mode(), GamepadRumbleMode::Strong);
         assert!(!manager.active_gamepad_has_rumble());
+        assert!(!manager.has_active_rumble_effect());
+        assert!(!manager.can_deliver_rumble());
 
         manager.set_rumble_mode(GamepadRumbleMode::Weak);
         assert_eq!(manager.rumble_mode(), GamepadRumbleMode::Weak);
@@ -1100,6 +1115,7 @@ mod tests {
             .expect("virtual gamepad should be opened")
             .supports_rumble = true;
         assert!(manager.active_gamepad_has_rumble());
+        assert!(manager.can_deliver_rumble());
 
         let desired = manager
             .desired_rumble_effect()
@@ -1125,6 +1141,7 @@ mod tests {
         assert_eq!(applied.low_frequency, desired.low_frequency);
         assert_eq!(applied.high_frequency, desired.high_frequency);
         assert_eq!(manager.rumble.next_refresh_at, Some(future_refresh));
+        assert!(manager.has_active_rumble_effect());
 
         manager.rumble.applied = Some(AppliedGamepadRumble {
             joystick_id: joystick_id_from_event(9_999),
@@ -1137,6 +1154,7 @@ mod tests {
             .expect("clearing stale rumble should not require a live SDL gamepad");
         assert!(manager.rumble.applied.is_none());
         assert!(manager.rumble.next_refresh_at.is_none());
+        assert!(!manager.has_active_rumble_effect());
 
         manager.set_rumble_mode(GamepadRumbleMode::Strong);
         let strong_effect = manager

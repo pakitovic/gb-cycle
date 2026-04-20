@@ -1,4 +1,5 @@
 mod config;
+mod external_port;
 
 pub use config::{
     AudioOptions, BootRomOptions, BootRomVerificationMode, DEFAULT_AUDIO_BUFFER_FRAMES,
@@ -9,3 +10,5 @@ pub use config::{
     InputOptions, JoypadKeyboardBindings, KeyboardBindings, LaunchOptions, MenuKeyboardBindings,
     PreferredGamepadIdentity, SaveDirectoryPolicy, SaveKeyPolicy, SaveOptions, VideoOptions,
 };
+
+pub use external_port::DesktopExternalPortSelection;

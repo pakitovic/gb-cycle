@@ -1,0 +1,9 @@
+start t_cycle=52 left_sb=0xA5 left_sc=0xFF left_state=TransferRequested { bits_shifted: 0 } left_if=0xE0 right_sb=0x3C right_sc=0xFE right_state=TransferRequested { bits_shifted: 0 } right_if=0xE0
+edge t_cycle=563 left_sb=0x4A left_sc=0xFF left_state=TransferRequested { bits_shifted: 1 } left_if=0xE0 right_sb=0x79 right_sc=0xFE right_state=TransferRequested { bits_shifted: 1 } right_if=0xE0
+edge t_cycle=1075 left_sb=0x94 left_sc=0xFF left_state=TransferRequested { bits_shifted: 2 } left_if=0xE0 right_sb=0xF2 right_sc=0xFE right_state=TransferRequested { bits_shifted: 2 } right_if=0xE0
+edge t_cycle=1587 left_sb=0x29 left_sc=0xFF left_state=TransferRequested { bits_shifted: 3 } left_if=0xE0 right_sb=0xE5 right_sc=0xFE right_state=TransferRequested { bits_shifted: 3 } right_if=0xE0
+edge t_cycle=2099 left_sb=0x53 left_sc=0xFF left_state=TransferRequested { bits_shifted: 4 } left_if=0xE0 right_sb=0xCA right_sc=0xFE right_state=TransferRequested { bits_shifted: 4 } right_if=0xE0
+edge t_cycle=2611 left_sb=0xA7 left_sc=0xFF left_state=TransferRequested { bits_shifted: 5 } left_if=0xE0 right_sb=0x94 right_sc=0xFE right_state=TransferRequested { bits_shifted: 5 } right_if=0xE0
+edge t_cycle=3123 left_sb=0x4F left_sc=0xFF left_state=TransferRequested { bits_shifted: 6 } left_if=0xE0 right_sb=0x29 right_sc=0xFE right_state=TransferRequested { bits_shifted: 6 } right_if=0xE0
+edge t_cycle=3635 left_sb=0x9E left_sc=0xFF left_state=TransferRequested { bits_shifted: 7 } left_if=0xE0 right_sb=0x52 right_sc=0xFE right_state=TransferRequested { bits_shifted: 7 } right_if=0xE0
+edge t_cycle=4147 left_sb=0x3C left_sc=0x7F left_state=Idle left_if=0xE8 right_sb=0xA5 right_sc=0x7E right_state=Idle right_if=0xE8

@@ -105,10 +105,10 @@ impl<S: TraceSink> Machine<S> {
     ) -> Result<Vec<CartridgeDiagnostic>, CartridgeLoadError> {
         let report = crate::cartridge::CartridgeSlot::load(rom_bytes, &self.config.compatibility)?;
         let (cartridge, diagnostics) = report.into_parts();
-        let serial_peer = self.serial.peer();
+        let external_port = self.external_port.clone();
         let host_joypad_pressed_mask = self.pending_external_events.joypad_pressed_mask();
         self.cartridge = cartridge;
-        self.restart_runtime_after_cartridge_load(host_joypad_pressed_mask, serial_peer);
+        self.restart_runtime_after_cartridge_load(host_joypad_pressed_mask, external_port);
         Ok(diagnostics)
     }
 
@@ -143,7 +143,7 @@ impl<S: TraceSink> Machine<S> {
     fn restart_runtime_after_cartridge_load(
         &mut self,
         host_joypad_pressed_mask: u8,
-        serial_peer: crate::serial::SerialPeer,
+        external_port: crate::external_port::ExternalPort,
     ) {
         let console_model = self.config.console_model;
         let startup_mode = self.config.startup_mode;
@@ -158,12 +158,13 @@ impl<S: TraceSink> Machine<S> {
         self.dma = DmaController::new(console_model);
         self.timer = Timer::new(console_model);
         self.serial = Serial::new(console_model);
+        self.external_port = external_port;
         self.boot = BootController::new(console_model, startup_mode, boot_rom_assets);
         self.interrupts = InterruptController::new(console_model);
         self.joypad = Joypad::new(console_model);
+        self.pending_ppu_mmio_write = None;
 
         self.apply_startup_configuration(host_joypad_pressed_mask);
-        self.serial.set_peer(serial_peer);
     }
 
     pub(super) fn apply_startup_configuration(&mut self, host_joypad_pressed_mask: u8) {
@@ -181,6 +182,8 @@ impl<S: TraceSink> Machine<S> {
                 .apply_startup_memory_policy(startup_state.startup_memory_policy);
         }
 
+        self.external_port.apply_startup_reset();
+        self.sync_serial_peer_from_external_port();
         self.pending_external_events
             .reset_for_startup(host_joypad_pressed_mask, self.joypad.pressed_mask());
     }

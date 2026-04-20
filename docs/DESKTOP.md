@@ -8,6 +8,13 @@ cargo run --release -p gb-desktop -- [path/to/rom.gb]
 
 Can start without a ROM and wait in a launcher-style root menu until a ROM is selected.
 
+For direct local `DMG-04` startup and reproducible profiling runs, the desktop
+CLI also supports:
+
+- `--link-rom <path>` to start immediately with a linked secondary cartridge
+- `--exit-after-frames <n>` to exit automatically after presenting `n`
+  emulated frames
+
 Use `--release` for normal gameplay and timing-sensitive validation. Unoptimized `debug` builds are intended for development and may run well below real-time on commercial games.
 
 ## Core emulation
@@ -32,6 +39,7 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 - Override the rolling window with `GB_CYCLE_DESKTOP_TRACE_T_CYCLES=<count>` when you need a narrower or wider final interaction window; the default is `8192` T-cycles.
 - Cycles that include an APU MMIO write in `FF10..FF26` append `apu.last_write=... before(...) after(...)` so you can correlate audible glitches with the exact register transition that just occurred.
 - This capture is intended for interactive commercial-ROM investigation when reproducing the issue directly in `gb-desktop` is easier than scripting the same input path in `gb-test-runner`.
+- When trace capture is disabled, the desktop loop now skips the trace-record path entirely instead of calling into the ring-buffer helper on every `T-cycle`.
 
 ## Display and performance
 
@@ -39,11 +47,41 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 - Window title reports live FPS, average frame time, relative emulation speed, and a frontend-side breakdown of average emulation, render, pacing, and audio-queue timing.
 - Compact in-window performance HUD with those same frontend metrics, toggleable from `VIDEO` or through a dedicated remappable hotkey.
 - Set `GB_CYCLE_DESKTOP_EMU_PROFILE=1` or `GB_CYCLE_DESKTOP_EMU_PROFILE=summary` to emit opt-in sampled `EMU` breakdowns to `stderr`.
-- The default mode replays one cloned start-of-frame state every `15` presented frames on a background worker, then reports sampled averages for the real measured frame time plus normalized `gb-core` estimates for `CPU`, `PPU`, and the aggregated non-CPU/non-PPU core remainder.
+- The default mode replays one cloned start-of-frame state every `15` presented frames on a background worker, then reports sampled averages for the real measured frame time plus normalized `gb-core` estimates for `CPU`, `PPU`, and the remaining core buckets split into external-event ingress, timer, APU, DMA, serial, and interrupt handling.
 - The sampled `PPU` bucket is further split into `mode0_1`, `mode2`, `mode3_startup`, background fetch, window fetch/restart, BG push/fill, OBJ fetch, pixel transfer, and a `ppu_other` remainder so menu and HUD slowdowns can be narrowed to a specific raster phase without instrumenting the main thread.
 - Coarse frontend work that still lives inside the measured emulation window remains reported from the real frame (`SDL` event polling, audio submit, save flush), and the summary also emits sampled `frame_tcycles`, `frame_start_ly`, `frame_start_dot`, `frame_end_ly`, `frame_end_dot`, `frame_crossings`, `scanline_transitions`, `scanlines_over_456`, `max_scanline_tcycles`, `max_scanline_ly`, `max_mode0_start_dot`, `max_mode0_start_dot_ly`, `ly153_to0`, `ly153_to0_startup`, `ly153_to0_blank`, `ly0_self_wraps`, `ly0_self_wrap_startup`, `ly0_self_wrap_blank`, `ly0_to1`, `ly0_tcycles`, `ly0_max_mode0_start_dot`, `ly0_stall_tcycles`, `ly0_stall_hb_tcycles`, `ly0_stall_oam_tcycles`, `ly0_stall_draw_tcycles`, `ly0_stall_startup_tcycles`, `ly0_stall_blank_tcycles`, `ly0_stall_runs`, `ly0_max_stall_tcycles`, `ly0_max_stall_dot`, `ly0_max_stall_mode_dot`, `cpu_stop_tcycles`, `cpu_zstop_tcycles`, `ly0_stop_tcycles`, `ly0_zstop_tcycles`, `ly0_stall_stop_tcycles`, `ly0_stall_zstop_tcycles`, `lcdoff_tcycles`, `lcdoff_transitions`, `lcdon_transitions`, `ly0_lcdoff_tcycles`, `ly0_stall_lcdoff_tcycles`, `submit_samples`, `submit_tcycles`, `submit_queue_before_ms`, `submit_enqueued_ms`, `submit_queue_after_ms`, `audio_queue_before_ms`, and `audio_queue_after_ms` plus host-side `present_ms`, `pac_ms`, `sleep_target_ms`, `audio_corr_ms`, `late_ms`, and `oversleep_ms` so compositor or pacing jitter can be separated from core cost and correlated with backlog-driven audio correction, including direct `LY=0` stall detection at the frame boundary, whether it overlaps `STOP`/`ZombieStopped`, and whether the PPU actually enters LCD-off state inside the bad frame.
+- Summary lines also tag the active session shape as `session=single` or
+  `session=linked-dmg04-2p` so the single-console and linked runs can be
+  compared mechanically from the same profiler output stream.
+- The detailed frame-boundary, scanline, and `LY=0` stall counters are only
+  collected while `GB_CYCLE_DESKTOP_EMU_PROFILE` is enabled, so normal desktop
+  gameplay does not pay that extra per-`T-cycle` frontend bookkeeping cost.
+- Linked-session profile replays now also use the linked observer stepping
+  path, so sampled `CPU`, `PPU`, and `core_other` buckets remain populated for
+  local `DMG-04` runs instead of collapsing to zero during the background
+  replay.
+- Normal gameplay also skips repeated rumble synchronization work for
+  cartridges without rumble support unless the frontend still has an applied
+  host rumble effect to clear.
 - Override the sampling stride with `GB_CYCLE_DESKTOP_EMU_PROFILE=summary:<frames>` when you need denser or lighter sampling during an investigation.
 - That profiler is investigative timing only: it does not alter emulation semantics, it is disabled by default, and it is designed to minimize main-thread intrusion while still separating likely core cost from host overhead when a commercial ROM path drops below full speed.
+
+For the current Phase `7.6.a` baseline, use the same release build and SDL
+dummy drivers for both runs so the profiler compares desktop host overhead and
+linked-session cost under the same conditions:
+
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+GB_CYCLE_DESKTOP_EMU_PROFILE=summary:30 \
+cargo run --release -p gb-desktop -- /path/to/tetris.gb \
+  --mute --no-gamepad --no-vsync --exit-after-frames 180
+
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+GB_CYCLE_DESKTOP_EMU_PROFILE=summary:30 \
+cargo run --release -p gb-desktop -- /path/to/tetris.gb \
+  --link-rom /path/to/tetris.gb \
+  --mute --no-gamepad --no-vsync --exit-after-frames 180
+```
 
 ## Input
 

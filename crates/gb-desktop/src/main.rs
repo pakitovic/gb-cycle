@@ -2,7 +2,9 @@ mod audio;
 mod bootrom;
 mod cli;
 mod input;
+mod linked_session;
 mod menu;
+mod printer_output;
 mod save_session;
 mod settings;
 
@@ -18,11 +20,11 @@ use gb_core::{
     TraceSummaryBuffer,
 };
 use gb_desktop::{
-    BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel, DesktopKey,
-    DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
-    GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, JoypadKeyboardBindings,
-    KeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy,
-    VideoOptions,
+    BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel,
+    DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
+    GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode,
+    HotkeyBindings, JoypadKeyboardBindings, KeyboardBindings, MenuKeyboardBindings,
+    PreferredGamepadIdentity, SaveDirectoryPolicy, VideoOptions,
 };
 use gb_persistence::{
     CartridgeSaveTimeSource, SystemCartridgeSaveTimeSource,
@@ -32,11 +34,13 @@ use input::{
     FrontendInputState, GamepadManager, gamepad_button_binding_from_sdl_button,
     sdl_button_for_binding,
 };
+use linked_session::DesktopEmulationSession;
 use menu::{
     CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
     KeyboardBindingTarget, KeyboardMenuBindingTarget, MenuAction, MenuInput, MenuPresentation,
     OverlayMenuState, PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, render_performance_hud,
 };
+use printer_output::PrinterOutputState;
 use save_session::DesktopSaveSession;
 use sdl3::dialog::{DialogError, DialogFileFilter, show_open_file_dialog, show_open_folder_dialog};
 use sdl3::event::Event;
@@ -45,9 +49,9 @@ use sdl3::hint;
 use sdl3::keyboard::{Keycode, Scancode};
 use sdl3::messagebox::{MessageBoxFlag, show_simple_message_box};
 use sdl3::pixels::{Color, PixelFormat};
-use sdl3::render::Canvas;
+use sdl3::render::{Canvas, TextureCreator};
 use sdl3::sys;
-use sdl3::video::{FullscreenType, Window};
+use sdl3::video::{FullscreenType, Window, WindowContext};
 use settings::DesktopSettingsStore;
 use std::collections::VecDeque;
 use std::env;
@@ -64,6 +68,7 @@ use std::time::{Duration, Instant};
 
 const FRAMEBUFFER_WIDTH: u32 = 160;
 const FRAMEBUFFER_HEIGHT: u32 = 144;
+#[cfg(test)]
 const FRAMEBUFFER_PITCH_BYTES: usize = FRAMEBUFFER_WIDTH as usize * 3;
 const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706);
 const AUDIO_QUEUE_TARGET_MS: f64 = 96.0;
@@ -74,6 +79,29 @@ const PERFORMANCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const EXPECTED_SCANLINE_T_CYCLES: usize = 456;
 const INPUT_POLL_SLICE_T_CYCLES: usize = 256;
 const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
+const LINKED_SECONDARY_KEYBOARD_BINDINGS: [(JoypadButton, Scancode); 8] = [
+    (JoypadButton::Up, Scancode::W),
+    (JoypadButton::Down, Scancode::S),
+    (JoypadButton::Left, Scancode::A),
+    (JoypadButton::Right, Scancode::D),
+    (JoypadButton::A, Scancode::V),
+    (JoypadButton::B, Scancode::C),
+    (JoypadButton::Select, Scancode::Q),
+    (JoypadButton::Start, Scancode::E),
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FramebufferDimensions {
+    width: u32,
+    height: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FramebufferRenderInput<'a> {
+    dimensions: FramebufferDimensions,
+    primary_framebuffer: &'a [u8],
+    secondary_framebuffer: Option<&'a [u8]>,
+}
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
 const DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR: &str =
@@ -134,6 +162,21 @@ enum LoopSignal {
     Quit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmulationProfileSessionKind {
+    Single,
+    LinkedDmg04TwoPlayer,
+}
+
+impl EmulationProfileSessionKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::LinkedDmg04TwoPlayer => "linked-dmg04-2p",
+        }
+    }
+}
+
 enum HotkeyAction {
     None,
     ManualSave,
@@ -146,26 +189,33 @@ struct FrontendRuntime {
     paused: bool,
     menu_state: OverlayMenuState,
     input_state: FrontendInputState,
+    secondary_input_state: FrontendInputState,
     keyboard_bindings: KeyboardBindings,
     video_options: VideoOptions,
     audio_volume_percent: u8,
     audio_output: Option<DesktopAudioOutput>,
     gamepad_manager: Option<GamepadManager>,
     save_session: Option<DesktopSaveSession>,
+    secondary_save_session: Option<DesktopSaveSession>,
     rtc_sync: HostRtcSync,
     open_rom_dialog: PathSelectionDialog,
+    open_rom_dialog_mode: OpenRomDialogMode,
     boot_rom_file_dialog: PathSelectionDialog,
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
     trace_capture: DesktopTraceCapture,
+    printer_output: PrinterOutputState,
 }
 
+#[derive(Clone)]
 struct DesktopSession {
     config: DesktopConfig,
     current_dir: PathBuf,
     loaded_rom: Option<LoadedRom>,
+    linked_secondary_rom: Option<LoadedRom>,
     last_open_directory: Option<PathBuf>,
     recent_roms: Vec<PathBuf>,
+    external_port_selection: DesktopExternalPortSelection,
 }
 
 #[derive(Clone)]
@@ -176,7 +226,7 @@ struct LoadedRom {
 
 struct FrontendActionContext<'state> {
     session: &'state mut DesktopSession,
-    machine: &'state mut Machine<TraceSummaryBuffer>,
+    machine: &'state mut DesktopEmulationSession,
     runtime: &'state mut FrontendRuntime,
     performance_counter: &'state mut PerformanceCounter,
     frame_pacer: &'state mut FramePacer,
@@ -197,6 +247,20 @@ impl DesktopSession {
 
     fn rom_bytes(&self) -> Option<&[u8]> {
         match self.loaded_rom.as_ref() {
+            Some(rom) => Some(rom.bytes.as_slice()),
+            None => None,
+        }
+    }
+
+    fn linked_secondary_rom_path(&self) -> Option<&Path> {
+        match self.linked_secondary_rom.as_ref() {
+            Some(rom) => Some(rom.path.as_path()),
+            None => None,
+        }
+    }
+
+    fn linked_secondary_rom_bytes(&self) -> Option<&[u8]> {
+        match self.linked_secondary_rom.as_ref() {
             Some(rom) => Some(rom.bytes.as_slice()),
             None => None,
         }
@@ -226,6 +290,7 @@ struct PathSelectionDialog {
 }
 
 struct DesktopTraceCapture {
+    enabled: bool,
     output_path: Option<PathBuf>,
     max_t_cycles: usize,
     records: VecDeque<DesktopTraceRecord>,
@@ -327,13 +392,13 @@ struct FrameLoopTelemetry {
 
 #[derive(Debug)]
 struct EmulationProfileRequest {
-    machine: Machine<TraceSummaryBuffer>,
+    machine: DesktopEmulationSession,
     breakdown: EmulationBreakdownSample,
 }
 
 #[derive(Debug)]
 struct EmulationProfileWorkItem {
-    machine: Machine<TraceSummaryBuffer>,
+    machine: DesktopEmulationSession,
     emulation_duration: Duration,
     breakdown: EmulationBreakdownSample,
 }
@@ -362,6 +427,13 @@ enum PathDialogResult {
     Selected(PathBuf),
     Canceled,
     Failed(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum OpenRomDialogMode {
+    #[default]
+    Primary,
+    LinkedSecondary,
 }
 
 impl PathSelectionDialog {
@@ -601,7 +673,7 @@ impl EmulationBreakdownSample {
 }
 
 impl EmulationProfileRequest {
-    fn new(machine: Machine<TraceSummaryBuffer>) -> Self {
+    fn new(machine: DesktopEmulationSession) -> Self {
         Self {
             machine,
             breakdown: EmulationBreakdownSample::default(),
@@ -744,16 +816,19 @@ impl DesktopTraceCapture {
             DEFAULT_TRACE_CAPTURE_T_CYCLES
         };
         Ok(Self {
+            enabled: output_path.is_some() && max_t_cycles > 0,
             output_path,
             max_t_cycles,
             records: VecDeque::new(),
         })
     }
 
+    fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
     fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
-        if self.output_path.is_none() || self.max_t_cycles == 0 {
-            return;
-        }
+        debug_assert!(self.enabled);
 
         if self.records.len() == self.max_t_cycles {
             self.records.pop_front();
@@ -1147,6 +1222,7 @@ fn audio_queue_pacing_correction_with_policy(
 
 #[derive(Debug)]
 struct FramePerformanceSample {
+    session_kind: EmulationProfileSessionKind,
     emulation_duration: Duration,
     emulation_profile_request: Option<EmulationProfileRequest>,
     render_duration: Duration,
@@ -1212,6 +1288,7 @@ struct PerformanceCounter {
     emulation_profile_mode: EmulationProfileMode,
     emulation_profile_worker: Option<AsyncEmulationProfileWorker>,
     emulation_profile_request_in_flight: bool,
+    sample_session_kind: EmulationProfileSessionKind,
     presented_frames_total: u64,
     sample_started_at: Instant,
     frames_in_sample: u32,
@@ -1343,6 +1420,7 @@ impl PerformanceCounter {
                 .enabled()
                 .then(AsyncEmulationProfileWorker::new),
             emulation_profile_request_in_flight: false,
+            sample_session_kind: EmulationProfileSessionKind::Single,
             presented_frames_total: 0,
             sample_started_at: Instant::now(),
             frames_in_sample: 0,
@@ -1471,6 +1549,7 @@ impl PerformanceCounter {
             sample.emulation_duration,
         );
 
+        self.sample_session_kind = sample.session_kind;
         self.frames_in_sample += 1;
         self.sample_emulation_duration += sample.emulation_duration;
         self.sample_render_duration += sample.render_duration;
@@ -2229,7 +2308,8 @@ impl PerformanceCounter {
             };
 
         Some(format!(
-            "gb-desktop emu-profile fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            "gb-desktop emu-profile session={} fps={:.1} speed={:.0}% frame_ms={:.2} emu_ms={:.2} sampled_frames={} sample_every={} sampled_emu_ms={sampled_emu_ms:.2} core_est_ms={core_ms:.2} ppu_ms={:.2} cpu_ms={:.2} core_other_ms={:.2} ext_ms={:.2} timer_ms={:.2} apu_ms={:.2} dma_ms={:.2} serial_ms={:.2} irq_ms={:.2} ppu_mode0_1_ms={:.2} ppu_mode2_ms={:.2} ppu_mode3_startup_ms={:.2} ppu_bg_ms={:.2} ppu_win_ms={:.2} ppu_push_ms={:.2} ppu_obj_ms={:.2} ppu_px_ms={:.2} ppu_other_ms={:.2} host_ms={host_ms:.2} poll_ms={:.2} audsubmit_ms={:.2} save_ms={:.2} frame_tcycles={frame_step_t_cycles} frame_start_ly={frame_start_ly} frame_start_dot={frame_start_dot} frame_end_ly={frame_end_ly} frame_end_dot={frame_end_dot} frame_crossings={frame_origin_crossings} scanline_transitions={scanline_transitions} scanlines_over_456={scanlines_over_456} max_scanline_tcycles={max_scanline_t_cycles} max_scanline_ly={max_scanline_ly} max_mode0_start_dot={max_mode0_start_dot} max_mode0_start_dot_ly={max_mode0_start_dot_ly} ly153_to0={ly_153_to_0_transitions} ly153_to0_startup={ly_153_to_0_startup_mode0} ly153_to0_blank={ly_153_to_0_blank_frame} ly0_self_wraps={ly_0_self_wraps} ly0_self_wrap_startup={ly_0_self_wrap_startup_mode0} ly0_self_wrap_blank={ly_0_self_wrap_blank_frame} ly0_to1={ly_0_to_1_transitions} ly0_tcycles={ly_0_scanline_t_cycles} ly0_max_mode0_start_dot={ly_0_max_mode0_start_dot} ly0_stall_tcycles={ly_0_stall_t_cycles} ly0_stall_hb_tcycles={ly_0_stall_hblank_t_cycles} ly0_stall_oam_tcycles={ly_0_stall_oam_t_cycles} ly0_stall_draw_tcycles={ly_0_stall_drawing_t_cycles} ly0_stall_startup_tcycles={ly_0_stall_startup_mode0_t_cycles} ly0_stall_blank_tcycles={ly_0_stall_blank_frame_t_cycles} ly0_stall_runs={ly_0_stall_runs} ly0_max_stall_tcycles={ly_0_max_stall_run_t_cycles} ly0_max_stall_dot={ly_0_max_stall_dot} ly0_max_stall_mode_dot={ly_0_max_stall_mode_dot} cpu_stop_tcycles={cpu_stop_t_cycles} cpu_zstop_tcycles={cpu_zombie_stop_t_cycles} ly0_stop_tcycles={ly_0_cpu_stop_t_cycles} ly0_zstop_tcycles={ly_0_cpu_zombie_stop_t_cycles} ly0_stall_stop_tcycles={ly_0_stall_cpu_stop_t_cycles} ly0_stall_zstop_tcycles={ly_0_stall_cpu_zombie_stop_t_cycles} lcdoff_tcycles={lcd_disabled_t_cycles} lcdoff_transitions={lcd_disable_transitions} lcdon_transitions={lcd_enable_transitions} ly0_lcdoff_tcycles={ly_0_lcd_disabled_t_cycles} ly0_stall_lcdoff_tcycles={ly_0_stall_lcd_disabled_t_cycles} submit_samples={audio_submit_samples} submit_tcycles={audio_submit_t_cycles} submit_queue_before_ms={audio_submit_queue_before_ms} submit_enqueued_ms={audio_submit_enqueued_ms} submit_queue_after_ms={audio_submit_queue_after_ms} audio_queue_before_ms={audio_queue_before_pacing_ms} audio_queue_after_ms={audio_queue_after_pacing_ms} present_ms={:.2} pac_ms={:.2} sleep_target_ms={:.2} audio_corr_ms={:.2} late_ms={:.2} oversleep_ms={:.2} sample_secs={:.2}",
+            self.sample_session_kind.label(),
             snapshot.fps,
             snapshot.speed_percent,
             snapshot.frame_time_ms,
@@ -2250,6 +2330,42 @@ impl PerformanceCounter {
             ),
             scaled_average_duration_ms(
                 breakdown.core_other_duration(),
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_external_events_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_timer_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_apu_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_dma_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_serial_duration,
+                breakdown.core_duration(),
+                estimated_core_duration,
+                profiled_frames_f64,
+            ),
+            scaled_average_duration_ms(
+                breakdown.core_interrupts_duration,
                 breakdown.core_duration(),
                 estimated_core_duration,
                 profiled_frames_f64,
@@ -2539,17 +2655,51 @@ fn emulation_paused(machine: &Machine<TraceSummaryBuffer>, runtime: &FrontendRun
     machine.cartridge().is_empty() || runtime.paused || runtime.menu_state.is_open()
 }
 
+fn audio_source_machine(machine: &DesktopEmulationSession) -> &Machine<TraceSummaryBuffer> {
+    machine.primary_machine()
+}
+
+fn emulation_profile_session_kind(
+    machine: &DesktopEmulationSession,
+) -> EmulationProfileSessionKind {
+    if machine.is_linked_dmg04_two_player() {
+        EmulationProfileSessionKind::LinkedDmg04TwoPlayer
+    } else {
+        EmulationProfileSessionKind::Single
+    }
+}
+
+fn should_exit_after_presented_frames(
+    exit_after_frames: Option<u64>,
+    presented_frames_total: u64,
+) -> bool {
+    exit_after_frames.is_some_and(|limit| presented_frames_total >= limit)
+}
+
 fn sync_gamepad_rumble(
     runtime: &mut FrontendRuntime,
     machine: &Machine<TraceSummaryBuffer>,
     now: Instant,
 ) -> Result<(), String> {
-    let rumble_requested = !emulation_paused(machine, runtime)
-        && machine.cartridge().has_rumble()
-        && machine.cartridge().rumble_on();
-    if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-        gamepad_manager.update_rumble(rumble_requested, now)?;
+    let paused = emulation_paused(machine, runtime);
+    let Some(gamepad_manager) = &mut runtime.gamepad_manager else {
+        return Ok(());
+    };
+
+    if !machine.cartridge().has_rumble() {
+        if !gamepad_manager.has_active_rumble_effect() {
+            return Ok(());
+        }
+        gamepad_manager.update_rumble(false, now)?;
+        return Ok(());
     }
+
+    if !gamepad_manager.can_deliver_rumble() && !gamepad_manager.has_active_rumble_effect() {
+        return Ok(());
+    }
+
+    let rumble_requested = !paused && machine.cartridge().rumble_on();
+    gamepad_manager.update_rumble(rumble_requested, now)?;
 
     Ok(())
 }
@@ -2616,9 +2766,12 @@ fn run_desktop_with_startup_fallback_persistence(
     persist_startup_fallback: bool,
 ) -> Result<(), String> {
     let original_config = options.config.clone();
+    let exit_after_frames = options.exit_after_frames;
+    let startup_links_peer = options.linked_peer_rom_path.is_some();
     let current_dir =
         map_display_result(env::current_dir(), "failed to determine current directory")?;
     let loaded_rom = load_initial_rom(&options, &current_dir)?;
+    let linked_secondary_rom = load_initial_linked_secondary_rom(&options, &current_dir)?;
     let last_open_directory = match loaded_rom.as_ref() {
         Some(rom) => rom.path.parent().map(Path::to_path_buf),
         None => settings_store.last_open_directory().map(Path::to_path_buf),
@@ -2627,24 +2780,17 @@ fn run_desktop_with_startup_fallback_persistence(
         config: options.config,
         current_dir,
         loaded_rom,
+        linked_secondary_rom,
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
+        external_port_selection: if startup_links_peer {
+            DesktopExternalPortSelection::GameLink
+        } else {
+            DesktopExternalPortSelection::None
+        },
     };
 
-    let (mut machine, diagnostics) = match session.rom_bytes() {
-        Some(rom_bytes) => {
-            let loaded = load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?;
-            log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
-            session.config = loaded.effective_config;
-            (loaded.machine, loaded.diagnostics)
-        }
-        None => {
-            let prepared = prepare_machine_config(&session.config, &session.current_dir)?;
-            log_boot_rom_fallback_warning(prepared.boot_rom_fallback_warning.as_deref());
-            session.config = prepared.effective_config;
-            (Machine::new_summary(prepared.machine_config), Vec::new())
-        }
-    };
+    let (mut machine, diagnostics) = load_initial_emulation_session(&mut session)?;
     if persist_startup_fallback && session.config != original_config {
         settings_store.persist_machine_preferences(&session.config)?;
     }
@@ -2653,7 +2799,12 @@ fn run_desktop_with_startup_fallback_persistence(
         settings_store.remember_loaded_rom(rom_path)?;
         session.recent_roms = settings_store.recent_roms().to_vec();
     }
-    let save_session = open_save_session_for_session(&session, &mut machine)?;
+    let save_session = open_save_session_for_session(&session, machine.primary_machine_mut())?;
+    let secondary_save_session = if let Some(secondary_machine) = machine.secondary_machine_mut() {
+        open_secondary_save_session_for_session(&session, secondary_machine)?
+    } else {
+        None
+    };
 
     if session.config.video.vsync {
         let _ = hint::set_with_priority(hint::names::RENDER_VSYNC, "1", &hint::Hint::Default);
@@ -2687,10 +2838,13 @@ fn run_desktop_with_startup_fallback_persistence(
     };
     let video = map_display_result(sdl.video(), "failed to initialize SDL3 video subsystem")?;
 
-    let window_width = FRAMEBUFFER_WIDTH
+    let framebuffer_dimensions = framebuffer_dimensions_for_session(&machine);
+    let window_width = framebuffer_dimensions
+        .width
         .checked_mul(u32::from(session.config.video.window_scale))
         .ok_or_else(|| overflow_error("window width overflowed"))?;
-    let window_height = FRAMEBUFFER_HEIGHT
+    let window_height = framebuffer_dimensions
+        .height
         .checked_mul(u32::from(session.config.video.window_scale))
         .ok_or_else(|| overflow_error("window height overflowed"))?;
 
@@ -2706,34 +2860,40 @@ fn run_desktop_with_startup_fallback_persistence(
     let mut canvas = window.into_canvas();
     apply_renderer_vsync(&mut canvas, &mut frame_pacer, session.config.video.vsync)?;
     let texture_creator = canvas.texture_creator();
-    let mut texture = map_display_result(
-        texture_creator.create_texture_streaming(
-            PixelFormat::RGB24,
-            FRAMEBUFFER_WIDTH,
-            FRAMEBUFFER_HEIGHT,
-        ),
-        "failed to create framebuffer texture",
-    )?;
+    let mut texture = create_framebuffer_texture(&texture_creator, framebuffer_dimensions)?;
     let mut event_pump = map_display_result(sdl.event_pump(), "failed to create SDL3 event pump")?;
-    let mut rgb_frame = vec![0_u8; FRAMEBUFFER_HEIGHT as usize * FRAMEBUFFER_PITCH_BYTES];
+    let mut rgb_frame = vec![
+        0_u8;
+        framebuffer_dimensions.height as usize
+            * framebuffer_pitch_bytes_for_dimensions(framebuffer_dimensions)
+    ];
+    let mut current_framebuffer_dimensions = framebuffer_dimensions;
     let mut runtime = FrontendRuntime {
         paused: !session.has_loaded_rom(),
         menu_state: OverlayMenuState::default(),
         input_state,
+        secondary_input_state: FrontendInputState::new(),
         keyboard_bindings: session.config.input.keyboard,
         video_options: session.config.video.clone(),
         audio_volume_percent: session.config.audio.volume_percent,
         audio_output,
         gamepad_manager,
         save_session,
+        secondary_save_session,
         rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
+        open_rom_dialog_mode: OpenRomDialogMode::Primary,
         boot_rom_file_dialog: PathSelectionDialog::new(),
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
         trace_capture: DesktopTraceCapture::from_env()?,
+        printer_output: PrinterOutputState::default(),
     };
-    apply_canvas_video_options(&mut canvas, &runtime.video_options)?;
+    apply_canvas_video_options_for_dimensions(
+        &mut canvas,
+        &runtime.video_options,
+        current_framebuffer_dimensions,
+    )?;
     if !session.has_loaded_rom() {
         runtime.menu_state.open(current_menu_presentation(
             canvas.window(),
@@ -2747,11 +2907,26 @@ fn run_desktop_with_startup_fallback_persistence(
         &runtime.menu_state,
         current_menu_presentation(canvas.window(), &runtime, &machine, &session),
     ));
+    sync_framebuffer_presentation_resources(
+        &mut canvas,
+        &texture_creator,
+        &mut texture,
+        &mut rgb_frame,
+        &mut current_framebuffer_dimensions,
+        &machine,
+        &runtime.video_options,
+    )?;
     let _ = render_frame(
         &mut canvas,
         &mut texture,
         &mut rgb_frame,
-        machine.ppu().framebuffer(),
+        FramebufferRenderInput {
+            dimensions: current_framebuffer_dimensions,
+            primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
+            secondary_framebuffer: machine
+                .secondary_machine()
+                .map(|secondary| secondary.ppu().framebuffer()),
+        },
         &runtime.video_options,
         initial_menu_presentation,
         None,
@@ -2796,11 +2971,26 @@ fn run_desktop_with_startup_fallback_persistence(
                     &runtime.menu_state,
                     current_menu_presentation(canvas.window(), &runtime, &machine, &session),
                 ));
+                sync_framebuffer_presentation_resources(
+                    &mut canvas,
+                    &texture_creator,
+                    &mut texture,
+                    &mut rgb_frame,
+                    &mut current_framebuffer_dimensions,
+                    &machine,
+                    &runtime.video_options,
+                )?;
                 let _ = render_frame(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
-                    machine.ppu().framebuffer(),
+                    FramebufferRenderInput {
+                        dimensions: current_framebuffer_dimensions,
+                        primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
+                        secondary_framebuffer: machine
+                            .secondary_machine()
+                            .map(|secondary| secondary.ppu().framebuffer()),
+                    },
                     &runtime.video_options,
                     menu_presentation,
                     None,
@@ -2838,11 +3028,26 @@ fn run_desktop_with_startup_fallback_persistence(
                     &runtime.menu_state,
                     current_menu_presentation(canvas.window(), &runtime, &machine, &session),
                 ));
+                sync_framebuffer_presentation_resources(
+                    &mut canvas,
+                    &texture_creator,
+                    &mut texture,
+                    &mut rgb_frame,
+                    &mut current_framebuffer_dimensions,
+                    &machine,
+                    &runtime.video_options,
+                )?;
                 let _ = render_frame(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
-                    machine.ppu().framebuffer(),
+                    FramebufferRenderInput {
+                        dimensions: current_framebuffer_dimensions,
+                        primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
+                        secondary_framebuffer: machine
+                            .secondary_machine()
+                            .map(|secondary| secondary.ppu().framebuffer()),
+                    },
                     &runtime.video_options,
                     menu_presentation,
                     None,
@@ -2853,11 +3058,26 @@ fn run_desktop_with_startup_fallback_persistence(
         }
 
         let render_started_at = Instant::now();
+        sync_framebuffer_presentation_resources(
+            &mut canvas,
+            &texture_creator,
+            &mut texture,
+            &mut rgb_frame,
+            &mut current_framebuffer_dimensions,
+            &machine,
+            &runtime.video_options,
+        )?;
         let present_duration = render_frame(
             &mut canvas,
             &mut texture,
             &mut rgb_frame,
-            machine.ppu().framebuffer(),
+            FramebufferRenderInput {
+                dimensions: current_framebuffer_dimensions,
+                primary_framebuffer: machine.primary_machine().ppu().framebuffer(),
+                secondary_framebuffer: machine
+                    .secondary_machine()
+                    .map(|secondary| secondary.ppu().framebuffer()),
+            },
             &runtime.video_options,
             None,
             performance_counter.hud_snapshot(),
@@ -2883,6 +3103,7 @@ fn run_desktop_with_startup_fallback_persistence(
         performance_counter.record_presented_frame(
             canvas.window_mut(),
             FramePerformanceSample {
+                session_kind: emulation_profile_session_kind(&machine),
                 emulation_duration,
                 emulation_profile_request: step_result.emulation_profile_request,
                 render_duration,
@@ -2957,16 +3178,21 @@ fn run_desktop_with_startup_fallback_persistence(
                 ),
             },
         )?;
+        if should_exit_after_presented_frames(
+            exit_after_frames,
+            performance_counter.presented_frames_total,
+        ) {
+            break 'running;
+        }
     }
 
     settings_store.set_fullscreen(canvas.window().fullscreen_state() != FullscreenType::Off)?;
+    flush_pending_printer_output(canvas.window(), &session, &mut runtime);
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
         gamepad_manager.update_rumble(false, Instant::now())?;
     }
 
-    if let Some(save_session) = &mut runtime.save_session {
-        save_session.close(&machine)?;
-    }
+    close_runtime_save_sessions(&mut runtime, &machine)?;
     if let Some(rom_path) = session.rom_path() {
         settings_store.remember_loaded_rom(rom_path)?;
     }
@@ -2976,6 +3202,61 @@ fn run_desktop_with_startup_fallback_persistence(
     runtime.trace_capture.write_artifact()?;
 
     Ok(())
+}
+
+fn load_initial_emulation_session(
+    session: &mut DesktopSession,
+) -> Result<(DesktopEmulationSession, Vec<CartridgeDiagnostic>), String> {
+    match (
+        session.rom_bytes(),
+        session.linked_secondary_rom_bytes(),
+        session.external_port_selection,
+    ) {
+        (
+            Some(primary_rom_bytes),
+            Some(secondary_rom_bytes),
+            DesktopExternalPortSelection::GameLink,
+        ) => {
+            let primary_loaded =
+                load_machine_for_rom(&session.config, &session.current_dir, primary_rom_bytes)?;
+            let secondary_loaded =
+                load_machine_for_rom(&session.config, &session.current_dir, secondary_rom_bytes)?;
+            if primary_loaded.effective_config != secondary_loaded.effective_config {
+                return Err(
+                    "linked desktop startup produced divergent effective configs between the primary and secondary machines"
+                        .to_string(),
+                );
+            }
+
+            log_boot_rom_fallback_warning(primary_loaded.boot_rom_fallback_warning.as_deref());
+            log_boot_rom_fallback_warning(secondary_loaded.boot_rom_fallback_warning.as_deref());
+            session.config = primary_loaded.effective_config;
+            let machine = DesktopEmulationSession::new_linked_dmg04_two_player(
+                primary_loaded.machine,
+                secondary_loaded.machine,
+            )?;
+            let mut diagnostics = primary_loaded.diagnostics;
+            diagnostics.extend(secondary_loaded.diagnostics);
+            Ok((machine, diagnostics))
+        }
+        (Some(rom_bytes), _, _) => {
+            let loaded = load_machine_for_rom(&session.config, &session.current_dir, rom_bytes)?;
+            log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
+            session.config = loaded.effective_config;
+            let mut machine = DesktopEmulationSession::new_single(loaded.machine);
+            apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
+            Ok((machine, loaded.diagnostics))
+        }
+        (None, _, _) => {
+            let prepared = prepare_machine_config(&session.config, &session.current_dir)?;
+            log_boot_rom_fallback_warning(prepared.boot_rom_fallback_warning.as_deref());
+            session.config = prepared.effective_config;
+            let mut machine =
+                DesktopEmulationSession::new_single(Machine::new_summary(prepared.machine_config));
+            apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
+            Ok((machine, Vec::new()))
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -2995,8 +3276,9 @@ struct LoadedMachine {
 
 type RebuildMachineResult = (
     DesktopConfig,
-    Option<String>,
-    Machine<TraceSummaryBuffer>,
+    Vec<String>,
+    DesktopEmulationSession,
+    Option<DesktopSaveSession>,
     Option<DesktopSaveSession>,
 );
 
@@ -3079,6 +3361,50 @@ fn load_machine_for_rom(
     })
 }
 
+fn apply_external_port_selection_to_machine(
+    machine: &mut Machine<TraceSummaryBuffer>,
+    selection: DesktopExternalPortSelection,
+) {
+    machine.set_external_port_attachment(selection.core_attachment_kind());
+}
+
+fn drain_printed_pages_into_printer_output(
+    main_window: &Window,
+    session: &DesktopSession,
+    runtime: &mut FrontendRuntime,
+    machine: &mut Machine<TraceSummaryBuffer>,
+) {
+    let printed_pages = machine.take_printed_pages();
+    if printed_pages.is_empty() {
+        return;
+    }
+
+    for printed_page in printed_pages {
+        if let Err(error) = runtime.printer_output.handle_printed_page(
+            main_window,
+            session.rom_path(),
+            session.current_dir.as_path(),
+            &printed_page,
+        ) {
+            eprintln!("printer output failed: {error}");
+        }
+    }
+}
+
+fn flush_pending_printer_output(
+    main_window: &Window,
+    session: &DesktopSession,
+    runtime: &mut FrontendRuntime,
+) {
+    if let Err(error) = runtime.printer_output.flush_pending_document(
+        main_window,
+        session.rom_path(),
+        session.current_dir.as_path(),
+    ) {
+        eprintln!("printer output failed: {error}");
+    }
+}
+
 fn load_initial_rom(
     options: &DesktopRunOptions,
     current_dir: &Path,
@@ -3086,28 +3412,61 @@ fn load_initial_rom(
     let Some(rom_path) = options.rom_path.as_ref() else {
         return Ok(None);
     };
+    load_rom_from_cli_path(current_dir, rom_path, "failed to read ROM").map(Some)
+}
+
+fn load_initial_linked_secondary_rom(
+    options: &DesktopRunOptions,
+    current_dir: &Path,
+) -> Result<Option<LoadedRom>, String> {
+    let Some(rom_path) = options.linked_peer_rom_path.as_ref() else {
+        return Ok(None);
+    };
+    load_rom_from_cli_path(current_dir, rom_path, "failed to read linked peer ROM").map(Some)
+}
+
+fn load_rom_from_cli_path(
+    current_dir: &Path,
+    rom_path: &Path,
+    read_error_label: &str,
+) -> Result<LoadedRom, String> {
     let rom_path = resolve_path(current_dir, rom_path);
     let rom_bytes = match fs::read(&rom_path) {
         Ok(rom_bytes) => rom_bytes,
         Err(error) => {
             return Err(format_path_error(
-                "failed to read ROM",
+                read_error_label,
                 &rom_path,
                 &error.to_string(),
             ));
         }
     };
-    Ok(Some(LoadedRom {
+    Ok(LoadedRom {
         path: rom_path,
         bytes: rom_bytes,
-    }))
+    })
 }
 
 fn open_save_session_for_session(
     session: &DesktopSession,
     machine: &mut Machine<TraceSummaryBuffer>,
 ) -> Result<Option<DesktopSaveSession>, String> {
-    let Some(rom_path) = session.rom_path() else {
+    open_save_session_for_loaded_rom(session, session.loaded_rom.as_ref(), machine)
+}
+
+fn open_secondary_save_session_for_session(
+    session: &DesktopSession,
+    machine: &mut Machine<TraceSummaryBuffer>,
+) -> Result<Option<DesktopSaveSession>, String> {
+    open_save_session_for_loaded_rom(session, session.linked_secondary_rom.as_ref(), machine)
+}
+
+fn open_save_session_for_loaded_rom(
+    session: &DesktopSession,
+    loaded_rom: Option<&LoadedRom>,
+    machine: &mut Machine<TraceSummaryBuffer>,
+) -> Result<Option<DesktopSaveSession>, String> {
+    let Some(rom_path) = loaded_rom.map(|rom| rom.path.as_path()) else {
         return Ok(None);
     };
 
@@ -3130,13 +3489,24 @@ fn open_save_session_for_session(
 }
 
 fn window_title(session: &DesktopSession, config: &DesktopConfig) -> String {
-    let rom_name = match session.rom_path() {
-        Some(rom_path) => rom_path
+    let rom_name = match (session.rom_path(), session.linked_secondary_rom_path()) {
+        (Some(primary_path), Some(secondary_path)) => format!(
+            "{} + {}",
+            primary_path
+                .file_name()
+                .unwrap_or(primary_path.as_os_str())
+                .to_string_lossy(),
+            secondary_path
+                .file_name()
+                .unwrap_or(secondary_path.as_os_str())
+                .to_string_lossy(),
+        ),
+        (Some(rom_path), None) => rom_path
             .file_name()
             .unwrap_or(rom_path.as_os_str())
             .to_string_lossy()
             .into_owned(),
-        None => "no ROM loaded".to_string(),
+        (None, _) => "no ROM loaded".to_string(),
     };
     format!(
         "gb-desktop | {} | {} | {} | {}",
@@ -3145,6 +3515,53 @@ fn window_title(session: &DesktopSession, config: &DesktopConfig) -> String {
         startup_mode_name(config.launch.startup_mode),
         execution_mode_name(config.launch.execution_mode),
     )
+}
+
+fn close_runtime_save_sessions(
+    runtime: &mut FrontendRuntime,
+    machine: &DesktopEmulationSession,
+) -> Result<(), String> {
+    if let Some(save_session) = &mut runtime.save_session {
+        save_session.close(machine.primary_machine())?;
+    }
+    if let Some(save_session) = &mut runtime.secondary_save_session
+        && let Some(secondary_machine) = machine.secondary_machine()
+    {
+        save_session.close(secondary_machine)?;
+    }
+    Ok(())
+}
+
+fn flush_runtime_save_sessions_if_changed(
+    runtime: &mut FrontendRuntime,
+    machine: &DesktopEmulationSession,
+    reason: &str,
+) -> Result<(), String> {
+    if let Some(save_session) = &mut runtime.save_session {
+        let _ = save_session.flush_if_changed(machine.primary_machine(), reason)?;
+    }
+    if let Some(save_session) = &mut runtime.secondary_save_session
+        && let Some(secondary_machine) = machine.secondary_machine()
+    {
+        let _ = save_session.flush_if_changed(secondary_machine, reason)?;
+    }
+    Ok(())
+}
+
+fn maybe_flush_runtime_save_sessions_at_frame_boundary(
+    runtime: &mut FrontendRuntime,
+    machine: &DesktopEmulationSession,
+    now: Instant,
+) -> Result<(), String> {
+    if let Some(save_session) = &mut runtime.save_session {
+        let _ = save_session.maybe_flush_at_frame_boundary(machine.primary_machine(), now)?;
+    }
+    if let Some(save_session) = &mut runtime.secondary_save_session
+        && let Some(secondary_machine) = machine.secondary_machine()
+    {
+        let _ = save_session.maybe_flush_at_frame_boundary(secondary_machine, now)?;
+    }
+    Ok(())
 }
 
 fn performance_window_title(base_title: &str, snapshot: PerformanceHudSnapshot) -> String {
@@ -3181,14 +3598,22 @@ fn process_events(
     let events = event_pump.poll_iter().collect::<Vec<_>>();
     for event in events {
         if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-            gamepad_manager.handle_event(&event, &mut runtime.input_state, machine)?;
+            gamepad_manager.handle_event(
+                &event,
+                &mut runtime.input_state,
+                machine.primary_machine_mut(),
+            )?;
             if let Event::ControllerButtonDown { which, .. } = &event {
                 gamepad_manager.activate_gamepad_from_input(
                     gamepad_event_joystick_id(*which),
                     &mut runtime.input_state,
-                    machine,
+                    machine.primary_machine_mut(),
                 );
             }
+        }
+
+        if runtime.printer_output.handle_event(&event)? {
+            continue;
         }
 
         if runtime.menu_state.is_open() && runtime.menu_state.is_capturing_binding() {
@@ -3358,6 +3783,7 @@ fn process_events(
         match event {
             Event::KeyDown {
                 keycode: Some(keycode),
+                scancode,
                 repeat,
                 ..
             } => {
@@ -3365,12 +3791,20 @@ fn process_events(
                     match hotkey_action(&runtime.keyboard_bindings, keycode) {
                         HotkeyAction::None => {}
                         HotkeyAction::ManualSave => {
-                            if let Some(save_session) = &mut runtime.save_session {
-                                let _ = save_session.flush_if_changed(machine, "manual-hotkey")?;
-                            }
+                            flush_runtime_save_sessions_if_changed(
+                                runtime,
+                                machine,
+                                "manual-hotkey",
+                            )?;
                         }
                         HotkeyAction::Reset => {
-                            reset_machine(session, machine, runtime, settings_store)?;
+                            reset_machine(
+                                canvas.window(),
+                                session,
+                                machine,
+                                runtime,
+                                settings_store,
+                            )?;
                             let keyboard_bindings = runtime.keyboard_bindings;
                             sync_live_input_state(event_pump, &keyboard_bindings, machine, runtime);
                         }
@@ -3397,13 +3831,26 @@ fn process_events(
                 if let Some(button) =
                     joypad_button_for_key(runtime.keyboard_bindings.joypad, keycode)
                 {
-                    runtime
-                        .input_state
-                        .set_keyboard_button(machine, button, true);
+                    runtime.input_state.set_keyboard_button(
+                        machine.primary_machine_mut(),
+                        button,
+                        true,
+                    );
+                }
+                if let Some(scancode) = scancode
+                    && let Some(button) = linked_secondary_joypad_button_for_scancode(scancode)
+                    && let Some(secondary_machine) = machine.secondary_machine_mut()
+                {
+                    runtime.secondary_input_state.set_keyboard_button(
+                        secondary_machine,
+                        button,
+                        true,
+                    );
                 }
             }
             Event::KeyUp {
                 keycode: Some(keycode),
+                scancode,
                 repeat,
                 ..
             } => {
@@ -3413,9 +3860,21 @@ fn process_events(
                 if let Some(button) =
                     joypad_button_for_key(runtime.keyboard_bindings.joypad, keycode)
                 {
-                    runtime
-                        .input_state
-                        .set_keyboard_button(machine, button, false);
+                    runtime.input_state.set_keyboard_button(
+                        machine.primary_machine_mut(),
+                        button,
+                        false,
+                    );
+                }
+                if let Some(scancode) = scancode
+                    && let Some(button) = linked_secondary_joypad_button_for_scancode(scancode)
+                    && let Some(secondary_machine) = machine.secondary_machine_mut()
+                {
+                    runtime.secondary_input_state.set_keyboard_button(
+                        secondary_machine,
+                        button,
+                        false,
+                    );
                 }
             }
             _ => {}
@@ -3428,7 +3887,8 @@ fn process_events(
     }
 
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-        gamepad_manager.poll_active_gamepad_state(&mut runtime.input_state, machine);
+        gamepad_manager
+            .poll_active_gamepad_state(&mut runtime.input_state, machine.primary_machine_mut());
     }
     sync_gamepad_rumble(runtime, machine, Instant::now())?;
 
@@ -3440,6 +3900,7 @@ fn step_until_next_frame(
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<StepUntilNextFrameResult, String> {
+    let collect_frame_telemetry = context.performance_counter.emulation_profile_enabled();
     let frame_start_ly = context.machine.ppu().ly();
     let frame_start_dot = context.machine.ppu().line_dot();
     let mut current_scanline_ly = frame_start_ly;
@@ -3533,14 +3994,21 @@ fn step_until_next_frame(
         for _ in 0..INPUT_POLL_SLICE_T_CYCLES {
             context.machine.step_t_cycle();
             stepped_t_cycles += 1;
-            current_scanline_t_cycles += 1;
-            context
-                .runtime
-                .trace_capture
-                .record_t_cycle(context.machine);
+            drain_printed_pages_into_printer_output(
+                canvas.window(),
+                context.session,
+                context.runtime,
+                context.machine,
+            );
+            context.runtime.trace_capture.is_enabled().then(|| {
+                context
+                    .runtime
+                    .trace_capture
+                    .record_t_cycle(context.machine)
+            });
 
             if let Some(audio_output) = &mut context.runtime.audio_output {
-                audio_output.capture_t_cycle(context.machine.apu());
+                audio_output.capture_t_cycle(audio_source_machine(context.machine).apu());
             }
 
             let rumble_result =
@@ -3549,148 +4017,158 @@ fn step_until_next_frame(
 
             let current_ly = context.machine.ppu().ly();
             let current_dot = context.machine.ppu().line_dot();
-            let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
-            let current_access_mode = context.machine.ppu().access_mode();
-            let current_mode_dot = context.machine.ppu().mode_dot();
-            let startup_mode0_active = context.machine.ppu().is_startup_mode0_window_active();
-            let blank_frame_active = context.machine.ppu().is_blank_frame_active();
-            let current_lcd_enabled = context.machine.ppu().lcd_state().is_enabled();
-            let current_cpu_execution_state = context.machine.cpu().execution_state();
-            if !current_lcd_enabled {
-                lcd_disabled_t_cycles = lcd_disabled_t_cycles.saturating_add(1);
-                if current_ly == 0 {
-                    ly_0_lcd_disabled_t_cycles = ly_0_lcd_disabled_t_cycles.saturating_add(1);
-                }
-            }
-            match (previous_lcd_enabled, current_lcd_enabled) {
-                (true, false) => {
-                    lcd_disable_transitions = lcd_disable_transitions.saturating_add(1);
-                }
-                (false, true) => {
-                    lcd_enable_transitions = lcd_enable_transitions.saturating_add(1);
-                }
-                _ => {}
-            }
-            match current_cpu_execution_state {
-                CpuExecutionState::Stopped => {
-                    cpu_stop_t_cycles = cpu_stop_t_cycles.saturating_add(1);
-                    if current_ly == 0 {
-                        ly_0_cpu_stop_t_cycles = ly_0_cpu_stop_t_cycles.saturating_add(1);
-                    }
-                }
-                CpuExecutionState::ZombieStopped => {
-                    cpu_zombie_stop_t_cycles = cpu_zombie_stop_t_cycles.saturating_add(1);
-                    if current_ly == 0 {
-                        ly_0_cpu_zombie_stop_t_cycles =
-                            ly_0_cpu_zombie_stop_t_cycles.saturating_add(1);
-                    }
-                }
-                _ => {}
-            }
-            if current_mode0_start_dot > max_mode0_start_dot {
-                max_mode0_start_dot = current_mode0_start_dot;
-                max_mode0_start_dot_ly = current_ly;
-            }
-            if current_ly == 0 {
-                ly_0_max_mode0_start_dot = ly_0_max_mode0_start_dot.max(current_mode0_start_dot);
-            }
-            if current_ly == 0 && current_ly == previous_ly && current_dot == previous_dot {
-                ly_0_stall_t_cycles = ly_0_stall_t_cycles.saturating_add(1);
-                match current_access_mode {
-                    PpuAccessMode::HBlank => {
-                        ly_0_stall_hblank_t_cycles = ly_0_stall_hblank_t_cycles.saturating_add(1);
-                    }
-                    PpuAccessMode::OamScan => {
-                        ly_0_stall_oam_t_cycles = ly_0_stall_oam_t_cycles.saturating_add(1);
-                    }
-                    PpuAccessMode::Drawing => {
-                        ly_0_stall_drawing_t_cycles = ly_0_stall_drawing_t_cycles.saturating_add(1);
-                    }
-                    PpuAccessMode::VBlank => {}
-                }
-                if startup_mode0_active {
-                    ly_0_stall_startup_mode0_t_cycles =
-                        ly_0_stall_startup_mode0_t_cycles.saturating_add(1);
-                }
-                if blank_frame_active {
-                    ly_0_stall_blank_frame_t_cycles =
-                        ly_0_stall_blank_frame_t_cycles.saturating_add(1);
-                }
+            if collect_frame_telemetry {
+                let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
+                let current_access_mode = context.machine.ppu().access_mode();
+                let current_mode_dot = context.machine.ppu().mode_dot();
+                let startup_mode0_active = context.machine.ppu().is_startup_mode0_window_active();
+                let blank_frame_active = context.machine.ppu().is_blank_frame_active();
+                let current_lcd_enabled = context.machine.ppu().lcd_state().is_enabled();
+                let current_cpu_execution_state = context.machine.cpu().execution_state();
+                current_scanline_t_cycles += 1;
                 if !current_lcd_enabled {
-                    ly_0_stall_lcd_disabled_t_cycles =
-                        ly_0_stall_lcd_disabled_t_cycles.saturating_add(1);
+                    lcd_disabled_t_cycles = lcd_disabled_t_cycles.saturating_add(1);
+                    if current_ly == 0 {
+                        ly_0_lcd_disabled_t_cycles = ly_0_lcd_disabled_t_cycles.saturating_add(1);
+                    }
+                }
+                match (previous_lcd_enabled, current_lcd_enabled) {
+                    (true, false) => {
+                        lcd_disable_transitions = lcd_disable_transitions.saturating_add(1);
+                    }
+                    (false, true) => {
+                        lcd_enable_transitions = lcd_enable_transitions.saturating_add(1);
+                    }
+                    _ => {}
                 }
                 match current_cpu_execution_state {
                     CpuExecutionState::Stopped => {
-                        ly_0_stall_cpu_stop_t_cycles =
-                            ly_0_stall_cpu_stop_t_cycles.saturating_add(1);
+                        cpu_stop_t_cycles = cpu_stop_t_cycles.saturating_add(1);
+                        if current_ly == 0 {
+                            ly_0_cpu_stop_t_cycles = ly_0_cpu_stop_t_cycles.saturating_add(1);
+                        }
                     }
                     CpuExecutionState::ZombieStopped => {
-                        ly_0_stall_cpu_zombie_stop_t_cycles =
-                            ly_0_stall_cpu_zombie_stop_t_cycles.saturating_add(1);
+                        cpu_zombie_stop_t_cycles = cpu_zombie_stop_t_cycles.saturating_add(1);
+                        if current_ly == 0 {
+                            ly_0_cpu_zombie_stop_t_cycles =
+                                ly_0_cpu_zombie_stop_t_cycles.saturating_add(1);
+                        }
                     }
                     _ => {}
                 }
-                if ly_0_current_stall_run_t_cycles == 0 {
-                    ly_0_stall_runs = ly_0_stall_runs.saturating_add(1);
+                if current_mode0_start_dot > max_mode0_start_dot {
+                    max_mode0_start_dot = current_mode0_start_dot;
+                    max_mode0_start_dot_ly = current_ly;
                 }
-                ly_0_current_stall_run_t_cycles = ly_0_current_stall_run_t_cycles.saturating_add(1);
-                if ly_0_current_stall_run_t_cycles > ly_0_max_stall_run_t_cycles {
-                    ly_0_max_stall_run_t_cycles = ly_0_current_stall_run_t_cycles;
-                    ly_0_max_stall_dot = current_dot;
-                    ly_0_max_stall_mode_dot = current_mode_dot;
+                if current_ly == 0 {
+                    ly_0_max_mode0_start_dot =
+                        ly_0_max_mode0_start_dot.max(current_mode0_start_dot);
                 }
-            } else {
-                ly_0_current_stall_run_t_cycles = 0;
-            }
-            if current_dot == 0 && previous_dot != 0 {
-                match (previous_ly, current_ly) {
-                    (153, 0) => {
-                        ly_153_to_0_transitions = ly_153_to_0_transitions.saturating_add(1);
-                        if startup_mode0_active {
-                            ly_153_to_0_startup_mode0 = ly_153_to_0_startup_mode0.saturating_add(1);
+                if current_ly == 0 && current_ly == previous_ly && current_dot == previous_dot {
+                    ly_0_stall_t_cycles = ly_0_stall_t_cycles.saturating_add(1);
+                    match current_access_mode {
+                        PpuAccessMode::HBlank => {
+                            ly_0_stall_hblank_t_cycles =
+                                ly_0_stall_hblank_t_cycles.saturating_add(1);
                         }
-                        if blank_frame_active {
-                            ly_153_to_0_blank_frame = ly_153_to_0_blank_frame.saturating_add(1);
+                        PpuAccessMode::OamScan => {
+                            ly_0_stall_oam_t_cycles = ly_0_stall_oam_t_cycles.saturating_add(1);
                         }
+                        PpuAccessMode::Drawing => {
+                            ly_0_stall_drawing_t_cycles =
+                                ly_0_stall_drawing_t_cycles.saturating_add(1);
+                        }
+                        PpuAccessMode::VBlank => {}
                     }
-                    (0, 0) => {
-                        ly_0_self_wraps = ly_0_self_wraps.saturating_add(1);
-                        if startup_mode0_active {
-                            ly_0_self_wrap_startup_mode0 =
-                                ly_0_self_wrap_startup_mode0.saturating_add(1);
-                        }
-                        if blank_frame_active {
-                            ly_0_self_wrap_blank_frame =
-                                ly_0_self_wrap_blank_frame.saturating_add(1);
-                        }
+                    if startup_mode0_active {
+                        ly_0_stall_startup_mode0_t_cycles =
+                            ly_0_stall_startup_mode0_t_cycles.saturating_add(1);
                     }
-                    (0, 1) => {
-                        ly_0_to_1_transitions = ly_0_to_1_transitions.saturating_add(1);
-                        ly_0_scanline_t_cycles = current_scanline_t_cycles;
+                    if blank_frame_active {
+                        ly_0_stall_blank_frame_t_cycles =
+                            ly_0_stall_blank_frame_t_cycles.saturating_add(1);
                     }
-                    _ => {}
+                    if !current_lcd_enabled {
+                        ly_0_stall_lcd_disabled_t_cycles =
+                            ly_0_stall_lcd_disabled_t_cycles.saturating_add(1);
+                    }
+                    match current_cpu_execution_state {
+                        CpuExecutionState::Stopped => {
+                            ly_0_stall_cpu_stop_t_cycles =
+                                ly_0_stall_cpu_stop_t_cycles.saturating_add(1);
+                        }
+                        CpuExecutionState::ZombieStopped => {
+                            ly_0_stall_cpu_zombie_stop_t_cycles =
+                                ly_0_stall_cpu_zombie_stop_t_cycles.saturating_add(1);
+                        }
+                        _ => {}
+                    }
+                    if ly_0_current_stall_run_t_cycles == 0 {
+                        ly_0_stall_runs = ly_0_stall_runs.saturating_add(1);
+                    }
+                    ly_0_current_stall_run_t_cycles =
+                        ly_0_current_stall_run_t_cycles.saturating_add(1);
+                    if ly_0_current_stall_run_t_cycles > ly_0_max_stall_run_t_cycles {
+                        ly_0_max_stall_run_t_cycles = ly_0_current_stall_run_t_cycles;
+                        ly_0_max_stall_dot = current_dot;
+                        ly_0_max_stall_mode_dot = current_mode_dot;
+                    }
+                } else {
+                    ly_0_current_stall_run_t_cycles = 0;
                 }
+                if current_dot == 0 && previous_dot != 0 {
+                    match (previous_ly, current_ly) {
+                        (153, 0) => {
+                            ly_153_to_0_transitions = ly_153_to_0_transitions.saturating_add(1);
+                            if startup_mode0_active {
+                                ly_153_to_0_startup_mode0 =
+                                    ly_153_to_0_startup_mode0.saturating_add(1);
+                            }
+                            if blank_frame_active {
+                                ly_153_to_0_blank_frame = ly_153_to_0_blank_frame.saturating_add(1);
+                            }
+                        }
+                        (0, 0) => {
+                            ly_0_self_wraps = ly_0_self_wraps.saturating_add(1);
+                            if startup_mode0_active {
+                                ly_0_self_wrap_startup_mode0 =
+                                    ly_0_self_wrap_startup_mode0.saturating_add(1);
+                            }
+                            if blank_frame_active {
+                                ly_0_self_wrap_blank_frame =
+                                    ly_0_self_wrap_blank_frame.saturating_add(1);
+                            }
+                        }
+                        (0, 1) => {
+                            ly_0_to_1_transitions = ly_0_to_1_transitions.saturating_add(1);
+                            ly_0_scanline_t_cycles = current_scanline_t_cycles;
+                        }
+                        _ => {}
+                    }
+                }
+                if current_dot == 0 && current_ly != current_scanline_ly {
+                    scanline_transitions = scanline_transitions.saturating_add(1);
+                    if current_scanline_t_cycles > max_scanline_t_cycles {
+                        max_scanline_t_cycles = current_scanline_t_cycles;
+                        max_scanline_ly = current_scanline_ly;
+                    }
+                    if current_scanline_t_cycles > EXPECTED_SCANLINE_T_CYCLES {
+                        scanlines_over_456 = scanlines_over_456.saturating_add(1);
+                    }
+                    current_scanline_ly = current_ly;
+                    current_scanline_t_cycles = 0;
+                }
+                previous_ly = current_ly;
+                previous_dot = current_dot;
+                previous_lcd_enabled = current_lcd_enabled;
             }
-            if current_dot == 0 && current_ly != current_scanline_ly {
-                scanline_transitions = scanline_transitions.saturating_add(1);
-                if current_scanline_t_cycles > max_scanline_t_cycles {
-                    max_scanline_t_cycles = current_scanline_t_cycles;
-                    max_scanline_ly = current_scanline_ly;
-                }
-                if current_scanline_t_cycles > EXPECTED_SCANLINE_T_CYCLES {
-                    scanlines_over_456 = scanlines_over_456.saturating_add(1);
-                }
-                current_scanline_ly = current_ly;
-                current_scanline_t_cycles = 0;
-            }
-            previous_ly = current_ly;
-            previous_dot = current_dot;
-            previous_lcd_enabled = current_lcd_enabled;
 
             let now_at_frame_origin = current_ly == 0 && current_dot == 0;
             if now_at_frame_origin && !at_frame_origin {
-                frame_origin_crossings = frame_origin_crossings.saturating_add(1);
+                if collect_frame_telemetry {
+                    frame_origin_crossings = frame_origin_crossings.saturating_add(1);
+                }
                 if let Some(audio_output) = &mut context.runtime.audio_output {
                     let audio_submit_started_at = profile_request.as_ref().map(|_| Instant::now());
                     audio_output.submit_captured_samples()?;
@@ -3701,63 +4179,68 @@ fn step_until_next_frame(
                             .record_host_audio_submit_duration(audio_submit_started_at.elapsed());
                     }
                 }
-                if let Some(save_session) = &mut context.runtime.save_session {
-                    let save_flush_started_at = profile_request.as_ref().map(|_| Instant::now());
-                    let _ = save_session
-                        .maybe_flush_at_frame_boundary(context.machine, Instant::now())?;
-                    if let Some(save_flush_started_at) = save_flush_started_at
-                        && let Some(profile_request) = &mut profile_request
-                    {
-                        profile_request
-                            .record_host_save_flush_duration(save_flush_started_at.elapsed());
-                    }
+                let save_flush_started_at = profile_request.as_ref().map(|_| Instant::now());
+                maybe_flush_runtime_save_sessions_at_frame_boundary(
+                    context.runtime,
+                    context.machine,
+                    Instant::now(),
+                )?;
+                if let Some(save_flush_started_at) = save_flush_started_at
+                    && let Some(profile_request) = &mut profile_request
+                {
+                    profile_request
+                        .record_host_save_flush_duration(save_flush_started_at.elapsed());
                 }
                 return Ok(StepUntilNextFrameResult {
                     signal: LoopSignal::Continue,
                     emulation_profile_request: profile_request,
-                    frame_loop_telemetry: FrameLoopTelemetry {
-                        start_ly: frame_start_ly,
-                        start_dot: frame_start_dot,
-                        end_ly: current_ly,
-                        end_dot: current_dot,
-                        stepped_t_cycles,
-                        frame_origin_crossings,
-                        scanline_transitions,
-                        scanlines_over_456,
-                        max_scanline_t_cycles,
-                        max_scanline_ly,
-                        max_mode0_start_dot,
-                        max_mode0_start_dot_ly,
-                        ly_153_to_0_transitions,
-                        ly_153_to_0_startup_mode0,
-                        ly_153_to_0_blank_frame,
-                        ly_0_self_wraps,
-                        ly_0_self_wrap_startup_mode0,
-                        ly_0_self_wrap_blank_frame,
-                        ly_0_to_1_transitions,
-                        ly_0_scanline_t_cycles,
-                        ly_0_max_mode0_start_dot,
-                        ly_0_stall_t_cycles,
-                        ly_0_stall_hblank_t_cycles,
-                        ly_0_stall_oam_t_cycles,
-                        ly_0_stall_drawing_t_cycles,
-                        ly_0_stall_startup_mode0_t_cycles,
-                        ly_0_stall_blank_frame_t_cycles,
-                        ly_0_stall_runs,
-                        ly_0_max_stall_run_t_cycles,
-                        ly_0_max_stall_dot,
-                        ly_0_max_stall_mode_dot,
-                        cpu_stop_t_cycles,
-                        cpu_zombie_stop_t_cycles,
-                        ly_0_cpu_stop_t_cycles,
-                        ly_0_cpu_zombie_stop_t_cycles,
-                        ly_0_stall_cpu_stop_t_cycles,
-                        ly_0_stall_cpu_zombie_stop_t_cycles,
-                        lcd_disabled_t_cycles,
-                        lcd_disable_transitions,
-                        lcd_enable_transitions,
-                        ly_0_lcd_disabled_t_cycles,
-                        ly_0_stall_lcd_disabled_t_cycles,
+                    frame_loop_telemetry: if collect_frame_telemetry {
+                        FrameLoopTelemetry {
+                            start_ly: frame_start_ly,
+                            start_dot: frame_start_dot,
+                            end_ly: current_ly,
+                            end_dot: current_dot,
+                            stepped_t_cycles,
+                            frame_origin_crossings,
+                            scanline_transitions,
+                            scanlines_over_456,
+                            max_scanline_t_cycles,
+                            max_scanline_ly,
+                            max_mode0_start_dot,
+                            max_mode0_start_dot_ly,
+                            ly_153_to_0_transitions,
+                            ly_153_to_0_startup_mode0,
+                            ly_153_to_0_blank_frame,
+                            ly_0_self_wraps,
+                            ly_0_self_wrap_startup_mode0,
+                            ly_0_self_wrap_blank_frame,
+                            ly_0_to_1_transitions,
+                            ly_0_scanline_t_cycles,
+                            ly_0_max_mode0_start_dot,
+                            ly_0_stall_t_cycles,
+                            ly_0_stall_hblank_t_cycles,
+                            ly_0_stall_oam_t_cycles,
+                            ly_0_stall_drawing_t_cycles,
+                            ly_0_stall_startup_mode0_t_cycles,
+                            ly_0_stall_blank_frame_t_cycles,
+                            ly_0_stall_runs,
+                            ly_0_max_stall_run_t_cycles,
+                            ly_0_max_stall_dot,
+                            ly_0_max_stall_mode_dot,
+                            cpu_stop_t_cycles,
+                            cpu_zombie_stop_t_cycles,
+                            ly_0_cpu_stop_t_cycles,
+                            ly_0_cpu_zombie_stop_t_cycles,
+                            ly_0_stall_cpu_stop_t_cycles,
+                            ly_0_stall_cpu_zombie_stop_t_cycles,
+                            lcd_disabled_t_cycles,
+                            lcd_disable_transitions,
+                            lcd_enable_transitions,
+                            ly_0_lcd_disabled_t_cycles,
+                            ly_0_stall_lcd_disabled_t_cycles,
+                        }
+                    } else {
+                        FrameLoopTelemetry::default()
                     },
                 });
             }
@@ -3770,7 +4253,7 @@ fn toggle_menu(
     event_pump: &sdl3::EventPump,
     window: &Window,
     session: &DesktopSession,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
 ) -> Result<(), String> {
     if runtime.menu_state.is_open() {
@@ -3788,10 +4271,18 @@ fn process_pending_open_rom_dialog(
     let Some(result) = context.runtime.open_rom_dialog.take_result() else {
         return Ok(());
     };
+    let open_rom_dialog_mode = context.runtime.open_rom_dialog_mode;
+    context.runtime.open_rom_dialog_mode = OpenRomDialogMode::Primary;
 
     match result {
         PathDialogResult::Selected(path) => {
-            if let Err(error) = open_selected_rom(event_pump, canvas, path, context) {
+            let open_result = match open_rom_dialog_mode {
+                OpenRomDialogMode::Primary => open_selected_rom(event_pump, canvas, path, context),
+                OpenRomDialogMode::LinkedSecondary => {
+                    open_selected_linked_secondary_rom(event_pump, canvas, path, context)
+                }
+            };
+            if let Err(error) = open_result {
                 show_error_message(Some(canvas.window()), "Open ROM failed", &error);
                 eprintln!("warning: {error}");
             }
@@ -3936,87 +4427,238 @@ fn rebuild_machine_for_config(
     context: &mut FrontendActionContext<'_>,
     next_config: &DesktopConfig,
 ) -> Result<DesktopConfig, String> {
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
     context.runtime.rtc_sync.apply_to_machine(context.machine);
 
-    let battery_backed_state = uses_battery_backed_hardware_persistence(
-        context.machine.cartridge().persistence_metadata(),
+    let primary_battery_backed_state = uses_battery_backed_hardware_persistence(
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistence_metadata(),
     )
-    .then(|| context.machine.cartridge().persistent_state());
+    .then(|| {
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistent_state()
+    });
+    let secondary_battery_backed_state = context.machine.secondary_machine().and_then(|machine| {
+        uses_battery_backed_hardware_persistence(machine.cartridge().persistence_metadata())
+            .then(|| machine.cartridge().persistent_state())
+    });
 
     let mut previous_save_session = context.runtime.save_session.take();
+    let mut previous_secondary_save_session = context.runtime.secondary_save_session.take();
     if let Some(save_session) = previous_save_session.as_mut()
-        && let Err(error) = save_session.close(context.machine)
+        && let Err(error) = save_session.close(context.machine.primary_machine())
     {
         context.runtime.save_session = previous_save_session;
+        context.runtime.secondary_save_session = previous_secondary_save_session;
+        return Err(error);
+    }
+    if let Some(save_session) = previous_secondary_save_session.as_mut()
+        && let Some(secondary_machine) = context.machine.secondary_machine()
+        && let Err(error) = save_session.close(secondary_machine)
+    {
+        context.runtime.save_session = previous_save_session;
+        context.runtime.secondary_save_session = previous_secondary_save_session;
         return Err(error);
     }
 
     let rebuild_result: Result<RebuildMachineResult, String> = (|| {
-        let (effective_config, boot_rom_fallback_warning, mut next_machine, diagnostics) =
-            match context.session.rom_bytes() {
-                Some(rom_bytes) => {
-                    let loaded =
-                        load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?;
-                    (
-                        loaded.effective_config,
-                        loaded.boot_rom_fallback_warning,
-                        loaded.machine,
-                        loaded.diagnostics,
-                    )
-                }
-                None => {
-                    let prepared =
-                        prepare_machine_config(next_config, &context.session.current_dir)?;
-                    (
-                        prepared.effective_config,
-                        prepared.boot_rom_fallback_warning,
-                        Machine::new_summary(prepared.machine_config),
-                        Vec::new(),
-                    )
-                }
-            };
-        write_cartridge_diagnostics(&diagnostics);
-        if let Some(persistent_state) = battery_backed_state
-            && let Err(error) = next_machine.restore_cartridge_persistent_state(&persistent_state)
-        {
-            return Err(format!(
-                "failed to restore battery-backed persistence after reconfigure: {error:?}"
-            ));
-        }
+        let mut boot_rom_fallback_warnings = Vec::new();
 
         let next_session = DesktopSession {
-            config: effective_config.clone(),
+            config: next_config.clone(),
             current_dir: context.session.current_dir.clone(),
             loaded_rom: context.session.loaded_rom.clone(),
+            linked_secondary_rom: context.session.linked_secondary_rom.clone(),
             last_open_directory: context.session.last_open_directory.clone(),
             recent_roms: context.session.recent_roms.clone(),
+            external_port_selection: context.session.external_port_selection,
         };
-        let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
-        Ok((
-            effective_config,
-            boot_rom_fallback_warning,
-            next_machine,
-            next_save_session,
-        ))
+
+        match (
+            next_session.rom_bytes(),
+            next_session.linked_secondary_rom_bytes(),
+            next_session.external_port_selection,
+        ) {
+            (
+                Some(primary_rom_bytes),
+                Some(secondary_rom_bytes),
+                DesktopExternalPortSelection::GameLink,
+            ) => {
+                let primary_loaded = load_machine_for_rom(
+                    next_config,
+                    &context.session.current_dir,
+                    primary_rom_bytes,
+                )?;
+                let secondary_loaded = load_machine_for_rom(
+                    next_config,
+                    &context.session.current_dir,
+                    secondary_rom_bytes,
+                )?;
+                if primary_loaded.effective_config != secondary_loaded.effective_config {
+                    return Err(
+                        "reconfiguring a linked DMG-04 session produced divergent effective configs between primary and secondary machines"
+                            .to_string(),
+                    );
+                }
+
+                write_cartridge_diagnostics(&primary_loaded.diagnostics);
+                write_cartridge_diagnostics(&secondary_loaded.diagnostics);
+                if let Some(warning) = primary_loaded.boot_rom_fallback_warning {
+                    boot_rom_fallback_warnings.push(warning);
+                }
+                if let Some(warning) = secondary_loaded.boot_rom_fallback_warning {
+                    boot_rom_fallback_warnings.push(warning);
+                }
+
+                let mut next_machine = DesktopEmulationSession::new_single(primary_loaded.machine);
+                if let Some(persistent_state) = primary_battery_backed_state
+                    && let Err(error) = next_machine
+                        .primary_machine_mut()
+                        .restore_cartridge_persistent_state(&persistent_state)
+                {
+                    return Err(format!(
+                        "failed to restore battery-backed persistence after reconfigure: {error:?}"
+                    ));
+                }
+
+                next_machine.attach_secondary_dmg04(secondary_loaded.machine)?;
+                if let Some(persistent_state) = secondary_battery_backed_state
+                    && let Some(secondary_machine) = next_machine.secondary_machine_mut()
+                    && let Err(error) =
+                        secondary_machine.restore_cartridge_persistent_state(&persistent_state)
+                {
+                    return Err(format!(
+                        "failed to restore linked battery-backed persistence after reconfigure: {error:?}"
+                    ));
+                }
+
+                let effective_config = primary_loaded.effective_config;
+                let next_primary_save_session = open_save_session_for_session(
+                    &DesktopSession {
+                        config: effective_config.clone(),
+                        ..next_session.clone()
+                    },
+                    next_machine.primary_machine_mut(),
+                )?;
+                let next_secondary_save_session = open_secondary_save_session_for_session(
+                    &DesktopSession {
+                        config: effective_config.clone(),
+                        ..next_session
+                    },
+                    next_machine
+                        .secondary_machine_mut()
+                        .expect("linked desktop session should expose a secondary machine"),
+                )?;
+                Ok((
+                    effective_config,
+                    boot_rom_fallback_warnings,
+                    next_machine,
+                    next_primary_save_session,
+                    next_secondary_save_session,
+                ))
+            }
+            (Some(rom_bytes), _, _) => {
+                let loaded =
+                    load_machine_for_rom(next_config, &context.session.current_dir, rom_bytes)?;
+                write_cartridge_diagnostics(&loaded.diagnostics);
+                if let Some(warning) = loaded.boot_rom_fallback_warning {
+                    boot_rom_fallback_warnings.push(warning);
+                }
+                let mut next_machine = DesktopEmulationSession::new_single(loaded.machine);
+                apply_external_port_selection_to_machine(
+                    next_machine.primary_machine_mut(),
+                    next_session.external_port_selection,
+                );
+                if let Some(persistent_state) = primary_battery_backed_state
+                    && let Err(error) = next_machine
+                        .primary_machine_mut()
+                        .restore_cartridge_persistent_state(&persistent_state)
+                {
+                    return Err(format!(
+                        "failed to restore battery-backed persistence after reconfigure: {error:?}"
+                    ));
+                }
+
+                let effective_config = loaded.effective_config;
+                let next_primary_save_session = open_save_session_for_session(
+                    &DesktopSession {
+                        config: effective_config.clone(),
+                        linked_secondary_rom: None,
+                        external_port_selection: next_session.external_port_selection,
+                        ..next_session
+                    },
+                    next_machine.primary_machine_mut(),
+                )?;
+                Ok((
+                    effective_config,
+                    boot_rom_fallback_warnings,
+                    next_machine,
+                    next_primary_save_session,
+                    None,
+                ))
+            }
+            (None, _, _) => {
+                let prepared = prepare_machine_config(next_config, &context.session.current_dir)?;
+                if let Some(warning) = prepared.boot_rom_fallback_warning {
+                    boot_rom_fallback_warnings.push(warning);
+                }
+
+                let mut next_machine = DesktopEmulationSession::new_single(Machine::new_summary(
+                    prepared.machine_config,
+                ));
+                apply_external_port_selection_to_machine(
+                    next_machine.primary_machine_mut(),
+                    next_session.external_port_selection,
+                );
+                Ok((
+                    prepared.effective_config,
+                    boot_rom_fallback_warnings,
+                    next_machine,
+                    None,
+                    None,
+                ))
+            }
+        }
     })();
 
-    let (effective_config, boot_rom_fallback_warning, next_machine, next_save_session) =
-        match rebuild_result {
-            Ok(value) => value,
-            Err(error) => {
-                context.runtime.save_session = previous_save_session;
-                return Err(error);
-            }
-        };
+    let (
+        effective_config,
+        boot_rom_fallback_warnings,
+        next_machine,
+        next_save_session,
+        next_secondary_save_session,
+    ) = match rebuild_result {
+        Ok(value) => value,
+        Err(error) => {
+            context.runtime.save_session = previous_save_session;
+            context.runtime.secondary_save_session = previous_secondary_save_session;
+            return Err(error);
+        }
+    };
 
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.clear_buffer()?;
     }
 
-    log_boot_rom_fallback_warning(boot_rom_fallback_warning.as_deref());
-    context.runtime.input_state.clear_all(context.machine);
+    for warning in &boot_rom_fallback_warnings {
+        log_boot_rom_fallback_warning(Some(warning));
+    }
+    clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
     context.runtime.save_session = next_save_session;
+    context.runtime.secondary_save_session = next_secondary_save_session;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
@@ -4058,19 +4700,14 @@ fn save_directory_dialog_default_location(session: &DesktopSession) -> PathBuf {
     }
 }
 
-fn open_selected_rom(
-    event_pump: &sdl3::EventPump,
-    canvas: &mut Canvas<Window>,
+fn load_selected_rom(
     selected_path: PathBuf,
-    context: &mut FrontendActionContext<'_>,
-) -> Result<(), String> {
-    context.runtime.rtc_sync.apply_to_machine(context.machine);
-
-    let had_loaded_rom = context.session.has_loaded_rom();
+    session: &DesktopSession,
+) -> Result<LoadedRom, String> {
     let rom_path = if selected_path.is_absolute() {
         selected_path
     } else {
-        resolve_path(&context.session.current_dir, &selected_path)
+        resolve_path(&session.current_dir, &selected_path)
     };
     let rom_bytes = match fs::read(&rom_path) {
         Ok(rom_bytes) => rom_bytes,
@@ -4082,43 +4719,80 @@ fn open_selected_rom(
             ));
         }
     };
+
+    Ok(LoadedRom {
+        path: rom_path,
+        bytes: rom_bytes,
+    })
+}
+
+fn next_single_external_port_selection(
+    current_selection: DesktopExternalPortSelection,
+) -> DesktopExternalPortSelection {
+    match current_selection {
+        DesktopExternalPortSelection::None | DesktopExternalPortSelection::Printer => {
+            current_selection
+        }
+        DesktopExternalPortSelection::GameLink
+        | DesktopExternalPortSelection::FourPlayerAdapter => DesktopExternalPortSelection::None,
+    }
+}
+
+fn open_selected_rom(
+    event_pump: &sdl3::EventPump,
+    canvas: &mut Canvas<Window>,
+    selected_path: PathBuf,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+    context.runtime.rtc_sync.apply_to_machine(context.machine);
+
+    let had_loaded_rom = context.session.has_loaded_rom();
+    let next_loaded_rom = load_selected_rom(selected_path, context.session)?;
     let loaded = load_machine_for_rom(
         &context.session.config,
         &context.session.current_dir,
-        &rom_bytes,
+        &next_loaded_rom.bytes,
     )?;
     log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
     write_cartridge_diagnostics(&loaded.diagnostics);
-    let next_loaded_rom = LoadedRom {
-        path: rom_path,
-        bytes: rom_bytes,
-    };
     let effective_config = loaded.effective_config;
     let config_fell_back = effective_config != context.session.config;
     let mut next_machine = loaded.machine;
+    let next_external_port_selection =
+        next_single_external_port_selection(context.session.external_port_selection);
+    apply_external_port_selection_to_machine(&mut next_machine, next_external_port_selection);
     let next_session = DesktopSession {
         config: effective_config.clone(),
         current_dir: context.session.current_dir.clone(),
         loaded_rom: Some(next_loaded_rom),
+        linked_secondary_rom: None,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
+        external_port_selection: next_external_port_selection,
     };
     let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
 
-    if let Some(save_session) = &mut context.runtime.save_session {
-        save_session.close(context.machine)?;
-    }
+    close_runtime_save_sessions(context.runtime, context.machine)?;
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.clear_buffer()?;
     }
 
     context.session.config = effective_config;
     context.session.loaded_rom = next_session.loaded_rom;
+    context.session.linked_secondary_rom = None;
     context.session.last_open_directory = context
         .session
         .loaded_rom
         .as_ref()
         .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
+    context.session.external_port_selection = next_external_port_selection;
     if config_fell_back {
         context
             .settings_store
@@ -4128,9 +4802,10 @@ fn open_selected_rom(
         context.settings_store.remember_loaded_rom(rom_path)?;
         context.session.recent_roms = context.settings_store.recent_roms().to_vec();
     }
-    context.runtime.input_state.clear_all(context.machine);
-    *context.machine = next_machine;
+    clear_live_input_state(context.machine, context.runtime);
+    *context.machine = DesktopEmulationSession::new_single(next_machine);
     context.runtime.save_session = next_save_session;
+    context.runtime.secondary_save_session = None;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
         canvas.window_mut(),
@@ -4147,22 +4822,153 @@ fn open_selected_rom(
     Ok(())
 }
 
+fn open_selected_linked_secondary_rom(
+    event_pump: &sdl3::EventPump,
+    canvas: &mut Canvas<Window>,
+    selected_path: PathBuf,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    if !context.session.has_loaded_rom() {
+        return Err(
+            "GAME LINK requires a primary ROM before selecting a second cartridge".to_string(),
+        );
+    }
+
+    drain_printed_pages_into_printer_output(
+        canvas.window(),
+        context.session,
+        context.runtime,
+        context.machine,
+    );
+    flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+    context.runtime.rtc_sync.apply_to_machine(context.machine);
+
+    let Some(primary_rom_bytes) = context.session.rom_bytes() else {
+        return Err(
+            "GAME LINK requires a primary ROM before selecting a second cartridge".to_string(),
+        );
+    };
+    let primary_battery_backed_state = uses_battery_backed_hardware_persistence(
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistence_metadata(),
+    )
+    .then(|| {
+        context
+            .machine
+            .primary_machine()
+            .cartridge()
+            .persistent_state()
+    });
+
+    let next_secondary_rom = load_selected_rom(selected_path, context.session)?;
+    let loaded_primary = load_machine_for_rom(
+        &context.session.config,
+        &context.session.current_dir,
+        primary_rom_bytes,
+    )?;
+    let loaded_secondary = load_machine_for_rom(
+        &context.session.config,
+        &context.session.current_dir,
+        &next_secondary_rom.bytes,
+    )?;
+    if loaded_primary.effective_config != loaded_secondary.effective_config {
+        return Err(
+            "activating GAME LINK produced divergent effective configs between primary and secondary machines"
+                .to_string(),
+        );
+    }
+
+    log_boot_rom_fallback_warning(loaded_primary.boot_rom_fallback_warning.as_deref());
+    write_cartridge_diagnostics(&loaded_primary.diagnostics);
+    log_boot_rom_fallback_warning(loaded_secondary.boot_rom_fallback_warning.as_deref());
+    write_cartridge_diagnostics(&loaded_secondary.diagnostics);
+
+    let effective_config = loaded_primary.effective_config;
+    let config_fell_back = effective_config != context.session.config;
+    let mut next_machine = DesktopEmulationSession::new_single(loaded_primary.machine);
+    if let Some(persistent_state) = primary_battery_backed_state
+        && let Err(error) = next_machine
+            .primary_machine_mut()
+            .restore_cartridge_persistent_state(&persistent_state)
+    {
+        return Err(format!(
+            "failed to restore battery-backed persistence while activating GAME LINK: {error:?}"
+        ));
+    }
+    next_machine.attach_secondary_dmg04(loaded_secondary.machine)?;
+
+    let next_session = DesktopSession {
+        config: effective_config.clone(),
+        current_dir: context.session.current_dir.clone(),
+        loaded_rom: context.session.loaded_rom.clone(),
+        linked_secondary_rom: Some(next_secondary_rom),
+        last_open_directory: context.session.last_open_directory.clone(),
+        recent_roms: context.session.recent_roms.clone(),
+        external_port_selection: DesktopExternalPortSelection::GameLink,
+    };
+    let next_primary_save_session =
+        open_save_session_for_session(&next_session, next_machine.primary_machine_mut())?;
+    let next_secondary_save_session = open_secondary_save_session_for_session(
+        &next_session,
+        next_machine
+            .secondary_machine_mut()
+            .expect("linked desktop session should expose a secondary machine"),
+    )?;
+
+    close_runtime_save_sessions(context.runtime, context.machine)?;
+    if let Some(audio_output) = &mut context.runtime.audio_output {
+        audio_output.clear_buffer()?;
+    }
+
+    context.session.config = effective_config;
+    context.session.linked_secondary_rom = next_session.linked_secondary_rom;
+    context.session.last_open_directory = context
+        .session
+        .linked_secondary_rom
+        .as_ref()
+        .and_then(|rom| rom.path.parent().map(Path::to_path_buf));
+    context.session.external_port_selection = DesktopExternalPortSelection::GameLink;
+    if config_fell_back {
+        context
+            .settings_store
+            .persist_machine_preferences(&context.session.config)?;
+    }
+    clear_live_input_state(context.machine, context.runtime);
+    *context.machine = next_machine;
+    context.runtime.save_session = next_primary_save_session;
+    context.runtime.secondary_save_session = next_secondary_save_session;
+    context.runtime.rtc_sync.resync_to_host_clock();
+    context.performance_counter.reset_base_title(
+        canvas.window_mut(),
+        window_title(context.session, &context.session.config),
+    )?;
+
+    if context.runtime.menu_state.is_open() {
+        close_menu(event_pump, context.machine, context.runtime)?;
+    }
+
+    Ok(())
+}
+
 fn open_menu(
     window: &Window,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     session: &DesktopSession,
     runtime: &mut FrontendRuntime,
 ) -> Result<(), String> {
     runtime
         .menu_state
         .open(current_menu_presentation(window, runtime, machine, session));
-    runtime.input_state.clear_all(machine);
+    clear_live_input_state(machine, runtime);
     sync_audio_playback_state(machine, runtime)
 }
 
 fn close_menu(
     event_pump: &sdl3::EventPump,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
 ) -> Result<(), String> {
     runtime.menu_state.close();
@@ -4184,6 +4990,7 @@ fn execute_menu_action(
         }
         MenuAction::OpenRom => {
             let default_location = context.session.rom_directory_hint();
+            context.runtime.open_rom_dialog_mode = OpenRomDialogMode::Primary;
             if let Err(error) = context.runtime.open_rom_dialog.show_file(
                 &ROM_FILE_DIALOG_FILTERS,
                 canvas.window(),
@@ -4302,9 +5109,7 @@ fn execute_menu_action(
             Ok(None)
         }
         MenuAction::SaveBattery => {
-            if let Some(save_session) = &mut context.runtime.save_session {
-                let _ = save_session.flush_if_changed(context.machine, "menu")?;
-            }
+            flush_runtime_save_sessions_if_changed(context.runtime, context.machine, "menu")?;
             Ok(None)
         }
         MenuAction::ToggleFullscreen => {
@@ -4312,9 +5117,10 @@ fn execute_menu_action(
             context.runtime.video_options.fullscreen =
                 canvas.window().fullscreen_state() != FullscreenType::Off;
             if canvas.window().fullscreen_state() == FullscreenType::Off {
-                apply_window_scale(
+                apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     context.runtime.video_options.window_scale,
+                    framebuffer_dimensions_for_session(context.machine),
                 )?;
             }
             context
@@ -4338,9 +5144,10 @@ fn execute_menu_action(
             context.runtime.video_options.window_scale =
                 next_window_scale(context.runtime.video_options.window_scale);
             if canvas.window().fullscreen_state() == FullscreenType::Off {
-                apply_window_scale(
+                apply_window_scale_for_dimensions(
                     canvas.window_mut(),
                     context.runtime.video_options.window_scale,
+                    framebuffer_dimensions_for_session(context.machine),
                 )?;
             }
             context
@@ -4370,7 +5177,11 @@ fn execute_menu_action(
             apply_renderer_vsync(canvas, context.frame_pacer, defaults.vsync)?;
             set_fullscreen_state(canvas.window_mut(), defaults.fullscreen)?;
             if canvas.window().fullscreen_state() == FullscreenType::Off {
-                apply_window_scale(canvas.window_mut(), defaults.window_scale)?;
+                apply_window_scale_for_dimensions(
+                    canvas.window_mut(),
+                    defaults.window_scale,
+                    framebuffer_dimensions_for_session(context.machine),
+                )?;
             }
             context.settings_store.reset_video_defaults()?;
             Ok(None)
@@ -4405,6 +5216,59 @@ fn execute_menu_action(
             context.settings_store.reset_audio_defaults()?;
             Ok(None)
         }
+        MenuAction::SetExternalPort(selection) => {
+            drain_printed_pages_into_printer_output(
+                canvas.window(),
+                context.session,
+                context.runtime,
+                context.machine,
+            );
+            flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+            match selection {
+                DesktopExternalPortSelection::GameLink => {
+                    if !context.session.has_loaded_rom() {
+                        return Ok(None);
+                    }
+
+                    context.runtime.open_rom_dialog_mode = OpenRomDialogMode::LinkedSecondary;
+                    let default_location = context.session.rom_directory_hint();
+                    if let Err(error) = context.runtime.open_rom_dialog.show_file(
+                        &ROM_FILE_DIALOG_FILTERS,
+                        canvas.window(),
+                        default_location,
+                    ) {
+                        context.runtime.open_rom_dialog_mode = OpenRomDialogMode::Primary;
+                        show_warning_message(Some(canvas.window()), "GAME LINK", &error);
+                        eprintln!("warning: {error}");
+                    }
+                }
+                DesktopExternalPortSelection::None | DesktopExternalPortSelection::Printer => {
+                    if context.machine.is_linked_dmg04_two_player() {
+                        if let Some(save_session) = &mut context.runtime.secondary_save_session
+                            && let Some(secondary_machine) = context.machine.secondary_machine()
+                        {
+                            save_session.close(secondary_machine)?;
+                        }
+                        context.machine.detach_to_single_primary();
+                    }
+
+                    context.runtime.secondary_save_session = None;
+                    context.session.linked_secondary_rom = None;
+                    context.session.external_port_selection = selection;
+                    apply_external_port_selection_to_machine(
+                        context.machine.primary_machine_mut(),
+                        selection,
+                    );
+                    context.performance_counter.reset_base_title(
+                        canvas.window_mut(),
+                        window_title(context.session, &context.session.config),
+                    )?;
+                    context.runtime.rtc_sync.resync_to_host_clock();
+                }
+                DesktopExternalPortSelection::FourPlayerAdapter => {}
+            }
+            Ok(None)
+        }
         MenuAction::CycleGamepadDirectionalSource => {
             if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
                 let next_directional_source =
@@ -4414,7 +5278,7 @@ fn execute_menu_action(
                     &mut context.runtime.input_state,
                     context.machine,
                 );
-                context.runtime.input_state.clear_all(context.machine);
+                clear_live_input_state(context.machine, context.runtime);
                 context
                     .settings_store
                     .set_gamepad_directional_source(next_directional_source)?;
@@ -4530,6 +5394,7 @@ fn execute_menu_action(
         }
         MenuAction::Reset => {
             reset_machine(
+                canvas.window(),
                 context.session,
                 context.machine,
                 context.runtime,
@@ -4538,7 +5403,10 @@ fn execute_menu_action(
             close_menu(event_pump, context.machine, context.runtime)?;
             Ok(None)
         }
-        MenuAction::Quit => Ok(Some(LoopSignal::Quit)),
+        MenuAction::Quit => {
+            flush_pending_printer_output(canvas.window(), context.session, context.runtime);
+            Ok(Some(LoopSignal::Quit))
+        }
     }
 }
 
@@ -4587,6 +5455,7 @@ fn current_menu_presentation(
         console_model: session.config.launch.console_model,
         startup_mode: session.config.launch.startup_mode,
         execution_mode: session.config.launch.execution_mode,
+        external_port_selection: session.external_port_selection,
         boot_rom_uses_default_path: session.config.boot_rom.search_path.is_none(),
         boot_rom_verification: session.config.boot_rom.verification,
         saves_enabled: session.config.saves.enabled,
@@ -4609,7 +5478,11 @@ fn current_menu_presentation(
         manual_save_available: runtime
             .save_session
             .as_ref()
-            .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual),
+            .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual)
+            || runtime
+                .secondary_save_session
+                .as_ref()
+                .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual),
         any_dialog_pending: runtime.any_dialog_pending(),
         gamepad_available,
         gamepad_directional_source: runtime.gamepad_manager.as_ref().map_or(
@@ -5075,18 +5948,33 @@ fn set_keyboard_binding_value(
 fn sync_live_input_state(
     event_pump: &sdl3::EventPump,
     keyboard_bindings: &KeyboardBindings,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
 ) {
-    runtime.input_state.clear_all(machine);
+    clear_live_input_state(machine, runtime);
     sync_keyboard_state(
         event_pump,
         keyboard_bindings,
         &mut runtime.input_state,
-        machine,
+        machine.primary_machine_mut(),
+    );
+    sync_linked_secondary_keyboard_state(
+        event_pump,
+        &mut runtime.secondary_input_state,
+        machine.secondary_machine_mut(),
     );
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-        gamepad_manager.sync_active_gamepad_state(&mut runtime.input_state, machine);
+        gamepad_manager
+            .sync_active_gamepad_state(&mut runtime.input_state, machine.primary_machine_mut());
+    }
+}
+
+fn clear_live_input_state(machine: &mut DesktopEmulationSession, runtime: &mut FrontendRuntime) {
+    runtime.input_state.clear_all(machine.primary_machine_mut());
+    if let Some(secondary_machine) = machine.secondary_machine_mut() {
+        runtime.secondary_input_state.clear_all(secondary_machine);
+    } else {
+        runtime.secondary_input_state.reset();
     }
 }
 
@@ -5116,6 +6004,32 @@ fn sync_keyboard_state(
             keyboard_state.is_scancode_pressed(desktop_key_scancode(desktop_key)),
         );
     }
+}
+
+fn sync_linked_secondary_keyboard_state(
+    event_pump: &sdl3::EventPump,
+    input_state: &mut FrontendInputState,
+    machine: Option<&mut Machine<TraceSummaryBuffer>>,
+) {
+    let Some(machine) = machine else {
+        input_state.reset();
+        return;
+    };
+
+    let keyboard_state = event_pump.keyboard_state();
+    for (joypad_button, scancode) in LINKED_SECONDARY_KEYBOARD_BINDINGS {
+        input_state.set_keyboard_button(
+            machine,
+            joypad_button,
+            keyboard_state.is_scancode_pressed(scancode),
+        );
+    }
+}
+
+fn linked_secondary_joypad_button_for_scancode(scancode: Scancode) -> Option<JoypadButton> {
+    LINKED_SECONDARY_KEYBOARD_BINDINGS
+        .into_iter()
+        .find_map(|(button, binding)| (binding == scancode).then_some(button))
 }
 
 fn desktop_key_scancode(binding: DesktopKey) -> Scancode {
@@ -5177,50 +6091,196 @@ fn menu_input_for_gamepad_button(
 }
 
 fn reset_machine(
+    main_window: &Window,
     session: &mut DesktopSession,
-    machine: &mut Machine<TraceSummaryBuffer>,
+    machine: &mut DesktopEmulationSession,
     runtime: &mut FrontendRuntime,
     settings_store: &mut DesktopSettingsStore,
 ) -> Result<(), String> {
     let Some(rom_bytes) = session.rom_bytes() else {
         return Ok(());
     };
+    drain_printed_pages_into_printer_output(main_window, session, runtime, machine);
+    flush_pending_printer_output(main_window, session, runtime);
     runtime.rtc_sync.apply_to_machine(machine);
-    let battery_backed_state =
-        uses_battery_backed_hardware_persistence(machine.cartridge().persistence_metadata())
-            .then(|| machine.cartridge().persistent_state());
+    let primary_battery_backed_state = uses_battery_backed_hardware_persistence(
+        machine.primary_machine().cartridge().persistence_metadata(),
+    )
+    .then(|| machine.primary_machine().cartridge().persistent_state());
+    let secondary_battery_backed_state =
+        machine.secondary_machine().and_then(|secondary_machine| {
+            uses_battery_backed_hardware_persistence(
+                secondary_machine.cartridge().persistence_metadata(),
+            )
+            .then(|| secondary_machine.cartridge().persistent_state())
+        });
 
-    let loaded = match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
-        Ok(result) => result,
-        Err(error) => {
-            return Err(format_display_error(
-                "failed to reload cartridge during reset",
-                &error,
-            ));
+    close_runtime_save_sessions(runtime, machine)?;
+
+    let (
+        effective_config,
+        boot_rom_fallback_warnings,
+        reset_machine,
+        next_save_session,
+        next_secondary_save_session,
+    ) = match (
+        session.linked_secondary_rom_bytes(),
+        session.external_port_selection,
+    ) {
+        (Some(secondary_rom_bytes), DesktopExternalPortSelection::GameLink) => {
+            let primary_loaded =
+                match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        return Err(format_display_error(
+                            "failed to reload primary cartridge during linked reset",
+                            &error,
+                        ));
+                    }
+                };
+            let secondary_loaded = match load_machine_for_rom(
+                &session.config,
+                &session.current_dir,
+                secondary_rom_bytes,
+            ) {
+                Ok(result) => result,
+                Err(error) => {
+                    return Err(format_display_error(
+                        "failed to reload secondary cartridge during linked reset",
+                        &error,
+                    ));
+                }
+            };
+            if primary_loaded.effective_config != secondary_loaded.effective_config {
+                return Err(
+                    "linked reset produced divergent effective configs between the primary and secondary machines"
+                        .to_string(),
+                );
+            }
+
+            let mut boot_rom_fallback_warnings = Vec::new();
+            if let Some(warning) = primary_loaded.boot_rom_fallback_warning {
+                boot_rom_fallback_warnings.push(warning);
+            }
+            if let Some(warning) = secondary_loaded.boot_rom_fallback_warning {
+                boot_rom_fallback_warnings.push(warning);
+            }
+            write_cartridge_diagnostics(&primary_loaded.diagnostics);
+            write_cartridge_diagnostics(&secondary_loaded.diagnostics);
+
+            let mut reset_machine = DesktopEmulationSession::new_single(primary_loaded.machine);
+            if let Some(persistent_state) = primary_battery_backed_state
+                && let Err(error) = reset_machine
+                    .primary_machine_mut()
+                    .restore_cartridge_persistent_state(&persistent_state)
+            {
+                return Err(format!(
+                    "failed to restore battery-backed persistence after reset: {error:?}"
+                ));
+            }
+            reset_machine.attach_secondary_dmg04(secondary_loaded.machine)?;
+            if let Some(persistent_state) = secondary_battery_backed_state
+                && let Some(secondary_machine) = reset_machine.secondary_machine_mut()
+                && let Err(error) =
+                    secondary_machine.restore_cartridge_persistent_state(&persistent_state)
+            {
+                return Err(format!(
+                    "failed to restore linked battery-backed persistence after reset: {error:?}"
+                ));
+            }
+
+            let effective_config = primary_loaded.effective_config;
+            let next_save_session = open_save_session_for_session(
+                &DesktopSession {
+                    config: effective_config.clone(),
+                    ..session.clone()
+                },
+                reset_machine.primary_machine_mut(),
+            )?;
+            let next_secondary_save_session = open_secondary_save_session_for_session(
+                &DesktopSession {
+                    config: effective_config.clone(),
+                    ..session.clone()
+                },
+                reset_machine
+                    .secondary_machine_mut()
+                    .expect("linked desktop session should expose a secondary machine"),
+            )?;
+            (
+                effective_config,
+                boot_rom_fallback_warnings,
+                reset_machine,
+                next_save_session,
+                next_secondary_save_session,
+            )
+        }
+        _ => {
+            let loaded =
+                match load_machine_for_rom(&session.config, &session.current_dir, rom_bytes) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        return Err(format_display_error(
+                            "failed to reload cartridge during reset",
+                            &error,
+                        ));
+                    }
+                };
+            let mut boot_rom_fallback_warnings = Vec::new();
+            if let Some(warning) = loaded.boot_rom_fallback_warning {
+                boot_rom_fallback_warnings.push(warning);
+            }
+            write_cartridge_diagnostics(&loaded.diagnostics);
+            let mut reset_machine = DesktopEmulationSession::new_single(loaded.machine);
+            if let Some(persistent_state) = primary_battery_backed_state
+                && let Err(error) = reset_machine
+                    .primary_machine_mut()
+                    .restore_cartridge_persistent_state(&persistent_state)
+            {
+                return Err(format!(
+                    "failed to restore battery-backed persistence after reset: {error:?}"
+                ));
+            }
+            apply_external_port_selection_to_machine(
+                reset_machine.primary_machine_mut(),
+                session.external_port_selection,
+            );
+
+            let effective_config = loaded.effective_config;
+            let next_save_session = open_save_session_for_session(
+                &DesktopSession {
+                    config: effective_config.clone(),
+                    linked_secondary_rom: None,
+                    ..session.clone()
+                },
+                reset_machine.primary_machine_mut(),
+            )?;
+            (
+                effective_config,
+                boot_rom_fallback_warnings,
+                reset_machine,
+                next_save_session,
+                None,
+            )
         }
     };
-    log_boot_rom_fallback_warning(loaded.boot_rom_fallback_warning.as_deref());
-    write_cartridge_diagnostics(&loaded.diagnostics);
-    let config_fell_back = loaded.effective_config != session.config;
-    session.config = loaded.effective_config;
+
+    for warning in &boot_rom_fallback_warnings {
+        log_boot_rom_fallback_warning(Some(warning));
+    }
+    let config_fell_back = effective_config != session.config;
+    session.config = effective_config;
     if config_fell_back {
         settings_store.persist_machine_preferences(&session.config)?;
-    }
-    let mut reset_machine = loaded.machine;
-    if let Some(persistent_state) = battery_backed_state
-        && let Err(error) = reset_machine.restore_cartridge_persistent_state(&persistent_state)
-    {
-        return Err(format!(
-            "failed to restore battery-backed persistence after reset: {error:?}"
-        ));
     }
 
     if let Some(audio_output) = &mut runtime.audio_output {
         audio_output.clear_buffer()?;
     }
 
-    runtime.input_state.clear_all(machine);
+    clear_live_input_state(machine, runtime);
     *machine = reset_machine;
+    runtime.save_session = next_save_session;
+    runtime.secondary_save_session = next_secondary_save_session;
     runtime.rtc_sync.resync_to_host_clock();
     Ok(())
 }
@@ -5267,12 +6327,30 @@ fn apply_renderer_vsync(
     Ok(())
 }
 
+#[cfg(test)]
 fn apply_window_scale(window: &mut Window, scale: u8) -> Result<(), String> {
+    apply_window_scale_for_dimensions(
+        window,
+        scale,
+        FramebufferDimensions {
+            width: FRAMEBUFFER_WIDTH,
+            height: FRAMEBUFFER_HEIGHT,
+        },
+    )
+}
+
+fn apply_window_scale_for_dimensions(
+    window: &mut Window,
+    scale: u8,
+    dimensions: FramebufferDimensions,
+) -> Result<(), String> {
     let scale = u32::from(scale.max(1));
-    let width = FRAMEBUFFER_WIDTH
+    let width = dimensions
+        .width
         .checked_mul(scale)
         .ok_or_else(|| overflow_error("window width overflowed while applying window scale"))?;
-    let height = FRAMEBUFFER_HEIGHT
+    let height = dimensions
+        .height
         .checked_mul(scale)
         .ok_or_else(|| overflow_error("window height overflowed while applying window scale"))?;
     map_display_result(
@@ -5281,9 +6359,10 @@ fn apply_window_scale(window: &mut Window, scale: u8) -> Result<(), String> {
     )
 }
 
-fn apply_canvas_video_options(
+fn apply_canvas_video_options_for_dimensions(
     canvas: &mut Canvas<Window>,
     video_options: &VideoOptions,
+    dimensions: FramebufferDimensions,
 ) -> Result<(), String> {
     let presentation_mode = if video_options.integer_scale {
         sys::render::SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
@@ -5291,23 +6370,108 @@ fn apply_canvas_video_options(
         sys::render::SDL_LOGICAL_PRESENTATION_LETTERBOX
     };
     map_display_result(
-        canvas.set_logical_size(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, presentation_mode),
+        canvas.set_logical_size(dimensions.width, dimensions.height, presentation_mode),
         "failed to configure SDL3 logical presentation",
     )
 }
 
 fn sync_audio_playback_state(
-    machine: &Machine<TraceSummaryBuffer>,
+    machine: &DesktopEmulationSession,
     runtime: &FrontendRuntime,
 ) -> Result<(), String> {
     let Some(audio_output) = runtime.audio_output.as_ref() else {
         return Ok(());
     };
 
-    if emulation_paused(machine, runtime) {
+    if emulation_paused(audio_source_machine(machine), runtime) {
         audio_output.pause()
     } else {
         audio_output.resume()
+    }
+}
+
+fn framebuffer_dimensions_for_session(machine: &DesktopEmulationSession) -> FramebufferDimensions {
+    FramebufferDimensions {
+        width: if machine.is_linked_dmg04_two_player() {
+            FRAMEBUFFER_WIDTH * 2
+        } else {
+            FRAMEBUFFER_WIDTH
+        },
+        height: FRAMEBUFFER_HEIGHT,
+    }
+}
+
+fn framebuffer_pitch_bytes_for_dimensions(dimensions: FramebufferDimensions) -> usize {
+    dimensions.width as usize * 3
+}
+
+fn create_framebuffer_texture<'a>(
+    texture_creator: &'a TextureCreator<WindowContext>,
+    dimensions: FramebufferDimensions,
+) -> Result<sdl3::render::Texture<'a>, String> {
+    map_display_result(
+        texture_creator.create_texture_streaming(
+            PixelFormat::RGB24,
+            dimensions.width,
+            dimensions.height,
+        ),
+        "failed to create framebuffer texture",
+    )
+}
+
+fn sync_framebuffer_presentation_resources<'a>(
+    canvas: &mut Canvas<Window>,
+    texture_creator: &'a TextureCreator<WindowContext>,
+    texture: &mut sdl3::render::Texture<'a>,
+    rgb_frame: &mut Vec<u8>,
+    current_dimensions: &mut FramebufferDimensions,
+    machine: &DesktopEmulationSession,
+    video_options: &VideoOptions,
+) -> Result<(), String> {
+    let next_dimensions = framebuffer_dimensions_for_session(machine);
+    if next_dimensions == *current_dimensions {
+        return Ok(());
+    }
+
+    *texture = create_framebuffer_texture(texture_creator, next_dimensions)?;
+    rgb_frame.resize(
+        next_dimensions.height as usize * framebuffer_pitch_bytes_for_dimensions(next_dimensions),
+        0,
+    );
+    if canvas.window().fullscreen_state() == FullscreenType::Off {
+        apply_window_scale_for_dimensions(
+            canvas.window_mut(),
+            video_options.window_scale,
+            next_dimensions,
+        )?;
+    }
+    apply_canvas_video_options_for_dimensions(canvas, video_options, next_dimensions)?;
+    *current_dimensions = next_dimensions;
+    Ok(())
+}
+
+fn write_monochrome_framebuffer_region(
+    target_rgb_frame: &mut [u8],
+    target_dimensions: FramebufferDimensions,
+    target_origin_x: usize,
+    source_framebuffer: &[u8],
+) {
+    let target_pitch_bytes = framebuffer_pitch_bytes_for_dimensions(target_dimensions);
+    let target_width = target_dimensions.width as usize;
+    let target_height = target_dimensions.height as usize;
+    for y in 0..target_height.min(FRAMEBUFFER_HEIGHT as usize) {
+        for x in 0..(FRAMEBUFFER_WIDTH as usize) {
+            if target_origin_x + x >= target_width {
+                break;
+            }
+
+            let source_index = y * FRAMEBUFFER_WIDTH as usize + x;
+            let target_pixel_index = y * target_pitch_bytes + ((target_origin_x + x) * 3);
+            let shade = framebuffer_pixel_to_grayscale(source_framebuffer[source_index]);
+            target_rgb_frame[target_pixel_index] = shade;
+            target_rgb_frame[target_pixel_index + 1] = shade;
+            target_rgb_frame[target_pixel_index + 2] = shade;
+        }
     }
 }
 
@@ -5315,23 +6479,32 @@ fn render_frame(
     canvas: &mut Canvas<Window>,
     texture: &mut sdl3::render::Texture<'_>,
     rgb_frame: &mut [u8],
-    framebuffer: &[u8],
+    framebuffer: FramebufferRenderInput<'_>,
     video_options: &VideoOptions,
     menu_state: Option<(&OverlayMenuState, MenuPresentation)>,
     performance_hud: Option<PerformanceHudSnapshot>,
 ) -> Result<Duration, String> {
-    apply_canvas_video_options(canvas, video_options)?;
-    for (source, target) in framebuffer.iter().zip(rgb_frame.chunks_exact_mut(3)) {
-        let shade = framebuffer_pixel_to_grayscale(*source);
-        target[0] = shade;
-        target[1] = shade;
-        target[2] = shade;
+    apply_canvas_video_options_for_dimensions(canvas, video_options, framebuffer.dimensions)?;
+    rgb_frame.fill(0);
+    write_monochrome_framebuffer_region(
+        rgb_frame,
+        framebuffer.dimensions,
+        0,
+        framebuffer.primary_framebuffer,
+    );
+    if let Some(secondary_framebuffer) = framebuffer.secondary_framebuffer {
+        write_monochrome_framebuffer_region(
+            rgb_frame,
+            framebuffer.dimensions,
+            FRAMEBUFFER_WIDTH as usize,
+            secondary_framebuffer,
+        );
     }
     if let Some((menu_state, menu_presentation)) = menu_state {
         menu_state.render_overlay(
             rgb_frame,
-            FRAMEBUFFER_WIDTH as usize,
-            FRAMEBUFFER_HEIGHT as usize,
+            framebuffer.dimensions.width as usize,
+            framebuffer.dimensions.height as usize,
             menu_presentation,
         );
     }
@@ -5341,14 +6514,18 @@ fn render_frame(
     {
         render_performance_hud(
             rgb_frame,
-            FRAMEBUFFER_WIDTH as usize,
-            FRAMEBUFFER_HEIGHT as usize,
+            framebuffer.dimensions.width as usize,
+            framebuffer.dimensions.height as usize,
             snapshot,
         );
     }
 
     map_display_result(
-        texture.update(None, rgb_frame, FRAMEBUFFER_PITCH_BYTES),
+        texture.update(
+            None,
+            rgb_frame,
+            framebuffer_pitch_bytes_for_dimensions(framebuffer.dimensions),
+        ),
         "failed to update framebuffer texture",
     )?;
     canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -5590,19 +6767,20 @@ mod tests {
         Apu, ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
         CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
         CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
-        JoypadSnapshot, JoypadStatus, Machine, MachineConfig, MachineStepRegion,
-        PersistentCartState, PpuStepRegion, StartupMode, TraceSummaryBuffer,
+        ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
+        MachineConfig, MachineStepRegion, PersistentCartState, PpuStepRegion, PrinterCommand,
+        StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
-        BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopKey,
-        DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
+        BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
+        DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
         GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings,
     };
     use sdl3::dialog::DialogError;
     use sdl3::event::Event;
     use sdl3::gamepad::Button;
     use sdl3::joystick::JoystickId;
-    use sdl3::keyboard::{Keycode, Mod};
+    use sdl3::keyboard::{Keycode, Mod, Scancode};
     use sdl3::render::Canvas;
     use sdl3::video::Window;
     use std::collections::VecDeque;
@@ -5666,6 +6844,79 @@ mod tests {
         rom_path
     }
 
+    fn serial_transfer_byte(machine: &mut Machine<TraceSummaryBuffer>, outgoing_byte: u8) -> u8 {
+        machine.write_bus(0xFF01, outgoing_byte);
+        machine.write_bus(0xFF02, 0x81);
+
+        while !matches!(
+            machine.serial().transfer_state(),
+            gb_core::SerialTransferState::Idle
+        ) {
+            machine.step_t_cycle();
+        }
+
+        machine.read_bus(0xFF01)
+    }
+
+    fn printer_packet(command: PrinterCommand, data: &[u8]) -> Vec<u8> {
+        let mut packet = vec![
+            0x88,
+            0x33,
+            command as u8,
+            0x00,
+            (data.len() & 0xFF) as u8,
+            ((data.len() >> 8) & 0xFF) as u8,
+        ];
+        packet.extend_from_slice(data);
+        let checksum = packet[2..]
+            .iter()
+            .fold(0u16, |sum, &byte| sum.wrapping_add(byte as u16));
+        packet.push((checksum & 0xFF) as u8);
+        packet.push((checksum >> 8) as u8);
+        packet
+    }
+
+    fn send_printer_packet(
+        machine: &mut Machine<TraceSummaryBuffer>,
+        command: PrinterCommand,
+        data: &[u8],
+    ) -> Vec<u8> {
+        printer_packet(command, data)
+            .into_iter()
+            .map(|byte| serial_transfer_byte(machine, byte))
+            .collect()
+    }
+
+    fn run_print_sequence(machine: &mut Machine<TraceSummaryBuffer>) {
+        let tile_row = vec![0xFF; 320];
+
+        send_printer_packet(machine, PrinterCommand::Data, &tile_row);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x81);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x08);
+
+        send_printer_packet(machine, PrinterCommand::Data, &[]);
+        serial_transfer_byte(machine, 0x00);
+        serial_transfer_byte(machine, 0x00);
+
+        send_printer_packet(machine, PrinterCommand::Print, &[0x01, 0x13, 0xE4, 0x40]);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x81);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x08);
+
+        send_printer_packet(machine, PrinterCommand::Status, &[]);
+        serial_transfer_byte(machine, 0x00);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x06);
+
+        send_printer_packet(machine, PrinterCommand::Status, &[]);
+        serial_transfer_byte(machine, 0x00);
+        assert_eq!(serial_transfer_byte(machine, 0x00), 0x04);
+    }
+
+    fn dmg_skip_boot_summary_machine() -> Machine<TraceSummaryBuffer> {
+        Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        )
+    }
+
     fn schedule_quit_event() -> thread::JoinHandle<()> {
         thread::spawn(|| {
             thread::sleep(Duration::from_millis(75));
@@ -5680,10 +6931,316 @@ mod tests {
         })
     }
 
+    #[test]
+    fn desktop_emulation_session_can_wrap_a_two_console_dmg04_runtime() {
+        let primary = dmg_skip_boot_summary_machine();
+        let secondary = dmg_skip_boot_summary_machine();
+
+        let linked = super::linked_session::DesktopEmulationSession::new_linked_dmg04_two_player(
+            primary, secondary,
+        )
+        .expect("desktop linked session should build from two aligned machines");
+
+        assert_eq!(
+            linked.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert_eq!(linked.linked_topology_kind(), LinkedTopologyKind::Dmg04);
+        assert_eq!(
+            linked.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+        assert_eq!(
+            linked
+                .secondary_machine()
+                .expect("secondary machine should exist")
+                .external_port()
+                .attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+    }
+
+    #[test]
+    fn desktop_emulation_session_can_return_to_a_single_primary_machine() {
+        let primary = dmg_skip_boot_summary_machine();
+        let secondary = dmg_skip_boot_summary_machine();
+
+        let mut linked =
+            super::linked_session::DesktopEmulationSession::new_linked_dmg04_two_player(
+                primary, secondary,
+            )
+            .expect("desktop linked session should build from two aligned machines");
+
+        linked.step_t_cycle();
+        let primary_wram_before = linked.read_bus(0xC000);
+        linked
+            .secondary_machine_mut()
+            .expect("secondary machine should exist")
+            .write_bus(0xC000, 0x3C);
+
+        let mut primary = linked.into_primary_machine();
+
+        assert_eq!(primary.next_t_cycle(), gb_core::TCycle::new(1));
+        assert_eq!(
+            primary.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert_eq!(primary.read_bus(0xC000), primary_wram_before);
+    }
+
+    #[test]
+    fn game_link_menu_action_loads_a_secondary_rom_into_a_linked_runtime() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-activate", true, false, false);
+        let secondary_rom_path = harness.root.join("linked-secondary.gb");
+        fs::write(
+            &secondary_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("secondary link ROM should be writable");
+
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::LinkedSecondary;
+
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(secondary_rom_path.clone()))
+            .expect("secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate GAME LINK");
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::GameLink
+        );
+        assert_eq!(
+            harness.session.linked_secondary_rom_path(),
+            Some(secondary_rom_path.as_path())
+        );
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::Dmg04
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("secondary linked machine should exist")
+                .external_port()
+                .attachment_kind(),
+            ExternalPortAttachmentKind::GameLinkDmg04
+        );
+    }
+
+    #[test]
+    fn selecting_none_after_game_link_returns_to_a_single_primary_runtime() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-detach", true, false, false);
+        let secondary_rom_path = harness.root.join("linked-secondary.gb");
+        fs::write(
+            &secondary_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("secondary link ROM should be writable");
+
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::LinkedSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(secondary_rom_path))
+            .expect("secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate GAME LINK");
+        harness.machine.write_bus(0xC000, 0x5A);
+        harness
+            .machine
+            .secondary_machine_mut()
+            .expect("secondary linked machine should exist")
+            .write_bus(0xC000, 0x99);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::None,
+                ))
+                .expect("returning to NONE should tear down GAME LINK")
+                .is_none()
+        );
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert!(harness.session.linked_secondary_rom.is_none());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::Single
+        );
+        assert_eq!(
+            harness.machine.linked_topology_kind(),
+            LinkedTopologyKind::None
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
+        assert_eq!(harness.machine.read_bus(0xC000), 0x5A);
+    }
+
+    #[test]
+    fn game_link_activation_rebuilds_an_advanced_primary_into_a_fresh_linked_session() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-fresh-sync", true, false, false);
+        let secondary_rom_path = harness.root.join("linked-secondary.gb");
+        fs::write(
+            &secondary_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("secondary link ROM should be writable");
+
+        for _ in 0..256 {
+            harness.machine.step_t_cycle();
+        }
+        assert_ne!(harness.machine.next_t_cycle(), gb_core::TCycle::ZERO);
+
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::LinkedSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(secondary_rom_path))
+            .expect("secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("advanced primary should still activate GAME LINK");
+
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert_eq!(
+            harness.machine.primary_machine().next_t_cycle(),
+            gb_core::TCycle::ZERO
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("secondary linked machine should exist")
+                .next_t_cycle(),
+            gb_core::TCycle::ZERO
+        );
+    }
+
+    #[test]
+    fn reset_keeps_the_linked_runtime_active_for_game_link_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-reset", true, false, false);
+        let secondary_rom_path = harness.root.join("linked-secondary.gb");
+        fs::write(
+            &secondary_rom_path,
+            build_test_rom(32 * 1024, 0x00, 0x00, 0x00),
+        )
+        .expect("secondary link ROM should be writable");
+
+        harness.runtime.open_rom_dialog_mode = super::OpenRomDialogMode::LinkedSecondary;
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(secondary_rom_path))
+            .expect("secondary ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("secondary ROM selection should activate GAME LINK");
+
+        let primary_reset_baseline = harness.machine.read_bus(0xC000);
+        let secondary_reset_baseline = harness
+            .machine
+            .secondary_machine_mut()
+            .expect("secondary linked machine should exist")
+            .read_bus(0xC000);
+        harness.machine.write_bus(0xC000, 0xA5);
+        harness
+            .machine
+            .secondary_machine_mut()
+            .expect("secondary linked machine should exist")
+            .write_bus(0xC000, 0x3C);
+
+        super::reset_machine(
+            harness.canvas.window(),
+            &mut harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.settings_store,
+        )
+        .expect("linked reset should succeed");
+
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::GameLink
+        );
+        assert!(harness.session.linked_secondary_rom.is_some());
+        assert_eq!(
+            harness.machine.kind(),
+            super::linked_session::DesktopEmulationSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert_eq!(harness.machine.read_bus(0xC000), primary_reset_baseline);
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine_mut()
+                .expect("secondary linked machine should exist")
+                .read_bus(0xC000),
+            secondary_reset_baseline
+        );
+    }
+
+    #[test]
+    fn game_link_menu_action_switches_the_open_rom_dialog_into_secondary_mode() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("game-link-action", true, false, false);
+        harness.runtime.open_rom_dialog.pending = true;
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::GameLink,
+                ))
+                .expect("GAME LINK action should not fail when the open dialog is already pending")
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::LinkedSecondary
+        );
+    }
+
     fn push_key_event(events: &sdl3::EventSubsystem, keycode: Keycode, down: bool) {
-        let desktop_key =
-            desktop_key_from_keycode(keycode).expect("test keycode should map to a desktop key");
-        let scancode = desktop_key_scancode(desktop_key);
+        let scancode = desktop_key_from_keycode(keycode)
+            .map(desktop_key_scancode)
+            .unwrap_or_else(|| keycode_to_test_scancode(keycode));
+        push_key_event_with_scancode(events, keycode, scancode, down);
+    }
+
+    fn push_key_event_with_scancode(
+        events: &sdl3::EventSubsystem,
+        keycode: Keycode,
+        scancode: Scancode,
+        down: bool,
+    ) {
         let event = if down {
             Event::KeyDown {
                 timestamp: 0,
@@ -5711,6 +7268,20 @@ mod tests {
         events
             .push_event(event)
             .expect("keyboard event should be pushable");
+    }
+
+    fn keycode_to_test_scancode(keycode: Keycode) -> Scancode {
+        match keycode {
+            Keycode::A => Scancode::A,
+            Keycode::C => Scancode::C,
+            Keycode::D => Scancode::D,
+            Keycode::E => Scancode::E,
+            Keycode::Q => Scancode::Q,
+            Keycode::S => Scancode::S,
+            Keycode::V => Scancode::V,
+            Keycode::W => Scancode::W,
+            _ => panic!("test keycode should map to a desktop key"),
+        }
     }
 
     fn schedule_key_sequence(sequence: Vec<(Keycode, bool)>) -> thread::JoinHandle<()> {
@@ -5793,7 +7364,7 @@ mod tests {
         canvas: Canvas<Window>,
         event_pump: sdl3::EventPump,
         session: super::DesktopSession,
-        machine: Machine<TraceSummaryBuffer>,
+        machine: super::DesktopEmulationSession,
         runtime: super::FrontendRuntime,
         settings_store: DesktopSettingsStore,
         performance_counter: super::PerformanceCounter,
@@ -5830,21 +7401,25 @@ mod tests {
             });
             let current_dir = root.clone();
             let mut machine = if with_rom {
-                super::load_machine_for_rom(&config, &current_dir, &rom_bytes)
-                    .expect("frontend harness machine should load")
-                    .machine
-            } else {
-                Machine::new_summary(
-                    MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+                super::DesktopEmulationSession::new_single(
+                    super::load_machine_for_rom(&config, &current_dir, &rom_bytes)
+                        .expect("frontend harness machine should load")
+                        .machine,
                 )
+            } else {
+                super::DesktopEmulationSession::new_single(Machine::new_summary(
+                    MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+                ))
             };
 
             let session = super::DesktopSession {
                 config: config.clone(),
                 current_dir,
                 loaded_rom,
+                linked_secondary_rom: None,
                 last_open_directory: Some(root.clone()),
                 recent_roms: Vec::new(),
+                external_port_selection: DesktopExternalPortSelection::None,
             };
 
             let sdl = sdl3::init().expect("frontend harness SDL should initialize");
@@ -5896,22 +7471,27 @@ mod tests {
                 paused: !with_rom,
                 menu_state: super::OverlayMenuState::default(),
                 input_state,
+                secondary_input_state: super::FrontendInputState::new(),
                 keyboard_bindings: config.input.keyboard,
                 video_options: config.video.clone(),
                 audio_volume_percent: config.audio.volume_percent,
                 audio_output,
                 gamepad_manager,
                 save_session,
+                secondary_save_session: None,
                 rtc_sync: super::HostRtcSync::from_host_clock(),
                 open_rom_dialog: super::PathSelectionDialog::new(),
+                open_rom_dialog_mode: super::OpenRomDialogMode::Primary,
                 boot_rom_file_dialog: super::PathSelectionDialog::new(),
                 boot_rom_directory_dialog: super::PathSelectionDialog::new(),
                 save_directory_dialog: super::PathSelectionDialog::new(),
                 trace_capture: super::DesktopTraceCapture {
+                    enabled: false,
                     output_path: None,
                     max_t_cycles: super::DEFAULT_TRACE_CAPTURE_T_CYCLES,
                     records: VecDeque::new(),
                 },
+                printer_output: super::PrinterOutputState::default(),
             };
 
             Self {
@@ -5951,6 +7531,14 @@ mod tests {
                 .event()
                 .expect("frontend harness event subsystem should initialize");
             push_key_event(&events, keycode, down);
+        }
+
+        fn push_key_with_scancode(&self, keycode: Keycode, scancode: Scancode, down: bool) {
+            let events = self
+                .sdl
+                .event()
+                .expect("frontend harness event subsystem should initialize");
+            push_key_event_with_scancode(&events, keycode, scancode, down);
         }
 
         fn process_events(&mut self) -> Result<super::LoopSignal, String> {
@@ -6264,20 +7852,25 @@ mod tests {
         counter.sample_profiled_frames = 2;
         counter.sample_profiled_emulation_duration = Duration::from_millis(24);
         counter.sample_profiled_emulation_breakdown = super::EmulationBreakdownSample {
-            core_cpu_duration: Duration::from_millis(4),
-            core_ppu_duration: Duration::from_millis(16),
+            core_external_events_duration: Duration::from_millis(1),
+            core_timer_duration: Duration::from_millis(1),
+            core_apu_duration: Duration::from_millis(1),
+            core_dma_duration: Duration::from_millis(1),
+            core_ppu_duration: Duration::from_millis(10),
             core_ppu_mode0_1_duration: Duration::from_millis(2),
             core_ppu_mode2_duration: Duration::from_millis(1),
             core_ppu_mode3_startup_duration: Duration::from_millis(1),
-            core_ppu_bg_fetch_duration: Duration::from_millis(4),
-            core_ppu_window_fetch_duration: Duration::from_millis(2),
-            core_ppu_push_duration: Duration::from_millis(3),
-            core_ppu_obj_fetch_duration: Duration::from_millis(2),
-            core_ppu_pixel_transfer_duration: Duration::from_millis(1),
+            core_ppu_bg_fetch_duration: Duration::from_millis(2),
+            core_ppu_window_fetch_duration: Duration::from_millis(1),
+            core_ppu_push_duration: Duration::from_millis(1),
+            core_ppu_obj_fetch_duration: Duration::from_millis(1),
+            core_ppu_pixel_transfer_duration: Duration::from_millis(0),
+            core_cpu_duration: Duration::from_millis(4),
+            core_serial_duration: Duration::from_millis(1),
+            core_interrupts_duration: Duration::from_millis(1),
             host_event_poll_duration: Duration::from_millis(2),
             host_audio_submit_duration: Duration::from_millis(1),
             host_save_flush_duration: Duration::from_millis(1),
-            ..Default::default()
         };
         let elapsed = Duration::from_millis(34);
         let snapshot = counter.snapshot_from_elapsed(elapsed);
@@ -6285,6 +7878,7 @@ mod tests {
             .emulation_profile_summary(elapsed, snapshot)
             .expect("summary mode should render a profile line");
 
+        assert!(summary.contains("session=single"));
         assert!(summary.contains("emu_ms=11.00"));
         assert!(summary.contains("sampled_frames=2"));
         assert!(summary.contains(&format!(
@@ -6293,18 +7887,24 @@ mod tests {
         )));
         assert!(summary.contains("sampled_emu_ms=12.00"));
         assert!(summary.contains("core_est_ms=10.00"));
-        assert!(summary.contains("ppu_ms=8.00"));
+        assert!(summary.contains("ppu_ms=5.00"));
         assert!(summary.contains("cpu_ms=2.00"));
-        assert!(summary.contains("core_other_ms=0.00"));
+        assert!(summary.contains("core_other_ms=3.00"));
+        assert!(summary.contains("ext_ms=0.50"));
+        assert!(summary.contains("timer_ms=0.50"));
+        assert!(summary.contains("apu_ms=0.50"));
+        assert!(summary.contains("dma_ms=0.50"));
+        assert!(summary.contains("serial_ms=0.50"));
+        assert!(summary.contains("irq_ms=0.50"));
         assert!(summary.contains("ppu_mode0_1_ms=1.00"));
         assert!(summary.contains("ppu_mode2_ms=0.50"));
         assert!(summary.contains("ppu_mode3_startup_ms=0.50"));
-        assert!(summary.contains("ppu_bg_ms=2.00"));
-        assert!(summary.contains("ppu_win_ms=1.00"));
-        assert!(summary.contains("ppu_push_ms=1.50"));
-        assert!(summary.contains("ppu_obj_ms=1.00"));
-        assert!(summary.contains("ppu_px_ms=0.50"));
-        assert!(summary.contains("ppu_other_ms=0.00"));
+        assert!(summary.contains("ppu_bg_ms=1.00"));
+        assert!(summary.contains("ppu_win_ms=0.50"));
+        assert!(summary.contains("ppu_push_ms=0.50"));
+        assert!(summary.contains("ppu_obj_ms=0.50"));
+        assert!(summary.contains("ppu_px_ms=0.00"));
+        assert!(summary.contains("ppu_other_ms=0.50"));
         assert!(summary.contains("host_ms=2.00"));
         assert!(summary.contains("poll_ms=1.00"));
         assert!(summary.contains("audsubmit_ms=0.50"));
@@ -6503,7 +8103,9 @@ mod tests {
         let machine = Machine::new_summary(
             MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
         );
-        let mut request = super::EmulationProfileRequest::new(machine);
+        let mut request = super::EmulationProfileRequest::new(
+            super::DesktopEmulationSession::new_single(machine),
+        );
         request.record_host_event_poll_duration(Duration::from_millis(2));
         request.record_host_audio_submit_duration(Duration::from_millis(3));
         request.record_host_save_flush_duration(Duration::from_millis(4));
@@ -6525,6 +8127,27 @@ mod tests {
     }
 
     #[test]
+    fn linked_emulation_profile_request_replays_core_regions() {
+        let primary = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let secondary = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let linked =
+            super::DesktopEmulationSession::new_linked_dmg04_two_player(primary, secondary)
+                .expect("matching machines should create a linked desktop session");
+        let request = super::EmulationProfileRequest::new(linked);
+
+        let completed =
+            super::profile_emulation_work_item(request.into_work_item(Duration::from_millis(11)));
+
+        assert_eq!(completed.emulation_duration, Duration::from_millis(11));
+        assert!(completed.breakdown.core_duration() > Duration::ZERO);
+        assert!(completed.breakdown.core_ppu_duration > Duration::ZERO);
+    }
+
+    #[test]
     fn async_emulation_profile_worker_and_counter_collect_samples() {
         let machine = Machine::new_summary(
             MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -6535,8 +8158,10 @@ mod tests {
         assert!(completed.is_empty());
         assert!(
             worker.try_submit(
-                super::EmulationProfileRequest::new(machine.clone())
-                    .into_work_item(Duration::from_millis(7))
+                super::EmulationProfileRequest::new(super::DesktopEmulationSession::new_single(
+                    machine.clone(),
+                ))
+                .into_work_item(Duration::from_millis(7))
             )
         );
         for _ in 0..200 {
@@ -6558,7 +8183,9 @@ mod tests {
         assert!(!disabled.should_profile_next_frame());
         disabled.collect_emulation_profile_results();
         disabled.submit_emulation_profile_request(
-            Some(super::EmulationProfileRequest::new(machine.clone())),
+            Some(super::EmulationProfileRequest::new(
+                super::DesktopEmulationSession::new_single(machine.clone()),
+            )),
             Duration::from_millis(5),
         );
         assert!(!disabled.emulation_profile_request_in_flight);
@@ -6577,7 +8204,9 @@ mod tests {
         assert!(!counter.should_profile_next_frame());
         counter.emulation_profile_request_in_flight = false;
         counter.submit_emulation_profile_request(
-            Some(super::EmulationProfileRequest::new(machine)),
+            Some(super::EmulationProfileRequest::new(
+                super::DesktopEmulationSession::new_single(machine),
+            )),
             Duration::from_millis(6),
         );
         assert!(counter.emulation_profile_request_in_flight);
@@ -6615,6 +8244,7 @@ mod tests {
             .record_presented_frame(
                 harness.canvas.window_mut(),
                 super::FramePerformanceSample {
+                    session_kind: super::EmulationProfileSessionKind::Single,
                     emulation_duration: Duration::from_millis(12),
                     emulation_profile_request: None,
                     render_duration: Duration::from_millis(2),
@@ -6820,6 +8450,43 @@ mod tests {
     }
 
     #[test]
+    fn step_until_next_frame_skips_detailed_frame_telemetry_when_emulation_profiling_is_disabled() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("step-no-telemetry", true, true, false);
+        harness.performance_counter = super::PerformanceCounter::new_with_emulation_profile_mode(
+            "gb-desktop | step-no-telemetry".to_string(),
+            super::EmulationProfileMode::Disabled,
+        );
+        let FrontendHarness {
+            event_pump,
+            canvas,
+            session,
+            machine,
+            runtime,
+            settings_store,
+            performance_counter,
+            frame_pacer,
+            ..
+        } = &mut harness;
+        let mut context = super::FrontendActionContext {
+            session,
+            machine,
+            runtime,
+            performance_counter,
+            frame_pacer,
+            settings_store,
+        };
+        let result = super::step_until_next_frame(event_pump, canvas, &mut context)
+            .expect("stepping should still succeed without emulation profiling");
+        assert_eq!(result.signal, super::LoopSignal::Continue);
+        assert!(result.emulation_profile_request.is_none());
+        assert_eq!(
+            result.frame_loop_telemetry,
+            super::FrameLoopTelemetry::default()
+        );
+    }
+
+    #[test]
     fn step_until_next_frame_returns_profile_requests_for_sampled_frames() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("step-profile", true, true, false);
@@ -6919,6 +8586,7 @@ mod tests {
         }
 
         assert_eq!(capture.output_path.as_deref(), Some(output_path.as_path()));
+        assert!(capture.is_enabled());
         assert_eq!(capture.max_t_cycles, 2);
 
         let mut machine = Machine::new_summary(
@@ -6939,6 +8607,7 @@ mod tests {
         assert!(rendered.contains("apu.nr50=0x77"));
 
         super::DesktopTraceCapture {
+            enabled: false,
             output_path: None,
             max_t_cycles: 2,
             records: std::collections::VecDeque::new(),
@@ -7877,6 +9546,8 @@ mod tests {
         run_desktop(
             DesktopRunOptions {
                 rom_path: None,
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config: launcher_config,
             },
             launcher_store,
@@ -7896,6 +9567,8 @@ mod tests {
         run_desktop(
             DesktopRunOptions {
                 rom_path: Some(rom_path),
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config: rom_config,
             },
             rom_store,
@@ -7904,6 +9577,37 @@ mod tests {
         rom_quit
             .join()
             .expect("ROM quit-event helper should finish");
+    }
+
+    #[test]
+    fn load_initial_emulation_session_supports_direct_linked_startup() {
+        let root = temp_test_root("direct-linked-startup");
+        let primary_rom_path = write_test_rom(&root, "primary.gb");
+        let secondary_rom_path = write_test_rom(&root, "secondary.gb");
+        let primary_bytes = fs::read(&primary_rom_path).expect("primary ROM should exist");
+        let secondary_bytes = fs::read(&secondary_rom_path).expect("secondary ROM should exist");
+        let mut session = super::DesktopSession {
+            config: DesktopConfig::default(),
+            current_dir: root.clone(),
+            loaded_rom: Some(super::LoadedRom {
+                path: primary_rom_path,
+                bytes: primary_bytes,
+            }),
+            linked_secondary_rom: Some(super::LoadedRom {
+                path: secondary_rom_path,
+                bytes: secondary_bytes,
+            }),
+            last_open_directory: Some(root.clone()),
+            recent_roms: Vec::new(),
+            external_port_selection: super::DesktopExternalPortSelection::GameLink,
+        };
+
+        let (machine, diagnostics) = super::load_initial_emulation_session(&mut session)
+            .expect("linked desktop startup helper should build a DMG-04 session");
+
+        assert!(diagnostics.is_empty());
+        assert!(machine.is_linked_dmg04_two_player());
+        assert!(machine.secondary_machine().is_some());
     }
 
     #[test]
@@ -7968,6 +9672,8 @@ mod tests {
         super::run_desktop_with_startup_fallback_persistence(
             DesktopRunOptions {
                 rom_path: None,
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config,
             },
             settings_store,
@@ -8018,6 +9724,8 @@ mod tests {
         run_desktop(
             DesktopRunOptions {
                 rom_path: Some(rom_path.clone()),
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config,
             },
             settings_store,
@@ -8080,6 +9788,8 @@ mod tests {
         run_desktop(
             DesktopRunOptions {
                 rom_path: Some(rom_path.clone()),
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config,
             },
             settings_store,
@@ -8136,6 +9846,7 @@ mod tests {
             .record_presented_frame(
                 harness.canvas.window_mut(),
                 super::FramePerformanceSample {
+                    session_kind: super::EmulationProfileSessionKind::Single,
                     emulation_duration: Duration::from_millis(10),
                     emulation_profile_request: None,
                     render_duration: Duration::from_millis(2),
@@ -8457,6 +10168,8 @@ mod tests {
         let loaded = super::load_initial_rom(
             &DesktopRunOptions {
                 rom_path: Some(relative_rom.clone()),
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
                 config: DesktopConfig::default(),
             },
             &harness.root,
@@ -8468,6 +10181,8 @@ mod tests {
             super::load_initial_rom(
                 &DesktopRunOptions {
                     rom_path: None,
+                    linked_peer_rom_path: None,
+                    exit_after_frames: None,
                     config: DesktopConfig::default(),
                 },
                 &harness.root,
@@ -8475,6 +10190,21 @@ mod tests {
             .expect("missing ROM path should be allowed")
             .is_none()
         );
+        let linked_loaded = super::load_initial_linked_secondary_rom(
+            &DesktopRunOptions {
+                rom_path: Some(relative_rom.clone()),
+                linked_peer_rom_path: Some(relative_rom.clone()),
+                exit_after_frames: Some(8),
+                config: DesktopConfig::default(),
+            },
+            &harness.root,
+        )
+        .expect("relative linked peer path should load")
+        .expect("relative linked peer should exist");
+        assert_eq!(linked_loaded.path, relative_rom_path);
+        assert!(super::should_exit_after_presented_frames(Some(4), 4));
+        assert!(!super::should_exit_after_presented_frames(Some(5), 4));
+        assert!(!super::should_exit_after_presented_frames(None, 4));
 
         let mut reloaded_machine = super::load_machine_for_rom(
             &harness.session.config,
@@ -8577,6 +10307,7 @@ mod tests {
         super::set_fullscreen_state(harness.canvas.window_mut(), false)
             .expect("setting the existing fullscreen state should be a no-op");
         super::reset_machine(
+            harness.canvas.window(),
             &mut harness.session,
             &mut harness.machine,
             &mut harness.runtime,
@@ -8611,7 +10342,14 @@ mod tests {
             &mut harness.canvas,
             &mut texture,
             &mut rgb_frame,
-            harness.machine.ppu().framebuffer(),
+            super::FramebufferRenderInput {
+                dimensions: super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                },
+                primary_framebuffer: harness.machine.ppu().framebuffer(),
+                secondary_framebuffer: None,
+            },
             &harness.runtime.video_options,
             Some((&harness.runtime.menu_state, open_menu_presentation)),
             None,
@@ -8625,7 +10363,14 @@ mod tests {
             &mut harness.canvas,
             &mut texture,
             &mut rgb_frame,
-            harness.machine.ppu().framebuffer(),
+            super::FramebufferRenderInput {
+                dimensions: super::FramebufferDimensions {
+                    width: super::FRAMEBUFFER_WIDTH,
+                    height: super::FRAMEBUFFER_HEIGHT,
+                },
+                primary_framebuffer: harness.machine.ppu().framebuffer(),
+                secondary_framebuffer: None,
+            },
             &harness.runtime.video_options,
             None,
             Some(PerformanceHudSnapshot {
@@ -8640,6 +10385,154 @@ mod tests {
         )
         .expect("HUD frame should render");
         assert!(rgb_frame.iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn linked_runtime_routes_primary_and_secondary_keyboard_input_independently() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("linked-keyboard-routing", true, false, false);
+        let secondary_machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        harness
+            .machine
+            .attach_secondary_dmg04(secondary_machine)
+            .expect("secondary machine should attach");
+
+        harness.push_key(Keycode::Z, true);
+        harness.push_key_with_scancode(Keycode::W, Scancode::W, true);
+        harness
+            .process_events()
+            .expect("linked keyboard press should process");
+        harness.machine.step_t_cycle();
+
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0x20
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("linked runtime should expose a secondary machine")
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0x04
+        );
+
+        harness.push_key(Keycode::Z, false);
+        harness.push_key_with_scancode(Keycode::W, Scancode::W, false);
+        harness
+            .process_events()
+            .expect("linked keyboard release should process");
+        harness.machine.step_t_cycle();
+
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0
+        );
+        assert_eq!(
+            harness
+                .machine
+                .secondary_machine()
+                .expect("linked runtime should expose a secondary machine")
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0
+        );
+    }
+
+    #[test]
+    fn audio_source_machine_is_primary_for_single_and_linked_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let single = FrontendHarness::new("audio-source-single", true, false, false).machine;
+        assert_eq!(
+            super::emulation_profile_session_kind(&single),
+            super::EmulationProfileSessionKind::Single
+        );
+        assert!(std::ptr::eq(
+            super::audio_source_machine(&single),
+            single.primary_machine()
+        ));
+
+        let primary = dmg_skip_boot_summary_machine();
+        let secondary = dmg_skip_boot_summary_machine();
+        let linked = super::linked_session::DesktopEmulationSession::new_linked_dmg04_two_player(
+            primary, secondary,
+        )
+        .expect("linked desktop session should build");
+
+        assert_eq!(
+            super::emulation_profile_session_kind(&linked),
+            super::EmulationProfileSessionKind::LinkedDmg04TwoPlayer
+        );
+        assert!(std::ptr::eq(
+            super::audio_source_machine(&linked),
+            linked.primary_machine()
+        ));
+    }
+
+    #[test]
+    fn render_frame_places_linked_secondary_output_in_the_right_panel() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("linked-render", true, false, false);
+        let texture_creator = harness.canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl3::pixels::PixelFormat::RGB24,
+                super::FRAMEBUFFER_WIDTH * 2,
+                super::FRAMEBUFFER_HEIGHT,
+            )
+            .expect("linked runtime texture should be creatable");
+        let linked_dimensions = super::FramebufferDimensions {
+            width: super::FRAMEBUFFER_WIDTH * 2,
+            height: super::FRAMEBUFFER_HEIGHT,
+        };
+        let mut rgb_frame =
+            vec![
+                0_u8;
+                linked_dimensions.height as usize
+                    * super::framebuffer_pitch_bytes_for_dimensions(linked_dimensions)
+            ];
+        let primary_framebuffer =
+            vec![0_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+        let secondary_framebuffer =
+            vec![3_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
+
+        let _ = super::render_frame(
+            &mut harness.canvas,
+            &mut texture,
+            &mut rgb_frame,
+            super::FramebufferRenderInput {
+                dimensions: linked_dimensions,
+                primary_framebuffer: &primary_framebuffer,
+                secondary_framebuffer: Some(&secondary_framebuffer),
+            },
+            &harness.runtime.video_options,
+            None,
+            None,
+        )
+        .expect("linked frame should render");
+
+        let pitch = super::framebuffer_pitch_bytes_for_dimensions(linked_dimensions);
+        let left_pixel = &rgb_frame[0..3];
+        let right_pixel_index = super::FRAMEBUFFER_WIDTH as usize * 3;
+        let right_pixel = &rgb_frame[right_pixel_index..right_pixel_index + 3];
+        assert_eq!(left_pixel, &[super::framebuffer_pixel_to_grayscale(0); 3]);
+        assert_eq!(right_pixel, &[super::framebuffer_pixel_to_grayscale(3); 3]);
+        assert_eq!(rgb_frame.len(), linked_dimensions.height as usize * pitch);
     }
 
     #[test]
@@ -9101,6 +10994,39 @@ mod tests {
     }
 
     #[test]
+    fn drain_printed_pages_into_printer_output_saves_png_and_updates_the_window() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("printer-sink", true, false, false);
+        harness.session.external_port_selection = DesktopExternalPortSelection::Printer;
+        super::apply_external_port_selection_to_machine(
+            &mut harness.machine,
+            harness.session.external_port_selection,
+        );
+
+        run_print_sequence(&mut harness.machine);
+        super::drain_printed_pages_into_printer_output(
+            harness.canvas.window(),
+            &harness.session,
+            &mut harness.runtime,
+            &mut harness.machine,
+        );
+
+        assert_eq!(harness.machine.take_printed_pages().len(), 0);
+        assert!(harness.runtime.printer_output.has_window());
+        assert_eq!(
+            harness.runtime.printer_output.latest_page_dimensions(),
+            Some((160, 8))
+        );
+        let saved_path = harness
+            .runtime
+            .printer_output
+            .last_saved_path()
+            .expect("printer output should remember the saved PNG path");
+        assert!(saved_path.exists());
+        assert!(saved_path.starts_with(harness.root.join("printer")));
+    }
+
+    #[test]
     fn reset_machine_persists_skip_boot_when_the_boot_rom_path_goes_missing() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("reset-missing-bootrom", true, false, false);
@@ -9113,6 +11039,7 @@ mod tests {
             .expect("stale real-boot settings should persist before reset");
 
         super::reset_machine(
+            harness.canvas.window(),
             &mut harness.session,
             &mut harness.machine,
             &mut harness.runtime,
@@ -9259,6 +11186,38 @@ mod tests {
                 .is_none()
         );
         assert_eq!(harness.runtime.audio_volume_percent, 25);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::Printer,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::Printer
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::Printer
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::None,
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            harness.session.external_port_selection,
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            harness.machine.external_port().attachment_kind(),
+            ExternalPortAttachmentKind::None
+        );
         assert!(
             harness
                 .execute_action(super::MenuAction::CycleGamepadDirectionalSource)

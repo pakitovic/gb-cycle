@@ -290,6 +290,196 @@ mod tests {
     }
 
     #[test]
+    fn open_restores_existing_battery_backed_save_from_disk() {
+        let root = temp_save_root();
+        let key = CartridgeSaveKey::new("restore".to_string()).expect("key should be valid");
+        let mut saved_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        mutate_mbc2_persistent_state(&mut saved_machine, 0x0A);
+        let expected_state = saved_machine.cartridge().persistent_state();
+
+        let mut backend = FilesystemCartridgeSaveBackend::new(&root);
+        backend
+            .save(
+                &key,
+                saved_machine.cartridge().persistence_metadata(),
+                &expected_state,
+            )
+            .expect("pre-existing save should write");
+
+        let mut restored_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let session = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::Manual,
+            Some(key.clone()),
+            &mut restored_machine,
+        )
+        .expect("save session should load an existing save")
+        .expect("battery-backed cartridge should create a session");
+
+        assert_eq!(
+            session.save_path(),
+            root.join(format!("{}.gbsav", key.as_str()))
+        );
+        assert_eq!(
+            restored_machine.cartridge().persistent_state(),
+            expected_state
+        );
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn open_surfaces_corrupt_existing_save_files() {
+        let root = temp_save_root();
+        let key = CartridgeSaveKey::new("corrupt".to_string()).expect("key should be valid");
+        let backend = FilesystemCartridgeSaveBackend::new(&root);
+        fs::write(backend.path_for_key(&key), b"not-a-valid-save")
+            .expect("corrupt save payload should write");
+        let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+
+        let error = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::Manual,
+            Some(key),
+            &mut machine,
+        )
+        .err()
+        .expect("corrupt save payloads should surface as load errors");
+        assert!(error.contains("failed to load save"));
+        assert!(error.contains(".gbsav"));
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn on_close_policy_defers_frame_boundary_flushes_but_flushes_when_closed() {
+        let root = temp_save_root();
+        let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let mut session = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::OnClose,
+            Some(CartridgeSaveKey::new("on-close".to_string()).expect("key should be valid")),
+            &mut machine,
+        )
+        .expect("on-close save session should open")
+        .expect("battery-backed cartridge should create a session");
+        mutate_mbc2_persistent_state(&mut machine, 0x05);
+
+        assert!(
+            !session
+                .maybe_flush_at_frame_boundary(&machine, Instant::now())
+                .expect("frame-boundary checks should be skipped for on-close sessions")
+        );
+        assert!(!session.save_path().exists());
+
+        session
+            .close(&machine)
+            .expect("on-close sessions should flush when the session closes");
+        assert!(session.save_path().is_file());
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn debounced_policy_clears_pending_deadline_when_state_returns_to_saved() {
+        let root = temp_save_root();
+        let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let mut session = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::Debounced,
+            Some(CartridgeSaveKey::new("debounce-reset".to_string()).expect("key should be valid")),
+            &mut machine,
+        )
+        .expect("debounced save session should open")
+        .expect("battery-backed cartridge should create a session");
+        let original_state = machine.cartridge().persistent_state();
+        mutate_mbc2_persistent_state(&mut machine, 0x09);
+
+        let start = Instant::now();
+        assert!(
+            !session
+                .maybe_flush_at_frame_boundary(&machine, start)
+                .expect("initial debounce probe should succeed")
+        );
+        assert!(session.pending_debounced_flush_deadline.is_some());
+
+        machine
+            .restore_cartridge_persistent_state(&original_state)
+            .expect("restoring the saved state should succeed");
+        assert!(
+            !session
+                .maybe_flush_at_frame_boundary(&machine, start + Duration::from_millis(1))
+                .expect("unchanged debounce probe should succeed")
+        );
+        assert!(session.pending_debounced_flush_deadline.is_none());
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn flush_if_changed_surfaces_backend_save_errors() {
+        let root = temp_save_root();
+        let mut machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let mut session = DesktopSaveSession::open(
+            Some(&root),
+            DesktopSaveFlushPolicy::OnWrite,
+            Some(CartridgeSaveKey::new("save-error".to_string()).expect("key should be valid")),
+            &mut machine,
+        )
+        .expect("on-write save session should open")
+        .expect("battery-backed cartridge should create a session");
+        let blocking_root = root.join("not-a-directory");
+        fs::write(&blocking_root, b"occupied").expect("blocking file should exist");
+        session.backend = FilesystemCartridgeSaveBackend::new(&blocking_root);
+        mutate_mbc2_persistent_state(&mut machine, 0x0B);
+
+        let error = session
+            .flush_if_changed(&machine, "test-save")
+            .expect_err("save failures should surface through the desktop session");
+        assert!(error.contains("failed to save cartridge persistence (test-save)"));
+        assert!(error.contains(".gbsav"));
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn temp_save_root_reuses_stale_directory_ids_cleanly() {
+        let saved_counter = TEMP_DIR_COUNTER.load(Ordering::Relaxed);
+        TEMP_DIR_COUNTER.store(42, Ordering::Relaxed);
+        let root = temp_save_root();
+        fs::write(root.join("stale.bin"), b"stale").expect("stale marker should write");
+
+        TEMP_DIR_COUNTER.store(42, Ordering::Relaxed);
+        let reused_root = temp_save_root();
+        assert_eq!(reused_root, root);
+        assert!(!reused_root.join("stale.bin").exists());
+
+        TEMP_DIR_COUNTER.store(saved_counter, Ordering::Relaxed);
+        fs::remove_dir_all(reused_root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn build_banked_mbc2_rom_maps_supported_size_codes_to_expected_lengths() {
+        let cases = [
+            (0x00, 32 * 1024usize),
+            (0x01, 64 * 1024usize),
+            (0x02, 128 * 1024usize),
+            (0x03, 256 * 1024usize),
+            (0x04, 512 * 1024usize),
+        ];
+        for (rom_size_code, expected_len) in cases {
+            let rom = build_banked_mbc2_rom(0x06, rom_size_code, 0x00);
+            assert_eq!(rom.len(), expected_len);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported MBC2 ROM size code for test")]
+    fn build_banked_mbc2_rom_rejects_unsupported_size_codes() {
+        let _ = build_banked_mbc2_rom(0x06, 0x05, 0x00);
+    }
+
+    #[test]
     fn open_returns_none_without_a_root_key_or_battery_backed_cartridge() {
         let root = temp_save_root();
         let mut battery_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
@@ -374,14 +564,12 @@ mod tests {
             },
         };
         apply_elapsed_off_session_seconds(&mut rtc_state, 2);
-        match rtc_state {
-            PersistentCartState::Mbc3Rtc { rtc } => {
-                assert_eq!(rtc.seconds, 0);
-                assert_eq!(rtc.minutes, 0);
-                assert_eq!(rtc.hours, 0);
-                assert_eq!(rtc.day_counter, 1);
-            }
-            other => panic!("expected RTC state, got {other:?}"),
+        assert!(matches!(rtc_state, PersistentCartState::Mbc3Rtc { .. }));
+        if let PersistentCartState::Mbc3Rtc { rtc } = rtc_state {
+            assert_eq!(rtc.seconds, 0);
+            assert_eq!(rtc.minutes, 0);
+            assert_eq!(rtc.hours, 0);
+            assert_eq!(rtc.day_counter, 1);
         }
 
         let mut plain_ram = PersistentCartState::Mbc5Ram { ram: vec![1, 2, 3] };
@@ -420,11 +608,9 @@ mod tests {
 
     fn mutate_mbc2_persistent_state(machine: &mut Machine<TraceSummaryBuffer>, value: u8) {
         let mut state = machine.cartridge().persistent_state();
-        match &mut state {
-            PersistentCartState::Mbc2Ram { ram_nibbles } => {
-                ram_nibbles[0] = value & 0x0F;
-            }
-            other => panic!("expected MBC2 RAM persistence, got {other:?}"),
+        assert!(matches!(state, PersistentCartState::Mbc2Ram { .. }));
+        if let PersistentCartState::Mbc2Ram { ram_nibbles } = &mut state {
+            ram_nibbles[0] = value & 0x0F;
         }
         machine
             .restore_cartridge_persistent_state(&state)

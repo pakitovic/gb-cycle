@@ -300,6 +300,22 @@ to immediately materialize as a separate directory.
 - separation between emulated serial hardware and any host transport implementation
 - ownership of transfer-complete detection, `SC.7` clear timing, and completion-triggered serial IRQ requests
 
+### external-port attachment / linked-session support
+
+- attachment-kind and attachment-runtime-state ownership for the handheld's
+  external port
+- public seam(s) for selecting attachment kind and attachment reset/startup
+  policy without exposing unrelated serial-internal state
+- printer protocol state and typed printer output artifacts
+- `DMG-04` cable routing and `DMG-07` adapter topology
+- shared multi-console session orchestration on one T-cycle timeline
+- current shared-session staging module: `link/` or an equivalent
+  module outside local `serial/`
+- separation between attachment/topology ownership and the per-console serial
+  controller that consumes only a narrow signal boundary
+- separation between core attachment/session ownership and frontend-owned
+  player-slot UX, mute policy, and window/layout policy
+
 ### `cartridge/`
 
 - base cartridge interface
@@ -379,6 +395,9 @@ to immediately materialize as a separate directory.
   `IME`, `halted`, and `stopped` state.
 - `model/`, `scheduler/`, and `debugger/` are architectural modules even if an
   early repository stage temporarily keeps some of their code in fewer files.
+- future external-port attachment and linked-session support are also
+  architectural modules even if the current repo only exposes the per-console
+  serial baseline and temporary peer helpers.
 
 ## Ownership boundary notes
 
@@ -394,6 +413,14 @@ to immediately materialize as a separate directory.
 - The joypad subsystem owns the translation from host-facing button state plus `P1` row selection into visible `JOYP` readback, joypad interrupt requests, and any input-driven `STOP` wake signal.
 - Frontends, test harnesses, and tooling should provide serial peers, scripted bits, loopback, or external clock pulses through a serial-endpoint boundary rather than by writing received bytes directly into `SB`.
 - The serial subsystem owns the translation from MMIO-visible `SB` / `SC` plus peer-provided bits and clocks into live transfer progress, `SB` intermediate state, and serial interrupt requests.
+- External-port attachment ownership belongs outside the local serial
+  controller. Attachment identity, printer protocol state, `DMG-04` cable
+  routing, and `DMG-07` adapter state should not be smuggled into ad hoc
+  serial-only fields.
+- Linked multi-console session ownership also belongs outside the local serial
+  controller. Shared T-cycle coordination across two or more `Machine`
+  instances is a session/topology concern, not a per-console `SB` / `SC`
+  concern.
 - The timer owns the shared divider/system-counter state and visible `DIV`, while the APU owns `DIV-APU`, frame-sequencer state, channel-active state, DAC state, mixer state, and HPF state derived from that shared timing source.
 - The bus owns central decode, requester arbitration, and blocked-access policy; CPU, DMA, and future transfer engines must not bypass that one policy path with caller-specific memory shortcuts.
 - The bus applies boot mapping, DMA contention, and blocked-access semantics using that subsystem state; CPU code should not embed those rules directly.
@@ -408,6 +435,9 @@ to immediately materialize as a separate directory.
 - Shared scheduling must not depend on whole-instruction CPU completion; it should be able to observe CPU fetches, operand reads, stack traffic, and internal steps while the rest of the hardware continues to advance.
 - Input events must enter that same shared scheduling model as changes to hardware-facing button state; they must not live only on a host video-frame cadence if that would hide `JOYP`, interrupt, or `STOP`-wake ordering.
 - Serial peer activity and external serial clock pulses must enter that same shared scheduling model rather than living on host transport threads or timers that bypass the core timeline.
+- Frontend-facing player-slot abstractions such as `P1..P4`, per-player mute
+  defaults, and per-player host input profiles belong to frontend session UX,
+  not to `gb-core` serial, attachment, or linked-session ownership.
 
 ## Boot ROM architecture policy
 

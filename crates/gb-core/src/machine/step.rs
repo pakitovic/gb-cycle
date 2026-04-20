@@ -10,11 +10,13 @@ use crate::cartridge::CartridgeSlot;
 use crate::cpu::{CpuBusOperation, CpuCore, CpuExecutionState, CpuExternalOperation};
 use crate::debugger::{TraceLevel, TraceSink, TraceSubsystem, Tracer};
 use crate::dma::DmaController;
+use crate::external_port::ExternalPort;
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
 use crate::ppu::{Ppu, PpuBusStateSnapshot, PpuDmaOamConflict};
 use crate::scheduler::{
     CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
+    scheduler_phase_trace_message,
 };
 use crate::serial::Serial;
 use crate::timer::Timer;
@@ -168,12 +170,13 @@ struct MachinePhaseRunner<'a> {
     dma: &'a mut DmaController,
     timer: &'a mut Timer,
     serial: &'a mut Serial,
+    external_port: &'a mut ExternalPort,
     boot: &'a mut BootController,
     interrupts: &'a mut InterruptController,
     joypad: &'a mut Joypad,
     cartridge: &'a mut CartridgeSlot,
     pending_external_events: &'a mut PendingExternalEvents,
-    pending_ppu_mmio_write: Option<PendingPpuMmioWrite>,
+    pending_ppu_mmio_write: &'a mut Option<PendingPpuMmioWrite>,
     cached_ppu_bus_state_snapshot: Option<PpuBusStateSnapshot>,
     cached_cpu_bus_arbitration_states: Option<CpuBusArbitrationStates>,
 }
@@ -354,7 +357,12 @@ impl MachinePhaseRunner<'_> {
                 .sync_video_domain_ownership(ppu_owner_bus_state_after, dma_bus_state);
             observer.end_region(MachineStepRegion::Ppu);
             observe_machine_step_region(observer, MachineStepRegion::Serial, || {
+                self.external_port.tick_t_cycle();
                 self.serial.tick_t_cycle(context);
+                if let Some(output_byte) = self.serial.take_latest_completed_output_byte() {
+                    self.external_port.handle_completed_serial_byte(output_byte);
+                }
+                self.serial.set_peer(self.external_port.serial_peer());
             });
 
             if let Some((transfer_work, value)) = dma_transfer_work.zip(dma_transfer_byte) {
@@ -423,7 +431,7 @@ impl MachinePhaseRunner<'_> {
             let interrupts = &mut self.interrupts;
             let joypad = &mut self.joypad;
             let cartridge = &mut self.cartridge;
-            let pending_ppu_mmio_write = &mut self.pending_ppu_mmio_write;
+            let pending_ppu_mmio_write = &mut *self.pending_ppu_mmio_write;
 
             cpu.tick_t_cycle(|operation| match operation {
                 CpuExternalOperation::Bus(CpuBusOperation::Read { address }) => {
@@ -517,7 +525,7 @@ impl MachinePhaseRunner<'_> {
         O: MachineStepObserver,
     {
         if let Some(write) = observe_machine_step_region(observer, MachineStepRegion::Ppu, || {
-            commit_pending_ppu_mmio_write(self.ppu, &mut self.pending_ppu_mmio_write)
+            commit_pending_ppu_mmio_write(self.ppu, self.pending_ppu_mmio_write)
         }) {
             tracer.emit_with(TraceSubsystem::Ppu, TraceLevel::Trace, || {
                 self.ppu
@@ -643,6 +651,44 @@ impl MachinePhaseRunner<'_> {
 }
 
 impl<S: TraceSink> Machine<S> {
+    pub(crate) fn step_phase_with_context<O>(
+        &mut self,
+        context: &mut CycleContext,
+        observer: &mut O,
+    ) where
+        O: MachineStepObserver,
+    {
+        let tracer = &mut self.tracer;
+        tracer.emit_with(TraceSubsystem::Scheduler, TraceLevel::Trace, || {
+            scheduler_phase_trace_message(context)
+        });
+
+        let mut runner = MachinePhaseRunner {
+            cpu: &mut self.cpu,
+            bus: &mut self.bus,
+            apu: &mut self.apu,
+            ppu: &mut self.ppu,
+            dma: &mut self.dma,
+            timer: &mut self.timer,
+            serial: &mut self.serial,
+            external_port: &mut self.external_port,
+            boot: &mut self.boot,
+            interrupts: &mut self.interrupts,
+            joypad: &mut self.joypad,
+            cartridge: &mut self.cartridge,
+            pending_external_events: &mut self.pending_external_events,
+            pending_ppu_mmio_write: &mut self.pending_ppu_mmio_write,
+            cached_ppu_bus_state_snapshot: None,
+            cached_cpu_bus_arbitration_states: None,
+        };
+
+        runner.step_phase(context, tracer, observer);
+    }
+
+    pub(crate) fn sync_scheduler_next_t_cycle(&mut self, next_t_cycle: crate::scheduler::TCycle) {
+        self.scheduler.set_next_t_cycle(next_t_cycle);
+    }
+
     pub fn step_t_cycle(&mut self) -> CycleContext {
         self.step_t_cycle_with_observer(&mut NoopMachineStepObserver)
     }
@@ -661,18 +707,22 @@ impl<S: TraceSink> Machine<S> {
             dma: &mut self.dma,
             timer: &mut self.timer,
             serial: &mut self.serial,
+            external_port: &mut self.external_port,
             boot: &mut self.boot,
             interrupts: &mut self.interrupts,
             joypad: &mut self.joypad,
             cartridge: &mut self.cartridge,
             pending_external_events: &mut self.pending_external_events,
-            pending_ppu_mmio_write: None,
+            pending_ppu_mmio_write: &mut self.pending_ppu_mmio_write,
             cached_ppu_bus_state_snapshot: None,
             cached_cpu_bus_arbitration_states: None,
         };
 
-        scheduler.step_with_trace(tracer, |context, tracer| {
-            runner.step_phase(context, tracer, observer)
+        scheduler.step(|context| {
+            tracer.emit_with(TraceSubsystem::Scheduler, TraceLevel::Trace, || {
+                scheduler_phase_trace_message(context)
+            });
+            runner.step_phase(context, tracer, observer);
         })
     }
 }

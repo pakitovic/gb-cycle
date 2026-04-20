@@ -2,6 +2,7 @@ use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write};
 use super::*;
 use crate::cartridge::PersistentCartState;
 use crate::debugger::BreakpointCondition;
+use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
 use crate::model::{ConsoleModel, ExecutionMode, StartupMode};
 use crate::ppu::{PpuLcdState, PpuStepRegion};
@@ -45,6 +46,10 @@ fn machine_new_starts_on_the_first_t_cycle() {
     assert_eq!(machine.cpu().console_model(), ConsoleModel::Dmg);
     assert_eq!(machine.boot().startup_mode(), StartupMode::SkipBoot);
     assert!(machine.cartridge().is_empty());
+    assert_eq!(
+        machine.external_port().attachment_kind(),
+        ExternalPortAttachmentKind::None
+    );
 }
 
 #[test]
@@ -147,6 +152,10 @@ fn machine_parts_keep_the_current_subsystem_boundaries_explicit() {
     assert_eq!(parts.dma.console_model(), ConsoleModel::Mgb);
     assert_eq!(parts.timer.console_model(), ConsoleModel::Mgb);
     assert_eq!(parts.serial.console_model(), ConsoleModel::Mgb);
+    assert_eq!(
+        parts.external_port.attachment_kind(),
+        ExternalPortAttachmentKind::None
+    );
     assert_eq!(parts.boot.console_model(), ConsoleModel::Mgb);
     assert_eq!(parts.interrupts.console_model(), ConsoleModel::Mgb);
     assert_eq!(parts.joypad.console_model(), ConsoleModel::Mgb);
@@ -173,6 +182,10 @@ fn machine_snapshot_exposes_scheduler_trace_and_live_phase_1_subsystems() {
     assert_eq!(snapshot.cpu.console_model, ConsoleModel::Dmg);
     assert_eq!(snapshot.apu.console_model, ConsoleModel::Dmg);
     assert_eq!(snapshot.serial.console_model, ConsoleModel::Dmg);
+    assert_eq!(
+        snapshot.external_port.attachment_kind(),
+        ExternalPortAttachmentKind::None
+    );
     assert_eq!(snapshot.interrupts.console_model, ConsoleModel::Dmg);
     assert_eq!(snapshot.joypad.console_model, ConsoleModel::Dmg);
     assert!(matches!(
@@ -323,7 +336,7 @@ fn load_cartridge_restarts_skip_boot_runtime_from_cycle_zero() {
     machine
         .debug_controls_mut()
         .add_breakpoint(BreakpointCondition::ProgramCounter(0x0100));
-    machine.set_serial_peer(SerialPeer::Loopback);
+    machine.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);
     machine.set_joypad_button_pressed(JoypadButton::A, true);
     machine.step_t_cycle();
     machine.step_t_cycle();
@@ -340,6 +353,10 @@ fn load_cartridge_restarts_skip_boot_runtime_from_cycle_zero() {
     assert_eq!(machine.cpu().startup_state().pc, 0x0100);
     assert_eq!(machine.cpu().startup_state().f, 0x80);
     assert_eq!(machine.joypad().pressed_mask(), 0x00);
+    assert_eq!(
+        machine.external_port().attachment_kind(),
+        ExternalPortAttachmentKind::Loopback
+    );
     assert_eq!(machine.serial().peer(), SerialPeer::Loopback);
     assert_eq!(machine.tracer().next_sequence(), 0);
     assert_eq!(machine.tracer().snapshot().buffered_event_count, 0);
@@ -352,6 +369,35 @@ fn load_cartridge_restarts_skip_boot_runtime_from_cycle_zero() {
         &[ExternalEvent::HostInputChanged]
     );
     assert_eq!(machine.joypad().pressed_mask(), 0x10);
+}
+
+#[test]
+fn external_port_attachment_selection_updates_the_serial_peer_boundary() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);
+
+    assert_eq!(
+        machine.external_port().attachment_kind(),
+        ExternalPortAttachmentKind::Loopback
+    );
+    assert_eq!(machine.serial().peer(), SerialPeer::Loopback);
+}
+
+#[test]
+fn machine_exposes_external_port_reset_policy_configuration() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+
+    machine.set_external_port_reset_policy(ExternalPortResetPolicy::PreserveAttachmentKind);
+
+    assert_eq!(
+        machine.external_port().reset_policy(),
+        ExternalPortResetPolicy::PreserveAttachmentKind
+    );
 }
 
 #[test]
