@@ -21,14 +21,38 @@ pub(crate) use self::frame_sequencer::div_apu_phase_from_system_counter;
 #[cfg(test)]
 use self::output::HpfChargeModel;
 pub use self::output::{
-    ApuHostSample, ApuHpfCapacitorSnapshot, ApuOutputSnapshot, ApuStereoOutputSnapshot,
+    ApuHostDcBlocker, ApuHostSample, ApuHpfCapacitorSnapshot, ApuOutputSnapshot,
+    ApuStereoOutputSnapshot,
 };
-use self::output::{MasterControlState, OutputPathState};
+use self::output::{
+    MasterControlState, OutputPathState, nr50_left_volume_factor, nr50_right_volume_factor,
+};
 pub use self::sample_capture::{ApuSampleCapture, ApuSampleCaptureError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApuStatus {
     Ready,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ApuRecordedChannel {
+    Ch1,
+    Ch2,
+    Ch3,
+    Ch4,
+}
+
+impl ApuRecordedChannel {
+    pub const ALL: [Self; CHANNEL_COUNT] = [Self::Ch1, Self::Ch2, Self::Ch3, Self::Ch4];
+
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Ch1 => 0,
+            Self::Ch2 => 1,
+            Self::Ch3 => 2,
+            Self::Ch4 => 3,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -46,15 +70,42 @@ impl WaveRamStartupPolicy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApuCh4Nr43LiveWriteCategory {
+    None,
+    Category1,
+    Category2,
+    RisingEdgeForcedShort,
+    LowShiftFollowup,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApuCh4Nr43LfsrAction {
+    None,
+    PlainStep,
+    ForcedShortStep,
+    ForcedShortStepThenLowShiftCorruption,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ApuCh4Nr43LiveWriteTrace {
     pub runtime_active: bool,
     pub same_shift_group: bool,
     pub old_nr43: u8,
     pub new_nr43: u8,
+    pub glitch_value: u8,
+    pub second_glitch_value: u8,
     pub old_shift: u8,
+    pub glitch_shift: u8,
+    pub second_glitch_shift: u8,
     pub new_shift: u8,
     pub effective_counter: u16,
     pub countdown_reloaded: bool,
+    pub old_bit: bool,
+    pub glitch_bit: bool,
+    pub second_glitch_bit: bool,
+    pub new_bit: bool,
+    pub decision_category: ApuCh4Nr43LiveWriteCategory,
+    pub lfsr_action: ApuCh4Nr43LfsrAction,
     pub reload_seam_step: bool,
     pub old_to_ff_step: bool,
     pub old_to_ff_forced_short_width: bool,
@@ -189,6 +240,26 @@ impl Apu {
         self.output_path.current_output.into()
     }
 
+    pub fn recorded_channel_sample_pre_hpf(&self, channel: ApuRecordedChannel) -> ApuHostSample {
+        let index = channel.index();
+        let channel_dac_output = self.output_path.channel_dac_outputs[index];
+
+        ApuHostSample {
+            left: routed_recorded_channel_output(
+                self.master.nr51,
+                NR51_LEFT_ROUTE_BITS[index],
+                channel_dac_output,
+                nr50_left_volume_factor(self.master.nr50),
+            ),
+            right: routed_recorded_channel_output(
+                self.master.nr51,
+                NR51_RIGHT_ROUTE_BITS[index],
+                channel_dac_output,
+                nr50_right_volume_factor(self.master.nr50),
+            ),
+        }
+    }
+
     pub fn last_register_write(&self) -> Option<&ApuRegisterWriteObservation> {
         self.last_register_write.as_ref()
     }
@@ -263,6 +334,19 @@ impl Apu {
 
         self.preview_output_path();
     }
+}
+
+fn routed_recorded_channel_output(
+    nr51: u8,
+    route_bit: u8,
+    channel_dac_output: i32,
+    nr50_volume_factor: i32,
+) -> i32 {
+    if channel_dac_output == 0 || nr51 & route_bit == 0 {
+        return 0;
+    }
+
+    channel_dac_output * nr50_volume_factor
 }
 
 #[cfg(test)]

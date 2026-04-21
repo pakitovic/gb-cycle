@@ -224,12 +224,95 @@ fn channel_4_live_nr43_write_steps_the_lfsr_when_the_new_selected_counter_bit_is
         .nr43_live_write
         .last_trace
         .expect("trace should record the live NR43 write");
+    assert_eq!(
+        trace.decision_category,
+        ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
+    );
+    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::ForcedShortStep);
+    assert_eq!(trace.glitch_value, 0x00);
+    assert_eq!(trace.second_glitch_value, 0x10);
+    assert_eq!(trace.glitch_shift, 0);
+    assert_eq!(trace.second_glitch_shift, 1);
+    assert!(!trace.old_bit);
+    assert!(!trace.glitch_bit);
+    assert!(trace.second_glitch_bit);
+    assert!(trace.new_bit);
     assert!(trace.runtime_active);
     assert!(trace.ff_to_new_step);
     assert!(!trace.old_to_ff_step);
     assert!(!trace.old_to_ff_forced_short_width);
     assert!(trace.ff_to_new_forced_short_width);
     assert!(!trace.reload_seam_step);
+}
+
+#[test]
+fn channel_4_single_intermediate_category_2_is_a_plain_step_in_the_current_subset() {
+    let mut channel = Channel4State::default();
+    channel.runtime.dac_enabled = true;
+    channel.runtime.active = true;
+    channel.envelope.current_volume = 0x0F;
+    channel.noise.lfsr_state = 0x642E;
+    channel.write_nr43(0x00);
+    channel.nr43_live_write.noise_counter = 0x0100;
+    channel.nr43_live_write.countdown_reloaded = false;
+
+    channel.write_nr43(0x90);
+
+    assert_eq!(channel.noise.lfsr_state, 0x3217);
+    let trace = channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the category-2 write");
+    assert_eq!(
+        trace.decision_category,
+        ApuCh4Nr43LiveWriteCategory::Category2
+    );
+    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::PlainStep);
+    assert_eq!(trace.glitch_value, 0x80);
+    assert_eq!(trace.second_glitch_value, 0x80);
+    assert_eq!(trace.glitch_shift, 8);
+    assert_eq!(trace.second_glitch_shift, 8);
+    assert!(!trace.old_bit);
+    assert!(trace.glitch_bit);
+    assert!(trace.second_glitch_bit);
+    assert!(!trace.new_bit);
+    assert!(trace.ff_to_new_step);
+    assert!(!trace.ff_to_new_forced_short_width);
+}
+
+#[test]
+fn channel_4_single_intermediate_category_1_is_currently_inert_in_the_dmg_subset() {
+    let mut channel = Channel4State::default();
+    channel.runtime.dac_enabled = true;
+    channel.runtime.active = true;
+    channel.envelope.current_volume = 0x0F;
+    channel.noise.lfsr_state = 0x642E;
+    channel.write_nr43(0x00);
+    channel.nr43_live_write.noise_counter = 0x0201;
+    channel.nr43_live_write.countdown_reloaded = false;
+
+    channel.write_nr43(0x90);
+
+    assert_eq!(channel.noise.lfsr_state, 0x642E);
+    let trace = channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the category-1 write");
+    assert_eq!(
+        trace.decision_category,
+        ApuCh4Nr43LiveWriteCategory::Category1
+    );
+    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::None);
+    assert_eq!(trace.glitch_value, 0x80);
+    assert_eq!(trace.second_glitch_value, 0x80);
+    assert_eq!(trace.glitch_shift, 8);
+    assert_eq!(trace.second_glitch_shift, 8);
+    assert!(trace.old_bit);
+    assert!(!trace.glitch_bit);
+    assert!(!trace.second_glitch_bit);
+    assert!(trace.new_bit);
+    assert!(!trace.ff_to_new_step);
+    assert!(!trace.ff_to_new_forced_short_width);
 }
 
 #[test]
@@ -250,13 +333,23 @@ fn channel_4_live_nr43_write_does_not_step_when_the_new_selected_counter_bit_sta
         .nr43_live_write
         .last_trace
         .expect("trace should record the live NR43 write");
+    assert_eq!(trace.decision_category, ApuCh4Nr43LiveWriteCategory::None);
+    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::None);
+    assert_eq!(trace.glitch_value, 0x00);
+    assert_eq!(trace.second_glitch_value, 0x10);
+    assert_eq!(trace.glitch_shift, 0);
+    assert_eq!(trace.second_glitch_shift, 1);
+    assert!(trace.old_bit);
+    assert!(trace.glitch_bit);
+    assert!(!trace.second_glitch_bit);
+    assert!(!trace.new_bit);
     assert!(!trace.reload_seam_step);
     assert!(!trace.old_to_ff_step);
     assert!(!trace.ff_to_new_step);
 }
 
 #[test]
-fn channel_4_live_nr43_write_can_take_the_reload_seam_and_then_step_again_via_the_ff_transition() {
+fn channel_4_live_nr43_write_can_take_the_reload_seam_without_forcing_an_extra_step() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
@@ -269,7 +362,7 @@ fn channel_4_live_nr43_write_can_take_the_reload_seam_and_then_step_again_via_th
 
     channel.write_nr43(0x50);
 
-    assert_eq!(channel.noise.lfsr_state, 0x6040);
+    assert_eq!(channel.noise.lfsr_state, 0x4000);
     assert_eq!(channel.noise.period_timer, noise_timer_reload(5, 0));
     assert_eq!(channel.nr43_live_write.counter_timer, 2);
     assert!(!channel.nr43_live_write.countdown_reloaded);
@@ -278,7 +371,7 @@ fn channel_4_live_nr43_write_can_take_the_reload_seam_and_then_step_again_via_th
         .last_trace
         .expect("trace should record the seam write");
     assert!(trace.reload_seam_step);
-    assert!(trace.ff_to_new_step);
+    assert!(!trace.ff_to_new_step);
     assert!(!trace.feedback_corruption);
 }
 
@@ -315,18 +408,35 @@ fn channel_4_live_nr43_write_can_step_twice_with_feedback_corruption_in_low_shif
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
     channel.envelope.current_volume = 0x0F;
-    channel.noise.lfsr_state = NOISE_LFSR_INITIAL_STATE;
-    channel.write_nr43(0x00);
-    channel.nr43_live_write.noise_counter = 0x0082;
+    channel.noise.lfsr_state = 0x642E;
+    channel.write_nr43(0x80);
+    channel.nr43_live_write.noise_counter = 0x0003;
+    channel.nr43_live_write.countdown_reloaded = false;
 
     channel.write_nr43(0x10);
 
-    assert_eq!(channel.noise.lfsr_state, 0x6020);
+    assert_eq!(channel.noise.lfsr_state, 0x190B);
     assert_eq!(channel.noise.period_timer, noise_timer_reload(1, 0));
     let trace = channel
         .nr43_live_write
         .last_trace
         .expect("trace should record the low-shift write");
+    assert_eq!(
+        trace.decision_category,
+        ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
+    );
+    assert_eq!(
+        trace.lfsr_action,
+        ApuCh4Nr43LfsrAction::ForcedShortStepThenLowShiftCorruption
+    );
+    assert_eq!(trace.glitch_value, 0x00);
+    assert_eq!(trace.second_glitch_value, 0x00);
+    assert_eq!(trace.glitch_shift, 0);
+    assert_eq!(trace.second_glitch_shift, 0);
+    assert!(!trace.old_bit);
+    assert!(trace.glitch_bit);
+    assert!(trace.second_glitch_bit);
+    assert!(trace.new_bit);
     assert!(!trace.old_to_ff_step);
     assert!(!trace.old_to_ff_forced_short_width);
     assert!(trace.ff_to_new_step);
@@ -336,27 +446,131 @@ fn channel_4_live_nr43_write_can_step_twice_with_feedback_corruption_in_low_shif
 }
 
 #[test]
-fn channel_4_live_nr43_write_suppresses_old_to_ff_step_for_high_shift_narrow_staircase_cases() {
+fn channel_4_high_shift_narrow_staircase_uses_the_sameboy_style_single_intermediate_bits() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
     channel.envelope.current_volume = 0x0F;
-    channel.noise.lfsr_state = 0x3F3F;
-    channel.write_nr43(0x5C);
-    channel.nr43_live_write.noise_counter = 0x224D;
+
+    channel.noise.lfsr_state = 0x6189;
+    channel.write_nr43(0x03);
+    channel.nr43_live_write.noise_counter = 0x3CEA;
     channel.nr43_live_write.countdown_reloaded = false;
-
-    channel.write_nr43(0x6C);
-
-    assert_eq!(channel.noise.lfsr_state, 0x5FDF);
-    assert_eq!(channel.noise.period_timer, noise_timer_reload(6, 4));
+    channel.write_nr43(0x2C);
+    assert_eq!(channel.noise.lfsr_state, 0x3084);
     let trace = channel
         .nr43_live_write
         .last_trace
-        .expect("trace should record the high-shift narrow write");
+        .expect("trace should record the 03 -> 2C write");
+    assert!(trace.ff_to_new_step);
+    assert!(!trace.ff_to_new_forced_short_width);
+
+    channel.noise.lfsr_state = 0x3F3F;
+    channel.write_nr43(0x4C);
+    channel.nr43_live_write.noise_counter = 0x19BC;
+    channel.nr43_live_write.countdown_reloaded = false;
+    channel.write_nr43(0x5C);
+    assert_eq!(channel.noise.lfsr_state, 0x3F3F);
+    let trace = channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the 4C -> 5C write");
     assert!(!trace.old_to_ff_step);
+    assert!(!trace.ff_to_new_step);
+
+    channel.noise.lfsr_state = 0x3F3F;
+    channel.write_nr43(0x5C);
+    channel.nr43_live_write.noise_counter = 0x224E;
+    channel.nr43_live_write.countdown_reloaded = false;
+    channel.write_nr43(0x6C);
+    assert_eq!(channel.noise.lfsr_state, 0x3F3F);
+    let trace = channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the 5C -> 6C write");
+    assert_eq!(trace.glitch_value, 0x5C);
+    assert_eq!(trace.second_glitch_value, 0x6C);
+    assert!(!trace.glitch_bit);
+    assert!(trace.second_glitch_bit);
+    assert!(!trace.ff_to_new_step);
+    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::None);
+
+    channel.noise.lfsr_state = 0x3ABA;
+    channel.write_nr43(0x6C);
+    channel.nr43_live_write.noise_counter = 0x2AE1;
+    channel.nr43_live_write.countdown_reloaded = true;
+    channel.write_nr43(0x7C);
+    assert_eq!(channel.noise.lfsr_state, 0x3ABA);
+    let trace = channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the 6C -> 7C write");
+    assert!(!trace.reload_seam_step);
+    assert!(!trace.ff_to_new_step);
+
+    channel.noise.lfsr_state = 0x7676;
+    channel.write_nr43(0x7C);
+    channel.nr43_live_write.noise_counter = 0x3374;
+    channel.nr43_live_write.countdown_reloaded = false;
+    channel.write_nr43(0x6C);
+    assert_eq!(channel.noise.lfsr_state, 0x3B3B);
+    let trace = channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the 7C -> 6C write");
+    assert_eq!(trace.glitch_value, 0x7C);
+    assert_eq!(trace.second_glitch_value, 0x6C);
+    assert!(!trace.glitch_bit);
+    assert!(trace.second_glitch_bit);
     assert!(trace.ff_to_new_step);
     assert!(trace.ff_to_new_forced_short_width);
+    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::ForcedShortStep);
+
+    channel.noise.lfsr_state = 0x0909;
+    channel.write_nr43(0x5C);
+    channel.nr43_live_write.noise_counter = 0x0499;
+    channel.nr43_live_write.countdown_reloaded = false;
+    channel.write_nr43(0x4C);
+    assert_eq!(channel.noise.lfsr_state, 0x0909);
+    let trace = channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the 5C -> 4C write");
+    assert_eq!(trace.glitch_value, 0x5C);
+    assert_eq!(trace.second_glitch_value, 0x4C);
+    assert!(!trace.glitch_bit);
+    assert!(trace.second_glitch_bit);
+    assert!(!trace.ff_to_new_step);
+
+    channel.noise.lfsr_state = 0x0707;
+    channel.write_nr43(0x4C);
+    channel.nr43_live_write.noise_counter = 0x0D2B;
+    channel.nr43_live_write.countdown_reloaded = false;
+    channel.write_nr43(0x3C);
+    assert_eq!(channel.noise.lfsr_state, 0x0707);
+    let trace = channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the 4C -> 3C write");
+    assert_eq!(trace.glitch_value, 0x4C);
+    assert_eq!(trace.second_glitch_value, 0x7C);
+    assert!(!trace.glitch_bit);
+    assert!(!trace.second_glitch_bit);
+    assert!(!trace.ff_to_new_step);
+    assert!(!trace.ff_to_new_forced_short_width);
+    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::None);
+
+    channel.noise.lfsr_state = 0x4BCB;
+    channel.write_nr43(0x3C);
+    channel.nr43_live_write.noise_counter = 0x15BE;
+    channel.nr43_live_write.countdown_reloaded = false;
+    channel.write_nr43(0x09);
+    assert_eq!(channel.noise.lfsr_state, 0x4BCB);
+    let trace = channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the 3C -> 09 write");
+    assert!(!trace.ff_to_new_step);
 }
 
 #[test]

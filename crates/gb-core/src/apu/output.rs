@@ -26,6 +26,15 @@ pub struct ApuHostSample {
     pub right: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ApuHostDcBlocker {
+    charge_factor: f64,
+    previous_input_left: f64,
+    previous_input_right: f64,
+    previous_output_left: f64,
+    previous_output_right: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ApuHpfCapacitorSnapshot {
     pub left: i64,
@@ -122,6 +131,56 @@ impl From<ApuStereoOutputSnapshot> for ApuHostSample {
             left: value.left,
             right: value.right,
         }
+    }
+}
+
+impl ApuHostDcBlocker {
+    pub fn new(console_model: ConsoleModel, output_sample_rate_hz: u32) -> Self {
+        assert_ne!(
+            output_sample_rate_hz, 0,
+            "ApuHostDcBlocker requires a non-zero output sample rate"
+        );
+
+        Self {
+            charge_factor: host_hpf_charge_factor(console_model, output_sample_rate_hz),
+            previous_input_left: 0.0,
+            previous_input_right: 0.0,
+            previous_output_left: 0.0,
+            previous_output_right: 0.0,
+        }
+    }
+
+    pub fn filter_sample(&mut self, sample: ApuHostSample) -> ApuHostSample {
+        ApuHostSample {
+            left: self.filter_channel(sample.left as f64, true),
+            right: self.filter_channel(sample.right as f64, false),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.previous_input_left = 0.0;
+        self.previous_input_right = 0.0;
+        self.previous_output_left = 0.0;
+        self.previous_output_right = 0.0;
+    }
+
+    fn filter_channel(&mut self, input: f64, left: bool) -> i32 {
+        let (previous_input, previous_output) = if left {
+            (
+                &mut self.previous_input_left,
+                &mut self.previous_output_left,
+            )
+        } else {
+            (
+                &mut self.previous_input_right,
+                &mut self.previous_output_right,
+            )
+        };
+
+        let output = input - *previous_input + self.charge_factor * *previous_output;
+        *previous_input = input;
+        *previous_output = output;
+        output.round().clamp(i32::MIN as f64, i32::MAX as f64) as i32
     }
 }
 
@@ -387,6 +446,13 @@ fn smooth_factor_q16(remaining_t_cycles: u16, total_t_cycles: u16) -> i32 {
 
 fn scale_by_q16(value: i32, factor_q16: i32) -> i32 {
     divide_and_round_i64(value as i64 * factor_q16 as i64, DAC_FADE_FACTOR_ONE)
+}
+
+fn host_hpf_charge_factor(console_model: ConsoleModel, output_sample_rate_hz: u32) -> f64 {
+    let t_cycle_charge_factor = HpfChargeModel::for_console_model(console_model).numerator() as f64
+        / HPF_CHARGE_FACTOR_DENOMINATOR as f64;
+    t_cycle_charge_factor
+        .powf(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ as f64 / output_sample_rate_hz as f64)
 }
 
 fn divide_and_round_i64(value: i64, divisor: i64) -> i32 {

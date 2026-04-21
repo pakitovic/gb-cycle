@@ -1,5 +1,6 @@
 use gb_core::{
-    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuSampleCapture, ApuSampleCaptureError,
+    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostDcBlocker, ApuHostSample, ApuRecordedChannel,
+    ApuSampleCapture, ApuSampleCaptureError, ConsoleModel,
 };
 use std::ffi::OsStr;
 use std::fs::File;
@@ -20,14 +21,28 @@ const AIFC_FVER_TIMESTAMP: u32 = 0xA280_5140;
 pub(crate) struct DesktopAudioRecordingOptions {
     pub(crate) output_path: PathBuf,
     pub(crate) sample_rate_hz: u32,
+    pub(crate) stem_channels: Vec<ApuRecordedChannel>,
 }
 
 #[derive(Debug)]
 pub(crate) struct DesktopAudioRecorder {
+    mixed_stream: AudioRecordingStream,
+    stem_streams: Vec<ChannelAudioRecordingStream>,
+}
+
+#[derive(Debug)]
+struct ChannelAudioRecordingStream {
+    channel: ApuRecordedChannel,
+    stream: AudioRecordingStream,
+}
+
+#[derive(Debug)]
+struct AudioRecordingStream {
     capture: ApuSampleCapture,
     captured_samples: Vec<ApuHostSample>,
     encoded_bytes: Vec<u8>,
     writer: AudioRecordingWriter,
+    dc_blocker: Option<ApuHostDcBlocker>,
 }
 
 #[derive(Debug)]
@@ -47,43 +62,57 @@ enum AudioRecordingFormat {
 }
 
 impl DesktopAudioRecorder {
-    pub(crate) fn new(options: &DesktopAudioRecordingOptions) -> Result<Self, String> {
+    pub(crate) fn new(
+        options: &DesktopAudioRecordingOptions,
+        console_model: ConsoleModel,
+    ) -> Result<Self, String> {
+        let mixed_stream =
+            AudioRecordingStream::new(&options.output_path, options.sample_rate_hz, None)?;
+        let mut stem_streams = Vec::with_capacity(options.stem_channels.len());
+
+        for channel in options.stem_channels.iter().copied() {
+            stem_streams.push(ChannelAudioRecordingStream {
+                channel,
+                stream: AudioRecordingStream::new(
+                    &stem_output_path(&options.output_path, channel)?,
+                    options.sample_rate_hz,
+                    Some(ApuHostDcBlocker::new(console_model, options.sample_rate_hz)),
+                )?,
+            });
+        }
+
         Ok(Self {
-            capture: ApuSampleCapture::new(options.sample_rate_hz).map_err(format_capture_error)?,
-            captured_samples: Vec::new(),
-            encoded_bytes: Vec::new(),
-            writer: AudioRecordingWriter::new(&options.output_path, options.sample_rate_hz)?,
+            mixed_stream,
+            stem_streams,
         })
     }
 
     pub(crate) fn capture_t_cycle(&mut self, apu: &Apu) {
-        self.capture.record_t_cycle(apu);
+        self.mixed_stream.capture.record_t_cycle(apu);
+
+        for stem_stream in &mut self.stem_streams {
+            stem_stream
+                .stream
+                .capture
+                .record_output_t_cycle(apu.recorded_channel_sample_pre_hpf(stem_stream.channel));
+        }
     }
 
     pub(crate) fn write_captured_samples(&mut self) -> Result<(), String> {
-        self.capture.drain_samples_into(&mut self.captured_samples);
-        if self.captured_samples.is_empty() {
-            return Ok(());
+        self.mixed_stream.write_captured_samples()?;
+        for stem_stream in &mut self.stem_streams {
+            stem_stream.stream.write_captured_samples()?;
         }
-
-        self.encoded_bytes.clear();
-        self.encoded_bytes
-            .reserve(self.captured_samples.len() * AUDIO_RECORDING_BYTES_PER_FRAME as usize);
-
-        for sample in self.captured_samples.iter().copied() {
-            let left = encode_recorded_sample(sample.left);
-            let right = encode_recorded_sample(sample.right);
-            self.writer.format.push_i16(&mut self.encoded_bytes, left);
-            self.writer.format.push_i16(&mut self.encoded_bytes, right);
-        }
-
-        self.writer
-            .write_frame_bytes(&self.encoded_bytes, self.captured_samples.len() as u64)
+        Ok(())
     }
 
     pub(crate) fn finish(&mut self) -> Result<(), String> {
         self.write_captured_samples()?;
-        self.writer.finish()
+        self.mixed_stream.finish()?;
+        for stem_stream in &mut self.stem_streams {
+            stem_stream.stream.finish()?;
+        }
+        Ok(())
     }
 }
 
@@ -172,6 +201,51 @@ impl AudioRecordingWriter {
     }
 }
 
+impl AudioRecordingStream {
+    fn new(
+        output_path: &Path,
+        sample_rate_hz: u32,
+        dc_blocker: Option<ApuHostDcBlocker>,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            capture: ApuSampleCapture::new(sample_rate_hz).map_err(format_capture_error)?,
+            captured_samples: Vec::new(),
+            encoded_bytes: Vec::new(),
+            writer: AudioRecordingWriter::new(output_path, sample_rate_hz)?,
+            dc_blocker,
+        })
+    }
+
+    fn write_captured_samples(&mut self) -> Result<(), String> {
+        self.capture.drain_samples_into(&mut self.captured_samples);
+        if self.captured_samples.is_empty() {
+            return Ok(());
+        }
+
+        self.encoded_bytes.clear();
+        self.encoded_bytes
+            .reserve(self.captured_samples.len() * AUDIO_RECORDING_BYTES_PER_FRAME as usize);
+
+        for sample in self.captured_samples.iter().copied() {
+            let filtered = match &mut self.dc_blocker {
+                Some(dc_blocker) => dc_blocker.filter_sample(sample),
+                None => sample,
+            };
+            let left = encode_recorded_sample(filtered.left);
+            let right = encode_recorded_sample(filtered.right);
+            self.writer.format.push_i16(&mut self.encoded_bytes, left);
+            self.writer.format.push_i16(&mut self.encoded_bytes, right);
+        }
+
+        self.writer
+            .write_frame_bytes(&self.encoded_bytes, self.captured_samples.len() as u64)
+    }
+
+    fn finish(&mut self) -> Result<(), String> {
+        self.writer.finish()
+    }
+}
+
 impl AudioRecordingFormat {
     fn from_output_path(output_path: &Path) -> Result<Self, String> {
         let Some(extension) = output_path.extension().and_then(OsStr::to_str) else {
@@ -217,6 +291,38 @@ fn encode_recorded_sample(sample: i32) -> i16 {
         i16::MAX
     } else {
         (normalized * f64::from(i16::MAX)).round() as i16
+    }
+}
+
+fn stem_output_path(output_path: &Path, channel: ApuRecordedChannel) -> Result<PathBuf, String> {
+    let Some(file_stem) = output_path.file_stem() else {
+        return Err(format!(
+            "audio recording path {} must include a filename stem",
+            output_path.display()
+        ));
+    };
+    let Some(extension) = output_path.extension() else {
+        return Err(format!(
+            "audio recording path {} must include a supported extension",
+            output_path.display()
+        ));
+    };
+
+    let mut stem_name = file_stem.to_os_string();
+    stem_name.push(".");
+    stem_name.push(channel_stem_suffix(channel));
+    stem_name.push(".");
+    stem_name.push(extension);
+
+    Ok(output_path.with_file_name(stem_name))
+}
+
+const fn channel_stem_suffix(channel: ApuRecordedChannel) -> &'static str {
+    match channel {
+        ApuRecordedChannel::Ch1 => "ch1",
+        ApuRecordedChannel::Ch2 => "ch2",
+        ApuRecordedChannel::Ch3 => "ch3",
+        ApuRecordedChannel::Ch4 => "ch4",
     }
 }
 
@@ -337,10 +443,10 @@ mod tests {
     use super::{
         AIFC_HEADER_LEN, AUDIO_RECORDING_BYTES_PER_FRAME, AudioRecordingFormat,
         AudioRecordingWriter, DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecorder,
-        DesktopAudioRecordingOptions, WAV_HEADER_LEN, aifc_sample_rate_bytes,
-        encode_recorded_sample,
+        DesktopAudioRecordingOptions, WAV_HEADER_LEN, aifc_sample_rate_bytes, channel_stem_suffix,
+        encode_recorded_sample, stem_output_path,
     };
-    use gb_core::APU_HOST_MAX_ABS_SAMPLE;
+    use gb_core::{APU_HOST_MAX_ABS_SAMPLE, ApuRecordedChannel, ConsoleModel};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -451,11 +557,31 @@ mod tests {
 
     #[test]
     fn recorder_reports_unsupported_extensions() {
-        let error = DesktopAudioRecorder::new(&DesktopAudioRecordingOptions {
-            output_path: PathBuf::from("recording.txt"),
-            sample_rate_hz: 48_000,
-        })
+        let error = DesktopAudioRecorder::new(
+            &DesktopAudioRecordingOptions {
+                output_path: PathBuf::from("recording.txt"),
+                sample_rate_hz: 48_000,
+                stem_channels: Vec::new(),
+            },
+            ConsoleModel::Dmg,
+        )
         .expect_err("unsupported extensions should fail");
         assert!(error.contains("unsupported audio recording extension"));
+    }
+
+    #[test]
+    fn stem_output_paths_use_sidecar_channel_suffixes() {
+        assert_eq!(channel_stem_suffix(ApuRecordedChannel::Ch1), "ch1");
+        assert_eq!(channel_stem_suffix(ApuRecordedChannel::Ch4), "ch4");
+        assert_eq!(
+            stem_output_path(&PathBuf::from("/tmp/zelda.wav"), ApuRecordedChannel::Ch4,)
+                .expect("stem output path"),
+            PathBuf::from("/tmp/zelda.ch4.wav")
+        );
+        assert_eq!(
+            stem_output_path(&PathBuf::from("/tmp/zelda.aifc"), ApuRecordedChannel::Ch2,)
+                .expect("stem output path"),
+            PathBuf::from("/tmp/zelda.ch2.aifc")
+        );
     }
 }

@@ -336,6 +336,86 @@ fn host_output_sample_matches_the_live_post_hpf_output_snapshot() {
 }
 
 #[test]
+fn recorded_channel_sample_pre_hpf_matches_the_isolated_routed_master_lane() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
+
+    let output_snapshot = apu.snapshot().output.master_output;
+
+    assert_eq!(
+        apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch1),
+        ApuHostSample {
+            left: output_snapshot.left,
+            right: output_snapshot.right,
+        }
+    );
+}
+
+#[test]
+fn recorded_channel_sample_pre_hpf_respects_nr51_routing_and_nr50_scaling() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF17, 0x08);
+    apu.write_register(0xFF24, 0x50);
+    apu.write_register(0xFF25, NR51_RIGHT_ROUTE_CH2_BIT);
+
+    assert_eq!(
+        apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch2),
+        ApuHostSample {
+            left: 0,
+            right: ANALOG_ONE,
+        }
+    );
+    assert_eq!(
+        apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch1),
+        ApuHostSample::default()
+    );
+}
+
+#[test]
+fn host_dc_blocker_decays_constant_dc_bias_towards_zero() {
+    let mut blocker = ApuHostDcBlocker::new(ConsoleModel::Dmg, 96_000);
+    let mut filtered = ApuHostSample::default();
+
+    for _ in 0..4_096 {
+        filtered = blocker.filter_sample(ApuHostSample {
+            left: ANALOG_ONE,
+            right: -ANALOG_ONE,
+        });
+    }
+
+    assert!(filtered.left.abs() < 10_000);
+    assert!(filtered.right.abs() < 10_000);
+}
+
+#[test]
+fn host_dc_blocker_reset_restores_the_initial_step_response() {
+    let mut blocker = ApuHostDcBlocker::new(ConsoleModel::Dmg, 96_000);
+
+    let first = blocker.filter_sample(ApuHostSample {
+        left: ANALOG_ONE,
+        right: ANALOG_ONE,
+    });
+    for _ in 0..128 {
+        let _ = blocker.filter_sample(ApuHostSample {
+            left: ANALOG_ONE,
+            right: ANALOG_ONE,
+        });
+    }
+
+    blocker.reset();
+    let after_reset = blocker.filter_sample(ApuHostSample {
+        left: ANALOG_ONE,
+        right: ANALOG_ONE,
+    });
+
+    assert_eq!(first, after_reset);
+}
+
+#[test]
 fn sample_capture_rejects_zero_sample_rate() {
     assert_eq!(
         ApuSampleCapture::new(0).expect_err("zero sample rate must fail"),

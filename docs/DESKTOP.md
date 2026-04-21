@@ -27,6 +27,8 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 
 - Use `--audio-record path/to/capture.wav` to export direct digital stereo APU output to `WAV` or `AIFC` without going through speakers, room acoustics, the macOS microphone path, or the frontend mute/volume controls.
 - `--audio-record-rate <hz>` overrides the recording sink sample rate; the default is `96000` Hz so SameBoy-vs-`gb-cycle` commercial-ROM captures can be compared at the same host rate when desired.
+- `--audio-record-stems <all|ch1,ch2,ch3,ch4>` writes isolated per-channel sidecar captures next to the main recording path (for example `capture.ch1.wav` and `capture.ch4.wav`) so commercial-ROM investigations can compare `CH1`, `CH2`, `CH3/WAVE`, and `CH4/NOISE` independently instead of only through the final mix.
+- Those per-channel stems start from the typed APU boundary **post-DAC / NR51 / NR50** and then apply a **solo host-rate DC-block / HPF** matched to the active DMG-family charge model before encoding. That keeps the routed per-channel gain explicit while removing the raw DAC bias that made the first stem version hard to compare against SameBoy's solo-channel exports; they are investigative stems, not a new claim about final hardware-listenable solo output.
 - Recording taps the same typed post-HPF `ApuHostSample` boundary that feeds SDL playback, but on an independent host sink, so it still works when normal desktop playback is muted or disabled for investigation.
 - Set `GB_CYCLE_DESKTOP_AUDIO_LOG=1` to emit opt-in SDL audio telemetry to `stderr` with lightweight event logging only.
 - Use `GB_CYCLE_DESKTOP_AUDIO_LOG=verbose` when you explicitly need one submit line per queued audio batch with queued-byte and queued-duration estimates.

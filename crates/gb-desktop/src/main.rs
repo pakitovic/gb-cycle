@@ -1116,15 +1116,25 @@ fn format_ch4_live_nr43_trace(trace: Option<&ApuCh4Nr43LiveWriteTrace>) -> Strin
     };
 
     format!(
-        " ch4.last_nr43_live_write=old({:#04X}/shift={}) new({:#04X}/shift={}) runtime_active={} same_shift_group={} effective_counter={:#06X} countdown_reloaded={} steps=[reload_seam:{},old_to_ff:{},old_to_ff_short:{},ff_to_new:{},ff_to_new_short:{},low_shift_extra:{},feedback_corruption:{}] lfsr={:#06X}->{:#06X}",
+        " ch4.last_nr43_live_write=old({:#04X}/shift={}/bit={}) glitch1({:#04X}/shift={}/bit={}) glitch2({:#04X}/shift={}/bit={}) new({:#04X}/shift={}/bit={}) runtime_active={} same_shift_group={} effective_counter={:#06X} countdown_reloaded={} category={:?} action={:?} steps=[reload_seam:{},old_to_ff:{},old_to_ff_short:{},ff_to_new:{},ff_to_new_short:{},low_shift_extra:{},feedback_corruption:{}] lfsr={:#06X}->{:#06X}",
         trace.old_nr43,
         trace.old_shift,
+        trace.old_bit,
+        trace.glitch_value,
+        trace.glitch_shift,
+        trace.glitch_bit,
+        trace.second_glitch_value,
+        trace.second_glitch_shift,
+        trace.second_glitch_bit,
         trace.new_nr43,
         trace.new_shift,
+        trace.new_bit,
         trace.runtime_active,
         trace.same_shift_group,
         trace.effective_counter,
         trace.countdown_reloaded,
+        trace.decision_category,
+        trace.lfsr_action,
         trace.reload_seam_step,
         trace.old_to_ff_step,
         trace.old_to_ff_forced_short_width,
@@ -2969,7 +2979,10 @@ fn run_desktop_with_startup_fallback_persistence(
         None
     };
     let audio_recorder = match options.audio_recording.as_ref() {
-        Some(audio_recording) => Some(DesktopAudioRecorder::new(audio_recording)?),
+        Some(audio_recording) => Some(DesktopAudioRecorder::new(
+            audio_recording,
+            audio_source_machine(&machine).apu().console_model(),
+        )?),
         None => None,
     };
     let gamepad_manager = if session.config.input.gamepad.enabled {
