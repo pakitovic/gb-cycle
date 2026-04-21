@@ -444,10 +444,16 @@ mod tests {
         AIFC_HEADER_LEN, AUDIO_RECORDING_BYTES_PER_FRAME, AudioRecordingFormat,
         AudioRecordingWriter, DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecorder,
         DesktopAudioRecordingOptions, WAV_HEADER_LEN, aifc_sample_rate_bytes, channel_stem_suffix,
-        encode_recorded_sample, stem_output_path,
+        encode_recorded_sample, format_flush_error, format_seek_error, stem_output_path,
     };
-    use gb_core::{APU_HOST_MAX_ABS_SAMPLE, ApuRecordedChannel, ConsoleModel};
-    use std::fs;
+    use gb_core::{
+        APU_HOST_MAX_ABS_SAMPLE, Apu, ApuRecordedChannel, ConsoleModel,
+        DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
+    };
+    use std::fs::{self, File};
+    use std::io::Write;
+    use std::os::fd::{FromRawFd, IntoRawFd};
+    use std::os::unix::net::UnixStream;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -485,6 +491,13 @@ mod tests {
         assert_eq!(encode_recorded_sample(APU_HOST_MAX_ABS_SAMPLE), i16::MAX);
         assert_eq!(encode_recorded_sample(-APU_HOST_MAX_ABS_SAMPLE), i16::MIN);
         assert_eq!(encode_recorded_sample(0), 0);
+    }
+
+    fn configure_constant_ch1_output(apu: &mut Apu) {
+        apu.write_register(0xFF26, 0x80);
+        apu.write_register(0xFF12, 0x08);
+        apu.write_register(0xFF24, 0x77);
+        apu.write_register(0xFF25, 0x11);
     }
 
     #[test]
@@ -570,6 +583,134 @@ mod tests {
     }
 
     #[test]
+    fn recorder_rejects_zero_sample_rate() {
+        let error = DesktopAudioRecorder::new(
+            &DesktopAudioRecordingOptions {
+                output_path: PathBuf::from("recording.wav"),
+                sample_rate_hz: 0,
+                stem_channels: Vec::new(),
+            },
+            ConsoleModel::Dmg,
+        )
+        .expect_err("zero sample rate should fail");
+        assert_eq!(
+            error,
+            "audio recording sample rate must be greater than zero"
+        );
+    }
+
+    #[test]
+    fn writer_finish_is_idempotent() {
+        let output_path = temp_recording_path("wav");
+        let mut writer = AudioRecordingWriter::new(&output_path, 96_000).expect("writer");
+        writer.finish().expect("first finish should succeed");
+        writer.finish().expect("second finish should also succeed");
+
+        let bytes = fs::read(&output_path).expect("recording should exist");
+        assert_eq!(bytes.len(), WAV_HEADER_LEN as usize);
+
+        let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn low_level_audio_recording_helpers_cover_remaining_error_and_format_paths() {
+        assert_eq!(
+            AudioRecordingWriter::new(&PathBuf::from("recording.wav"), 0)
+                .expect_err("zero sample rate should fail"),
+            "audio recording sample rate must be greater than zero"
+        );
+        assert!(
+            AudioRecordingFormat::from_output_path(&PathBuf::from("recording"))
+                .expect_err("missing extensions should fail")
+                .contains("unsupported audio recording path")
+        );
+
+        let mut aifc_bytes = Vec::new();
+        AudioRecordingFormat::Aifc.push_i16(&mut aifc_bytes, 0x1234);
+        assert_eq!(aifc_bytes, i16::to_le_bytes(0x1234).to_vec());
+        assert_eq!(channel_stem_suffix(ApuRecordedChannel::Ch3), "ch3");
+        assert_eq!(
+            format_seek_error(&PathBuf::from("/tmp/recording.wav"), "boom"),
+            "failed to seek while finalizing audio recording at /tmp/recording.wav: boom"
+        );
+        assert_eq!(
+            format_flush_error(&PathBuf::from("/tmp/recording.wav"), "boom"),
+            "failed to flush audio recording at /tmp/recording.wav: boom"
+        );
+    }
+
+    #[test]
+    fn writer_surfaces_create_write_and_seek_failures() {
+        let create_error_path = temp_recording_path("wav");
+        fs::create_dir(&create_error_path).expect("directory-backed error path");
+        let create_error = AudioRecordingWriter::new(&create_error_path, 96_000)
+            .expect_err("directory outputs should fail to open as files");
+        assert!(create_error.contains("failed to create audio recording"));
+        fs::remove_dir(&create_error_path).expect("directory-backed error path should clean up");
+
+        let output_path = temp_recording_path("wav");
+        let read_only_file = File::options()
+            .read(true)
+            .open(&{
+                let mut file = File::create(&output_path).expect("backing file");
+                file.write_all(b"seed").expect("seed bytes");
+                output_path.clone()
+            })
+            .expect("read-only file");
+        let mut write_error_writer = AudioRecordingWriter {
+            output_path: output_path.clone(),
+            file: read_only_file,
+            format: AudioRecordingFormat::Wav,
+            sample_rate_hz: 96_000,
+            frame_count: 0,
+            finished: false,
+        };
+        assert!(
+            write_error_writer
+                .write_frame_bytes(&[0, 0, 0, 0], 1)
+                .expect_err("read-only files should reject sample writes")
+                .contains("failed to write audio recording samples")
+        );
+
+        let read_only_header_file = File::options()
+            .read(true)
+            .open(&output_path)
+            .expect("read-only header file");
+        let mut finalize_error_writer = AudioRecordingWriter {
+            output_path: output_path.clone(),
+            file: read_only_header_file,
+            format: AudioRecordingFormat::Wav,
+            sample_rate_hz: 96_000,
+            frame_count: 1,
+            finished: false,
+        };
+        assert!(
+            finalize_error_writer
+                .finish()
+                .expect_err("read-only files should reject header finalization")
+                .contains("failed to finalize audio recording header")
+        );
+
+        let (stream_a, _stream_b) = UnixStream::pair().expect("unix stream pair");
+        let mut seek_error_writer = AudioRecordingWriter {
+            output_path: output_path.clone(),
+            file: unsafe { File::from_raw_fd(stream_a.into_raw_fd()) },
+            format: AudioRecordingFormat::Wav,
+            sample_rate_hz: 96_000,
+            frame_count: 0,
+            finished: false,
+        };
+        assert!(
+            seek_error_writer
+                .finish()
+                .expect_err("non-seekable files should fail during finalization")
+                .contains("failed to seek while finalizing audio recording")
+        );
+
+        let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
     fn stem_output_paths_use_sidecar_channel_suffixes() {
         assert_eq!(channel_stem_suffix(ApuRecordedChannel::Ch1), "ch1");
         assert_eq!(channel_stem_suffix(ApuRecordedChannel::Ch4), "ch4");
@@ -583,5 +724,57 @@ mod tests {
                 .expect("stem output path"),
             PathBuf::from("/tmp/zelda.ch2.aifc")
         );
+        assert!(
+            stem_output_path(&PathBuf::from("/tmp/zelda"), ApuRecordedChannel::Ch1)
+                .expect_err("paths without extensions should fail")
+                .contains("supported extension")
+        );
+        assert!(
+            stem_output_path(&PathBuf::from("/"), ApuRecordedChannel::Ch1)
+                .expect_err("paths without filename stems should fail")
+                .contains("filename stem")
+        );
+    }
+
+    #[test]
+    fn recorder_writes_mixed_and_stem_recordings() {
+        let output_path = temp_recording_path("wav");
+        let stem_ch1_path =
+            stem_output_path(&output_path, ApuRecordedChannel::Ch1).expect("ch1 stem path");
+        let stem_ch4_path =
+            stem_output_path(&output_path, ApuRecordedChannel::Ch4).expect("ch4 stem path");
+        let mut recorder = DesktopAudioRecorder::new(
+            &DesktopAudioRecordingOptions {
+                output_path: output_path.clone(),
+                sample_rate_hz: DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
+                stem_channels: vec![ApuRecordedChannel::Ch1, ApuRecordedChannel::Ch4],
+            },
+            ConsoleModel::Dmg,
+        )
+        .expect("recorder");
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+        configure_constant_ch1_output(&mut apu);
+
+        for _ in 0..8 {
+            recorder.capture_t_cycle(&apu);
+        }
+        recorder
+            .write_captured_samples()
+            .expect("captured samples should flush");
+        recorder.finish().expect("recorder should finish");
+        recorder
+            .finish()
+            .expect("finishing twice should be harmless");
+
+        let mixed_bytes = fs::read(&output_path).expect("mixed recording");
+        let stem_ch1_bytes = fs::read(&stem_ch1_path).expect("ch1 stem");
+        let stem_ch4_bytes = fs::read(&stem_ch4_path).expect("ch4 stem");
+        assert!(mixed_bytes.len() > WAV_HEADER_LEN as usize);
+        assert!(stem_ch1_bytes.len() > WAV_HEADER_LEN as usize);
+        assert!(stem_ch4_bytes.len() > WAV_HEADER_LEN as usize);
+
+        let _ = fs::remove_file(output_path);
+        let _ = fs::remove_file(stem_ch1_path);
+        let _ = fs::remove_file(stem_ch4_path);
     }
 }

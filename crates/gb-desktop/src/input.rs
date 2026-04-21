@@ -826,8 +826,8 @@ mod tests {
     use super::{
         AppliedGamepadRumble, FrontendInputState, GAMEPAD_RUMBLE_REFRESH_INTERVAL, GamepadManager,
         STRONG_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY, axis_direction_state,
-        gamepad_button_binding_from_sdl_button, joystick_id_from_event, rumble_intensity,
-        sdl_button_for_binding,
+        default_gamepad_name, gamepad_button_binding_from_sdl_button, joystick_id_from_event,
+        rumble_intensity, sdl_button_for_binding,
     };
     use gb_core::{
         ConsoleModel, JoypadButton, Machine, MachineConfig, StartupMode, TraceSummaryBuffer,
@@ -851,6 +851,13 @@ mod tests {
             .gamepad()
             .expect("failed to initialize SDL gamepad subsystem");
         (sdl, gamepad)
+    }
+
+    #[test]
+    fn default_gamepad_name_uses_the_sdl_identifier_suffix() {
+        let joystick_id = JoystickId::from(sdl3::sys::joystick::SDL_JoystickID(7));
+
+        assert_eq!(default_gamepad_name(joystick_id), "SDL gamepad 7");
     }
 
     fn test_machine() -> Machine<TraceSummaryBuffer> {
@@ -1378,5 +1385,113 @@ mod tests {
         assert!(manager.has_connected_gamepad());
         assert_eq!(manager.active_gamepad_name(), Some("Hot Plugged"));
         assert!(manager.active_matches_preferred());
+    }
+
+    #[test]
+    fn gamepad_manager_added_event_can_keep_the_existing_active_device() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let first = VirtualGamepad::attach("First Pad");
+        subsystem.update();
+
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+        let mut manager = GamepadManager::new(
+            &subsystem,
+            GamepadOptions::default(),
+            &mut input_state,
+            &mut machine,
+        )
+        .expect("gamepad manager");
+        assert_eq!(manager.active_gamepad_name(), Some("First Pad"));
+
+        let second = VirtualGamepad::attach("Second Pad");
+        subsystem.update();
+        manager
+            .handle_event(
+                &Event::ControllerDeviceAdded {
+                    timestamp: 0,
+                    which: second.joystick_id.0,
+                },
+                &mut input_state,
+                &mut machine,
+            )
+            .expect("added event");
+
+        assert!(manager.has_connected_gamepad());
+        assert_eq!(manager.active_gamepad_name(), Some("First Pad"));
+        assert!(manager.opened.contains_key(&first.joystick_id));
+        assert!(manager.opened.contains_key(&second.joystick_id));
+    }
+
+    #[test]
+    fn gamepad_manager_remove_unknown_device_keeps_the_active_gamepad() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let first = VirtualGamepad::attach("First Pad");
+        subsystem.update();
+
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+        let mut manager = GamepadManager::new(
+            &subsystem,
+            GamepadOptions::default(),
+            &mut input_state,
+            &mut machine,
+        )
+        .expect("gamepad manager");
+
+        manager
+            .handle_event(
+                &Event::ControllerDeviceRemoved {
+                    timestamp: 0,
+                    which: joystick_id_from_event(9_999).0,
+                },
+                &mut input_state,
+                &mut machine,
+            )
+            .expect("remove event");
+
+        assert!(manager.has_connected_gamepad());
+        assert!(manager.is_active_gamepad(first.joystick_id));
+        assert_eq!(manager.active_gamepad_name(), Some("First Pad"));
+    }
+
+    #[test]
+    fn gamepad_manager_can_match_a_preferred_device_by_path() {
+        let _guard = crate::lock_sdl_test();
+        let (_sdl, subsystem) = init_gamepad_subsystem();
+        let first = VirtualGamepad::attach("Path Pad");
+        subsystem.update();
+
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+        let mut manager = GamepadManager::new(
+            &subsystem,
+            GamepadOptions::default(),
+            &mut input_state,
+            &mut machine,
+        )
+        .expect("gamepad manager");
+        manager
+            .opened
+            .get_mut(&first.joystick_id)
+            .expect("virtual gamepad should be opened")
+            .path = Some("/dev/input/path-pad".to_string());
+
+        manager.set_preferred_device(
+            PreferredGamepadIdentity {
+                path: Some("/dev/input/path-pad".to_string()),
+                name: None,
+            },
+            &mut input_state,
+            &mut machine,
+        );
+
+        assert!(manager.active_matches_preferred());
+        assert_eq!(
+            manager.preferred_device().path.as_deref(),
+            Some("/dev/input/path-pad")
+        );
     }
 }

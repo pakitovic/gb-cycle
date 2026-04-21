@@ -7197,14 +7197,15 @@ mod tests {
         next_save_flush_policy, next_startup_mode, next_window_scale, parse_trace_capture_t_cycles,
         performance_window_title, render_desktop_trace_record, run_desktop,
     };
+    use crate::audio_recording::DesktopAudioRecordingOptions;
     use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
     use gb_core::{
-        Apu, ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
-        CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
-        CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
-        ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
-        MachineConfig, MachineStepRegion, PersistentCartState, PpuFramebufferLayerSource,
-        PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
+        Apu, ApuRecordedChannel, ApuRegisterWriteObservation, ApuRegisterWriteState,
+        CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent,
+        CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
+        ExecutionMode, ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus,
+        LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion, PersistentCartState,
+        PpuFramebufferLayerSource, PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
@@ -10019,6 +10020,55 @@ mod tests {
         rom_quit
             .join()
             .expect("ROM quit-event helper should finish");
+    }
+
+    #[test]
+    fn run_desktop_writes_audio_recordings_and_stems() {
+        let _guard = crate::lock_sdl_test();
+        crate::configure_headless_sdl();
+
+        let root = temp_test_root("headless-audio-recording");
+        let rom_path = write_test_rom(&root, "audio-recording.gb");
+        let output_path = root.join("audio-recording.wav");
+        let stem_ch1_path = root.join("audio-recording.ch1.wav");
+        let stem_ch4_path = root.join("audio-recording.ch4.wav");
+
+        let mut config = DesktopConfig::default();
+        config.boot_rom.verification = BootRomVerificationMode::Off;
+        config.input.gamepad.enabled = false;
+        config.audio.enabled = false;
+        let quit = schedule_quit_event();
+
+        run_desktop(
+            DesktopRunOptions {
+                rom_path: Some(rom_path),
+                linked_peer_rom_path: None,
+                exit_after_frames: None,
+                config,
+                audio_recording: Some(DesktopAudioRecordingOptions {
+                    output_path: output_path.clone(),
+                    sample_rate_hz: 96_000,
+                    stem_channels: vec![ApuRecordedChannel::Ch1, ApuRecordedChannel::Ch4],
+                }),
+            },
+            DesktopSettingsStore::new_for_tests(root.join("desktop-settings.toml")),
+        )
+        .expect("audio-recording run should complete");
+        quit.join()
+            .expect("audio-recording quit-event helper should finish");
+
+        let mix_len = fs::metadata(&output_path)
+            .expect("mixed recording should exist")
+            .len();
+        let ch1_len = fs::metadata(&stem_ch1_path)
+            .expect("ch1 stem should exist")
+            .len();
+        let ch4_len = fs::metadata(&stem_ch4_path)
+            .expect("ch4 stem should exist")
+            .len();
+        assert!(mix_len > 44);
+        assert!(ch1_len > 44);
+        assert!(ch4_len > 44);
     }
 
     #[test]
