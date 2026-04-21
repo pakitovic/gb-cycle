@@ -78,10 +78,7 @@ impl PpuMode3TransferPolicy {
             return None;
         }
 
-        let startup_visible_x = self
-            .current_transfer_x
-            .saturating_add(self.initial_scx_discard);
-        let lane = if self.scx_discard_remaining > 0 || startup_visible_x < 8 {
+        let lane = if self.scx_discard_remaining > 0 || self.current_transfer_x < 8 {
             self.current_startup_transfer_lane()
         } else {
             Mode3TransferLane::Visible
@@ -107,7 +104,7 @@ impl PpuMode3TransferPolicy {
                 Mode3TransferLane::Hidden => {
                     Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop
                 }
-                Mode3TransferLane::Visible => Mode3TransferServiceExecution::EmitVisiblePixel,
+                Mode3TransferLane::Visible => unreachable!("x < 8 cannot be a visible transfer"),
             }
         } else if context.lane == Mode3TransferLane::Visible {
             Mode3TransferServiceExecution::EmitVisiblePixel

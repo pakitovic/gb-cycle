@@ -2203,11 +2203,10 @@ impl BgFifoFillState {
         &mut self,
         push: BgPushState,
         startup_dummy_pixels: u8,
-        startup_leading_pixel_skip: u8,
     ) {
         self.pending = true;
         self.startup_dummy_pixels = startup_dummy_pixels;
-        self.leading_pixel_skip = push.leading_pixel_skip.max(startup_leading_pixel_skip);
+        self.leading_pixel_skip = push.leading_pixel_skip;
         self.includes_real_tile_pixels = true;
         self.cached = push.cached.with_origin(push.cached.queued_fill_origin());
     }

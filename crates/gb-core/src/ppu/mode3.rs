@@ -1171,15 +1171,12 @@ impl Ppu {
     pub(super) fn queue_bg_fill_from_push(&mut self) {
         let push = self.bg_pipeline_state.push;
         if push.cached.is_startup_alignment_seed() {
-            let startup_leading_pixel_skip = self.bg_pipeline_state.initial_scx_discard;
             self.bg_pipeline_state.begin_post_alignment_followup();
-            self.bg_pipeline_state.scx_discard_remaining = 0;
             self.bg_pipeline_state
                 .fill
                 .queue_startup_alignment_from_push(
                     push,
                     self.bg_pipeline_state.startup_fifo_placeholders,
-                    startup_leading_pixel_skip,
                 );
         } else {
             self.bg_pipeline_state.fill.queue_from_push(push);
