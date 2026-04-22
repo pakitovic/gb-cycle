@@ -541,13 +541,9 @@ fn same_scanline_low_wx_previsible_retarget_restores_background_fifo_before_a_la
     assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0xFF);
     assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0x99);
     assert_eq!(ppu.bg_pipeline_state.fifo.len(), 8);
-    assert!(
-        ppu.bg_pipeline_state
-            .fifo_cached_pixels
-            .iter()
-            .all(|pixel| pixel
-                .is_some_and(|pixel| pixel.cached.source == PpuBgFetcherSource::Background))
-    );
+    assert!(ppu.bg_pipeline_state.fifo.cached_slots().all(|pixel| {
+        pixel.is_some_and(|pixel| pixel.cached.source == PpuBgFetcherSource::Background)
+    }));
     assert_eq!(
         ppu.bg_pipeline_state
             .fifo

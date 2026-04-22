@@ -2453,7 +2453,6 @@ impl Ppu {
                 vram,
             ) {
                 self.bg_pipeline_state.fifo.push_front(pixel);
-                self.bg_pipeline_state.fifo_cached_pixels.push_front(None);
             }
             carry.next_trigger_x = carry.next_trigger_x.saturating_add(1);
             carry.next_window_pixel_offset = carry.next_window_pixel_offset.saturating_add(1);
@@ -2520,7 +2519,6 @@ impl Ppu {
 
     fn push_dmg_live_wx_trigger_glitch_pixel(&mut self) {
         self.bg_pipeline_state.fifo.push_back(0);
-        self.bg_pipeline_state.fifo_cached_pixels.push_back(None);
     }
 
     fn dmg_live_wx_write_can_still_start_later_this_line(&self, wx: u8) -> bool {
@@ -3799,7 +3797,6 @@ impl Ppu {
         let bg_resume_fetch_pixel = self.bg_pipeline_state.fetcher.next_fetch_pixel;
         if !preserve_fifo {
             self.bg_pipeline_state.fifo.clear();
-            self.bg_pipeline_state.fifo_cached_pixels.clear();
         }
         self.bg_pipeline_state.startup_fifo_placeholders = 0;
         self.bg_pipeline_state.push.reset();
@@ -3835,7 +3832,6 @@ impl Ppu {
     fn restore_current_fetcher_cached_slice_to_fifo(&mut self) {
         let cached = BgCachedSlice::from_fetcher(self.bg_pipeline_state.fetcher);
         self.bg_pipeline_state.fifo.clear();
-        self.bg_pipeline_state.fifo_cached_pixels.clear();
         self.bg_pipeline_state
             .push_cached_slice_fifo_pixels_with_skip(cached, 0);
     }

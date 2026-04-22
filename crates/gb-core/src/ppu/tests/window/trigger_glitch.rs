@@ -64,7 +64,6 @@ fn previsible_wx_cancel_background_override_forces_white_fifo_output_at_its_onse
         .dmg_window_restart
         .previsible_wx_cancel_background_override_onset_x = Some(3);
     ppu.bg_pipeline_state.fifo.push_back(2);
-    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
 
     assert_eq!(
         ppu.pop_visible_bg_fifo_pixel(&VramBusView::new(BusMaster::Ppu, &mut vram)),
@@ -137,10 +136,7 @@ fn previsible_wx_carry_pushes_window_pixels_and_expires_at_the_end_of_the_span()
     );
 
     assert_eq!(ppu.bg_pipeline_state.fifo.len(), 1);
-    assert_eq!(
-        ppu.bg_pipeline_state.fifo_cached_pixels.front().copied(),
-        Some(None)
-    );
+    assert_eq!(ppu.bg_pipeline_state.fifo.cached_front(), Some(None));
     assert_eq!(
         ppu.bg_pipeline_state
             .dmg_window_restart
@@ -544,7 +540,6 @@ fn same_scanline_live_wx_write_after_visible_output_waits_until_the_new_trigger(
     ppu.bg_pipeline_state.window_started_this_line = true;
     ppu.bg_pipeline_state.visible_pixels_output = 1;
     ppu.bg_pipeline_state.fifo.push_back(3);
-    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
 
     ppu.maybe_arm_dmg_live_wx_trigger_glitch(10);
 
@@ -600,7 +595,6 @@ fn wx_cpu_commit_after_visible_output_routes_through_live_trigger_glitch_logic()
     ppu.bg_pipeline_state.window_started_this_line = true;
     ppu.bg_pipeline_state.visible_pixels_output = 1;
     ppu.bg_pipeline_state.fifo.push_back(3);
-    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
 
     ppu.write_register_with_source(0xFF4B, 10, PpuRegisterWriteSource::CpuMmioCommit);
 
@@ -735,7 +729,6 @@ fn same_scanline_live_wx_write_can_push_the_glitch_pixel_immediately() {
     ppu.bg_pipeline_state.window_started_this_line = true;
     ppu.bg_pipeline_state.visible_pixels_output = 3;
     ppu.bg_pipeline_state.fifo.push_back(2);
-    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
 
     ppu.maybe_arm_dmg_live_wx_trigger_glitch(10);
 

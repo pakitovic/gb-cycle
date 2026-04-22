@@ -565,8 +565,8 @@ fn first_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
     ppu.bg_pipeline_state.fifo.push_back(1);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 fetch_x: BG_TILE_WIDTH as u16,
@@ -590,7 +590,7 @@ fn first_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
     assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 9);
     assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 1);
     assert!(ppu.bg_pipeline_state.fifo.is_empty());
-    assert!(ppu.bg_pipeline_state.fifo_cached_pixels.is_empty());
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
 }
 
 #[test]
@@ -605,8 +605,8 @@ fn later_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
     ppu.bg_pipeline_state.fifo.push_back(1);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 fetch_x: BG_TILE_WIDTH as u16,
@@ -630,7 +630,7 @@ fn later_visible_pixel_with_bg_disabled_still_consumes_the_bg_fifo() {
     assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 10);
     assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 2);
     assert!(ppu.bg_pipeline_state.fifo.is_empty());
-    assert!(ppu.bg_pipeline_state.fifo_cached_pixels.is_empty());
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
 }
 
 #[test]

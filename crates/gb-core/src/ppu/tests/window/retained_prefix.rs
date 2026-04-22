@@ -226,7 +226,6 @@ fn same_scanline_retained_fifo_prefix_resume_can_continue_from_the_next_tilemap(
     ppu.bg_pipeline_state.current_transfer_x = 8;
     ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 24;
     ppu.bg_pipeline_state.fifo.push_back(3);
-    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
     ppu.bg_pipeline_state
         .dmg_window_restart
         .previsible_wx_retarget = Some(DmgPrevisibleWxRetarget::new_retained_fifo_prefix_resume(
@@ -270,7 +269,6 @@ fn same_scanline_retained_fifo_prefix_resume_can_preserve_fifo_with_a_nonzero_wi
     ppu.bg_pipeline_state.current_transfer_x = 8;
     ppu.bg_pipeline_state.fetcher.next_fetch_pixel = 24;
     ppu.bg_pipeline_state.fifo.push_back(3);
-    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
     ppu.bg_pipeline_state
         .dmg_window_restart
         .previsible_wx_retarget = Some(DmgPrevisibleWxRetarget::new_retained_fifo_prefix_resume(

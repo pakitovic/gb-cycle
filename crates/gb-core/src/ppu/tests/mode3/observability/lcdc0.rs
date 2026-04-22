@@ -78,7 +78,11 @@ fn assert_front_signature(
     origin: BgCachedSliceOrigin,
     pixel_index: u8,
 ) {
-    let front_cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+    let front_cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(0)
+        .expect("BG FIFO cached slot must exist")
         .expect("the traced startup slice should still front the FIFO");
     assert_eq!(ppu.line_dot, line_dot);
     assert_eq!(

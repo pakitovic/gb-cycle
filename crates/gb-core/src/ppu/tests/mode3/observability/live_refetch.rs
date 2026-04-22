@@ -6,8 +6,8 @@ fn visible_fifo_second_startup_tile_marks_live_tilemap_refetch_on_lcdc3_write() 
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
     ppu.bg_pipeline_state.fifo.push_back(0);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 origin: BgCachedSliceOrigin::StartupContinuation(
@@ -25,7 +25,11 @@ fn visible_fifo_second_startup_tile_marks_live_tilemap_refetch_on_lcdc3_write() 
 
     ppu.write_register(0xFF40, 0x99);
 
-    let cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+    let cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(0)
+        .expect("BG FIFO cached slot must exist")
         .expect("visible FIFO pixel should keep cached slice metadata");
     assert!(cached.cached.needs_live_tilemap_refetch);
 }
@@ -36,8 +40,8 @@ fn visible_fifo_third_startup_tile_marks_live_tilemap_refetch_on_lcdc3_write() {
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
     ppu.bg_pipeline_state.fifo.push_back(0);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 origin: BgCachedSliceOrigin::StartupContinuation(
@@ -55,7 +59,11 @@ fn visible_fifo_third_startup_tile_marks_live_tilemap_refetch_on_lcdc3_write() {
 
     ppu.write_register(0xFF40, 0x99);
 
-    let cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+    let cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(0)
+        .expect("BG FIFO cached slot must exist")
         .expect("visible FIFO pixel should keep cached slice metadata");
     assert!(cached.cached.needs_live_tilemap_refetch);
 }
@@ -73,8 +81,8 @@ fn visible_fifo_visible_output_recomputes_marked_second_tilemap_pixel_on_demand(
     ppu.bg_pipeline_state.visible_pixels_output = 0;
     ppu.bg_pipeline_state.fifo.push_back(0);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 origin: BgCachedSliceOrigin::StartupContinuation(
@@ -112,8 +120,8 @@ fn visible_fifo_visible_output_recomputes_marked_tilemap_pixel_on_demand() {
     ppu.bg_pipeline_state.visible_pixels_output = 0;
     ppu.bg_pipeline_state.fifo.push_back(0);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 origin: BgCachedSliceOrigin::StartupContinuation(

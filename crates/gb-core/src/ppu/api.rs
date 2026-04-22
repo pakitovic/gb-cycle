@@ -796,9 +796,8 @@ impl Ppu {
             bg_fifo_pixels: self.bg_pipeline_state.fifo.iter().copied().collect(),
             bg_fifo_cached_pixels: self
                 .bg_pipeline_state
-                .fifo_cached_pixels
-                .iter()
-                .copied()
+                .fifo
+                .cached_slots()
                 .map(snapshot_bg_fifo_cached_pixel)
                 .collect(),
             bg_startup_source_state: snapshot_bg_startup_source_state(
@@ -1103,13 +1102,7 @@ impl Ppu {
     }
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
-        let bg_fifo_front_cached = self
-            .bg_pipeline_state
-            .fifo_cached_pixels
-            .iter()
-            .flatten()
-            .next()
-            .copied();
+        let bg_fifo_front_cached = self.bg_pipeline_state.fifo.first_cached();
         let current_transfer = self.current_transfer();
         let current_transfer_plan = current_transfer.map(Mode3CurrentTransfer::service_plan);
         format!(

@@ -1941,8 +1941,8 @@ fn window_visible_fifo_marks_current_tail_before_window_push_on_lcdc6_change() {
     let mut pipeline = BgPipelineState::default();
     for pixel_index in [5, 6, 7, 0, 1] {
         pipeline
-            .fifo_cached_pixels
-            .push_back(Some(BgFifoPixelCached::new(
+            .fifo
+            .push_back_cached_slot(Some(BgFifoPixelCached::new(
                 BgCachedSlice {
                     source: PpuBgFetcherSource::Window,
                     tile_map_address: if pixel_index >= 5 { 0x1800 } else { 0x1801 },
@@ -1962,11 +1962,7 @@ fn window_visible_fifo_marks_current_tail_before_window_push_on_lcdc6_change() {
         24,
     );
 
-    let cached = pipeline
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let cached = pipeline.fifo.cached_pixels().collect::<Vec<_>>();
     assert!(
         cached
             .iter()
@@ -1984,8 +1980,8 @@ fn window_visible_fifo_latches_the_previous_tilemap_for_the_first_window_tile() 
     let mut pipeline = BgPipelineState::default();
     for pixel_index in 0..BG_TILE_WIDTH {
         pipeline
-            .fifo_cached_pixels
-            .push_back(Some(BgFifoPixelCached::new(
+            .fifo
+            .push_back_cached_slot(Some(BgFifoPixelCached::new(
                 BgCachedSlice {
                     source: PpuBgFetcherSource::Window,
                     fetch_x: 0,
@@ -2006,11 +2002,7 @@ fn window_visible_fifo_latches_the_previous_tilemap_for_the_first_window_tile() 
         64,
     );
 
-    let cached = pipeline
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let cached = pipeline.fifo.cached_pixels().collect::<Vec<_>>();
     assert!(cached.iter().all(|cached| {
         cached
             .cached
@@ -2029,8 +2021,8 @@ fn window_visible_fifo_marks_the_current_tail_during_window_push_on_lcdc6_change
     let mut pipeline = BgPipelineState::default();
     for pixel_index in [5, 6, 7, 0, 1] {
         pipeline
-            .fifo_cached_pixels
-            .push_back(Some(BgFifoPixelCached::new(
+            .fifo
+            .push_back_cached_slot(Some(BgFifoPixelCached::new(
                 BgCachedSlice {
                     source: PpuBgFetcherSource::Window,
                     tile_map_address: if pixel_index >= 5 { 0x1800 } else { 0x1801 },
@@ -2050,11 +2042,7 @@ fn window_visible_fifo_marks_the_current_tail_during_window_push_on_lcdc6_change
         24,
     );
 
-    let cached = pipeline
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let cached = pipeline.fifo.cached_pixels().collect::<Vec<_>>();
     assert!(
         cached
             .iter()
@@ -2072,8 +2060,8 @@ fn window_visible_fifo_preserves_row1_current_tail_pixel_on_second_lcdc6_change(
     let mut pipeline = BgPipelineState::default();
     for pixel_index in 1..=7 {
         pipeline
-            .fifo_cached_pixels
-            .push_back(Some(BgFifoPixelCached::new(
+            .fifo
+            .push_back_cached_slot(Some(BgFifoPixelCached::new(
                 BgCachedSlice {
                     source: PpuBgFetcherSource::Window,
                     tile_map_address: 0x1C60,
@@ -2094,11 +2082,7 @@ fn window_visible_fifo_preserves_row1_current_tail_pixel_on_second_lcdc6_change(
         1,
     );
 
-    let cached = pipeline
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let cached = pipeline.fifo.cached_pixels().collect::<Vec<_>>();
     assert!(!cached[0].cached.needs_live_tilemap_refetch);
     assert!(
         cached[1..]
@@ -2117,8 +2101,8 @@ fn window_visible_fifo_keeps_the_current_window_tiledata_after_lcdc4_change() {
     let mut pipeline = BgPipelineState::default();
     for pixel_index in 1..=7 {
         pipeline
-            .fifo_cached_pixels
-            .push_back(Some(BgFifoPixelCached::new(
+            .fifo
+            .push_back_cached_slot(Some(BgFifoPixelCached::new(
                 BgCachedSlice {
                     source: PpuBgFetcherSource::Window,
                     fetch_x: 0,
@@ -2141,11 +2125,7 @@ fn window_visible_fifo_keeps_the_current_window_tiledata_after_lcdc4_change() {
         0,
     );
 
-    let cached = pipeline
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let cached = pipeline.fifo.cached_pixels().collect::<Vec<_>>();
     assert!(
         cached
             .iter()
@@ -2163,8 +2143,8 @@ fn window_visible_fifo_retargets_the_next_window_tiledata_after_lcdc4_change() {
     let mut pipeline = BgPipelineState::default();
     for pixel_index in [5, 6, 7, 0, 1] {
         pipeline
-            .fifo_cached_pixels
-            .push_back(Some(BgFifoPixelCached::new(
+            .fifo
+            .push_back_cached_slot(Some(BgFifoPixelCached::new(
                 BgCachedSlice {
                     source: PpuBgFetcherSource::Window,
                     fetch_x: if pixel_index >= 5 { 0 } else { 8 },
@@ -2187,11 +2167,7 @@ fn window_visible_fifo_retargets_the_next_window_tiledata_after_lcdc4_change() {
         0,
     );
 
-    let cached = pipeline
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let cached = pipeline.fifo.cached_pixels().collect::<Vec<_>>();
     assert!(
         cached[..3]
             .iter()
@@ -2267,8 +2243,8 @@ fn live_lcdc3_fifo_write_uses_the_active_window_row_after_a_same_scanline_restar
     };
     for pixel_index in [5, 6, 7, 0, 1] {
         ppu.bg_pipeline_state
-            .fifo_cached_pixels
-            .push_back(Some(BgFifoPixelCached::new(
+            .fifo
+            .push_back_cached_slot(Some(BgFifoPixelCached::new(
                 BgCachedSlice {
                     source: PpuBgFetcherSource::Window,
                     tile_map_address: if pixel_index >= 5 { 0x1800 } else { 0x1801 },
@@ -2284,9 +2260,8 @@ fn live_lcdc3_fifo_write_uses_the_active_window_row_after_a_same_scanline_restar
 
     assert!(
         ppu.bg_pipeline_state
-            .fifo_cached_pixels
-            .iter()
-            .flatten()
+            .fifo
+            .cached_pixels()
             .all(|cached| cached.cached.needs_live_tilemap_refetch)
     );
 }
@@ -2356,8 +2331,8 @@ fn dmg_lcdc4_output_override_marks_window_seam_slices() {
         ..BgPipelineState::default()
     };
     pipeline
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Window,
                 fetch_x: 0,
@@ -2390,9 +2365,9 @@ fn dmg_lcdc4_output_override_marks_window_seam_slices() {
     );
     assert_eq!(
         pipeline
-            .fifo_cached_pixels
-            .front()
-            .and_then(|cached| cached.as_ref())
+            .fifo
+            .cached_front()
+            .flatten()
             .and_then(|cached| cached
                 .cached
                 .dmg_lcdc4_previous_tiledata_select_for_output_override),
@@ -2410,8 +2385,8 @@ fn window_visible_fifo_preserves_row2_current_tail_pixel_on_second_lcdc6_change(
     let mut pipeline = BgPipelineState::default();
     for pixel_index in 1..=7 {
         pipeline
-            .fifo_cached_pixels
-            .push_back(Some(BgFifoPixelCached::new(
+            .fifo
+            .push_back_cached_slot(Some(BgFifoPixelCached::new(
                 BgCachedSlice {
                     source: PpuBgFetcherSource::Window,
                     tile_map_address: 0x1C60,
@@ -2432,11 +2407,7 @@ fn window_visible_fifo_preserves_row2_current_tail_pixel_on_second_lcdc6_change(
         2,
     );
 
-    let cached = pipeline
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let cached = pipeline.fifo.cached_pixels().collect::<Vec<_>>();
     assert!(cached[0].cached.needs_live_tilemap_refetch);
     assert!(!cached[1].cached.needs_live_tilemap_refetch);
     assert!(
@@ -2921,9 +2892,9 @@ fn startup_scy_latch_marks_alignment_fifo_push_and_fill_cached_slices() {
 
     let fifo_cached = ppu
         .bg_pipeline_state
-        .fifo_cached_pixels
-        .front()
-        .and_then(Option::as_ref)
+        .fifo
+        .cached_front()
+        .flatten()
         .expect("startup alignment cached pixel should remain queued")
         .cached;
     assert!(fifo_cached.needs_live_tile_data_refetch);

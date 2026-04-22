@@ -1550,9 +1550,8 @@ impl Ppu {
             )
             && self
                 .bg_pipeline_state
-                .fifo_cached_pixels
-                .front()
-                .copied()
+                .fifo
+                .cached_front()
                 .flatten()
                 .is_some_and(|cached| {
                     matches!(
@@ -1588,9 +1587,8 @@ impl Ppu {
             )
             && self
                 .bg_pipeline_state
-                .fifo_cached_pixels
-                .front()
-                .copied()
+                .fifo
+                .cached_front()
                 .flatten()
                 .is_some_and(|cached| {
                     matches!(
