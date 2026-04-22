@@ -22,7 +22,7 @@ This phase closes cartridge-local persistence only; whole-machine save states re
 
 #### Deliverables
 
-- standard MBC1 support with explicit wiring validation, immediate access-ordered bank effects, and reserved future MBC1M variant space
+- standard MBC1 support with explicit wiring validation, immediate access-ordered bank effects, and a distinct MBC1M variant path
 - standard MBC2 support with address-bit-`8` control decode, internal `512 x 4-bit` RAM, echo aliasing, and explicit header validation
 - banking and RTC support for MBC3
 - banking support for MBC5
@@ -178,6 +178,8 @@ Within the current DMG-only but CGB-ready project plan, execute the special-cart
 The purpose of that split is to close the remaining DMG-relevant special-cartridge work first while keeping CGB-only specials explicit, typed, and impossible to misclassify. Before point `7` is closed, `MBC30`, `MBC7`, and `MBC6` may grow diagnostics, validation hooks, persistence shapes, or device skeletons, but they must not be counted as functionally supported runtime targets.
 
 Current status for point `2`: done in the current branch baseline. `MMM01` now loads through the boot-visible trailing menu header, starts in explicit unmapped mode on the last `32 KiB` of the ROM, and supports mapped-mode ROM / RAM banking through a dedicated cartridge device instead of falling back to `MBC1`. The current implementation has already been validated against the commercial `Momotarou Collection 2 (Japan) (SGB Enhanced)` MMM01 cartridge path, including menu startup and both included games.
+
+Current status for point `3`: in progress in the current branch baseline. `MBC1M` now enters through an explicit repeated-subheader signature path in strict mode for `1 MiB` multicarts, and the runtime path already covers both the no-RAM baseline and the fixed-`8 KiB` RAM commercial shape used by `Momotarou Collection`. The remaining step is end-to-end commercial validation of the menu-to-game transition on that title before point `3` can be called fully done.
 
 #### Cartridge-persistence sequencing inside Phase 6
 

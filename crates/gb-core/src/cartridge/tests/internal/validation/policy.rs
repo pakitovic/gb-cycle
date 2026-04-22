@@ -20,24 +20,25 @@ fn validation_helpers_cover_ignore_and_quiet_policy_paths() {
     let mut mbc1m_rom = build_banked_mbc1_rom_with_type(0x01, 0x05, 0x00);
     mark_mbc1_multicart_subheaders(&mut mbc1m_rom);
     let mbc1m_header = CartridgeHeader::parse(&mbc1m_rom).expect("header should parse");
-    let quiet_experimental = CompatibilityPolicy {
+    let quiet_signature_policy = CompatibilityPolicy {
         execution_mode: ExecutionMode::Permissive,
         validation_policy: ValidationPolicy::Warn,
-        heuristic_policy: HeuristicPolicy::AllowExperimental,
+        heuristic_policy: HeuristicPolicy::Disabled,
         override_policy: OverridePolicy::default(),
         diagnostic_policy: DiagnosticPolicy::Quiet,
     };
-    let classification = classify_loaded_cartridge(&mbc1m_header, &mbc1m_rom, &quiet_experimental);
+    let classification =
+        classify_loaded_cartridge(&mbc1m_header, &mbc1m_rom, &quiet_signature_policy);
 
     diagnostics.clear();
     let layout = validate_mbc1(
         &mbc1m_header,
         mbc1m_rom.len(),
-        &quiet_experimental,
+        &quiet_signature_policy,
         &classification,
         &mut diagnostics,
     )
-    .expect("quiet policy should admit MBC1M without adding warnings");
+    .expect("quiet policy should admit MBC1M without adding diagnostics");
 
     assert_eq!(classification.detected_name(), "MBC1M");
     assert_eq!(
@@ -74,24 +75,27 @@ fn private_validation_helpers_cover_remaining_policy_and_mapper_branches() {
     }));
 
     diagnostics.clear();
-    let mut mbc1m_with_ram_rom = build_banked_mbc1_rom_with_type(0x01, 0x05, 0x02);
-    mark_mbc1_multicart_subheaders(&mut mbc1m_with_ram_rom);
+    let mut mbc1m_with_ram_rom = build_banked_mbc1_rom_with_type(0x03, 0x05, 0x02);
+    mark_mbc1_multicart_subheaders_in_banks(&mut mbc1m_with_ram_rom, &[0x10, 0x20]);
     let mbc1m_with_ram_header =
         CartridgeHeader::parse(&mbc1m_with_ram_rom).expect("header should parse");
-    let mbc1m_with_ram_classification = supported(0x01, "MBC1M", SupportedCartridgeFamily::Mbc1);
-    let mbc1m_with_ram_error = validate_mbc1(
+    let mbc1m_with_ram_classification = supported(0x03, "MBC1M", SupportedCartridgeFamily::Mbc1);
+    let mbc1m_with_ram_layout = validate_mbc1(
         &mbc1m_with_ram_header,
         mbc1m_with_ram_rom.len(),
         &experimental,
         &mbc1m_with_ram_classification,
         &mut diagnostics,
     )
-    .expect_err("MBC1M with RAM should remain rejected");
-    assert!(matches!(
-        mbc1m_with_ram_error,
-        CartridgeLoadError::Rejected { reason, .. }
-            if reason.contains("no-RAM 1 MiB multicart baseline")
-    ));
+    .expect("MBC1M with fixed 8 KiB RAM should validate");
+    assert_eq!(
+        mbc1m_with_ram_layout,
+        Mbc1Layout {
+            wiring: Mbc1Wiring::LargeRom,
+            variant: Mbc1Variant::Mbc1M,
+            ram_len: 8 * 1024,
+        }
+    );
 
     diagnostics.clear();
     let mbc1_no_ram_with_sram_header =

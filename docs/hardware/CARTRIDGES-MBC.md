@@ -207,13 +207,13 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The current repo baseline now includes a dedicated `MMM01` cartridge device with explicit `unmapped` versus `mapped` mode, menu-startup mapping to the last `32 KiB` of the ROM, dedicated game-select masks, and mapper-local ROM / RAM banking instead of routing MMM01 through ordinary `MBC1`.
 - In the current baseline, the runtime path already covers the released non-CGB commercial shape: dedicated multicart selection, explicit ROM-bank mask locking, RAM-bank mask locking, mapped-mode write restrictions for the extended bits, and battery-backed RAM persistence when the header declares it.
 - The current implementation has commercial validation through `Momotarou Collection 2 (Japan) (SGB Enhanced)`: the MMM01 menu boots correctly and both included games run correctly after the menu-to-game transition.
-- Future `MBC1M` support should also be a distinct typed variant rather than being mixed into standard `MBC1` banking formulas with ad hoc conditionals.
-- `MBC1M` should classify as `PlannedVariant`.
-- `MBC1M` is still a near-family variant of `MBC1`, but it is not interchangeable with standard `MBC1`; the factory should reserve explicit variant space for it.
+- `MBC1M` should also be a distinct typed variant rather than being mixed into standard `MBC1` banking formulas with ad hoc conditionals.
+- `MBC1M` now enters through an explicit supported `MBC1`-family signature path on `1 MiB` multicarts with repeated valid subheaders in banks such as `0x10`, `0x20`, and `0x30`, instead of being left as a future-only planned variant.
+- `MBC1M` is still a near-family variant of `MBC1`, but it is not interchangeable with standard `MBC1`; the factory should reserve explicit variant space for it even though the current baseline now instantiates that variant.
 - Treat `M161` as a separate multicart special case rather than as `NoMbc` or `MBC1`.
 - Until implemented, `M161` should classify as `DocumentedButUnsupported` or an equivalent multicart-special bucket because its whole-`32 KiB` switching and "only one bankswitch until power-off" rule are not compatible with standard MBC assumptions.
-- `Strict` and `Permissive` must not enable multicart heuristics for `MMM01`, `MBC1M`, `EMS`, or `Bung`.
-- `Experimental` may enable explicit multicart heuristics, but diagnostics must state that the classification did not come from a standard header-backed supported path.
+- `Strict` and `Permissive` must not enable broad multicart heuristics for `EMS` or `Bung`, but they may now use the explicit `MBC1M` subheader signature path because real commercial multicarts rely on it.
+- `Experimental` may still enable the broader heuristic paths, but diagnostics must state that those classifications did not come from a standard header-backed or signature-backed supported path.
 
 ### HuC1 and HuC-3
 
@@ -348,8 +348,8 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Small ROMs of `256 KiB` or less must still preserve the documented exception where the high region can end up on bank `0` after real-size masking even though the raw low register went through the `0 -> 1` translation.
 - In mode `0`, or on cartridges too small to use the secondary register, `0x0000-0x3FFF` reads should resolve to ROM bank `0`.
 - On large-ROM cartridges in mode `1`, `0x0000-0x3FFF` must be able to resolve the secondary-register-controlled low-region banks documented by Pan Docs.
-- Keep standard MBC1 and future MBC1M formulas distinct rather than mixing them behind ad hoc conditionals.
-- In `Experimental`, an explicit MBC1 multicart heuristic may promote a `1 MiB` no-RAM `0x01` image into `Mbc1Variant::Mbc1M` when repeated subheaders such as Nintendo-logo copies appear in banks `0x10`, `0x20`, and `0x30`; `Strict` and `Permissive` must still keep that heuristic disabled by default.
+- Keep standard MBC1 and MBC1M formulas distinct rather than mixing them behind ad hoc conditionals.
+- The current baseline may promote a `1 MiB` `0x01` / `0x02` / `0x03` MBC1 image into `Mbc1Variant::Mbc1M` through an explicit repeated-subheader signature path when commercial multicart structure is present; broad heuristic detection must still remain disabled by default in `Strict` and `Permissive`.
 - For `Mbc1Variant::Mbc1M`, the secondary register targets ROM bank bits `4-5` instead of `5-6`, while the primary register contributes only bits `0-3` after the documented raw-`5`-bit `0 -> 1` translation. That means mode `1` low-bank selection resolves to `0x00`, `0x10`, `0x20`, or `0x30`, and the high window can still expose bank `0` when the raw primary register is `0x10`.
 - The bus must not implement any MBC1 bank math; all of it belongs inside the cartridge device.
 - `0xA000-0xBFFF` should delegate to cartridge-owned external RAM only when the MBC1 configuration actually provides RAM.
@@ -362,7 +362,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - A concrete `Mbc1Cartridge` implementing `CartridgeDevice` is the intended implementation shape for this repo.
 - It should contain at least `rom`, optional `ram`, `has_battery`, `ram_enabled`, `rom_bank_low5`, `secondary_bank`, `banking_mode`, header-derived size and capability metadata, and explicit wiring / variant metadata.
 - Prefer explicit helpers such as `effective_low_region_rom_bank()`, `effective_high_region_rom_bank()`, and `effective_ram_bank()` so raw register state, wiring decisions, and final masked bank numbers stay inspectable.
-- Reserve an explicit variant or flag for future MBC1M support instead of letting the first standard implementation accrete scattered special cases.
+- Keep an explicit variant or flag for MBC1M support instead of letting the standard `MBC1` implementation accrete scattered special cases.
 
 ## MBC2 baseline
 
@@ -616,7 +616,7 @@ Priority order:
 - Keep active-ROM-bank selection, RAM enable, RAM banking, RTC mapping, and any bank-wrap quirks inside cartridge/MBC implementations rather than generic bus region logic.
 - Keep header validation policy explicit and centralized rather than hiding it inside individual mapper constructors.
 - For MBC1, keep raw register fields, resolved effective bank helpers, and validated wiring / variant metadata as separate layers instead of one opaque "current bank" state blob.
-- For MBC1, derive an explicit standard-versus-large-ROM wiring classification, plus a reserved future MBC1M variant, from validated cartridge metadata instead of branching ad hoc during each access.
+- For MBC1, derive an explicit standard-versus-large-ROM wiring classification, plus an explicit MBC1M variant, from validated cartridge metadata instead of branching ad hoc during each access.
 - In the current baseline, `MBC1` already exists as a dedicated cartridge
   device with explicit raw register fields and immediate control-write
   visibility on the shared T-cycle timeline; the remaining Phase `6` work is to
@@ -638,11 +638,11 @@ Priority order:
   runtime-grade: one trusted oracle comparison for the documented bank-selection
   edge cases, then later persistence once the phase reaches cartridge-owned save
   payloads.
-- The current baseline now includes one explicit experimental MBC1M path for
-  `1 MiB` no-RAM multicarts identified through that heuristic; it is suitable
-  for research coverage such as `mooneye` multicart ROMs, but it remains
-  non-oracle until a trusted external reference closes the heuristic and banking
-  behavior.
+- The current baseline now includes one explicit supported MBC1M path for
+  `1 MiB` multicarts identified through the repeated-subheader signature shape,
+  covering both the no-RAM baseline and the fixed-`8 KiB` RAM commercial shape
+  used by `Momotarou Collection`; broader heuristic promotion still remains
+  outside the default strict/permissive path.
 - Keep disabled external-RAM open-bus behavior explicit and configurable enough that tests can pin the chosen policy.
 - For MBC2, keep address-bit-`8` control decode, raw `rom_bank_low4`, internal nibble RAM organization, effective ROM-bank helpers, and explicit disabled-RAM / high-nibble readback policies as separate layers instead of hiding them in generic byte-RAM helpers.
 - For MBC2, treat `0x0149` as validation metadata only; runtime RAM capacity comes from the mapper family itself rather than from the ordinary external-RAM table.
@@ -805,7 +805,7 @@ Priority order:
 - applying the MBC1 `0 -> 1` rule after final ROM-size masking instead of on the raw `5`-bit primary register field
 - assuming bank `0` can never appear in `0x4000-0x7FFF` on small MBC1 ROMs
 - treating all MBC1 cartridges as if the secondary register always means the same thing regardless of wiring and banking mode
-- folding future MBC1M behavior into standard MBC1 bank math with scattered conditionals
+- folding MBC1M behavior into standard MBC1 bank math with scattered conditionals
 - modeling MBC2 as "MBC1 with fewer bits" instead of as its own mapper with address-bit-`8` control decode
 - splitting MBC2 control writes into arbitrary `0x0000-0x1FFF` / `0x2000-0x3FFF` subranges instead of decoding address bit `8`
 - modeling MBC2 RAM as ordinary byte-wide `8 KiB` SRAM instead of one `512 x 4-bit` internal array with echoes

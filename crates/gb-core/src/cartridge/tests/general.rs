@@ -116,7 +116,7 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
 
     let strict_mbc1m =
         classify_loaded_cartridge(&mbc1m_header, &mbc1m_rom, &CompatibilityPolicy::strict());
-    assert_eq!(strict_mbc1m.detected_name(), "MBC1");
+    assert_eq!(strict_mbc1m.detected_name(), "MBC1M");
     assert_eq!(
         strict_mbc1m.selection(),
         CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc1)

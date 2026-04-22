@@ -108,6 +108,10 @@ pub(in crate::cartridge) fn classify_loaded_cartridge(
     rom_bytes: &[u8],
     compatibility: &crate::model::CompatibilityPolicy,
 ) -> CartridgeClassification {
+    if let Some(classification) = classify_supported_signature_variant(header, rom_bytes) {
+        return classification;
+    }
+
     if let Some(classification) = classify_planned_variant(header) {
         return classification;
     }
@@ -123,6 +127,22 @@ pub(in crate::cartridge) fn classify_loaded_cartridge(
     }
 
     CartridgeClassification::classify(header.cartridge_type)
+}
+
+fn classify_supported_signature_variant(
+    header: &CartridgeHeader,
+    rom_bytes: &[u8],
+) -> Option<CartridgeClassification> {
+    if is_mbc1m_multicart_signature(header, rom_bytes) {
+        return Some(supported_with_reason(
+            header.cartridge_type,
+            "MBC1M",
+            SupportedCartridgeFamily::Mbc1,
+            "MBC1 multicart classification came from the explicit subheader signature path",
+        ));
+    }
+
+    None
 }
 
 fn classify_planned_variant(header: &CartridgeHeader) -> Option<CartridgeClassification> {
@@ -157,15 +177,6 @@ fn classify_experimental_heuristic(
     header: &CartridgeHeader,
     rom_bytes: &[u8],
 ) -> Option<CartridgeClassification> {
-    if is_mbc1m_multicart_signature(header, rom_bytes) {
-        return Some(supported_with_reason(
-            header.cartridge_type,
-            "MBC1M",
-            SupportedCartridgeFamily::Mbc1,
-            "MBC1 multicart classification came from an explicit experimental heuristic path",
-        ));
-    }
-
     if header.cartridge_type == 0xBE {
         return Some(unsupported(
             header.cartridge_type,
@@ -210,21 +221,22 @@ pub(in crate::cartridge) fn is_mbc1m_multicart_signature(
     header: &CartridgeHeader,
     rom_bytes: &[u8],
 ) -> bool {
-    if header.cartridge_type != 0x01 {
+    if !matches!(header.cartridge_type, 0x01..=0x03) {
         return false;
     }
     if header.rom_size.decoded_bytes != Some(1024 * 1024) || rom_bytes.len() != 1024 * 1024 {
         return false;
     }
-    if header.ram_size.raw_code != 0x00 {
-        return false;
-    }
 
-    [0x10usize, 0x20, 0x30].into_iter().all(|bank| {
-        let start = bank * 0x4000 + NINTENDO_LOGO_START;
-        let end = start + NINTENDO_LOGO_LEN;
-        rom_bytes.get(start..end) == Some(header.nintendo_logo.as_slice())
-    })
+    [0x10usize, 0x20, 0x30]
+        .into_iter()
+        .filter(|bank| {
+            let start = bank * 0x4000 + NINTENDO_LOGO_START;
+            let end = start + NINTENDO_LOGO_LEN;
+            rom_bytes.get(start..end) == Some(header.nintendo_logo.as_slice())
+        })
+        .count()
+        >= 2
 }
 
 fn is_m161_multicart_signature(header: &CartridgeHeader, rom_bytes: &[u8]) -> bool {

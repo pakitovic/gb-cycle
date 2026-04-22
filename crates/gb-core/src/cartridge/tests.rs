@@ -122,13 +122,17 @@ fn build_m161_signature_rom() -> Vec<u8> {
     rom
 }
 
-fn mark_mbc1_multicart_subheaders(rom: &mut [u8]) {
+fn mark_mbc1_multicart_subheaders_in_banks(rom: &mut [u8], banks: &[usize]) {
     let logo = rom[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN].to_vec();
 
-    for bank in [0x10usize, 0x20, 0x30] {
+    for &bank in banks {
         let start = bank * 0x4000 + NINTENDO_LOGO_START;
         rom[start..start + NINTENDO_LOGO_LEN].copy_from_slice(&logo);
     }
+}
+
+fn mark_mbc1_multicart_subheaders(rom: &mut [u8]) {
+    mark_mbc1_multicart_subheaders_in_banks(rom, &[0x10, 0x20, 0x30]);
 }
 
 fn build_banked_mbc2_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::model::{CompatibilityPolicy, DiagnosticPolicy, ValidationPolicy};
+use crate::model::{CompatibilityPolicy, ValidationPolicy};
 
 /// Bundles the parameters shared by every mapper validator, providing
 /// helpers that eliminate the repeated `CartridgeLoadError::Rejected`
@@ -200,27 +200,22 @@ pub(in crate::cartridge) fn validate_mbc1(
     }
 
     if classification.detected_name() == "MBC1M" {
-        if header.ram_size.raw_code != 0x00 {
-            return Err(ctx.reject(format!(
-                "{} currently only supports the no-RAM 1 MiB multicart baseline",
-                ctx.name()
-            )));
-        }
+        let has_ram = matches!(classification.raw_type(), 0x02 | 0x03);
+        let expected_ram_code = if has_ram { 0x02 } else { 0x00 };
 
-        if compatibility.diagnostic_policy != DiagnosticPolicy::Quiet {
-            ctx.diagnostics.push(CartridgeDiagnostic {
-                severity: CartridgeDiagnosticSeverity::Warning,
-                message: format!(
-                    "{} banking was enabled through an explicit experimental multicart heuristic and remains non-oracle",
-                    ctx.name()
-                ),
-            });
+        if header.ram_size.raw_code != expected_ram_code {
+            let capability_label = if has_ram { "fixed 8 KiB RAM" } else { "no RAM" };
+            return Err(ctx.reject(format!(
+                "{} currently only supports the 1 MiB multicart baseline with {}",
+                ctx.name(),
+                capability_label
+            )));
         }
 
         return Ok(Mbc1Layout {
             wiring: Mbc1Wiring::LargeRom,
             variant: Mbc1Variant::Mbc1M,
-            ram_len: 0,
+            ram_len: if has_ram { 8 * 1024 } else { 0 },
         });
     }
 
