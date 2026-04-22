@@ -2,6 +2,7 @@ use crate::bus::{BusMaster, OamBusView, VramBusView};
 use crate::model::ConsoleModel;
 use crate::scheduler::{CycleContext, InterruptSource};
 use std::collections::VecDeque;
+use std::ops::{Deref, DerefMut};
 
 mod api;
 mod control;
@@ -327,43 +328,11 @@ pub struct PpuStartupState {
     pub obj_palette_read_policy: DmgObjPaletteReadPolicy,
 }
 
+#[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ppu {
-    console_model: ConsoleModel,
-    status: PpuStatus,
-    lcdc: u8,
-    stat_interrupt_enable: u8,
-    lcd_state: PpuLcdState,
-    lcd_enable_pending_delay_tcycles: u8,
+pub struct PpuPanelState {
     visible_output: PpuVisibleOutputState,
-    scy: u8,
-    scx: u8,
-    ly: u8,
-    line_dot: u16,
-    lcd_restart_phase: PpuLcdRestartPhase,
-    lyc: u8,
-    bgp: u8,
-    obp0: Option<u8>,
-    obp1: Option<u8>,
-    wy: u8,
-    wx: u8,
-    obj_palette_read_policy: DmgObjPaletteReadPolicy,
-    visible_registers: PpuVisibleRegisters,
-    pipeline_registers: PpuVisibleRegisters,
     dmg_panel_live_write_state: DmgPanelLiveWriteState,
-    last_unsigned_tile_data_fetch: u8,
-    last_unsigned_tile_data_low_fetch: u8,
-    last_unsigned_tile_data_high_fetch: u8,
-    startup_mode_latch: Option<PpuAccessMode>,
-    stat_state: StatState,
-    pending_interrupts: u8,
-    blank_frame_active: bool,
-    system_stop_active: bool,
-    oam_corruption_controller: OamCorruptionController,
-    mode2_scan_state: Mode2ScanState,
-    window_state: WindowState,
-    bg_pipeline_state: BgPipelineState,
-    obj_pipeline_state: ObjPipelineState,
     current_scanline_pixels: [u8; SCREEN_WIDTH],
     current_scanline_bg_pixels: [u8; SCREEN_WIDTH],
     current_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
@@ -380,6 +349,132 @@ pub struct Ppu {
     framebuffer_bgwin_panel_shades: Vec<u8>,
     framebuffer_backdrop_panel_shades: Vec<u8>,
     framebuffer_bgwin_layer_sources: Vec<PpuFramebufferLayerSource>,
+}
+
+impl Default for PpuPanelState {
+    fn default() -> Self {
+        Self {
+            visible_output: PpuVisibleOutputState::ForcedBlank,
+            dmg_panel_live_write_state: DmgPanelLiveWriteState::default(),
+            current_scanline_pixels: [0; SCREEN_WIDTH],
+            current_scanline_bg_pixels: [0; SCREEN_WIDTH],
+            current_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            current_scanline_bg_dot_contexts: [None; SCREEN_WIDTH],
+            current_scanline_dmg_bg_forced_white: [false; SCREEN_WIDTH],
+            previous_scanline_mixed_pixels: [MixedPixel::background(0); SCREEN_WIDTH],
+            previous_scanline_dmg_bg_forced_white: [false; SCREEN_WIDTH],
+            previous_scanline_ly: None,
+            pending_dmg_window_lcdc4_output_repaint: None,
+            framebuffer: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_layer_sources: vec![
+                PpuFramebufferLayerSource::Backdrop;
+                FRAMEBUFFER_PIXELS
+            ],
+            framebuffer_bgwin_colors: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_bgwin_forced_white: vec![false; FRAMEBUFFER_PIXELS],
+            framebuffer_bgwin_panel_shades: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_backdrop_panel_shades: vec![0; FRAMEBUFFER_PIXELS],
+            framebuffer_bgwin_layer_sources: vec![
+                PpuFramebufferLayerSource::Backdrop;
+                FRAMEBUFFER_PIXELS
+            ],
+        }
+    }
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PpuRuntimeState {
+    visible_registers: PpuVisibleRegisters,
+    pipeline_registers: PpuVisibleRegisters,
+    startup_mode_latch: Option<PpuAccessMode>,
+    stat_state: StatState,
+    pending_interrupts: u8,
+    blank_frame_active: bool,
+    system_stop_active: bool,
+    oam_corruption_controller: OamCorruptionController,
+    mode2_scan_state: Mode2ScanState,
+    window_state: WindowState,
+    bg_pipeline_state: BgPipelineState,
+    obj_pipeline_state: ObjPipelineState,
+    last_unsigned_tile_data_fetch: u8,
+    last_unsigned_tile_data_low_fetch: u8,
+    last_unsigned_tile_data_high_fetch: u8,
+    panel: PpuPanelState,
+}
+
+impl Default for PpuRuntimeState {
+    fn default() -> Self {
+        Self {
+            visible_registers: PpuVisibleRegisters::default(),
+            pipeline_registers: PpuVisibleRegisters::default(),
+            startup_mode_latch: None,
+            stat_state: StatState::default(),
+            pending_interrupts: 0,
+            blank_frame_active: false,
+            system_stop_active: false,
+            oam_corruption_controller: OamCorruptionController,
+            mode2_scan_state: Mode2ScanState::default(),
+            window_state: WindowState::default(),
+            bg_pipeline_state: BgPipelineState::default(),
+            obj_pipeline_state: ObjPipelineState::default(),
+            last_unsigned_tile_data_fetch: 0,
+            last_unsigned_tile_data_low_fetch: 0,
+            last_unsigned_tile_data_high_fetch: 0,
+            panel: PpuPanelState::default(),
+        }
+    }
+}
+
+impl Deref for PpuRuntimeState {
+    type Target = PpuPanelState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.panel
+    }
+}
+
+impl DerefMut for PpuRuntimeState {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.panel
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ppu {
+    console_model: ConsoleModel,
+    status: PpuStatus,
+    lcdc: u8,
+    stat_interrupt_enable: u8,
+    lcd_state: PpuLcdState,
+    lcd_enable_pending_delay_tcycles: u8,
+    scy: u8,
+    scx: u8,
+    ly: u8,
+    line_dot: u16,
+    lcd_restart_phase: PpuLcdRestartPhase,
+    lyc: u8,
+    bgp: u8,
+    obp0: Option<u8>,
+    obp1: Option<u8>,
+    wy: u8,
+    wx: u8,
+    obj_palette_read_policy: DmgObjPaletteReadPolicy,
+    runtime: PpuRuntimeState,
+}
+
+impl Deref for Ppu {
+    type Target = PpuRuntimeState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.runtime
+    }
+}
+
+impl DerefMut for Ppu {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.runtime
+    }
 }
 
 #[cfg(test)]

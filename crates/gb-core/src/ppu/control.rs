@@ -13,12 +13,85 @@ struct DmgPanelRepaintContext {
     historical_bgp: u8,
 }
 
+impl PpuPanelState {
+    pub(super) fn clear_runtime_scanline_state(&mut self) {
+        self.current_scanline_pixels.fill(0);
+        self.current_scanline_bg_pixels.fill(0);
+        self.current_scanline_mixed_pixels
+            .fill(MixedPixel::background(0));
+        self.current_scanline_bg_dot_contexts.fill(None);
+        self.current_scanline_dmg_bg_forced_white.fill(false);
+        self.pending_dmg_window_lcdc4_output_repaint = None;
+    }
+
+    pub(super) fn clear_visible_buffers(&mut self) {
+        self.current_scanline_bg_dot_contexts.fill(None);
+        self.current_scanline_pixels.fill(0);
+        self.framebuffer.fill(0);
+        self.framebuffer_layer_sources
+            .fill(PpuFramebufferLayerSource::Backdrop);
+        self.framebuffer_bgwin_colors.fill(0);
+        self.framebuffer_bgwin_forced_white.fill(false);
+        self.framebuffer_bgwin_panel_shades.fill(0);
+        self.framebuffer_backdrop_panel_shades.fill(0);
+        self.framebuffer_bgwin_layer_sources
+            .fill(PpuFramebufferLayerSource::Backdrop);
+        self.pending_dmg_window_lcdc4_output_repaint = None;
+    }
+
+    pub(super) fn reset_for_startup(&mut self, bgp: u8) {
+        self.dmg_panel_live_write_state.reset_for_startup(bgp);
+        self.current_scanline_pixels.fill(0);
+        self.current_scanline_bg_pixels.fill(0);
+        self.current_scanline_mixed_pixels
+            .fill(MixedPixel::background(0));
+        self.current_scanline_bg_dot_contexts.fill(None);
+        self.current_scanline_dmg_bg_forced_white.fill(false);
+        self.previous_scanline_mixed_pixels
+            .fill(MixedPixel::background(0));
+        self.previous_scanline_dmg_bg_forced_white.fill(false);
+        self.previous_scanline_ly = None;
+        self.pending_dmg_window_lcdc4_output_repaint = None;
+        self.framebuffer.fill(0);
+    }
+
+    pub(super) fn reset_for_scanline_start(&mut self, bgp: u8) {
+        self.dmg_panel_live_write_state
+            .reset_for_scanline_start(bgp);
+        self.clear_runtime_scanline_state();
+    }
+}
+
+impl PpuRuntimeState {
+    pub(super) fn reset_runtime_pipeline_state(&mut self) {
+        self.startup_mode_latch = None;
+        self.mode2_scan_state.reset();
+        self.window_state.reset();
+        self.bg_pipeline_state.reset();
+        self.obj_pipeline_state.reset();
+        self.panel.clear_runtime_scanline_state();
+    }
+
+    pub(super) fn reset_for_startup(&mut self, bgp: u8) {
+        self.startup_mode_latch = None;
+        self.pending_interrupts = 0;
+        self.blank_frame_active = false;
+        self.system_stop_active = false;
+        self.oam_corruption_controller = OamCorruptionController;
+        self.mode2_scan_state.reset();
+        self.window_state.reset();
+        self.bg_pipeline_state.reset();
+        self.obj_pipeline_state.reset();
+        self.panel.reset_for_startup(bgp);
+    }
+}
+
 impl Ppu {
-    pub(super) const fn current_window_line_counter(&self) -> u8 {
-        if self.bg_pipeline_state.window_started_this_line {
-            self.bg_pipeline_state.window_active_line_counter
+    pub(super) fn current_window_line_counter(&self) -> u8 {
+        if self.runtime.bg_pipeline_state.window_started_this_line {
+            self.runtime.bg_pipeline_state.window_active_line_counter
         } else {
-            self.window_state.window_line_counter
+            self.runtime.window_state.window_line_counter
         }
     }
 
@@ -35,8 +108,11 @@ impl Ppu {
         }
     }
 
-    pub(super) const fn mode3_register_latches(&self) -> PpuMode3RegisterLatches {
-        PpuMode3RegisterLatches::new(self.visible_registers, self.pipeline_registers)
+    pub(super) fn mode3_register_latches(&self) -> PpuMode3RegisterLatches {
+        PpuMode3RegisterLatches::new(
+            self.runtime.visible_registers,
+            self.runtime.pipeline_registers,
+        )
     }
 
     pub(super) const fn current_mode3_live_register_write_context(
@@ -49,21 +125,21 @@ impl Ppu {
         )
     }
 
-    pub(super) const fn current_mode3_live_background_refetch_context(
+    pub(super) fn current_mode3_live_background_refetch_context(
         &self,
     ) -> PpuMode3LiveBackgroundRefetchContext {
         PpuMode3LiveBackgroundRefetchContext::new(
             self.current_mmio_visible_registers(),
             self.ly,
             self.current_window_line_counter(),
-            self.last_unsigned_tile_data_low_fetch,
-            self.last_unsigned_tile_data_high_fetch,
+            self.runtime.last_unsigned_tile_data_low_fetch,
+            self.runtime.last_unsigned_tile_data_high_fetch,
         )
     }
 
     pub(super) fn set_mode3_register_latches(&mut self, latches: PpuMode3RegisterLatches) {
-        self.visible_registers = latches.visible();
-        self.pipeline_registers = latches.pipeline();
+        self.runtime.visible_registers = latches.visible();
+        self.runtime.pipeline_registers = latches.pipeline();
     }
 
     pub(super) fn reload_mode3_register_latches_from_mmio(&mut self) {
@@ -85,12 +161,12 @@ impl Ppu {
 
     #[cfg(test)]
     pub(super) fn sync_visible_registers(&mut self) {
-        self.visible_registers = self.current_mmio_visible_registers();
+        self.runtime.visible_registers = self.current_mmio_visible_registers();
     }
 
     #[cfg(test)]
     pub(super) fn sync_pipeline_registers(&mut self) {
-        self.pipeline_registers = self.visible_registers;
+        self.runtime.pipeline_registers = self.runtime.visible_registers;
     }
 
     pub(super) fn read_lcdc(&self) -> u8 {
@@ -1781,9 +1857,10 @@ impl Ppu {
         };
 
         if previous_obj_height == 16 && current_obj_height == 8 {
+            let visible_pixels_output = self.bg_pipeline_state.visible_pixels_output;
             self.dmg_panel_live_write_state
                 .lcdc2
-                .begin_active_shrink(write_index, self.bg_pipeline_state.visible_pixels_output);
+                .begin_active_shrink(write_index, visible_pixels_output);
         }
     }
 
@@ -1867,6 +1944,7 @@ impl Ppu {
         };
         let dmg_bg_forced_white = context.visible_output_driving && !bg_enabled;
         let visible_range = usize::from(start_x)..usize::from(end_x);
+        let current_scanline_bg_pixels = self.current_scanline_bg_pixels;
 
         for x in visible_range.clone() {
             match repaint {
@@ -1902,7 +1980,7 @@ impl Ppu {
                         && matches!(dot.pixel.source, MixedPixelSource::Background);
                 }
                 DmgPanelRangeRepaint::Lcdc1ObjDisable => {
-                    dot.pixel = MixedPixel::background(self.current_scanline_bg_pixels[visible_x]);
+                    dot.pixel = MixedPixel::background(current_scanline_bg_pixels[visible_x]);
                     dot.dmg_bg_forced_white = dmg_bg_forced_white;
                 }
             }
@@ -2104,36 +2182,6 @@ impl Ppu {
 
     pub(super) fn advance_lcd_restart_phase(&mut self) {
         self.lcd_restart_phase = self.lcd_restart_phase.advance(self.ly, self.line_dot);
-    }
-
-    pub(super) fn reset_runtime_pipeline_state(&mut self) {
-        self.startup_mode_latch = None;
-        self.mode2_scan_state.reset();
-        self.window_state.reset();
-        self.bg_pipeline_state.reset();
-        self.obj_pipeline_state.reset();
-        self.current_scanline_pixels.fill(0);
-        self.current_scanline_bg_pixels.fill(0);
-        self.current_scanline_mixed_pixels
-            .fill(MixedPixel::background(0));
-        self.current_scanline_bg_dot_contexts.fill(None);
-        self.current_scanline_dmg_bg_forced_white.fill(false);
-        self.pending_dmg_window_lcdc4_output_repaint = None;
-    }
-
-    pub(super) fn clear_visible_buffers(&mut self) {
-        self.current_scanline_bg_dot_contexts.fill(None);
-        self.current_scanline_pixels.fill(0);
-        self.framebuffer.fill(0);
-        self.framebuffer_layer_sources
-            .fill(PpuFramebufferLayerSource::Backdrop);
-        self.framebuffer_bgwin_colors.fill(0);
-        self.framebuffer_bgwin_forced_white.fill(false);
-        self.framebuffer_bgwin_panel_shades.fill(0);
-        self.framebuffer_backdrop_panel_shades.fill(0);
-        self.framebuffer_bgwin_layer_sources
-            .fill(PpuFramebufferLayerSource::Backdrop);
-        self.pending_dmg_window_lcdc4_output_repaint = None;
     }
 
     pub(super) fn enter_lcd_disabled_state(&mut self) {

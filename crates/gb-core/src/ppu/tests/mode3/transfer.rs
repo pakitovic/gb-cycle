@@ -79,11 +79,10 @@ fn current_bg_push_dot_ownership_distinguishes_fill_wait_and_obj_handoff_paths()
         tile_index: 0,
         attributes: 0,
     });
-    ppu.obj_pipeline_state.queue_fetch_hit(
-        0,
-        ppu.current_obj_hit_ownership(),
-        ppu.current_obj_height(),
-    );
+    let current_obj_hit_ownership = ppu.current_obj_hit_ownership();
+    let current_obj_height = ppu.current_obj_height();
+    ppu.obj_pipeline_state
+        .queue_fetch_hit(0, current_obj_hit_ownership, current_obj_height);
 
     assert_eq!(
         ppu.current_bg_push_dot_ownership(),

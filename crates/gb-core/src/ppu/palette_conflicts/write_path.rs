@@ -825,7 +825,7 @@ impl Ppu {
                     register,
                     value,
                 );
-                self.framebuffer[self.ly as usize * SCREEN_WIDTH + x] = panel_pixel;
+                self.framebuffer[row_start + x] = panel_pixel;
             }
         }
 

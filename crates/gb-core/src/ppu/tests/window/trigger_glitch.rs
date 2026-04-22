@@ -490,6 +490,42 @@ fn same_scanline_live_wx_write_after_visible_output_waits_until_the_new_trigger(
 }
 
 #[test]
+fn wx_cpu_commit_after_visible_output_routes_through_live_trigger_glitch_logic() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0xF3,
+        stat: 0x83,
+        scy: 0,
+        scx: 0,
+        ly: 0,
+        lyc: 0,
+        bgp: 0xE4,
+        wy: 0,
+        wx: 7,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = MODE2_DOTS + 12;
+    ppu.visible_registers.lcdc = 0xF3;
+    ppu.pipeline_registers.lcdc = 0xF3;
+    ppu.bg_pipeline_state.window_wy_latch = true;
+    ppu.bg_pipeline_state.window_started_this_line = true;
+    ppu.bg_pipeline_state.visible_pixels_output = 1;
+    ppu.bg_pipeline_state.fifo.push_back(3);
+    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
+
+    ppu.write_register_with_source(0xFF4B, 10, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(ppu.wx, 10);
+    assert_eq!(ppu.visible_registers.wx, 7);
+    assert_eq!(ppu.pipeline_registers.wx, 7);
+    assert_eq!(ppu.bg_pipeline_state.dmg_previsible_wx_retarget, None);
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch,
+        Some(DmgPendingLiveWxTriggerGlitch::new(3))
+    );
+}
+
+#[test]
 fn pending_live_wx_glitch_ignores_non_visible_transfer_dots() {
     let mut ppu = PpuTestRig::dmg();
     ppu.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch =

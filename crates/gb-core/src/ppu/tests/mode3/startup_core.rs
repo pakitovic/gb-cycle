@@ -199,8 +199,9 @@ fn previsible_live_scx_retarget_accounts_for_already_consumed_discard_dots() {
     ppu.visible_registers.scx = 0x02;
     ppu.pipeline_registers.scx = 0x05;
 
+    let visible_scx = ppu.mode3_register_latches().visible().scx;
     ppu.bg_pipeline_state
-        .retune_previsible_scx_discard(ppu.mode3_register_latches().visible().scx);
+        .retune_previsible_scx_discard(visible_scx);
 
     assert_eq!(ppu.bg_pipeline_state.initial_scx_discard, 2);
     assert_eq!(ppu.bg_pipeline_state.scx_discard_remaining, 0);

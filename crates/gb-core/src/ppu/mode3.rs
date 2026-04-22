@@ -76,16 +76,16 @@ impl Ppu {
 
         if !self.bg_pipeline_state.mode3_started {
             observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
-                self.bg_pipeline_state
-                    .start_line(self.mode3_register_latches().mode3_start_scx());
-                self.obj_pipeline_state.mode3_line_start_obj_height =
-                    self.mode3_register_latches().current_obj_height();
+                let mode3_start_scx = self.mode3_register_latches().mode3_start_scx();
+                let current_obj_height = self.mode3_register_latches().current_obj_height();
+                self.bg_pipeline_state.start_line(mode3_start_scx);
+                self.obj_pipeline_state.mode3_line_start_obj_height = current_obj_height;
             });
         }
         if self.line_dot == MODE2_DOTS + MODE3_INITIAL_SCX_CAPTURE_DOT {
             observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
-                self.bg_pipeline_state
-                    .capture_initial_scx(self.mode3_register_latches().mode3_start_scx());
+                let mode3_start_scx = self.mode3_register_latches().mode3_start_scx();
+                self.bg_pipeline_state.capture_initial_scx(mode3_start_scx);
             });
         }
         observe_ppu_step_region(observer, PpuStepRegion::Mode3Startup, || {
@@ -200,8 +200,9 @@ impl Ppu {
             return;
         }
 
+        let visible_scx = self.mode3_register_latches().visible().scx;
         self.bg_pipeline_state
-            .retune_previsible_scx_discard(self.mode3_register_latches().visible().scx);
+            .retune_previsible_scx_discard(visible_scx);
     }
 
     pub(super) fn current_dot_has_pending_obj_hit(&self) -> bool {
@@ -464,9 +465,10 @@ impl Ppu {
             (PpuBgFetcherStage::TileDataHigh, 1) => {
                 self.maybe_apply_bgwin_tile_data_selector_glitch(vram, fetcher.source, 1);
                 if self.bg_pipeline_state.startup_alignment_seed_pending() {
+                    let fetcher_state = self.bg_pipeline_state.fetcher;
                     self.bg_pipeline_state
                         .push
-                        .queue_startup_alignment_seed_from_fetcher(self.bg_pipeline_state.fetcher);
+                        .queue_startup_alignment_seed_from_fetcher(fetcher_state);
                     self.bg_pipeline_state
                         .fetcher
                         .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
@@ -487,9 +489,10 @@ impl Ppu {
                 }
                 self.bg_pipeline_state
                     .maybe_attach_startup_visible_tile3_scx_boundary_next_slice_to_fetcher();
+                let fetcher_state = self.bg_pipeline_state.fetcher;
                 self.bg_pipeline_state
                     .push
-                    .queue_from_fetcher(self.bg_pipeline_state.fetcher);
+                    .queue_from_fetcher(fetcher_state);
                 self.bg_pipeline_state
                     .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_push();
                 self.bg_pipeline_state
@@ -1171,13 +1174,11 @@ impl Ppu {
     pub(super) fn queue_bg_fill_from_push(&mut self) {
         let push = self.bg_pipeline_state.push;
         if push.cached.is_startup_alignment_seed() {
+            let startup_fifo_placeholders = self.bg_pipeline_state.startup_fifo_placeholders;
             self.bg_pipeline_state.begin_post_alignment_followup();
             self.bg_pipeline_state
                 .fill
-                .queue_startup_alignment_from_push(
-                    push,
-                    self.bg_pipeline_state.startup_fifo_placeholders,
-                );
+                .queue_startup_alignment_from_push(push, startup_fifo_placeholders);
         } else {
             self.bg_pipeline_state.fill.queue_from_push(push);
         }
@@ -2471,10 +2472,12 @@ impl Ppu {
             };
 
             if trigger_x == current_owner.match_x {
+                let mode3_line_start_obj_height =
+                    self.obj_pipeline_state.mode3_line_start_obj_height;
                 self.obj_pipeline_state.queue_fetch_hit(
                     sprite_slot,
                     current_owner,
-                    self.obj_pipeline_state.mode3_line_start_obj_height,
+                    mode3_line_start_obj_height,
                 );
             }
         }
@@ -2511,12 +2514,13 @@ impl Ppu {
         let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
             return false;
         };
+        let current_obj_height = self.current_obj_height();
 
         self.obj_pipeline_state.start_fetch(
             sprite_slot,
             sprite,
             selected_obj_height,
-            self.current_obj_height(),
+            current_obj_height,
         );
         let pending_nonterminal_same_x_cluster_pays_startup_dot =
             self.pending_nonterminal_same_x_cluster_pays_startup_dot();

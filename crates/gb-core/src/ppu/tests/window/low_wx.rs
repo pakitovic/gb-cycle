@@ -17,6 +17,25 @@ fn same_scanline_live_wx_write_before_visible_output_arms_a_previsible_retarget(
 }
 
 #[test]
+fn wx_cpu_commit_during_drawing_routes_through_previsible_retarget_logic() {
+    let mut ppu = arm_previsible_retarget_fixture(4, MODE2_DOTS + 12, 3);
+
+    ppu.write_register_with_source(0xFF4B, 9, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(ppu.wx, 9);
+    assert_eq!(ppu.visible_registers.wx, 4);
+    assert_eq!(ppu.pipeline_registers.wx, 4);
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_previsible_wx_retarget,
+        Some(DmgPrevisibleWxRetarget::new(2, 3, 5))
+    );
+    assert_eq!(
+        ppu.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch,
+        None
+    );
+}
+
+#[test]
 fn same_scanline_low_wx_previsible_retarget_keeps_the_tile_boundary_carry_pixel() {
     let mut ppu = arm_previsible_retarget_fixture(4, MODE2_DOTS + 12, 3);
 
