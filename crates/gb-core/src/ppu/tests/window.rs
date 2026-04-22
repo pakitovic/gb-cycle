@@ -171,8 +171,11 @@ fn wx_zero_starts_after_first_visible_scx_discard_dot() {
     let transfer_dot = ppu.advance_mode3_output_phase();
     ppu.maybe_apply_wx0_shortening_after_transfer_dot(transfer_dot);
 
-    assert_eq!(transfer_dot.kind, Mode3TransferDotKind::ServedVisiblePixel);
-    assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 1);
+    assert_eq!(
+        transfer_dot.kind,
+        Mode3TransferDotKind::ServedHiddenTransfer
+    );
+    assert_eq!(ppu.bg_pipeline_state.visible_pixels_output, 0);
     assert_eq!(ppu.bg_pipeline_state.current_transfer_x, 8);
     assert!(ppu.maybe_start_window_after_transfer_dot(transfer_dot));
     assert!(ppu.bg_pipeline_state.window_started_this_line);

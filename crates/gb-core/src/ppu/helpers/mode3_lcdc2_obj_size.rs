@@ -9,11 +9,11 @@ impl Ppu {
         self.dmg_panel_live_write_state.lcdc2.active_write()
     }
 
-    fn dmg_lcdc2_live_obj_size_observed_decision(
+    fn dmg_lcdc2_live_obj_size_observed_decision_for_write(
         &self,
         sprite: PpuSelectedSprite,
+        active_write: DmgLcdc2ActiveObjSizeWrite,
     ) -> Option<PpuMode3Lcdc2ObjSizeObservedDecision> {
-        let active_write = self.active_dmg_lcdc2_obj_size_write()?;
         let scx = self.mode3_register_latches().visible().scx;
         let sprite_top = sprite.y.wrapping_sub(16);
         let raw_row = self.ly.wrapping_sub(sprite_top);
@@ -21,6 +21,41 @@ impl Ppu {
             usize::from(active_write.write_index),
             Some(active_write.visible_x),
         )
+    }
+
+    fn dmg_lcdc2_live_obj_size_selected_write_decision(
+        &self,
+        sprite: PpuSelectedSprite,
+    ) -> Option<(
+        DmgLcdc2ActiveObjSizeWrite,
+        PpuMode3Lcdc2ObjSizeObservedDecision,
+    )> {
+        let active_write = self.active_dmg_lcdc2_obj_size_write();
+        if let Some(active_write) = active_write
+            && let Some(decision) =
+                self.dmg_lcdc2_live_obj_size_observed_decision_for_write(sprite, active_write)
+        {
+            return Some((active_write, decision));
+        }
+
+        let retained_pending_write = self
+            .dmg_panel_live_write_state
+            .lcdc2
+            .retained_pending_write
+            .filter(|write| write.observed_effects_pending());
+        let retained_pending_write = retained_pending_write?;
+
+        let scx_low = self.mode3_register_latches().visible().scx & 0x07;
+        let allow_retained_late_output = retained_pending_write.write_index == 0
+            && active_write.is_some_and(|write| write.write_index == 2)
+            && sprite.x == 32
+            && matches!(scx_low, 4..=7);
+        if !allow_retained_late_output {
+            return None;
+        }
+
+        self.dmg_lcdc2_live_obj_size_observed_decision_for_write(sprite, retained_pending_write)
+            .map(|decision| (retained_pending_write, decision))
     }
 
     fn dmg_lcdc2_live_obj_size_selection_bytes(
@@ -68,55 +103,67 @@ impl Ppu {
         &mut self,
         vram: &VramBusView<'_>,
     ) {
-        let Some(active_write) = self.active_dmg_lcdc2_obj_size_write() else {
-            return;
-        };
-        if !active_write.observed_effects_pending() {
-            return;
-        }
         let current_visible_x = self.bg_pipeline_state.visible_pixels_output;
-        let active_write_visible_x = active_write.visible_x;
+        let pending_writes = self.dmg_panel_live_write_state.lcdc2.pending_writes();
 
-        for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
-            if !self.obj_pipeline_state.has_fetched(sprite_slot) {
+        for active_write in pending_writes.into_iter().flatten() {
+            if !active_write.observed_effects_pending() {
                 continue;
             }
-            let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
-                continue;
-            };
-            let Some(decision) = self.dmg_lcdc2_live_obj_size_observed_decision(sprite) else {
-                continue;
-            };
-            let Some(pending_effect) = decision.pending_effect else {
-                continue;
-            };
-            let Some((tile_low, tile_high)) = self.dmg_lcdc2_live_obj_size_selection_bytes(
-                sprite,
-                decision.plane_selection,
-                vram,
-            ) else {
-                continue;
-            };
 
-            match pending_effect {
-                PpuMode3Lcdc2ObjSizeObservedEffect::RetroactiveRepaint { background_only } => {
-                    self.repaint_observed_obj_scanline_overlap(
-                        sprite,
-                        tile_low,
-                        tile_high,
-                        active_write_visible_x,
-                        background_only,
-                    );
+            let mut applied_any_effect = false;
+            let active_write_visible_x = active_write.visible_x;
+            for sprite_slot in 0..self.mode2_scan_state.selected_sprite_count() {
+                if !self.obj_pipeline_state.has_fetched(sprite_slot) {
+                    continue;
                 }
-                PpuMode3Lcdc2ObjSizeObservedEffect::FifoRewrite => {
-                    self.rewrite_obj_fifo_pixels(sprite, tile_low, tile_high, current_visible_x);
+                let Some(sprite) = self.mode2_scan_state.selected_sprite(sprite_slot) else {
+                    continue;
+                };
+                let Some(decision) =
+                    self.dmg_lcdc2_live_obj_size_observed_decision_for_write(sprite, active_write)
+                else {
+                    continue;
+                };
+                let Some(pending_effect) = decision.pending_effect else {
+                    continue;
+                };
+                let Some((tile_low, tile_high)) = self.dmg_lcdc2_live_obj_size_selection_bytes(
+                    sprite,
+                    decision.plane_selection,
+                    vram,
+                ) else {
+                    continue;
+                };
+
+                match pending_effect {
+                    PpuMode3Lcdc2ObjSizeObservedEffect::RetroactiveRepaint { background_only } => {
+                        self.repaint_observed_obj_scanline_overlap(
+                            sprite,
+                            tile_low,
+                            tile_high,
+                            active_write_visible_x,
+                            background_only,
+                        );
+                    }
+                    PpuMode3Lcdc2ObjSizeObservedEffect::FifoRewrite => {
+                        self.rewrite_obj_fifo_pixels(
+                            sprite,
+                            tile_low,
+                            tile_high,
+                            current_visible_x,
+                        );
+                    }
                 }
+                applied_any_effect = true;
+            }
+
+            if applied_any_effect {
+                self.dmg_panel_live_write_state
+                    .lcdc2
+                    .mark_observed_effects_applied_for_write(active_write.write_index);
             }
         }
-
-        self.dmg_panel_live_write_state
-            .lcdc2
-            .mark_observed_effects_applied();
     }
 
     pub(in crate::ppu) fn dmg_lcdc2_live_obj_size_push_bytes(
@@ -126,10 +173,11 @@ impl Ppu {
         current_high: u8,
         vram: &VramBusView<'_>,
     ) -> (u8, u8) {
-        let Some(decision) = self.dmg_lcdc2_live_obj_size_observed_decision(sprite) else {
+        let Some((_selected_write, decision)) =
+            self.dmg_lcdc2_live_obj_size_selected_write_decision(sprite)
+        else {
             return (current_low, current_high);
         };
-
         self.dmg_lcdc2_live_obj_size_selection_bytes(sprite, decision.plane_selection, vram)
             .unwrap_or((current_low, current_high))
     }
@@ -153,7 +201,9 @@ impl Ppu {
         let Some(sprite) = self.selected_sprite_for_oam_index(obj_pixel.oam_index) else {
             return obj_pixel;
         };
-        let Some(decision) = self.dmg_lcdc2_live_obj_size_observed_decision(sprite) else {
+        let Some((_selected_write, decision)) =
+            self.dmg_lcdc2_live_obj_size_selected_write_decision(sprite)
+        else {
             return obj_pixel;
         };
         let Some((tile_low, tile_high)) =

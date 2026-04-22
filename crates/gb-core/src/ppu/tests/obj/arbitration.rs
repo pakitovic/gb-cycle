@@ -406,6 +406,22 @@ fn current_obj_hit_ownership_tracks_x_and_dot_phase() {
 }
 
 #[test]
+fn obj_fifo_hidden_pops_follow_logical_startup_visible_x_after_scx_discard() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.bg_pipeline_state.visible_pixels_output = 0;
+    ppu.bg_pipeline_state
+        .startup_pre_visible_transfer_dots_remaining = 0;
+    ppu.bg_pipeline_state.initial_scx_discard = 2;
+    ppu.bg_pipeline_state.scx_discard_remaining = 0;
+
+    ppu.bg_pipeline_state.current_transfer_x = 4;
+    assert_eq!(ppu.obj_fifo_hidden_pops_before_first_visible_pixel(), 2);
+
+    ppu.bg_pipeline_state.current_transfer_x = 6;
+    assert_eq!(ppu.obj_fifo_hidden_pops_before_first_visible_pixel(), 0);
+}
+
+#[test]
 fn stale_pending_obj_hit_is_cleared_once_current_x_moves_on() {
     let mut ppu = PpuTestRig::dmg();
     ppu.visible_registers.lcdc = 0x82;
