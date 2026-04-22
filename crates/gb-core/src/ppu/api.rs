@@ -1,6 +1,14 @@
 use super::snapshot::*;
 use super::*;
 
+#[derive(Debug, Clone, Copy)]
+struct PpuMode3LiveBackgroundWriteRoute {
+    register: PpuMode3LiveBackgroundRegister,
+    write_context: PpuMode3LiveRegisterWriteContext,
+    scy_routing: PpuMode3LiveScyWriteRouting,
+    ly: u8,
+}
+
 impl Ppu {
     pub(crate) fn owns_mmio_register(address: u16) -> bool {
         PpuRegister::from_address(address).is_some()
@@ -139,241 +147,318 @@ impl Ppu {
         };
         let previous_mmio_registers = self.current_mmio_visible_registers();
         self.write_ppu_register(register, value, source);
-
-        if register == PpuRegister::Wx && self.current_access_mode() == PpuAccessMode::Drawing {
-            self.maybe_arm_dmg_previsible_wx_retarget(previous_mmio_registers.wx, value);
-            self.maybe_arm_dmg_live_wx_trigger_glitch(value);
-        }
-
-        if let Some(live_background_register) =
-            PpuMode3LiveBackgroundRegister::from_register(register)
-            && self.current_access_mode() == PpuAccessMode::Drawing
-        {
-            let write_context =
-                self.current_mode3_live_register_write_context(previous_mmio_registers);
-            let scy_routing = self.live_scy_write_routing(live_background_register);
-            let ly = self.ly;
-            if self.bg_pipeline_state.push.pending {
-                let push_entry_delay_remaining =
-                    self.bg_pipeline_state.push.entry_delay_remaining > 0;
-                self.bg_pipeline_state
-                    .push
-                    .cached
-                    .mark_live_register_write_while_push_pending(
-                        live_background_register,
-                        write_context,
-                        push_entry_delay_remaining,
-                        ly,
-                        scy_routing,
-                    );
-            }
-
-            if self.bg_pipeline_state.fill.pending {
-                let fill_includes_real_tile_pixels =
-                    self.bg_pipeline_state.fill.includes_real_tile_pixels;
-                let fill_startup_dummy_pixels = self.bg_pipeline_state.fill.startup_dummy_pixels;
-                self.bg_pipeline_state
-                    .fill
-                    .cached
-                    .mark_live_register_write_while_fill_pending(
-                        live_background_register,
-                        write_context,
-                        fill_includes_real_tile_pixels,
-                        fill_startup_dummy_pixels,
-                        ly,
-                        scy_routing,
-                    );
-            }
-
-            if matches!(
-                live_background_register,
-                PpuMode3LiveBackgroundRegister::Lcdc
-            ) {
-                let fetcher = self.bg_pipeline_state.fetcher;
-                let window_line_counter = self.current_window_line_counter();
-                self.bg_pipeline_state
-                    .latch_window_activation_tilemap_select_if_unset(write_context);
-                self.bg_pipeline_state
-                    .mark_live_lcdc3_write_while_fifo_visible(
-                        write_context,
-                        fetcher,
-                        window_line_counter,
-                    );
-                self.bg_pipeline_state
-                    .apply_window_activation_tilemap_select_latch_to_seam_slices();
-                self.apply_dmg_lcdc3_live_bg_tilemap_write(write_context);
-                self.apply_dmg_lcdc4_live_bg_tiledata_write(write_context);
-                self.apply_dmg_lcdc0_live_bg_enable_write(write_context);
-                self.apply_dmg_lcdc1_live_obj_enable_write(write_context);
-                self.apply_dmg_lcdc2_live_obj_size_write(write_context);
-            }
-            if matches!(
-                live_background_register,
-                PpuMode3LiveBackgroundRegister::Scy
-            ) {
-                self.bg_pipeline_state
-                    .mark_live_scy_write_while_startup_alignment_fifo_visible(write_context, ly);
-            }
-
-            let window_line_counter = self.current_window_line_counter();
-            self.bg_pipeline_state
-                .fetcher
-                .mark_live_register_write_for_current_background_fetch(
-                    live_background_register,
-                    write_context,
-                    ly,
-                    window_line_counter,
-                    scy_routing,
-                );
-
-            if matches!(
-                live_background_register,
-                PpuMode3LiveBackgroundRegister::Scx
-            ) && write_context.bg_scx_tilemap_column_changed()
-                && self.startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile()
-            {
-                self.bg_pipeline_state
-                    .fetcher
-                    .needs_live_tilemap_refetch_on_push = false;
-                self.bg_pipeline_state
-                    .fetcher
-                    .needs_live_tilemap_full_refetch_on_push = false;
-                self.bg_pipeline_state
-                    .fetcher
-                    .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
-                self.bg_pipeline_state
-                    .fetcher
-                    .clear_startup_visible_tile3_scx_boundary_old_pixel_window();
-                self.bg_pipeline_state
-                    .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
-                self.bg_pipeline_state
-                    .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
-            }
-
-            if matches!(
-                live_background_register,
-                PpuMode3LiveBackgroundRegister::Scx
-            ) && write_context.bg_scx_tilemap_column_changed()
-                && self.inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window()
-            {
-                let current_scx = self.scx;
-                let visible_scx = self.runtime.visible_registers.scx;
-                self.bg_pipeline_state
-                    .push
-                    .cached
-                    .needs_live_tilemap_refetch = false;
-                self.bg_pipeline_state
-                    .push
-                    .cached
-                    .needs_live_tilemap_full_refetch = false;
-                self.bg_pipeline_state
-                    .push
-                    .cached
-                    .startup_visible_tile3_scx_boundary_previous_scx = None;
-                self.bg_pipeline_state
-                    .push
-                    .cached
-                    .startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH;
-                self.bg_pipeline_state
-                    .push
-                    .cached
-                    .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
-                self.bg_pipeline_state
-                    .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
-                self.bg_pipeline_state
-                    .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
-
-                if (0x08..=0x0E).contains(&current_scx) && current_scx & 0x07 == 0x03 {
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(
-                            visible_scx,
-                        );
-                }
-            }
-
-            if matches!(
-                live_background_register,
-                PpuMode3LiveBackgroundRegister::Scx
-            ) && write_context.bg_scx_tilemap_column_changed()
-                && self.inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget()
-            {
-                let current_scx = self.scx;
-                let visible_scx = self.runtime.visible_registers.scx;
-                let scx_low_bits = current_scx & 0x07;
-                self.bg_pipeline_state
-                    .push
-                    .cached
-                    .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(current_scx);
-                if scx_low_bits >= 0x03 {
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .arm_startup_visible_tile3_scx_boundary_old_tail(visible_scx, current_scx);
-                    if scx_low_bits == 0x03 {
-                        self.bg_pipeline_state
-                            .push
-                            .cached
-                            .startup_visible_tile3_scx_boundary_old_tail_start_pixel =
-                            BG_TILE_WIDTH.saturating_sub(4);
-                    }
-                }
-                if matches!(scx_low_bits, 0x00 | 0x06) {
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_old_prefix_pixels = 1;
-                }
-                if current_scx >= 0x60 && scx_low_bits == 0x01 {
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_old_prefix_pixels = 2;
-                }
-                if current_scx >= 0x78 && matches!(scx_low_bits, 0x00..=0x02) {
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_old_tail_start_pixel = self
-                        .bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_old_tail_start_pixel
-                        .min(BG_TILE_WIDTH.saturating_sub(scx_low_bits.saturating_add(1)));
-                }
-                if current_scx >= 0x60 && matches!(scx_low_bits, 0x03..=0x05) {
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
-                    self.bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_old_prefix_pixels = self
-                        .bg_pipeline_state
-                        .push
-                        .cached
-                        .startup_visible_tile3_scx_boundary_old_prefix_pixels
-                        .max(5);
-                }
-            }
-        }
+        self.route_post_write_mode3_effects(register, value, previous_mmio_registers);
 
         if !self.is_lcd_enabled() {
             self.reload_mode3_register_latches_from_mmio();
+        }
+    }
+
+    fn route_post_write_mode3_effects(
+        &mut self,
+        register: PpuRegister,
+        value: u8,
+        previous_mmio_registers: PpuVisibleRegisters,
+    ) {
+        self.route_live_wx_write(register, value, previous_mmio_registers);
+
+        let Some(route) =
+            self.build_mode3_live_background_write_route(register, previous_mmio_registers)
+        else {
+            return;
+        };
+
+        self.route_mode3_live_background_write(route);
+    }
+
+    fn route_live_wx_write(
+        &mut self,
+        register: PpuRegister,
+        value: u8,
+        previous_mmio_registers: PpuVisibleRegisters,
+    ) {
+        if register != PpuRegister::Wx || self.current_access_mode() != PpuAccessMode::Drawing {
+            return;
+        }
+
+        self.maybe_arm_dmg_previsible_wx_retarget(previous_mmio_registers.wx, value);
+        self.maybe_arm_dmg_live_wx_trigger_glitch(value);
+    }
+
+    fn build_mode3_live_background_write_route(
+        &self,
+        register: PpuRegister,
+        previous_mmio_registers: PpuVisibleRegisters,
+    ) -> Option<PpuMode3LiveBackgroundWriteRoute> {
+        let register = PpuMode3LiveBackgroundRegister::from_register(register)?;
+        if self.current_access_mode() != PpuAccessMode::Drawing {
+            return None;
+        }
+
+        Some(PpuMode3LiveBackgroundWriteRoute {
+            register,
+            write_context: self.current_mode3_live_register_write_context(previous_mmio_registers),
+            scy_routing: self.live_scy_write_routing(register),
+            ly: self.ly,
+        })
+    }
+
+    fn route_mode3_live_background_write(&mut self, route: PpuMode3LiveBackgroundWriteRoute) {
+        self.route_live_background_write_to_pending_cached_slices(route);
+        self.route_live_lcdc_write_to_observed_bg_seams(route);
+        self.route_live_scy_write_to_startup_alignment_fifo(route);
+        self.route_live_background_write_to_current_fetch(route);
+        self.route_live_scx_boundary_write_effects(route);
+    }
+
+    fn route_live_background_write_to_pending_cached_slices(
+        &mut self,
+        route: PpuMode3LiveBackgroundWriteRoute,
+    ) {
+        if self.bg_pipeline_state.push.pending {
+            let push_entry_delay_remaining = self.bg_pipeline_state.push.entry_delay_remaining > 0;
+            self.bg_pipeline_state
+                .push
+                .cached
+                .mark_live_register_write_while_push_pending(
+                    route.register,
+                    route.write_context,
+                    push_entry_delay_remaining,
+                    route.ly,
+                    route.scy_routing,
+                );
+        }
+
+        if self.bg_pipeline_state.fill.pending {
+            let fill_includes_real_tile_pixels =
+                self.bg_pipeline_state.fill.includes_real_tile_pixels;
+            let fill_startup_dummy_pixels = self.bg_pipeline_state.fill.startup_dummy_pixels;
+            self.bg_pipeline_state
+                .fill
+                .cached
+                .mark_live_register_write_while_fill_pending(
+                    route.register,
+                    route.write_context,
+                    fill_includes_real_tile_pixels,
+                    fill_startup_dummy_pixels,
+                    route.ly,
+                    route.scy_routing,
+                );
+        }
+    }
+
+    fn route_live_lcdc_write_to_observed_bg_seams(
+        &mut self,
+        route: PpuMode3LiveBackgroundWriteRoute,
+    ) {
+        if !matches!(route.register, PpuMode3LiveBackgroundRegister::Lcdc) {
+            return;
+        }
+
+        let fetcher = self.bg_pipeline_state.fetcher;
+        let window_line_counter = self.current_window_line_counter();
+        self.bg_pipeline_state
+            .latch_window_activation_tilemap_select_if_unset(route.write_context);
+        self.bg_pipeline_state
+            .mark_live_lcdc3_write_while_fifo_visible(
+                route.write_context,
+                fetcher,
+                window_line_counter,
+            );
+        self.bg_pipeline_state
+            .apply_window_activation_tilemap_select_latch_to_seam_slices();
+        self.apply_dmg_lcdc3_live_bg_tilemap_write(route.write_context);
+        self.apply_dmg_lcdc4_live_bg_tiledata_write(route.write_context);
+        self.apply_dmg_lcdc0_live_bg_enable_write(route.write_context);
+        self.apply_dmg_lcdc1_live_obj_enable_write(route.write_context);
+        self.apply_dmg_lcdc2_live_obj_size_write(route.write_context);
+    }
+
+    fn route_live_scy_write_to_startup_alignment_fifo(
+        &mut self,
+        route: PpuMode3LiveBackgroundWriteRoute,
+    ) {
+        if !matches!(route.register, PpuMode3LiveBackgroundRegister::Scy) {
+            return;
+        }
+
+        self.bg_pipeline_state
+            .mark_live_scy_write_while_startup_alignment_fifo_visible(
+                route.write_context,
+                route.ly,
+            );
+    }
+
+    fn route_live_background_write_to_current_fetch(
+        &mut self,
+        route: PpuMode3LiveBackgroundWriteRoute,
+    ) {
+        let window_line_counter = self.current_window_line_counter();
+        self.bg_pipeline_state
+            .fetcher
+            .mark_live_register_write_for_current_background_fetch(
+                route.register,
+                route.write_context,
+                route.ly,
+                window_line_counter,
+                route.scy_routing,
+            );
+    }
+
+    fn route_live_scx_boundary_write_effects(&mut self, route: PpuMode3LiveBackgroundWriteRoute) {
+        if !matches!(route.register, PpuMode3LiveBackgroundRegister::Scx)
+            || !route.write_context.bg_scx_tilemap_column_changed()
+        {
+            return;
+        }
+
+        self.route_live_scx_full_refetch_boundary_write(route.write_context);
+        self.route_live_scx_old_pixel_window_boundary_write();
+        self.route_live_scx_next_tile_output_retarget_boundary_write();
+    }
+
+    fn route_live_scx_full_refetch_boundary_write(
+        &mut self,
+        write_context: PpuMode3LiveRegisterWriteContext,
+    ) {
+        if !write_context.bg_scx_tilemap_column_changed()
+            || !self.startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile()
+        {
+            return;
+        }
+
+        self.bg_pipeline_state
+            .fetcher
+            .needs_live_tilemap_refetch_on_push = false;
+        self.bg_pipeline_state
+            .fetcher
+            .needs_live_tilemap_full_refetch_on_push = false;
+        self.bg_pipeline_state
+            .fetcher
+            .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
+        self.bg_pipeline_state
+            .fetcher
+            .clear_startup_visible_tile3_scx_boundary_old_pixel_window();
+        self.bg_pipeline_state
+            .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
+        self.bg_pipeline_state
+            .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
+    }
+
+    fn route_live_scx_old_pixel_window_boundary_write(&mut self) {
+        if !self.inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window() {
+            return;
+        }
+
+        let current_scx = self.scx;
+        let visible_scx = self.runtime.visible_registers.scx;
+        self.bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tilemap_refetch = false;
+        self.bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tilemap_full_refetch = false;
+        self.bg_pipeline_state
+            .push
+            .cached
+            .startup_visible_tile3_scx_boundary_previous_scx = None;
+        self.bg_pipeline_state
+            .push
+            .cached
+            .startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH;
+        self.bg_pipeline_state
+            .push
+            .cached
+            .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
+        self.bg_pipeline_state
+            .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
+        self.bg_pipeline_state
+            .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
+
+        if (0x08..=0x0E).contains(&current_scx) && current_scx & 0x07 == 0x03 {
+            self.bg_pipeline_state
+                .push
+                .cached
+                .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(visible_scx);
+        }
+    }
+
+    fn route_live_scx_next_tile_output_retarget_boundary_write(&mut self) {
+        if !self.inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget() {
+            return;
+        }
+
+        let current_scx = self.scx;
+        let visible_scx = self.runtime.visible_registers.scx;
+        let scx_low_bits = current_scx & 0x07;
+        self.bg_pipeline_state
+            .push
+            .cached
+            .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(current_scx);
+        if scx_low_bits >= 0x03 {
+            self.bg_pipeline_state
+                .push
+                .cached
+                .arm_startup_visible_tile3_scx_boundary_old_tail(visible_scx, current_scx);
+            if scx_low_bits == 0x03 {
+                self.bg_pipeline_state
+                    .push
+                    .cached
+                    .startup_visible_tile3_scx_boundary_old_tail_start_pixel =
+                    BG_TILE_WIDTH.saturating_sub(4);
+            }
+        }
+        if matches!(scx_low_bits, 0x00 | 0x06) {
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 1;
+        }
+        if current_scx >= 0x60 && scx_low_bits == 0x01 {
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 2;
+        }
+        if current_scx >= 0x78 && matches!(scx_low_bits, 0x00..=0x02) {
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_tail_start_pixel = self
+                .bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_tail_start_pixel
+                .min(BG_TILE_WIDTH.saturating_sub(scx_low_bits.saturating_add(1)));
+        }
+        if current_scx >= 0x60 && matches!(scx_low_bits, 0x03..=0x05) {
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
+            self.bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_prefix_pixels = self
+                .bg_pipeline_state
+                .push
+                .cached
+                .startup_visible_tile3_scx_boundary_old_prefix_pixels
+                .max(5);
         }
     }
 
