@@ -27,6 +27,7 @@ This phase closes cartridge-local persistence only; whole-machine save states re
 - banking and RTC support for MBC3
 - banking support for MBC5
 - special-cartridge taxonomy and unsupported policy covering `MBC30`, multicarts, documented-but-unsupported mapper families, accessory cartridges, and optional heuristics
+- DMG-relevant special-cartridge runtime follow-up for `MMM01`, `MBC1M`, `HuC1`, `HuC-3`, and `M161`, while keeping CGB-only special-cartridge runtime work explicitly deferred until the base CGB implementation exists
 - functional mapper-controlled external RAM beyond the No MBC linear baseline
 - typed cartridge persistence contracts for full backing stores such as linear SRAM, banked SRAM, MBC2 nibble RAM, and MBC3 SRAM plus RTC
 - portable cartridge-persistence boundaries across frontends and tools
@@ -158,6 +159,23 @@ This phase closes cartridge-local persistence only; whole-machine save states re
    Scope: isolate `EMS`, `Bung`, and `Wisdom Tree` detection behind an explicit dev / experimental loader policy, keep strict default behavior header-driven, and document that heuristic paths are lower priority than `MBC30`, multicarts, and documented special hardware.
    Acceptance criteria: heuristic detection is off by default, can be enabled explicitly for development and research, and diagnostics clearly state when a classification came from heuristics instead of a standard header mapping.
    Status: done in the current branch baseline. The loader now keeps heuristic detection disabled in `Strict` and `Permissive`, while `Experimental` with heuristics enabled can reclassify the currently wired `EMS`, `Bung`, and `Wisdom Tree` signatures into explicit `ExperimentalHeuristic` results whose rejection reasons say that the classification came from an experimental heuristic path.
+
+#### DMG-only execution split for special-cartridge follow-up
+
+Within the current DMG-only but CGB-ready project plan, execute the special-cartridge follow-up in this order:
+
+1. classification / no-fallback / typed variant space — in scope now and already closed in the current baseline
+2. `MMM01` runtime support — in scope before CGB
+3. `MBC1M` runtime support — in scope before CGB
+4. `HuC1` runtime support — in scope before CGB
+5. `HuC-3` runtime support — in scope before CGB
+6. `M161` runtime support — in scope before CGB
+7. base CGB bring-up gate — deferred to `TODO.md`
+8. `MBC30` runtime support — deferred to `TODO.md` until point `7` is closed
+9. `MBC7` runtime support — deferred to `TODO.md` until point `7` is closed
+10. `MBC6` runtime support — deferred to `TODO.md` until point `7` is closed
+
+The purpose of that split is to close the remaining DMG-relevant special-cartridge work first while keeping CGB-only specials explicit, typed, and impossible to misclassify. Before point `7` is closed, `MBC30`, `MBC7`, and `MBC6` may grow diagnostics, validation hooks, persistence shapes, or device skeletons, but they must not be counted as functionally supported runtime targets.
 
 #### Cartridge-persistence sequencing inside Phase 6
 

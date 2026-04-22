@@ -179,6 +179,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `Strict` and `Permissive` should reject `MBC30` clearly as a known reserved variant rather than as an invalid or unknown header.
 - `Experimental` may admit `MBC30` only when an explicit partial or complete implementation path exists behind a visible policy gate.
 - `MBC30` banking, RAM persistence, and validation should remain a priority future block because it is a concrete shipping variant, not a speculative edge case.
+- In the current DMG-only but CGB-ready roadmap, keep `MBC30` explicit in classification, diagnostics, and typed variant space, but defer functional runtime support until the base CGB implementation is complete enough to boot and validate CGB-only software.
 
 ### Priority order for special variants
 
@@ -191,6 +192,9 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
   6. `Pocket Camera` and `Bandai TAMA5`
   7. lower-priority heuristic / partially verified cases such as `EMS`, `Bung`, and `Wisdom Tree`
 - Keep a design distinction between "close to an already supported mapper family" and "requires a new cartridge-local hardware subsystem."
+- That global ordering is a hardware / family-priority statement, not a mandate to implement CGB-gated cartridges during the current DMG-only execution phase.
+- In the current DMG-only but CGB-ready project plan, the functional runtime order after the already-closed classification / no-fallback baseline is: `MMM01`, `MBC1M`, `HuC1`, `HuC-3`, then `M161`.
+- In that same DMG-only plan, `MBC30`, `MBC7`, and `MBC6` stay explicitly classified and reserved, but their functional bring-up is deferred until after the base CGB implementation is complete.
 
 ### Multicarts: MMM01, MBC1M, and M161
 
@@ -226,6 +230,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - Header code `0x20` should classify as `MBC6`, and header code `0x22` should classify as `MBC7`.
 - `MBC6` must not fall back to `MBC3` or `MBC5`; Pan Docs documents split `8 KiB` ROM windows, split `4 KiB` RAM windows, and on-cartridge flash behavior.
 - `MBC7` must not fall back to `MBC5 + rumble + RAM`; Pan Docs documents EEPROM-register access plus accelerometer-backed behavior that is not standard SRAM mapping.
+- In the current DMG-only but CGB-ready roadmap, keep `MBC6` and `MBC7` limited to explicit classification, diagnostics, and future-device planning; defer functional runtime support until the base CGB implementation is complete enough to boot and validate CGB-only software.
 
 ### Accessory cartridges
 
