@@ -322,12 +322,15 @@ impl Ppu {
 
         let mut current_transfer_x = self.bg_pipeline_state.current_transfer_x;
         let mut scx_discard_remaining = self.bg_pipeline_state.scx_discard_remaining;
+        let initial_scx_discard = self.bg_pipeline_state.initial_scx_discard;
         let mut startup_pre_visible_transfer_dots_remaining = self
             .bg_pipeline_state
             .startup_pre_visible_transfer_dots_remaining;
         let mut hidden_pops = 0usize;
 
-        while scx_discard_remaining > 0 || current_transfer_x < 8 {
+        while scx_discard_remaining > 0
+            || current_transfer_x.saturating_add(initial_scx_discard) < 8
+        {
             if scx_discard_remaining > 0 {
                 scx_discard_remaining -= 1;
                 continue;

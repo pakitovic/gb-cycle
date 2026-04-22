@@ -851,6 +851,7 @@ impl DmgLcdc2ActiveObjSizeWrite {
 pub(super) struct DmgLcdc2ObjSizeLiveWriteState {
     pub(super) current_line_obj_size_write_count: u8,
     pub(super) active_write: Option<DmgLcdc2ActiveObjSizeWrite>,
+    pub(super) retained_pending_write: Option<DmgLcdc2ActiveObjSizeWrite>,
 }
 
 impl DmgLcdc2ObjSizeLiveWriteState {
@@ -862,6 +863,12 @@ impl DmgLcdc2ObjSizeLiveWriteState {
     }
 
     pub(super) fn begin_active_shrink(&mut self, write_index: usize, visible_x: u8) {
+        if self
+            .active_write
+            .is_some_and(|write| write.observed_effects_pending())
+        {
+            self.retained_pending_write = self.active_write;
+        }
         self.active_write = Some(DmgLcdc2ActiveObjSizeWrite::new(write_index, visible_x));
     }
 
@@ -869,8 +876,24 @@ impl DmgLcdc2ObjSizeLiveWriteState {
         self.active_write
     }
 
-    pub(super) fn mark_observed_effects_applied(&mut self) {
-        if let Some(active_write) = self.active_write.as_mut() {
+    pub(super) fn pending_writes(self) -> [Option<DmgLcdc2ActiveObjSizeWrite>; 2] {
+        [self.retained_pending_write, self.active_write]
+    }
+
+    pub(super) fn mark_observed_effects_applied_for_write(&mut self, write_index: u8) {
+        if self
+            .retained_pending_write
+            .is_some_and(|write| write.write_index == write_index)
+        {
+            self.retained_pending_write = None;
+            return;
+        }
+
+        if let Some(active_write) = self
+            .active_write
+            .as_mut()
+            .filter(|write| write.write_index == write_index)
+        {
             active_write.mark_observed_effects_applied();
         }
     }
