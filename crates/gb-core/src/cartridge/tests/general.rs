@@ -140,6 +140,69 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
 }
 
 #[test]
+fn documented_special_cartridge_loads_fail_with_explicit_typed_classification_instead_of_fallback()
+{
+    let cases = [
+        (
+            build_test_rom(256 * 1024, 0x0B, 0x03, 0x00),
+            "MMM01",
+            UnsupportedCartridgeCategory::DocumentedButUnsupported,
+            "multicart family",
+        ),
+        (
+            build_test_rom(256 * 1024, 0x20, 0x03, 0x00),
+            "MBC6",
+            UnsupportedCartridgeCategory::DocumentedButUnsupported,
+            "dedicated cartridge-local implementation",
+        ),
+        (
+            build_test_rom(256 * 1024, 0x22, 0x03, 0x00),
+            "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
+            UnsupportedCartridgeCategory::DocumentedButUnsupported,
+            "EEPROM and accelerometer",
+        ),
+        (
+            build_test_rom(256 * 1024, 0xFE, 0x03, 0x00),
+            "HuC-3",
+            UnsupportedCartridgeCategory::DocumentedButUnsupported,
+            "its own protocol",
+        ),
+        (
+            build_test_rom(256 * 1024, 0xFF, 0x03, 0x00),
+            "HuC1+RAM+BATTERY",
+            UnsupportedCartridgeCategory::DocumentedButUnsupported,
+            "IR-capable cartridge behavior",
+        ),
+    ];
+
+    for (rom, expected_name, expected_category, expected_reason_snippet) in cases {
+        let error = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+            .expect_err("documented special cartridges must not fall back to nearby mappers");
+
+        match error {
+            CartridgeLoadError::Rejected {
+                classification,
+                execution_mode,
+                reason,
+                diagnostics,
+            } => {
+                assert_eq!(execution_mode, ExecutionMode::Strict);
+                assert_eq!(classification.detected_name(), expected_name);
+                assert_eq!(
+                    classification.selection(),
+                    CartridgeSelection::Unsupported(expected_category)
+                );
+                assert!(classification.reason().contains(expected_reason_snippet));
+                assert!(reason.contains(expected_name));
+                assert!(reason.contains(expected_reason_snippet));
+                assert!(diagnostics.is_empty());
+            }
+            other => panic!("expected typed rejection, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn size_decoders_cover_extended_and_unknown_header_codes() {
     assert_eq!(
         RomSizeInfo::decode(0x52),
