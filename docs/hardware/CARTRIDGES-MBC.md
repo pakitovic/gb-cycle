@@ -643,6 +643,9 @@ Priority order:
   covering both the no-RAM baseline and the fixed-`8 KiB` RAM commercial shape
   used by `Momotarou Collection`; broader heuristic promotion still remains
   outside the default strict/permissive path.
+- The current implementation now also has commercial validation through
+  `Momotarou Collection (Japan) (SGB Enhanced)`: the menu boots correctly and
+  both included games run correctly after the menu-to-game transition.
 - Keep disabled external-RAM open-bus behavior explicit and configurable enough that tests can pin the chosen policy.
 - For MBC2, keep address-bit-`8` control decode, raw `rom_bank_low4`, internal nibble RAM organization, effective ROM-bank helpers, and explicit disabled-RAM / high-nibble readback policies as separate layers instead of hiding them in generic byte-RAM helpers.
 - For MBC2, treat `0x0149` as validation metadata only; runtime RAM capacity comes from the mapper family itself rather than from the ordinary external-RAM table.

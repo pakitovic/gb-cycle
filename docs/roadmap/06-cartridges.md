@@ -179,7 +179,7 @@ The purpose of that split is to close the remaining DMG-relevant special-cartrid
 
 Current status for point `2`: done in the current branch baseline. `MMM01` now loads through the boot-visible trailing menu header, starts in explicit unmapped mode on the last `32 KiB` of the ROM, and supports mapped-mode ROM / RAM banking through a dedicated cartridge device instead of falling back to `MBC1`. The current implementation has already been validated against the commercial `Momotarou Collection 2 (Japan) (SGB Enhanced)` MMM01 cartridge path, including menu startup and both included games.
 
-Current status for point `3`: in progress in the current branch baseline. `MBC1M` now enters through an explicit repeated-subheader signature path in strict mode for `1 MiB` multicarts, and the runtime path already covers both the no-RAM baseline and the fixed-`8 KiB` RAM commercial shape used by `Momotarou Collection`. The remaining step is end-to-end commercial validation of the menu-to-game transition on that title before point `3` can be called fully done.
+Current status for point `3`: done in the current branch baseline. `MBC1M` now enters through an explicit repeated-subheader signature path in strict mode for `1 MiB` multicarts, and the runtime path already covers both the no-RAM baseline and the fixed-`8 KiB` RAM commercial shape used by `Momotarou Collection`. The current implementation has already been validated against the commercial `Momotarou Collection (Japan) (SGB Enhanced)` cartridge path, including menu startup and both included games.
 
 #### Cartridge-persistence sequencing inside Phase 6
 
