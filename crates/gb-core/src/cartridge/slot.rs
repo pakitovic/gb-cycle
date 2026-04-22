@@ -1,6 +1,7 @@
 use super::classify::{classify_loaded_cartridge, unsupported_load_reason};
 use super::validate::{
-    validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5, validate_mmm01, validate_no_mbc,
+    validate_huc1, validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5, validate_mmm01,
+    validate_no_mbc,
 };
 use super::*;
 use crate::model::CompatibilityPolicy;
@@ -92,6 +93,35 @@ impl CartridgeSlot {
                         banking_mode: 0,
                         rom_bank_mask: 0,
                         multiplex_enabled: false,
+                    })),
+                };
+
+                Ok(CartridgeLoadReport {
+                    cartridge,
+                    diagnostics,
+                })
+            }
+            CartridgeSelection::Supported(SupportedCartridgeFamily::Huc1) => {
+                let ram_len = validate_huc1(
+                    &header,
+                    rom_bytes.len(),
+                    compatibility,
+                    &classification,
+                    &mut diagnostics,
+                )?;
+
+                let cartridge = Self {
+                    device: Some(CartridgeDevice::Huc1(Huc1Cartridge {
+                        rom: rom_bytes,
+                        ram: Some(vec![0; ram_len]),
+                        has_battery: true,
+                        header,
+                        classification,
+                        io_mode: Huc1IoMode::Ram,
+                        rom_bank: 0,
+                        ram_bank: 0,
+                        ir_emitter_on: false,
+                        ir_light_detected: false,
                     })),
                 };
 
@@ -250,6 +280,7 @@ impl CartridgeSlot {
             None => CartridgeSlotState::Empty,
             Some(CartridgeDevice::NoMbc(_)) => CartridgeSlotState::NoMbc,
             Some(CartridgeDevice::Mmm01(_)) => CartridgeSlotState::Mmm01,
+            Some(CartridgeDevice::Huc1(_)) => CartridgeSlotState::Huc1,
             Some(CartridgeDevice::Mbc1(_)) => CartridgeSlotState::Mbc1,
             Some(CartridgeDevice::Mbc2(_)) => CartridgeSlotState::Mbc2,
             Some(CartridgeDevice::Mbc3(_)) => CartridgeSlotState::Mbc3,

@@ -228,3 +228,83 @@ fn slot_accessors_and_restore_paths_cover_mmm01_battery_ram() {
     restored.write_rom(0x4000, 0x03);
     assert_eq!(restored.read_ram(0xA000), 0x33);
 }
+
+#[test]
+fn slot_accessors_and_restore_paths_cover_huc1_battery_ram() {
+    let huc1_report = CartridgeSlot::load(
+        build_banked_huc1_rom(0x03, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("HuC1 should load");
+    let (mut huc1, _) = huc1_report.into_parts();
+    assert_eq!(
+        huc1.classification()
+            .map(CartridgeClassification::selection),
+        Some(CartridgeSelection::Supported(
+            SupportedCartridgeFamily::Huc1
+        )),
+    );
+    assert_eq!(
+        huc1.persistence_metadata(),
+        CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear {
+                    byte_len: 32 * 1024,
+                },
+            },
+        },
+    );
+
+    huc1.write_rom(0x4000, 0x02);
+    huc1.write_ram(0xA000, 0x22);
+    huc1.write_rom(0x0000, 0x0E);
+    huc1.write_ram(0xA000, 0x01);
+    huc1.write_rom(0x0000, 0x00);
+    huc1.write_rom(0x4000, 0x03);
+    huc1.write_ram(0xA000, 0x33);
+
+    let restored_huc1 = match huc1.persistent_state() {
+        PersistentCartState::Huc1Ram { ram } => PersistentCartState::Huc1Ram { ram },
+        other => panic!("expected HuC1 RAM state, got {other:?}"),
+    };
+    huc1.restore_persistent_state(&restored_huc1)
+        .expect("HuC1 RAM state should restore");
+    assert_eq!(huc1.persistent_state(), restored_huc1);
+    assert_eq!(
+        huc1.restore_persistent_state(&PersistentCartState::Mbc1Ram {
+            ram: vec![0; 32 * 1024],
+        }),
+        Err(CartridgePersistentStateError::KindMismatch {
+            expected: "Huc1Ram",
+            actual: "Mbc1Ram",
+        }),
+    );
+    assert_eq!(
+        huc1.restore_persistent_state(&PersistentCartState::Huc1Ram { ram: vec![0; 8] }),
+        Err(CartridgePersistentStateError::RamLengthMismatch {
+            expected: 32 * 1024,
+            actual: 8,
+        }),
+    );
+
+    let mut restored = CartridgeSlot::load(
+        build_banked_huc1_rom(0x03, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("HuC1 should load")
+    .into_parts()
+    .0;
+    restored
+        .restore_persistent_state(&restored_huc1)
+        .expect("separate HuC1 slot should accept the persisted payload");
+
+    restored.write_rom(0x4000, 0x02);
+    assert_eq!(restored.read_ram(0xA000), 0x22);
+    restored.write_rom(0x0000, 0x0E);
+    assert_eq!(restored.read_ram(0xA000), 0xC0);
+    restored.write_rom(0x0000, 0x00);
+    restored.write_rom(0x4000, 0x03);
+    assert_eq!(restored.read_ram(0xA000), 0x33);
+}

@@ -6,7 +6,8 @@ use gb_core::{
     CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
     CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy, HeuristicPolicy,
     Machine, MachineConfig, Mbc3RtcPersistentState, OverridePolicy, PersistentCartState,
-    StartupMode, SupportedCartridgeFamily, TCycle, UnsupportedCartridgeCategory, ValidationPolicy,
+    RomSizeInfo, StartupMode, SupportedCartridgeFamily, TCycle, UnsupportedCartridgeCategory,
+    ValidationPolicy,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -122,6 +123,24 @@ fn build_mmm01_rom(rom_size_code: u8, ram_size_code: u8, cartridge_type: u8) -> 
     rom
 }
 
+fn build_banked_huc1_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+    let rom_size = RomSizeInfo::decode(rom_size_code)
+        .decoded_bytes
+        .expect("test ROM size should decode");
+    let bank_count = RomSizeInfo::decode(rom_size_code)
+        .bank_count
+        .expect("test ROM bank count should decode");
+    let mut rom = build_test_rom(rom_size, 0xFF, rom_size_code, ram_size_code);
+
+    for bank in 0..bank_count {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
+
+    rom
+}
+
 fn build_banked_mbc2_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
     let rom_size = match rom_size_code {
         0x00 => 32 * 1024,
@@ -204,6 +223,8 @@ fn ignore_policy() -> CompatibilityPolicy {
 
 #[path = "cartridge/cartridge_header_basic.rs"]
 mod cartridge_header_basic;
+#[path = "cartridge/cartridge_huc1.rs"]
+mod cartridge_huc1;
 #[path = "cartridge/cartridge_mbc1.rs"]
 mod cartridge_mbc1;
 #[path = "cartridge/cartridge_mbc2.rs"]

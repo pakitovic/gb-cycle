@@ -30,6 +30,7 @@ const STATE_MBC3_RAM_TAG: u8 = 5;
 const STATE_MBC3_RAM_RTC_TAG: u8 = 6;
 const STATE_MBC5_RAM_TAG: u8 = 7;
 const STATE_MMM01_RAM_TAG: u8 = 8;
+const STATE_HUC1_RAM_TAG: u8 = 9;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CartridgeSaveKey(String);
@@ -950,6 +951,10 @@ fn encode_persistent_state(
             bytes.push(STATE_MMM01_RAM_TAG);
             encode_linear_ram(bytes, ram, "MMM01 RAM")?;
         }
+        PersistentCartState::Huc1Ram { ram } => {
+            bytes.push(STATE_HUC1_RAM_TAG);
+            encode_linear_ram(bytes, ram, "HuC1 RAM")?;
+        }
     }
     Ok(())
 }
@@ -998,6 +1003,9 @@ fn decode_persistent_state(
             ram: decode_linear_ram(cursor)?,
         }),
         STATE_MMM01_RAM_TAG => Ok(PersistentCartState::Mmm01Ram {
+            ram: decode_linear_ram(cursor)?,
+        }),
+        STATE_HUC1_RAM_TAG => Ok(PersistentCartState::Huc1Ram {
             ram: decode_linear_ram(cursor)?,
         }),
         _ => Err(CartridgeSaveBackendError::UnsupportedPersistentStateTag { tag }),
@@ -1289,6 +1297,22 @@ mod tests {
                 },
                 persistent_state: PersistentCartState::Mmm01Ram {
                     ram: vec![0x88, 0x99, 0xAA, 0xBB],
+                },
+            },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 17,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: true,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::PersistentRam {
+                        ram: CartridgeRamPayloadKind::Linear { byte_len: 3 },
+                    },
+                },
+                persistent_state: PersistentCartState::Huc1Ram {
+                    ram: vec![0xCC, 0xDD, 0xEE],
                 },
             },
         ];

@@ -218,10 +218,15 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 ### HuC1 and HuC-3
 
 - Treat `HuC1` as its own mapper family, not as "`MBC1` with IR."
-- `HuC1` should classify as `DocumentedButUnsupported`, not as ordinary `MBC1`.
+- `HuC1` should now classify as its own supported mapper family, not as ordinary `MBC1`.
 - Header code `0xFF` should classify as `HuC1 + RAM + BATTERY`.
-- The unsupported policy should state explicitly that `HuC1` needs cartridge-local IR-mode semantics, because `0x0000-0x1FFF` selects RAM mode versus IR mode rather than acting as ordinary MBC1 RAM enable.
-- If and when implemented, `HuC1` should have its own cartridge device with explicit `ram_mode` versus `ir_mode` state rather than inheriting standard `MBC1` behavior and overriding a few accesses.
+- `HuC1` must keep cartridge-local IR-mode semantics explicit, because `0x0000-0x1FFF` selects RAM mode versus IR mode rather than acting as ordinary MBC1 RAM enable.
+- The current baseline now includes a dedicated `HuC1` cartridge device with explicit `ram_mode` versus `ir_mode` state instead of inheriting standard `MBC1` behavior and overriding a few accesses.
+- The current baseline routes `0x2000-0x3FFF` through a dedicated `6`-bit HuC1 ROM-bank register, `0x4000-0x5FFF` through a dedicated `2`-bit RAM-bank register, and ignores `0x6000-0x7FFF` writes instead of borrowing MBC1 banking-mode semantics.
+- The current baseline keeps HuC1 ROM-bank writes literal rather than applying MBC1's `0 -> 1` translation, because Pan Docs documents a distinct HuC1 register map instead of MBC1-compatible bank-zero remapping.
+- The current baseline supports ROM sizes up to `1 MiB` and RAM sizes up to `32 KiB`, matching the HuC1 limits documented by Pan Docs / Gekkio's `GB Complete Technical Reference`.
+- `0xA000-0xBFFF` now routes either banked cartridge RAM or the IR register depending on the selected mode, and the persistent backing store lives under its own `HuC1` payload instead of being serialized as `MBC1`.
+- The current IR baseline exposes transmitter control and the documented `0xC0` / `0xC1` readback contract, but host-side light injection and commercial-oracle validation are still open follow-up work.
 - Treat `HuC-3` as a documented but poorly understood special cartridge, not as a close `MBC3` derivative.
 - `HuC-3` should classify as `DocumentedButUnsupported`, not as ordinary `MBC3`.
 - Header code `0xFE` should classify as `HuC-3`.

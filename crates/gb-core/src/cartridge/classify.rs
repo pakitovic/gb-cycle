@@ -71,12 +71,7 @@ impl CartridgeClassification {
                 UnsupportedCartridgeCategory::DocumentedButUnsupported,
                 "HuC-3 is a documented special cartridge with its own protocol",
             ),
-            0xFF => unsupported(
-                raw_type,
-                "HuC1+RAM+BATTERY",
-                UnsupportedCartridgeCategory::DocumentedButUnsupported,
-                "HuC1 needs dedicated IR-capable cartridge behavior",
-            ),
+            0xFF => supported(raw_type, "HuC1+RAM+BATTERY", SupportedCartridgeFamily::Huc1),
             _ => unsupported(
                 raw_type,
                 "UNKNOWN",

@@ -16,6 +16,13 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
         CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
     );
 
+    let huc1 = CartridgeClassification::classify(0xFF);
+    assert_eq!(huc1.detected_name(), "HuC1+RAM+BATTERY");
+    assert_eq!(
+        huc1.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Huc1)
+    );
+
     let tama5 = CartridgeClassification::classify(0xFD);
     assert_eq!(tama5.detected_name(), "BANDAI TAMA5");
     assert_eq!(
@@ -61,6 +68,10 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
     assert_eq!(
         PersistentCartState::Mmm01Ram { ram: vec![] }.kind_name(),
         "Mmm01Ram"
+    );
+    assert_eq!(
+        PersistentCartState::Huc1Ram { ram: vec![] }.kind_name(),
+        "Huc1Ram"
     );
 
     let mut diagnostics = Vec::new();

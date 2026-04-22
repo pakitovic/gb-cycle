@@ -169,6 +169,65 @@ pub(in crate::cartridge) fn validate_mmm01(
     Ok(header.ram_size.decoded_bytes.unwrap_or(0))
 }
 
+pub(in crate::cartridge) fn validate_huc1(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<usize, CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
+    };
+
+    if actual_rom_size != declared_rom_bytes {
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
+    }
+
+    if declared_rom_bytes > HUC1_SUPPORTED_ROM_BYTES_MAX {
+        return Err(ctx.reject(format!(
+            "{} exceeds the current HuC1 ROM limit of {} bytes with {} bytes",
+            ctx.name(),
+            HUC1_SUPPORTED_ROM_BYTES_MAX,
+            declared_rom_bytes
+        )));
+    }
+
+    let Some(ram_len) = header.ram_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported RAM size code {:#04X}",
+            ctx.name(),
+            header.ram_size.raw_code
+        )));
+    };
+
+    if ram_len == 0 || ram_len > HUC1_SUPPORTED_RAM_BYTES_MAX {
+        return Err(ctx.reject(format!(
+            "{} expects cartridge RAM between 1 and {} bytes, but the header resolved to {} bytes",
+            ctx.name(),
+            HUC1_SUPPORTED_RAM_BYTES_MAX,
+            ram_len
+        )));
+    }
+
+    Ok(ram_len)
+}
+
 pub(in crate::cartridge) fn validate_mbc1(
     header: &CartridgeHeader,
     actual_rom_size: usize,

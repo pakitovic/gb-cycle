@@ -181,6 +181,8 @@ Current status for point `2`: done in the current branch baseline. `MMM01` now l
 
 Current status for point `3`: done in the current branch baseline. `MBC1M` now enters through an explicit repeated-subheader signature path in strict mode for `1 MiB` multicarts, and the runtime path already covers both the no-RAM baseline and the fixed-`8 KiB` RAM commercial shape used by `Momotarou Collection`. The current implementation has already been validated against the commercial `Momotarou Collection (Japan) (SGB Enhanced)` cartridge path, including menu startup and both included games.
 
+Current status for point `4`: in progress in the current branch baseline. `HuC1` now loads through its own supported mapper family, uses explicit `ram_mode` versus `ir_mode` state instead of MBC1 RAM gating, exposes dedicated HuC1 ROM / RAM banking plus ignored `0x6000-0x7FFF` writes, and persists battery-backed RAM through its own payload shape instead of masquerading as `MBC1`. The current IR baseline already models transmitter control and the documented no-light / light readback values, but commercial-oracle validation and host-side light injection are still open follow-up work before this point should be considered fully closed.
+
 #### Cartridge-persistence sequencing inside Phase 6
 
 1. Define the cartridge persistent-state contract.

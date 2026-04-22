@@ -159,4 +159,60 @@ fn private_validation_helpers_cover_remaining_size_code_and_image_mismatch_rejec
         CartridgeLoadError::Rejected { reason, .. }
             if reason.contains("loaded ROM is 131072 bytes")
     ));
+
+    diagnostics.clear();
+    let huc1_unknown_size = CartridgeHeader::parse(&build_test_rom(
+        NO_MBC_SUPPORTED_ROM_BYTES,
+        0xFF,
+        0xFF,
+        0x03,
+    ))
+    .expect("header should parse");
+    let huc1_unknown_size_error = validate_huc1(
+        &huc1_unknown_size,
+        NO_MBC_SUPPORTED_ROM_BYTES,
+        &strict,
+        &CartridgeClassification::classify(0xFF),
+        &mut diagnostics,
+    )
+    .expect_err("unknown HuC1 ROM size code should fail");
+    assert!(matches!(
+        huc1_unknown_size_error,
+        CartridgeLoadError::Rejected { reason, .. }
+            if reason.contains("unsupported ROM size code")
+    ));
+
+    diagnostics.clear();
+    let huc1_mismatch =
+        CartridgeHeader::parse(&build_banked_huc1_rom(0x03, 0x03)).expect("header should parse");
+    let huc1_mismatch_error = validate_huc1(
+        &huc1_mismatch,
+        128 * 1024,
+        &strict,
+        &CartridgeClassification::classify(0xFF),
+        &mut diagnostics,
+    )
+    .expect_err("HuC1 image-size mismatches should fail");
+    assert!(matches!(
+        huc1_mismatch_error,
+        CartridgeLoadError::Rejected { reason, .. }
+            if reason.contains("loaded ROM is 131072 bytes")
+    ));
+
+    diagnostics.clear();
+    let huc1_ram_overflow =
+        CartridgeHeader::parse(&build_banked_huc1_rom(0x03, 0x04)).expect("header should parse");
+    let huc1_ram_overflow_error = validate_huc1(
+        &huc1_ram_overflow,
+        256 * 1024,
+        &strict,
+        &CartridgeClassification::classify(0xFF),
+        &mut diagnostics,
+    )
+    .expect_err("HuC1 should reject RAM sizes above the documented 32 KiB ceiling");
+    assert!(matches!(
+        huc1_ram_overflow_error,
+        CartridgeLoadError::Rejected { reason, .. }
+            if reason.contains("expects cartridge RAM between 1 and")
+    ));
 }

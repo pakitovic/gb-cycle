@@ -159,11 +159,6 @@ fn documented_special_headers_keep_explicit_categories_and_do_not_fall_back_sile
             "HuC-3",
             UnsupportedCartridgeCategory::DocumentedButUnsupported,
         ),
-        (
-            0xFF,
-            "HuC1+RAM+BATTERY",
-            UnsupportedCartridgeCategory::DocumentedButUnsupported,
-        ),
         (0xAA, "UNKNOWN", UnsupportedCartridgeCategory::UnknownCode),
     ];
 
@@ -182,6 +177,25 @@ fn documented_special_headers_keep_explicit_categories_and_do_not_fall_back_sile
             CartridgeSelection::Unsupported(category)
         );
     }
+}
+
+#[test]
+fn huc1_header_type_loads_as_supported_instead_of_rejecting_as_a_special_case() {
+    let report = CartridgeSlot::load(
+        build_banked_huc1_rom(0x03, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("HuC1 should load");
+
+    let classification = report
+        .cartridge()
+        .classification()
+        .expect("classification should exist");
+    assert_eq!(classification.detected_name(), "HuC1+RAM+BATTERY");
+    assert_eq!(
+        classification.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Huc1)
+    );
 }
 
 #[test]

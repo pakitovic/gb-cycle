@@ -126,6 +126,7 @@ impl PersistentCartState {
             Self::None => "None",
             Self::NoMbcRam { .. } => "NoMbcRam",
             Self::Mmm01Ram { .. } => "Mmm01Ram",
+            Self::Huc1Ram { .. } => "Huc1Ram",
             Self::Mbc1Ram { .. } => "Mbc1Ram",
             Self::Mbc2Ram { .. } => "Mbc2Ram",
             Self::Mbc3Rtc { .. } => "Mbc3Rtc",
