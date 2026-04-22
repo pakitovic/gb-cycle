@@ -216,7 +216,8 @@ impl Ppu {
         current_visible_x: u8,
     ) {
         let sprite_screen_x = sprite_screen_x(sprite);
-        let fifo_front_screen_x = self.obj_fifo_front_screen_x(current_visible_x);
+        let fifo_front_screen_x =
+            self.obj_fifo_front_screen_x_for_sprite(current_visible_x, sprite_screen_x);
         for tile_pixel in 0..BG_TILE_WIDTH {
             let bit = if sprite.attributes & 0x20 != 0 {
                 tile_pixel
@@ -268,7 +269,8 @@ impl Ppu {
         current_visible_x: u8,
     ) {
         let sprite_screen_x = sprite_screen_x(sprite);
-        let fifo_front_screen_x = self.obj_fifo_front_screen_x(current_visible_x);
+        let fifo_front_screen_x =
+            self.obj_fifo_front_screen_x_for_sprite(current_visible_x, sprite_screen_x);
         for tile_pixel in 0..BG_TILE_WIDTH {
             let bit = if sprite.attributes & 0x20 != 0 {
                 tile_pixel
@@ -313,6 +315,48 @@ impl Ppu {
 
     fn obj_fifo_front_screen_x(&self, current_visible_x: u8) -> i16 {
         current_visible_x as i16 - self.obj_fifo_hidden_pops_before_first_visible_pixel() as i16
+    }
+
+    fn obj_fifo_front_screen_x_for_sprite(
+        &self,
+        current_visible_x: u8,
+        sprite_screen_x: i16,
+    ) -> i16 {
+        if sprite_screen_x < 0 {
+            current_visible_x as i16
+                - self.obj_fifo_hidden_pops_before_first_visible_pixel_raw() as i16
+        } else {
+            self.obj_fifo_front_screen_x(current_visible_x)
+        }
+    }
+
+    fn obj_fifo_hidden_pops_before_first_visible_pixel_raw(&self) -> usize {
+        if self.bg_pipeline_state.visible_pixels_output > 0 {
+            return 0;
+        }
+
+        let mut current_transfer_x = self.bg_pipeline_state.current_transfer_x;
+        let mut scx_discard_remaining = self.bg_pipeline_state.scx_discard_remaining;
+        let mut startup_pre_visible_transfer_dots_remaining = self
+            .bg_pipeline_state
+            .startup_pre_visible_transfer_dots_remaining;
+        let mut hidden_pops = 0usize;
+
+        while scx_discard_remaining > 0 || current_transfer_x < 8 {
+            if scx_discard_remaining > 0 {
+                scx_discard_remaining -= 1;
+                continue;
+            }
+
+            current_transfer_x += 1;
+            if startup_pre_visible_transfer_dots_remaining > 0 {
+                startup_pre_visible_transfer_dots_remaining -= 1;
+            } else {
+                hidden_pops += 1;
+            }
+        }
+
+        hidden_pops
     }
 
     pub(super) fn obj_fifo_hidden_pops_before_first_visible_pixel(&self) -> usize {
