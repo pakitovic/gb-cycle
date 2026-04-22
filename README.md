@@ -2,18 +2,21 @@
 
 A hardware-accuracy-focused Game Boy emulator written in Rust.
 
-The core's base temporal unit is `1 T-cycle`, advanced on one shared scheduler timeline.
-The target CPU foundation is a `fetch / decode / execute` core with real bus accesses.
-The target graphics foundation is a `dot-by-dot` PPU with `tile fetcher + pixel FIFO`.
+## Current implementation highlights
 
-## Goals
-
-- Prioritize behavior faithful to real hardware.
-- Keep the core portable and decoupled from any frontend.
-- Make validation through tests and reference ROMs straightforward.
-- Build the core from the start on a `T-cycle` timeline, not an `M-cycle` timeline.
-- Model the CPU from the start as a real fetch/decode/execute flow, not as opaque opcodes with aggregated duration.
-- Model the PPU from the start as a real pipeline, not as a scanline renderer.
+| Domain | Highlight |
+| --- | --- |
+| Core architecture | Frontend-agnostic `gb-core` separated from CLI, desktop, persistence, and ROM-runner crates so the emulator stays portable and testable. |
+| Scheduler | One deterministic shared `T-cycle` timeline coordinates CPU, PPU, timer, DMA, APU, and MMIO side effects. |
+| CPU | `T-cycle`-accurate micro-op core with real opcode, immediate, stack, and interrupt-service bus traffic. |
+| PPU | `T-cycle`-accurate dot pipeline with explicit fetcher/FIFO stages, variable `Mode 3`, live MMIO effects, and DMG OAM-corruption coverage. |
+| DMA / bus | Requester-aware arbitration with DMG OAM DMA timing, blocked VRAM/OAM access semantics, and explicit MMIO ownership. |
+| Timer / interrupts | Falling-edge timer model with delayed `TIMA` reload/request timing, centralized `IF` / `IE` ownership, and scheduler-visible IRQ aggregation. |
+| APU | Shared-timeline four-channel DMG audio core with `DIV-APU` / frame-sequencer timing, channel quirks, HPF, and host-facing sample export. |
+| Joypad / serial | Hardware-owned `JOYP`, `SB`, and `SC` semantics with visible-edge interrupts, bit-shift transfers, and explicit link-endpoint boundaries. |
+| Cartridges | Header-driven mapper model with `NoMBC`, `MBC1`, `MBC2`, `MBC3`, `MBC5`, RTC support, and separate host persistence. |
+| Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis that keeps first post-boot timer, PPU, and APU behavior coherent. |
+| Validation | Current curated DMG external report is `167/167` entries (`165` passing, `2` informational) plus focused unit and integration coverage. |
 
 ## Current structure
 

@@ -16,7 +16,7 @@ pub const DESKTOP_SETTINGS_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_SETTINGS_PATH"
 const DESKTOP_SETTINGS_VERSION: u32 = 1;
 const DESKTOP_SETTINGS_DIRECTORY_NAME: &str = "gb-cycle";
 const DESKTOP_SETTINGS_FILE_NAME: &str = "desktop-settings.toml";
-const MAX_RECENT_ROMS: usize = 8;
+const MAX_RECENT_ROMS: usize = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopSettingsStore {
@@ -761,9 +761,10 @@ fn resolve_desktop_settings_path_from_locations(
 mod tests {
     use super::{
         DESKTOP_SETTINGS_PATH_ENV_VAR, DESKTOP_SETTINGS_VERSION, DesktopSettingsStore,
-        PersistedAudioSettings, PersistedBootRomVerificationMode, PersistedDesktopConsoleModel,
-        PersistedDesktopSettings, PersistedExecutionMode, PersistedSaveDirectoryPolicy,
-        PersistedStartupMode, resolve_desktop_settings_path_from_locations,
+        MAX_RECENT_ROMS, PersistedAudioSettings, PersistedBootRomVerificationMode,
+        PersistedDesktopConsoleModel, PersistedDesktopSettings, PersistedExecutionMode,
+        PersistedSaveDirectoryPolicy, PersistedStartupMode,
+        resolve_desktop_settings_path_from_locations,
     };
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
@@ -1304,6 +1305,30 @@ mod tests {
                 PathBuf::from("/tmp/roms/Tetris.gb"),
                 PathBuf::from("/tmp/roms/DrMario.gb"),
             ]
+        );
+    }
+
+    #[test]
+    fn recent_rom_history_keeps_the_latest_twelve_entries() {
+        let path = unique_test_path("recent-rom-capacity");
+        let mut store = DesktopSettingsStore {
+            path: Some(path.clone()),
+            settings: PersistedDesktopSettings::default(),
+        };
+
+        for index in 1..=14 {
+            store
+                .remember_loaded_rom(Path::new(&format!("/tmp/roms/ROM{index:02}.gb")))
+                .expect("recent ROM should persist");
+        }
+
+        let reloaded =
+            PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+        assert_eq!(reloaded.recent_roms.len(), MAX_RECENT_ROMS);
+        assert_eq!(reloaded.recent_roms[0], PathBuf::from("/tmp/roms/ROM14.gb"));
+        assert_eq!(
+            reloaded.recent_roms[11],
+            PathBuf::from("/tmp/roms/ROM03.gb")
         );
     }
 
