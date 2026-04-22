@@ -56,7 +56,7 @@ const RECENT_ROM_LABEL_MAX_BYTES: usize = 64;
 const RECENT_ROM_SCROLL_DELAY: Duration = Duration::from_millis(900);
 const RECENT_ROM_SCROLL_STEP: Duration = Duration::from_millis(150);
 const RECENT_ROM_SCROLL_GAP_CHARS: usize = 3;
-pub const RECENT_ROM_MENU_CAPACITY: usize = 8;
+pub const RECENT_ROM_MENU_CAPACITY: usize = 12;
 
 const ROOT_MENU_ITEMS: [MenuItem; 10] = [
     MenuItem::Resume,
@@ -79,20 +79,24 @@ const RECENT_MENU_ITEMS: [MenuItem; RECENT_ROM_MENU_CAPACITY + 2] = [
     MenuItem::RecentRom6,
     MenuItem::RecentRom7,
     MenuItem::RecentRom8,
+    MenuItem::RecentRom9,
+    MenuItem::RecentRom10,
+    MenuItem::RecentRom11,
+    MenuItem::RecentRom12,
     MenuItem::ClearRecentList,
     MenuItem::Return,
 ];
 const VIDEO_MENU_ITEMS: [MenuItem; 12] = [
+    MenuItem::PerformanceHud,
+    MenuItem::PresentationFilter,
     MenuItem::Fullscreen,
     MenuItem::Vsync,
     MenuItem::WindowScale,
     MenuItem::IntegerScale,
-    MenuItem::PresentationFilter,
+    MenuItem::Screenshot,
     MenuItem::ShowBackground,
     MenuItem::ShowWindow,
     MenuItem::ShowObjects,
-    MenuItem::Screenshot,
-    MenuItem::PerformanceHud,
     MenuItem::VideoDefaults,
     MenuItem::Return,
 ];
@@ -448,6 +452,10 @@ impl MenuPresentation {
             MenuItem::RecentRom6 => self.recent_rom_count >= 6,
             MenuItem::RecentRom7 => self.recent_rom_count >= 7,
             MenuItem::RecentRom8 => self.recent_rom_count >= 8,
+            MenuItem::RecentRom9 => self.recent_rom_count >= 9,
+            MenuItem::RecentRom10 => self.recent_rom_count >= 10,
+            MenuItem::RecentRom11 => self.recent_rom_count >= 11,
+            MenuItem::RecentRom12 => self.recent_rom_count >= 12,
             MenuItem::ClearRecentList => self.recent_rom_count > 0,
             _ => true,
         }
@@ -466,6 +474,10 @@ impl MenuPresentation {
             | MenuItem::RecentRom6
             | MenuItem::RecentRom7
             | MenuItem::RecentRom8
+            | MenuItem::RecentRom9
+            | MenuItem::RecentRom10
+            | MenuItem::RecentRom11
+            | MenuItem::RecentRom12
             | MenuItem::BootRomFilePath
             | MenuItem::BootRomDirectoryPath
             | MenuItem::SaveDirectoryPath => !self.any_dialog_pending,
@@ -569,6 +581,10 @@ impl MenuPresentation {
             MenuItem::RecentRom6 => recent_rom_item_label(self.recent_rom_labels[5]),
             MenuItem::RecentRom7 => recent_rom_item_label(self.recent_rom_labels[6]),
             MenuItem::RecentRom8 => recent_rom_item_label(self.recent_rom_labels[7]),
+            MenuItem::RecentRom9 => recent_rom_item_label(self.recent_rom_labels[8]),
+            MenuItem::RecentRom10 => recent_rom_item_label(self.recent_rom_labels[9]),
+            MenuItem::RecentRom11 => recent_rom_item_label(self.recent_rom_labels[10]),
+            MenuItem::RecentRom12 => recent_rom_item_label(self.recent_rom_labels[11]),
             MenuItem::ClearRecentList => "CLEAR LIST".to_string(),
             MenuItem::SaveBattery => "SAVE BATTERY".to_string(),
             MenuItem::VideoMenu => "VIDEO".to_string(),
@@ -969,6 +985,10 @@ enum MenuItem {
     RecentRom6,
     RecentRom7,
     RecentRom8,
+    RecentRom9,
+    RecentRom10,
+    RecentRom11,
+    RecentRom12,
     ClearRecentList,
     SaveBattery,
     VideoMenu,
@@ -1533,6 +1553,10 @@ impl OverlayMenuState {
             MenuItem::RecentRom6 => Some(MenuAction::OpenRecentRom(5)),
             MenuItem::RecentRom7 => Some(MenuAction::OpenRecentRom(6)),
             MenuItem::RecentRom8 => Some(MenuAction::OpenRecentRom(7)),
+            MenuItem::RecentRom9 => Some(MenuAction::OpenRecentRom(8)),
+            MenuItem::RecentRom10 => Some(MenuAction::OpenRecentRom(9)),
+            MenuItem::RecentRom11 => Some(MenuAction::OpenRecentRom(10)),
+            MenuItem::RecentRom12 => Some(MenuAction::OpenRecentRom(11)),
             MenuItem::ClearRecentList => Some(MenuAction::ClearRecentList),
             MenuItem::SaveBattery => Some(MenuAction::SaveBattery),
             MenuItem::VideoMenu => {
@@ -2058,6 +2082,10 @@ fn rendered_item_label(
             | MenuItem::RecentRom6
             | MenuItem::RecentRom7
             | MenuItem::RecentRom8
+            | MenuItem::RecentRom9
+            | MenuItem::RecentRom10
+            | MenuItem::RecentRom11
+            | MenuItem::RecentRom12
     ) {
         return label;
     }
@@ -2387,10 +2415,11 @@ mod tests {
         CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
         KeyboardBindingTarget, KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction,
         MenuInput, MenuItem, MenuPresentation, MenuScreen, OverlayMenuState,
-        PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, ScrollIndicatorDirection,
-        gamepad_binding_label, normalized_selected_index, performance_hud_lines,
-        previous_enabled_index, render_performance_hud, rendered_recent_rom_item_label,
-        scroll_indicator_rows, viewport_start_index, visible_item_at,
+        PerformanceHudSnapshot, RECENT_MENU_ITEMS, RECENT_ROM_MENU_CAPACITY,
+        ScrollIndicatorDirection, VIDEO_MENU_ITEMS, gamepad_binding_label,
+        normalized_selected_index, performance_hud_lines, previous_enabled_index,
+        render_performance_hud, rendered_recent_rom_item_label, scroll_indicator_rows,
+        viewport_start_index, visible_item_at,
     };
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
@@ -2451,6 +2480,27 @@ mod tests {
         }
     }
 
+    fn select_visible_item(
+        menu: &mut OverlayMenuState,
+        presentation: MenuPresentation,
+        target: MenuItem,
+    ) {
+        while visible_item_at(
+            menu.current_screen_state().screen,
+            menu.current_screen_state().selected_index,
+            presentation,
+        ) != Some(target)
+        {
+            assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        }
+    }
+
+    fn open_video_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
+        menu.open(presentation);
+        select_visible_item(menu, presentation, MenuItem::VideoMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+    }
+
     #[test]
     fn opening_the_menu_selects_the_first_enabled_root_item() {
         let presentation = test_presentation();
@@ -2481,7 +2531,7 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
-            Some(MenuAction::ToggleFullscreen)
+            Some(MenuAction::TogglePerformanceHud)
         );
     }
 
@@ -2528,13 +2578,9 @@ mod tests {
     fn video_submenu_cycles_scale_and_toggles_integer_presentation() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_video_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::WindowScale);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleWindowScale)
@@ -2550,20 +2596,8 @@ mod tests {
     fn video_submenu_toggles_the_performance_hud() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_video_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::TogglePerformanceHud)
@@ -2574,15 +2608,9 @@ mod tests {
     fn video_submenu_toggles_the_presentation_filter() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_video_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::PresentationFilter);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::TogglePresentationFilter)
@@ -2590,22 +2618,12 @@ mod tests {
     }
 
     #[test]
-    fn video_submenu_saves_a_screenshot_after_filter() {
+    fn video_submenu_saves_a_screenshot_before_layer_toggles() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_video_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::Screenshot);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::SaveScreenshot)
@@ -2616,16 +2634,9 @@ mod tests {
     fn video_submenu_exposes_layer_toggles_after_filter() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_video_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::ShowBackground);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::ToggleBackgroundLayer)
@@ -2646,12 +2657,9 @@ mod tests {
     fn video_submenu_toggles_vsync_before_scale() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_video_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::Vsync);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::ToggleVsync)
@@ -2662,21 +2670,9 @@ mod tests {
     fn video_submenu_resets_defaults_after_the_host_toggles() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_video_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::VideoDefaults);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::ResetVideoDefaults)
@@ -2923,7 +2919,7 @@ mod tests {
         );
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, blocked_presentation),
-            Some(MenuAction::ToggleFullscreen)
+            Some(MenuAction::TogglePerformanceHud)
         );
     }
 
@@ -3059,7 +3055,7 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
-            Some(MenuAction::ToggleFullscreen)
+            Some(MenuAction::TogglePerformanceHud)
         );
     }
 
@@ -3405,11 +3401,37 @@ mod tests {
     }
 
     #[test]
+    fn recent_and_video_menu_order_matches_the_overlay_contract() {
+        assert_eq!(RECENT_MENU_ITEMS[0], MenuItem::RecentRom1);
+        assert_eq!(RECENT_MENU_ITEMS[7], MenuItem::RecentRom8);
+        assert_eq!(RECENT_MENU_ITEMS[8], MenuItem::RecentRom9);
+        assert_eq!(RECENT_MENU_ITEMS[11], MenuItem::RecentRom12);
+        assert_eq!(RECENT_MENU_ITEMS[12], MenuItem::ClearRecentList);
+        assert_eq!(RECENT_MENU_ITEMS[13], MenuItem::Return);
+
+        assert_eq!(VIDEO_MENU_ITEMS[0], MenuItem::PerformanceHud);
+        assert_eq!(VIDEO_MENU_ITEMS[1], MenuItem::PresentationFilter);
+        assert_eq!(VIDEO_MENU_ITEMS[6], MenuItem::Screenshot);
+        assert_eq!(VIDEO_MENU_ITEMS[7], MenuItem::ShowBackground);
+    }
+
+    #[test]
     fn menu_item_labels_cover_runtime_variants_and_binding_summaries() {
         let mut presentation = test_presentation();
-        presentation.recent_rom_count = 8;
+        presentation.recent_rom_count = 12;
         for (index, label) in [
-            "TETRIS", "MARIO", "DRMARIO", "KIRBY", "ZELDA", "WARIO", "METROID", "TENNIS",
+            "TETRIS",
+            "MARIO",
+            "DRMARIO",
+            "KIRBY",
+            "ZELDA",
+            "WARIO",
+            "METROID",
+            "TENNIS",
+            "ALLEYWAY",
+            "FZERO",
+            "DONKEY",
+            "MOLEMANIA",
         ]
         .into_iter()
         .enumerate()
@@ -3423,6 +3445,10 @@ mod tests {
         assert_eq!(presentation.item_label(MenuItem::RecentRom6), "WARIO");
         assert_eq!(presentation.item_label(MenuItem::RecentRom7), "METROID");
         assert_eq!(presentation.item_label(MenuItem::RecentRom8), "TENNIS");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom9), "ALLEYWAY");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom10), "FZERO");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom11), "DONKEY");
+        assert_eq!(presentation.item_label(MenuItem::RecentRom12), "MOLEMANIA");
         assert_eq!(
             presentation.item_label(MenuItem::ClearRecentList),
             "CLEAR LIST"
