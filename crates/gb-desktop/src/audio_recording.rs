@@ -145,23 +145,15 @@ impl DesktopAudioRecorder {
         Ok(())
     }
 
-    pub(crate) fn set_console_model(&mut self, console_model: ConsoleModel) -> Result<(), String> {
-        if self.console_model == console_model {
-            return Ok(());
-        }
-
+    pub(crate) fn reset_for_session_swap(
+        &mut self,
+        console_model: ConsoleModel,
+    ) -> Result<(), String> {
         self.write_captured_samples()?;
-        self.console_model = console_model;
-        self.reset_mixed_stream_capture()?;
-        for stem_stream in &mut self.stem_streams {
-            stem_stream.stream.reset_capture(
-                stem_stream.stream.writer.sample_rate_hz,
-                Some(ApuHostDcBlocker::new(
-                    self.console_model,
-                    stem_stream.stream.writer.sample_rate_hz,
-                )),
-            )?;
+        if self.console_model != console_model {
+            self.console_model = console_model;
         }
+        self.reset_all_capture_state()?;
         Ok(())
     }
 
@@ -176,6 +168,20 @@ impl DesktopAudioRecorder {
         };
         self.mixed_stream
             .reset_capture(self.mixed_stream.writer.sample_rate_hz, dc_blocker)
+    }
+
+    fn reset_all_capture_state(&mut self) -> Result<(), String> {
+        self.reset_mixed_stream_capture()?;
+        for stem_stream in &mut self.stem_streams {
+            stem_stream.stream.reset_capture(
+                stem_stream.stream.writer.sample_rate_hz,
+                Some(ApuHostDcBlocker::new(
+                    self.console_model,
+                    stem_stream.stream.writer.sample_rate_hz,
+                )),
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -447,9 +453,12 @@ const fn channel_stem_suffix(channel: ApuRecordedChannel) -> &'static str {
 }
 
 fn write_wav_header(file: &mut File, sample_rate_hz: u32, frame_count: u64) -> std::io::Result<()> {
-    let data_bytes = frame_count as u32 * AUDIO_RECORDING_BYTES_PER_FRAME;
-    let riff_size = WAV_HEADER_LEN - 8 + data_bytes;
-    let byte_rate = sample_rate_hz * AUDIO_RECORDING_BYTES_PER_FRAME;
+    let frame_count_u32 = checked_recording_frame_count(frame_count)?;
+    let data_bytes = checked_recording_data_bytes(frame_count_u32)?;
+    let riff_size = checked_recording_chunk_size(WAV_HEADER_LEN - 8, data_bytes, frame_count)?;
+    let byte_rate = sample_rate_hz
+        .checked_mul(AUDIO_RECORDING_BYTES_PER_FRAME)
+        .ok_or_else(|| recording_header_overflow_error(frame_count))?;
     let block_align = AUDIO_RECORDING_BYTES_PER_FRAME as u16;
 
     let mut header = Vec::with_capacity(WAV_HEADER_LEN as usize);
@@ -474,9 +483,10 @@ fn write_aifc_header(
     sample_rate_hz: u32,
     frame_count: u64,
 ) -> std::io::Result<()> {
-    let data_bytes = frame_count as u32 * AUDIO_RECORDING_BYTES_PER_FRAME;
-    let form_size = AIFC_HEADER_LEN - 8 + data_bytes;
-    let ssnd_chunk_size = data_bytes + 8;
+    let frame_count_u32 = checked_recording_frame_count(frame_count)?;
+    let data_bytes = checked_recording_data_bytes(frame_count_u32)?;
+    let form_size = checked_recording_chunk_size(AIFC_HEADER_LEN - 8, data_bytes, frame_count)?;
+    let ssnd_chunk_size = checked_recording_chunk_size(8, data_bytes, frame_count)?;
 
     let mut header = Vec::with_capacity(AIFC_HEADER_LEN as usize);
     header.extend_from_slice(b"FORM");
@@ -488,7 +498,7 @@ fn write_aifc_header(
     header.extend_from_slice(b"COMM");
     push_u32_be(&mut header, AIFC_COMM_CHUNK_SIZE);
     push_u16_be(&mut header, AUDIO_RECORDING_CHANNEL_COUNT);
-    push_u32_be(&mut header, frame_count as u32);
+    push_u32_be(&mut header, frame_count_u32);
     push_u16_be(&mut header, AUDIO_RECORDING_BYTES_PER_SAMPLE * 8);
     header.extend_from_slice(&aifc_sample_rate_bytes(sample_rate_hz));
     #[cfg(target_endian = "big")]
@@ -501,6 +511,35 @@ fn write_aifc_header(
     push_u32_be(&mut header, 0);
     push_u32_be(&mut header, 0);
     file.write_all(&header)
+}
+
+fn checked_recording_frame_count(frame_count: u64) -> std::io::Result<u32> {
+    u32::try_from(frame_count).map_err(|_| recording_header_overflow_error(frame_count))
+}
+
+fn checked_recording_data_bytes(frame_count: u32) -> std::io::Result<u32> {
+    frame_count
+        .checked_mul(AUDIO_RECORDING_BYTES_PER_FRAME)
+        .ok_or_else(|| recording_header_overflow_error(u64::from(frame_count)))
+}
+
+fn checked_recording_chunk_size(
+    base_size: u32,
+    data_bytes: u32,
+    frame_count: u64,
+) -> std::io::Result<u32> {
+    base_size
+        .checked_add(data_bytes)
+        .ok_or_else(|| recording_header_overflow_error(frame_count))
+}
+
+fn recording_header_overflow_error(frame_count: u64) -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        format!(
+            "audio recording is too large to fit the selected file format header (frame_count={frame_count})"
+        ),
+    )
 }
 
 fn aifc_sample_rate_bytes(sample_rate_hz: u32) -> [u8; 10] {
@@ -732,6 +771,34 @@ mod tests {
         assert_eq!(bytes.len(), WAV_HEADER_LEN as usize);
 
         let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn writer_rejects_recordings_that_overflow_container_header_sizes() {
+        let wav_path = temp_recording_path("wav");
+        let mut wav_writer = AudioRecordingWriter::new(&wav_path, 96_000).expect("wav writer");
+        wav_writer.frame_count = u64::from(u32::MAX / AUDIO_RECORDING_BYTES_PER_FRAME) + 1;
+        assert!(
+            wav_writer
+                .finish()
+                .expect_err("oversized wav recordings should fail header finalization")
+                .contains("too large to fit the selected file format header")
+        );
+
+        let aifc_path = temp_recording_path("aifc");
+        let mut aifc_writer =
+            AudioRecordingWriter::new(&aifc_path, DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ)
+                .expect("aifc writer");
+        aifc_writer.frame_count = u64::from(u32::MAX / AUDIO_RECORDING_BYTES_PER_FRAME) + 1;
+        assert!(
+            aifc_writer
+                .finish()
+                .expect_err("oversized aifc recordings should fail header finalization")
+                .contains("too large to fit the selected file format header")
+        );
+
+        let _ = fs::remove_file(wav_path);
+        let _ = fs::remove_file(aifc_path);
     }
 
     #[test]
@@ -1020,7 +1087,7 @@ mod tests {
             .expect("captured samples should flush before console-model updates");
 
         recorder
-            .set_console_model(ConsoleModel::Mgb)
+            .reset_for_session_swap(ConsoleModel::Mgb)
             .expect("console-model changes should reset all capture state");
         assert_eq!(recorder.console_model, ConsoleModel::Mgb);
         assert_eq!(recorder.mixed_stream.capture.pending_sample_count(), 0);
@@ -1035,8 +1102,8 @@ mod tests {
         assert!(recorder.stem_streams[0].stream.dc_blocker.is_some());
 
         recorder
-            .set_console_model(ConsoleModel::Mgb)
-            .expect("setting the existing console model should be a no-op");
+            .reset_for_session_swap(ConsoleModel::Mgb)
+            .expect("same-model session swaps should still reset capture state");
 
         recorder
             .set_channel_mask(ApuRecordedChannelMask::ALL)
@@ -1048,5 +1115,46 @@ mod tests {
 
         let _ = fs::remove_file(output_path);
         let _ = fs::remove_file(stem_ch3_path);
+    }
+
+    #[test]
+    fn session_swaps_reset_recording_capture_even_when_the_console_model_is_unchanged() {
+        let output_path = temp_recording_path("wav");
+        let stem_ch4_path =
+            stem_output_path(&output_path, ApuRecordedChannel::Ch4).expect("ch4 stem path");
+        let mut recorder = DesktopAudioRecorder::new(
+            &DesktopAudioRecordingOptions {
+                output_path: output_path.clone(),
+                sample_rate_hz: DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
+                stem_channels: vec![ApuRecordedChannel::Ch4],
+            },
+            ConsoleModel::Dmg,
+        )
+        .expect("recorder");
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+        configure_constant_ch1_output(&mut apu);
+
+        for _ in 0..8 {
+            recorder.capture_t_cycle(&apu);
+        }
+        assert!(recorder.mixed_stream.capture.pending_sample_count() > 0);
+
+        recorder
+            .reset_for_session_swap(ConsoleModel::Dmg)
+            .expect("session swaps should flush and reset recording capture");
+        assert_eq!(recorder.console_model, ConsoleModel::Dmg);
+        assert_eq!(recorder.mixed_stream.capture.pending_sample_count(), 0);
+        assert_eq!(
+            recorder.stem_streams[0]
+                .stream
+                .capture
+                .pending_sample_count(),
+            0
+        );
+
+        recorder.finish().expect("recorder should finish");
+
+        let _ = fs::remove_file(output_path);
+        let _ = fs::remove_file(stem_ch4_path);
     }
 }

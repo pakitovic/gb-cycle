@@ -5166,7 +5166,7 @@ fn open_selected_rom(
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = DesktopEmulationSession::new_single(next_machine);
     if let Some(audio_output) = &mut context.runtime.audio_output {
-        audio_output.set_console_model(next_console_model)?;
+        audio_output.reset_for_session_swap(next_console_model)?;
     }
     match context.runtime.audio_recording_mode {
         DesktopAudioRecordingMode::Disabled => {
@@ -5177,7 +5177,7 @@ fn open_selected_rom(
         }
         DesktopAudioRecordingMode::Explicit(_) => {
             if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
-                audio_recorder.set_console_model(next_console_model)?;
+                audio_recorder.reset_for_session_swap(next_console_model)?;
             }
         }
     }
@@ -5312,10 +5312,10 @@ fn open_selected_linked_secondary_rom(
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
     if let Some(audio_output) = &mut context.runtime.audio_output {
-        audio_output.set_console_model(next_console_model)?;
+        audio_output.reset_for_session_swap(next_console_model)?;
     }
     if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
-        audio_recorder.set_console_model(next_console_model)?;
+        audio_recorder.reset_for_session_swap(next_console_model)?;
     }
     context.runtime.save_session = next_primary_save_session;
     context.runtime.secondary_save_session = next_secondary_save_session;
@@ -6750,10 +6750,10 @@ fn reset_machine(
     clear_live_input_state(machine, runtime);
     *machine = reset_machine;
     if let Some(audio_output) = &mut runtime.audio_output {
-        audio_output.set_console_model(reset_console_model)?;
+        audio_output.reset_for_session_swap(reset_console_model)?;
     }
     if let Some(audio_recorder) = &mut runtime.audio_recorder {
-        audio_recorder.set_console_model(reset_console_model)?;
+        audio_recorder.reset_for_session_swap(reset_console_model)?;
     }
     runtime.save_session = next_save_session;
     runtime.secondary_save_session = next_secondary_save_session;
