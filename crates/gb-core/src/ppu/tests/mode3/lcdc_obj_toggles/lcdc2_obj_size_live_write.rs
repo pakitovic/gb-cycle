@@ -31,6 +31,41 @@ fn lcdc2_live_write_tracks_only_the_16_to_8_shrink_boundary() {
 }
 
 #[test]
+fn lcdc2_live_write_retains_an_older_pending_shrink_when_a_new_one_arrives() {
+    let mut state = DmgLcdc2ObjSizeLiveWriteState::default();
+
+    state.begin_active_shrink(0, 4);
+    state.begin_active_shrink(2, 24);
+
+    assert_eq!(
+        state.retained_pending_write,
+        Some(DmgLcdc2ActiveObjSizeWrite::new(0, 4)),
+    );
+    assert_eq!(
+        state.active_write,
+        Some(DmgLcdc2ActiveObjSizeWrite::new(2, 24))
+    );
+}
+
+#[test]
+fn pending_lcdc2_effects_stay_pending_until_a_fetched_sprite_uses_them() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(dmg_mode3_startup_state(0x87, 8, 4));
+    ppu.dmg_panel_live_write_state.lcdc2.active_write = Some(DmgLcdc2ActiveObjSizeWrite::new(0, 6));
+
+    ppu.with_ppu_vram(|ppu, vram| ppu.apply_pending_dmg_lcdc2_observed_write_effects(vram));
+
+    assert_eq!(
+        ppu.dmg_panel_live_write_state
+            .lcdc2
+            .active_write
+            .expect("write stays pending when no fetched sprite can observe it")
+            .observed_effect_state,
+        DmgLcdc2ObservedEffectState::Pending,
+    );
+}
+
+#[test]
 fn obj_pipeline_state_tracks_queued_heights_and_resets_the_fetch_latches() {
     let sprite = obj_toggle_sprite(2, 16, 24, 0x11, 0x20);
     let owner = ObjHitOwnership {
@@ -189,6 +224,95 @@ fn lcdc2_push_bytes_cover_each_plane_selection_variant() {
             (0x11, 0x55),
         );
     });
+}
+
+#[test]
+fn retained_pending_lcdc2_write_can_still_drive_push_bytes_after_a_newer_write_arrives() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(dmg_mode3_startup_state(0x87, 2, 4));
+    ppu.dmg_panel_live_write_state.lcdc2.retained_pending_write =
+        Some(DmgLcdc2ActiveObjSizeWrite::new(0, 12));
+    ppu.dmg_panel_live_write_state.lcdc2.active_write =
+        Some(DmgLcdc2ActiveObjSizeWrite::new(2, 24));
+    ppu.write_bg_tile_row(0x10, 2, 0x11, 0x22);
+    ppu.write_bg_tile_row(0x11, 2, 0xAA, 0x55);
+    let sprite = obj_toggle_sprite(0, 16, 32, 0x11, 0x00);
+
+    ppu.with_ppu_vram(|ppu, vram| {
+        assert_eq!(
+            ppu.dmg_lcdc2_live_obj_size_push_bytes(sprite, 0x11, 0x22, vram),
+            (0xAA, 0x55),
+        );
+    });
+}
+
+#[test]
+fn retained_pending_lcdc2_write_can_still_drive_output_override_after_a_newer_write_arrives() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(dmg_mode3_startup_state(0x87, 2, 4));
+    ppu.mode2_scan_state
+        .push(obj_toggle_sprite(0, 16, 32, 0x11, 0x00));
+    ppu.dmg_panel_live_write_state.lcdc2.retained_pending_write =
+        Some(DmgLcdc2ActiveObjSizeWrite::new(0, 12));
+    ppu.dmg_panel_live_write_state.lcdc2.active_write =
+        Some(DmgLcdc2ActiveObjSizeWrite::new(2, 24));
+    ppu.write_bg_tile_row(0x10, 2, 0x00, 0x80);
+    ppu.write_bg_tile_row(0x11, 2, 0x80, 0x00);
+
+    let overridden = ppu.with_ppu_vram(|ppu, vram| {
+        ppu.apply_dmg_lcdc2_live_obj_size_output_override(
+            ObjPixel {
+                color: 2,
+                palette_obp1: false,
+                bg_over_obj: false,
+                sprite_x: 32,
+                oam_index: 0,
+            },
+            24,
+            vram,
+        )
+    });
+
+    assert_eq!(overridden.color, 1);
+}
+
+#[test]
+fn retained_pending_lcdc2_write_does_not_override_scx0_sprite32_upper_half() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(dmg_mode3_startup_state(0x87, 2, 0));
+    ppu.dmg_panel_live_write_state.lcdc2.retained_pending_write =
+        Some(DmgLcdc2ActiveObjSizeWrite::new(0, 12));
+    ppu.dmg_panel_live_write_state.lcdc2.active_write =
+        Some(DmgLcdc2ActiveObjSizeWrite::new(2, 24));
+    ppu.write_bg_tile_row(0x10, 2, 0x11, 0x22);
+    ppu.write_bg_tile_row(0x11, 2, 0xAA, 0x55);
+    let sprite = obj_toggle_sprite(0, 16, 32, 0x11, 0x00);
+
+    ppu.with_ppu_vram(|ppu, vram| {
+        assert_eq!(
+            ppu.dmg_lcdc2_live_obj_size_push_bytes(sprite, 0x11, 0x22, vram),
+            (0x11, 0x22),
+        );
+    });
+
+    ppu.mode2_scan_state.push(sprite);
+    ppu.write_bg_tile_row(0x10, 2, 0x00, 0x80);
+    ppu.write_bg_tile_row(0x11, 2, 0x80, 0x00);
+    let overridden = ppu.with_ppu_vram(|ppu, vram| {
+        ppu.apply_dmg_lcdc2_live_obj_size_output_override(
+            ObjPixel {
+                color: 2,
+                palette_obp1: false,
+                bg_over_obj: false,
+                sprite_x: 32,
+                oam_index: 0,
+            },
+            24,
+            vram,
+        )
+    });
+
+    assert_eq!(overridden.color, 2);
 }
 
 #[test]
