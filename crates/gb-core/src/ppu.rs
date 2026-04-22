@@ -14,6 +14,7 @@ mod snapshot;
 mod state;
 
 use self::helpers::*;
+use self::palette_conflicts::*;
 pub use self::snapshot::{
     PpuBgCachedSliceOriginSnapshot, PpuBgFifoCachedPixelSnapshot, PpuBgPushDispositionSnapshot,
     PpuBgStartupContinuationSliceSnapshot, PpuBgStartupFetchSeamSnapshot,
