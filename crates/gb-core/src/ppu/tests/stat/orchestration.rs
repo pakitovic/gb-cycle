@@ -1,0 +1,183 @@
+use super::super::*;
+
+fn dmg_stat_ppu(stat: u8) -> Ppu {
+    let mut ppu = Ppu::new(ConsoleModel::Dmg);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu
+}
+
+#[test]
+fn published_stat_line_start_falls_back_to_visible_line_hblank() {
+    let mut ppu = dmg_stat_ppu(0x08);
+    ppu.ly = 1;
+    ppu.line_dot = 0;
+
+    assert_eq!(ppu.access_mode_for_line_dot(0), PpuAccessMode::OamScan);
+    assert_eq!(
+        ppu.current_published_stat_access_mode(),
+        PpuAccessMode::HBlank
+    );
+}
+
+#[test]
+fn published_stat_mode2_to_mode3_orchestrator_promotes_mode3_on_exact_boundary() {
+    let mut ppu = dmg_stat_ppu(0x08);
+    ppu.ly = 1;
+    ppu.line_dot = MODE2_DOTS;
+
+    assert_eq!(
+        ppu.access_mode_for_line_dot(MODE2_DOTS - 1),
+        PpuAccessMode::OamScan
+    );
+    assert_eq!(
+        ppu.access_mode_for_line_dot(MODE2_DOTS),
+        PpuAccessMode::Drawing
+    );
+    assert_eq!(
+        ppu.current_published_stat_access_mode(),
+        PpuAccessMode::Drawing
+    );
+}
+
+#[test]
+fn published_stat_early_hblank_orchestrator_beats_the_base_published_drawing_mode() {
+    let mut ppu = dmg_stat_ppu(STAT_MODE0_INTERRUPT_ENABLE_BIT);
+    ppu.ly = 68;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 60;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 163;
+    ppu.bg_pipeline_state.visible_pixels_output = 155;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 5));
+    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
+    ppu.bg_pipeline_state.fetcher.stage_dot = 0;
+    ppu.line_dot = MODE0_START_DOT + 60;
+
+    for oam_index in 0..MAX_SELECTED_SPRITES_PER_LINE {
+        ppu.mode2_scan_state.push(PpuSelectedSprite {
+            oam_index: oam_index as u8,
+            y: 16,
+            x: 2,
+            tile_index: oam_index as u8,
+            attributes: 0,
+        });
+    }
+
+    assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT + 61);
+    assert_eq!(
+        ppu.access_mode_for_line_dot(ppu.line_dot - 1),
+        PpuAccessMode::Drawing
+    );
+    assert_eq!(
+        ppu.current_published_stat_access_mode(),
+        PpuAccessMode::HBlank
+    );
+}
+
+#[test]
+fn published_stat_keep_drawing_orchestrator_beats_the_base_published_hblank_mode() {
+    let mut ppu = dmg_stat_ppu(STAT_MODE0_INTERRUPT_ENABLE_BIT);
+    ppu.ly = 68;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 13;
+    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::FifoBacked;
+    ppu.bg_pipeline_state.current_transfer_x = 168;
+    ppu.bg_pipeline_state.visible_pixels_output = SCREEN_WIDTH as u8;
+    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
+    ppu.bg_pipeline_state.startup_fifo_placeholders = 2;
+    ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 8));
+    ppu.line_dot = MODE0_START_DOT + 16;
+
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 0,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 1,
+        y: 16,
+        x: 8,
+        tile_index: 1,
+        attributes: 0,
+    });
+
+    assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT + 13);
+    assert_eq!(
+        ppu.access_mode_for_line_dot(ppu.line_dot - 1),
+        PpuAccessMode::HBlank
+    );
+    assert_eq!(ppu.current_access_mode(), PpuAccessMode::HBlank);
+    assert_eq!(
+        ppu.current_published_stat_access_mode(),
+        PpuAccessMode::Drawing
+    );
+}
+
+#[test]
+fn published_stat_terminal_boundary_orchestrator_switches_to_hblank_on_non_extended_mode0_start() {
+    let mut ppu = dmg_stat_ppu(0x08);
+    ppu.ly = 1;
+    ppu.line_dot = MODE0_START_DOT;
+
+    assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT);
+    assert_eq!(
+        ppu.access_mode_for_line_dot(ppu.line_dot - 1),
+        PpuAccessMode::Drawing
+    );
+    assert_eq!(
+        ppu.access_mode_for_line_dot(ppu.line_dot),
+        PpuAccessMode::HBlank
+    );
+    assert_eq!(
+        ppu.current_published_stat_access_mode(),
+        PpuAccessMode::HBlank
+    );
+}
+
+#[test]
+fn published_stat_terminal_boundary_orchestrator_keeps_drawing_two_dots_into_sprite_extended_hblank()
+ {
+    let mut ppu = dmg_stat_ppu(0x08);
+    ppu.ly = 68;
+    ppu.startup_mode_latch = None;
+    ppu.bg_pipeline_state.mode3_started = true;
+    ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 17;
+    ppu.bg_pipeline_state.current_transfer_x = 168;
+    ppu.bg_pipeline_state.visible_pixels_output = SCREEN_WIDTH as u8;
+    ppu.mode2_scan_state.push(PpuSelectedSprite {
+        oam_index: 0,
+        y: 16,
+        x: 8,
+        tile_index: 0,
+        attributes: 0,
+    });
+    ppu.line_dot = ppu.current_mode0_start_dot() + 2;
+
+    assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT + 17);
+    assert_eq!(
+        ppu.access_mode_for_line_dot(ppu.line_dot - 1),
+        PpuAccessMode::HBlank
+    );
+    assert_eq!(ppu.current_access_mode(), PpuAccessMode::HBlank);
+    assert_eq!(
+        ppu.current_published_stat_access_mode(),
+        PpuAccessMode::Drawing
+    );
+}

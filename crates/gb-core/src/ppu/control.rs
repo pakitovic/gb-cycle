@@ -13,6 +13,15 @@ struct DmgPanelRepaintContext {
     historical_bgp: u8,
 }
 
+type PpuPublishedStatPredicate = fn(&Ppu) -> bool;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PpuPublishedStatModeContext {
+    published_mode: PpuAccessMode,
+    current_mode: PpuAccessMode,
+    sprite_extended_mode3: bool,
+}
+
 impl PpuPanelState {
     pub(super) fn clear_runtime_scanline_state(&mut self) {
         self.current_scanline_pixels.fill(0);
@@ -300,162 +309,146 @@ impl Ppu {
     }
 
     pub(super) fn current_published_stat_access_mode(&self) -> PpuAccessMode {
-        if self.line_dot != 0 {
-            let published_mode = self.access_mode_for_line_dot(self.line_dot - 1);
-            let sprite_extended_mode3 =
-                self.current_mode0_start_dot() > self.baseline_mode0_start_dot();
+        let Some(context) = self.current_published_stat_mode_context() else {
+            return self.published_stat_mode_at_line_start();
+        };
 
-            if published_mode == PpuAccessMode::OamScan
-                && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::Drawing
-                && !self.blank_frame_active
-                && self.ly < VISIBLE_SCANLINES
-                && self.line_dot == MODE2_DOTS
-            {
-                return PpuAccessMode::Drawing;
-            }
+        self.resolve_published_stat_access_mode(context)
+    }
 
-            if published_mode == PpuAccessMode::Drawing
-                && self.saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_two_dots_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.terminal_x167_visible_same_x_cluster_should_publish_hblank_two_dots_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_one_dot_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.terminal_x167_visible_same_x_cluster_should_publish_hblank_one_dot_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.single_left_sprite_placeholder_backed_tail_should_publish_hblank_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.single_left_sprite_x4_placeholder_backed_preterminal_tail_should_publish_hblank_five_dots_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.single_left_sprite_x5_placeholder_backed_preterminal_tail_should_publish_hblank_four_dots_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.single_left_sprite_x6_to_x7_placeholder_backed_preterminal_tail_should_publish_hblank_from_fifo_tail()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.single_left_sprite_x12_to_x16_terminal_tail_with_entry_delay_should_publish_hblank_two_dots_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.single_offscreen_right_sprite_xa0_terminal_tail_without_entry_delay_should_publish_hblank_two_dots_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.single_offscreen_right_sprite_xa7_terminal_tail_should_publish_hblank_two_dots_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.single_offscreen_right_sprite_xa2_mode0_boundary_should_publish_hblank()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.two_sprite_staggered_fifo_tail_should_publish_hblank_from_fifo_tail()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.ten_sprite_step8_preterminal_tail_should_publish_hblank_early()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.terminal_visible_tail_should_publish_hblank_early()
-                && !self
-                    .two_sprite_staggered_x8_to_x9_preterminal_tail_should_keep_published_drawing()
-                && !self.saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3()
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::HBlank
-                && self.two_sprite_staggered_x0_to_x1_terminal_tail_should_keep_published_drawing()
-            {
-                return PpuAccessMode::Drawing;
-            }
-
-            if published_mode == PpuAccessMode::HBlank
-                && self.two_sprite_staggered_x9_terminal_boundary_should_keep_published_drawing()
-            {
-                return PpuAccessMode::Drawing;
-            }
-
-            if published_mode == PpuAccessMode::HBlank
-                && self.ten_sprite_step8_terminal_tail_should_keep_published_drawing()
-            {
-                return PpuAccessMode::Drawing;
-            }
-
-            if published_mode == PpuAccessMode::Drawing
-                && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::HBlank
-                && !self.blank_frame_active
-                && self.ly < VISIBLE_SCANLINES
-                && self.line_dot == self.current_mode0_start_dot()
-                && !sprite_extended_mode3
-            {
-                return PpuAccessMode::HBlank;
-            }
-
-            if published_mode == PpuAccessMode::HBlank
-                && !self.blank_frame_active
-                && self.ly < VISIBLE_SCANLINES
-                && sprite_extended_mode3
-                && self.line_dot == self.current_mode0_start_dot().saturating_add(2)
-            {
-                return PpuAccessMode::Drawing;
-            }
-
-            return published_mode;
+    fn current_published_stat_mode_context(&self) -> Option<PpuPublishedStatModeContext> {
+        if self.line_dot == 0 {
+            return None;
         }
 
+        Some(PpuPublishedStatModeContext {
+            published_mode: self.access_mode_for_line_dot(self.line_dot - 1),
+            current_mode: self.access_mode_for_line_dot(self.line_dot),
+            sprite_extended_mode3: self.current_mode0_start_dot() > self.baseline_mode0_start_dot(),
+        })
+    }
+
+    fn published_stat_mode_at_line_start(&self) -> PpuAccessMode {
         if self.ly == 0 {
-            return self.current_access_mode();
-        }
-
-        if self.ly > VISIBLE_SCANLINES {
+            self.current_access_mode()
+        } else if self.ly > VISIBLE_SCANLINES {
             PpuAccessMode::VBlank
         } else {
             PpuAccessMode::HBlank
         }
+    }
+
+    fn resolve_published_stat_access_mode(
+        &self,
+        context: PpuPublishedStatModeContext,
+    ) -> PpuAccessMode {
+        if self.published_stat_mode2_to_mode3_override_applies(context) {
+            return PpuAccessMode::Drawing;
+        }
+
+        if self.published_stat_early_hblank_override_applies(context) {
+            return PpuAccessMode::HBlank;
+        }
+
+        if self.published_stat_keep_drawing_override_applies(context) {
+            return PpuAccessMode::Drawing;
+        }
+
+        if let Some(mode) = self.published_stat_terminal_boundary_override(context) {
+            return mode;
+        }
+
+        context.published_mode
+    }
+
+    fn published_stat_mode2_to_mode3_override_applies(
+        &self,
+        context: PpuPublishedStatModeContext,
+    ) -> bool {
+        context.published_mode == PpuAccessMode::OamScan
+            && context.current_mode == PpuAccessMode::Drawing
+            && !self.blank_frame_active
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot == MODE2_DOTS
+    }
+
+    fn published_stat_early_hblank_override_applies(
+        &self,
+        context: PpuPublishedStatModeContext,
+    ) -> bool {
+        if context.published_mode != PpuAccessMode::Drawing {
+            return false;
+        }
+
+        let ordered_early_hblank_rules: [PpuPublishedStatPredicate; 14] = [
+            Self::saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_two_dots_early,
+            Self::terminal_x167_visible_same_x_cluster_should_publish_hblank_two_dots_early,
+            Self::saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_one_dot_early,
+            Self::terminal_x167_visible_same_x_cluster_should_publish_hblank_one_dot_early,
+            Self::single_left_sprite_placeholder_backed_tail_should_publish_hblank_early,
+            Self::single_left_sprite_x4_placeholder_backed_preterminal_tail_should_publish_hblank_five_dots_early,
+            Self::single_left_sprite_x5_placeholder_backed_preterminal_tail_should_publish_hblank_four_dots_early,
+            Self::single_left_sprite_x6_to_x7_placeholder_backed_preterminal_tail_should_publish_hblank_from_fifo_tail,
+            Self::single_left_sprite_x12_to_x16_terminal_tail_with_entry_delay_should_publish_hblank_two_dots_early,
+            Self::single_offscreen_right_sprite_xa0_terminal_tail_without_entry_delay_should_publish_hblank_two_dots_early,
+            Self::single_offscreen_right_sprite_xa7_terminal_tail_should_publish_hblank_two_dots_early,
+            Self::single_offscreen_right_sprite_xa2_mode0_boundary_should_publish_hblank,
+            Self::two_sprite_staggered_fifo_tail_should_publish_hblank_from_fifo_tail,
+            Self::ten_sprite_step8_preterminal_tail_should_publish_hblank_early,
+        ];
+
+        ordered_early_hblank_rules
+            .into_iter()
+            .any(|rule| rule(self))
+            || (self.terminal_visible_tail_should_publish_hblank_early()
+                && !self
+                    .two_sprite_staggered_x8_to_x9_preterminal_tail_should_keep_published_drawing()
+                && !self.saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3())
+    }
+
+    fn published_stat_keep_drawing_override_applies(
+        &self,
+        context: PpuPublishedStatModeContext,
+    ) -> bool {
+        if context.published_mode != PpuAccessMode::HBlank {
+            return false;
+        }
+
+        let ordered_keep_drawing_rules: [PpuPublishedStatPredicate; 3] = [
+            Self::two_sprite_staggered_x0_to_x1_terminal_tail_should_keep_published_drawing,
+            Self::two_sprite_staggered_x9_terminal_boundary_should_keep_published_drawing,
+            Self::ten_sprite_step8_terminal_tail_should_keep_published_drawing,
+        ];
+
+        ordered_keep_drawing_rules
+            .into_iter()
+            .any(|rule| rule(self))
+    }
+
+    fn published_stat_terminal_boundary_override(
+        &self,
+        context: PpuPublishedStatModeContext,
+    ) -> Option<PpuAccessMode> {
+        if context.published_mode == PpuAccessMode::Drawing
+            && context.current_mode == PpuAccessMode::HBlank
+            && !self.blank_frame_active
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot == self.current_mode0_start_dot()
+            && !context.sprite_extended_mode3
+        {
+            return Some(PpuAccessMode::HBlank);
+        }
+
+        if context.published_mode == PpuAccessMode::HBlank
+            && !self.blank_frame_active
+            && self.ly < VISIBLE_SCANLINES
+            && context.sprite_extended_mode3
+            && self.line_dot == self.current_mode0_start_dot().saturating_add(2)
+        {
+            return Some(PpuAccessMode::Drawing);
+        }
+
+        None
     }
 
     pub(super) fn terminal_visible_tail_should_publish_hblank_early(&self) -> bool {
