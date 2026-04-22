@@ -1,4 +1,4 @@
-use gb_core::{ExecutionMode, StartupMode};
+use gb_core::{ApuRecordedChannel, ExecutionMode, StartupMode};
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
     DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
@@ -96,9 +96,14 @@ const VIDEO_MENU_ITEMS: [MenuItem; 12] = [
     MenuItem::VideoDefaults,
     MenuItem::Return,
 ];
-const AUDIO_MENU_ITEMS: [MenuItem; 4] = [
+const AUDIO_MENU_ITEMS: [MenuItem; 9] = [
     MenuItem::ToggleMute,
     MenuItem::AudioVolume,
+    MenuItem::AudioRecord,
+    MenuItem::AudioChannel1,
+    MenuItem::AudioChannel2,
+    MenuItem::AudioChannel3,
+    MenuItem::AudioChannel4,
     MenuItem::AudioDefaults,
     MenuItem::Return,
 ];
@@ -220,6 +225,8 @@ pub enum MenuAction {
     TogglePerformanceHud,
     ToggleMute,
     CycleAudioVolume,
+    ToggleAudioRecording,
+    ToggleAudioChannel(ApuRecordedChannel),
     CycleGamepadDirectionalSource,
     CycleGamepadRumbleMode,
     TogglePreferredGamepad,
@@ -405,6 +412,11 @@ pub struct MenuPresentation {
     pub muted: bool,
     pub audio_available: bool,
     pub audio_volume_percent: u8,
+    pub audio_recording_enabled: bool,
+    pub ch1_enabled: bool,
+    pub ch2_enabled: bool,
+    pub ch3_enabled: bool,
+    pub ch4_enabled: bool,
     pub manual_save_available: bool,
     pub any_dialog_pending: bool,
     pub gamepad_available: bool,
@@ -458,8 +470,14 @@ impl MenuPresentation {
             | MenuItem::BootRomDirectoryPath
             | MenuItem::SaveDirectoryPath => !self.any_dialog_pending,
             MenuItem::SaveBattery => self.manual_save_available,
-            MenuItem::AudioMenu | MenuItem::ToggleMute | MenuItem::AudioVolume => {
-                self.audio_available
+            MenuItem::AudioMenu => self.audio_available || self.rom_loaded,
+            MenuItem::ToggleMute | MenuItem::AudioVolume => self.audio_available,
+            MenuItem::AudioRecord => self.rom_loaded,
+            MenuItem::AudioChannel1
+            | MenuItem::AudioChannel2
+            | MenuItem::AudioChannel3
+            | MenuItem::AudioChannel4 => {
+                self.audio_available || self.audio_recording_enabled || self.rom_loaded
             }
             MenuItem::GamepadActive => false,
             MenuItem::GamepadPreferred => {
@@ -684,6 +702,41 @@ impl MenuPresentation {
                 }
             }
             MenuItem::AudioVolume => format!("VOL {}%", self.audio_volume_percent.min(100)),
+            MenuItem::AudioRecord => {
+                if self.audio_recording_enabled {
+                    "RECORD ON".to_string()
+                } else {
+                    "RECORD OFF".to_string()
+                }
+            }
+            MenuItem::AudioChannel1 => {
+                if self.ch1_enabled {
+                    "CH1 ON".to_string()
+                } else {
+                    "CH1 OFF".to_string()
+                }
+            }
+            MenuItem::AudioChannel2 => {
+                if self.ch2_enabled {
+                    "CH2 ON".to_string()
+                } else {
+                    "CH2 OFF".to_string()
+                }
+            }
+            MenuItem::AudioChannel3 => {
+                if self.ch3_enabled {
+                    "CH3 ON".to_string()
+                } else {
+                    "CH3 OFF".to_string()
+                }
+            }
+            MenuItem::AudioChannel4 => {
+                if self.ch4_enabled {
+                    "CH4 ON".to_string()
+                } else {
+                    "CH4 OFF".to_string()
+                }
+            }
             MenuItem::AudioDefaults => "DEFAULTS".to_string(),
             MenuItem::GamepadDirection => match self.gamepad_directional_source {
                 GamepadDirectionalSource::DpadOnly => "DIR DPAD".to_string(),
@@ -952,6 +1005,11 @@ enum MenuItem {
     VideoDefaults,
     ToggleMute,
     AudioVolume,
+    AudioRecord,
+    AudioChannel1,
+    AudioChannel2,
+    AudioChannel3,
+    AudioChannel4,
     AudioDefaults,
     GamepadDirection,
     ExternalPortNone,
@@ -1541,6 +1599,19 @@ impl OverlayMenuState {
             MenuItem::VideoDefaults => Some(MenuAction::ResetVideoDefaults),
             MenuItem::ToggleMute => Some(MenuAction::ToggleMute),
             MenuItem::AudioVolume => Some(MenuAction::CycleAudioVolume),
+            MenuItem::AudioRecord => Some(MenuAction::ToggleAudioRecording),
+            MenuItem::AudioChannel1 => {
+                Some(MenuAction::ToggleAudioChannel(ApuRecordedChannel::Ch1))
+            }
+            MenuItem::AudioChannel2 => {
+                Some(MenuAction::ToggleAudioChannel(ApuRecordedChannel::Ch2))
+            }
+            MenuItem::AudioChannel3 => {
+                Some(MenuAction::ToggleAudioChannel(ApuRecordedChannel::Ch3))
+            }
+            MenuItem::AudioChannel4 => {
+                Some(MenuAction::ToggleAudioChannel(ApuRecordedChannel::Ch4))
+            }
             MenuItem::AudioDefaults => Some(MenuAction::ResetAudioDefaults),
             MenuItem::GamepadDirection => Some(MenuAction::CycleGamepadDirectionalSource),
             MenuItem::ExternalPortNone => Some(MenuAction::SetExternalPort(
@@ -2319,7 +2390,7 @@ mod tests {
         PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, ScrollIndicatorDirection,
         gamepad_binding_label, normalized_selected_index, performance_hud_lines,
         previous_enabled_index, render_performance_hud, rendered_recent_rom_item_label,
-        scroll_indicator_rows, viewport_start_index,
+        scroll_indicator_rows, viewport_start_index, visible_item_at,
     };
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
@@ -2356,6 +2427,11 @@ mod tests {
             muted: false,
             audio_available: false,
             audio_volume_percent: 100,
+            audio_recording_enabled: false,
+            ch1_enabled: true,
+            ch2_enabled: true,
+            ch3_enabled: true,
+            ch4_enabled: true,
             manual_save_available: false,
             any_dialog_pending: false,
             gamepad_available: false,
@@ -2620,8 +2696,15 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+
+        while visible_item_at(
+            menu.current_screen_state().screen,
+            menu.current_screen_state().selected_index,
+            presentation,
+        ) != Some(MenuItem::AudioDefaults)
+        {
+            assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        }
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::ResetAudioDefaults)
@@ -2721,6 +2804,7 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
@@ -2744,6 +2828,7 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
 
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -2776,6 +2861,7 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
 
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -3004,6 +3090,7 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
@@ -3027,6 +3114,7 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
@@ -3044,6 +3132,7 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
 
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -3069,6 +3158,7 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
 
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -3100,6 +3190,7 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
@@ -3124,6 +3215,7 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
 
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -3153,6 +3245,7 @@ mod tests {
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
 
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -3188,10 +3281,16 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        while visible_item_at(
+            menu.current_screen_state().screen,
+            menu.current_screen_state().selected_index,
+            presentation,
+        ) != Some(MenuItem::GamepadMenu)
+        {
+            assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        }
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),

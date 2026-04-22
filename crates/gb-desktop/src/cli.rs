@@ -1,4 +1,7 @@
-use gb_core::{ExecutionMode, StartupMode};
+use crate::audio_recording::{
+    DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecordingOptions,
+};
+use gb_core::{ApuRecordedChannel, ExecutionMode, StartupMode};
 use gb_desktop::{
     AudioOptions, BootRomVerificationMode, DesktopConfig, DesktopConsoleModel,
     DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadButtonBindings, GamepadDirectionalSource,
@@ -19,6 +22,7 @@ pub struct DesktopRunOptions {
     pub linked_peer_rom_path: Option<PathBuf>,
     pub exit_after_frames: Option<u64>,
     pub config: DesktopConfig,
+    pub audio_recording: Option<DesktopAudioRecordingOptions>,
 }
 
 #[cfg(test)]
@@ -42,6 +46,10 @@ where
     let mut rom_path = None;
     let mut linked_peer_rom_path = None;
     let mut exit_after_frames = None;
+    let mut audio_recording_path = None;
+    let mut audio_recording_sample_rate_hz = DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ;
+    let mut audio_recording_sample_rate_overridden = false;
+    let mut audio_recording_stem_channels = Vec::new();
 
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -115,6 +123,26 @@ where
                     enabled: false,
                     ..config.audio
                 };
+            }
+            "--audio-record" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--audio-record requires a value".to_string());
+                };
+                audio_recording_path = Some(PathBuf::from(value.as_ref()));
+            }
+            "--audio-record-rate" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--audio-record-rate requires a value".to_string());
+                };
+                audio_recording_sample_rate_overridden = true;
+                audio_recording_sample_rate_hz =
+                    parse_positive_u32("--audio-record-rate", value.as_ref())?;
+            }
+            "--audio-record-stems" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--audio-record-stems requires a value".to_string());
+                };
+                audio_recording_stem_channels = parse_audio_recording_stems(value.as_ref())?;
             }
             "--link-rom" => {
                 let Some(value) = arguments.next() else {
@@ -198,11 +226,35 @@ where
         return Err("--link-rom requires a primary ROM positional argument".to_string());
     }
 
+    let audio_recording = match audio_recording_path {
+        Some(output_path) => Some(DesktopAudioRecordingOptions {
+            output_path,
+            sample_rate_hz: audio_recording_sample_rate_hz,
+            stem_channels: audio_recording_stem_channels,
+        }),
+        None => {
+            if audio_recording_sample_rate_overridden {
+                return Err(
+                    "--audio-record-rate requires --audio-record <path> to enable recording"
+                        .to_string(),
+                );
+            }
+            if !audio_recording_stem_channels.is_empty() {
+                return Err(
+                    "--audio-record-stems requires --audio-record <path> to enable recording"
+                        .to_string(),
+                );
+            }
+            None
+        }
+    };
+
     Ok(CliAction::Run(Box::new(DesktopRunOptions {
         rom_path,
         linked_peer_rom_path,
         exit_after_frames,
         config,
+        audio_recording,
     })))
 }
 
@@ -226,6 +278,10 @@ pub fn help_text() -> &'static str {
         "  --fullscreen                           Start in fullscreen mode\n",
         "  --no-vsync                             Disable presentation vsync hint\n",
         "  --mute                                 Start with audio disabled\n",
+        "  --audio-record <path.wav|path.aifc>    Record direct stereo APU output to WAV/AIFC (pre-mute/pre-volume)\n",
+        "  --audio-record-rate <hz>               Override the recording sample rate (default: 96000)\n",
+        "  --audio-record-stems <all|ch1,ch2,ch3,ch4>\n",
+        "                                         Record isolated channel sidecars with solo DC-blocking after NR51/NR50\n",
         "  --link-rom <path>                      Start a local linked DMG-04 session with this secondary ROM\n",
         "  --exit-after-frames <n>                Exit automatically after presenting n emulated frames\n",
         "  --no-gamepad                           Disable SDL gamepad input\n",
@@ -250,6 +306,7 @@ pub fn help_text() -> &'static str {
         "  GB_CYCLE_DESKTOP_EMU_PROFILE           Emit opt-in sampled emulation breakdowns to stderr (use 1/summary or summary:<frames>)\n",
         "  GB_CYCLE_DESKTOP_TRACE_PATH            Write a rolling per-T-cycle CPU/APU debug trace to this path on exit\n",
         "  GB_CYCLE_DESKTOP_TRACE_T_CYCLES        Override the rolling trace window length in T-cycles (default: 8192)\n",
+        "  GB_CYCLE_DESKTOP_CH4_NR43_TRACE_PATH   Write a condensed CH4/NR43 live-write trace to this path on exit\n",
         "\n",
         "If no ROM is provided, gb-desktop opens without a cartridge and starts in the in-window menu.\n",
     )
@@ -402,6 +459,16 @@ fn parse_positive_u8(flag: &str, value: &str) -> Result<u8, String> {
     Ok(parsed)
 }
 
+fn parse_positive_u32(flag: &str, value: &str) -> Result<u32, String> {
+    let parsed = value
+        .parse::<u32>()
+        .map_err(|error| format!("invalid {flag} value {value:?}: {error}"))?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be greater than zero"));
+    }
+    Ok(parsed)
+}
+
 fn parse_positive_u64(flag: &str, value: &str) -> Result<u64, String> {
     let parsed = value
         .parse::<u64>()
@@ -410,6 +477,52 @@ fn parse_positive_u64(flag: &str, value: &str) -> Result<u64, String> {
         return Err(format!("{flag} must be greater than zero"));
     }
     Ok(parsed)
+}
+
+fn parse_audio_recording_stems(value: &str) -> Result<Vec<ApuRecordedChannel>, String> {
+    if value == "all" {
+        return Ok(ApuRecordedChannel::ALL.to_vec());
+    }
+
+    let mut channels = Vec::new();
+    for token in value.split(',') {
+        let trimmed = token.trim();
+        if trimmed.is_empty() {
+            return Err(
+                "invalid --audio-record-stems value; expected all or a comma-separated list of ch1,ch2,ch3,ch4"
+                    .to_string(),
+            );
+        }
+
+        let channel = match trimmed {
+            "ch1" => ApuRecordedChannel::Ch1,
+            "ch2" => ApuRecordedChannel::Ch2,
+            "ch3" => ApuRecordedChannel::Ch3,
+            "ch4" => ApuRecordedChannel::Ch4,
+            _ => {
+                return Err(format!(
+                    "unsupported --audio-record-stems entry {trimmed:?}; expected all or a comma-separated list of ch1,ch2,ch3,ch4"
+                ));
+            }
+        };
+
+        if channels.contains(&channel) {
+            return Err(format!(
+                "duplicate --audio-record-stems entry {trimmed:?}; expected each channel at most once"
+            ));
+        }
+
+        channels.push(channel);
+    }
+
+    if channels.is_empty() {
+        return Err(
+            "invalid --audio-record-stems value; expected all or a comma-separated list of ch1,ch2,ch3,ch4"
+                .to_string(),
+        );
+    }
+
+    Ok(channels)
 }
 
 #[cfg(test)]
@@ -427,6 +540,7 @@ mod tests {
         assert_eq!(options.rom_path, Some(PathBuf::from("roms/tetris.gb")));
         assert_eq!(options.linked_peer_rom_path, None);
         assert_eq!(options.exit_after_frames, None);
+        assert_eq!(options.audio_recording, None);
         assert_eq!(
             options.config.launch.console_model,
             DesktopConsoleModel::Dmg
@@ -455,6 +569,7 @@ mod tests {
         assert_eq!(options.rom_path, None);
         assert_eq!(options.linked_peer_rom_path, None);
         assert_eq!(options.exit_after_frames, None);
+        assert_eq!(options.audio_recording, None);
         assert_eq!(options.config.launch.startup_mode, StartupMode::RealBoot);
     }
 
@@ -491,6 +606,75 @@ mod tests {
         assert_eq!(
             options.config.saves.flush_policy,
             DesktopSaveFlushPolicy::Debounced
+        );
+    }
+
+    #[test]
+    fn parse_supports_direct_audio_recording_overrides() {
+        let action = parse_cli_arguments([
+            "demo.gb",
+            "--audio-record",
+            "captures/zelda.wav",
+            "--audio-record-rate",
+            "48000",
+        ])
+        .expect("audio recording CLI overrides should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.audio_recording,
+            Some(DesktopAudioRecordingOptions {
+                output_path: PathBuf::from("captures/zelda.wav"),
+                sample_rate_hz: 48_000,
+                stem_channels: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_supports_audio_recording_stems_overrides() {
+        let action = parse_cli_arguments([
+            "demo.gb",
+            "--audio-record",
+            "captures/zelda.wav",
+            "--audio-record-stems",
+            "ch1,ch4",
+        ])
+        .expect("audio recording stems should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.audio_recording,
+            Some(DesktopAudioRecordingOptions {
+                output_path: PathBuf::from("captures/zelda.wav"),
+                sample_rate_hz: DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ,
+                stem_channels: vec![ApuRecordedChannel::Ch1, ApuRecordedChannel::Ch4],
+            })
+        );
+
+        let action = parse_cli_arguments([
+            "demo.gb",
+            "--audio-record",
+            "captures/zelda.wav",
+            "--audio-record-stems",
+            "all",
+        ])
+        .expect("all stems should parse");
+
+        let CliAction::Run(options) = action else {
+            panic!("expected a run action");
+        };
+        assert_eq!(
+            options.audio_recording.expect("audio recording"),
+            DesktopAudioRecordingOptions {
+                output_path: PathBuf::from("captures/zelda.wav"),
+                sample_rate_hz: DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ,
+                stem_channels: ApuRecordedChannel::ALL.to_vec(),
+            }
         );
     }
 
@@ -625,6 +809,9 @@ mod tests {
         assert!(text.contains("--save-key <key>"));
         assert!(text.contains("--fullscreen"));
         assert!(text.contains("--mute"));
+        assert!(text.contains("--audio-record <path.wav|path.aifc>"));
+        assert!(text.contains("--audio-record-rate <hz>"));
+        assert!(text.contains("--audio-record-stems <all|ch1,ch2,ch3,ch4>"));
         assert!(text.contains("--link-rom <path>"));
         assert!(text.contains("--exit-after-frames <n>"));
         assert!(text.contains("--gamepad-preferred-path <path>"));
@@ -634,6 +821,7 @@ mod tests {
         assert!(text.contains("GB_CYCLE_DESKTOP_EMU_PROFILE"));
         assert!(text.contains("GB_CYCLE_DESKTOP_TRACE_PATH"));
         assert!(text.contains("GB_CYCLE_DESKTOP_TRACE_T_CYCLES"));
+        assert!(text.contains("GB_CYCLE_DESKTOP_CH4_NR43_TRACE_PATH"));
     }
 
     #[test]
@@ -672,6 +860,7 @@ mod tests {
             Some(PathBuf::from("linked.gb"))
         );
         assert_eq!(options.exit_after_frames, Some(120));
+        assert_eq!(options.audio_recording, None);
         assert_eq!(
             options.config.launch.console_model,
             DesktopConsoleModel::Dmg0
@@ -922,6 +1111,12 @@ mod tests {
         assert_eq!(parse_positive_u8("--scale", "6"), Ok(6));
         assert!(parse_positive_u8("--scale", "0").is_err());
         assert!(parse_positive_u8("--scale", "wide").is_err());
+        assert_eq!(
+            parse_positive_u32("--audio-record-rate", "96000"),
+            Ok(96_000)
+        );
+        assert!(parse_positive_u32("--audio-record-rate", "0").is_err());
+        assert!(parse_positive_u32("--audio-record-rate", "wide").is_err());
         assert_eq!(parse_positive_u64("--exit-after-frames", "6"), Ok(6));
         assert!(parse_positive_u64("--exit-after-frames", "0").is_err());
         assert!(parse_positive_u64("--exit-after-frames", "wide").is_err());
@@ -933,6 +1128,17 @@ mod tests {
             "SAVE_SLOT_1"
         );
         assert!(parse_save_key("contains spaces").is_err());
+        assert_eq!(
+            parse_audio_recording_stems("all"),
+            Ok(ApuRecordedChannel::ALL.to_vec())
+        );
+        assert_eq!(
+            parse_audio_recording_stems("ch2,ch4"),
+            Ok(vec![ApuRecordedChannel::Ch2, ApuRecordedChannel::Ch4])
+        );
+        assert!(parse_audio_recording_stems("").is_err());
+        assert!(parse_audio_recording_stems("ch4,ch4").is_err());
+        assert!(parse_audio_recording_stems("noise").is_err());
     }
 
     #[test]
@@ -983,6 +1189,21 @@ mod tests {
             "--scale requires a value"
         );
         assert_eq!(
+            parse_cli_arguments(["--audio-record"])
+                .expect_err("missing audio-record values should fail"),
+            "--audio-record requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--audio-record-rate"])
+                .expect_err("missing audio-record-rate values should fail"),
+            "--audio-record-rate requires a value"
+        );
+        assert_eq!(
+            parse_cli_arguments(["--audio-record-stems"])
+                .expect_err("missing audio-record-stems values should fail"),
+            "--audio-record-stems requires a value"
+        );
+        assert_eq!(
             parse_cli_arguments(["--link-rom"])
                 .expect_err("missing linked peer values should fail"),
             "--link-rom requires a value"
@@ -1025,11 +1246,31 @@ mod tests {
         assert!(parse_cli_arguments(["--save-key", "contains spaces"]).is_err());
         assert!(parse_cli_arguments(["--save-policy", "later"]).is_err());
         assert!(parse_cli_arguments(["--scale", "0"]).is_err());
+        assert!(parse_cli_arguments(["--audio-record-rate", "0"]).is_err());
+        assert!(parse_cli_arguments(["--audio-record-rate", "wide"]).is_err());
+        assert!(
+            parse_cli_arguments(["--audio-record-rate", "96000"]).is_err(),
+            "recording rate alone should not silently enable a capture sink"
+        );
+        assert!(
+            parse_cli_arguments(["--audio-record-stems", "ch4"]).is_err(),
+            "recording stems alone should not silently enable a capture sink"
+        );
         assert!(parse_cli_arguments(["--exit-after-frames", "0"]).is_err());
         assert!(parse_cli_arguments(["--gamepad-direction", "stick-only"]).is_err());
         assert!(parse_cli_arguments(["--gamepad-face-layout", "north-a"]).is_err());
         assert!(parse_cli_arguments(["--gamepad-preferred-name", "   "]).is_err());
         assert!(parse_cli_arguments(["--gamepad-preferred-path", "   "]).is_err());
         assert!(parse_cli_arguments(["--gamepad-bind-a", "touchpad"]).is_err());
+        assert!(
+            parse_cli_arguments([
+                "demo.gb",
+                "--audio-record",
+                "out.wav",
+                "--audio-record-stems",
+                "noise"
+            ])
+            .is_err()
+        );
     }
 }

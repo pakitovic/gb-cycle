@@ -1,4 +1,15 @@
 use super::*;
+use crate::apu::common::APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE;
+
+#[test]
+fn host_normalization_reference_keeps_explicit_pcm_headroom() {
+    assert_eq!(APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE, ANALOG_ONE * 4 * 8);
+    assert_eq!(APU_HOST_MAX_ABS_SAMPLE, 963_735_294);
+
+    let normalized_peak =
+        APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE as f64 / APU_HOST_MAX_ABS_SAMPLE as f64;
+    assert!((normalized_peak - (16_320.0 / 32_767.0)).abs() < 1.0e-9);
+}
 
 #[test]
 fn enabled_dac_output_remains_distinct_from_dac_off_even_when_the_channel_is_inactive() {
@@ -22,7 +33,7 @@ fn enabled_dac_output_remains_distinct_from_dac_off_even_when_the_channel_is_ina
 }
 
 #[test]
-fn disabling_the_last_dac_disconnects_the_output_immediately() {
+fn disabling_the_last_dac_keeps_the_previous_analog_level_alive_until_the_fade_advances() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
@@ -37,14 +48,20 @@ fn disabling_the_last_dac_disconnects_the_output_immediately() {
     apu.write_register(0xFF12, 0x00);
     let dac_off = apu.snapshot().output;
 
-    assert_eq!(dac_off.channel_dac_outputs[0], 0);
-    assert_eq!(dac_off.hpf_output.left, 0);
-    assert_eq!(dac_off.hpf_output.right, 0);
+    assert_eq!(dac_off.channel_digital_outputs[0], 0);
+    assert_eq!(apu.snapshot().channel_dac_mask, 0x00);
+    assert!(dac_off.channel_dac_outputs[0] > 0);
+    assert_eq!(
+        dac_off.channel_dac_outputs[0],
+        charged.channel_dac_outputs[0]
+    );
+    assert!(dac_off.hpf_output.left > 0);
+    assert!(dac_off.hpf_output.right > 0);
     assert_eq!(dac_off.hpf_capacitor, charged.hpf_capacitor);
 }
 
 #[test]
-fn hpf_capacitor_freezes_while_all_dacs_are_off() {
+fn hpf_capacitor_keeps_evolving_while_the_last_dac_fades_and_then_freezes_after_settling() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF12, 0x08);
@@ -60,20 +77,50 @@ fn hpf_capacitor_freezes_while_all_dacs_are_off() {
     tick_apu_with_edges(&mut apu, 2, &[]);
     let after_second_dac_off_tick = apu.snapshot().output;
 
-    assert_eq!(after_write.hpf_output.left, 0);
-    assert_eq!(after_write.hpf_output.right, 0);
-    assert_eq!(after_first_dac_off_tick.hpf_output.left, 0);
-    assert_eq!(after_first_dac_off_tick.hpf_output.right, 0);
-    assert_eq!(after_second_dac_off_tick.hpf_output.left, 0);
-    assert_eq!(after_second_dac_off_tick.hpf_output.right, 0);
-    assert_eq!(
+    assert!(after_write.channel_dac_outputs[0] > after_first_dac_off_tick.channel_dac_outputs[0]);
+    assert!(
+        after_first_dac_off_tick.channel_dac_outputs[0]
+            > after_second_dac_off_tick.channel_dac_outputs[0]
+    );
+    assert!(after_first_dac_off_tick.hpf_output.left < after_write.hpf_output.left);
+    assert!(after_first_dac_off_tick.hpf_output.right < after_write.hpf_output.right);
+    assert_ne!(
         after_first_dac_off_tick.hpf_capacitor,
         after_write.hpf_capacitor
     );
-    assert_eq!(
-        after_second_dac_off_tick.hpf_capacitor,
-        after_write.hpf_capacitor
+
+    let mut settled = after_second_dac_off_tick;
+    let mut settled_tick = None;
+    for t_cycle in 3..=1024 {
+        tick_apu_with_edges(&mut apu, t_cycle, &[]);
+        settled = apu.snapshot().output;
+        if settled.channel_dac_outputs[0] == 0 {
+            settled_tick = Some(t_cycle);
+            break;
+        }
+    }
+
+    assert!(
+        settled_tick.is_some(),
+        "expected DAC-off fade to settle within a bounded number of T-cycles"
     );
+    assert_eq!(settled.hpf_output.left, 0);
+    assert_eq!(settled.hpf_output.right, 0);
+
+    let frozen_capacitor = settled.hpf_capacitor;
+    tick_apu_with_edges(&mut apu, settled_tick.unwrap() + 1, &[]);
+    let after_settled_first_tick = apu.snapshot().output;
+    tick_apu_with_edges(&mut apu, settled_tick.unwrap() + 2, &[]);
+    let after_settled_second_tick = apu.snapshot().output;
+
+    assert_eq!(after_settled_first_tick.channel_dac_outputs[0], 0);
+    assert_eq!(after_settled_second_tick.channel_dac_outputs[0], 0);
+    assert_eq!(after_settled_first_tick.hpf_output.left, 0);
+    assert_eq!(after_settled_first_tick.hpf_output.right, 0);
+    assert_eq!(after_settled_second_tick.hpf_output.left, 0);
+    assert_eq!(after_settled_second_tick.hpf_output.right, 0);
+    assert_eq!(after_settled_first_tick.hpf_capacitor, frozen_capacitor);
+    assert_eq!(after_settled_second_tick.hpf_capacitor, frozen_capacitor);
 }
 
 #[test]
@@ -289,6 +336,153 @@ fn host_output_sample_matches_the_live_post_hpf_output_snapshot() {
 }
 
 #[test]
+fn recorded_channel_sample_pre_hpf_matches_the_isolated_routed_master_lane() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
+
+    let output_snapshot = apu.snapshot().output.master_output;
+
+    assert_eq!(
+        apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch1),
+        ApuHostSample {
+            left: output_snapshot.left,
+            right: output_snapshot.right,
+        }
+    );
+}
+
+#[test]
+fn recorded_channel_sample_pre_hpf_respects_nr51_routing_and_nr50_scaling() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF17, 0x08);
+    apu.write_register(0xFF24, 0x50);
+    apu.write_register(0xFF25, NR51_RIGHT_ROUTE_CH2_BIT);
+
+    assert_eq!(
+        apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch2),
+        ApuHostSample {
+            left: 0,
+            right: ANALOG_ONE,
+        }
+    );
+    assert_eq!(
+        apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch1),
+        ApuHostSample::default()
+    );
+}
+
+#[test]
+fn recorded_channel_mix_pre_hpf_respects_empty_single_and_full_masks() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF17, 0x08);
+    apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
+    apu.write_register(
+        0xFF25,
+        NR51_LEFT_ROUTE_CH1_BIT
+            | NR51_RIGHT_ROUTE_CH1_BIT
+            | NR51_LEFT_ROUTE_CH2_BIT
+            | NR51_RIGHT_ROUTE_CH2_BIT,
+    );
+
+    assert_eq!(
+        apu.recorded_channel_mix_pre_hpf(ApuRecordedChannelMask::NONE),
+        ApuHostSample::default()
+    );
+
+    let ch1_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch1, true);
+    assert_eq!(
+        apu.recorded_channel_mix_pre_hpf(ch1_mask),
+        apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch1)
+    );
+
+    assert_eq!(
+        apu.recorded_channel_mix_pre_hpf(ApuRecordedChannelMask::ALL),
+        apu.snapshot().output.master_output.into()
+    );
+}
+
+#[test]
+fn recorded_channel_mix_pre_hpf_sums_only_the_selected_channels() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF17, 0x08);
+    apu.write_register(0xFF1A, 0x80);
+    apu.write_register(0xFF1C, 0x20);
+    apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
+    apu.write_register(
+        0xFF25,
+        NR51_LEFT_ROUTE_CH1_BIT
+            | NR51_RIGHT_ROUTE_CH1_BIT
+            | NR51_LEFT_ROUTE_CH2_BIT
+            | NR51_RIGHT_ROUTE_CH2_BIT
+            | NR51_LEFT_ROUTE_CH3_BIT
+            | NR51_RIGHT_ROUTE_CH3_BIT,
+    );
+
+    let channel_mask = ApuRecordedChannelMask::NONE
+        .with_channel(ApuRecordedChannel::Ch1, true)
+        .with_channel(ApuRecordedChannel::Ch3, true);
+
+    let ch1 = apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch1);
+    let ch3 = apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch3);
+
+    assert_eq!(
+        apu.recorded_channel_mix_pre_hpf(channel_mask),
+        ApuHostSample {
+            left: ch1.left + ch3.left,
+            right: ch1.right + ch3.right,
+        }
+    );
+}
+
+#[test]
+fn host_dc_blocker_decays_constant_dc_bias_towards_zero() {
+    let mut blocker = ApuHostDcBlocker::new(ConsoleModel::Dmg, 96_000);
+    let mut filtered = ApuHostSample::default();
+
+    for _ in 0..4_096 {
+        filtered = blocker.filter_sample(ApuHostSample {
+            left: ANALOG_ONE,
+            right: -ANALOG_ONE,
+        });
+    }
+
+    assert!(filtered.left.abs() < 10_000);
+    assert!(filtered.right.abs() < 10_000);
+}
+
+#[test]
+fn host_dc_blocker_reset_restores_the_initial_step_response() {
+    let mut blocker = ApuHostDcBlocker::new(ConsoleModel::Dmg, 96_000);
+
+    let first = blocker.filter_sample(ApuHostSample {
+        left: ANALOG_ONE,
+        right: ANALOG_ONE,
+    });
+    for _ in 0..128 {
+        let _ = blocker.filter_sample(ApuHostSample {
+            left: ANALOG_ONE,
+            right: ANALOG_ONE,
+        });
+    }
+
+    blocker.reset();
+    let after_reset = blocker.filter_sample(ApuHostSample {
+        left: ANALOG_ONE,
+        right: ANALOG_ONE,
+    });
+
+    assert_eq!(first, after_reset);
+}
+
+#[test]
 fn sample_capture_rejects_zero_sample_rate() {
     assert_eq!(
         ApuSampleCapture::new(0).expect_err("zero sample rate must fail"),
@@ -316,24 +510,65 @@ fn sample_capture_can_emit_one_sample_per_t_cycle() {
 }
 
 #[test]
-fn sample_capture_emits_samples_at_the_requested_fractional_rate() {
+fn sample_capture_emits_constant_samples_at_the_requested_fractional_rate() {
     let mut capture =
         ApuSampleCapture::new(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ / 4).expect("valid sample rate");
 
-    for sample_index in 0..8 {
-        capture.record_output_t_cycle(ApuHostSample {
-            left: sample_index,
-            right: -sample_index,
-        });
+    for _ in 0..8 {
+        capture.record_output_t_cycle(ApuHostSample { left: 7, right: -7 });
     }
 
     assert_eq!(
         capture.drain_samples(),
         vec![
-            ApuHostSample { left: 3, right: -3 },
+            ApuHostSample { left: 7, right: -7 },
             ApuHostSample { left: 7, right: -7 },
         ]
     );
+}
+
+#[test]
+fn sample_capture_bandlimits_mid_interval_step_changes() {
+    let mut capture =
+        ApuSampleCapture::new(DMG_FAMILY_APU_CAPTURE_CLOCK_HZ / 4).expect("valid sample rate");
+
+    for sample in [
+        ApuHostSample { left: 0, right: 0 },
+        ApuHostSample { left: 0, right: 0 },
+        ApuHostSample { left: 0, right: 0 },
+        ApuHostSample {
+            left: 100,
+            right: -100,
+        },
+    ] {
+        capture.record_output_t_cycle(sample);
+    }
+
+    for _ in 0..28 {
+        capture.record_output_t_cycle(ApuHostSample {
+            left: 100,
+            right: -100,
+        });
+    }
+
+    let captured = capture.drain_samples();
+
+    assert!(
+        captured.len() >= 8,
+        "expected enough host samples to observe the delayed band-limited transition"
+    );
+
+    assert!(captured[0].left <= 0);
+    assert!(captured[1].left <= 0);
+    assert!(captured[3].left < 25);
+    assert!(captured[4].left > 25);
+    assert!(captured[4].left < 100);
+    assert!(captured[5].left > 100);
+    assert_eq!(captured[7].left, 100);
+
+    assert!(captured[0].right >= 0);
+    assert!(captured[5].right < -100);
+    assert_eq!(captured[7].right, -100);
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use gb_core::{
-    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuSampleCapture, ApuSampleCaptureError,
+    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostDcBlocker, ApuHostSample, ApuRecordedChannelMask,
+    ApuSampleCapture, ApuSampleCaptureError, ConsoleModel,
 };
 use gb_desktop::AudioOptions;
 use sdl3::AudioSubsystem;
@@ -57,6 +58,9 @@ pub struct DesktopAudioOutput {
     captured_t_cycles_since_submit: usize,
     telemetry: AudioTelemetry,
     last_submit_telemetry: Option<AudioSubmitTelemetry>,
+    console_model: ConsoleModel,
+    channel_mask: ApuRecordedChannelMask,
+    masked_mix_dc_blocker: Option<ApuHostDcBlocker>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -180,7 +184,11 @@ impl AudioTelemetry {
 }
 
 impl DesktopAudioOutput {
-    pub fn new(audio: &AudioSubsystem, options: &AudioOptions) -> Result<Self, String> {
+    pub fn new(
+        audio: &AudioSubsystem,
+        options: &AudioOptions,
+        console_model: ConsoleModel,
+    ) -> Result<Self, String> {
         let app_spec = AudioSpec::new(
             Some(options.output_sample_rate_hz as i32),
             Some(AUDIO_CHANNEL_COUNT),
@@ -216,6 +224,9 @@ impl DesktopAudioOutput {
             captured_t_cycles_since_submit: 0,
             telemetry: AudioTelemetry::from_env(),
             last_submit_telemetry: None,
+            console_model,
+            channel_mask: ApuRecordedChannelMask::ALL,
+            masked_mix_dc_blocker: None,
         };
         output.telemetry.log_event(
             "init",
@@ -233,7 +244,12 @@ impl DesktopAudioOutput {
 
     pub fn capture_t_cycle(&mut self, apu: &Apu) {
         self.captured_t_cycles_since_submit += 1;
-        self.capture.record_t_cycle(apu);
+        if self.channel_mask.is_all() {
+            self.capture.record_t_cycle(apu);
+        } else {
+            self.capture
+                .record_output_t_cycle(apu.recorded_channel_mix_pre_hpf(self.channel_mask));
+        }
     }
 
     pub fn submit_captured_samples(&mut self) -> Result<(), String> {
@@ -285,10 +301,14 @@ impl DesktopAudioOutput {
         self.interleaved_buffer
             .reserve(self.captured_samples.len() * 2);
         for sample in self.captured_samples.iter().copied() {
+            let filtered = match &mut self.masked_mix_dc_blocker {
+                Some(dc_blocker) => dc_blocker.filter_sample(sample),
+                None => sample,
+            };
             self.interleaved_buffer
-                .push(normalize_sample(sample.left) * sample_scale);
+                .push(normalize_sample(filtered.left) * sample_scale);
             self.interleaved_buffer
-                .push(normalize_sample(sample.right) * sample_scale);
+                .push(normalize_sample(filtered.right) * sample_scale);
         }
 
         map_audio_result(
@@ -397,16 +417,57 @@ impl DesktopAudioOutput {
             ApuSampleCapture::new(self.output_sample_rate_hz).map_err(format_capture_error)?;
         self.captured_samples.clear();
         self.interleaved_buffer.clear();
+        if let Some(dc_blocker) = &mut self.masked_mix_dc_blocker {
+            dc_blocker.reset();
+        }
         self.oversized_queue_streak = 0;
         self.captured_t_cycles_since_submit = 0;
         self.telemetry.log_event(
             "capture-reset",
             format!(
-                "sample_rate_hz={} muted={} volume_percent={}",
-                self.output_sample_rate_hz, self.muted, self.volume_percent
+                "sample_rate_hz={} muted={} volume_percent={} channel_mask={:#04X}",
+                self.output_sample_rate_hz,
+                self.muted,
+                self.volume_percent,
+                self.channel_mask.bits(),
             ),
         );
         self.clear_stream("capture-reset", None)
+    }
+
+    pub fn set_channel_mask(&mut self, channel_mask: ApuRecordedChannelMask) -> Result<(), String> {
+        if self.channel_mask == channel_mask {
+            return Ok(());
+        }
+
+        self.channel_mask = channel_mask;
+        self.reset_masked_mix_dc_blocker();
+        self.telemetry.log_event(
+            "channel-mask",
+            format!("channel_mask={:#04X}", self.channel_mask.bits()),
+        );
+        self.clear_buffer()
+    }
+
+    pub fn reset_for_session_swap(&mut self, console_model: ConsoleModel) -> Result<(), String> {
+        if self.console_model != console_model {
+            self.console_model = console_model;
+            self.reset_masked_mix_dc_blocker();
+            self.telemetry
+                .log_event("console-model", format!("console_model={console_model:?}"));
+        } else {
+            self.telemetry.log_event(
+                "session-audio-reset",
+                format!(
+                    "sample_rate_hz={} muted={} volume_percent={} channel_mask={:#04X}",
+                    self.output_sample_rate_hz,
+                    self.muted,
+                    self.volume_percent,
+                    self.channel_mask.bits(),
+                ),
+            );
+        }
+        self.clear_buffer()
     }
 
     pub fn flush(&self) -> Result<(), String> {
@@ -439,6 +500,17 @@ impl DesktopAudioOutput {
         }
 
         Some(sample_frames as f64 * 1_000.0 / f64::from(self.output_sample_rate_hz))
+    }
+
+    fn reset_masked_mix_dc_blocker(&mut self) {
+        self.masked_mix_dc_blocker = if self.channel_mask.is_all() {
+            None
+        } else {
+            Some(ApuHostDcBlocker::new(
+                self.console_model,
+                self.output_sample_rate_hz,
+            ))
+        };
     }
 
     fn clear_stream(&self, reason: &str, known_queued_bytes: Option<i32>) -> Result<(), String> {
@@ -513,7 +585,8 @@ mod tests {
         format_optional_i32, format_optional_ms, map_audio_result, normalize_sample,
     };
     use gb_core::{
-        APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuSampleCaptureError, ConsoleModel,
+        APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuRecordedChannel, ApuRecordedChannelMask,
+        ApuSampleCaptureError, ConsoleModel,
     };
     use gb_desktop::AudioOptions;
     use sdl3::{AudioSubsystem, hint};
@@ -543,12 +616,19 @@ mod tests {
         }
     }
 
+    fn configure_constant_ch1_output(apu: &mut Apu) {
+        apu.write_register(0xFF26, 0x80);
+        apu.write_register(0xFF12, 0x08);
+        apu.write_register(0xFF24, 0x77);
+        apu.write_register(0xFF25, 0x11);
+    }
+
     #[test]
     fn desktop_audio_output_scales_queues_and_clears_captured_samples() {
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output =
-            DesktopAudioOutput::new(&audio, &test_audio_options()).expect("audio output");
+        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
+            .expect("audio output");
         output.pause().expect("pause");
 
         push_captured_sample(
@@ -637,8 +717,8 @@ mod tests {
     fn desktop_audio_output_can_disable_automatic_oversized_queue_clears() {
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output =
-            DesktopAudioOutput::new(&audio, &test_audio_options()).expect("audio output");
+        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
+            .expect("audio output");
         output.pause().expect("pause");
         output.auto_queue_clear_enabled = false;
         output.max_queued_bytes = -1;
@@ -664,8 +744,8 @@ mod tests {
     fn desktop_audio_output_controls_pause_volume_and_buffer_reset() {
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output =
-            DesktopAudioOutput::new(&audio, &test_audio_options()).expect("audio output");
+        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
+            .expect("audio output");
 
         assert!(!output.is_muted());
         assert!(
@@ -735,6 +815,89 @@ mod tests {
         assert!(output.interleaved_buffer.is_empty());
 
         output.flush().expect("flush");
+    }
+
+    #[test]
+    fn desktop_audio_output_channel_masks_reset_host_capture_and_follow_console_model() {
+        let _guard = crate::lock_sdl_test();
+        let audio = init_audio_subsystem();
+        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
+            .expect("audio output");
+        output.pause().expect("pause");
+
+        let subset_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch1, true);
+        output
+            .set_channel_mask(subset_mask)
+            .expect("subset channel mask should update");
+        assert_eq!(output.channel_mask, subset_mask);
+        assert!(output.masked_mix_dc_blocker.is_some());
+
+        output
+            .set_channel_mask(subset_mask)
+            .expect("setting the same mask should be a no-op");
+        assert_eq!(output.channel_mask, subset_mask);
+        assert!(output.masked_mix_dc_blocker.is_some());
+
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+        configure_constant_ch1_output(&mut apu);
+        while output.capture.pending_sample_count() == 0 {
+            output.capture_t_cycle(&apu);
+        }
+        output
+            .submit_captured_samples()
+            .expect("subset mix should submit captured samples");
+        assert!(!output.interleaved_buffer.is_empty());
+
+        output
+            .reset_for_session_swap(ConsoleModel::Mgb)
+            .expect("console model changes should reset the masked capture");
+        assert_eq!(output.console_model, ConsoleModel::Mgb);
+        assert!(output.masked_mix_dc_blocker.is_some());
+        assert!(output.captured_samples.is_empty());
+        assert!(output.interleaved_buffer.is_empty());
+
+        output
+            .reset_for_session_swap(ConsoleModel::Mgb)
+            .expect("same-model session swaps should still clear buffered audio");
+        assert_eq!(output.console_model, ConsoleModel::Mgb);
+
+        output
+            .set_channel_mask(ApuRecordedChannelMask::ALL)
+            .expect("restoring the full mask should drop the host dc blocker");
+        assert_eq!(output.channel_mask, ApuRecordedChannelMask::ALL);
+        assert!(output.masked_mix_dc_blocker.is_none());
+    }
+
+    #[test]
+    fn session_swaps_clear_audio_output_even_when_the_console_model_stays_the_same() {
+        let _guard = crate::lock_sdl_test();
+        let audio = init_audio_subsystem();
+        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
+            .expect("audio output");
+        output.pause().expect("pause");
+
+        let subset_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch1, true);
+        output
+            .set_channel_mask(subset_mask)
+            .expect("subset channel mask should update");
+
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+        configure_constant_ch1_output(&mut apu);
+        while output.capture.pending_sample_count() == 0 {
+            output.capture_t_cycle(&apu);
+        }
+        output
+            .submit_captured_samples()
+            .expect("captured samples should submit before the session swap");
+        assert!(!output.interleaved_buffer.is_empty());
+
+        output
+            .reset_for_session_swap(ConsoleModel::Dmg)
+            .expect("session swaps should clear buffered audio even when the model is unchanged");
+        assert_eq!(output.console_model, ConsoleModel::Dmg);
+        assert!(output.captured_samples.is_empty());
+        assert!(output.interleaved_buffer.is_empty());
+        assert!(output.masked_mix_dc_blocker.is_some());
     }
 
     #[test]
@@ -814,8 +977,8 @@ mod tests {
 
         let _guard = crate::lock_sdl_test();
         let audio = init_audio_subsystem();
-        let mut output =
-            DesktopAudioOutput::new(&audio, &test_audio_options()).expect("audio output");
+        let mut output = DesktopAudioOutput::new(&audio, &test_audio_options(), ConsoleModel::Dmg)
+            .expect("audio output");
         output.output_sample_rate_hz = 0;
         assert_eq!(output.queued_duration_ms(), None);
         assert_eq!(

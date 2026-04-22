@@ -140,8 +140,13 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    recovery from that lock-up, explicit timer hand-off into / out of the
    shift-`14` / `15` no-clocks state, inactive-channel slow-control clocking
    for CH1 sweep and CH1 / CH2 / CH4 envelopes, inactive-channel fast-timer
-   continuation for CH1 / CH2 / CH3 / CH4, and DMG powered-off `NR41` length
-   writes, while machine integration coverage
+   continuation for CH1 / CH2 / CH3 / CH4, DMG-oriented hidden-noise-counter
+   phase tracking plus a dedicated live-`NR43` resolver block and a
+   conservative DMG-oriented live-write subset that covers one
+   reload-seam step, a SameBoy-style single-intermediate `old_bit / glitch_bit / new_bit`
+   path, some low-shift two-step / feedback-corruption cases, a small repo-local narrow-staircase Zelda-tail tuning layer (the remaining `0x5C -> 0x4C` mid-band descent, the leading `0x5C -> 0x6C` ascent, and the late `0x4C -> 0x3C` rise are suppressed, leaving `0x7C -> 0x6C` as the last active narrow return edge), an explicit category-1/category-2/rising-edge/follow-up resolver split, an explicit per-category LFSR-action seam recorded in CH4 traces/debug snapshots, and both the single-intermediate selector plus a staged-upper-nibble second-intermediate candidate exported in those traces so the next phase can decide from data whether a true two-intermediate behavior change is justified, and DMG powered-off `NR41`
+   length writes, while machine
+   integration coverage
    includes DMG `NR41` length persistence through an `NR52` power cycle.
 7. `Phase 7.6` — DAC, mixer, HPF, and host boundary
    Scope: channel digital-output ownership, per-channel DAC conversion,

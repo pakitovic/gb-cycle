@@ -47,7 +47,7 @@ fn pulse_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
     assert!(!apu.channels.channel_1.pulse.runtime.active);
     assert_eq!(
         apu.channels.channel_1.pulse.period_timer,
-        pulse_timer_reload(0x00AB) | (0x0123 & 0x03)
+        pulse_timer_reload_preserving_trigger_phase(0x00AB, 0x0123)
     );
     assert_eq!(
         apu.channels.channel_1.pulse.envelope.timer,
@@ -70,7 +70,7 @@ fn pulse_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() {
     assert!(!apu.channels.channel_2.pulse.runtime.active);
     assert_eq!(
         apu.channels.channel_2.pulse.period_timer,
-        pulse_timer_reload(0x00CD) | (0x0235 & 0x03)
+        pulse_timer_reload_preserving_trigger_phase(0x00CD, 0x0235)
     );
     assert_eq!(
         apu.channels.channel_2.pulse.envelope.timer,
@@ -131,6 +131,39 @@ fn channel_2_retrigger_after_the_first_post_power_on_trigger_does_not_resuppress
 }
 
 #[test]
+fn triggering_a_pulse_channel_from_inactive_state_resuppresses_output_until_the_next_duty_step() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x40);
+    apu.write_register(0xFF17, 0xF0);
+    apu.write_register(0xFF18, 0xFF);
+
+    apu.write_register(0xFF19, 0x87);
+    for _ in 0..4 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+
+    assert!(!apu.channels.channel_2.pulse.suppress_initial_trigger_output);
+
+    apu.channels.channel_2.pulse.runtime.active = false;
+    apu.channels.channel_2.pulse.duty_step = 0;
+    apu.channels.channel_2.pulse.suppress_initial_trigger_output = false;
+
+    apu.write_register(0xFF19, 0x87);
+
+    assert!(apu.channels.channel_2.pulse.runtime.active);
+    assert!(apu.channels.channel_2.pulse.suppress_initial_trigger_output);
+    assert_eq!(apu.channels.channel_2.pulse.current_digital_output(), 0);
+
+    for _ in 0..4 {
+        apu.channels.channel_2.tick_fast_timer();
+    }
+
+    assert!(!apu.channels.channel_2.pulse.suppress_initial_trigger_output);
+    assert_eq!(apu.channels.channel_2.pulse.duty_step, 1);
+}
+
+#[test]
 fn pulse_fast_timer_stays_frozen_until_the_first_trigger_after_power_on() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
@@ -182,20 +215,38 @@ fn nr52_power_cycle_rearms_the_first_trigger_after_power_on_pulse_suppression() 
 }
 
 #[test]
-fn triggering_a_pulse_channel_preserves_the_low_two_bits_of_the_frequency_timer() {
+fn triggering_a_pulse_channel_preserves_the_underlying_timer_phase() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);
     apu.write_register(0xFF16, 0x80);
     apu.write_register(0xFF17, 0xF0);
-    apu.write_register(0xFF18, 0xFF);
-    apu.channels.channel_2.pulse.period_timer = 0x0003;
+    apu.write_register(0xFF18, 0xFE);
+    apu.channels.channel_2.pulse.period_timer = 0x0001;
 
     apu.write_register(0xFF19, 0x87);
 
     assert_eq!(
         apu.channels.channel_2.pulse.period_timer,
-        pulse_timer_reload(0x07FF) | 0x0003
+        pulse_timer_reload_preserving_trigger_phase(0x07FE, 0x0001)
     );
+}
+
+#[test]
+fn pulse_trigger_phase_preservation_matches_all_four_t_cycle_subphases() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF16, 0x80);
+    apu.write_register(0xFF17, 0xF0);
+    apu.write_register(0xFF18, 0xFE);
+
+    for (current_period_timer, expected_period_timer) in [(4, 8), (3, 7), (2, 6), (1, 5)] {
+        apu.channels.channel_2.pulse.period_timer = current_period_timer;
+        apu.write_register(0xFF19, 0x87);
+        assert_eq!(
+            apu.channels.channel_2.pulse.period_timer, expected_period_timer,
+            "current_period_timer={current_period_timer}"
+        );
+    }
 }
 
 #[test]

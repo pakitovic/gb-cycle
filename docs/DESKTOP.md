@@ -25,6 +25,14 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 
 ## Audio investigation
 
+- Use `--audio-record path/to/capture.wav` to export direct digital stereo APU output to `WAV` or `AIFC` without going through speakers, room acoustics, the macOS microphone path, or the frontend mute/volume controls.
+- `--audio-record-rate <hz>` overrides the recording sink sample rate; the default is `96000` Hz so SameBoy-vs-`gb-cycle` commercial-ROM captures can be compared at the same host rate when desired.
+- `--audio-record-stems <all|ch1,ch2,ch3,ch4>` writes isolated per-channel sidecar captures next to the main recording path (for example `capture.ch1.wav` and `capture.ch4.wav`) so commercial-ROM investigations can compare `CH1`, `CH2`, `CH3/WAVE`, and `CH4/NOISE` independently instead of only through the final mix.
+- `AUDIO -> RECORD` in the desktop overlay starts/stops an automatic `WAV` capture at `96000` Hz under an `audios/` subdirectory next to the loaded ROM (for example `audios/zelda-0.wav`). That automatic recording uses the current desktop audio-channel selection instead of always forcing the full mix.
+- `AUDIO -> CH1/CH2/CH3/CH4` are host-side diagnostic toggles. They do **not** rewrite `NR51` or any other APU register; they only change what the desktop frontend plays back or records.
+- When all four channels are enabled, desktop playback and recording keep using the exact typed post-HPF `ApuHostSample` stream from `gb-core`. When a subset is selected, `gb-desktop` instead asks `gb-core` for the selected pre-HPF channel mix and then applies a host-side DMG-family DC-block / HPF before SDL playback or file encoding. That keeps the hardware model untouched while making solo/submix diagnosis practical.
+- Those per-channel stems start from the typed APU boundary **post-DAC / NR51 / NR50** and then apply a **solo host-rate DC-block / HPF** matched to the active DMG-family charge model before encoding. That keeps the routed per-channel gain explicit while removing the raw DAC bias that made the first stem version hard to compare against SameBoy's solo-channel exports; they are investigative stems, not a new claim about final hardware-listenable solo output.
+- Recording taps the same typed post-HPF `ApuHostSample` boundary that feeds SDL playback, but on an independent host sink, so it still works when normal desktop playback is muted or disabled for investigation.
 - Set `GB_CYCLE_DESKTOP_AUDIO_LOG=1` to emit opt-in SDL audio telemetry to `stderr` with lightweight event logging only.
 - Use `GB_CYCLE_DESKTOP_AUDIO_LOG=verbose` when you explicitly need one submit line per queued audio batch with queued-byte and queued-duration estimates.
 - Set `GB_CYCLE_DESKTOP_AUDIO_DISABLE_AUTO_CLEAR=1` to disable the automatic oversized-queue recovery path entirely while investigating whether audible cuts come from host-side queue clears or from `gb-core`.
@@ -38,6 +46,7 @@ Host audio playback consumes a typed post-HPF sample-capture boundary from `gb-c
 - Set `GB_CYCLE_DESKTOP_TRACE_PATH=/tmp/gb-desktop-trace.txt` to dump a rolling per-T-cycle CPU/APU/interrupt/joypad/bus trace when the frontend exits.
 - Override the rolling window with `GB_CYCLE_DESKTOP_TRACE_T_CYCLES=<count>` when you need a narrower or wider final interaction window; the default is `8192` T-cycles.
 - Cycles that include an APU MMIO write in `FF10..FF26` append `apu.last_write=... before(...) after(...)` so you can correlate audible glitches with the exact register transition that just occurred.
+- Set `GB_CYCLE_DESKTOP_CH4_NR43_TRACE_PATH=/tmp/gb-desktop-ch4-nr43-trace.txt` to dump a condensed event trace containing only live `NR43` writes plus the CH4 internal glitch/debug snapshot, which is more useful than the rolling trace when isolating Zelda-style tail-noise mismatches.
 - This capture is intended for interactive commercial-ROM investigation when reproducing the issue directly in `gb-desktop` is easier than scripting the same input path in `gb-test-runner`.
 - When trace capture is disabled, the desktop loop now skips the trace-record path entirely instead of calling into the ring-buffer helper on every `T-cycle`.
 
@@ -114,7 +123,7 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - Root overlay also exposes `QUIT` directly at the first menu level.
 - `RESUME` and root-level back/cancel (`Escape` / `Guide`) both clear an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
 - **`VIDEO`** — fullscreen, vsync, window scale, integer presentation, host-side presentation filter, screenshot capture, stats HUD visibility.
-- **`AUDIO`** — toggle mute, cycle host volume.
+- **`AUDIO`** — toggle mute, cycle host volume, host-mask `CH1..CH4`, and start/stop automatic `WAV` captures under `audios/`.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).
 - **`SYSTEM`** — system-level options such as console model, startup mode, boot ROM paths, save policy, and reset.
 - **`OPEN RECENT`** — recent-ROM history for the last `8` ROMs, available from the root overlay whenever recent ROMs exist; entries can relaunch directly, the submenu exposes `CLEAR LIST`, and the selected entry scrolls after a short dwell when the sanitized title is wider than the overlay text area.
@@ -139,6 +148,7 @@ Persisted settings include:
 
 - Frontend video: scale, vsync, integer-presentation, host-side presentation filter, stats-HUD visibility.
 - Frontend audio: volume, mute state.
+- Audio channel selection and desktop `RECORD` state are intentionally **not** persisted, so new launches come up with the full mix selected and recording disabled unless the CLI recording flags explicitly requested otherwise.
 - Keyboard joypad bindings and keyboard menu bindings.
 - Frontend hotkeys.
 - Gamepad bindings and gamepad menu bindings.

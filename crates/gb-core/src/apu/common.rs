@@ -110,6 +110,7 @@ pub(super) const NOISE_CLOCK_SHIFT_SHIFT: u8 = 4;
 pub(super) const NOISE_CLOCK_SHIFT_MASK: u8 = 0x0F;
 pub(super) const NOISE_SHORT_WIDTH_BIT: u8 = 0x08;
 pub(super) const NOISE_DIVIDER_CODE_MASK: u8 = 0x07;
+pub(super) const NOISE_COUNTER_MASK: u16 = 0x3FFF;
 pub(super) const NOISE_LFSR_OUTPUT_BIT: u8 = 0;
 pub(super) const NOISE_LFSR_TAP_BIT: u8 = 1;
 pub(super) const NOISE_LFSR_FEEDBACK_BIT: u8 = 14;
@@ -121,8 +122,16 @@ pub(super) const MGB_CGB_HPF_CHARGE_FACTOR_NUMERATOR: i64 = 998_943;
 pub(super) const HPF_CHARGE_FACTOR_DENOMINATOR: i64 = 1_000_000;
 pub const DMG_FAMILY_APU_CAPTURE_CLOCK_HZ: u32 = 4_194_304;
 pub(super) const MAX_ROUTED_CHANNELS_PER_OUTPUT_BUS: i32 = CHANNEL_COUNT as i32;
-pub const APU_HOST_MAX_ABS_SAMPLE: i32 =
+pub(super) const APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE: i32 =
     ANALOG_ONE * MAX_ROUTED_CHANNELS_PER_OUTPUT_BUS * NR50_MAX_VOLUME_FACTOR;
+// Host PCM export is a representation choice rather than a hardware semantic. We intentionally
+// keep roughly 6 dB of headroom instead of mapping the theoretical raw post-HPF peak directly to
+// full-scale PCM, which matches SameBoy's direct WAV convention more closely and makes
+// cross-emulator captures easier to compare without changing the internal analog model.
+const APU_HOST_PCM_REFERENCE_MAX_ABS_I16: i32 = 16_320;
+pub const APU_HOST_MAX_ABS_SAMPLE: i32 = ((APU_INTERNAL_MAX_ABS_OUTPUT_SAMPLE as i64
+    * i16::MAX as i64)
+    / APU_HOST_PCM_REFERENCE_MAX_ABS_I16 as i64) as i32;
 pub(super) const DMG_FAMILY_APU_CAPTURE_CLOCK_HZ_U64: u64 = DMG_FAMILY_APU_CAPTURE_CLOCK_HZ as u64;
 
 pub(super) const PULSE_DUTY_PATTERNS: [[bool; 8]; 4] = [
@@ -240,6 +249,16 @@ pub(super) const fn pulse_timer_reload(period_value: u16) -> u16 {
     (2048 - (period_value & PULSE_PERIOD_MAX)) * 4
 }
 
+pub(super) const fn pulse_timer_reload_preserving_trigger_phase(
+    period_value: u16,
+    current_period_timer: u16,
+) -> u16 {
+    let reload = pulse_timer_reload(period_value);
+    let preserved_phase = (4 - (current_period_timer & PULSE_PERIOD_TIMER_LOW_BITS_MASK))
+        & PULSE_PERIOD_TIMER_LOW_BITS_MASK;
+    reload - preserved_phase
+}
+
 pub(super) const fn wave_length_counter_from_load(value: u8) -> u16 {
     WAVE_LENGTH_COUNTER_RELOAD - value as u16
 }
@@ -265,8 +284,28 @@ pub(super) const fn noise_timer_reload(clock_shift: u8, clock_divider_code: u8) 
     noise_divisor_base(clock_divider_code) << (clock_shift & NOISE_CLOCK_SHIFT_MASK)
 }
 
+pub(super) const fn noise_counter_timer_reload(clock_divider_code: u8) -> u32 {
+    noise_divisor_base(clock_divider_code) >> 1
+}
+
 pub(super) const fn noise_clocking_suppressed(clock_shift: u8) -> bool {
     clock_shift >= 14
+}
+
+pub(super) const fn noise_counter_bit(counter: u16, clock_shift: u8) -> bool {
+    if noise_clocking_suppressed(clock_shift) {
+        false
+    } else {
+        counter & (1 << (clock_shift & NOISE_CLOCK_SHIFT_MASK)) != 0
+    }
+}
+
+pub(super) const fn noise_counter_phase_after_trigger(clock_shift: u8) -> u16 {
+    if noise_clocking_suppressed(clock_shift) {
+        0
+    } else {
+        1 << (clock_shift & NOISE_CLOCK_SHIFT_MASK)
+    }
 }
 
 pub(super) const fn nrx4_write_context(
