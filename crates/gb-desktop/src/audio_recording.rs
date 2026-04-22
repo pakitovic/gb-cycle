@@ -1,13 +1,14 @@
 use gb_core::{
     APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostDcBlocker, ApuHostSample, ApuRecordedChannel,
-    ApuSampleCapture, ApuSampleCaptureError, ConsoleModel,
+    ApuRecordedChannelMask, ApuSampleCapture, ApuSampleCaptureError, ConsoleModel,
 };
 use std::ffi::OsStr;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 pub(crate) const DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ: u32 = 96_000;
+const AUDIO_RECORDING_OUTPUT_SUBDIRECTORY: &str = "audios";
 const AUDIO_RECORDING_CHANNEL_COUNT: u16 = 2;
 const AUDIO_RECORDING_BYTES_PER_SAMPLE: u16 = 2;
 const AUDIO_RECORDING_BYTES_PER_FRAME: u32 =
@@ -28,6 +29,8 @@ pub(crate) struct DesktopAudioRecordingOptions {
 pub(crate) struct DesktopAudioRecorder {
     mixed_stream: AudioRecordingStream,
     stem_streams: Vec<ChannelAudioRecordingStream>,
+    channel_mask: ApuRecordedChannelMask,
+    console_model: ConsoleModel,
 }
 
 #[derive(Debug)]
@@ -84,11 +87,19 @@ impl DesktopAudioRecorder {
         Ok(Self {
             mixed_stream,
             stem_streams,
+            channel_mask: ApuRecordedChannelMask::ALL,
+            console_model,
         })
     }
 
     pub(crate) fn capture_t_cycle(&mut self, apu: &Apu) {
-        self.mixed_stream.capture.record_t_cycle(apu);
+        if self.channel_mask.is_all() {
+            self.mixed_stream.capture.record_t_cycle(apu);
+        } else {
+            self.mixed_stream
+                .capture
+                .record_output_t_cycle(apu.recorded_channel_mix_pre_hpf(self.channel_mask));
+        }
 
         for stem_stream in &mut self.stem_streams {
             stem_stream
@@ -113,6 +124,58 @@ impl DesktopAudioRecorder {
             stem_stream.stream.finish()?;
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn channel_mask(&self) -> ApuRecordedChannelMask {
+        self.channel_mask
+    }
+
+    pub(crate) fn set_channel_mask(
+        &mut self,
+        channel_mask: ApuRecordedChannelMask,
+    ) -> Result<(), String> {
+        if self.channel_mask == channel_mask {
+            return Ok(());
+        }
+
+        self.write_captured_samples()?;
+        self.channel_mask = channel_mask;
+        self.reset_mixed_stream_capture()?;
+        Ok(())
+    }
+
+    pub(crate) fn set_console_model(&mut self, console_model: ConsoleModel) -> Result<(), String> {
+        if self.console_model == console_model {
+            return Ok(());
+        }
+
+        self.write_captured_samples()?;
+        self.console_model = console_model;
+        self.reset_mixed_stream_capture()?;
+        for stem_stream in &mut self.stem_streams {
+            stem_stream.stream.reset_capture(
+                stem_stream.stream.writer.sample_rate_hz,
+                Some(ApuHostDcBlocker::new(
+                    self.console_model,
+                    stem_stream.stream.writer.sample_rate_hz,
+                )),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn reset_mixed_stream_capture(&mut self) -> Result<(), String> {
+        let dc_blocker = if self.channel_mask.is_all() {
+            None
+        } else {
+            Some(ApuHostDcBlocker::new(
+                self.console_model,
+                self.mixed_stream.writer.sample_rate_hz,
+            ))
+        };
+        self.mixed_stream
+            .reset_capture(self.mixed_stream.writer.sample_rate_hz, dc_blocker)
     }
 }
 
@@ -244,6 +307,18 @@ impl AudioRecordingStream {
     fn finish(&mut self) -> Result<(), String> {
         self.writer.finish()
     }
+
+    fn reset_capture(
+        &mut self,
+        sample_rate_hz: u32,
+        dc_blocker: Option<ApuHostDcBlocker>,
+    ) -> Result<(), String> {
+        self.capture = ApuSampleCapture::new(sample_rate_hz).map_err(format_capture_error)?;
+        self.captured_samples.clear();
+        self.encoded_bytes.clear();
+        self.dc_blocker = dc_blocker;
+        Ok(())
+    }
 }
 
 impl AudioRecordingFormat {
@@ -294,6 +369,34 @@ fn encode_recorded_sample(sample: i32) -> i16 {
     }
 }
 
+pub(crate) fn resolve_next_audio_recording_output_path(
+    rom_path: Option<&Path>,
+    current_dir: &Path,
+) -> Result<PathBuf, String> {
+    let output_dir = audio_recording_output_directory(rom_path, current_dir);
+    fs::create_dir_all(&output_dir).map_err(|error| {
+        crate::format_path_error(
+            "failed to create audio recording output directory",
+            &output_dir,
+            &error.to_string(),
+        )
+    })?;
+
+    let stem = audio_recording_output_stem(rom_path);
+    for index in 0..=u16::MAX {
+        let candidate = output_dir.join(format!("{stem}-{index}.wav"));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    Err(crate::format_path_error(
+        "failed to allocate a free audio recording path in",
+        &output_dir,
+        "directory is full",
+    ))
+}
+
 fn stem_output_path(output_path: &Path, channel: ApuRecordedChannel) -> Result<PathBuf, String> {
     let Some(file_stem) = output_path.file_stem() else {
         return Err(format!(
@@ -315,6 +418,23 @@ fn stem_output_path(output_path: &Path, channel: ApuRecordedChannel) -> Result<P
     stem_name.push(extension);
 
     Ok(output_path.with_file_name(stem_name))
+}
+
+fn audio_recording_output_directory(rom_path: Option<&Path>, current_dir: &Path) -> PathBuf {
+    let base_dir = match rom_path.and_then(Path::parent) {
+        Some(parent) => parent.to_path_buf(),
+        None => current_dir.to_path_buf(),
+    };
+    base_dir.join(AUDIO_RECORDING_OUTPUT_SUBDIRECTORY)
+}
+
+fn audio_recording_output_stem(rom_path: Option<&Path>) -> String {
+    rom_path
+        .and_then(Path::file_stem)
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("gb-cycle")
+        .to_string()
 }
 
 const fn channel_stem_suffix(channel: ApuRecordedChannel) -> &'static str {
@@ -443,11 +563,13 @@ mod tests {
     use super::{
         AIFC_HEADER_LEN, AUDIO_RECORDING_BYTES_PER_FRAME, AudioRecordingFormat,
         AudioRecordingWriter, DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecorder,
-        DesktopAudioRecordingOptions, WAV_HEADER_LEN, aifc_sample_rate_bytes, channel_stem_suffix,
-        encode_recorded_sample, format_flush_error, format_seek_error, stem_output_path,
+        DesktopAudioRecordingOptions, WAV_HEADER_LEN, aifc_sample_rate_bytes,
+        audio_recording_output_directory, audio_recording_output_stem, channel_stem_suffix,
+        encode_recorded_sample, format_flush_error, format_seek_error,
+        resolve_next_audio_recording_output_path, stem_output_path,
     };
     use gb_core::{
-        APU_HOST_MAX_ABS_SAMPLE, Apu, ApuRecordedChannel, ConsoleModel,
+        APU_HOST_MAX_ABS_SAMPLE, Apu, ApuRecordedChannel, ApuRecordedChannelMask, ConsoleModel,
         DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
     };
     use std::fs::{self, File};
@@ -737,6 +859,49 @@ mod tests {
     }
 
     #[test]
+    fn automatic_audio_recordings_use_an_audios_sidecar_directory() {
+        let root = temp_recording_path("dir");
+        fs::create_dir_all(&root).expect("root directory");
+        let rom_path = root.join("zelda.gb");
+        fs::write(&rom_path, b"rom").expect("rom file");
+
+        let first = resolve_next_audio_recording_output_path(Some(&rom_path), &root)
+            .expect("first automatic path");
+        assert_eq!(first, root.join("audios/zelda-0.wav"));
+
+        fs::create_dir_all(first.parent().expect("audio output parent")).expect("audio dir");
+        fs::write(&first, b"existing").expect("existing recording");
+
+        let second = resolve_next_audio_recording_output_path(Some(&rom_path), &root)
+            .expect("second automatic path");
+        assert_eq!(second, root.join("audios/zelda-1.wav"));
+
+        let _ = fs::remove_file(first);
+        let _ = fs::remove_file(rom_path);
+        let _ = fs::remove_dir_all(root.join("audios"));
+        let _ = fs::remove_dir(root);
+    }
+
+    #[test]
+    fn automatic_audio_recording_helpers_fall_back_without_a_loaded_rom() {
+        let root = temp_recording_path("dir");
+        fs::create_dir_all(&root).expect("root directory");
+
+        assert_eq!(
+            audio_recording_output_directory(None, &root),
+            root.join("audios")
+        );
+        assert_eq!(audio_recording_output_stem(None), "gb-cycle");
+
+        let path = resolve_next_audio_recording_output_path(None, &root)
+            .expect("automatic recording path without a rom");
+        assert_eq!(path, root.join("audios/gb-cycle-0.wav"));
+
+        let _ = fs::remove_dir_all(root.join("audios"));
+        let _ = fs::remove_dir(root);
+    }
+
+    #[test]
     fn recorder_writes_mixed_and_stem_recordings() {
         let output_path = temp_recording_path("wav");
         let stem_ch1_path =
@@ -776,5 +941,112 @@ mod tests {
         let _ = fs::remove_file(output_path);
         let _ = fs::remove_file(stem_ch1_path);
         let _ = fs::remove_file(stem_ch4_path);
+    }
+
+    #[test]
+    fn recorder_channel_mask_controls_the_mixed_recording_only() {
+        let output_path = temp_recording_path("wav");
+        let mut recorder = DesktopAudioRecorder::new(
+            &DesktopAudioRecordingOptions {
+                output_path: output_path.clone(),
+                sample_rate_hz: DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
+                stem_channels: Vec::new(),
+            },
+            ConsoleModel::Dmg,
+        )
+        .expect("recorder");
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+        configure_constant_ch1_output(&mut apu);
+
+        recorder
+            .set_channel_mask(
+                ApuRecordedChannelMask::NONE
+                    .with_channel(ApuRecordedChannel::Ch1, true)
+                    .with_channel(ApuRecordedChannel::Ch4, true),
+            )
+            .expect("set channel mask");
+        assert_eq!(
+            recorder.channel_mask(),
+            ApuRecordedChannelMask::NONE
+                .with_channel(ApuRecordedChannel::Ch1, true)
+                .with_channel(ApuRecordedChannel::Ch4, true)
+        );
+
+        for _ in 0..8 {
+            recorder.capture_t_cycle(&apu);
+        }
+        recorder.finish().expect("recorder should finish");
+
+        let mixed_bytes = fs::read(&output_path).expect("mixed recording");
+        assert!(mixed_bytes.len() > WAV_HEADER_LEN as usize);
+
+        let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn recorder_updates_capture_state_when_masks_or_console_model_change() {
+        let output_path = temp_recording_path("wav");
+        let stem_ch3_path =
+            stem_output_path(&output_path, ApuRecordedChannel::Ch3).expect("ch3 stem path");
+        let mut recorder = DesktopAudioRecorder::new(
+            &DesktopAudioRecordingOptions {
+                output_path: output_path.clone(),
+                sample_rate_hz: DMG_FAMILY_APU_CAPTURE_CLOCK_HZ,
+                stem_channels: vec![ApuRecordedChannel::Ch3],
+            },
+            ConsoleModel::Dmg,
+        )
+        .expect("recorder");
+        let mut apu = Apu::new(ConsoleModel::Dmg);
+        configure_constant_ch1_output(&mut apu);
+
+        recorder
+            .set_channel_mask(ApuRecordedChannelMask::ALL)
+            .expect("setting the existing full mask should be a no-op");
+        assert!(recorder.mixed_stream.dc_blocker.is_none());
+
+        let subset_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch1, true);
+        recorder
+            .set_channel_mask(subset_mask)
+            .expect("subset mask should reset the mixed stream capture");
+        assert_eq!(recorder.channel_mask(), subset_mask);
+        assert!(recorder.mixed_stream.dc_blocker.is_some());
+
+        for _ in 0..8 {
+            recorder.capture_t_cycle(&apu);
+        }
+        recorder
+            .write_captured_samples()
+            .expect("captured samples should flush before console-model updates");
+
+        recorder
+            .set_console_model(ConsoleModel::Mgb)
+            .expect("console-model changes should reset all capture state");
+        assert_eq!(recorder.console_model, ConsoleModel::Mgb);
+        assert_eq!(recorder.mixed_stream.capture.pending_sample_count(), 0);
+        assert_eq!(
+            recorder.stem_streams[0]
+                .stream
+                .capture
+                .pending_sample_count(),
+            0
+        );
+        assert!(recorder.mixed_stream.dc_blocker.is_some());
+        assert!(recorder.stem_streams[0].stream.dc_blocker.is_some());
+
+        recorder
+            .set_console_model(ConsoleModel::Mgb)
+            .expect("setting the existing console model should be a no-op");
+
+        recorder
+            .set_channel_mask(ApuRecordedChannelMask::ALL)
+            .expect("restoring the full mask should drop the mixed-stream blocker");
+        assert_eq!(recorder.channel_mask(), ApuRecordedChannelMask::ALL);
+        assert!(recorder.mixed_stream.dc_blocker.is_none());
+
+        recorder.finish().expect("recorder should finish");
+
+        let _ = fs::remove_file(output_path);
+        let _ = fs::remove_file(stem_ch3_path);
     }
 }

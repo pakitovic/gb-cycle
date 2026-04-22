@@ -376,6 +376,73 @@ fn recorded_channel_sample_pre_hpf_respects_nr51_routing_and_nr50_scaling() {
 }
 
 #[test]
+fn recorded_channel_mix_pre_hpf_respects_empty_single_and_full_masks() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF17, 0x08);
+    apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
+    apu.write_register(
+        0xFF25,
+        NR51_LEFT_ROUTE_CH1_BIT
+            | NR51_RIGHT_ROUTE_CH1_BIT
+            | NR51_LEFT_ROUTE_CH2_BIT
+            | NR51_RIGHT_ROUTE_CH2_BIT,
+    );
+
+    assert_eq!(
+        apu.recorded_channel_mix_pre_hpf(ApuRecordedChannelMask::NONE),
+        ApuHostSample::default()
+    );
+
+    let ch1_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch1, true);
+    assert_eq!(
+        apu.recorded_channel_mix_pre_hpf(ch1_mask),
+        apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch1)
+    );
+
+    assert_eq!(
+        apu.recorded_channel_mix_pre_hpf(ApuRecordedChannelMask::ALL),
+        apu.snapshot().output.master_output.into()
+    );
+}
+
+#[test]
+fn recorded_channel_mix_pre_hpf_sums_only_the_selected_channels() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF17, 0x08);
+    apu.write_register(0xFF1A, 0x80);
+    apu.write_register(0xFF1C, 0x20);
+    apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
+    apu.write_register(
+        0xFF25,
+        NR51_LEFT_ROUTE_CH1_BIT
+            | NR51_RIGHT_ROUTE_CH1_BIT
+            | NR51_LEFT_ROUTE_CH2_BIT
+            | NR51_RIGHT_ROUTE_CH2_BIT
+            | NR51_LEFT_ROUTE_CH3_BIT
+            | NR51_RIGHT_ROUTE_CH3_BIT,
+    );
+
+    let channel_mask = ApuRecordedChannelMask::NONE
+        .with_channel(ApuRecordedChannel::Ch1, true)
+        .with_channel(ApuRecordedChannel::Ch3, true);
+
+    let ch1 = apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch1);
+    let ch3 = apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch3);
+
+    assert_eq!(
+        apu.recorded_channel_mix_pre_hpf(channel_mask),
+        ApuHostSample {
+            left: ch1.left + ch3.left,
+            right: ch1.right + ch3.right,
+        }
+    );
+}
+
+#[test]
 fn host_dc_blocker_decays_constant_dc_bias_towards_zero() {
     let mut blocker = ApuHostDcBlocker::new(ConsoleModel::Dmg, 96_000);
     let mut filtered = ApuHostSample::default();

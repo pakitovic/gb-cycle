@@ -19,8 +19,8 @@ pub mod timer;
 pub use apu::{
     APU_HOST_MAX_ABS_SAMPLE, Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction,
     ApuCh4Nr43LiveWriteCategory, ApuCh4Nr43LiveWriteTrace, ApuHostDcBlocker, ApuHostSample,
-    ApuRecordedChannel, ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSampleCapture,
-    ApuSampleCaptureError, ApuSnapshot, ApuStartupState, ApuStatus,
+    ApuRecordedChannel, ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState,
+    ApuSampleCapture, ApuSampleCaptureError, ApuSnapshot, ApuStartupState, ApuStatus,
     DMG_FAMILY_APU_CAPTURE_CLOCK_HZ, WaveRamStartupPolicy,
 };
 pub use boot::{

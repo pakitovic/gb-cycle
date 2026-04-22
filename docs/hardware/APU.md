@@ -228,6 +228,7 @@ Keep channel behavior and frame-sequencer timing explicit. Model the APU as a di
 - Conversion from the core's internal analog representation into host `float` or `int16` output should be a final representation step after HPF, not part of the hardware model itself.
 - The core should keep a sufficiently precise internal analog representation so host-format conversion does not force the hardware model to clip or renormalize early.
 - Repo-local current policy: the final PCM normalization step intentionally leaves fixed headroom instead of mapping the theoretical raw post-HPF peak to host full scale, so direct WAV exports stay comparable with SameBoy-style captures without changing the internal DAC/mixer/HPF model.
+- Repo-local current policy also exposes a typed `recorded_channel_mix_pre_hpf(mask)` helper for host tooling. That helper sums the selected post-DAC / `NR51` / `NR50` lanes before the shared HPF, and exists specifically so desktop diagnostics can solo or combine `CH1..CH4` without rewriting `NR51` or mutating hardware state. The host frontend may then apply its own diagnostic-only DC blocker to that selected mix; that path is a host export seam, not an extra piece of APU hardware.
 
 ## CH1 baseline (pulse + sweep)
 

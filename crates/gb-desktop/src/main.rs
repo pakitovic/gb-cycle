@@ -11,14 +11,17 @@ mod screenshot_output;
 mod settings;
 
 use audio::{AudioSubmitTelemetry, DesktopAudioOutput};
-use audio_recording::DesktopAudioRecorder;
+use audio_recording::{
+    DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ, DesktopAudioRecorder, DesktopAudioRecordingOptions,
+    resolve_next_audio_recording_output_path,
+};
 use bootrom::{load_boot_rom_assets, missing_boot_rom_asset_path, resolve_path};
 use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base_config};
 use gb_core::{
-    ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuRegisterWriteObservation,
-    ApuRegisterWriteState, ApuSnapshot, CartridgeDiagnostic, CartridgeDiagnosticSeverity,
-    CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,
-    CpuBusActivitySnapshot, CpuExecutionState, CpuSnapshot, ExecutionMode,
+    ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuRecordedChannel, ApuRecordedChannelMask,
+    ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot, CartridgeDiagnostic,
+    CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
+    CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, CpuSnapshot, ExecutionMode,
     InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
     MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuFramebufferLayerSource,
     PpuStepRegion, StartupMode, TraceSummaryBuffer,
@@ -208,7 +211,9 @@ struct FrontendRuntime {
     keyboard_bindings: KeyboardBindings,
     video_options: VideoOptions,
     audio_volume_percent: u8,
+    audio_channel_mask: ApuRecordedChannelMask,
     audio_output: Option<DesktopAudioOutput>,
+    audio_recording_mode: DesktopAudioRecordingMode,
     audio_recorder: Option<DesktopAudioRecorder>,
     gamepad_manager: Option<GamepadManager>,
     save_session: Option<DesktopSaveSession>,
@@ -222,6 +227,13 @@ struct FrontendRuntime {
     trace_capture: DesktopTraceCapture,
     ch4_nr43_trace: DesktopCh4Nr43TraceCapture,
     printer_output: PrinterOutputState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DesktopAudioRecordingMode {
+    Disabled,
+    Automatic,
+    Explicit(DesktopAudioRecordingOptions),
 }
 
 #[derive(Clone)]
@@ -2811,6 +2823,60 @@ fn audio_source_machine(machine: &DesktopEmulationSession) -> &Machine<TraceSumm
     machine.primary_machine()
 }
 
+fn build_automatic_audio_recording_options(
+    session: &DesktopSession,
+) -> Result<DesktopAudioRecordingOptions, String> {
+    Ok(DesktopAudioRecordingOptions {
+        output_path: resolve_next_audio_recording_output_path(
+            session.rom_path(),
+            session.current_dir.as_path(),
+        )?,
+        sample_rate_hz: DEFAULT_AUDIO_RECORDING_SAMPLE_RATE_HZ,
+        stem_channels: Vec::new(),
+    })
+}
+
+fn create_audio_recorder(
+    mode: &DesktopAudioRecordingMode,
+    channel_mask: ApuRecordedChannelMask,
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+) -> Result<Option<DesktopAudioRecorder>, String> {
+    let options = match mode {
+        DesktopAudioRecordingMode::Disabled => return Ok(None),
+        DesktopAudioRecordingMode::Automatic => build_automatic_audio_recording_options(session)?,
+        DesktopAudioRecordingMode::Explicit(options) => options.clone(),
+    };
+    let mut recorder = DesktopAudioRecorder::new(
+        &options,
+        audio_source_machine(machine).apu().console_model(),
+    )?;
+    recorder.set_channel_mask(channel_mask)?;
+    Ok(Some(recorder))
+}
+
+fn finish_audio_recorder(recorder: &mut Option<DesktopAudioRecorder>) -> Result<(), String> {
+    if let Some(mut active_recorder) = recorder.take() {
+        active_recorder.finish()?;
+    }
+    Ok(())
+}
+
+fn restart_automatic_audio_recorder(
+    runtime: &mut FrontendRuntime,
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+) -> Result<(), String> {
+    finish_audio_recorder(&mut runtime.audio_recorder)?;
+    runtime.audio_recorder = create_audio_recorder(
+        &runtime.audio_recording_mode,
+        runtime.audio_channel_mask,
+        session,
+        machine,
+    )?;
+    Ok(())
+}
+
 fn emulation_profile_session_kind(
     machine: &DesktopEmulationSession,
 ) -> EmulationProfileSessionKind {
@@ -2966,10 +3032,12 @@ fn run_desktop_with_startup_fallback_persistence(
 
     let sdl = map_display_result(sdl3::init(), "failed to initialize SDL3")?;
     let mut input_state = FrontendInputState::new();
+    let audio_channel_mask = ApuRecordedChannelMask::ALL;
     let audio_output = if session.config.audio.enabled {
         let mut audio_output = DesktopAudioOutput::new(
             &map_display_result(sdl.audio(), "failed to initialize SDL3 audio subsystem")?,
             &session.config.audio,
+            audio_source_machine(&machine).apu().console_model(),
         )?;
         if settings_store.audio_muted() {
             audio_output.set_muted(true)?;
@@ -2978,13 +3046,16 @@ fn run_desktop_with_startup_fallback_persistence(
     } else {
         None
     };
-    let audio_recorder = match options.audio_recording.as_ref() {
-        Some(audio_recording) => Some(DesktopAudioRecorder::new(
-            audio_recording,
-            audio_source_machine(&machine).apu().console_model(),
-        )?),
-        None => None,
+    let audio_recording_mode = match options.audio_recording.clone() {
+        Some(audio_recording) => DesktopAudioRecordingMode::Explicit(audio_recording),
+        None => DesktopAudioRecordingMode::Disabled,
     };
+    let audio_recorder = create_audio_recorder(
+        &audio_recording_mode,
+        audio_channel_mask,
+        &session,
+        &machine,
+    )?;
     let gamepad_manager = if session.config.input.gamepad.enabled {
         Some(GamepadManager::new(
             &map_display_result(sdl.gamepad(), "failed to initialize SDL3 gamepad subsystem")?,
@@ -3035,7 +3106,9 @@ fn run_desktop_with_startup_fallback_persistence(
         keyboard_bindings: session.config.input.keyboard,
         video_options: session.config.video.clone(),
         audio_volume_percent: session.config.audio.volume_percent,
+        audio_channel_mask,
         audio_output,
+        audio_recording_mode,
         audio_recorder,
         gamepad_manager,
         save_session,
@@ -5070,9 +5143,7 @@ fn open_selected_rom(
     let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
 
     close_runtime_save_sessions(context.runtime, context.machine)?;
-    if let Some(audio_output) = &mut context.runtime.audio_output {
-        audio_output.clear_buffer()?;
-    }
+    let next_console_model = next_machine.apu().console_model();
 
     context.session.config = effective_config;
     context.session.loaded_rom = next_session.loaded_rom;
@@ -5094,6 +5165,22 @@ fn open_selected_rom(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = DesktopEmulationSession::new_single(next_machine);
+    if let Some(audio_output) = &mut context.runtime.audio_output {
+        audio_output.set_console_model(next_console_model)?;
+    }
+    match context.runtime.audio_recording_mode {
+        DesktopAudioRecordingMode::Disabled => {
+            finish_audio_recorder(&mut context.runtime.audio_recorder)?;
+        }
+        DesktopAudioRecordingMode::Automatic => {
+            restart_automatic_audio_recorder(context.runtime, context.session, context.machine)?;
+        }
+        DesktopAudioRecordingMode::Explicit(_) => {
+            if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+                audio_recorder.set_console_model(next_console_model)?;
+            }
+        }
+    }
     context.runtime.save_session = next_save_session;
     context.runtime.secondary_save_session = None;
     context.runtime.rtc_sync.resync_to_host_clock();
@@ -5207,9 +5294,7 @@ fn open_selected_linked_secondary_rom(
     )?;
 
     close_runtime_save_sessions(context.runtime, context.machine)?;
-    if let Some(audio_output) = &mut context.runtime.audio_output {
-        audio_output.clear_buffer()?;
-    }
+    let next_console_model = next_machine.primary_machine().apu().console_model();
 
     context.session.config = effective_config;
     context.session.linked_secondary_rom = next_session.linked_secondary_rom;
@@ -5226,6 +5311,12 @@ fn open_selected_linked_secondary_rom(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
+    if let Some(audio_output) = &mut context.runtime.audio_output {
+        audio_output.set_console_model(next_console_model)?;
+    }
+    if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+        audio_recorder.set_console_model(next_console_model)?;
+    }
     context.runtime.save_session = next_primary_save_session;
     context.runtime.secondary_save_session = next_secondary_save_session;
     context.runtime.rtc_sync.resync_to_host_clock();
@@ -5542,13 +5633,47 @@ fn execute_menu_action(
                 .set_audio_volume_percent(context.runtime.audio_volume_percent)?;
             Ok(None)
         }
+        MenuAction::ToggleAudioRecording => {
+            if matches!(
+                context.runtime.audio_recording_mode,
+                DesktopAudioRecordingMode::Disabled
+            ) {
+                let recording_mode = DesktopAudioRecordingMode::Automatic;
+                context.runtime.audio_recorder = create_audio_recorder(
+                    &recording_mode,
+                    context.runtime.audio_channel_mask,
+                    context.session,
+                    context.machine,
+                )?;
+                context.runtime.audio_recording_mode = recording_mode;
+            } else {
+                finish_audio_recorder(&mut context.runtime.audio_recorder)?;
+                context.runtime.audio_recording_mode = DesktopAudioRecordingMode::Disabled;
+            }
+            Ok(None)
+        }
+        MenuAction::ToggleAudioChannel(channel) => {
+            context.runtime.audio_channel_mask =
+                context.runtime.audio_channel_mask.toggled(channel);
+            if let Some(audio_output) = &mut context.runtime.audio_output {
+                audio_output.set_channel_mask(context.runtime.audio_channel_mask)?;
+            }
+            if let Some(audio_recorder) = &mut context.runtime.audio_recorder {
+                audio_recorder.set_channel_mask(context.runtime.audio_channel_mask)?;
+            }
+            Ok(None)
+        }
         MenuAction::ResetAudioDefaults => {
             let defaults = gb_desktop::AudioOptions::default();
             context.runtime.audio_volume_percent = defaults.volume_percent;
             if let Some(audio_output) = &mut context.runtime.audio_output {
                 audio_output.set_muted(false)?;
                 audio_output.set_volume_percent(defaults.volume_percent)?;
+                audio_output.set_channel_mask(ApuRecordedChannelMask::ALL)?;
             }
+            finish_audio_recorder(&mut context.runtime.audio_recorder)?;
+            context.runtime.audio_recording_mode = DesktopAudioRecordingMode::Disabled;
+            context.runtime.audio_channel_mask = ApuRecordedChannelMask::ALL;
             context.settings_store.reset_audio_defaults()?;
             Ok(None)
         }
@@ -5815,6 +5940,14 @@ fn current_menu_presentation(
             .is_some_and(DesktopAudioOutput::is_muted),
         audio_available: runtime.audio_output.is_some(),
         audio_volume_percent: runtime.audio_volume_percent.min(100),
+        audio_recording_enabled: !matches!(
+            runtime.audio_recording_mode,
+            DesktopAudioRecordingMode::Disabled
+        ),
+        ch1_enabled: runtime.audio_channel_mask.contains(ApuRecordedChannel::Ch1),
+        ch2_enabled: runtime.audio_channel_mask.contains(ApuRecordedChannel::Ch2),
+        ch3_enabled: runtime.audio_channel_mask.contains(ApuRecordedChannel::Ch3),
+        ch4_enabled: runtime.audio_channel_mask.contains(ApuRecordedChannel::Ch4),
         manual_save_available: runtime
             .save_session
             .as_ref()
@@ -6612,13 +6745,16 @@ fn reset_machine(
     if config_fell_back {
         settings_store.persist_machine_preferences(&session.config)?;
     }
-
-    if let Some(audio_output) = &mut runtime.audio_output {
-        audio_output.clear_buffer()?;
-    }
+    let reset_console_model = reset_machine.primary_machine().apu().console_model();
 
     clear_live_input_state(machine, runtime);
     *machine = reset_machine;
+    if let Some(audio_output) = &mut runtime.audio_output {
+        audio_output.set_console_model(reset_console_model)?;
+    }
+    if let Some(audio_recorder) = &mut runtime.audio_recorder {
+        audio_recorder.set_console_model(reset_console_model)?;
+    }
     runtime.save_session = next_save_session;
     runtime.secondary_save_session = next_secondary_save_session;
     runtime.rtc_sync.resync_to_host_clock();
@@ -7200,12 +7336,13 @@ mod tests {
     use crate::audio_recording::DesktopAudioRecordingOptions;
     use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
     use gb_core::{
-        Apu, ApuRecordedChannel, ApuRegisterWriteObservation, ApuRegisterWriteState,
-        CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent,
-        CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
-        ExecutionMode, ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus,
-        LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion, PersistentCartState,
-        PpuFramebufferLayerSource, PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
+        Apu, ApuRecordedChannel, ApuRecordedChannelMask, ApuRegisterWriteObservation,
+        ApuRegisterWriteState, CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel,
+        CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,
+        CpuBusActivitySnapshot, ExecutionMode, ExternalPortAttachmentKind, JoypadSnapshot,
+        JoypadStatus, LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion,
+        PersistentCartState, PpuFramebufferLayerSource, PpuStepRegion, PrinterCommand, StartupMode,
+        TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
@@ -7865,6 +8002,7 @@ mod tests {
                     super::DesktopAudioOutput::new(
                         &sdl.audio().expect("frontend harness audio subsystem"),
                         &config.audio,
+                        super::audio_source_machine(&machine).apu().console_model(),
                     )
                     .expect("frontend harness audio output"),
                 )
@@ -7911,7 +8049,9 @@ mod tests {
                 keyboard_bindings: config.input.keyboard,
                 video_options: config.video.clone(),
                 audio_volume_percent: config.audio.volume_percent,
+                audio_channel_mask: super::ApuRecordedChannelMask::ALL,
                 audio_output,
+                audio_recording_mode: super::DesktopAudioRecordingMode::Disabled,
                 audio_recorder: None,
                 gamepad_manager,
                 save_session,
@@ -11211,6 +11351,68 @@ mod tests {
     }
 
     #[test]
+    fn automatic_audio_recording_helpers_build_restart_and_finish_recorders() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("automatic-recorder", true, false, false);
+        let channel_mask =
+            super::ApuRecordedChannelMask::NONE.with_channel(super::ApuRecordedChannel::Ch4, true);
+        let recorder = super::create_audio_recorder(
+            &super::DesktopAudioRecordingMode::Automatic,
+            channel_mask,
+            &harness.session,
+            &harness.machine,
+        )
+        .expect("automatic recorder creation should succeed")
+        .expect("automatic mode should create a recorder");
+        let first_path = harness.root.join("audios").join("automatic-recorder-0.wav");
+        assert!(first_path.exists());
+        assert_eq!(recorder.channel_mask(), channel_mask);
+
+        let mut recorder_slot = Some(recorder);
+        super::finish_audio_recorder(&mut recorder_slot).expect("finishing a live recorder");
+        assert!(recorder_slot.is_none());
+
+        harness.runtime.audio_recording_mode = super::DesktopAudioRecordingMode::Automatic;
+        harness.runtime.audio_channel_mask = channel_mask;
+        harness.runtime.audio_recorder = super::create_audio_recorder(
+            &harness.runtime.audio_recording_mode,
+            harness.runtime.audio_channel_mask,
+            &harness.session,
+            &harness.machine,
+        )
+        .expect("initial automatic recorder should build");
+        super::restart_automatic_audio_recorder(
+            &mut harness.runtime,
+            &harness.session,
+            &harness.machine,
+        )
+        .expect("restarting automatic recording should rotate to a new file");
+        let second_path = harness.root.join("audios").join("automatic-recorder-1.wav");
+        assert!(second_path.exists());
+        assert!(harness.runtime.audio_recorder.is_some());
+
+        super::finish_audio_recorder(&mut harness.runtime.audio_recorder)
+            .expect("final recorder cleanup should succeed");
+        assert!(harness.runtime.audio_recorder.is_none());
+    }
+
+    #[test]
+    fn automatic_audio_recording_without_a_rom_falls_back_to_the_session_directory() {
+        let _guard = crate::lock_sdl_test();
+        let harness = FrontendHarness::new("automatic-recorder-no-rom", false, false, false);
+        let recorder = super::create_audio_recorder(
+            &super::DesktopAudioRecordingMode::Automatic,
+            super::ApuRecordedChannelMask::ALL,
+            &harness.session,
+            &harness.machine,
+        )
+        .expect("automatic recorder creation without a rom should succeed");
+        assert!(recorder.is_some());
+        let fallback_path = harness.root.join("audios").join("gb-cycle-0.wav");
+        assert!(fallback_path.exists());
+    }
+
+    #[test]
     fn render_frame_places_linked_secondary_output_in_the_right_panel() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("linked-render", true, false, false);
@@ -12143,6 +12345,44 @@ mod tests {
         assert_eq!(harness.runtime.audio_volume_percent, 25);
         assert!(
             harness
+                .execute_action(super::MenuAction::ToggleAudioChannel(
+                    ApuRecordedChannel::Ch2
+                ))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            !harness
+                .runtime
+                .audio_channel_mask
+                .contains(ApuRecordedChannel::Ch2)
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleAudioRecording)
+                .unwrap()
+                .is_none()
+        );
+        assert!(matches!(
+            harness.runtime.audio_recording_mode,
+            super::DesktopAudioRecordingMode::Automatic
+        ));
+        assert!(harness.runtime.audio_recorder.is_some());
+        let automatic_recording_path = harness.root.join("audios").join("actions-0.wav");
+        assert!(automatic_recording_path.exists());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleAudioRecording)
+                .unwrap()
+                .is_none()
+        );
+        assert!(matches!(
+            harness.runtime.audio_recording_mode,
+            super::DesktopAudioRecordingMode::Disabled
+        ));
+        assert!(harness.runtime.audio_recorder.is_none());
+        assert!(
+            harness
                 .execute_action(super::MenuAction::SetExternalPort(
                     DesktopExternalPortSelection::Printer,
                 ))
@@ -12321,6 +12561,14 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+        assert_eq!(
+            harness.runtime.audio_channel_mask,
+            ApuRecordedChannelMask::ALL
+        );
+        assert!(matches!(
+            harness.runtime.audio_recording_mode,
+            super::DesktopAudioRecordingMode::Disabled
+        ));
         assert_eq!(harness.runtime.audio_volume_percent, 100);
         assert!(
             harness

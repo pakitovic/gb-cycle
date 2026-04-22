@@ -55,6 +55,63 @@ impl ApuRecordedChannel {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ApuRecordedChannelMask {
+    bits: u8,
+}
+
+impl ApuRecordedChannelMask {
+    pub const NONE: Self = Self { bits: 0 };
+    pub const ALL: Self = Self {
+        bits: (1 << CHANNEL_COUNT) - 1,
+    };
+
+    pub const fn bits(self) -> u8 {
+        self.bits
+    }
+
+    pub const fn is_empty(self) -> bool {
+        self.bits == 0
+    }
+
+    pub const fn is_all(self) -> bool {
+        self.bits == Self::ALL.bits
+    }
+
+    pub const fn contains(self, channel: ApuRecordedChannel) -> bool {
+        self.bits & channel_mask_bit(channel) != 0
+    }
+
+    pub const fn with_channel(self, channel: ApuRecordedChannel, enabled: bool) -> Self {
+        let channel_bit = channel_mask_bit(channel);
+        if enabled {
+            Self {
+                bits: self.bits | channel_bit,
+            }
+        } else {
+            Self {
+                bits: self.bits & !channel_bit,
+            }
+        }
+    }
+
+    pub const fn toggled(self, channel: ApuRecordedChannel) -> Self {
+        Self {
+            bits: self.bits ^ channel_mask_bit(channel),
+        }
+    }
+}
+
+impl Default for ApuRecordedChannelMask {
+    fn default() -> Self {
+        Self::ALL
+    }
+}
+
+const fn channel_mask_bit(channel: ApuRecordedChannel) -> u8 {
+    1 << channel.index()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum WaveRamStartupPolicy {
     #[default]
@@ -258,6 +315,32 @@ impl Apu {
                 nr50_right_volume_factor(self.master.nr50),
             ),
         }
+    }
+
+    pub fn recorded_channel_mix_pre_hpf(
+        &self,
+        channel_mask: ApuRecordedChannelMask,
+    ) -> ApuHostSample {
+        if channel_mask.is_empty() {
+            return ApuHostSample::default();
+        }
+
+        if channel_mask.is_all() {
+            return self.output_path.master_output.into();
+        }
+
+        let mut mixed = ApuHostSample::default();
+        for channel in ApuRecordedChannel::ALL {
+            if !channel_mask.contains(channel) {
+                continue;
+            }
+
+            let channel_sample = self.recorded_channel_sample_pre_hpf(channel);
+            mixed.left += channel_sample.left;
+            mixed.right += channel_sample.right;
+        }
+
+        mixed
     }
 
     pub fn last_register_write(&self) -> Option<&ApuRegisterWriteObservation> {
