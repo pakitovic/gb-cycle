@@ -79,37 +79,66 @@ impl RamSizeInfo {
 
 impl CartridgeHeader {
     pub fn parse(rom_bytes: &[u8]) -> Result<Self, CartridgeHeaderParseError> {
-        if rom_bytes.len() < HEADER_MINIMUM_ROM_LEN {
+        Self::parse_at_offset(rom_bytes, 0)
+    }
+
+    pub(in crate::cartridge) fn parse_for_load(
+        rom_bytes: &[u8],
+    ) -> Result<Self, CartridgeHeaderParseError> {
+        let primary = Self::parse(rom_bytes)?;
+
+        Ok(Self::parse_mmm01_menu_header(rom_bytes).unwrap_or(primary))
+    }
+
+    fn parse_at_offset(
+        rom_bytes: &[u8],
+        base_offset: usize,
+    ) -> Result<Self, CartridgeHeaderParseError> {
+        let minimum_size = base_offset + HEADER_MINIMUM_ROM_LEN;
+        if rom_bytes.len() < minimum_size {
             return Err(CartridgeHeaderParseError::ImageTooSmall {
                 actual_size: rom_bytes.len(),
-                minimum_size: HEADER_MINIMUM_ROM_LEN,
+                minimum_size,
             });
         }
 
+        let entry_point_start = base_offset + ENTRY_POINT_START;
+        let logo_start = base_offset + NINTENDO_LOGO_START;
+        let title_start = base_offset + TITLE_START;
+        let manufacturer_code_start = base_offset + MANUFACTURER_CODE_START;
+        let new_licensee_code_start = base_offset + NEW_LICENSEE_CODE_START;
+        let cgb_flag_address = base_offset + CGB_FLAG_ADDRESS;
+        let sgb_flag_address = base_offset + SGB_FLAG_ADDRESS;
+        let cartridge_type_address = base_offset + CARTRIDGE_TYPE_ADDRESS;
+        let rom_size_address = base_offset + ROM_SIZE_ADDRESS;
+        let ram_size_address = base_offset + RAM_SIZE_ADDRESS;
+        let destination_code_address = base_offset + DESTINATION_CODE_ADDRESS;
+        let old_licensee_code_address = base_offset + OLD_LICENSEE_CODE_ADDRESS;
+        let header_checksum_address = base_offset + HEADER_CHECKSUM_ADDRESS;
+
         let mut entry_point = [0; ENTRY_POINT_LEN];
         entry_point
-            .copy_from_slice(&rom_bytes[ENTRY_POINT_START..ENTRY_POINT_START + ENTRY_POINT_LEN]);
+            .copy_from_slice(&rom_bytes[entry_point_start..entry_point_start + ENTRY_POINT_LEN]);
 
         let mut nintendo_logo = [0; NINTENDO_LOGO_LEN];
-        nintendo_logo.copy_from_slice(
-            &rom_bytes[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN],
-        );
+        nintendo_logo.copy_from_slice(&rom_bytes[logo_start..logo_start + NINTENDO_LOGO_LEN]);
 
         let mut title_bytes = [0; TITLE_BYTES_LEN];
-        title_bytes.copy_from_slice(&rom_bytes[TITLE_START..=TITLE_END_INCLUSIVE]);
+        title_bytes.copy_from_slice(&rom_bytes[title_start..title_start + TITLE_BYTES_LEN]);
 
         let mut raw_title_suffix_or_manufacturer_code = [0; MANUFACTURER_CODE_LEN];
-        raw_title_suffix_or_manufacturer_code
-            .copy_from_slice(&rom_bytes[MANUFACTURER_CODE_START..=MANUFACTURER_CODE_END_INCLUSIVE]);
+        raw_title_suffix_or_manufacturer_code.copy_from_slice(
+            &rom_bytes[manufacturer_code_start..manufacturer_code_start + MANUFACTURER_CODE_LEN],
+        );
 
         let mut new_licensee_code = [0; NEW_LICENSEE_CODE_LEN];
         new_licensee_code.copy_from_slice(
-            &rom_bytes[NEW_LICENSEE_CODE_START..NEW_LICENSEE_CODE_START + NEW_LICENSEE_CODE_LEN],
+            &rom_bytes[new_licensee_code_start..new_licensee_code_start + NEW_LICENSEE_CODE_LEN],
         );
 
-        let raw_cgb_flag = rom_bytes[CGB_FLAG_ADDRESS];
+        let raw_cgb_flag = rom_bytes[cgb_flag_address];
         let cgb_flag = decode_cgb_flag(raw_cgb_flag);
-        let old_licensee_code = rom_bytes[OLD_LICENSEE_CODE_ADDRESS];
+        let old_licensee_code = rom_bytes[old_licensee_code_address];
         let visible_title_bytes = if uses_cgb_title_layout(raw_cgb_flag) {
             // Pan Docs documents both 15-character and 11-character title
             // layouts for newer cartridges, but the raw header does not expose
@@ -136,15 +165,36 @@ impl CartridgeHeader {
             raw_title_suffix_or_manufacturer_code,
             title,
             cgb_flag,
-            sgb_flag: decode_sgb_flag(rom_bytes[SGB_FLAG_ADDRESS]),
-            cartridge_type: rom_bytes[CARTRIDGE_TYPE_ADDRESS],
-            rom_size: RomSizeInfo::decode(rom_bytes[ROM_SIZE_ADDRESS]),
-            ram_size: RamSizeInfo::decode(rom_bytes[RAM_SIZE_ADDRESS]),
+            sgb_flag: decode_sgb_flag(rom_bytes[sgb_flag_address]),
+            cartridge_type: rom_bytes[cartridge_type_address],
+            rom_size: RomSizeInfo::decode(rom_bytes[rom_size_address]),
+            ram_size: RamSizeInfo::decode(rom_bytes[ram_size_address]),
             new_licensee_code,
-            destination_code: rom_bytes[DESTINATION_CODE_ADDRESS],
+            destination_code: rom_bytes[destination_code_address],
             old_licensee_code,
-            header_checksum: rom_bytes[HEADER_CHECKSUM_ADDRESS],
+            header_checksum: rom_bytes[header_checksum_address],
         })
+    }
+
+    fn parse_mmm01_menu_header(rom_bytes: &[u8]) -> Option<Self> {
+        if rom_bytes.len() < MMM01_MIN_ROM_BYTES {
+            return None;
+        }
+
+        let base_offset = rom_bytes.len().checked_sub(MMM01_MENU_BYTES)?;
+        if base_offset == 0 {
+            return None;
+        }
+
+        let candidate = Self::parse_at_offset(rom_bytes, base_offset).ok()?;
+        if !matches!(candidate.cartridge_type, 0x0B..=0x0D) {
+            return None;
+        }
+        if candidate.rom_size.decoded_bytes != Some(rom_bytes.len()) {
+            return None;
+        }
+
+        Some(candidate)
     }
 }
 

@@ -10,6 +10,7 @@ mod mbc2;
 mod mbc3;
 mod mbc3_rtc;
 mod mbc5;
+mod mmm01;
 mod no_mbc;
 mod persistence;
 
@@ -53,6 +54,45 @@ fn build_banked_mbc1_rom_with_type(
 fn build_banked_mbc1_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
     let cartridge_type = if ram_size_code == 0x00 { 0x01 } else { 0x03 };
     build_banked_mbc1_rom_with_type(cartridge_type, rom_size_code, ram_size_code)
+}
+
+fn build_mmm01_rom(rom_size_code: u8, ram_size_code: u8, cartridge_type: u8) -> Vec<u8> {
+    let rom_size = RomSizeInfo::decode(rom_size_code)
+        .decoded_bytes
+        .expect("test ROM size should decode");
+    let bank_count = RomSizeInfo::decode(rom_size_code)
+        .bank_count
+        .expect("test ROM bank count should decode");
+    let mut rom = vec![0xFF; rom_size.max(HEADER_MINIMUM_ROM_LEN)];
+
+    for bank in 0..bank_count {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
+
+    rom[ENTRY_POINT_START..ENTRY_POINT_START + ENTRY_POINT_LEN]
+        .copy_from_slice(&[0x00, 0xC3, 0x50, 0x01]);
+    rom[NINTENDO_LOGO_START..NINTENDO_LOGO_START + NINTENDO_LOGO_LEN]
+        .copy_from_slice(&[0xCE; NINTENDO_LOGO_LEN]);
+    rom[TITLE_START..TITLE_START + 7].copy_from_slice(b"GAMEONE");
+    rom[CARTRIDGE_TYPE_ADDRESS] = 0x00;
+    rom[ROM_SIZE_ADDRESS] = 0x00;
+    rom[RAM_SIZE_ADDRESS] = 0x00;
+
+    let menu_offset = rom_size - MMM01_MENU_BYTES;
+    rom[menu_offset + ENTRY_POINT_START..menu_offset + ENTRY_POINT_START + ENTRY_POINT_LEN]
+        .copy_from_slice(&[0x00, 0xC3, 0x50, 0x01]);
+    rom[menu_offset + NINTENDO_LOGO_START..menu_offset + NINTENDO_LOGO_START + NINTENDO_LOGO_LEN]
+        .copy_from_slice(&[0xCE; NINTENDO_LOGO_LEN]);
+    rom[menu_offset + TITLE_START..menu_offset + TITLE_START + 7].copy_from_slice(b"MMM01!!");
+    rom[menu_offset + CGB_FLAG_ADDRESS] = 0x80;
+    rom[menu_offset + SGB_FLAG_ADDRESS] = 0x03;
+    rom[menu_offset + CARTRIDGE_TYPE_ADDRESS] = cartridge_type;
+    rom[menu_offset + ROM_SIZE_ADDRESS] = rom_size_code;
+    rom[menu_offset + RAM_SIZE_ADDRESS] = ram_size_code;
+
+    rom
 }
 
 fn build_m161_signature_rom() -> Vec<u8> {

@@ -144,3 +144,87 @@ fn slot_accessors_and_restore_paths_cover_mbc3_and_mbc5_rtc_and_rumble_paths() {
     let empty = CartridgeSlot::empty();
     assert!(!empty.has_rumble());
 }
+
+#[test]
+fn slot_accessors_and_restore_paths_cover_mmm01_battery_ram() {
+    let mmm01_report = CartridgeSlot::load(
+        build_mmm01_rom(0x03, 0x03, 0x0D),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MMM01+RAM+BATTERY should load");
+    let (mut mmm01, _) = mmm01_report.into_parts();
+    assert_eq!(
+        mmm01
+            .classification()
+            .map(CartridgeClassification::selection),
+        Some(CartridgeSelection::Supported(
+            SupportedCartridgeFamily::Mmm01
+        )),
+    );
+    assert_eq!(
+        mmm01.persistence_metadata(),
+        CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear {
+                    byte_len: 32 * 1024,
+                },
+            },
+        },
+    );
+
+    mmm01.write_rom(0x4000, 0x02);
+    mmm01.write_rom(0x0000, 0x2A);
+    mmm01.write_rom(0x0000, 0x6A);
+    mmm01.write_ram(0xA000, 0x11);
+    mmm01.write_rom(0x6000, 0x01);
+    mmm01.write_ram(0xA000, 0x22);
+    mmm01.write_rom(0x4000, 0x03);
+    mmm01.write_ram(0xA000, 0x33);
+
+    let restored_mmm01 = match mmm01.persistent_state() {
+        PersistentCartState::Mmm01Ram { ram } => PersistentCartState::Mmm01Ram { ram },
+        other => panic!("expected MMM01 RAM state, got {other:?}"),
+    };
+    mmm01
+        .restore_persistent_state(&restored_mmm01)
+        .expect("MMM01 RAM state should restore");
+    assert_eq!(mmm01.persistent_state(), restored_mmm01);
+    assert_eq!(
+        mmm01.restore_persistent_state(&PersistentCartState::Mbc1Ram {
+            ram: vec![0; 32 * 1024],
+        }),
+        Err(CartridgePersistentStateError::KindMismatch {
+            expected: "Mmm01Ram",
+            actual: "Mbc1Ram",
+        }),
+    );
+    assert_eq!(
+        mmm01.restore_persistent_state(&PersistentCartState::Mmm01Ram { ram: vec![0; 8] }),
+        Err(CartridgePersistentStateError::RamLengthMismatch {
+            expected: 32 * 1024,
+            actual: 8,
+        }),
+    );
+
+    let mut restored = CartridgeSlot::load(
+        build_mmm01_rom(0x03, 0x03, 0x0D),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MMM01+RAM+BATTERY should load")
+    .into_parts()
+    .0;
+    restored
+        .restore_persistent_state(&restored_mmm01)
+        .expect("separate MMM01 slot should accept the persisted payload");
+
+    restored.write_rom(0x4000, 0x02);
+    restored.write_rom(0x0000, 0x2A);
+    restored.write_rom(0x0000, 0x6A);
+    assert_eq!(restored.read_ram(0xA000), 0x22);
+    restored.write_rom(0x6000, 0x01);
+    assert_eq!(restored.read_ram(0xA000), 0x22);
+    restored.write_rom(0x4000, 0x03);
+    assert_eq!(restored.read_ram(0xA000), 0x33);
+}

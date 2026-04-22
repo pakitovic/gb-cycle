@@ -8,6 +8,7 @@ mod mbc1;
 mod mbc2;
 mod mbc3;
 mod mbc5;
+mod mmm01;
 mod no_mbc;
 mod persist;
 mod slot;
@@ -60,6 +61,9 @@ const MBC2_SUPPORTED_ROM_BYTES_MAX: usize = 256 * 1024;
 const MBC2_RAM_CELL_COUNT: usize = 512;
 const MBC2_RAM_ADDRESS_MASK: usize = MBC2_RAM_CELL_COUNT - 1;
 const MBC2_RAM_READ_HIGH_NIBBLE: u8 = 0xF0;
+const MMM01_MENU_BYTES: usize = 32 * 1024;
+const MMM01_MIN_ROM_BYTES: usize = 64 * 1024;
+const MMM01_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
 const MBC3_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
 const MBC3_RTC_ACCESS_SPACING_T_CYCLES: u64 = 16;
 const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
@@ -72,6 +76,7 @@ const M161_KNOWN_SUBTITLE_SET: [&[u8]; 4] = [b"TETRIS", b"TENNIS", b"ALLEY WAY",
 pub enum CartridgeSlotState {
     Empty,
     NoMbc,
+    Mmm01,
     Mbc1,
     Mbc2,
     Mbc3,
@@ -137,6 +142,7 @@ pub enum CartridgeHeaderParseError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SupportedCartridgeFamily {
     NoMbc,
+    Mmm01,
     Mbc1,
     Mbc2,
     Mbc3,
@@ -206,6 +212,7 @@ pub struct CartridgeSlot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CartridgeDevice {
     NoMbc(NoMbcCartridge),
+    Mmm01(Mmm01Cartridge),
     Mbc1(Mbc1Cartridge),
     Mbc2(Mbc2Cartridge),
     Mbc3(Mbc3Cartridge),
@@ -219,6 +226,27 @@ struct NoMbcCartridge {
     has_battery: bool,
     header: CartridgeHeader,
     classification: CartridgeClassification,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Mmm01Cartridge {
+    rom: Vec<u8>,
+    ram: Option<Vec<u8>>,
+    has_battery: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    mapped: bool,
+    ram_enabled: bool,
+    ram_bank_mask: u8,
+    rom_bank_low: u8,
+    rom_bank_mid: u8,
+    ram_bank_low: u8,
+    ram_bank_high: u8,
+    rom_bank_high: u8,
+    mode_write_disable: bool,
+    banking_mode: u8,
+    rom_bank_mask: u8,
+    multiplex_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -499,6 +527,9 @@ pub struct Mbc3RtcPersistentState {
 pub enum PersistentCartState {
     None,
     NoMbcRam {
+        ram: Vec<u8>,
+    },
+    Mmm01Ram {
         ram: Vec<u8>,
     },
     Mbc1Ram {

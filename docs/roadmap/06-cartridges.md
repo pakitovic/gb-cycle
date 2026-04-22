@@ -177,6 +177,8 @@ Within the current DMG-only but CGB-ready project plan, execute the special-cart
 
 The purpose of that split is to close the remaining DMG-relevant special-cartridge work first while keeping CGB-only specials explicit, typed, and impossible to misclassify. Before point `7` is closed, `MBC30`, `MBC7`, and `MBC6` may grow diagnostics, validation hooks, persistence shapes, or device skeletons, but they must not be counted as functionally supported runtime targets.
 
+Current status for point `2`: in progress in the current branch baseline. `MMM01` now loads through the boot-visible trailing menu header, starts in explicit unmapped mode on the last `32 KiB` of the ROM, and supports mapped-mode ROM / RAM banking through a dedicated cartridge device instead of falling back to `MBC1`. The remaining unresolved hardware-accuracy seams and oracle follow-up are tracked in `TODO.md`.
+
 #### Cartridge-persistence sequencing inside Phase 6
 
 1. Define the cartridge persistent-state contract.

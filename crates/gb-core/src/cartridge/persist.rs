@@ -125,6 +125,7 @@ impl PersistentCartState {
         match self {
             Self::None => "None",
             Self::NoMbcRam { .. } => "NoMbcRam",
+            Self::Mmm01Ram { .. } => "Mmm01Ram",
             Self::Mbc1Ram { .. } => "Mbc1Ram",
             Self::Mbc2Ram { .. } => "Mbc2Ram",
             Self::Mbc3Rtc { .. } => "Mbc3Rtc",

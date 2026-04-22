@@ -29,6 +29,7 @@ const STATE_MBC3_RTC_TAG: u8 = 4;
 const STATE_MBC3_RAM_TAG: u8 = 5;
 const STATE_MBC3_RAM_RTC_TAG: u8 = 6;
 const STATE_MBC5_RAM_TAG: u8 = 7;
+const STATE_MMM01_RAM_TAG: u8 = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CartridgeSaveKey(String);
@@ -945,6 +946,10 @@ fn encode_persistent_state(
             bytes.push(STATE_MBC5_RAM_TAG);
             encode_linear_ram(bytes, ram, "MBC5 RAM")?;
         }
+        PersistentCartState::Mmm01Ram { ram } => {
+            bytes.push(STATE_MMM01_RAM_TAG);
+            encode_linear_ram(bytes, ram, "MMM01 RAM")?;
+        }
     }
     Ok(())
 }
@@ -990,6 +995,9 @@ fn decode_persistent_state(
             rtc: decode_rtc(cursor)?,
         }),
         STATE_MBC5_RAM_TAG => Ok(PersistentCartState::Mbc5Ram {
+            ram: decode_linear_ram(cursor)?,
+        }),
+        STATE_MMM01_RAM_TAG => Ok(PersistentCartState::Mmm01Ram {
             ram: decode_linear_ram(cursor)?,
         }),
         _ => Err(CartridgeSaveBackendError::UnsupportedPersistentStateTag { tag }),
@@ -1265,6 +1273,22 @@ mod tests {
                 },
                 persistent_state: PersistentCartState::Mbc5Ram {
                     ram: vec![0x66, 0x77],
+                },
+            },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 16,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: true,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::PersistentRam {
+                        ram: CartridgeRamPayloadKind::Linear { byte_len: 4 },
+                    },
+                },
+                persistent_state: PersistentCartState::Mmm01Ram {
+                    ram: vec![0x88, 0x99, 0xAA, 0xBB],
                 },
             },
         ];

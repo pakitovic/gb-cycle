@@ -199,10 +199,14 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 ### Multicarts: MMM01, MBC1M, and M161
 
 - Treat `MMM01` as its own mapper family, not as a small `MBC1` patch.
-- `MMM01` should currently classify as `DocumentedButUnsupported` unless and until the project promotes it to an explicitly planned bring-up target.
+- `MMM01` should now enter through its own supported cartridge path rather than through `DocumentedButUnsupported`.
 - Header codes `0x0B`, `0x0C`, and `0x0D` should classify as `MMM01`.
 - `MMM01` should live in a dedicated multicart path because Pan Docs documents additional game-selection state and an initial unmapped boot mode where the last `32 KiB` of the ROM is visible first.
 - The loader must not assume that the only meaningful boot header for every cartridge necessarily lives at the physical start of the ROM image once `MMM01` support is under consideration.
+- The loader should prefer the boot-visible MMM01 menu header at `(rom_size - 32 KiB) + 0x0100` when that trailing header resolves to one of the MMM01 type codes and declares the full loaded ROM size, instead of trusting the physical-start header of the first embedded game.
+- The current repo baseline now includes a dedicated `MMM01` cartridge device with explicit `unmapped` versus `mapped` mode, menu-startup mapping to the last `32 KiB` of the ROM, dedicated game-select masks, and mapper-local ROM / RAM banking instead of routing MMM01 through ordinary `MBC1`.
+- In the current baseline, the mapped runtime path already covers the released non-CGB commercial shape: dedicated multicart selection, explicit ROM-bank mask locking, RAM-bank mask locking, mapped-mode write restrictions for the extended bits, and battery-backed RAM persistence when the header declares it.
+- The current baseline keeps two unresolved hardware-accuracy seams explicit rather than inventing hidden behavior: whether RAM is accessible at all while still in unmapped mode, and whether the `4000-7FFF` unmapped window ever reflects the transient low-bit note documented as "to be verified" in Pan Docs. Track those in `TODO.md` instead of hiding them under generic MBC1 logic.
 - Future `MBC1M` support should also be a distinct typed variant rather than being mixed into standard `MBC1` banking formulas with ad hoc conditionals.
 - `MBC1M` should classify as `PlannedVariant`.
 - `MBC1M` is still a near-family variant of `MBC1`, but it is not interchangeable with standard `MBC1`; the factory should reserve explicit variant space for it.
@@ -579,7 +583,7 @@ Priority order:
 - tests that MBC5 RAM banking covers the documented `8 KiB`, `32 KiB`, and `128 KiB` SRAM cases, respects disabled-RAM policy, uses linear `8 KiB` banks with no MBC1-style dual banking mode, and does not expose SRAM on header variants that do not actually provide RAM
 - tests that rumble-capable MBC5 distinguishes effective RAM-bank selection from `rumble_on`, that `bit 3` of the `0x4000-0x5FFF` control register keeps the motor on until software clears it, and that rumble state is observable without moving that responsibility into the bus or frontend
 - tests that MBC5 validation reports clear diagnostics for ROM sizes above `8 MiB`, impossible RAM declarations, and rumble-capable header types loaded without an observable rumble state
-- tests that header codes `0x0B`, `0x0C`, and `0x0D` classify as `MMM01` without falling back to standard `MBC1`, and that `MBC1M` remains a distinct future variant rather than being inferred as ordinary `MBC1`
+- tests that MMM01 can load through the trailing menu header instead of the physical-start header, starts in explicit unmapped mode on the last `32 KiB` of the ROM, switches into the selected game mapping through the mapper registers, and still keeps `MBC1M` as a distinct future variant rather than inferring it as ordinary `MBC1`
 - tests that `M161`, `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, and `Bandai TAMA5` all produce specific structured unsupported classifications and never silently fall back to supported mapper families
 - tests that heuristic `EMS`, `Bung`, and `Wisdom Tree` detection is disabled by default in strict mode and only activates when the explicit experimental loader policy is enabled
 - tests that hardware-style persistence round-trips the complete cartridge backing store rather than the currently visible `0xA000-0xBFFF` window, including linear SRAM on `NoMbc`, banked SRAM on `MBC1`, `MBC3`, and `MBC5`, plus nibble RAM on `MBC2`
@@ -715,6 +719,11 @@ Priority order:
   the currently wired experimental heuristic path can reclassify `EMS`, `Bung`,
   and `Wisdom Tree` signatures only when the loader is in explicit
   experimental-heuristic mode.
+- In the current baseline, `MMM01` now loads as its own supported multicart
+  device: the loader can promote the boot-visible trailing menu header instead
+  of the physical-start header, power-up exposes the last `32 KiB` menu window
+  in explicit unmapped mode, and mapped-mode ROM / RAM banking now stays in one
+  dedicated MMM01 implementation instead of falling back to ordinary `MBC1`.
 - In the current baseline, `M161` identification is now closed through one
   explicit documented-special signature path for the known Mani `4-in-1`
   multicart shape. The loader recognizes the distinct set of `32 KiB`

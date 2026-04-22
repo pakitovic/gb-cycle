@@ -6,14 +6,14 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
     assert_eq!(mmm01_ram.detected_name(), "MMM01+RAM");
     assert_eq!(
         mmm01_ram.selection(),
-        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::DocumentedButUnsupported)
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
     );
 
     let mmm01_battery = CartridgeClassification::classify(0x0D);
     assert_eq!(mmm01_battery.detected_name(), "MMM01+RAM+BATTERY");
     assert_eq!(
         mmm01_battery.selection(),
-        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::DocumentedButUnsupported)
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
     );
 
     let tama5 = CartridgeClassification::classify(0xFD);
@@ -57,6 +57,10 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
     assert_eq!(
         PersistentCartState::Mbc5Ram { ram: vec![] }.kind_name(),
         "Mbc5Ram"
+    );
+    assert_eq!(
+        PersistentCartState::Mmm01Ram { ram: vec![] }.kind_name(),
+        "Mmm01Ram"
     );
 
     let mut diagnostics = Vec::new();

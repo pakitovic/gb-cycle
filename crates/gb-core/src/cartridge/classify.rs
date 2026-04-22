@@ -34,23 +34,12 @@ impl CartridgeClassification {
                 "MBC5+RUMBLE+RAM+BATTERY",
                 SupportedCartridgeFamily::Mbc5,
             ),
-            0x0B => unsupported(
-                raw_type,
-                "MMM01",
-                UnsupportedCartridgeCategory::DocumentedButUnsupported,
-                "MMM01 is a documented multicart family reserved for later support",
-            ),
-            0x0C => unsupported(
-                raw_type,
-                "MMM01+RAM",
-                UnsupportedCartridgeCategory::DocumentedButUnsupported,
-                "MMM01 is a documented multicart family reserved for later support",
-            ),
-            0x0D => unsupported(
+            0x0B => supported(raw_type, "MMM01", SupportedCartridgeFamily::Mmm01),
+            0x0C => supported(raw_type, "MMM01+RAM", SupportedCartridgeFamily::Mmm01),
+            0x0D => supported(
                 raw_type,
                 "MMM01+RAM+BATTERY",
-                UnsupportedCartridgeCategory::DocumentedButUnsupported,
-                "MMM01 is a documented multicart family reserved for later support",
+                SupportedCartridgeFamily::Mmm01,
             ),
             0x20 => unsupported(
                 raw_type,

@@ -1,6 +1,6 @@
 use super::classify::{classify_loaded_cartridge, unsupported_load_reason};
 use super::validate::{
-    validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5, validate_no_mbc,
+    validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5, validate_mmm01, validate_no_mbc,
 };
 use super::*;
 use crate::model::CompatibilityPolicy;
@@ -29,7 +29,8 @@ impl CartridgeSlot {
         rom_bytes: Vec<u8>,
         compatibility: &CompatibilityPolicy,
     ) -> Result<CartridgeLoadReport, CartridgeLoadError> {
-        let header = CartridgeHeader::parse(&rom_bytes).map_err(CartridgeLoadError::HeaderParse)?;
+        let header =
+            CartridgeHeader::parse_for_load(&rom_bytes).map_err(CartridgeLoadError::HeaderParse)?;
         let classification = classify_loaded_cartridge(&header, &rom_bytes, compatibility);
         let mut diagnostics = Vec::new();
 
@@ -53,6 +54,44 @@ impl CartridgeSlot {
                         has_battery,
                         header,
                         classification,
+                    })),
+                };
+
+                Ok(CartridgeLoadReport {
+                    cartridge,
+                    diagnostics,
+                })
+            }
+            CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01) => {
+                let ram_len = validate_mmm01(
+                    &header,
+                    rom_bytes.len(),
+                    compatibility,
+                    &classification,
+                    &mut diagnostics,
+                )?;
+
+                let has_battery = matches!(classification.raw_type(), 0x0D);
+                let ram = (ram_len != 0).then(|| vec![0; ram_len]);
+                let cartridge = Self {
+                    device: Some(CartridgeDevice::Mmm01(Mmm01Cartridge {
+                        rom: rom_bytes,
+                        ram,
+                        has_battery,
+                        header,
+                        classification,
+                        mapped: false,
+                        ram_enabled: false,
+                        ram_bank_mask: 0,
+                        rom_bank_low: 0,
+                        rom_bank_mid: 0,
+                        ram_bank_low: 0,
+                        ram_bank_high: 0,
+                        rom_bank_high: 0,
+                        mode_write_disable: false,
+                        banking_mode: 0,
+                        rom_bank_mask: 0,
+                        multiplex_enabled: false,
                     })),
                 };
 
@@ -210,6 +249,7 @@ impl CartridgeSlot {
         match self.device {
             None => CartridgeSlotState::Empty,
             Some(CartridgeDevice::NoMbc(_)) => CartridgeSlotState::NoMbc,
+            Some(CartridgeDevice::Mmm01(_)) => CartridgeSlotState::Mmm01,
             Some(CartridgeDevice::Mbc1(_)) => CartridgeSlotState::Mbc1,
             Some(CartridgeDevice::Mbc2(_)) => CartridgeSlotState::Mbc2,
             Some(CartridgeDevice::Mbc3(_)) => CartridgeSlotState::Mbc3,

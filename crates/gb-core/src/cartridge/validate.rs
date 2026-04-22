@@ -106,6 +106,69 @@ pub(in crate::cartridge) fn validate_no_mbc(
     Ok(())
 }
 
+pub(in crate::cartridge) fn validate_mmm01(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<usize, CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
+    };
+
+    if actual_rom_size != declared_rom_bytes {
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
+    }
+
+    if !(MMM01_MIN_ROM_BYTES..=MMM01_SUPPORTED_ROM_BYTES_MAX).contains(&declared_rom_bytes) {
+        return Err(ctx.reject(format!(
+            "{} expects a total ROM size between {} and {} bytes, but the header resolved to {} bytes",
+            ctx.name(),
+            MMM01_MIN_ROM_BYTES,
+            MMM01_SUPPORTED_ROM_BYTES_MAX,
+            declared_rom_bytes
+        )));
+    }
+
+    let has_ram = matches!(classification.raw_type(), 0x0C | 0x0D);
+    let allowed_ram_codes = if has_ram {
+        [0x02, 0x03, 0x04].as_slice()
+    } else {
+        [0x00].as_slice()
+    };
+    if !allowed_ram_codes.contains(&header.ram_size.raw_code) {
+        let capability_label = if has_ram {
+            "MMM01 with external RAM"
+        } else {
+            "MMM01 without RAM"
+        };
+        return Err(ctx.reject(format!(
+            "{} declared RAM size code {:#04X}, which contradicts the current {} baseline",
+            ctx.name(),
+            header.ram_size.raw_code,
+            capability_label
+        )));
+    }
+
+    Ok(header.ram_size.decoded_bytes.unwrap_or(0))
+}
+
 pub(in crate::cartridge) fn validate_mbc1(
     header: &CartridgeHeader,
     actual_rom_size: usize,

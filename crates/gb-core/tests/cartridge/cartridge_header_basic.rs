@@ -135,11 +135,6 @@ fn machine_load_cartridge_installs_the_loaded_slot() {
 fn documented_special_headers_keep_explicit_categories_and_do_not_fall_back_silently() {
     let cases = [
         (
-            0x0B,
-            "MMM01",
-            UnsupportedCartridgeCategory::DocumentedButUnsupported,
-        ),
-        (
             0x20,
             "MBC6",
             UnsupportedCartridgeCategory::DocumentedButUnsupported,
@@ -187,6 +182,26 @@ fn documented_special_headers_keep_explicit_categories_and_do_not_fall_back_sile
             CartridgeSelection::Unsupported(category)
         );
     }
+}
+
+#[test]
+fn mmm01_menu_headers_promote_the_family_to_supported_even_if_the_physical_start_header_is_plain_rom()
+ {
+    let report = CartridgeSlot::load(
+        build_mmm01_rom(0x03, 0x00, 0x0B),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MMM01 should load through the trailing menu header");
+
+    assert_eq!(report.cartridge().state(), CartridgeSlotState::Mmm01);
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
+    );
 }
 
 #[test]
