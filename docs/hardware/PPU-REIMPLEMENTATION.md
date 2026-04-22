@@ -26,6 +26,15 @@ The broad PPU internal cleanup is now structurally landed. Future work should pr
 - Keep the DMG same-line window restart/retarget seam grouped under one dedicated owner (`DmgWindowRestartState`) instead of scattering the carry/glitch/restart flags across `BgPipelineState`.
 - Keep DMG palette-conflict handling in an explicit `classify -> plan -> apply` flow, and keep panel-history / palette-history types under the palette-conflict subsystem rather than under generic visible-register helpers.
 
+## Repo-Local Measured Performance Guidance
+
+The broad structural cleanup is landed, and the first follow-up perf probes have already been measured. Preserve these conclusions unless a stronger benchmark or profiler trace says otherwise:
+
+- Keep using the strict `ppu_phase6` harness as the default before/after gate for PPU runtime experiments; it already measures scanline cost, frame cost, and focused `Mode 3` hotspot windows.
+- Do not prioritize a broad per-dot `Mode 3` context cache (`mode3_register_latches()`, `mode3_window_policy()`, and similar tiny helper views) without new profiling evidence. Release sampling on representative BG-only and OBJ-heavy scenes did not show those helpers as standalone hotspots.
+- If runtime work in this area is revisited, the more promising narrow target is transfer / raster-publication work (`current_transfer()` and related mode-boundary publication), not a generic cache layer over every per-dot helper.
+- A shared OBJ FIFO write kernel for `push_obj_pixels()` / `rewrite_obj_fifo_pixels()` is acceptable as local deduplication work, but current benchmark evidence only showed a borderline, noise-threshold gain. Do not land it as a performance change alone.
+
 ## Repo-Local Migration Constraints
 
 ### Scheduler, MMIO, and STAT
