@@ -431,14 +431,7 @@ pub(super) struct BgPipelineState {
     pub(super) window_activation_tilemap_select_latch: Option<bool>,
     pub(super) dmg_wx0_window_disable_prefix_state: Option<DmgWx0WindowDisablePrefixState>,
     pub(super) dmg_late_window_enable_override: Option<DmgLateWindowEnableOverride>,
-    pub(super) dmg_pending_window_reenable_resume: Option<DmgPendingWindowReenableResume>,
-    pub(super) dmg_previsible_wx_retarget: Option<DmgPrevisibleWxRetarget>,
-    pub(super) dmg_previsible_wx_cancel_uses_visible_wx_once: bool,
-    pub(super) dmg_previsible_wx_cancel_background_override_onset_x: Option<u8>,
-    pub(super) dmg_previsible_wx_retained_trigger_glitch_x: Option<u8>,
-    pub(super) dmg_pending_previsible_wx_onset_glitch: Option<u8>,
-    pub(super) dmg_pending_previsible_wx_carry: Option<DmgPendingPrevisibleWxCarry>,
-    pub(super) dmg_pending_live_wx_trigger_glitch: Option<DmgPendingLiveWxTriggerGlitch>,
+    pub(super) dmg_window_restart: DmgWindowRestartState,
     pub(super) dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState,
 }
 
@@ -602,6 +595,99 @@ impl DmgPendingWindowReenableResume {
             disable_stage,
             disable_stage_dot,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct DmgWindowRestartState {
+    pub(super) pending_window_reenable_resume: Option<DmgPendingWindowReenableResume>,
+    pub(super) previsible_wx_retarget: Option<DmgPrevisibleWxRetarget>,
+    pub(super) previsible_wx_cancel_uses_visible_wx_once: bool,
+    pub(super) previsible_wx_cancel_background_override_onset_x: Option<u8>,
+    pub(super) previsible_wx_retained_trigger_glitch_x: Option<u8>,
+    pub(super) pending_previsible_wx_onset_glitch: Option<u8>,
+    pub(super) pending_previsible_wx_carry: Option<DmgPendingPrevisibleWxCarry>,
+    pub(super) pending_live_wx_trigger_glitch: Option<DmgPendingLiveWxTriggerGlitch>,
+}
+
+impl DmgWindowRestartState {
+    pub(super) fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    pub(super) fn apply_followup_markers(
+        &mut self,
+        cancel_uses_visible_wx_once: bool,
+        cancel_background_override_onset_x: Option<u8>,
+        retained_trigger_glitch_x: Option<u8>,
+    ) {
+        self.previsible_wx_cancel_uses_visible_wx_once = cancel_uses_visible_wx_once;
+        self.previsible_wx_cancel_background_override_onset_x = cancel_background_override_onset_x;
+        self.previsible_wx_retained_trigger_glitch_x = retained_trigger_glitch_x;
+    }
+
+    pub(super) fn clear_followup_markers(&mut self) {
+        self.apply_followup_markers(false, None, None);
+    }
+
+    pub(super) fn clear_followup_overrides(&mut self) {
+        self.previsible_wx_cancel_background_override_onset_x = None;
+        self.previsible_wx_retained_trigger_glitch_x = None;
+    }
+
+    pub(super) fn arm_previsible_wx_retarget_state(
+        &mut self,
+        retarget: DmgPrevisibleWxRetarget,
+        onset_glitch: Option<u8>,
+        carry: Option<DmgPendingPrevisibleWxCarry>,
+    ) {
+        self.previsible_wx_retarget = Some(retarget);
+        self.pending_previsible_wx_onset_glitch = onset_glitch;
+        self.pending_previsible_wx_carry = carry;
+        self.clear_live_trigger_glitch();
+    }
+
+    pub(super) fn clear_retarget_state(&mut self) {
+        self.previsible_wx_retarget = None;
+    }
+
+    pub(super) fn clear_carry(&mut self) {
+        self.pending_previsible_wx_carry = None;
+    }
+
+    pub(super) fn clear_live_trigger_glitch(&mut self) {
+        self.pending_live_wx_trigger_glitch = None;
+    }
+
+    pub(super) fn clear_onset_glitch(&mut self) {
+        self.pending_previsible_wx_onset_glitch = None;
+    }
+
+    pub(super) fn clear_gap_artifacts(&mut self) {
+        self.clear_onset_glitch();
+        self.clear_carry();
+    }
+
+    pub(super) fn clear_retarget_and_gap_artifacts(&mut self) {
+        self.clear_retarget_state();
+        self.clear_gap_artifacts();
+    }
+
+    pub(super) fn clear_expired_retarget_state(&mut self) {
+        self.clear_retarget_state();
+        self.clear_followup_overrides();
+        self.clear_gap_artifacts();
+    }
+
+    pub(super) fn clear_restart_transients(&mut self) {
+        self.clear_retarget_state();
+        self.clear_followup_markers();
+        self.clear_carry();
+        self.clear_live_trigger_glitch();
+    }
+
+    pub(super) fn arm_live_trigger_glitch(&mut self, trigger_x: u8) {
+        self.pending_live_wx_trigger_glitch = Some(DmgPendingLiveWxTriggerGlitch::new(trigger_x));
     }
 }
 
@@ -1010,14 +1096,7 @@ impl BgPipelineState {
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
-        self.dmg_pending_window_reenable_resume = None;
-        self.dmg_previsible_wx_retarget = None;
-        self.dmg_previsible_wx_cancel_uses_visible_wx_once = false;
-        self.dmg_previsible_wx_cancel_background_override_onset_x = None;
-        self.dmg_previsible_wx_retained_trigger_glitch_x = None;
-        self.dmg_pending_previsible_wx_onset_glitch = None;
-        self.dmg_pending_previsible_wx_carry = None;
-        self.dmg_pending_live_wx_trigger_glitch = None;
+        self.dmg_window_restart.clear();
         self.dmg_mode3_live_lcdc_bg_state = Default::default();
     }
 
@@ -1104,14 +1183,7 @@ impl BgPipelineState {
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
-        self.dmg_pending_window_reenable_resume = None;
-        self.dmg_previsible_wx_retarget = None;
-        self.dmg_previsible_wx_cancel_uses_visible_wx_once = false;
-        self.dmg_previsible_wx_cancel_background_override_onset_x = None;
-        self.dmg_previsible_wx_retained_trigger_glitch_x = None;
-        self.dmg_pending_previsible_wx_onset_glitch = None;
-        self.dmg_pending_previsible_wx_carry = None;
-        self.dmg_pending_live_wx_trigger_glitch = None;
+        self.dmg_window_restart.clear();
     }
 
     pub(super) fn extend_mode3_by_one_dot(&mut self) {
@@ -1831,14 +1903,7 @@ impl Default for BgPipelineState {
             window_activation_tilemap_select_latch: None,
             dmg_wx0_window_disable_prefix_state: None,
             dmg_late_window_enable_override: None,
-            dmg_pending_window_reenable_resume: None,
-            dmg_previsible_wx_retarget: None,
-            dmg_previsible_wx_cancel_uses_visible_wx_once: false,
-            dmg_previsible_wx_cancel_background_override_onset_x: None,
-            dmg_previsible_wx_retained_trigger_glitch_x: None,
-            dmg_pending_previsible_wx_onset_glitch: None,
-            dmg_pending_previsible_wx_carry: None,
-            dmg_pending_live_wx_trigger_glitch: None,
+            dmg_window_restart: DmgWindowRestartState::default(),
             dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState::default(),
         }
     }

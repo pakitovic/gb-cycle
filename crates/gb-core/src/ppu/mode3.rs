@@ -893,7 +893,8 @@ impl Ppu {
         if !self.console_model.is_dmg_family()
             || self
                 .bg_pipeline_state
-                .dmg_pending_window_reenable_resume
+                .dmg_window_restart
+                .pending_window_reenable_resume
                 .is_some()
             || !self
                 .mode3_register_latches()
@@ -910,14 +911,15 @@ impl Ppu {
         let emitted_window_pixels = self.count_emitted_window_pixels_this_line();
         let whole_tiles_emitted = emitted_window_pixels.saturating_add(7) / 8;
         let onset_x = window_origin_x.saturating_add(whole_tiles_emitted.saturating_mul(8));
-        self.bg_pipeline_state.dmg_pending_window_reenable_resume =
-            Some(DmgPendingWindowReenableResume::new(
-                onset_x,
-                window_origin_x,
-                emitted_window_pixels,
-                self.bg_pipeline_state.fetcher.stage,
-                self.bg_pipeline_state.fetcher.stage_dot,
-            ));
+        self.bg_pipeline_state
+            .dmg_window_restart
+            .pending_window_reenable_resume = Some(DmgPendingWindowReenableResume::new(
+            onset_x,
+            window_origin_x,
+            emitted_window_pixels,
+            self.bg_pipeline_state.fetcher.stage,
+            self.bg_pipeline_state.fetcher.stage_dot,
+        ));
     }
 
     fn maybe_arm_dmg_late_window_enable_override_after_transfer_dot(
@@ -940,7 +942,8 @@ impl Ppu {
         let visible_output = self.bg_pipeline_state.visible_pixels_output;
         if let Some(pending_resume) = self
             .bg_pipeline_state
-            .dmg_pending_window_reenable_resume
+            .dmg_window_restart
+            .pending_window_reenable_resume
             .take()
         {
             let segment_pixels = match visible_wx {
@@ -1507,7 +1510,8 @@ impl Ppu {
         let mut pixel = self.bg_pipeline_state.pop_visible_fifo_pixel()?;
         if self
             .bg_pipeline_state
-            .dmg_previsible_wx_cancel_background_override_onset_x
+            .dmg_window_restart
+            .previsible_wx_cancel_background_override_onset_x
             .is_some_and(|onset_x| self.bg_pipeline_state.visible_pixels_output >= onset_x)
         {
             self.current_scanline_bg_dot_contexts[visible_x] = None;
@@ -2283,11 +2287,13 @@ impl Ppu {
     pub(super) fn maybe_arm_dmg_previsible_wx_retarget(&mut self, previous_wx: u8, wx: u8) {
         let pending_previsible_trigger_x = self
             .bg_pipeline_state
-            .dmg_previsible_wx_retarget
+            .dmg_window_restart
+            .previsible_wx_retarget
             .and_then(|retarget| retarget.trigger_x);
         let pending_one_hidden_prefix_resume = self
             .bg_pipeline_state
-            .dmg_previsible_wx_retarget
+            .dmg_window_restart
+            .previsible_wx_retarget
             .is_some_and(|retarget| {
                 matches!(
                     retarget.kind,
@@ -2352,7 +2358,11 @@ impl Ppu {
     }
 
     fn maybe_apply_dmg_previsible_wx_retarget(&mut self, vram: &VramBusView<'_>) {
-        let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget else {
+        let Some(retarget) = self
+            .bg_pipeline_state
+            .dmg_window_restart
+            .previsible_wx_retarget
+        else {
             return;
         };
 
@@ -2395,7 +2405,11 @@ impl Ppu {
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) {
-        let Some(glitch) = self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch else {
+        let Some(glitch) = self
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_live_wx_trigger_glitch
+        else {
             return;
         };
 
@@ -2418,7 +2432,11 @@ impl Ppu {
         transfer_dot: Mode3TransferDot,
         vram: &VramBusView<'_>,
     ) {
-        let Some(mut carry) = self.bg_pipeline_state.dmg_pending_previsible_wx_carry else {
+        let Some(mut carry) = self
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_previsible_wx_carry
+        else {
             return;
         };
 
@@ -2442,7 +2460,9 @@ impl Ppu {
             if carry.next_trigger_x >= carry.end_trigger_x {
                 self.clear_dmg_previsible_wx_carry();
             } else {
-                self.bg_pipeline_state.dmg_pending_previsible_wx_carry = Some(carry);
+                self.bg_pipeline_state
+                    .dmg_window_restart
+                    .pending_previsible_wx_carry = Some(carry);
             }
         } else if self.bg_pipeline_state.visible_pixels_output > carry.next_trigger_x {
             self.clear_dmg_previsible_wx_carry();
@@ -2455,7 +2475,8 @@ impl Ppu {
     ) {
         if let Some(trigger_x) = self
             .bg_pipeline_state
-            .dmg_pending_previsible_wx_onset_glitch
+            .dmg_window_restart
+            .pending_previsible_wx_onset_glitch
             && self.bg_pipeline_state.visible_pixels_output > trigger_x
         {
             self.repaint_current_scanline_dot_with_bg_override(usize::from(trigger_x), 0, vram);
@@ -2464,7 +2485,11 @@ impl Ppu {
     }
 
     fn maybe_expire_dmg_previsible_wx_retarget(&mut self) {
-        let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget else {
+        let Some(retarget) = self
+            .bg_pipeline_state
+            .dmg_window_restart
+            .previsible_wx_retarget
+        else {
             return;
         };
 
@@ -2480,7 +2505,11 @@ impl Ppu {
     }
 
     fn maybe_expire_pending_dmg_live_wx_trigger_glitch(&mut self) {
-        let Some(glitch) = self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch else {
+        let Some(glitch) = self
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_live_wx_trigger_glitch
+        else {
             return;
         };
 
@@ -2510,22 +2539,27 @@ impl Ppu {
             && self.mode3_register_latches().visible().bg_enabled()
             && self
                 .bg_pipeline_state
-                .dmg_previsible_wx_retarget
+                .dmg_window_restart
+                .previsible_wx_retarget
                 .is_some_and(|retarget| {
                     retarget.trigger_x == Some(self.bg_pipeline_state.visible_pixels_output)
                 })
         {
-            self.bg_pipeline_state.dmg_pending_window_reenable_resume = None;
+            self.bg_pipeline_state
+                .dmg_window_restart
+                .pending_window_reenable_resume = None;
             self.bg_pipeline_state.dmg_late_window_enable_override = None;
             self.clear_dmg_previsible_wx_live_trigger_glitch();
             let retarget = self
                 .bg_pipeline_state
-                .dmg_previsible_wx_retarget
+                .dmg_window_restart
+                .previsible_wx_retarget
                 .take()
                 .expect("checked above");
             let retained_same_scanline_trigger = self
                 .bg_pipeline_state
-                .dmg_previsible_wx_retained_trigger_glitch_x
+                .dmg_window_restart
+                .previsible_wx_retained_trigger_glitch_x
                 .is_some();
             let retained_window_pixel_offset = if retained_same_scanline_trigger
                 && retarget.window_pixel_offset % u16::from(BG_TILE_WIDTH) == 7
@@ -2549,7 +2583,8 @@ impl Ppu {
                 self.bg_pipeline_state.wx166_armed_this_line,
             );
         self.bg_pipeline_state
-            .dmg_previsible_wx_cancel_uses_visible_wx_once = false;
+            .dmg_window_restart
+            .previsible_wx_cancel_uses_visible_wx_once = false;
 
         match decision {
             PpuMode3WindowStartDecision::NotReady => {
@@ -2562,10 +2597,17 @@ impl Ppu {
                 false
             }
             PpuMode3WindowStartDecision::StartNow => {
-                self.bg_pipeline_state.dmg_pending_window_reenable_resume = None;
+                self.bg_pipeline_state
+                    .dmg_window_restart
+                    .pending_window_reenable_resume = None;
                 self.bg_pipeline_state.dmg_late_window_enable_override = None;
                 self.clear_dmg_previsible_wx_live_trigger_glitch();
-                if let Some(retarget) = self.bg_pipeline_state.dmg_previsible_wx_retarget.take() {
+                if let Some(retarget) = self
+                    .bg_pipeline_state
+                    .dmg_window_restart
+                    .previsible_wx_retarget
+                    .take()
+                {
                     self.apply_dmg_previsible_wx_restart(retarget, retarget.window_pixel_offset);
                 } else {
                     self.start_window_fetcher_restart();
@@ -3785,10 +3827,9 @@ impl Ppu {
     }
 
     fn clear_dmg_previsible_wx_restart_transients(&mut self) {
-        self.clear_dmg_previsible_wx_retarget_state();
-        self.clear_dmg_previsible_wx_followup_markers();
-        self.clear_dmg_previsible_wx_carry();
-        self.clear_dmg_previsible_wx_live_trigger_glitch();
+        self.bg_pipeline_state
+            .dmg_window_restart
+            .clear_restart_transients();
     }
 
     fn restore_current_fetcher_cached_slice_to_fifo(&mut self) {
@@ -3804,12 +3845,12 @@ impl Ppu {
         markers: DmgPrevisibleWxFollowupMarkers,
     ) {
         self.bg_pipeline_state
-            .dmg_previsible_wx_cancel_uses_visible_wx_once = markers.cancel_uses_visible_wx_once;
-        self.bg_pipeline_state
-            .dmg_previsible_wx_cancel_background_override_onset_x =
-            markers.cancel_background_override_onset_x;
-        self.bg_pipeline_state
-            .dmg_previsible_wx_retained_trigger_glitch_x = markers.retained_trigger_glitch_x;
+            .dmg_window_restart
+            .apply_followup_markers(
+                markers.cancel_uses_visible_wx_once,
+                markers.cancel_background_override_onset_x,
+                markers.retained_trigger_glitch_x,
+            );
     }
 
     fn arm_dmg_previsible_wx_retarget_state(
@@ -3818,60 +3859,49 @@ impl Ppu {
         onset_glitch: Option<u8>,
         carry: Option<DmgPendingPrevisibleWxCarry>,
     ) {
-        self.bg_pipeline_state.dmg_previsible_wx_retarget = Some(retarget);
         self.bg_pipeline_state
-            .dmg_pending_previsible_wx_onset_glitch = onset_glitch;
-        self.bg_pipeline_state.dmg_pending_previsible_wx_carry = carry;
-        self.clear_dmg_previsible_wx_live_trigger_glitch();
+            .dmg_window_restart
+            .arm_previsible_wx_retarget_state(retarget, onset_glitch, carry);
     }
 
     fn arm_dmg_previsible_wx_live_trigger_glitch(&mut self, trigger_x: u8) {
-        self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch =
-            Some(DmgPendingLiveWxTriggerGlitch::new(trigger_x));
-    }
-
-    fn clear_dmg_previsible_wx_followup_markers(&mut self) {
-        self.apply_dmg_previsible_wx_followup_markers(DmgPrevisibleWxFollowupMarkers::cleared());
-    }
-
-    fn clear_dmg_previsible_wx_followup_overrides(&mut self) {
         self.bg_pipeline_state
-            .dmg_previsible_wx_cancel_background_override_onset_x = None;
-        self.bg_pipeline_state
-            .dmg_previsible_wx_retained_trigger_glitch_x = None;
+            .dmg_window_restart
+            .arm_live_trigger_glitch(trigger_x);
     }
 
     fn clear_dmg_previsible_wx_retarget_and_gap_artifacts(&mut self) {
-        self.clear_dmg_previsible_wx_retarget_state();
-        self.clear_dmg_previsible_wx_gap_artifacts();
+        self.bg_pipeline_state
+            .dmg_window_restart
+            .clear_retarget_and_gap_artifacts();
     }
 
     fn clear_dmg_previsible_wx_expired_retarget_state(&mut self) {
-        self.clear_dmg_previsible_wx_retarget_state();
-        self.clear_dmg_previsible_wx_followup_overrides();
-        self.clear_dmg_previsible_wx_gap_artifacts();
-    }
-
-    fn clear_dmg_previsible_wx_gap_artifacts(&mut self) {
-        self.clear_dmg_previsible_wx_onset_glitch();
-        self.clear_dmg_previsible_wx_carry();
+        self.bg_pipeline_state
+            .dmg_window_restart
+            .clear_expired_retarget_state();
     }
 
     fn clear_dmg_previsible_wx_retarget_state(&mut self) {
-        self.bg_pipeline_state.dmg_previsible_wx_retarget = None;
+        self.bg_pipeline_state
+            .dmg_window_restart
+            .clear_retarget_state();
     }
 
     fn clear_dmg_previsible_wx_carry(&mut self) {
-        self.bg_pipeline_state.dmg_pending_previsible_wx_carry = None;
+        self.bg_pipeline_state.dmg_window_restart.clear_carry();
     }
 
     fn clear_dmg_previsible_wx_live_trigger_glitch(&mut self) {
-        self.bg_pipeline_state.dmg_pending_live_wx_trigger_glitch = None;
+        self.bg_pipeline_state
+            .dmg_window_restart
+            .clear_live_trigger_glitch();
     }
 
     fn clear_dmg_previsible_wx_onset_glitch(&mut self) {
         self.bg_pipeline_state
-            .dmg_pending_previsible_wx_onset_glitch = None;
+            .dmg_window_restart
+            .clear_onset_glitch();
     }
 }
 

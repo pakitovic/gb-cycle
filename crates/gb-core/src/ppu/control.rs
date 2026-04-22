@@ -1476,7 +1476,8 @@ impl Ppu {
         if self.console_model.is_dmg_family()
             && self
                 .bg_pipeline_state
-                .dmg_previsible_wx_cancel_uses_visible_wx_once
+                .dmg_window_restart
+                .previsible_wx_cancel_uses_visible_wx_once
         {
             registers.wx = register_latches.visible().wx;
         }

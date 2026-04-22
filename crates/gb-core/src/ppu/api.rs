@@ -864,23 +864,28 @@ impl Ppu {
             window_line_counter: self.window_state.window_line_counter,
             dmg_previsible_wx_retarget_trigger_x: self
                 .bg_pipeline_state
-                .dmg_previsible_wx_retarget
+                .dmg_window_restart
+                .previsible_wx_retarget
                 .and_then(|retarget| retarget.trigger_x),
             dmg_previsible_wx_retarget_window_pixel_offset: self
                 .bg_pipeline_state
-                .dmg_previsible_wx_retarget
+                .dmg_window_restart
+                .previsible_wx_retarget
                 .map(|retarget| retarget.window_pixel_offset),
             dmg_pending_previsible_wx_carry_next_trigger_x: self
                 .bg_pipeline_state
-                .dmg_pending_previsible_wx_carry
+                .dmg_window_restart
+                .pending_previsible_wx_carry
                 .map(|carry| carry.next_trigger_x),
             dmg_pending_previsible_wx_carry_end_trigger_x: self
                 .bg_pipeline_state
-                .dmg_pending_previsible_wx_carry
+                .dmg_window_restart
+                .pending_previsible_wx_carry
                 .map(|carry| carry.end_trigger_x),
             dmg_pending_previsible_wx_carry_next_window_pixel_offset: self
                 .bg_pipeline_state
-                .dmg_pending_previsible_wx_carry
+                .dmg_window_restart
+                .pending_previsible_wx_carry
                 .map(|carry| carry.next_window_pixel_offset),
             current_scanline_mixed_colors: self
                 .current_scanline_mixed_pixels
