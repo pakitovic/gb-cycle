@@ -1,5 +1,7 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn latch_object_fetch_hits(&mut self) {
+    pub(in crate::ppu) fn latch_object_fetch_hits(&mut self) {
         if !self.obj_enabled() {
             return;
         }
@@ -29,7 +31,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn sync_pending_obj_hit_ownership(&mut self) {
+    pub(in crate::ppu) fn sync_pending_obj_hit_ownership(&mut self) {
         if !self.obj_enabled() {
             self.runtime.obj_pipeline_state.clear_pending_fetch_hits();
             return;
@@ -41,7 +43,7 @@ impl Ppu {
             .clear_pending_fetch_hits_if_stale(current_owner);
     }
 
-    pub(super) fn try_start_object_fetch_from_current_dot(
+    pub(in crate::ppu) fn try_start_object_fetch_from_current_dot(
         &mut self,
         start_source: ObjFetchStartSource,
         overlap_current_dot: bool,
@@ -88,7 +90,7 @@ impl Ppu {
         true
     }
 
-    pub(super) fn current_obj_hit_ownership(&self) -> ObjHitOwnership {
+    pub(in crate::ppu) fn current_obj_hit_ownership(&self) -> ObjHitOwnership {
         let phase = self
             .current_transfer()
             .map_or(ObjHitPhase::PreVisible, |transfer| {
@@ -105,7 +107,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn bg_fetcher_ready_for_fifo_backed_obj_start(&self) -> bool {
+    pub(in crate::ppu) fn bg_fetcher_ready_for_fifo_backed_obj_start(&self) -> bool {
         let allow_same_x_cluster_tileindex_overlap = self
             .current_transfer_x_supports_early_same_x_obj_start()
             && self.runtime.obj_pipeline_state.pending_sprite_slots.len() >= 2
@@ -125,7 +127,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn advance_object_fetch(
+    pub(in crate::ppu) fn advance_object_fetch(
         &mut self,
         oam: &OamBusView<'_>,
         vram: &VramBusView<'_>,
@@ -371,7 +373,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn obj_fetch_startup_ready(&self) -> bool {
+    pub(in crate::ppu) fn obj_fetch_startup_ready(&self) -> bool {
         let fifo_ready = !self.runtime.bg_pipeline_state.fifo.is_empty();
         let Some(sprite) = self.runtime.obj_pipeline_state.fetch.sprite else {
             return fifo_ready;
@@ -388,7 +390,7 @@ impl Ppu {
             )
     }
 
-    pub(super) fn resolve_obj_fetch_sprite(
+    pub(in crate::ppu) fn resolve_obj_fetch_sprite(
         &mut self,
         oam: &OamBusView<'_>,
         sprite: PpuSelectedSprite,
@@ -525,7 +527,9 @@ impl Ppu {
         }
     }
 
-    pub(super) fn chained_same_x_obj_fetch_skips_first_tile_data_low_half_step(&self) -> bool {
+    pub(in crate::ppu) fn chained_same_x_obj_fetch_skips_first_tile_data_low_half_step(
+        &self,
+    ) -> bool {
         let fetched_same_x_count = self.fetched_same_x_obj_sprite_count_for_active_fetch();
         let first_hidden_x4_same_x_restart_pays_low_half_step = fetched_same_x_count == 1
             && self.runtime.bg_pipeline_state.current_transfer_x == 4
@@ -550,14 +554,16 @@ impl Ppu {
             || self.terminal_previsible_same_x_chain_skips_first_low_half_step()
     }
 
-    pub(super) fn chained_same_x_obj_fetch_uses_long_tail_restart(&self) -> bool {
+    pub(in crate::ppu) fn chained_same_x_obj_fetch_uses_long_tail_restart(&self) -> bool {
         let fetched_same_x_count = self.fetched_same_x_obj_sprite_count_for_active_fetch();
         fetched_same_x_count >= 5
             && fetched_same_x_count % 2 == 1
             && !self.current_transfer_x_supports_early_same_x_obj_start()
     }
 
-    pub(super) fn first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte(&self) -> bool {
+    pub(in crate::ppu) fn first_hidden_same_x_cluster_fetch_skips_obj_tile_data_low_byte(
+        &self,
+    ) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x < 167
             && (self.runtime.bg_pipeline_state.current_transfer_x & 0x07) < 6
             && self.current_transfer_x_supports_early_same_x_obj_start()
@@ -576,19 +582,23 @@ impl Ppu {
             )
     }
 
-    pub(super) fn initial_nonterminal_same_x_cluster_skips_first_low_half_step(&self) -> bool {
+    pub(in crate::ppu) fn initial_nonterminal_same_x_cluster_skips_first_low_half_step(
+        &self,
+    ) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x < 167
             && (self.runtime.bg_pipeline_state.current_transfer_x & 0x07) < 7
             && self.current_transfer_x_supports_early_same_x_obj_start()
     }
 
-    pub(super) fn nonterminal_same_x_cluster_restart_skips_first_low_half_step(&self) -> bool {
+    pub(in crate::ppu) fn nonterminal_same_x_cluster_restart_skips_first_low_half_step(
+        &self,
+    ) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x < 167
             && (self.runtime.bg_pipeline_state.current_transfer_x & 0x07) < 7
             && self.current_transfer_x_supports_early_same_x_obj_start()
     }
 
-    pub(super) fn hidden_same_x_cluster_restart_skips_first_low_half_step(&self) -> bool {
+    pub(in crate::ppu) fn hidden_same_x_cluster_restart_skips_first_low_half_step(&self) -> bool {
         matches!(
             self.current_transfer(),
             Some(Mode3CurrentTransfer {
@@ -607,7 +617,9 @@ impl Ppu {
         )
     }
 
-    pub(super) fn visible_periodic_same_x_cluster_restart_skips_first_low_half_step(&self) -> bool {
+    pub(in crate::ppu) fn visible_periodic_same_x_cluster_restart_skips_first_low_half_step(
+        &self,
+    ) -> bool {
         self.runtime.bg_pipeline_state.visible_pixels_output >= 24
             && self.current_transfer_x_supports_early_same_x_obj_start()
             && matches!(
@@ -629,7 +641,7 @@ impl Ppu {
             )
     }
 
-    pub(super) fn hidden_left_edge_same_x_chain_pays_push_dot(&self) -> bool {
+    pub(in crate::ppu) fn hidden_left_edge_same_x_chain_pays_push_dot(&self) -> bool {
         let fetched_same_x_count = self.fetched_same_x_obj_sprite_count_for_active_fetch();
         (4..=7).contains(&self.runtime.bg_pipeline_state.current_transfer_x)
             && matches!(
@@ -645,7 +657,7 @@ impl Ppu {
             && (1..=4).contains(&fetched_same_x_count)
     }
 
-    pub(super) fn visible_left_edge_same_x_chain_shares_push_dot(&self) -> bool {
+    pub(in crate::ppu) fn visible_left_edge_same_x_chain_shares_push_dot(&self) -> bool {
         let fetched_same_x_count = self.fetched_same_x_obj_sprite_count_for_active_fetch();
         let visible_output = self.runtime.bg_pipeline_state.visible_pixels_output;
         let current_transfer_x = self.runtime.bg_pipeline_state.current_transfer_x;
@@ -674,7 +686,9 @@ impl Ppu {
             && fetched_same_x_count > 0
     }
 
-    pub(super) fn first_late_visible_push_backed_same_x_cluster_chains_after_push(&self) -> bool {
+    pub(in crate::ppu) fn first_late_visible_push_backed_same_x_cluster_chains_after_push(
+        &self,
+    ) -> bool {
         self.runtime.bg_pipeline_state.startup_fifo_placeholders == 0
             && self.runtime.bg_pipeline_state.fifo.len() == 2
             && self.current_transfer_x_supports_early_same_x_obj_start()
@@ -706,7 +720,7 @@ impl Ppu {
             && self.fetched_same_x_obj_sprite_count_for_pending_match_x() > 0
     }
 
-    pub(super) fn right_edge_visible_same_x_cluster_continues_after_push(&self) -> bool {
+    pub(in crate::ppu) fn right_edge_visible_same_x_cluster_continues_after_push(&self) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x >= 160
             && matches!(
                 self.current_transfer(),
@@ -724,7 +738,7 @@ impl Ppu {
             && self.fetched_same_x_obj_sprite_count_for_pending_match_x() > 0
     }
 
-    pub(super) fn continue_same_x_obj_chain_after_push(
+    pub(in crate::ppu) fn continue_same_x_obj_chain_after_push(
         &mut self,
         oam: &OamBusView<'_>,
         dma_oam_conflict: Option<PpuDmaOamConflict>,
@@ -784,7 +798,7 @@ impl Ppu {
         true
     }
 
-    pub(super) fn right_edge_visible_same_x_cluster_pays_startup_dot(&self) -> bool {
+    pub(in crate::ppu) fn right_edge_visible_same_x_cluster_pays_startup_dot(&self) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x >= 160
             && matches!(
                 self.current_transfer(),
@@ -801,7 +815,7 @@ impl Ppu {
             && self.fetched_same_x_obj_sprite_count_for_pending_match_x() >= 5
     }
 
-    pub(super) fn saturated_placeholder_backed_terminal_bg_tail_can_hold_one_post_push_dot(
+    pub(in crate::ppu) fn saturated_placeholder_backed_terminal_bg_tail_can_hold_one_post_push_dot(
         &self,
     ) -> bool {
         self.runtime.bg_pipeline_state.mode3_started
@@ -831,7 +845,7 @@ impl Ppu {
             && self.runtime.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
     }
 
-    pub(super) fn terminal_previsible_same_x_chain_can_start_obj_fetch(&self) -> bool {
+    pub(in crate::ppu) fn terminal_previsible_same_x_chain_can_start_obj_fetch(&self) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x < 8
             && self.runtime.obj_pipeline_state.pending_match_x
                 == Some(self.runtime.bg_pipeline_state.current_transfer_x)
@@ -839,7 +853,9 @@ impl Ppu {
             && self.fetched_same_x_obj_sprite_count_for_pending_match_x() > 0
     }
 
-    pub(super) fn terminal_previsible_same_x_chain_skips_first_low_half_step(&self) -> bool {
+    pub(in crate::ppu) fn terminal_previsible_same_x_chain_skips_first_low_half_step(
+        &self,
+    ) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x < 8
             && self.current_transfer_x_supports_early_same_x_obj_start()
             && self.runtime.obj_pipeline_state.pending_match_x.is_none()
@@ -851,12 +867,14 @@ impl Ppu {
             && self.fetched_same_x_obj_sprite_count_for_active_fetch() > 0
     }
 
-    pub(super) fn terminal_previsible_same_x_chain_skips_obj_tile_data_low_byte(&self) -> bool {
+    pub(in crate::ppu) fn terminal_previsible_same_x_chain_skips_obj_tile_data_low_byte(
+        &self,
+    ) -> bool {
         self.terminal_previsible_same_x_chain_skips_first_low_half_step()
             && self.fetched_same_x_obj_sprite_count_for_active_fetch() >= 9
     }
 
-    pub(super) fn terminal_right_edge_same_x_chain_skips_to_tile_data_high_half_step(
+    pub(in crate::ppu) fn terminal_right_edge_same_x_chain_skips_to_tile_data_high_half_step(
         &self,
     ) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x >= 160
@@ -879,7 +897,7 @@ impl Ppu {
             && self.fetched_same_x_obj_sprite_count_for_active_fetch() > 0
     }
 
-    pub(super) fn terminal_right_edge_same_x_chain_shares_push_dot(&self) -> bool {
+    pub(in crate::ppu) fn terminal_right_edge_same_x_chain_shares_push_dot(&self) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x >= 160
             && matches!(
                 self.current_transfer(),
@@ -900,14 +918,14 @@ impl Ppu {
             && self.fetched_same_x_obj_sprite_count_for_active_fetch() > 0
     }
 
-    pub(super) fn current_transfer_x_supports_early_same_x_obj_start(&self) -> bool {
+    pub(in crate::ppu) fn current_transfer_x_supports_early_same_x_obj_start(&self) -> bool {
         matches!(
             self.runtime.bg_pipeline_state.current_transfer_x & 0x07,
             2..=7
         )
     }
 
-    pub(super) fn terminal_mode3_dot_started_shared_obj_fetch(&self) -> bool {
+    pub(in crate::ppu) fn terminal_mode3_dot_started_shared_obj_fetch(&self) -> bool {
         matches!(
             (
                 self.runtime.obj_pipeline_state.fetch.stage,
@@ -917,7 +935,7 @@ impl Ppu {
         ) && self.line_dot.saturating_add(1) == self.current_mode0_start_dot()
     }
 
-    pub(super) fn pending_nonterminal_same_x_cluster_pays_startup_dot(&self) -> bool {
+    pub(in crate::ppu) fn pending_nonterminal_same_x_cluster_pays_startup_dot(&self) -> bool {
         self.runtime.bg_pipeline_state.current_transfer_x < 167
             && self.current_transfer_x_supports_early_same_x_obj_start()
             && self.runtime.obj_pipeline_state.pending_match_x
@@ -926,7 +944,7 @@ impl Ppu {
             && !self.first_late_visible_push_backed_same_x_cluster_chains_after_push()
     }
 
-    pub(super) fn fetched_same_x_obj_sprite_count_for_active_fetch(&self) -> usize {
+    pub(in crate::ppu) fn fetched_same_x_obj_sprite_count_for_active_fetch(&self) -> usize {
         let Some(sprite) = self.runtime.obj_pipeline_state.fetch.sprite else {
             return 0;
         };
@@ -937,7 +955,7 @@ impl Ppu {
         self.fetched_same_x_obj_sprite_count_for_trigger_x(trigger_x)
     }
 
-    pub(super) fn fetched_same_x_obj_sprite_count_for_pending_match_x(&self) -> usize {
+    pub(in crate::ppu) fn fetched_same_x_obj_sprite_count_for_pending_match_x(&self) -> usize {
         let Some(trigger_x) = self.runtime.obj_pipeline_state.pending_match_x else {
             return 0;
         };
@@ -945,7 +963,10 @@ impl Ppu {
         self.fetched_same_x_obj_sprite_count_for_trigger_x(trigger_x)
     }
 
-    pub(super) fn fetched_same_x_obj_sprite_count_for_trigger_x(&self, trigger_x: u8) -> usize {
+    pub(in crate::ppu) fn fetched_same_x_obj_sprite_count_for_trigger_x(
+        &self,
+        trigger_x: u8,
+    ) -> usize {
         let mut fetched_same_x_count = 0_usize;
         for sprite_slot in 0..self.runtime.mode2_scan_state.selected_sprite_count() {
             if !self.runtime.obj_pipeline_state.has_fetched(sprite_slot) {

@@ -22,9 +22,9 @@ struct PpuPublishedStatModeContext {
     sprite_extended_mode3: bool,
 }
 
-include!("control/panel.rs");
-include!("control/registers.rs");
-include!("control/published_stat.rs");
-include!("control/mode2.rs");
-include!("control/live_writes.rs");
-include!("control/irq.rs");
+mod irq;
+mod live_writes;
+mod mode2;
+mod panel;
+mod published_stat;
+mod registers;

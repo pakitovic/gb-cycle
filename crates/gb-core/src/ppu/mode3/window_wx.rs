@@ -1,5 +1,7 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn maybe_apply_wx0_shortening_after_transfer_dot(
+    pub(in crate::ppu) fn maybe_apply_wx0_shortening_after_transfer_dot(
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) {
@@ -18,7 +20,7 @@ impl Ppu {
         self.runtime.bg_pipeline_state.apply_wx0_scx_shortening();
     }
 
-    pub(super) fn maybe_arm_dmg_previsible_wx_retarget(&mut self, previous_wx: u8, wx: u8) {
+    pub(in crate::ppu) fn maybe_arm_dmg_previsible_wx_retarget(&mut self, previous_wx: u8, wx: u8) {
         let pending_previsible_trigger_x = self
             .runtime
             .bg_pipeline_state
@@ -62,7 +64,7 @@ impl Ppu {
         self.apply_dmg_previsible_wx_plan(plan);
     }
 
-    pub(super) fn maybe_arm_dmg_live_wx_trigger_glitch(&mut self, wx: u8) {
+    pub(in crate::ppu) fn maybe_arm_dmg_live_wx_trigger_glitch(&mut self, wx: u8) {
         if !self.console_model.is_dmg_family()
             || self.current_access_mode() != PpuAccessMode::Drawing
             || !self.runtime.bg_pipeline_state.window_started_this_line
@@ -96,7 +98,7 @@ impl Ppu {
         self.arm_dmg_previsible_wx_live_trigger_glitch(trigger_x);
     }
 
-    fn maybe_apply_dmg_previsible_wx_retarget(&mut self, vram: &VramBusView<'_>) {
+    pub(super) fn maybe_apply_dmg_previsible_wx_retarget(&mut self, vram: &VramBusView<'_>) {
         let Some(retarget) = self
             .runtime
             .bg_pipeline_state
@@ -143,7 +145,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn maybe_apply_pending_dmg_live_wx_trigger_glitch(
+    pub(in crate::ppu) fn maybe_apply_pending_dmg_live_wx_trigger_glitch(
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) {
@@ -170,7 +172,7 @@ impl Ppu {
         }
     }
 
-    fn maybe_apply_pending_dmg_previsible_wx_carry(
+    pub(super) fn maybe_apply_pending_dmg_previsible_wx_carry(
         &mut self,
         transfer_dot: Mode3TransferDot,
         vram: &VramBusView<'_>,
@@ -213,7 +215,7 @@ impl Ppu {
         }
     }
 
-    fn maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(
+    pub(super) fn maybe_apply_pending_dmg_previsible_wx_onset_glitch_repaint(
         &mut self,
         vram: &VramBusView<'_>,
     ) {
@@ -229,7 +231,7 @@ impl Ppu {
         }
     }
 
-    fn maybe_expire_dmg_previsible_wx_retarget(&mut self) {
+    pub(super) fn maybe_expire_dmg_previsible_wx_retarget(&mut self) {
         let Some(retarget) = self
             .runtime
             .bg_pipeline_state
@@ -250,7 +252,7 @@ impl Ppu {
         }
     }
 
-    fn maybe_expire_pending_dmg_live_wx_trigger_glitch(&mut self) {
+    pub(super) fn maybe_expire_pending_dmg_live_wx_trigger_glitch(&mut self) {
         let Some(glitch) = self
             .runtime
             .bg_pipeline_state
@@ -274,7 +276,7 @@ impl Ppu {
             && wx.saturating_sub(7) > self.runtime.bg_pipeline_state.visible_pixels_output
     }
 
-    pub(super) fn maybe_start_window_after_transfer_dot(
+    pub(in crate::ppu) fn maybe_start_window_after_transfer_dot(
         &mut self,
         transfer_dot: Mode3TransferDot,
     ) -> bool {
@@ -374,7 +376,7 @@ impl Ppu {
             }
         }
     }
-    pub(super) fn start_window_fetcher_restart(&mut self) {
+    pub(in crate::ppu) fn start_window_fetcher_restart(&mut self) {
         let window_line_counter = self
             .runtime
             .window_state

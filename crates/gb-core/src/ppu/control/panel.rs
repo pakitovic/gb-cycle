@@ -1,5 +1,7 @@
+use super::*;
+
 impl PpuPanelState {
-    pub(super) fn clear_runtime_scanline_state(&mut self) {
+    pub(in crate::ppu) fn clear_runtime_scanline_state(&mut self) {
         self.current_scanline_pixels.fill(0);
         self.current_scanline_bg_pixels.fill(0);
         self.current_scanline_mixed_pixels
@@ -9,7 +11,7 @@ impl PpuPanelState {
         self.pending_dmg_window_lcdc4_output_repaint = None;
     }
 
-    pub(super) fn clear_visible_buffers(&mut self) {
+    pub(in crate::ppu) fn clear_visible_buffers(&mut self) {
         self.current_scanline_bg_dot_contexts.fill(None);
         self.current_scanline_pixels.fill(0);
         self.framebuffer.fill(0);
@@ -24,7 +26,7 @@ impl PpuPanelState {
         self.pending_dmg_window_lcdc4_output_repaint = None;
     }
 
-    pub(super) fn reset_for_startup(&mut self, bgp: u8) {
+    pub(in crate::ppu) fn reset_for_startup(&mut self, bgp: u8) {
         self.dmg_panel_live_write_state.reset_for_startup(bgp);
         self.current_scanline_pixels.fill(0);
         self.current_scanline_bg_pixels.fill(0);
@@ -40,7 +42,7 @@ impl PpuPanelState {
         self.framebuffer.fill(0);
     }
 
-    pub(super) fn reset_for_scanline_start(&mut self, bgp: u8) {
+    pub(in crate::ppu) fn reset_for_scanline_start(&mut self, bgp: u8) {
         self.dmg_panel_live_write_state
             .reset_for_scanline_start(bgp);
         self.clear_runtime_scanline_state();
@@ -48,7 +50,7 @@ impl PpuPanelState {
 }
 
 impl PpuRuntimeState {
-    pub(super) fn reset_runtime_pipeline_state(&mut self) {
+    pub(in crate::ppu) fn reset_runtime_pipeline_state(&mut self) {
         self.startup_mode_latch = None;
         self.mode2_scan_state.reset();
         self.window_state.reset();
@@ -57,7 +59,7 @@ impl PpuRuntimeState {
         self.panel.clear_runtime_scanline_state();
     }
 
-    pub(super) fn reset_for_startup(&mut self, bgp: u8) {
+    pub(in crate::ppu) fn reset_for_startup(&mut self, bgp: u8) {
         self.startup_mode_latch = None;
         self.pending_interrupts = 0;
         self.blank_frame_active = false;

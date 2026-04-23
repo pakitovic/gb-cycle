@@ -1,5 +1,7 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn execute_transfer_service_plan(
+    pub(in crate::ppu) fn execute_transfer_service_plan(
         &mut self,
         plan: Mode3TransferServicePlan,
         vram: &VramBusView<'_>,
@@ -163,7 +165,10 @@ impl Ppu {
         Mode3TransferDot::served(plan.result_kind, false)
     }
 
-    pub(super) fn pop_visible_bg_fifo_pixel(&mut self, vram: &VramBusView<'_>) -> Option<u8> {
+    pub(in crate::ppu) fn pop_visible_bg_fifo_pixel(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) -> Option<u8> {
         let visible_x = self.runtime.bg_pipeline_state.visible_pixels_output as usize;
         let mut pixel = self.runtime.bg_pipeline_state.pop_visible_fifo_pixel()?;
         if self
@@ -283,7 +288,7 @@ impl Ppu {
         Some(pixel.color)
     }
 
-    pub(super) fn compute_startup_visible_tile2_scy_placeholder_pixel(
+    pub(in crate::ppu) fn compute_startup_visible_tile2_scy_placeholder_pixel(
         &self,
         visible_x: u8,
         vram: &VramBusView<'_>,
@@ -319,7 +324,7 @@ impl Ppu {
             visible_x & (BG_TILE_WIDTH - 1),
         ))
     }
-    pub(super) fn compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
+    pub(in crate::ppu) fn compute_startup_visible_tile2_scy_tilemap_retarget_pixel(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
@@ -381,7 +386,7 @@ impl Ppu {
         bg_tile_pixel_value(tile_low, tile_high, pixel_index)
     }
 
-    pub(super) fn current_transfer_selected_sprite_x(&self) -> Option<u8> {
+    pub(in crate::ppu) fn current_transfer_selected_sprite_x(&self) -> Option<u8> {
         let current_transfer_x = self.runtime.bg_pipeline_state.current_transfer_x;
         (0..self.runtime.mode2_scan_state.selected_sprite_count())
             .filter(|&slot| !self.runtime.obj_pipeline_state.has_fetched(slot))
@@ -390,14 +395,14 @@ impl Ppu {
             .map(|sprite| sprite.x)
     }
 
-    pub(super) fn startup_line_lead_sprite_x(&self) -> Option<u8> {
+    pub(in crate::ppu) fn startup_line_lead_sprite_x(&self) -> Option<u8> {
         (0..self.runtime.mode2_scan_state.selected_sprite_count())
             .filter_map(|slot| self.runtime.mode2_scan_state.selected_sprite(slot))
             .min_by_key(|sprite| sprite.x)
             .map(|sprite| sprite.x)
     }
 
-    pub(super) fn scy_startup_line_lead_owner_window_open(&self) -> bool {
+    pub(in crate::ppu) fn scy_startup_line_lead_owner_window_open(&self) -> bool {
         self.current_transfer().is_some()
             || self.runtime.bg_pipeline_state.mode3_started
                 && !matches!(
@@ -406,7 +411,7 @@ impl Ppu {
                 )
     }
 
-    pub(super) fn scy_obj_phase_owner(&self) -> Option<PpuMode3ScyObjPhaseOwner> {
+    pub(in crate::ppu) fn scy_obj_phase_owner(&self) -> Option<PpuMode3ScyObjPhaseOwner> {
         if self.current_dot_has_pending_obj_hit() {
             return Some(PpuMode3ScyObjPhaseOwner::PendingHit {
                 match_x: self.runtime.bg_pipeline_state.current_transfer_x,
@@ -431,7 +436,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn scy_obj_phase_policy(&self) -> Option<PpuMode3ScyObjPhasePolicy> {
+    pub(in crate::ppu) fn scy_obj_phase_policy(&self) -> Option<PpuMode3ScyObjPhasePolicy> {
         let phase_owner = self.scy_obj_phase_owner()?;
         let context = PpuMode3ScyObjPhaseContext {
             phase_owner,
@@ -448,7 +453,7 @@ impl Ppu {
         Some(PpuMode3ScyObjPhasePolicy::new(context))
     }
 
-    pub(super) fn compute_startup_visible_tile3_previous_row_pixel(
+    pub(in crate::ppu) fn compute_startup_visible_tile3_previous_row_pixel(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
@@ -481,7 +486,7 @@ impl Ppu {
         Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
     }
 
-    pub(super) fn compute_startup_visible_tile2_previous_row_pixel(
+    pub(in crate::ppu) fn compute_startup_visible_tile2_previous_row_pixel(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
@@ -514,7 +519,7 @@ impl Ppu {
         Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
     }
 
-    pub(super) fn compute_startup_visible_tile3_scx_boundary_next_tile_output_retarget_pixel(
+    pub(in crate::ppu) fn compute_startup_visible_tile3_scx_boundary_next_tile_output_retarget_pixel(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
@@ -547,7 +552,7 @@ impl Ppu {
         Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
     }
 
-    pub(super) fn compute_startup_visible_tile3_scx_low_band_shifted_pixel(
+    pub(in crate::ppu) fn compute_startup_visible_tile3_scx_low_band_shifted_pixel(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
@@ -604,7 +609,7 @@ impl Ppu {
         Some(bg_tile_pixel_value(tile_low, tile_high, pixel_index))
     }
 
-    pub(super) fn obj_enabled(&self) -> bool {
+    pub(in crate::ppu) fn obj_enabled(&self) -> bool {
         self.mode3_register_latches().visible().obj_enabled()
     }
 }

@@ -1,5 +1,7 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn current_published_stat_access_mode(&self) -> PpuAccessMode {
+    pub(in crate::ppu) fn current_published_stat_access_mode(&self) -> PpuAccessMode {
         let Some(context) = self.current_published_stat_mode_context() else {
             return self.published_stat_mode_at_line_start();
         };
@@ -142,7 +144,7 @@ impl Ppu {
         None
     }
 
-    pub(super) fn terminal_visible_tail_should_publish_hblank_early(&self) -> bool {
+    pub(in crate::ppu) fn terminal_visible_tail_should_publish_hblank_early(&self) -> bool {
         let mode0_interrupt_enabled =
             self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0;
         let saturated_sprite_line =
@@ -235,7 +237,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_two_dots_early(
+    pub(in crate::ppu) fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_two_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -268,7 +270,7 @@ impl Ppu {
             && self.runtime.bg_pipeline_state.push.entry_delay_remaining == 0
     }
 
-    pub(super) fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_one_dot_early(
+    pub(in crate::ppu) fn saturated_placeholder_backed_terminal_bg_tail_should_publish_hblank_one_dot_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -301,7 +303,7 @@ impl Ppu {
             && self.runtime.bg_pipeline_state.push.entry_delay_remaining == 0
     }
 
-    pub(super) fn terminal_x167_visible_same_x_cluster_should_publish_hblank_two_dots_early(
+    pub(in crate::ppu) fn terminal_x167_visible_same_x_cluster_should_publish_hblank_two_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -340,7 +342,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn terminal_x167_visible_same_x_cluster_should_publish_hblank_one_dot_early(
+    pub(in crate::ppu) fn terminal_x167_visible_same_x_cluster_should_publish_hblank_one_dot_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -380,7 +382,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn single_left_sprite_placeholder_backed_tail_should_publish_hblank_early(
+    pub(in crate::ppu) fn single_left_sprite_placeholder_backed_tail_should_publish_hblank_early(
         &self,
     ) -> bool {
         let Some(selected_sprite) = self.runtime.mode2_scan_state.selected_sprite(0) else {
@@ -429,7 +431,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn single_left_sprite_x4_placeholder_backed_preterminal_tail_should_publish_hblank_five_dots_early(
+    pub(in crate::ppu) fn single_left_sprite_x4_placeholder_backed_preterminal_tail_should_publish_hblank_five_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -467,7 +469,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn single_left_sprite_x5_placeholder_backed_preterminal_tail_should_publish_hblank_four_dots_early(
+    pub(in crate::ppu) fn single_left_sprite_x5_placeholder_backed_preterminal_tail_should_publish_hblank_four_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -505,7 +507,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn single_left_sprite_x6_to_x7_placeholder_backed_preterminal_tail_should_publish_hblank_from_fifo_tail(
+    pub(in crate::ppu) fn single_left_sprite_x6_to_x7_placeholder_backed_preterminal_tail_should_publish_hblank_from_fifo_tail(
         &self,
     ) -> bool {
         let Some(selected_sprite) = self.runtime.mode2_scan_state.selected_sprite(0) else {
@@ -546,7 +548,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn single_left_sprite_x12_to_x16_terminal_tail_with_entry_delay_should_publish_hblank_two_dots_early(
+    pub(in crate::ppu) fn single_left_sprite_x12_to_x16_terminal_tail_with_entry_delay_should_publish_hblank_two_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -586,7 +588,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn single_offscreen_right_sprite_xa0_terminal_tail_without_entry_delay_should_publish_hblank_two_dots_early(
+    pub(in crate::ppu) fn single_offscreen_right_sprite_xa0_terminal_tail_without_entry_delay_should_publish_hblank_two_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -624,7 +626,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn single_offscreen_right_sprite_xa7_terminal_tail_should_publish_hblank_two_dots_early(
+    pub(in crate::ppu) fn single_offscreen_right_sprite_xa7_terminal_tail_should_publish_hblank_two_dots_early(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -662,7 +664,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn single_offscreen_right_sprite_xa2_mode0_boundary_should_publish_hblank(
+    pub(in crate::ppu) fn single_offscreen_right_sprite_xa2_mode0_boundary_should_publish_hblank(
         &self,
     ) -> bool {
         self.ly < VISIBLE_SCANLINES
@@ -687,7 +689,7 @@ impl Ppu {
             && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::HBlank
     }
 
-    pub(super) fn two_sprite_staggered_fifo_tail_should_publish_hblank_from_fifo_tail(
+    pub(in crate::ppu) fn two_sprite_staggered_fifo_tail_should_publish_hblank_from_fifo_tail(
         &self,
     ) -> bool {
         if self.ly >= VISIBLE_SCANLINES
@@ -750,7 +752,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn two_sprite_staggered_x8_to_x9_preterminal_tail_should_keep_published_drawing(
+    pub(in crate::ppu) fn two_sprite_staggered_x8_to_x9_preterminal_tail_should_keep_published_drawing(
         &self,
     ) -> bool {
         if self.ly >= VISIBLE_SCANLINES
@@ -801,7 +803,7 @@ impl Ppu {
             })
     }
 
-    pub(super) fn two_sprite_staggered_x0_to_x1_terminal_tail_should_keep_published_drawing(
+    pub(in crate::ppu) fn two_sprite_staggered_x0_to_x1_terminal_tail_should_keep_published_drawing(
         &self,
     ) -> bool {
         if self.ly >= VISIBLE_SCANLINES
@@ -845,7 +847,7 @@ impl Ppu {
             && self.current_transfer().is_none()
     }
 
-    pub(super) fn two_sprite_staggered_x9_terminal_boundary_should_keep_published_drawing(
+    pub(in crate::ppu) fn two_sprite_staggered_x9_terminal_boundary_should_keep_published_drawing(
         &self,
     ) -> bool {
         if self.ly >= VISIBLE_SCANLINES
@@ -884,7 +886,9 @@ impl Ppu {
             && self.current_transfer().is_none()
     }
 
-    pub(super) fn ten_sprite_step8_terminal_tail_should_keep_published_drawing(&self) -> bool {
+    pub(in crate::ppu) fn ten_sprite_step8_terminal_tail_should_keep_published_drawing(
+        &self,
+    ) -> bool {
         let Some(min_x) = self.selected_sprite_step8_ramp_min_x() else {
             return false;
         };
@@ -924,7 +928,9 @@ impl Ppu {
             && self.current_transfer().is_none()
     }
 
-    pub(super) fn ten_sprite_step8_preterminal_tail_should_publish_hblank_early(&self) -> bool {
+    pub(in crate::ppu) fn ten_sprite_step8_preterminal_tail_should_publish_hblank_early(
+        &self,
+    ) -> bool {
         let Some(min_x) = self.selected_sprite_step8_ramp_min_x() else {
             return false;
         };
@@ -968,7 +974,7 @@ impl Ppu {
                 .is_empty()
     }
 
-    pub(super) fn selected_sprite_step8_ramp_min_x(&self) -> Option<u8> {
+    pub(in crate::ppu) fn selected_sprite_step8_ramp_min_x(&self) -> Option<u8> {
         let sprite_count = usize::from(self.runtime.mode2_scan_state.selected_sprite_count());
         if sprite_count != MAX_SELECTED_SPRITES_PER_LINE {
             return None;
@@ -990,12 +996,12 @@ impl Ppu {
         }
     }
 
-    pub(super) fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
+    pub(in crate::ppu) fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
         let published_mode = self.current_published_video_write_access_mode();
         self.current_published_oam_write_access_mode_from(published_mode)
     }
 
-    pub(super) fn current_published_oam_write_access_mode_from(
+    pub(in crate::ppu) fn current_published_oam_write_access_mode_from(
         &self,
         published_mode: PpuAccessMode,
     ) -> PpuAccessMode {
@@ -1009,12 +1015,12 @@ impl Ppu {
         }
     }
 
-    pub(super) fn current_published_oam_read_access_mode(&self) -> PpuAccessMode {
+    pub(in crate::ppu) fn current_published_oam_read_access_mode(&self) -> PpuAccessMode {
         let published_mode = self.current_published_bus_access_mode();
         self.current_published_oam_read_access_mode_from(published_mode)
     }
 
-    pub(super) fn current_published_oam_read_access_mode_from(
+    pub(in crate::ppu) fn current_published_oam_read_access_mode_from(
         &self,
         published_mode: PpuAccessMode,
     ) -> PpuAccessMode {

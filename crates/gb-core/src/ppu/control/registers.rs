@@ -1,5 +1,7 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn current_window_line_counter(&self) -> u8 {
+    pub(in crate::ppu) fn current_window_line_counter(&self) -> u8 {
         if self.runtime.bg_pipeline_state.window_started_this_line {
             self.runtime.bg_pipeline_state.window_active_line_counter
         } else {
@@ -7,7 +9,7 @@ impl Ppu {
         }
     }
 
-    pub(super) const fn current_mmio_visible_registers(&self) -> PpuVisibleRegisters {
+    pub(in crate::ppu) const fn current_mmio_visible_registers(&self) -> PpuVisibleRegisters {
         PpuVisibleRegisters {
             lcdc: self.lcdc,
             scy: self.scy,
@@ -20,14 +22,14 @@ impl Ppu {
         }
     }
 
-    pub(super) fn mode3_register_latches(&self) -> PpuMode3RegisterLatches {
+    pub(in crate::ppu) fn mode3_register_latches(&self) -> PpuMode3RegisterLatches {
         PpuMode3RegisterLatches::new(
             self.runtime.visible_registers,
             self.runtime.pipeline_registers,
         )
     }
 
-    pub(super) const fn current_mode3_live_register_write_context(
+    pub(in crate::ppu) const fn current_mode3_live_register_write_context(
         &self,
         previous_mmio_registers: PpuVisibleRegisters,
     ) -> PpuMode3LiveRegisterWriteContext {
@@ -37,7 +39,7 @@ impl Ppu {
         )
     }
 
-    pub(super) fn current_mode3_live_background_refetch_context(
+    pub(in crate::ppu) fn current_mode3_live_background_refetch_context(
         &self,
     ) -> PpuMode3LiveBackgroundRefetchContext {
         PpuMode3LiveBackgroundRefetchContext::new(
@@ -49,43 +51,43 @@ impl Ppu {
         )
     }
 
-    pub(super) fn set_mode3_register_latches(&mut self, latches: PpuMode3RegisterLatches) {
+    pub(in crate::ppu) fn set_mode3_register_latches(&mut self, latches: PpuMode3RegisterLatches) {
         self.runtime.visible_registers = latches.visible();
         self.runtime.pipeline_registers = latches.pipeline();
     }
 
-    pub(super) fn reload_mode3_register_latches_from_mmio(&mut self) {
+    pub(in crate::ppu) fn reload_mode3_register_latches_from_mmio(&mut self) {
         self.set_mode3_register_latches(PpuMode3RegisterLatches::from_mmio(
             self.current_mmio_visible_registers(),
         ));
     }
 
-    pub(super) fn advance_mode3_register_latches_from_mmio(&mut self) {
+    pub(in crate::ppu) fn advance_mode3_register_latches_from_mmio(&mut self) {
         self.set_mode3_register_latches(
             self.mode3_register_latches()
                 .advance(self.current_mmio_visible_registers()),
         );
     }
 
-    pub(super) fn is_lcd_enabled(&self) -> bool {
+    pub(in crate::ppu) fn is_lcd_enabled(&self) -> bool {
         self.lcd_state.is_enabled()
     }
 
     #[cfg(test)]
-    pub(super) fn sync_visible_registers(&mut self) {
+    pub(in crate::ppu) fn sync_visible_registers(&mut self) {
         self.runtime.visible_registers = self.current_mmio_visible_registers();
     }
 
     #[cfg(test)]
-    pub(super) fn sync_pipeline_registers(&mut self) {
+    pub(in crate::ppu) fn sync_pipeline_registers(&mut self) {
         self.runtime.pipeline_registers = self.runtime.visible_registers;
     }
 
-    pub(super) fn read_lcdc(&self) -> u8 {
+    pub(in crate::ppu) fn read_lcdc(&self) -> u8 {
         self.lcdc
     }
 
-    pub(super) fn write_lcdc(&mut self, value: u8, source: PpuRegisterWriteSource) {
+    pub(in crate::ppu) fn write_lcdc(&mut self, value: u8, source: PpuRegisterWriteSource) {
         let was_lcd_enabled = self.is_lcd_enabled() || self.lcd_enable_pending_delay_tcycles != 0;
         self.lcdc = value;
         self.runtime.startup_mode_latch = None;
@@ -108,7 +110,7 @@ impl Ppu {
         self.refresh_stat_irq_line(false);
     }
 
-    pub(super) fn read_stat(&self, source: PpuRegisterReadSource) -> u8 {
+    pub(in crate::ppu) fn read_stat(&self, source: PpuRegisterReadSource) -> u8 {
         STAT_FORCED_HIGH_BIT
             | self.stat_interrupt_enable
             | if self.read_stat_lyc_coincidence(source) {
@@ -129,7 +131,7 @@ impl Ppu {
             }
     }
 
-    pub(super) fn read_stat_lyc_coincidence(&self, source: PpuRegisterReadSource) -> bool {
+    pub(in crate::ppu) fn read_stat_lyc_coincidence(&self, source: PpuRegisterReadSource) -> bool {
         if source == PpuRegisterReadSource::CpuBusOperation
             && self.is_lcd_enabled()
             && self.line_dot == 0
@@ -140,12 +142,12 @@ impl Ppu {
         }
     }
 
-    pub(super) fn write_stat(&mut self, value: u8) {
+    pub(in crate::ppu) fn write_stat(&mut self, value: u8) {
         self.stat_interrupt_enable = value & STAT_WRITABLE_ENABLE_MASK;
         self.refresh_stat_irq_line(self.stat_write_quirk_active());
     }
 
-    pub(super) fn read_ly(&self) -> u8 {
+    pub(in crate::ppu) fn read_ly(&self) -> u8 {
         if self.is_lcd_enabled()
             && !self.runtime.blank_frame_active
             && self.line_dot >= self.current_ly_read_advance_start_dot()
@@ -157,11 +159,11 @@ impl Ppu {
         }
     }
 
-    pub(super) fn current_access_mode(&self) -> PpuAccessMode {
+    pub(in crate::ppu) fn current_access_mode(&self) -> PpuAccessMode {
         self.current_raster_state().access_mode()
     }
 
-    pub(super) fn access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
+    pub(in crate::ppu) fn access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
         if !self.is_lcd_enabled() {
             return PpuAccessMode::HBlank;
         }
@@ -173,7 +175,7 @@ impl Ppu {
         access_mode_from_raster(self.ly, line_dot, self.current_mode0_start_dot())
     }
 
-    pub(super) fn bus_access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
+    pub(in crate::ppu) fn bus_access_mode_for_line_dot(&self, line_dot: u16) -> PpuAccessMode {
         let current_mode = self.access_mode_for_line_dot(line_dot);
 
         if !self.is_lcd_enabled() || self.ly >= VISIBLE_SCANLINES {
@@ -194,12 +196,12 @@ impl Ppu {
         current_mode
     }
 
-    pub(super) fn current_published_bus_access_mode(&self) -> PpuAccessMode {
+    pub(in crate::ppu) fn current_published_bus_access_mode(&self) -> PpuAccessMode {
         let published_line_dot = self.line_dot.saturating_sub(1);
         self.bus_access_mode_for_line_dot(published_line_dot)
     }
 
-    pub(super) fn current_published_video_write_access_mode(&self) -> PpuAccessMode {
+    pub(in crate::ppu) fn current_published_video_write_access_mode(&self) -> PpuAccessMode {
         if self.line_dot != 0 {
             self.access_mode_for_line_dot(self.line_dot - 1)
         } else if self.ly == 0 {

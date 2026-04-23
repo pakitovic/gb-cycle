@@ -1,5 +1,7 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn current_bus_access_mode(&self) -> PpuAccessMode {
+    pub(in crate::ppu) fn current_bus_access_mode(&self) -> PpuAccessMode {
         let current_mode = self.current_access_mode();
 
         if !self.is_lcd_enabled() || self.ly >= VISIBLE_SCANLINES {
@@ -20,7 +22,7 @@ impl Ppu {
         current_mode
     }
 
-    pub(super) fn current_cpu_visible_access_mode(&self) -> PpuAccessMode {
+    pub(in crate::ppu) fn current_cpu_visible_access_mode(&self) -> PpuAccessMode {
         if self.runtime.blank_frame_active && self.is_lcd_enabled() && self.line_dot != 0 {
             return self
                 .lcd_restart_phase
@@ -32,7 +34,7 @@ impl Ppu {
         self.current_access_mode()
     }
 
-    pub(super) fn current_raster_state(&self) -> PpuRasterState {
+    pub(in crate::ppu) fn current_raster_state(&self) -> PpuRasterState {
         if !self.is_lcd_enabled() {
             return PpuRasterState::Disabled;
         }
@@ -56,7 +58,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn current_mode0_start_dot(&self) -> u16 {
+    pub(in crate::ppu) fn current_mode0_start_dot(&self) -> u16 {
         if self.ly >= VISIBLE_SCANLINES {
             return MODE0_START_DOT;
         }
@@ -92,11 +94,11 @@ impl Ppu {
             })
     }
 
-    pub(super) fn baseline_mode0_start_dot(&self) -> u16 {
+    pub(in crate::ppu) fn baseline_mode0_start_dot(&self) -> u16 {
         self.mode3_line_timing_policy().baseline_mode0_start_dot()
     }
 
-    pub(super) fn saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3(
+    pub(in crate::ppu) fn saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3(
         &self,
     ) -> bool {
         let terminal_bg_tail_has_unfinished_fetch_work =
@@ -152,7 +154,11 @@ impl Ppu {
             .apply(self.console_model, row, event, oam_bytes)
     }
 
-    pub(super) fn advance_mode2_scan(&mut self, oam: &OamBusView<'_>, dma_oam_active: bool) {
+    pub(in crate::ppu) fn advance_mode2_scan(
+        &mut self,
+        oam: &OamBusView<'_>,
+        dma_oam_active: bool,
+    ) {
         let raster_state = self.current_raster_state();
 
         if self.ly >= VISIBLE_SCANLINES
@@ -202,17 +208,20 @@ impl Ppu {
         }
     }
 
-    pub(super) fn current_obj_height(&self) -> u8 {
+    pub(in crate::ppu) fn current_obj_height(&self) -> u8 {
         self.mode3_register_latches().current_obj_height()
     }
 
-    pub(super) fn visible_palette_register_value(&self, register: PpuPaletteRegister) -> u8 {
+    pub(in crate::ppu) fn visible_palette_register_value(
+        &self,
+        register: PpuPaletteRegister,
+    ) -> u8 {
         self.mode3_register_latches()
             .visible()
             .palette_register(register, self.obj_palette_read_policy)
     }
 
-    pub(super) fn write_palette_register_storage(
+    pub(in crate::ppu) fn write_palette_register_storage(
         &mut self,
         register: PpuPaletteRegister,
         value: u8,
@@ -224,7 +233,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn window_activation_registers(&self) -> PpuVisibleRegisters {
+    pub(in crate::ppu) fn window_activation_registers(&self) -> PpuVisibleRegisters {
         let register_latches = self.mode3_register_latches();
         let mut registers = register_latches.window_activation_registers(self.console_model);
         if self.console_model.is_dmg_family()
@@ -247,14 +256,14 @@ impl Ppu {
         registers
     }
 
-    pub(super) fn window_activation_state(&self) -> PpuMode3WindowActivationState {
+    pub(in crate::ppu) fn window_activation_state(&self) -> PpuMode3WindowActivationState {
         PpuMode3WindowActivationState::new(
             self.window_activation_registers(),
             self.runtime.bg_pipeline_state.window_force_x0_this_line,
         )
     }
 
-    pub(super) fn mode3_window_policy(&self) -> PpuMode3WindowPolicy {
+    pub(in crate::ppu) fn mode3_window_policy(&self) -> PpuMode3WindowPolicy {
         PpuMode3WindowPolicy::new(
             self.mode3_register_latches().visible(),
             self.window_activation_state(),
@@ -263,11 +272,13 @@ impl Ppu {
         )
     }
 
-    pub(super) fn mode3_transfer_policy(&self) -> PpuMode3TransferPolicy {
+    pub(in crate::ppu) fn mode3_transfer_policy(&self) -> PpuMode3TransferPolicy {
         PpuMode3TransferPolicy::from_pipeline_state(&self.runtime.bg_pipeline_state, self.line_dot)
     }
 
-    pub(super) fn startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile(&self) -> bool {
+    pub(in crate::ppu) fn startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile(
+        &self,
+    ) -> bool {
         self.console_model.is_dmg_family()
             && self.runtime.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Background
             && matches!(
@@ -291,7 +302,9 @@ impl Ppu {
             )
     }
 
-    pub(super) fn inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window(&self) -> bool {
+    pub(in crate::ppu) fn inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window(
+        &self,
+    ) -> bool {
         let expected_visible_tile2_front_pixel = self
             .runtime
             .bg_pipeline_state
@@ -334,7 +347,7 @@ impl Ppu {
                 })
     }
 
-    pub(super) fn inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget(
+    pub(in crate::ppu) fn inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget(
         &self,
     ) -> bool {
         let expected_visible_tile2_front_pixel = self
@@ -375,7 +388,7 @@ impl Ppu {
                 })
     }
 
-    pub(super) fn mode3_line_timing_policy(&self) -> PpuMode3LineTimingPolicy {
+    pub(in crate::ppu) fn mode3_line_timing_policy(&self) -> PpuMode3LineTimingPolicy {
         PpuMode3LineTimingPolicy::new(
             self.mode3_register_latches().visible(),
             self.runtime.bg_pipeline_state.mode3_started,
@@ -383,7 +396,7 @@ impl Ppu {
         )
     }
 
-    pub(super) fn mode3_bgwin_fetch_policy(&self) -> PpuMode3BgWinFetchPolicy {
+    pub(in crate::ppu) fn mode3_bgwin_fetch_policy(&self) -> PpuMode3BgWinFetchPolicy {
         PpuMode3BgWinFetchPolicy::new(
             self.mode3_register_latches(),
             self.console_model,
@@ -403,7 +416,7 @@ impl Ppu {
         )
     }
 
-    pub(super) fn background_fetch_context(
+    pub(in crate::ppu) fn background_fetch_context(
         &self,
         next_fetch_pixel: u16,
     ) -> PpuMode3BackgroundFetchContext {
@@ -411,7 +424,7 @@ impl Ppu {
             .background_fetch_context(next_fetch_pixel, self.ly)
     }
 
-    pub(super) fn window_fetch_context(&self) -> PpuMode3WindowFetchContext {
+    pub(in crate::ppu) fn window_fetch_context(&self) -> PpuMode3WindowFetchContext {
         self.mode3_bgwin_fetch_policy().window_fetch_context(
             self.current_window_line_counter(),
             self.runtime.bg_pipeline_state.fetcher.window_tilemap_x,

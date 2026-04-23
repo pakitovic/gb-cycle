@@ -1,5 +1,7 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
+    pub(in crate::ppu) fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
         self.prepare_bg_fetcher_dot(vram);
         let fetch_policy = self.mode3_bgwin_fetch_policy();
 

@@ -1,14 +1,16 @@
-impl Ppu {
-    const DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS: [u8; 8] = [9, 10, 3, 4, 5, 6, 7, 8];
-    const DMG_LATE_WINDOW_ENABLE_SEGMENT_PIXELS: u8 = 24;
-    const DMG_VISIBLE_WINDOW_ORIGIN_WX: u8 = 7;
-    const DMG_LOW_WX_CANCEL_ONLY_PREVIOUS_WX_MIN: u8 = 6;
-    const DMG_ONE_HIDDEN_PREFIX_SKIP: u8 = 1;
-    const DMG_RETAINED_FIFO_PREFIX_RESUME_MIN_HIDDEN_SKIP: u8 = 2;
-    const DMG_RETAINED_FIFO_PREFIX_NEXT_TILEMAP_MIN_HIDDEN_SKIP: u8 = 3;
-    const DMG_LATE_WRITE_ONE_HIDDEN_PREFIX_KEEP_DISTANCE: u8 = 3;
+use super::*;
 
-    pub(super) fn advance_mode3_pipeline<O>(
+impl Ppu {
+    pub(super) const DMG_WX0_WINDOW_DISABLE_PREFIX_PIXELS: [u8; 8] = [9, 10, 3, 4, 5, 6, 7, 8];
+    pub(super) const DMG_LATE_WINDOW_ENABLE_SEGMENT_PIXELS: u8 = 24;
+    pub(super) const DMG_VISIBLE_WINDOW_ORIGIN_WX: u8 = 7;
+    pub(super) const DMG_LOW_WX_CANCEL_ONLY_PREVIOUS_WX_MIN: u8 = 6;
+    pub(super) const DMG_ONE_HIDDEN_PREFIX_SKIP: u8 = 1;
+    pub(super) const DMG_RETAINED_FIFO_PREFIX_RESUME_MIN_HIDDEN_SKIP: u8 = 2;
+    pub(super) const DMG_RETAINED_FIFO_PREFIX_NEXT_TILEMAP_MIN_HIDDEN_SKIP: u8 = 3;
+    pub(super) const DMG_LATE_WRITE_ONE_HIDDEN_PREFIX_KEEP_DISTANCE: u8 = 3;
+
+    pub(in crate::ppu) fn advance_mode3_pipeline<O>(
         &mut self,
         oam: &OamBusView<'_>,
         vram: &VramBusView<'_>,
@@ -78,7 +80,7 @@ impl Ppu {
         });
     }
 
-    pub(super) fn advance_mode3_object_phase(
+    pub(in crate::ppu) fn advance_mode3_object_phase(
         &mut self,
         oam: &OamBusView<'_>,
         vram: &VramBusView<'_>,
@@ -94,7 +96,7 @@ impl Ppu {
         self.advance_object_fetch(oam, vram, dma_oam_conflict)
     }
 
-    pub(super) fn advance_mode3_output_phase_with_vram(
+    pub(in crate::ppu) fn advance_mode3_output_phase_with_vram(
         &mut self,
         vram: &VramBusView<'_>,
     ) -> Mode3TransferDot {
@@ -138,7 +140,7 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn advance_mode3_output_phase(&mut self) -> Mode3TransferDot {
+    pub(in crate::ppu) fn advance_mode3_output_phase(&mut self) -> Mode3TransferDot {
         let mut vram = crate::bus::VramDomain::from_bytes(&[0; 0x2000]);
         vram.set_acquired(BusMaster::Ppu, true);
         self.advance_mode3_output_phase_with_vram(&VramBusView::new(BusMaster::Ppu, &mut vram))
@@ -161,7 +163,7 @@ impl Ppu {
             .retune_previsible_scx_discard(visible_scx);
     }
 
-    pub(super) fn current_dot_has_pending_obj_hit(&self) -> bool {
+    pub(in crate::ppu) fn current_dot_has_pending_obj_hit(&self) -> bool {
         self.obj_enabled()
             && self
                 .runtime
@@ -169,7 +171,7 @@ impl Ppu {
                 .pending_hits_own_current_dot(self.current_obj_hit_ownership())
     }
 
-    pub(super) fn current_dot_arbitration(&self) -> Mode3DotArbitration {
+    pub(in crate::ppu) fn current_dot_arbitration(&self) -> Mode3DotArbitration {
         let has_pending_obj_hit = self.current_dot_has_pending_obj_hit();
         let obj_fetch_can_start = self.runtime.obj_pipeline_state.fetch.stage
             == PpuObjFetcherStage::Idle
@@ -190,7 +192,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn previsible_same_x_chain_can_start_obj_fetch(
+    pub(in crate::ppu) fn previsible_same_x_chain_can_start_obj_fetch(
         &self,
         transfer: Mode3CurrentTransfer,
     ) -> bool {
@@ -221,7 +223,7 @@ impl Ppu {
             }
     }
 
-    pub(super) fn previsible_fifo_backed_same_x_chain_can_start_obj_fetch(&self) -> bool {
+    pub(in crate::ppu) fn previsible_fifo_backed_same_x_chain_can_start_obj_fetch(&self) -> bool {
         if !self.current_transfer_x_supports_early_same_x_obj_start() {
             return false;
         }
@@ -233,12 +235,12 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn current_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
+    pub(in crate::ppu) fn current_transfer_service_plan(&self) -> Option<Mode3TransferServicePlan> {
         self.current_transfer()
             .map(|transfer| transfer.service_plan())
     }
 
-    pub(super) fn current_transfer(&self) -> Option<Mode3CurrentTransfer> {
+    pub(in crate::ppu) fn current_transfer(&self) -> Option<Mode3CurrentTransfer> {
         self.mode3_transfer_policy().current_transfer(
             self.runtime.bg_pipeline_state.fifo.is_empty(),
             self.runtime.bg_pipeline_state.effective_fifo_is_empty(),

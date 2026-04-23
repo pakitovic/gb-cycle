@@ -51,10 +51,13 @@ struct DmgPrevisibleWxPlan {
     action: DmgPrevisibleWxPlanAction,
 }
 
-include!("mode3/core.rs");
-include!("mode3/bg_fetch.rs");
-include!("mode3/window.rs");
-include!("mode3/bg_push.rs");
-include!("mode3/transfer.rs");
-include!("mode3/window_wx.rs");
-include!("mode3/obj_fetch.rs");
+mod bg_fetch;
+mod bg_push;
+mod core;
+mod obj_fetch;
+
+#[cfg(test)]
+pub(in crate::ppu) use self::window::window_lcdc4_unsigned_to_signed_previous_plane_masks;
+mod transfer;
+mod window;
+mod window_wx;

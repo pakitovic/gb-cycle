@@ -1,10 +1,12 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
+    pub(in crate::ppu) fn advance_bg_push_stage(&mut self) -> BgPushDotResult {
         let ownership = self.current_bg_push_dot_ownership();
         self.execute_bg_push_dot_ownership(ownership)
     }
 
-    pub(super) fn current_step_region_after_line_advance(&self) -> PpuStepRegion {
+    pub(in crate::ppu) fn current_step_region_after_line_advance(&self) -> PpuStepRegion {
         let next_line_dot = self.line_dot + 1;
         let next_lcd_restart_phase = self.lcd_restart_phase.advance(self.ly, next_line_dot);
         if let Some(raster_state) = next_lcd_restart_phase.raster_state(self.ly, next_line_dot) {
@@ -30,7 +32,7 @@ impl Ppu {
         PpuStepRegion::Other
     }
 
-    pub(super) fn current_mode3_bg_pipeline_region(&self) -> PpuStepRegion {
+    pub(in crate::ppu) fn current_mode3_bg_pipeline_region(&self) -> PpuStepRegion {
         if self.runtime.bg_pipeline_state.fill.pending
             || self.runtime.bg_pipeline_state.push.pending
             || matches!(
@@ -53,11 +55,11 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn advance_bg_push(&mut self) -> BgPushDotResult {
+    pub(in crate::ppu) fn advance_bg_push(&mut self) -> BgPushDotResult {
         self.execute_bg_push_dot_ownership(self.current_bg_push_dot_ownership())
     }
 
-    pub(super) fn current_bg_push_dot_ownership(&self) -> BgPushDotOwnership {
+    pub(in crate::ppu) fn current_bg_push_dot_ownership(&self) -> BgPushDotOwnership {
         let push = self.runtime.bg_pipeline_state.push;
         if !push.pending || push.disposition != BgPushDisposition::Ready {
             return BgPushDotOwnership::NotReady;
@@ -87,7 +89,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn execute_bg_push_dot_ownership(
+    pub(in crate::ppu) fn execute_bg_push_dot_ownership(
         &mut self,
         ownership: BgPushDotOwnership,
     ) -> BgPushDotResult {
@@ -174,7 +176,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn queue_bg_fill_from_push(&mut self) {
+    pub(in crate::ppu) fn queue_bg_fill_from_push(&mut self) {
         let push = self.runtime.bg_pipeline_state.push;
         if push.cached.is_startup_alignment_seed() {
             let startup_fifo_placeholders =
@@ -212,7 +214,7 @@ impl Ppu {
         self.runtime.bg_pipeline_state.push.reset();
     }
 
-    pub(super) fn flush_pending_bg_fifo_fill(&mut self) {
+    pub(in crate::ppu) fn flush_pending_bg_fifo_fill(&mut self) {
         if !self.runtime.bg_pipeline_state.fill.pending {
             return;
         }
@@ -237,7 +239,10 @@ impl Ppu {
         self.runtime.bg_pipeline_state.fill.reset();
     }
 
-    pub(super) fn maybe_recompute_pending_background_fill(&mut self, vram: &VramBusView<'_>) {
+    pub(in crate::ppu) fn maybe_recompute_pending_background_fill(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
         if !self.runtime.bg_pipeline_state.fill.pending
             || !self
                 .runtime
@@ -259,7 +264,10 @@ impl Ppu {
         self.runtime.bg_pipeline_state.fill.cached = recomputed;
     }
 
-    pub(super) fn maybe_recompute_pending_background_push(&mut self, vram: &VramBusView<'_>) {
+    pub(in crate::ppu) fn maybe_recompute_pending_background_push(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
         if !self.runtime.bg_pipeline_state.push.pending {
             return;
         }

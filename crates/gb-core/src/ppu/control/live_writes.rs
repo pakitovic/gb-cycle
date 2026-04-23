@@ -1,5 +1,7 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn pixel_pipeline_bgp(&self) -> u8 {
+    pub(in crate::ppu) fn pixel_pipeline_bgp(&self) -> u8 {
         self.mode3_register_latches().pixel_pipeline_bgp(
             self.console_model,
             self.runtime
@@ -15,7 +17,7 @@ impl Ppu {
         )
     }
 
-    pub(super) fn pixel_transfer_bg_enabled(&self) -> bool {
+    pub(in crate::ppu) fn pixel_transfer_bg_enabled(&self) -> bool {
         let bg_enabled = self.mode3_register_latches().pixel_transfer_bg_enabled(
             self.console_model,
             self.runtime.bg_pipeline_state.current_transfer_x,
@@ -34,7 +36,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn apply_dmg_lcdc3_live_bg_tilemap_write(
+    pub(in crate::ppu) fn apply_dmg_lcdc3_live_bg_tilemap_write(
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
@@ -76,7 +78,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn apply_dmg_lcdc4_live_bg_tiledata_write(
+    pub(in crate::ppu) fn apply_dmg_lcdc4_live_bg_tiledata_write(
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
@@ -124,7 +126,7 @@ impl Ppu {
             );
     }
 
-    pub(super) fn apply_dmg_lcdc0_live_bg_enable_write(
+    pub(in crate::ppu) fn apply_dmg_lcdc0_live_bg_enable_write(
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
@@ -164,7 +166,7 @@ impl Ppu {
         self.start_dmg_lcdc0_bg_enable_visible_hold(previous_bg_enabled, 0);
     }
 
-    pub(super) fn apply_dmg_lcdc1_live_obj_enable_write(
+    pub(in crate::ppu) fn apply_dmg_lcdc1_live_obj_enable_write(
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
@@ -199,7 +201,7 @@ impl Ppu {
         }
     }
 
-    pub(super) fn apply_dmg_lcdc2_live_obj_size_write(
+    pub(in crate::ppu) fn apply_dmg_lcdc2_live_obj_size_write(
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
     ) {
@@ -245,7 +247,7 @@ impl Ppu {
             .map(|sprite| PpuMode3SingleSpritePhasePolicy::new(sprite.x))
     }
 
-    pub(super) fn consume_dmg_lcdc0_bg_enable_visible_hold(&mut self) {
+    pub(in crate::ppu) fn consume_dmg_lcdc0_bg_enable_visible_hold(&mut self) {
         self.runtime
             .panel
             .dmg_panel_live_write_state
@@ -276,7 +278,7 @@ impl Ppu {
             .set(previous_bg_enabled, hold_pixels);
     }
 
-    pub(super) fn consume_dmg_lcdc1_obj_enable_visible_hold(&mut self) {
+    pub(in crate::ppu) fn consume_dmg_lcdc1_obj_enable_visible_hold(&mut self) {
         self.runtime
             .panel
             .dmg_panel_live_write_state
@@ -435,7 +437,7 @@ impl Ppu {
         self.runtime.panel.framebuffer_bgwin_layer_sources[framebuffer_index] = bgwin_source;
     }
 
-    pub(super) fn pixel_transfer_obj_enabled(&self) -> bool {
+    pub(in crate::ppu) fn pixel_transfer_obj_enabled(&self) -> bool {
         let obj_enabled = self.mode3_register_latches().pixel_transfer_obj_enabled(
             self.console_model,
             self.runtime.bg_pipeline_state.current_transfer_x,

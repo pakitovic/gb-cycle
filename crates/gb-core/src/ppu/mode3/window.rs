@@ -1,5 +1,10 @@
+use super::*;
+
 impl Ppu {
-    pub(super) fn maybe_abort_window_fetcher_to_background(&mut self, vram: &VramBusView<'_>) {
+    pub(in crate::ppu) fn maybe_abort_window_fetcher_to_background(
+        &mut self,
+        vram: &VramBusView<'_>,
+    ) {
         if self.runtime.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Window {
             return;
         }
@@ -31,7 +36,7 @@ impl Ppu {
         self.abort_window_fetcher_to_background_now(vram);
     }
 
-    fn abort_window_fetcher_to_background_now(&mut self, vram: &VramBusView<'_>) {
+    pub(super) fn abort_window_fetcher_to_background_now(&mut self, vram: &VramBusView<'_>) {
         self.runtime
             .bg_pipeline_state
             .fetcher
@@ -82,7 +87,11 @@ impl Ppu {
             Some(DmgWx0WindowDisablePrefixState::new(desired_prefix_pixels));
     }
 
-    fn apply_dmg_wx0_window_disable_prefix_override(&mut self, visible_x: usize, bg_pixel: u8) {
+    pub(super) fn apply_dmg_wx0_window_disable_prefix_override(
+        &mut self,
+        visible_x: usize,
+        bg_pixel: u8,
+    ) {
         let Some(mut seam) = self
             .runtime
             .bg_pipeline_state
@@ -187,7 +196,7 @@ impl Ppu {
         }
     }
 
-    fn repaint_current_scanline_dot_with_bg_override(
+    pub(super) fn repaint_current_scanline_dot_with_bg_override(
         &mut self,
         visible_x: usize,
         bg_pixel: u8,
@@ -329,7 +338,7 @@ impl Ppu {
         ));
     }
 
-    fn maybe_arm_dmg_late_window_enable_override_after_transfer_dot(
+    pub(super) fn maybe_arm_dmg_late_window_enable_override_after_transfer_dot(
         &mut self,
         _transfer_dot: Mode3TransferDot,
     ) {
@@ -417,7 +426,7 @@ impl Ppu {
         ));
     }
 
-    fn apply_dmg_late_window_enable_override_repaint_up_to(
+    pub(super) fn apply_dmg_late_window_enable_override_repaint_up_to(
         &mut self,
         visible_limit: usize,
         vram: &VramBusView<'_>,
@@ -467,7 +476,7 @@ impl Ppu {
         )
     }
 
-    fn compute_window_pixel_for_logical_offset(
+    pub(super) fn compute_window_pixel_for_logical_offset(
         &self,
         window_line_counter: u8,
         window_x: u16,
@@ -508,7 +517,7 @@ impl Ppu {
             })
             .count() as u8
     }
-    fn compute_window_activation_tilemap_override(
+    pub(super) fn compute_window_activation_tilemap_override(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
@@ -580,7 +589,7 @@ impl Ppu {
         bg_tile_pixel_value(tile_low, tile_high, pixel_index)
     }
 
-    fn compute_window_lcdc4_tiledata_selector_override(
+    pub(super) fn compute_window_lcdc4_tiledata_selector_override(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
@@ -605,7 +614,7 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn test_compute_window_lcdc4_tiledata_selector_override(
+    pub(in crate::ppu) fn test_compute_window_lcdc4_tiledata_selector_override(
         &self,
         cached: BgCachedSlice,
         pixel_index: u8,
@@ -695,7 +704,7 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn test_compute_window_lcdc4_tiledata_selector_override_from_context(
+    pub(in crate::ppu) fn test_compute_window_lcdc4_tiledata_selector_override_from_context(
         &self,
         context: PpuRecentBgDotContext,
         previous_select: BgTileDataSelect,
@@ -708,7 +717,7 @@ impl Ppu {
         )
     }
 
-    fn apply_pending_dmg_window_lcdc4_output_repaint(&mut self, vram: &VramBusView<'_>) {
+    pub(super) fn apply_pending_dmg_window_lcdc4_output_repaint(&mut self, vram: &VramBusView<'_>) {
         let Some(previous_select) = self
             .runtime
             .panel
@@ -784,7 +793,7 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn test_apply_pending_dmg_window_lcdc4_output_repaint(
+    pub(in crate::ppu) fn test_apply_pending_dmg_window_lcdc4_output_repaint(
         &mut self,
         vram: &VramBusView<'_>,
     ) {
@@ -792,7 +801,7 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn test_apply_dmg_late_window_enable_override_repaint_up_to(
+    pub(in crate::ppu) fn test_apply_dmg_late_window_enable_override_repaint_up_to(
         &mut self,
         visible_limit: usize,
         vram: &VramBusView<'_>,
@@ -801,7 +810,7 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn test_apply_dmg_wx0_window_disable_prefix_override(
+    pub(in crate::ppu) fn test_apply_dmg_wx0_window_disable_prefix_override(
         &mut self,
         visible_x: usize,
         bg_pixel: u8,
@@ -810,7 +819,7 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn test_apply_pending_dmg_previsible_wx_carry(
+    pub(in crate::ppu) fn test_apply_pending_dmg_previsible_wx_carry(
         &mut self,
         transfer_dot: Mode3TransferDot,
         vram: &VramBusView<'_>,
@@ -819,7 +828,7 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(
+    pub(in crate::ppu) fn test_apply_pending_dmg_previsible_wx_onset_glitch_repaint(
         &mut self,
         vram: &VramBusView<'_>,
     ) {
@@ -827,17 +836,17 @@ impl Ppu {
     }
 
     #[cfg(test)]
-    pub(super) fn test_expire_dmg_previsible_wx_retarget(&mut self) {
+    pub(in crate::ppu) fn test_expire_dmg_previsible_wx_retarget(&mut self) {
         self.maybe_expire_dmg_previsible_wx_retarget();
     }
 
     #[cfg(test)]
-    pub(super) fn test_apply_dmg_previsible_wx_retarget(&mut self, vram: &VramBusView<'_>) {
+    pub(in crate::ppu) fn test_apply_dmg_previsible_wx_retarget(&mut self, vram: &VramBusView<'_>) {
         self.maybe_apply_dmg_previsible_wx_retarget(vram);
     }
 
     #[cfg(test)]
-    pub(super) fn test_expire_pending_dmg_live_wx_trigger_glitch(&mut self) {
+    pub(in crate::ppu) fn test_expire_pending_dmg_live_wx_trigger_glitch(&mut self) {
         self.maybe_expire_pending_dmg_live_wx_trigger_glitch();
     }
 }
@@ -1014,7 +1023,7 @@ const fn window_activation_tile_current_tilemap_mask(
     }
 }
 
-pub(super) const fn window_lcdc4_unsigned_to_signed_previous_plane_masks(
+pub(in crate::ppu) const fn window_lcdc4_unsigned_to_signed_previous_plane_masks(
     fetch_x: u16,
     window_tile_row: u8,
 ) -> Option<PerPlane<u8>> {
