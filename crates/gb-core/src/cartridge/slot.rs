@@ -408,12 +408,21 @@ impl CartridgeSlot {
         }
     }
 
+    pub fn trace_summary(&self) -> String {
+        let detail = self
+            .device
+            .as_ref()
+            .map(CartridgeDevice::trace_summary)
+            .unwrap_or_default();
+        format!("state={:?}{}", self.state(), detail)
+    }
+
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
         format!(
-            "t_cycle={} phase={} state={:?}",
+            "t_cycle={} phase={} {}",
             context.t_cycle().get(),
             context.phase(),
-            self.state(),
+            self.trace_summary(),
         )
     }
 }

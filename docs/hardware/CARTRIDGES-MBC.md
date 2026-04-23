@@ -226,7 +226,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - The current baseline keeps HuC1 ROM-bank writes literal rather than applying MBC1's `0 -> 1` translation, because Pan Docs documents a distinct HuC1 register map instead of MBC1-compatible bank-zero remapping.
 - The current baseline supports ROM sizes up to `1 MiB` and RAM sizes up to `32 KiB`, matching the HuC1 limits documented by Pan Docs / Gekkio's `GB Complete Technical Reference`.
 - `0xA000-0xBFFF` now routes either banked cartridge RAM or the IR register depending on the selected mode, and the persistent backing store lives under its own `HuC1` payload instead of being serialized as `MBC1`.
-- The current IR baseline exposes transmitter control and the documented `0xC0` / `0xC1` readback contract, but host-side light injection and commercial-oracle validation are still open follow-up work.
+- The current IR baseline exposes transmitter control and the documented `0xC0` / `0xC1` readback contract. For the current DMG roadmap, host-side light injection is intentionally out of scope unless a later concrete title investigation proves it necessary.
 - Treat `HuC-3` as a documented but poorly understood special cartridge, not as a close `MBC3` derivative.
 - `HuC-3` should classify as `DocumentedButUnsupported`, not as ordinary `MBC3`.
 - Header code `0xFE` should classify as `HuC-3`.

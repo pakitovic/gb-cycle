@@ -2,6 +2,18 @@ use super::*;
 use crate::scheduler::TCycle;
 
 impl CartridgeDevice {
+    pub(in crate::cartridge) fn trace_summary(&self) -> String {
+        match self {
+            Self::Huc1(cartridge) => cartridge.trace_summary(),
+            Self::NoMbc(_)
+            | Self::Mmm01(_)
+            | Self::Mbc1(_)
+            | Self::Mbc2(_)
+            | Self::Mbc3(_)
+            | Self::Mbc5(_) => String::new(),
+        }
+    }
+
     pub(in crate::cartridge) fn describe_external_access(
         &self,
         address: u16,

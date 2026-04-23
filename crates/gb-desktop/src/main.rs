@@ -60,7 +60,7 @@ use sdl3::render::{Canvas, ScaleMode, TextureCreator};
 use sdl3::sys;
 use sdl3::video::{FullscreenType, Window, WindowContext};
 use settings::DesktopSettingsStore;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::env;
 use std::ffi::OsStr;
 use std::fmt::Display;
@@ -86,6 +86,9 @@ const PERFORMANCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const EXPECTED_SCANLINE_T_CYCLES: usize = 456;
 const INPUT_POLL_SLICE_T_CYCLES: usize = 256;
 const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
+const DEFAULT_WATCH_TRACE_EVENTS: usize = 4_096;
+const DEFAULT_PC_WATCH_TRACE_EVENTS: usize = 4_096;
+const DEFAULT_EDGE_TRACE_EVENTS: usize = 4_096;
 const LINKED_SECONDARY_KEYBOARD_BINDINGS: [(JoypadButton, Scancode); 8] = [
     (JoypadButton::Up, Scancode::W),
     (JoypadButton::Down, Scancode::S),
@@ -125,6 +128,16 @@ const DESKTOP_AUDIO_DISABLE_PACING_CORRECTION_ENV_VAR: &str =
 const DESKTOP_EMU_PROFILE_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EMU_PROFILE";
 const DESKTOP_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_PATH";
 const DESKTOP_TRACE_T_CYCLES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_T_CYCLES";
+const DESKTOP_WATCH_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_WATCH_TRACE_PATH";
+const DESKTOP_WATCH_TRACE_ADDRESSES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_WATCH_TRACE_ADDRESSES";
+const DESKTOP_WATCH_TRACE_EVENTS_ENV_VAR: &str = "GB_CYCLE_DESKTOP_WATCH_TRACE_EVENTS";
+const DESKTOP_PC_WATCH_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_PC_WATCH_TRACE_PATH";
+const DESKTOP_PC_WATCH_TRACE_RANGES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_PC_WATCH_TRACE_RANGES";
+const DESKTOP_PC_WATCH_TRACE_EVENTS_ENV_VAR: &str = "GB_CYCLE_DESKTOP_PC_WATCH_TRACE_EVENTS";
+const DESKTOP_EDGE_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EDGE_TRACE_PATH";
+const DESKTOP_EDGE_TRACE_ADDRESSES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EDGE_TRACE_ADDRESSES";
+const DESKTOP_EDGE_TRACE_PC_RANGES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EDGE_TRACE_PC_RANGES";
+const DESKTOP_EDGE_TRACE_EVENTS_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EDGE_TRACE_EVENTS";
 const DESKTOP_CH4_NR43_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CH4_NR43_TRACE_PATH";
 const DESKTOP_CH4_STARTUP_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CH4_STARTUP_TRACE_PATH";
 const DESKTOP_CPU_WINDOW_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CPU_WINDOW_TRACE_PATH";
@@ -232,6 +245,9 @@ struct FrontendRuntime {
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
     trace_capture: DesktopTraceCapture,
+    watch_trace: DesktopWatchTraceCapture,
+    pc_watch_trace: DesktopPcWatchTraceCapture,
+    edge_trace: DesktopEdgeTraceCapture,
     ch4_nr43_trace: DesktopCh4Nr43TraceCapture,
     ch4_startup_trace: DesktopCh4StartupTraceCapture,
     cpu_window_trace: DesktopCpuWindowTraceCapture,
@@ -334,6 +350,30 @@ struct DesktopTraceCapture {
     records: VecDeque<DesktopTraceRecord>,
 }
 
+struct DesktopWatchTraceCapture {
+    output_path: Option<PathBuf>,
+    watched_addresses: BTreeSet<u16>,
+    max_records: usize,
+    records: VecDeque<DesktopWatchTraceRecord>,
+}
+
+struct DesktopPcWatchTraceCapture {
+    output_path: Option<PathBuf>,
+    watched_ranges: Vec<PcWatchRange>,
+    max_records: usize,
+    records: VecDeque<DesktopPcWatchTraceRecord>,
+}
+
+struct DesktopEdgeTraceCapture {
+    output_path: Option<PathBuf>,
+    watched_addresses: BTreeSet<u16>,
+    watched_pc_ranges: Vec<PcWatchRange>,
+    active_pc_ranges: BTreeSet<PcWatchRange>,
+    last_observed_values: BTreeMap<u16, u8>,
+    max_records: usize,
+    records: VecDeque<DesktopEdgeTraceRecord>,
+}
+
 struct DesktopCh4Nr43TraceCapture {
     output_path: Option<PathBuf>,
     records: Vec<DesktopCh4Nr43TraceRecord>,
@@ -359,6 +399,64 @@ struct DesktopTraceRecord {
     apu: ApuSnapshot,
     interrupts: InterruptControllerSnapshot,
     joypad: JoypadSnapshot,
+    cartridge_trace: String,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopWatchTraceRecord {
+    t_cycle: u64,
+    matched_addresses: Vec<u16>,
+    cpu: CpuSnapshot,
+    interrupts: InterruptControllerSnapshot,
+    joypad: JoypadSnapshot,
+    ppu_mode: PpuAccessMode,
+    ppu_ly: u8,
+    ppu_line_dot: u16,
+    cartridge_trace: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct PcWatchRange {
+    start: u16,
+    end: u16,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopPcWatchTraceRecord {
+    t_cycle: u64,
+    matched_ranges: Vec<PcWatchRange>,
+    cpu: CpuSnapshot,
+    interrupts: InterruptControllerSnapshot,
+    joypad: JoypadSnapshot,
+    ppu_mode: PpuAccessMode,
+    ppu_ly: u8,
+    ppu_line_dot: u16,
+    cartridge_trace: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DesktopEdgeTraceTrigger {
+    EnteredPcRange(PcWatchRange),
+    AddressValueObserved {
+        kind: CpuBusAccessKind,
+        address: u16,
+        previous: Option<u8>,
+        current: u8,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct DesktopEdgeTraceRecord {
+    t_cycle: u64,
+    current_pc_ranges: Vec<PcWatchRange>,
+    triggers: Vec<DesktopEdgeTraceTrigger>,
+    cpu: CpuSnapshot,
+    interrupts: InterruptControllerSnapshot,
+    joypad: JoypadSnapshot,
+    ppu_mode: PpuAccessMode,
+    ppu_ly: u8,
+    ppu_line_dot: u16,
+    cartridge_trace: String,
 }
 
 #[derive(Debug, Clone)]
@@ -928,6 +1026,7 @@ impl DesktopTraceCapture {
             apu: machine.apu().snapshot(),
             interrupts: machine.interrupts().snapshot(),
             joypad: machine.joypad().snapshot(),
+            cartridge_trace: machine.cartridge().trace_summary(),
         });
     }
 
@@ -951,6 +1050,292 @@ impl DesktopTraceCapture {
         }
         fs::write(path, rendered)
             .map_err(|error| format!("failed to write desktop trace artifact {path:?}: {error}"))
+    }
+}
+
+impl DesktopWatchTraceCapture {
+    fn from_env() -> Result<Self, String> {
+        let output_path = env::var_os(DESKTOP_WATCH_TRACE_PATH_ENV_VAR).map(PathBuf::from);
+        let watched_addresses = if output_path.is_some() {
+            parse_watch_trace_addresses(
+                env::var_os(DESKTOP_WATCH_TRACE_ADDRESSES_ENV_VAR).as_deref(),
+            )?
+        } else {
+            BTreeSet::new()
+        };
+        let max_records = if output_path.is_some() {
+            parse_watch_trace_event_count(
+                env::var_os(DESKTOP_WATCH_TRACE_EVENTS_ENV_VAR).as_deref(),
+            )?
+        } else {
+            DEFAULT_WATCH_TRACE_EVENTS
+        };
+        Ok(Self {
+            output_path,
+            watched_addresses,
+            max_records,
+            records: VecDeque::new(),
+        })
+    }
+
+    fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
+        if self.output_path.is_none() {
+            return;
+        }
+
+        let cpu = machine.cpu().snapshot();
+        let matched_addresses = watched_cpu_addresses(&cpu, &self.watched_addresses);
+        if matched_addresses.is_empty() {
+            return;
+        }
+
+        if self.records.len() == self.max_records {
+            self.records.pop_front();
+        }
+
+        self.records.push_back(DesktopWatchTraceRecord {
+            t_cycle: machine.next_t_cycle().get().saturating_sub(1),
+            matched_addresses,
+            cpu,
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: machine.cartridge().trace_summary(),
+        });
+    }
+
+    fn write_artifact(&self) -> Result<(), String> {
+        let Some(path) = self.output_path.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "failed to create desktop watch trace artifact directory {parent:?}: {error}"
+                )
+            })?;
+        }
+
+        let mut rendered = String::new();
+        for record in &self.records {
+            rendered.push_str(&render_desktop_watch_trace_record(record));
+            rendered.push('\n');
+        }
+        fs::write(path, rendered).map_err(|error| {
+            format!("failed to write desktop watch trace artifact {path:?}: {error}")
+        })
+    }
+}
+
+impl PcWatchRange {
+    fn new(start: u16, end: u16) -> Result<Self, String> {
+        if end < start {
+            return Err(format!(
+                "{DESKTOP_PC_WATCH_TRACE_RANGES_ENV_VAR} range end {end:#06X} is below start {start:#06X}"
+            ));
+        }
+        Ok(Self { start, end })
+    }
+
+    fn contains(self, pc: u16) -> bool {
+        self.start <= pc && pc <= self.end
+    }
+}
+
+impl DesktopPcWatchTraceCapture {
+    fn from_env() -> Result<Self, String> {
+        let output_path = env::var_os(DESKTOP_PC_WATCH_TRACE_PATH_ENV_VAR).map(PathBuf::from);
+        let watched_ranges = if output_path.is_some() {
+            parse_pc_watch_trace_ranges(
+                env::var_os(DESKTOP_PC_WATCH_TRACE_RANGES_ENV_VAR).as_deref(),
+            )?
+        } else {
+            Vec::new()
+        };
+        let max_records = if output_path.is_some() {
+            parse_pc_watch_trace_event_count(
+                env::var_os(DESKTOP_PC_WATCH_TRACE_EVENTS_ENV_VAR).as_deref(),
+            )?
+        } else {
+            DEFAULT_PC_WATCH_TRACE_EVENTS
+        };
+        Ok(Self {
+            output_path,
+            watched_ranges,
+            max_records,
+            records: VecDeque::new(),
+        })
+    }
+
+    fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
+        if self.output_path.is_none() {
+            return;
+        }
+
+        let cpu = machine.cpu().snapshot();
+        let matched_ranges = watched_pc_ranges(&cpu, &self.watched_ranges);
+        if matched_ranges.is_empty() {
+            return;
+        }
+
+        if self.records.len() == self.max_records {
+            self.records.pop_front();
+        }
+
+        self.records.push_back(DesktopPcWatchTraceRecord {
+            t_cycle: machine.next_t_cycle().get().saturating_sub(1),
+            matched_ranges,
+            cpu,
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: machine.cartridge().trace_summary(),
+        });
+    }
+
+    fn write_artifact(&self) -> Result<(), String> {
+        let Some(path) = self.output_path.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "failed to create desktop PC watch trace artifact directory {parent:?}: {error}"
+                )
+            })?;
+        }
+
+        let mut rendered = String::new();
+        for record in &self.records {
+            rendered.push_str(&render_desktop_pc_watch_trace_record(record));
+            rendered.push('\n');
+        }
+        fs::write(path, rendered).map_err(|error| {
+            format!("failed to write desktop PC watch trace artifact {path:?}: {error}")
+        })
+    }
+}
+
+impl DesktopEdgeTraceCapture {
+    fn from_env() -> Result<Self, String> {
+        let output_path = env::var_os(DESKTOP_EDGE_TRACE_PATH_ENV_VAR).map(PathBuf::from);
+        let watched_addresses = if output_path.is_some() {
+            parse_edge_trace_addresses(
+                env::var_os(DESKTOP_EDGE_TRACE_ADDRESSES_ENV_VAR).as_deref(),
+            )?
+        } else {
+            BTreeSet::new()
+        };
+        let watched_pc_ranges = if output_path.is_some() {
+            parse_edge_trace_pc_ranges(
+                env::var_os(DESKTOP_EDGE_TRACE_PC_RANGES_ENV_VAR).as_deref(),
+            )?
+        } else {
+            Vec::new()
+        };
+        let max_records = if output_path.is_some() {
+            parse_edge_trace_event_count(env::var_os(DESKTOP_EDGE_TRACE_EVENTS_ENV_VAR).as_deref())?
+        } else {
+            DEFAULT_EDGE_TRACE_EVENTS
+        };
+        if output_path.is_some() && watched_addresses.is_empty() && watched_pc_ranges.is_empty() {
+            return Err(format!(
+                "{DESKTOP_EDGE_TRACE_PATH_ENV_VAR} requires at least one watched address or PC range via {DESKTOP_EDGE_TRACE_ADDRESSES_ENV_VAR} / {DESKTOP_EDGE_TRACE_PC_RANGES_ENV_VAR}"
+            ));
+        }
+        Ok(Self {
+            output_path,
+            watched_addresses,
+            watched_pc_ranges,
+            active_pc_ranges: BTreeSet::new(),
+            last_observed_values: BTreeMap::new(),
+            max_records,
+            records: VecDeque::new(),
+        })
+    }
+
+    fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
+        if self.output_path.is_none() {
+            return;
+        }
+
+        let cpu = machine.cpu().snapshot();
+        let current_pc_ranges = watched_pc_ranges(&cpu, &self.watched_pc_ranges);
+        let mut triggers = Vec::new();
+        triggers.extend(
+            entered_pc_ranges(&current_pc_ranges, &self.active_pc_ranges)
+                .into_iter()
+                .map(DesktopEdgeTraceTrigger::EnteredPcRange),
+        );
+        if let Some(trigger) = watched_bus_value_change(
+            cpu.last_bus_activity,
+            &self.watched_addresses,
+            &self.last_observed_values,
+        ) {
+            triggers.push(trigger);
+        }
+        self.active_pc_ranges = current_pc_ranges.iter().copied().collect();
+        if let Some(activity) = cpu.last_bus_activity
+            && self.watched_addresses.contains(&activity.address)
+        {
+            self.last_observed_values
+                .insert(activity.address, activity.value);
+        }
+        if triggers.is_empty() {
+            return;
+        }
+
+        if self.records.len() == self.max_records {
+            self.records.pop_front();
+        }
+
+        self.records.push_back(DesktopEdgeTraceRecord {
+            t_cycle: machine.next_t_cycle().get().saturating_sub(1),
+            current_pc_ranges,
+            triggers,
+            cpu,
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: machine.cartridge().trace_summary(),
+        });
+    }
+
+    fn write_artifact(&self) -> Result<(), String> {
+        let Some(path) = self.output_path.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "failed to create desktop edge trace artifact directory {parent:?}: {error}"
+                )
+            })?;
+        }
+
+        let mut rendered = String::new();
+        for record in &self.records {
+            rendered.push_str(&render_desktop_edge_trace_record(record));
+            rendered.push('\n');
+        }
+        fs::write(path, rendered).map_err(|error| {
+            format!("failed to write desktop edge trace artifact {path:?}: {error}")
+        })
     }
 }
 
@@ -1153,7 +1538,7 @@ impl DesktopCpuWindowTraceCapture {
 
 fn render_desktop_trace_record(record: &DesktopTraceRecord) -> String {
     format!(
-        "t_cycle={} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?} cpu.ime={} cpu.delayed_ime_enable={} cpu.last_bus_activity={} cpu.last_address_event={} apu.powered={} apu.nr50={:#04X} apu.nr51={:#04X} apu.nr52={:#04X} apu.div_apu={} apu.active_mask={:#04X} apu.dac_mask={:#04X} apu.channel_outputs=[{:#04X},{:#04X},{:#04X},{:#04X}] apu.mixer=({}, {}) apu.hpf=({}, {}) irq.if={:#04X} irq.ie={:#04X} joypad.p1={:#04X} joypad.selection_bits={:#04X} joypad.pressed_mask={:#04X}{}",
+        "t_cycle={} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?} cpu.ime={} cpu.delayed_ime_enable={} cpu.last_bus_activity={} cpu.last_address_event={} apu.powered={} apu.nr50={:#04X} apu.nr51={:#04X} apu.nr52={:#04X} apu.div_apu={} apu.active_mask={:#04X} apu.dac_mask={:#04X} apu.channel_outputs=[{:#04X},{:#04X},{:#04X},{:#04X}] apu.mixer=({}, {}) apu.hpf=({}, {}) irq.if={:#04X} irq.ie={:#04X} joypad.p1={:#04X} joypad.selection_bits={:#04X} joypad.pressed_mask={:#04X} {}{}",
         record.t_cycle,
         record.cpu.registers.pc,
         record.cpu.execution_state,
@@ -1182,7 +1567,81 @@ fn render_desktop_trace_record(record: &DesktopTraceRecord) -> String {
         0xC0 | record.joypad.selection_bits | visible_joypad_low_nibble(&record.joypad),
         record.joypad.selection_bits,
         record.joypad.pressed_mask,
+        record.cartridge_trace,
         format_apu_last_register_write(record.apu.last_register_write.as_ref()),
+    )
+}
+
+fn render_desktop_watch_trace_record(record: &DesktopWatchTraceRecord) -> String {
+    format!(
+        "t_cycle={} watch.hit_addresses={} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?} cpu.ime={} cpu.delayed_ime_enable={} cpu.last_bus_activity={} cpu.last_address_event={} ppu.mode={:?} ppu.ly={} ppu.line_dot={} irq.if={:#04X} irq.ie={:#04X} joypad.p1={:#04X} joypad.selection_bits={:#04X} joypad.pressed_mask={:#04X} {}",
+        record.t_cycle,
+        format_watch_hit_addresses(&record.matched_addresses),
+        record.cpu.registers.pc,
+        record.cpu.execution_state,
+        record.cpu.current_opcode,
+        record.cpu.ime,
+        record.cpu.delayed_ime_enable,
+        format_cpu_bus_activity(record.cpu.last_bus_activity),
+        format_cpu_address_event(record.cpu.last_address_event),
+        record.ppu_mode,
+        record.ppu_ly,
+        record.ppu_line_dot,
+        record.interrupts.interrupt_flags,
+        record.interrupts.interrupt_enable,
+        0xC0 | record.joypad.selection_bits | visible_joypad_low_nibble(&record.joypad),
+        record.joypad.selection_bits,
+        record.joypad.pressed_mask,
+        record.cartridge_trace,
+    )
+}
+
+fn render_desktop_pc_watch_trace_record(record: &DesktopPcWatchTraceRecord) -> String {
+    format!(
+        "t_cycle={} pc_watch.hit_ranges={} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?} cpu.ime={} cpu.delayed_ime_enable={} cpu.last_bus_activity={} cpu.last_address_event={} ppu.mode={:?} ppu.ly={} ppu.line_dot={} irq.if={:#04X} irq.ie={:#04X} joypad.p1={:#04X} joypad.selection_bits={:#04X} joypad.pressed_mask={:#04X} {}",
+        record.t_cycle,
+        format_pc_watch_hit_ranges(&record.matched_ranges),
+        record.cpu.registers.pc,
+        record.cpu.execution_state,
+        record.cpu.current_opcode,
+        record.cpu.ime,
+        record.cpu.delayed_ime_enable,
+        format_cpu_bus_activity(record.cpu.last_bus_activity),
+        format_cpu_address_event(record.cpu.last_address_event),
+        record.ppu_mode,
+        record.ppu_ly,
+        record.ppu_line_dot,
+        record.interrupts.interrupt_flags,
+        record.interrupts.interrupt_enable,
+        0xC0 | record.joypad.selection_bits | visible_joypad_low_nibble(&record.joypad),
+        record.joypad.selection_bits,
+        record.joypad.pressed_mask,
+        record.cartridge_trace,
+    )
+}
+
+fn render_desktop_edge_trace_record(record: &DesktopEdgeTraceRecord) -> String {
+    format!(
+        "t_cycle={} edge.current_pc_ranges={} edge.triggers={} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?} cpu.ime={} cpu.delayed_ime_enable={} cpu.last_bus_activity={} cpu.last_address_event={} ppu.mode={:?} ppu.ly={} ppu.line_dot={} irq.if={:#04X} irq.ie={:#04X} joypad.p1={:#04X} joypad.selection_bits={:#04X} joypad.pressed_mask={:#04X} {}",
+        record.t_cycle,
+        format_pc_watch_hit_ranges(&record.current_pc_ranges),
+        format_edge_trace_triggers(&record.triggers),
+        record.cpu.registers.pc,
+        record.cpu.execution_state,
+        record.cpu.current_opcode,
+        record.cpu.ime,
+        record.cpu.delayed_ime_enable,
+        format_cpu_bus_activity(record.cpu.last_bus_activity),
+        format_cpu_address_event(record.cpu.last_address_event),
+        record.ppu_mode,
+        record.ppu_ly,
+        record.ppu_line_dot,
+        record.interrupts.interrupt_flags,
+        record.interrupts.interrupt_enable,
+        0xC0 | record.joypad.selection_bits | visible_joypad_low_nibble(&record.joypad),
+        record.joypad.selection_bits,
+        record.joypad.pressed_mask,
+        record.cartridge_trace,
     )
 }
 
@@ -1236,20 +1695,149 @@ fn render_desktop_cpu_window_trace_record(record: &DesktopCpuWindowTraceRecord) 
     )
 }
 
+fn format_watch_hit_addresses(addresses: &[u16]) -> String {
+    let mut rendered = String::from("[");
+    for (index, address) in addresses.iter().enumerate() {
+        if index > 0 {
+            rendered.push(',');
+        }
+        rendered.push_str(&format!("{address:#06X}"));
+    }
+    rendered.push(']');
+    rendered
+}
+
+fn format_pc_watch_hit_ranges(ranges: &[PcWatchRange]) -> String {
+    let mut rendered = String::from("[");
+    for (index, range) in ranges.iter().enumerate() {
+        if index > 0 {
+            rendered.push(',');
+        }
+        rendered.push_str(&format!("{:#06X}..={:#06X}", range.start, range.end));
+    }
+    rendered.push(']');
+    rendered
+}
+
+fn format_edge_trace_triggers(triggers: &[DesktopEdgeTraceTrigger]) -> String {
+    let mut rendered = String::from("[");
+    for (index, trigger) in triggers.iter().enumerate() {
+        if index > 0 {
+            rendered.push(',');
+        }
+        match trigger {
+            DesktopEdgeTraceTrigger::EnteredPcRange(range) => {
+                rendered.push_str(&format!(
+                    "enter_pc({:#06X}..={:#06X})",
+                    range.start, range.end
+                ));
+            }
+            DesktopEdgeTraceTrigger::AddressValueObserved {
+                kind,
+                address,
+                previous,
+                current,
+            } => match previous {
+                Some(previous) => rendered.push_str(&format!(
+                    "change({}@{address:#06X}:{previous:#04X}->{current:#04X})",
+                    cpu_bus_access_kind_name(*kind)
+                )),
+                None => rendered.push_str(&format!(
+                    "observe({}@{address:#06X}={current:#04X})",
+                    cpu_bus_access_kind_name(*kind)
+                )),
+            },
+        }
+    }
+    rendered.push(']');
+    rendered
+}
+
+fn watched_cpu_addresses(cpu: &CpuSnapshot, watched_addresses: &BTreeSet<u16>) -> Vec<u16> {
+    let mut matched_addresses = BTreeSet::new();
+
+    if let Some(activity) = cpu.last_bus_activity
+        && watched_addresses.contains(&activity.address)
+    {
+        matched_addresses.insert(activity.address);
+    }
+
+    if let Some(event) = cpu.last_address_event {
+        if let Some(address) = event.access_address
+            && watched_addresses.contains(&address)
+        {
+            matched_addresses.insert(address);
+        }
+        if let Some(address) = event.idu_address
+            && watched_addresses.contains(&address)
+        {
+            matched_addresses.insert(address);
+        }
+    }
+
+    matched_addresses.into_iter().collect()
+}
+
+fn watched_pc_ranges(cpu: &CpuSnapshot, watched_ranges: &[PcWatchRange]) -> Vec<PcWatchRange> {
+    watched_ranges
+        .iter()
+        .copied()
+        .filter(|range| range.contains(cpu.registers.pc))
+        .collect()
+}
+
+fn entered_pc_ranges(
+    current_pc_ranges: &[PcWatchRange],
+    active_pc_ranges: &BTreeSet<PcWatchRange>,
+) -> Vec<PcWatchRange> {
+    current_pc_ranges
+        .iter()
+        .copied()
+        .filter(|range| !active_pc_ranges.contains(range))
+        .collect()
+}
+
+fn watched_bus_value_change(
+    activity: Option<CpuBusActivitySnapshot>,
+    watched_addresses: &BTreeSet<u16>,
+    last_observed_values: &BTreeMap<u16, u8>,
+) -> Option<DesktopEdgeTraceTrigger> {
+    let activity = activity?;
+    if !watched_addresses.contains(&activity.address) {
+        return None;
+    }
+
+    let previous = last_observed_values.get(&activity.address).copied();
+    if previous == Some(activity.value) {
+        return None;
+    }
+
+    Some(DesktopEdgeTraceTrigger::AddressValueObserved {
+        kind: activity.kind,
+        address: activity.address,
+        previous,
+        current: activity.value,
+    })
+}
+
 fn format_cpu_bus_activity(activity: Option<CpuBusActivitySnapshot>) -> String {
     match activity {
         Some(activity) => format!(
             "{}@{:#06X}={:#04X}",
-            match activity.kind {
-                CpuBusAccessKind::OpcodeFetch => "opcode_fetch",
-                CpuBusAccessKind::OperandRead => "operand_read",
-                CpuBusAccessKind::DataRead => "data_read",
-                CpuBusAccessKind::DataWrite => "data_write",
-            },
+            cpu_bus_access_kind_name(activity.kind),
             activity.address,
             activity.value,
         ),
         None => "none".to_string(),
+    }
+}
+
+fn cpu_bus_access_kind_name(kind: CpuBusAccessKind) -> &'static str {
+    match kind {
+        CpuBusAccessKind::OpcodeFetch => "opcode_fetch",
+        CpuBusAccessKind::OperandRead => "operand_read",
+        CpuBusAccessKind::DataRead => "data_read",
+        CpuBusAccessKind::DataWrite => "data_write",
     }
 }
 
@@ -1483,6 +2071,203 @@ fn parse_trace_capture_t_cycles(value: Option<&std::ffi::OsStr>) -> Result<usize
         return Err(format!(
             "{DESKTOP_TRACE_T_CYCLES_ENV_VAR} must be greater than zero"
         ));
+    }
+    Ok(parsed)
+}
+
+fn parse_watch_trace_addresses(value: Option<&OsStr>) -> Result<BTreeSet<u16>, String> {
+    parse_hex_address_list(
+        value,
+        DESKTOP_WATCH_TRACE_ADDRESSES_ENV_VAR,
+        MissingWatchConfigPolicy::Error,
+    )
+}
+
+fn parse_edge_trace_addresses(value: Option<&OsStr>) -> Result<BTreeSet<u16>, String> {
+    parse_hex_address_list(
+        value,
+        DESKTOP_EDGE_TRACE_ADDRESSES_ENV_VAR,
+        MissingWatchConfigPolicy::AllowEmpty,
+    )
+}
+
+fn parse_watch_trace_event_count(value: Option<&OsStr>) -> Result<usize, String> {
+    parse_positive_event_count(
+        value,
+        DEFAULT_WATCH_TRACE_EVENTS,
+        DESKTOP_WATCH_TRACE_EVENTS_ENV_VAR,
+    )
+}
+
+fn parse_pc_watch_trace_ranges(value: Option<&OsStr>) -> Result<Vec<PcWatchRange>, String> {
+    parse_pc_watch_ranges_for_env(
+        value,
+        DESKTOP_PC_WATCH_TRACE_RANGES_ENV_VAR,
+        MissingWatchConfigPolicy::Error,
+    )
+}
+
+fn parse_edge_trace_pc_ranges(value: Option<&OsStr>) -> Result<Vec<PcWatchRange>, String> {
+    parse_pc_watch_ranges_for_env(
+        value,
+        DESKTOP_EDGE_TRACE_PC_RANGES_ENV_VAR,
+        MissingWatchConfigPolicy::AllowEmpty,
+    )
+}
+
+fn parse_pc_watch_trace_range_token(
+    token: &str,
+    env_var_name: &str,
+) -> Result<PcWatchRange, String> {
+    if let Some((start, end)) = token.split_once("..=") {
+        return PcWatchRange::new(
+            parse_pc_watch_hex(start.trim(), env_var_name)?,
+            parse_pc_watch_hex(end.trim(), env_var_name)?,
+        );
+    }
+    if let Some((start, end)) = token.split_once("..") {
+        return PcWatchRange::new(
+            parse_pc_watch_hex(start.trim(), env_var_name)?,
+            parse_pc_watch_hex(end.trim(), env_var_name)?,
+        );
+    }
+    if let Some((start, end)) = token.split_once('-') {
+        return PcWatchRange::new(
+            parse_pc_watch_hex(start.trim(), env_var_name)?,
+            parse_pc_watch_hex(end.trim(), env_var_name)?,
+        );
+    }
+
+    let address = parse_pc_watch_hex(token, env_var_name)?;
+    PcWatchRange::new(address, address)
+}
+
+fn parse_pc_watch_hex(token: &str, env_var_name: &str) -> Result<u16, String> {
+    let hex = token
+        .strip_prefix("0x")
+        .or_else(|| token.strip_prefix("0X"))
+        .unwrap_or(token);
+    u16::from_str_radix(hex, 16).map_err(|error| {
+        format!(
+            "{env_var_name} must be a comma-separated list of hex addresses or inclusive ranges: {error}"
+        )
+    })
+}
+
+fn parse_pc_watch_trace_event_count(value: Option<&OsStr>) -> Result<usize, String> {
+    parse_positive_event_count(
+        value,
+        DEFAULT_PC_WATCH_TRACE_EVENTS,
+        DESKTOP_PC_WATCH_TRACE_EVENTS_ENV_VAR,
+    )
+}
+
+fn parse_edge_trace_event_count(value: Option<&OsStr>) -> Result<usize, String> {
+    parse_positive_event_count(
+        value,
+        DEFAULT_EDGE_TRACE_EVENTS,
+        DESKTOP_EDGE_TRACE_EVENTS_ENV_VAR,
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MissingWatchConfigPolicy {
+    Error,
+    AllowEmpty,
+}
+
+fn parse_hex_address_list(
+    value: Option<&OsStr>,
+    env_var_name: &str,
+    missing_policy: MissingWatchConfigPolicy,
+) -> Result<BTreeSet<u16>, String> {
+    let Some(value) = value else {
+        return match missing_policy {
+            MissingWatchConfigPolicy::Error => Err(format!(
+                "{env_var_name} must list one or more watched addresses"
+            )),
+            MissingWatchConfigPolicy::AllowEmpty => Ok(BTreeSet::new()),
+        };
+    };
+
+    let mut addresses = BTreeSet::new();
+    for raw_token in value
+        .to_string_lossy()
+        .split(|ch: char| ch == ',' || ch == ';' || ch.is_ascii_whitespace())
+    {
+        let token = raw_token.trim();
+        if token.is_empty() {
+            continue;
+        }
+
+        let hex = token
+            .strip_prefix("0x")
+            .or_else(|| token.strip_prefix("0X"))
+            .unwrap_or(token);
+        let address = u16::from_str_radix(hex, 16).map_err(|error| {
+            format!("{env_var_name} must be a comma-separated list of hex addresses: {error}")
+        })?;
+        addresses.insert(address);
+    }
+
+    if addresses.is_empty() {
+        return Err(format!(
+            "{env_var_name} must list one or more watched addresses"
+        ));
+    }
+
+    Ok(addresses)
+}
+
+fn parse_pc_watch_ranges_for_env(
+    value: Option<&OsStr>,
+    env_var_name: &str,
+    missing_policy: MissingWatchConfigPolicy,
+) -> Result<Vec<PcWatchRange>, String> {
+    let Some(value) = value else {
+        return match missing_policy {
+            MissingWatchConfigPolicy::Error => Err(format!(
+                "{env_var_name} must list one or more watched PC ranges"
+            )),
+            MissingWatchConfigPolicy::AllowEmpty => Ok(Vec::new()),
+        };
+    };
+
+    let mut ranges = Vec::new();
+    for raw_token in value.to_string_lossy().split([',', ';']) {
+        let token = raw_token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        ranges.push(parse_pc_watch_trace_range_token(token, env_var_name)?);
+    }
+
+    if ranges.is_empty() {
+        return Err(format!(
+            "{env_var_name} must list one or more watched PC ranges"
+        ));
+    }
+
+    ranges.sort_unstable();
+    ranges.dedup();
+    Ok(ranges)
+}
+
+fn parse_positive_event_count(
+    value: Option<&OsStr>,
+    default: usize,
+    env_var_name: &str,
+) -> Result<usize, String> {
+    let Some(value) = value else {
+        return Ok(default);
+    };
+
+    let text = value.to_string_lossy();
+    let parsed = text.parse::<usize>().map_err(|error| {
+        format!("{env_var_name} must be a positive integer event count: {error}")
+    })?;
+    if parsed == 0 {
+        return Err(format!("{env_var_name} must be greater than zero"));
     }
     Ok(parsed)
 }
@@ -3386,6 +4171,9 @@ fn run_desktop_with_startup_fallback_persistence(
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
         trace_capture: DesktopTraceCapture::from_env()?,
+        watch_trace: DesktopWatchTraceCapture::from_env()?,
+        pc_watch_trace: DesktopPcWatchTraceCapture::from_env()?,
+        edge_trace: DesktopEdgeTraceCapture::from_env()?,
         ch4_nr43_trace: DesktopCh4Nr43TraceCapture::from_env()?,
         ch4_startup_trace: DesktopCh4StartupTraceCapture::from_env()?,
         cpu_window_trace: DesktopCpuWindowTraceCapture::from_env(),
@@ -3817,6 +4605,9 @@ fn run_desktop_with_startup_fallback_persistence(
         audio_recorder.finish()?;
     }
     runtime.trace_capture.write_artifact()?;
+    runtime.watch_trace.write_artifact()?;
+    runtime.pc_watch_trace.write_artifact()?;
+    runtime.edge_trace.write_artifact()?;
     runtime.ch4_nr43_trace.write_artifact()?;
     runtime.ch4_startup_trace.write_artifact()?;
     runtime.cpu_window_trace.write_artifact()?;
@@ -4626,6 +5417,18 @@ fn step_until_next_frame(
                     .trace_capture
                     .record_t_cycle(audio_source_machine(context.machine))
             });
+            context
+                .runtime
+                .watch_trace
+                .record_t_cycle(audio_source_machine(context.machine));
+            context
+                .runtime
+                .pc_watch_trace
+                .record_t_cycle(audio_source_machine(context.machine));
+            context
+                .runtime
+                .edge_trace
+                .record_t_cycle(audio_source_machine(context.machine));
             context
                 .runtime
                 .ch4_nr43_trace
@@ -7602,14 +8405,20 @@ mod tests {
         assign_keyboard_binding, assign_keyboard_menu_binding,
         assignable_key_for_binding_target_from_keycode,
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
-        desktop_key_from_keycode, desktop_key_scancode, gamepad_binding_target_for_binding,
-        gamepad_menu_binding_target_for_binding, hotkey_binding_target_for_key,
-        joypad_binding_target_for_key, keyboard_menu_binding_target_for_key,
-        map_path_dialog_result, menu_input_for_gamepad_button, menu_input_for_key,
-        next_audio_volume_percent, next_boot_rom_verification_mode, next_console_model,
-        next_execution_mode, next_gamepad_directional_source, next_gamepad_rumble_mode,
-        next_save_flush_policy, next_startup_mode, next_window_scale, parse_trace_capture_t_cycles,
-        performance_window_title, render_desktop_trace_record, run_desktop,
+        desktop_key_from_keycode, desktop_key_scancode, entered_pc_ranges,
+        gamepad_binding_target_for_binding, gamepad_menu_binding_target_for_binding,
+        hotkey_binding_target_for_key, joypad_binding_target_for_key,
+        keyboard_menu_binding_target_for_key, map_path_dialog_result,
+        menu_input_for_gamepad_button, menu_input_for_key, next_audio_volume_percent,
+        next_boot_rom_verification_mode, next_console_model, next_execution_mode,
+        next_gamepad_directional_source, next_gamepad_rumble_mode, next_save_flush_policy,
+        next_startup_mode, next_window_scale, parse_edge_trace_addresses,
+        parse_edge_trace_event_count, parse_edge_trace_pc_ranges, parse_pc_watch_trace_event_count,
+        parse_pc_watch_trace_ranges, parse_trace_capture_t_cycles, parse_watch_trace_addresses,
+        parse_watch_trace_event_count, performance_window_title, render_desktop_edge_trace_record,
+        render_desktop_pc_watch_trace_record, render_desktop_trace_record,
+        render_desktop_watch_trace_record, run_desktop, watched_bus_value_change,
+        watched_cpu_addresses, watched_pc_ranges,
     };
     use crate::audio_recording::DesktopAudioRecordingOptions;
     use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
@@ -7635,7 +8444,7 @@ mod tests {
     use sdl3::keyboard::{Keycode, Mod, Scancode};
     use sdl3::render::Canvas;
     use sdl3::video::Window;
-    use std::collections::VecDeque;
+    use std::collections::{BTreeMap, BTreeSet, VecDeque};
     use std::ffi::CString;
     use std::ffi::OsStr;
     use std::fs;
@@ -8345,6 +9154,27 @@ mod tests {
                     enabled: false,
                     output_path: None,
                     max_t_cycles: super::DEFAULT_TRACE_CAPTURE_T_CYCLES,
+                    records: VecDeque::new(),
+                },
+                watch_trace: super::DesktopWatchTraceCapture {
+                    output_path: None,
+                    watched_addresses: BTreeSet::new(),
+                    max_records: super::DEFAULT_WATCH_TRACE_EVENTS,
+                    records: VecDeque::new(),
+                },
+                pc_watch_trace: super::DesktopPcWatchTraceCapture {
+                    output_path: None,
+                    watched_ranges: Vec::new(),
+                    max_records: super::DEFAULT_PC_WATCH_TRACE_EVENTS,
+                    records: VecDeque::new(),
+                },
+                edge_trace: super::DesktopEdgeTraceCapture {
+                    output_path: None,
+                    watched_addresses: BTreeSet::new(),
+                    watched_pc_ranges: Vec::new(),
+                    active_pc_ranges: BTreeSet::new(),
+                    last_observed_values: BTreeMap::new(),
+                    max_records: super::DEFAULT_EDGE_TRACE_EVENTS,
                     records: VecDeque::new(),
                 },
                 ch4_nr43_trace: super::DesktopCh4Nr43TraceCapture {
@@ -9418,6 +10248,235 @@ mod tests {
     }
 
     #[test]
+    fn watch_trace_parsers_accept_hex_addresses_and_reject_empty_or_zero_counts() {
+        assert_eq!(
+            parse_watch_trace_addresses(Some(OsStr::new("FF00, 0xFF82;C400"))),
+            Ok(BTreeSet::from([0xFF00, 0xFF82, 0xC400]))
+        );
+        assert!(
+            parse_watch_trace_addresses(Some(OsStr::new(" , ; ")))
+                .expect_err("empty watch-address list should be rejected")
+                .contains("must list one or more watched addresses")
+        );
+        assert_eq!(parse_watch_trace_event_count(None), Ok(4_096));
+        assert_eq!(
+            parse_watch_trace_event_count(Some(OsStr::new("1024"))),
+            Ok(1_024)
+        );
+        assert!(
+            parse_watch_trace_event_count(Some(OsStr::new("0")))
+                .expect_err("zero watch trace event count should be rejected")
+                .contains("must be greater than zero")
+        );
+    }
+
+    #[test]
+    fn pc_watch_trace_parsers_accept_ranges_and_reject_empty_or_zero_counts() {
+        assert_eq!(
+            parse_pc_watch_trace_ranges(Some(OsStr::new("03C0-03EF, 0x05FD..=0x062F, 4C00"))),
+            Ok(vec![
+                super::PcWatchRange {
+                    start: 0x03C0,
+                    end: 0x03EF,
+                },
+                super::PcWatchRange {
+                    start: 0x05FD,
+                    end: 0x062F,
+                },
+                super::PcWatchRange {
+                    start: 0x4C00,
+                    end: 0x4C00,
+                },
+            ])
+        );
+        assert!(
+            parse_pc_watch_trace_ranges(Some(OsStr::new(" , ; ")))
+                .expect_err("empty PC watch-range list should be rejected")
+                .contains("must list one or more watched PC ranges")
+        );
+        assert!(
+            parse_pc_watch_trace_ranges(Some(OsStr::new("062F-05FD")))
+                .expect_err("descending PC watch range should be rejected")
+                .contains("range end")
+        );
+        assert_eq!(parse_pc_watch_trace_event_count(None), Ok(4_096));
+        assert_eq!(
+            parse_pc_watch_trace_event_count(Some(OsStr::new("2048"))),
+            Ok(2_048)
+        );
+        assert!(
+            parse_pc_watch_trace_event_count(Some(OsStr::new("0")))
+                .expect_err("zero PC watch trace event count should be rejected")
+                .contains("must be greater than zero")
+        );
+    }
+
+    #[test]
+    fn edge_trace_parsers_allow_optional_targets_and_reject_zero_counts() {
+        assert_eq!(parse_edge_trace_addresses(None), Ok(BTreeSet::new()));
+        assert_eq!(
+            parse_edge_trace_addresses(Some(OsStr::new("FF82,C409"))),
+            Ok(BTreeSet::from([0xC409, 0xFF82]))
+        );
+        assert_eq!(parse_edge_trace_pc_ranges(None), Ok(Vec::new()));
+        assert_eq!(
+            parse_edge_trace_pc_ranges(Some(OsStr::new("4C00-4C41, 05FD"))),
+            Ok(vec![
+                super::PcWatchRange {
+                    start: 0x05FD,
+                    end: 0x05FD,
+                },
+                super::PcWatchRange {
+                    start: 0x4C00,
+                    end: 0x4C41,
+                },
+            ])
+        );
+        assert_eq!(parse_edge_trace_event_count(None), Ok(4_096));
+        assert_eq!(
+            parse_edge_trace_event_count(Some(OsStr::new("512"))),
+            Ok(512)
+        );
+        assert!(
+            parse_edge_trace_event_count(Some(OsStr::new("0")))
+                .expect_err("zero edge trace event count should be rejected")
+                .contains("must be greater than zero")
+        );
+    }
+
+    #[test]
+    fn watched_cpu_addresses_consider_bus_activity_and_address_events() {
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut cpu = machine.cpu().snapshot();
+        cpu.last_bus_activity = Some(CpuBusActivitySnapshot {
+            kind: CpuBusAccessKind::DataRead,
+            address: 0xFF82,
+            value: 0x30,
+        });
+        cpu.last_address_event = Some(CpuAddressEvent {
+            kind: CpuAddressEventKind::ReadWithIncDec,
+            access_address: Some(0xC409),
+            idu_address: Some(0xC41F),
+            update_direction: Some(CpuAddressUpdateDirection::Increment),
+        });
+
+        assert_eq!(
+            watched_cpu_addresses(&cpu, &BTreeSet::from([0xFF82, 0xC409, 0xC41F])),
+            vec![0xC409, 0xC41F, 0xFF82]
+        );
+    }
+
+    #[test]
+    fn watched_pc_ranges_match_current_program_counter() {
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut cpu = machine.cpu().snapshot();
+        cpu.registers.pc = 0x0604;
+
+        assert_eq!(
+            watched_pc_ranges(
+                &cpu,
+                &[
+                    super::PcWatchRange {
+                        start: 0x03C0,
+                        end: 0x03EF,
+                    },
+                    super::PcWatchRange {
+                        start: 0x05FD,
+                        end: 0x062F,
+                    },
+                    super::PcWatchRange {
+                        start: 0x0600,
+                        end: 0x0608,
+                    },
+                ]
+            ),
+            vec![
+                super::PcWatchRange {
+                    start: 0x05FD,
+                    end: 0x062F,
+                },
+                super::PcWatchRange {
+                    start: 0x0600,
+                    end: 0x0608,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn entered_pc_ranges_only_reports_new_membership() {
+        let current = vec![
+            super::PcWatchRange {
+                start: 0x03C0,
+                end: 0x03EF,
+            },
+            super::PcWatchRange {
+                start: 0x4C00,
+                end: 0x4C41,
+            },
+        ];
+        let active = BTreeSet::from([super::PcWatchRange {
+            start: 0x03C0,
+            end: 0x03EF,
+        }]);
+
+        assert_eq!(
+            entered_pc_ranges(&current, &active),
+            vec![super::PcWatchRange {
+                start: 0x4C00,
+                end: 0x4C41,
+            }]
+        );
+    }
+
+    #[test]
+    fn watched_bus_value_change_reports_first_observation_and_changes() {
+        let watched_addresses = BTreeSet::from([0xFF82]);
+        let activity = Some(CpuBusActivitySnapshot {
+            kind: CpuBusAccessKind::DataRead,
+            address: 0xFF82,
+            value: 0x31,
+        });
+
+        assert_eq!(
+            watched_bus_value_change(activity, &watched_addresses, &BTreeMap::new()),
+            Some(super::DesktopEdgeTraceTrigger::AddressValueObserved {
+                kind: CpuBusAccessKind::DataRead,
+                address: 0xFF82,
+                previous: None,
+                current: 0x31,
+            })
+        );
+
+        assert_eq!(
+            watched_bus_value_change(
+                activity,
+                &watched_addresses,
+                &BTreeMap::from([(0xFF82, 0x31)]),
+            ),
+            None
+        );
+
+        assert_eq!(
+            watched_bus_value_change(
+                activity,
+                &watched_addresses,
+                &BTreeMap::from([(0xFF82, 0x30)]),
+            ),
+            Some(super::DesktopEdgeTraceTrigger::AddressValueObserved {
+                kind: CpuBusAccessKind::DataRead,
+                address: 0xFF82,
+                previous: Some(0x30),
+                current: 0x31,
+            })
+        );
+    }
+
+    #[test]
     fn desktop_trace_renderer_includes_apu_last_write_when_present() {
         let machine = Machine::new_summary(
             MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
@@ -9434,11 +10493,337 @@ mod tests {
             apu: apu.snapshot(),
             interrupts: machine.interrupts().snapshot(),
             joypad: machine.joypad().snapshot(),
+            cartridge_trace: "state=NoMbc".to_string(),
         });
 
         assert!(rendered.contains("apu.last_write=write@0xFF1A=0x00"));
+        assert!(rendered.contains("state=NoMbc"));
         assert!(rendered.contains("before("));
         assert!(rendered.contains("after("));
+    }
+
+    #[test]
+    fn desktop_watch_trace_renderer_and_capture_from_env_include_match_context() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("watch-trace-capture");
+        let output_path = root.join("artifacts").join("desktop-watch-trace.txt");
+        unsafe {
+            std::env::set_var(super::DESKTOP_WATCH_TRACE_PATH_ENV_VAR, &output_path);
+            std::env::set_var(
+                super::DESKTOP_WATCH_TRACE_ADDRESSES_ENV_VAR,
+                "FF82,C400,C409",
+            );
+            std::env::set_var(super::DESKTOP_WATCH_TRACE_EVENTS_ENV_VAR, "2");
+        }
+        let mut capture =
+            super::DesktopWatchTraceCapture::from_env().expect("watch trace capture from env");
+        unsafe {
+            std::env::remove_var(super::DESKTOP_WATCH_TRACE_PATH_ENV_VAR);
+            std::env::remove_var(super::DESKTOP_WATCH_TRACE_ADDRESSES_ENV_VAR);
+            std::env::remove_var(super::DESKTOP_WATCH_TRACE_EVENTS_ENV_VAR);
+        }
+
+        assert_eq!(capture.output_path.as_deref(), Some(output_path.as_path()));
+        assert_eq!(
+            capture.watched_addresses,
+            BTreeSet::from([0xC400, 0xC409, 0xFF82])
+        );
+        assert_eq!(capture.max_records, 2);
+
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut cpu = machine.cpu().snapshot();
+        cpu.last_bus_activity = Some(CpuBusActivitySnapshot {
+            kind: CpuBusAccessKind::DataRead,
+            address: 0xFF82,
+            value: 0x30,
+        });
+        cpu.last_address_event = Some(CpuAddressEvent {
+            kind: CpuAddressEventKind::Write,
+            access_address: Some(0xC400),
+            idu_address: None,
+            update_direction: None,
+        });
+
+        let rendered = render_desktop_watch_trace_record(&super::DesktopWatchTraceRecord {
+            t_cycle: 123,
+            matched_addresses: vec![0xC400, 0xFF82],
+            cpu,
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: "state=Huc1 io_mode=Ram".to_string(),
+        });
+        assert!(rendered.contains("watch.hit_addresses=[0xC400,0xFF82]"));
+        assert!(rendered.contains("ppu.mode="));
+        assert!(rendered.contains("state=Huc1"));
+
+        capture.records.push_back(super::DesktopWatchTraceRecord {
+            t_cycle: 1,
+            matched_addresses: vec![0xFF82],
+            cpu: machine.cpu().snapshot(),
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: "state=Empty".to_string(),
+        });
+        capture.records.push_back(super::DesktopWatchTraceRecord {
+            t_cycle: 2,
+            matched_addresses: vec![0xC400],
+            cpu: machine.cpu().snapshot(),
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: "state=Empty".to_string(),
+        });
+        capture
+            .write_artifact()
+            .expect("watch trace artifact should be writable");
+        let artifact = fs::read_to_string(&output_path).expect("watch trace artifact should exist");
+        assert_eq!(artifact.lines().count(), 2);
+        assert!(artifact.contains("watch.hit_addresses=[0xFF82]"));
+        assert!(artifact.contains("watch.hit_addresses=[0xC400]"));
+    }
+
+    #[test]
+    fn desktop_pc_watch_trace_renderer_and_capture_from_env_include_match_context() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("pc-watch-trace-capture");
+        let output_path = root.join("artifacts").join("desktop-pc-watch-trace.txt");
+        unsafe {
+            std::env::set_var(super::DESKTOP_PC_WATCH_TRACE_PATH_ENV_VAR, &output_path);
+            std::env::set_var(
+                super::DESKTOP_PC_WATCH_TRACE_RANGES_ENV_VAR,
+                "03C0-03EF,05FD..=062F",
+            );
+            std::env::set_var(super::DESKTOP_PC_WATCH_TRACE_EVENTS_ENV_VAR, "2");
+        }
+        let mut capture =
+            super::DesktopPcWatchTraceCapture::from_env().expect("PC watch trace capture from env");
+        unsafe {
+            std::env::remove_var(super::DESKTOP_PC_WATCH_TRACE_PATH_ENV_VAR);
+            std::env::remove_var(super::DESKTOP_PC_WATCH_TRACE_RANGES_ENV_VAR);
+            std::env::remove_var(super::DESKTOP_PC_WATCH_TRACE_EVENTS_ENV_VAR);
+        }
+
+        assert_eq!(capture.output_path.as_deref(), Some(output_path.as_path()));
+        assert_eq!(
+            capture.watched_ranges,
+            vec![
+                super::PcWatchRange {
+                    start: 0x03C0,
+                    end: 0x03EF,
+                },
+                super::PcWatchRange {
+                    start: 0x05FD,
+                    end: 0x062F,
+                },
+            ]
+        );
+        assert_eq!(capture.max_records, 2);
+
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut cpu = machine.cpu().snapshot();
+        cpu.registers.pc = 0x0604;
+        cpu.last_bus_activity = Some(CpuBusActivitySnapshot {
+            kind: CpuBusAccessKind::DataRead,
+            address: 0xFF82,
+            value: 0x30,
+        });
+
+        let rendered = render_desktop_pc_watch_trace_record(&super::DesktopPcWatchTraceRecord {
+            t_cycle: 123,
+            matched_ranges: vec![
+                super::PcWatchRange {
+                    start: 0x05FD,
+                    end: 0x062F,
+                },
+                super::PcWatchRange {
+                    start: 0x0600,
+                    end: 0x0608,
+                },
+            ],
+            cpu,
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: "state=Huc1 io_mode=Ram".to_string(),
+        });
+        assert!(rendered.contains("pc_watch.hit_ranges=[0x05FD..=0x062F,0x0600..=0x0608]"));
+        assert!(rendered.contains("cpu.pc=0x0604"));
+        assert!(rendered.contains("state=Huc1"));
+
+        capture.records.push_back(super::DesktopPcWatchTraceRecord {
+            t_cycle: 1,
+            matched_ranges: vec![super::PcWatchRange {
+                start: 0x03C0,
+                end: 0x03EF,
+            }],
+            cpu: machine.cpu().snapshot(),
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: "state=Empty".to_string(),
+        });
+        capture.records.push_back(super::DesktopPcWatchTraceRecord {
+            t_cycle: 2,
+            matched_ranges: vec![super::PcWatchRange {
+                start: 0x05FD,
+                end: 0x062F,
+            }],
+            cpu: machine.cpu().snapshot(),
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: "state=Empty".to_string(),
+        });
+        capture
+            .write_artifact()
+            .expect("PC watch trace artifact should be writable");
+        let artifact =
+            fs::read_to_string(&output_path).expect("PC watch trace artifact should exist");
+        assert_eq!(artifact.lines().count(), 2);
+        assert!(artifact.contains("pc_watch.hit_ranges=[0x03C0..=0x03EF]"));
+        assert!(artifact.contains("pc_watch.hit_ranges=[0x05FD..=0x062F]"));
+    }
+
+    #[test]
+    fn desktop_edge_trace_renderer_and_capture_from_env_include_entry_and_change_context() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("edge-trace-capture");
+        let output_path = root.join("artifacts").join("desktop-edge-trace.txt");
+        unsafe {
+            std::env::set_var(super::DESKTOP_EDGE_TRACE_PATH_ENV_VAR, &output_path);
+            std::env::set_var(super::DESKTOP_EDGE_TRACE_ADDRESSES_ENV_VAR, "FF82,C409");
+            std::env::set_var(super::DESKTOP_EDGE_TRACE_PC_RANGES_ENV_VAR, "4C00-4C41");
+            std::env::set_var(super::DESKTOP_EDGE_TRACE_EVENTS_ENV_VAR, "2");
+        }
+        let mut capture =
+            super::DesktopEdgeTraceCapture::from_env().expect("edge trace capture from env");
+        unsafe {
+            std::env::remove_var(super::DESKTOP_EDGE_TRACE_PATH_ENV_VAR);
+            std::env::remove_var(super::DESKTOP_EDGE_TRACE_ADDRESSES_ENV_VAR);
+            std::env::remove_var(super::DESKTOP_EDGE_TRACE_PC_RANGES_ENV_VAR);
+            std::env::remove_var(super::DESKTOP_EDGE_TRACE_EVENTS_ENV_VAR);
+        }
+
+        assert_eq!(capture.output_path.as_deref(), Some(output_path.as_path()));
+        assert_eq!(capture.watched_addresses, BTreeSet::from([0xC409, 0xFF82]));
+        assert_eq!(
+            capture.watched_pc_ranges,
+            vec![super::PcWatchRange {
+                start: 0x4C00,
+                end: 0x4C41,
+            }]
+        );
+        assert_eq!(capture.max_records, 2);
+
+        let machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut cpu = machine.cpu().snapshot();
+        cpu.registers.pc = 0x4C0E;
+        cpu.last_bus_activity = Some(CpuBusActivitySnapshot {
+            kind: CpuBusAccessKind::DataRead,
+            address: 0xFF82,
+            value: 0x31,
+        });
+
+        let rendered = render_desktop_edge_trace_record(&super::DesktopEdgeTraceRecord {
+            t_cycle: 123,
+            current_pc_ranges: vec![super::PcWatchRange {
+                start: 0x4C00,
+                end: 0x4C41,
+            }],
+            triggers: vec![
+                super::DesktopEdgeTraceTrigger::EnteredPcRange(super::PcWatchRange {
+                    start: 0x4C00,
+                    end: 0x4C41,
+                }),
+                super::DesktopEdgeTraceTrigger::AddressValueObserved {
+                    kind: CpuBusAccessKind::DataRead,
+                    address: 0xFF82,
+                    previous: Some(0x30),
+                    current: 0x31,
+                },
+            ],
+            cpu,
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: "state=Huc1 io_mode=Ram".to_string(),
+        });
+        assert!(rendered.contains("edge.current_pc_ranges=[0x4C00..=0x4C41]"));
+        assert!(rendered.contains(
+            "edge.triggers=[enter_pc(0x4C00..=0x4C41),change(data_read@0xFF82:0x30->0x31)]"
+        ));
+        assert!(rendered.contains("cpu.pc=0x4C0E"));
+        assert!(rendered.contains("state=Huc1"));
+
+        capture.records.push_back(super::DesktopEdgeTraceRecord {
+            t_cycle: 1,
+            current_pc_ranges: vec![super::PcWatchRange {
+                start: 0x4C00,
+                end: 0x4C41,
+            }],
+            triggers: vec![super::DesktopEdgeTraceTrigger::EnteredPcRange(
+                super::PcWatchRange {
+                    start: 0x4C00,
+                    end: 0x4C41,
+                },
+            )],
+            cpu: machine.cpu().snapshot(),
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: "state=Empty".to_string(),
+        });
+        capture.records.push_back(super::DesktopEdgeTraceRecord {
+            t_cycle: 2,
+            current_pc_ranges: vec![super::PcWatchRange {
+                start: 0x4C00,
+                end: 0x4C41,
+            }],
+            triggers: vec![super::DesktopEdgeTraceTrigger::AddressValueObserved {
+                kind: CpuBusAccessKind::DataRead,
+                address: 0xFF82,
+                previous: Some(0x30),
+                current: 0x31,
+            }],
+            cpu: machine.cpu().snapshot(),
+            interrupts: machine.interrupts().snapshot(),
+            joypad: machine.joypad().snapshot(),
+            ppu_mode: machine.ppu().access_mode(),
+            ppu_ly: machine.ppu().ly(),
+            ppu_line_dot: machine.ppu().line_dot(),
+            cartridge_trace: "state=Empty".to_string(),
+        });
+        capture
+            .write_artifact()
+            .expect("edge trace artifact should be writable");
+        let artifact = fs::read_to_string(&output_path).expect("edge trace artifact should exist");
+        assert_eq!(artifact.lines().count(), 2);
+        assert!(artifact.contains("enter_pc(0x4C00..=0x4C41)"));
+        assert!(artifact.contains("change(data_read@0xFF82:0x30->0x31)"));
     }
 
     #[test]
@@ -9476,6 +10861,7 @@ mod tests {
         assert_eq!(rendered.lines().count(), 2);
         assert!(rendered.contains("cpu.pc=0x0100"));
         assert!(rendered.contains("apu.nr50=0x77"));
+        assert!(rendered.contains("state=Empty"));
 
         super::DesktopTraceCapture {
             enabled: false,

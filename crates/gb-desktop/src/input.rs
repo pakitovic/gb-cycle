@@ -47,6 +47,20 @@ impl SourceJoypadState {
     fn set_pressed(&mut self, button: JoypadButton, pressed: bool) {
         self.pressed[joypad_button_index(button)] = pressed;
     }
+
+    fn merged(states: [&SourceJoypadState; 3]) -> Self {
+        let mut merged = Self::default();
+        for button in JOYPAD_BUTTONS {
+            let pressed = states.iter().any(|state| state.is_pressed(button));
+            merged.set_pressed(button, pressed);
+        }
+        merged
+    }
+
+    fn sanitize_opposite_directions(&mut self) {
+        sanitize_direction_pair(self, JoypadButton::Left, JoypadButton::Right);
+        sanitize_direction_pair(self, JoypadButton::Up, JoypadButton::Down);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -141,18 +155,40 @@ impl FrontendInputState {
         button: JoypadButton,
         pressed: bool,
     ) {
-        let was_effective = self.is_effectively_pressed(button);
+        let previous_effective = self.effective_state();
         self.source_state_mut(source).set_pressed(button, pressed);
-        let is_effective = self.is_effectively_pressed(button);
-        if is_effective != was_effective {
-            machine.set_joypad_button_pressed(button, is_effective);
-        }
+        let next_effective = self.effective_state();
+        self.apply_effective_state_delta(machine, previous_effective, next_effective);
     }
 
+    #[cfg(test)]
     fn is_effectively_pressed(&self, button: JoypadButton) -> bool {
-        self.keyboard.is_pressed(button)
-            || self.gamepad_buttons.is_pressed(button)
-            || self.gamepad_left_stick.is_pressed(button)
+        self.effective_state().is_pressed(button)
+    }
+
+    fn effective_state(&self) -> SourceJoypadState {
+        let mut effective = SourceJoypadState::merged([
+            &self.keyboard,
+            &self.gamepad_buttons,
+            &self.gamepad_left_stick,
+        ]);
+        effective.sanitize_opposite_directions();
+        effective
+    }
+
+    fn apply_effective_state_delta(
+        &self,
+        machine: &mut Machine<TraceSummaryBuffer>,
+        previous: SourceJoypadState,
+        next: SourceJoypadState,
+    ) {
+        for button in JOYPAD_BUTTONS {
+            let was_pressed = previous.is_pressed(button);
+            let is_pressed = next.is_pressed(button);
+            if was_pressed != is_pressed {
+                machine.set_joypad_button_pressed(button, is_pressed);
+            }
+        }
     }
 
     fn source_state_mut(&mut self, source: InputSource) -> &mut SourceJoypadState {
@@ -777,6 +813,17 @@ fn axis_direction_state(
     (negative, positive)
 }
 
+fn sanitize_direction_pair(
+    state: &mut SourceJoypadState,
+    negative: JoypadButton,
+    positive: JoypadButton,
+) {
+    if state.is_pressed(negative) && state.is_pressed(positive) {
+        state.set_pressed(negative, false);
+        state.set_pressed(positive, false);
+    }
+}
+
 fn joystick_id_from_event(which: u32) -> JoystickId {
     sdl3::sys::joystick::SDL_JoystickID(which)
 }
@@ -1004,6 +1051,60 @@ mod tests {
             .gamepad_left_stick
             .set_pressed(JoypadButton::Left, false);
         assert!(!input_state.is_effectively_pressed(JoypadButton::Left));
+    }
+
+    #[test]
+    fn effective_input_neutralizes_opposite_horizontal_directions_until_the_conflict_clears() {
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+
+        input_state.set_keyboard_button(&mut machine, JoypadButton::Left, true);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Left));
+
+        input_state.set_gamepad_left_stick_button(&mut machine, JoypadButton::Right, true);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), 0);
+
+        input_state.set_gamepad_left_stick_button(&mut machine, JoypadButton::Right, false);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Left));
+    }
+
+    #[test]
+    fn effective_input_neutralizes_opposite_gamepad_directions_between_dpad_and_left_stick() {
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+
+        input_state.set_gamepad_button(&mut machine, JoypadButton::Left, true);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Left));
+
+        input_state.set_gamepad_left_stick_button(&mut machine, JoypadButton::Right, true);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), 0);
+
+        input_state.set_gamepad_left_stick_button(&mut machine, JoypadButton::Right, false);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Left));
+    }
+
+    #[test]
+    fn effective_input_neutralizes_opposite_vertical_directions_from_the_same_source() {
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+
+        input_state.set_keyboard_button(&mut machine, JoypadButton::Up, true);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Up));
+
+        input_state.set_keyboard_button(&mut machine, JoypadButton::Down, true);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), 0);
+
+        input_state.set_keyboard_button(&mut machine, JoypadButton::Up, false);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Down));
     }
 
     #[test]

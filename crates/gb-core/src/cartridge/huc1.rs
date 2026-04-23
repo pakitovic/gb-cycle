@@ -1,6 +1,19 @@
 use super::*;
 
 impl Huc1Cartridge {
+    pub(in crate::cartridge) fn trace_summary(&self) -> String {
+        format!(
+            " io_mode={:?} rom_bank_raw={:#04X} effective_rom_bank={:#04X} ram_bank_raw={:#04X} effective_ram_bank={} ir_emitter_on={} ir_light_detected={}",
+            self.io_mode,
+            self.rom_bank,
+            self.effective_rom_bank(self.header.rom_size.bank_count.unwrap_or(0)),
+            self.ram_bank,
+            self.effective_ram_bank(),
+            self.ir_emitter_on,
+            self.ir_light_detected,
+        )
+    }
+
     pub(in crate::cartridge) fn describe_external_access(
         &self,
         address: u16,

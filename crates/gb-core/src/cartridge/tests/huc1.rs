@@ -114,3 +114,29 @@ fn huc1_persistence_and_external_access_follow_the_dedicated_mapper_contract() {
         }),
     );
 }
+
+#[test]
+fn huc1_scheduler_trace_surfaces_mode_and_bank_state_for_hang_debugging() {
+    let report = CartridgeSlot::load(
+        build_banked_huc1_rom(0x05, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("HuC1 should load");
+    let (mut cartridge, _) = report.into_parts();
+
+    cartridge.write_rom(0x2000, 0x3F);
+    cartridge.write_rom(0x4000, 0x02);
+    cartridge.write_rom(0x0000, 0x0E);
+    cartridge.write_ram(0xA000, 0x01);
+
+    let trace = cartridge.scheduler_trace_message(&crate::scheduler::CycleContext::for_cycle(
+        crate::scheduler::TCycle::new(123),
+    ));
+    assert!(trace.contains("state=Huc1"));
+    assert!(trace.contains("io_mode=Ir"));
+    assert!(trace.contains("rom_bank_raw=0x3F"));
+    assert!(trace.contains("effective_rom_bank=0x3F"));
+    assert!(trace.contains("ram_bank_raw=0x02"));
+    assert!(trace.contains("effective_ram_bank=2"));
+    assert!(trace.contains("ir_emitter_on=true"));
+}
