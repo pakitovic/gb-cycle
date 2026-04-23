@@ -84,6 +84,29 @@ fn channel_4_delayed_retrigger_after_unfreezing_zero_length_does_not_extra_clock
 }
 
 #[test]
+fn channel_4_delayed_trigger_still_fires_when_noise_clocking_is_suppressed() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF21, 0xF2);
+    apu.write_register(0xFF22, 0xE0);
+    apu.channels.channel_4.nr43_live_write.alignment = 1;
+
+    apu.write_register(0xFF23, CHANNEL_TRIGGER_BIT);
+
+    assert_eq!(apu.channels.channel_4.debug_snapshot().dmg_delayed_start, 6);
+    assert!(!apu.channels.channel_4.runtime.active);
+
+    for t_cycle in 0..12 {
+        tick_apu_with_edges(&mut apu, t_cycle, &[]);
+    }
+
+    let snapshot = apu.channels.channel_4.debug_snapshot();
+    assert_eq!(snapshot.dmg_delayed_start, 0);
+    assert!(snapshot.runtime_active);
+    assert_eq!(snapshot.period_timer, noise_timer_reload(0x0E, 0));
+}
+
+#[test]
 fn channel_4_trigger_reloads_envelope_lfsr_and_noise_timer() {
     let mut apu = Apu::new(ConsoleModel::Dmg);
     apu.write_register(0xFF26, 0x80);

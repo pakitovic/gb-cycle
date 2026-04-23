@@ -88,11 +88,13 @@ fn nr52_power_on_restarts_the_ch4_hidden_startup_phase_from_zero() {
         tick_apu_with_edges(&mut apu, t_cycle, &[]);
     }
     assert_ne!(apu.channel_4_debug_snapshot().alignment, 0);
+    assert!(apu.channels.channel_4.nr43_live_write.alignment_subphase);
 
     apu.write_register(0xFF26, 0x80);
 
     let snapshot = apu.channel_4_debug_snapshot();
     assert_eq!(snapshot.alignment, 0);
+    assert!(!apu.channels.channel_4.nr43_live_write.alignment_subphase);
     assert!(!snapshot.countdown_reloaded);
     assert_eq!(snapshot.counter_timer, 0);
     assert_eq!(snapshot.noise_counter, 0);

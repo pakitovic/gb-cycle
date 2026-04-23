@@ -264,6 +264,7 @@ impl Channel4State {
          the powered-off timebase kept moving while NR52 was low.
         */
         self.nr43_live_write.alignment = 0;
+        self.nr43_live_write.alignment_subphase = false;
         self.dmg_delayed_start = 0;
         self.pending_trigger_envelope_reload = false;
     }
@@ -347,6 +348,12 @@ impl Channel4State {
             self.tick_noise_counter_phase();
         }
 
+        if start_after_tick {
+            let next_step_clocks_envelope = self.pending_trigger_envelope_reload;
+            self.pending_trigger_envelope_reload = false;
+            self.trigger(ConsoleModel::Dmg, next_step_clocks_envelope);
+        }
+
         if noise_clocking_suppressed(self.noise.clock_shift) {
             return;
         }
@@ -357,12 +364,6 @@ impl Channel4State {
 
         if self.noise.period_timer == 0 {
             self.noise.period_timer = self.noise_timer_reload();
-        }
-
-        if start_after_tick {
-            let next_step_clocks_envelope = self.pending_trigger_envelope_reload;
-            self.pending_trigger_envelope_reload = false;
-            self.trigger(ConsoleModel::Dmg, next_step_clocks_envelope);
         }
     }
 
