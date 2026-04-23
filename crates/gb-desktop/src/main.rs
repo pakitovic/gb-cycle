@@ -8424,14 +8424,13 @@ mod tests {
     use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
     use gb_core::{
         Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory,
-        ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace,
-        ApuRecordedChannel, ApuRecordedChannelMask,
-        ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
-        CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
-        CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
-        ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
-        MachineConfig, MachineStepRegion, PersistentCartState, PpuFramebufferLayerSource,
-        PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
+        ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel,
+        ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState,
+        CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent,
+        CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
+        ExecutionMode, ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus,
+        LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion, PersistentCartState,
+        PpuFramebufferLayerSource, PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
@@ -10594,6 +10593,65 @@ mod tests {
     }
 
     #[test]
+    fn desktop_watch_trace_record_t_cycle_captures_matching_bus_activity_and_noops_when_disabled() {
+        let root = temp_test_root("watch-trace-record");
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
+            .expect("plain ROM should load");
+
+        super::DesktopWatchTraceCapture {
+            output_path: None,
+            watched_addresses: BTreeSet::from([0x0100, 0x0101, 0x0102, 0x0103]),
+            max_records: 1,
+            records: VecDeque::new(),
+        }
+        .write_artifact()
+        .expect("disabled watch trace capture should be a no-op");
+
+        let mut disabled_capture = super::DesktopWatchTraceCapture {
+            output_path: None,
+            watched_addresses: BTreeSet::from([0x0100, 0x0101, 0x0102, 0x0103]),
+            max_records: 1,
+            records: VecDeque::new(),
+        };
+        for _ in 0..4 {
+            machine.step_t_cycle();
+            disabled_capture.record_t_cycle(&machine);
+        }
+        assert!(disabled_capture.records.is_empty());
+
+        let mut capture = super::DesktopWatchTraceCapture {
+            output_path: Some(root.join("watch-trace.txt")),
+            watched_addresses: BTreeSet::from([0x0100, 0x0101, 0x0102, 0x0103]),
+            max_records: 1,
+            records: VecDeque::new(),
+        };
+        for _ in 0..8 {
+            machine.step_t_cycle();
+            capture.record_t_cycle(&machine);
+            if !capture.records.is_empty() {
+                break;
+            }
+        }
+
+        let record = capture
+            .records
+            .front()
+            .expect("watch trace should retain at least one matching record");
+        assert!(!record.matched_addresses.is_empty());
+        assert!(
+            record
+                .matched_addresses
+                .iter()
+                .all(|address| [0x0100, 0x0101, 0x0102, 0x0103].contains(address))
+        );
+        assert!(record.cartridge_trace.contains("state=NoMbc"));
+    }
+
+    #[test]
     fn desktop_pc_watch_trace_renderer_and_capture_from_env_include_match_context() {
         let _guard = crate::lock_sdl_test();
         let root = temp_test_root("pc-watch-trace-capture");
@@ -10701,6 +10759,76 @@ mod tests {
         assert_eq!(artifact.lines().count(), 2);
         assert!(artifact.contains("pc_watch.hit_ranges=[0x03C0..=0x03EF]"));
         assert!(artifact.contains("pc_watch.hit_ranges=[0x05FD..=0x062F]"));
+    }
+
+    #[test]
+    fn desktop_pc_watch_trace_record_t_cycle_captures_matching_program_counters_and_noops_when_disabled()
+     {
+        let root = temp_test_root("pc-watch-trace-record");
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
+            .expect("plain ROM should load");
+
+        super::DesktopPcWatchTraceCapture {
+            output_path: None,
+            watched_ranges: vec![super::PcWatchRange {
+                start: 0x0100,
+                end: 0x0103,
+            }],
+            max_records: 1,
+            records: VecDeque::new(),
+        }
+        .write_artifact()
+        .expect("disabled PC watch trace capture should be a no-op");
+
+        let mut disabled_capture = super::DesktopPcWatchTraceCapture {
+            output_path: None,
+            watched_ranges: vec![super::PcWatchRange {
+                start: 0x0100,
+                end: 0x0103,
+            }],
+            max_records: 1,
+            records: VecDeque::new(),
+        };
+        for _ in 0..4 {
+            machine.step_t_cycle();
+            disabled_capture.record_t_cycle(&machine);
+        }
+        assert!(disabled_capture.records.is_empty());
+
+        let mut capture = super::DesktopPcWatchTraceCapture {
+            output_path: Some(root.join("pc-watch-trace.txt")),
+            watched_ranges: vec![super::PcWatchRange {
+                start: 0x0100,
+                end: 0x0103,
+            }],
+            max_records: 1,
+            records: VecDeque::new(),
+        };
+        for _ in 0..8 {
+            machine.step_t_cycle();
+            capture.record_t_cycle(&machine);
+            if !capture.records.is_empty() {
+                break;
+            }
+        }
+
+        let record = capture
+            .records
+            .front()
+            .expect("PC watch trace should retain at least one matching record");
+        assert_eq!(
+            record.matched_ranges,
+            vec![super::PcWatchRange {
+                start: 0x0100,
+                end: 0x0103,
+            }]
+        );
+        assert!(record.cpu.registers.pc >= 0x0100 && record.cpu.registers.pc <= 0x0103);
+        assert!(record.cartridge_trace.contains("state=NoMbc"));
     }
 
     #[test]
@@ -10828,6 +10956,94 @@ mod tests {
     }
 
     #[test]
+    fn desktop_edge_trace_record_t_cycle_tracks_pc_entry_and_bus_changes() {
+        let root = temp_test_root("edge-trace-record");
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine
+            .load_cartridge(build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
+            .expect("plain ROM should load");
+
+        super::DesktopEdgeTraceCapture {
+            output_path: None,
+            watched_addresses: BTreeSet::from([
+                0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x0106, 0x0107,
+            ]),
+            watched_pc_ranges: vec![super::PcWatchRange {
+                start: 0x0100,
+                end: 0x0107,
+            }],
+            active_pc_ranges: BTreeSet::new(),
+            last_observed_values: BTreeMap::new(),
+            max_records: 1,
+            records: VecDeque::new(),
+        }
+        .write_artifact()
+        .expect("disabled edge trace capture should be a no-op");
+
+        let mut disabled_capture = super::DesktopEdgeTraceCapture {
+            output_path: None,
+            watched_addresses: BTreeSet::from([
+                0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x0106, 0x0107,
+            ]),
+            watched_pc_ranges: vec![super::PcWatchRange {
+                start: 0x0100,
+                end: 0x0107,
+            }],
+            active_pc_ranges: BTreeSet::new(),
+            last_observed_values: BTreeMap::new(),
+            max_records: 1,
+            records: VecDeque::new(),
+        };
+        for _ in 0..4 {
+            machine.step_t_cycle();
+            disabled_capture.record_t_cycle(&machine);
+        }
+        assert!(disabled_capture.records.is_empty());
+
+        let mut capture = super::DesktopEdgeTraceCapture {
+            output_path: Some(root.join("edge-trace.txt")),
+            watched_addresses: BTreeSet::from([
+                0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x0106, 0x0107,
+            ]),
+            watched_pc_ranges: vec![super::PcWatchRange {
+                start: 0x0100,
+                end: 0x0107,
+            }],
+            active_pc_ranges: BTreeSet::new(),
+            last_observed_values: BTreeMap::new(),
+            max_records: 1,
+            records: VecDeque::new(),
+        };
+        for _ in 0..32 {
+            machine.step_t_cycle();
+            capture.record_t_cycle(&machine);
+            if !capture.records.is_empty() && !capture.last_observed_values.is_empty() {
+                break;
+            }
+        }
+
+        let record = capture
+            .records
+            .front()
+            .expect("edge trace should retain at least one matching record");
+        assert_eq!(
+            record.current_pc_ranges,
+            vec![super::PcWatchRange {
+                start: 0x0100,
+                end: 0x0107,
+            }]
+        );
+        assert!(!record.triggers.is_empty());
+        assert!(!capture.last_observed_values.is_empty());
+        assert!(capture.active_pc_ranges.contains(&super::PcWatchRange {
+            start: 0x0100,
+            end: 0x0107,
+        }));
+    }
+
+    #[test]
     fn desktop_ch4_nr43_trace_capture_and_formatters_cover_env_filter_and_artifact() {
         let _guard = crate::lock_sdl_test();
         let root = temp_test_root("ch4-nr43-trace-capture");
@@ -10870,6 +11086,13 @@ mod tests {
             counter_timer: 96,
             noise_counter: 0x1234,
             countdown_reloaded: true,
+            did_step_counter: true,
+            counter_active: true,
+            background_counting: false,
+            started_with_dac_disabled: false,
+            dmg_delayed_start: 0,
+            runtime_active: true,
+            runtime_dac_enabled: true,
             period_timer: 48,
             lfsr_state: 0x4567,
             current_digital_output: 0x0F,
@@ -10877,28 +11100,102 @@ mod tests {
                 runtime_active: true,
                 same_shift_group: false,
                 old_nr43: 0x15,
+                ff_value: 0xFF,
                 new_nr43: 0x3F,
-                glitch_value: 0xFF,
-                second_glitch_value: 0x3F,
                 old_shift: 1,
-                glitch_shift: 14,
-                second_glitch_shift: 7,
+                ff_shift: 15,
+                glitch_1_value: 0xFF,
+                glitch_2_value: Some(0x3F),
+                glitch_1_shift: 14,
+                glitch_2_shift: Some(7),
                 new_shift: 7,
                 effective_counter: 0x2345,
                 countdown_reloaded: true,
                 old_bit: false,
-                glitch_bit: true,
-                second_glitch_bit: false,
+                ff_bit: true,
+                glitch_1_bit: true,
+                glitch_2_bit: Some(false),
                 new_bit: true,
                 decision_category: ApuCh4Nr43LiveWriteCategory::LowShiftFollowup,
                 lfsr_action: ApuCh4Nr43LfsrAction::ForcedShortStepThenLowShiftCorruption,
-                reload_seam_step: true,
-                old_to_ff_step: false,
-                old_to_ff_forced_short_width: true,
-                ff_to_new_step: false,
-                ff_to_new_forced_short_width: true,
-                low_shift_extra_step: true,
-                feedback_corruption: true,
+                reload_seam: Some(ApuCh4Nr43PassTrace {
+                    kind: ApuCh4Nr43PassKind::ReloadSeam,
+                    value_from: 0x15,
+                    value_to: 0x15,
+                    shift_from: 1,
+                    shift_to: 1,
+                    bit_from: false,
+                    bit_to: false,
+                    category: ApuCh4Nr43LiveWriteCategory::None,
+                    action: ApuCh4Nr43LfsrAction::PlainStep,
+                    lfsr_before: 0x7FFF,
+                    lfsr_after: 0x3FFF,
+                }),
+                old_to_ff: Some(ApuCh4Nr43PassTrace {
+                    kind: ApuCh4Nr43PassKind::OldToFf,
+                    value_from: 0x15,
+                    value_to: 0xFF,
+                    shift_from: 1,
+                    shift_to: 15,
+                    bit_from: false,
+                    bit_to: true,
+                    category: ApuCh4Nr43LiveWriteCategory::Category1,
+                    action: ApuCh4Nr43LfsrAction::ForcedShortStep,
+                    lfsr_before: 0x3FFF,
+                    lfsr_after: 0x1FFF,
+                }),
+                ff_to_glitch_1: Some(ApuCh4Nr43PassTrace {
+                    kind: ApuCh4Nr43PassKind::FfToGlitch1,
+                    value_from: 0xFF,
+                    value_to: 0xFF,
+                    shift_from: 15,
+                    shift_to: 14,
+                    bit_from: true,
+                    bit_to: true,
+                    category: ApuCh4Nr43LiveWriteCategory::Category2,
+                    action: ApuCh4Nr43LfsrAction::ForcedShortStep,
+                    lfsr_before: 0x1FFF,
+                    lfsr_after: 0x0FFF,
+                }),
+                glitch_1_to_glitch_2: Some(ApuCh4Nr43PassTrace {
+                    kind: ApuCh4Nr43PassKind::Glitch1ToGlitch2,
+                    value_from: 0xFF,
+                    value_to: 0x3F,
+                    shift_from: 14,
+                    shift_to: 7,
+                    bit_from: true,
+                    bit_to: false,
+                    category: ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                    action: ApuCh4Nr43LfsrAction::ForcedShortStep,
+                    lfsr_before: 0x0FFF,
+                    lfsr_after: 0x07FF,
+                }),
+                glitch_to_new: Some(ApuCh4Nr43PassTrace {
+                    kind: ApuCh4Nr43PassKind::GlitchToNew,
+                    value_from: 0x3F,
+                    value_to: 0x3F,
+                    shift_from: 7,
+                    shift_to: 7,
+                    bit_from: false,
+                    bit_to: true,
+                    category: ApuCh4Nr43LiveWriteCategory::None,
+                    action: ApuCh4Nr43LfsrAction::None,
+                    lfsr_before: 0x07FF,
+                    lfsr_after: 0x07FF,
+                }),
+                low_shift_followup: Some(ApuCh4Nr43PassTrace {
+                    kind: ApuCh4Nr43PassKind::LowShiftFollowup,
+                    value_from: 0x3F,
+                    value_to: 0x3F,
+                    shift_from: 7,
+                    shift_to: 7,
+                    bit_from: true,
+                    bit_to: true,
+                    category: ApuCh4Nr43LiveWriteCategory::LowShiftFollowup,
+                    action: ApuCh4Nr43LfsrAction::ForcedShortStepThenLowShiftCorruption,
+                    lfsr_before: 0x07FF,
+                    lfsr_after: 0x3F7F,
+                }),
                 lfsr_before: 0x7FFF,
                 lfsr_after: 0x3F7F,
             }),
@@ -10906,7 +11203,7 @@ mod tests {
         assert!(rich_rendered.contains("ch4.nr43=0x3F"));
         assert!(rich_rendered.contains("category=LowShiftFollowup"));
         assert!(rich_rendered.contains("action=ForcedShortStepThenLowShiftCorruption"));
-        assert!(rich_rendered.contains("feedback_corruption:true"));
+        assert!(rich_rendered.contains("low_shift_followup:LowShiftFollowup"));
         assert!(rich_rendered.contains("lfsr=0x7FFF->0x3F7F"));
 
         capture
