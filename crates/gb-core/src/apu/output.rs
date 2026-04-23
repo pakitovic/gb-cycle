@@ -35,6 +35,12 @@ pub struct ApuHostDcBlocker {
     previous_output_right: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApuHostHpf {
+    charge_model: HpfChargeModel,
+    capacitor: ApuHpfCapacitorSnapshot,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ApuHpfCapacitorSnapshot {
     pub left: i64,
@@ -181,6 +187,43 @@ impl ApuHostDcBlocker {
         *previous_input = input;
         *previous_output = output;
         output.round().clamp(i32::MIN as f64, i32::MAX as f64) as i32
+    }
+}
+
+impl ApuHostHpf {
+    pub fn new(console_model: ConsoleModel) -> Self {
+        Self {
+            charge_model: HpfChargeModel::for_console_model(console_model),
+            capacitor: ApuHpfCapacitorSnapshot::default(),
+        }
+    }
+
+    pub fn filter_t_cycle(
+        &mut self,
+        sample: ApuHostSample,
+        any_output_connected: bool,
+    ) -> ApuHostSample {
+        if !any_output_connected {
+            return ApuHostSample::default();
+        }
+
+        let left_output = i64::from(sample.left) - self.capacitor.left;
+        let right_output = i64::from(sample.right) - self.capacitor.right;
+        let hpf_charge_factor_numerator = self.charge_model.numerator();
+
+        self.capacitor.left = i64::from(sample.left)
+            - (left_output * hpf_charge_factor_numerator) / HPF_CHARGE_FACTOR_DENOMINATOR;
+        self.capacitor.right = i64::from(sample.right)
+            - (right_output * hpf_charge_factor_numerator) / HPF_CHARGE_FACTOR_DENOMINATOR;
+
+        ApuHostSample {
+            left: left_output as i32,
+            right: right_output as i32,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.capacitor = ApuHpfCapacitorSnapshot::default();
     }
 }
 

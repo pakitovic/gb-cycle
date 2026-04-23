@@ -18,13 +18,13 @@ use audio_recording::{
 use bootrom::{load_boot_rom_assets, missing_boot_rom_asset_path, resolve_path};
 use cli::{CliAction, DesktopRunOptions, help_text, parse_cli_arguments_with_base_config};
 use gb_core::{
-    ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuRecordedChannel, ApuRecordedChannelMask,
-    ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot, CartridgeDiagnostic,
-    CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection,
-    CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState, CpuSnapshot, ExecutionMode,
-    InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine, MachineConfig,
-    MachineStepObserver, MachineStepRegion, PpuAccessMode, PpuFramebufferLayerSource,
-    PpuStepRegion, StartupMode, TraceSummaryBuffer,
+    ApuCh4DebugSnapshot, ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassTrace, ApuRecordedChannel,
+    ApuRecordedChannelMask, ApuRegisterWriteObservation, ApuRegisterWriteState, ApuSnapshot,
+    CartridgeDiagnostic, CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind,
+    CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState,
+    CpuSnapshot, ExecutionMode, InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine,
+    MachineConfig, MachineStepObserver, MachineStepRegion, PpuAccessMode,
+    PpuFramebufferLayerSource, PpuSnapshot, PpuStepRegion, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel,
@@ -126,7 +126,14 @@ const DESKTOP_EMU_PROFILE_ENV_VAR: &str = "GB_CYCLE_DESKTOP_EMU_PROFILE";
 const DESKTOP_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_PATH";
 const DESKTOP_TRACE_T_CYCLES_ENV_VAR: &str = "GB_CYCLE_DESKTOP_TRACE_T_CYCLES";
 const DESKTOP_CH4_NR43_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CH4_NR43_TRACE_PATH";
+const DESKTOP_CH4_STARTUP_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CH4_STARTUP_TRACE_PATH";
+const DESKTOP_CPU_WINDOW_TRACE_PATH_ENV_VAR: &str = "GB_CYCLE_DESKTOP_CPU_WINDOW_TRACE_PATH";
+const CPU_WINDOW_TRACE_START_PC: u16 = 0x4136;
+const CPU_WINDOW_TRACE_END_PC: u16 = 0x7A8F;
+const MASTER_NR52_ADDRESS: u16 = 0xFF26;
+const CH4_NR42_ADDRESS: u16 = 0xFF21;
 const CH4_NR43_ADDRESS: u16 = 0xFF22;
+const CH4_NR44_ADDRESS: u16 = 0xFF23;
 const ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
     DialogFileFilter {
         name: "Game Boy ROMs",
@@ -226,6 +233,8 @@ struct FrontendRuntime {
     save_directory_dialog: PathSelectionDialog,
     trace_capture: DesktopTraceCapture,
     ch4_nr43_trace: DesktopCh4Nr43TraceCapture,
+    ch4_startup_trace: DesktopCh4StartupTraceCapture,
+    cpu_window_trace: DesktopCpuWindowTraceCapture,
     printer_output: PrinterOutputState,
 }
 
@@ -330,6 +339,19 @@ struct DesktopCh4Nr43TraceCapture {
     records: Vec<DesktopCh4Nr43TraceRecord>,
 }
 
+struct DesktopCh4StartupTraceCapture {
+    output_path: Option<PathBuf>,
+    records: Vec<DesktopCh4StartupTraceRecord>,
+    last_ch4: Option<ApuCh4DebugSnapshot>,
+}
+
+struct DesktopCpuWindowTraceCapture {
+    output_path: Option<PathBuf>,
+    records: Vec<DesktopCpuWindowTraceRecord>,
+    active: bool,
+    finished: bool,
+}
+
 #[derive(Debug, Clone)]
 struct DesktopTraceRecord {
     t_cycle: u64,
@@ -345,6 +367,31 @@ struct DesktopCh4Nr43TraceRecord {
     cpu: CpuSnapshot,
     apu_write: ApuRegisterWriteObservation,
     ch4: ApuCh4DebugSnapshot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DesktopCh4StartupTraceEventKind {
+    RegisterWrite,
+    DelayedStartFired,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopCh4StartupTraceRecord {
+    event: DesktopCh4StartupTraceEventKind,
+    t_cycle: u64,
+    cpu: CpuSnapshot,
+    apu_write: Option<ApuRegisterWriteObservation>,
+    ch4: ApuCh4DebugSnapshot,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopCpuWindowTraceRecord {
+    t_cycle: u64,
+    cpu: CpuSnapshot,
+    interrupts: InterruptControllerSnapshot,
+    ppu: PpuSnapshot,
+    ppu_ly_read: u8,
+    ppu_stat_read: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -963,6 +1010,147 @@ impl DesktopCh4Nr43TraceCapture {
     }
 }
 
+impl DesktopCh4StartupTraceCapture {
+    fn from_env() -> Result<Self, String> {
+        Ok(Self {
+            output_path: env::var_os(DESKTOP_CH4_STARTUP_TRACE_PATH_ENV_VAR).map(PathBuf::from),
+            records: Vec::new(),
+            last_ch4: None,
+        })
+    }
+
+    fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
+        if self.output_path.is_none() {
+            return;
+        }
+
+        let current_ch4 = machine.apu().channel_4_debug_snapshot();
+        let t_cycle = machine.next_t_cycle().get().saturating_sub(1);
+        let cpu = machine.cpu().snapshot();
+
+        if let Some(apu_write) = machine.apu().last_register_write().filter(|observation| {
+            matches!(
+                observation.address,
+                MASTER_NR52_ADDRESS | CH4_NR42_ADDRESS | CH4_NR43_ADDRESS | CH4_NR44_ADDRESS
+            )
+        }) {
+            self.records.push(DesktopCh4StartupTraceRecord {
+                event: DesktopCh4StartupTraceEventKind::RegisterWrite,
+                t_cycle,
+                cpu: cpu.clone(),
+                apu_write: Some(apu_write.clone()),
+                ch4: current_ch4,
+            });
+        }
+
+        if let Some(previous_ch4) = self.last_ch4
+            && previous_ch4.dmg_delayed_start != 0
+            && current_ch4.dmg_delayed_start == 0
+        {
+            self.records.push(DesktopCh4StartupTraceRecord {
+                event: DesktopCh4StartupTraceEventKind::DelayedStartFired,
+                t_cycle,
+                cpu,
+                apu_write: None,
+                ch4: current_ch4,
+            });
+        }
+
+        self.last_ch4 = Some(current_ch4);
+    }
+
+    fn write_artifact(&self) -> Result<(), String> {
+        let Some(path) = self.output_path.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!("failed to create CH4 startup trace artifact directory {parent:?}: {error}")
+            })?;
+        }
+
+        let mut rendered = String::new();
+        for record in &self.records {
+            rendered.push_str(&render_desktop_ch4_startup_trace_record(record));
+            rendered.push('\n');
+        }
+        fs::write(path, rendered).map_err(|error| {
+            format!("failed to write CH4 startup trace artifact {path:?}: {error}")
+        })
+    }
+}
+
+impl DesktopCpuWindowTraceCapture {
+    fn from_env() -> Self {
+        Self {
+            output_path: env::var_os(DESKTOP_CPU_WINDOW_TRACE_PATH_ENV_VAR).map(PathBuf::from),
+            records: Vec::new(),
+            active: false,
+            finished: false,
+        }
+    }
+
+    fn record_t_cycle(&mut self, machine: &Machine<TraceSummaryBuffer>) {
+        if self.output_path.is_none() || self.finished {
+            return;
+        }
+
+        let cpu = machine.cpu().snapshot();
+        if !matches!(
+            cpu.execution_state,
+            CpuExecutionState::FetchOpcode { t_cycle: 0 }
+        ) {
+            return;
+        }
+
+        let pc = cpu.registers.pc;
+        if !self.active {
+            if pc != CPU_WINDOW_TRACE_START_PC {
+                return;
+            }
+            self.active = true;
+        }
+
+        self.records.push(DesktopCpuWindowTraceRecord {
+            t_cycle: machine.next_t_cycle().get().saturating_sub(1),
+            cpu,
+            interrupts: machine.interrupts().snapshot(),
+            ppu: machine.ppu().snapshot(),
+            ppu_ly_read: machine.ppu().read_register(0xFF44),
+            ppu_stat_read: machine.ppu().read_register(0xFF41),
+        });
+
+        if pc == CPU_WINDOW_TRACE_END_PC {
+            self.finished = true;
+        }
+    }
+
+    fn write_artifact(&self) -> Result<(), String> {
+        let Some(path) = self.output_path.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!("failed to create CPU window trace artifact directory {parent:?}: {error}")
+            })?;
+        }
+
+        let mut rendered = String::new();
+        for record in &self.records {
+            rendered.push_str(&render_desktop_cpu_window_trace_record(record));
+            rendered.push('\n');
+        }
+        fs::write(path, rendered)
+            .map_err(|error| format!("failed to write CPU window trace artifact {path:?}: {error}"))
+    }
+}
+
 fn render_desktop_trace_record(record: &DesktopTraceRecord) -> String {
     format!(
         "t_cycle={} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?} cpu.ime={} cpu.delayed_ime_enable={} cpu.last_bus_activity={} cpu.last_address_event={} apu.powered={} apu.nr50={:#04X} apu.nr51={:#04X} apu.nr52={:#04X} apu.div_apu={} apu.active_mask={:#04X} apu.dac_mask={:#04X} apu.channel_outputs=[{:#04X},{:#04X},{:#04X},{:#04X}] apu.mixer=({}, {}) apu.hpf=({}, {}) irq.if={:#04X} irq.ie={:#04X} joypad.p1={:#04X} joypad.selection_bits={:#04X} joypad.pressed_mask={:#04X}{}",
@@ -1006,6 +1194,45 @@ fn render_desktop_ch4_nr43_trace_record(record: &DesktopCh4Nr43TraceRecord) -> S
         record.cpu.execution_state,
         format_apu_last_register_write(Some(&record.apu_write)),
         format_ch4_debug_snapshot(&record.ch4),
+    )
+}
+
+fn render_desktop_ch4_startup_trace_record(record: &DesktopCh4StartupTraceRecord) -> String {
+    format!(
+        "event={:?} t_cycle={} cpu.pc={:#06X} cpu.execution_state={:?}{} {}",
+        record.event,
+        record.t_cycle,
+        record.cpu.registers.pc,
+        record.cpu.execution_state,
+        format_apu_last_register_write(record.apu_write.as_ref()),
+        format_ch4_debug_snapshot(&record.ch4),
+    )
+}
+
+fn render_desktop_cpu_window_trace_record(record: &DesktopCpuWindowTraceRecord) -> String {
+    format!(
+        "t_cycle={} cpu.pc={:#06X} cpu.execution_state={:?} cpu.current_opcode={:?} cpu.ime={} cpu.delayed_ime_enable={} cpu.last_bus_activity={} cpu.last_address_event={} irq.if={:#04X} irq.ie={:#04X} ppu.ly_internal={:#04X} ppu.ly_read={:#04X} ppu.stat_read={:#04X} ppu.mode={:?} ppu.line_dot={} ppu.mode_dot={} ppu.mode0_start_dot={} ppu.lyc_coincidence={} ppu.stat_irq_line={} ppu.lcd_state={:?} ppu.blank_frame_active={}",
+        record.t_cycle,
+        record.cpu.registers.pc,
+        record.cpu.execution_state,
+        record.cpu.current_opcode,
+        record.cpu.ime,
+        record.cpu.delayed_ime_enable,
+        format_cpu_bus_activity(record.cpu.last_bus_activity),
+        format_cpu_address_event(record.cpu.last_address_event),
+        record.interrupts.interrupt_flags,
+        record.interrupts.interrupt_enable,
+        record.ppu.ly,
+        record.ppu_ly_read,
+        record.ppu_stat_read,
+        record.ppu.mode,
+        record.ppu.line_dot,
+        record.ppu.mode_dot,
+        record.ppu.mode0_start_dot,
+        record.ppu.lyc_coincidence,
+        record.ppu.stat_irq_line,
+        record.ppu.lcd_state,
+        record.ppu.blank_frame_active,
     )
 }
 
@@ -1106,7 +1333,7 @@ fn format_apu_register_write_state(state: &ApuRegisterWriteState) -> String {
 
 fn format_ch4_debug_snapshot(snapshot: &ApuCh4DebugSnapshot) -> String {
     format!(
-        "ch4.nr43={:#04X} ch4.shift={} ch4.short_width={} ch4.divider={} ch4.alignment={} ch4.counter_timer={} ch4.noise_counter={:#06X} ch4.countdown_reloaded={} ch4.period_timer={} ch4.lfsr={:#06X} ch4.output={:#04X}{}",
+        "ch4.nr43={:#04X} ch4.shift={} ch4.short_width={} ch4.divider={} ch4.alignment={} ch4.counter_timer={} ch4.noise_counter={:#06X} ch4.countdown_reloaded={} ch4.did_step_counter={} ch4.counter_active={} ch4.background_counting={} ch4.started_with_dac_disabled={} ch4.dmg_delayed_start={} ch4.runtime_active={} ch4.runtime_dac_enabled={} ch4.period_timer={} ch4.lfsr={:#06X} ch4.output={:#04X}{}",
         snapshot.nr43,
         snapshot.clock_shift,
         snapshot.short_width_mode,
@@ -1115,6 +1342,13 @@ fn format_ch4_debug_snapshot(snapshot: &ApuCh4DebugSnapshot) -> String {
         snapshot.counter_timer,
         snapshot.noise_counter,
         snapshot.countdown_reloaded,
+        snapshot.did_step_counter,
+        snapshot.counter_active,
+        snapshot.background_counting,
+        snapshot.started_with_dac_disabled,
+        snapshot.dmg_delayed_start,
+        snapshot.runtime_active,
+        snapshot.runtime_dac_enabled,
         snapshot.period_timer,
         snapshot.lfsr_state,
         snapshot.current_digital_output,
@@ -1128,16 +1362,28 @@ fn format_ch4_live_nr43_trace(trace: Option<&ApuCh4Nr43LiveWriteTrace>) -> Strin
     };
 
     format!(
-        " ch4.last_nr43_live_write=old({:#04X}/shift={}/bit={}) glitch1({:#04X}/shift={}/bit={}) glitch2({:#04X}/shift={}/bit={}) new({:#04X}/shift={}/bit={}) runtime_active={} same_shift_group={} effective_counter={:#06X} countdown_reloaded={} category={:?} action={:?} steps=[reload_seam:{},old_to_ff:{},old_to_ff_short:{},ff_to_new:{},ff_to_new_short:{},low_shift_extra:{},feedback_corruption:{}] lfsr={:#06X}->{:#06X}",
+        " ch4.last_nr43_live_write=old({:#04X}/shift={}/bit={}) ff({:#04X}/shift={}/bit={}) glitch1({:#04X}/shift={}/bit={}) glitch2({}/shift={}/bit={}) new({:#04X}/shift={}/bit={}) runtime_active={} same_shift_group={} effective_counter={:#06X} countdown_reloaded={} category={:?} action={:?} passes=[reload_seam:{},old_to_ff:{},ff_to_glitch1:{},glitch1_to_glitch2:{},glitch_to_new:{},low_shift_followup:{}] lfsr={:#06X}->{:#06X}",
         trace.old_nr43,
         trace.old_shift,
         trace.old_bit,
-        trace.glitch_value,
-        trace.glitch_shift,
-        trace.glitch_bit,
-        trace.second_glitch_value,
-        trace.second_glitch_shift,
-        trace.second_glitch_bit,
+        trace.ff_value,
+        trace.ff_shift,
+        trace.ff_bit,
+        trace.glitch_1_value,
+        trace.glitch_1_shift,
+        trace.glitch_1_bit,
+        trace
+            .glitch_2_value
+            .map(|value| format!("{value:#04X}"))
+            .unwrap_or_else(|| "none".to_string()),
+        trace
+            .glitch_2_shift
+            .map(|shift| shift.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        trace
+            .glitch_2_bit
+            .map(|bit| bit.to_string())
+            .unwrap_or_else(|| "none".to_string()),
         trace.new_nr43,
         trace.new_shift,
         trace.new_bit,
@@ -1147,15 +1393,35 @@ fn format_ch4_live_nr43_trace(trace: Option<&ApuCh4Nr43LiveWriteTrace>) -> Strin
         trace.countdown_reloaded,
         trace.decision_category,
         trace.lfsr_action,
-        trace.reload_seam_step,
-        trace.old_to_ff_step,
-        trace.old_to_ff_forced_short_width,
-        trace.ff_to_new_step,
-        trace.ff_to_new_forced_short_width,
-        trace.low_shift_extra_step,
-        trace.feedback_corruption,
+        format_ch4_live_nr43_pass(trace.reload_seam.as_ref()),
+        format_ch4_live_nr43_pass(trace.old_to_ff.as_ref()),
+        format_ch4_live_nr43_pass(trace.ff_to_glitch_1.as_ref()),
+        format_ch4_live_nr43_pass(trace.glitch_1_to_glitch_2.as_ref()),
+        format_ch4_live_nr43_pass(trace.glitch_to_new.as_ref()),
+        format_ch4_live_nr43_pass(trace.low_shift_followup.as_ref()),
         trace.lfsr_before,
         trace.lfsr_after,
+    )
+}
+
+fn format_ch4_live_nr43_pass(pass: Option<&ApuCh4Nr43PassTrace>) -> String {
+    let Some(pass) = pass else {
+        return "none".to_string();
+    };
+
+    format!(
+        "{:?}({:#04X}/{}->{:#04X}/{},bit:{}->{},cat:{:?},act:{:?},lfsr:{:#06X}->{:#06X})",
+        pass.kind,
+        pass.value_from,
+        pass.shift_from,
+        pass.value_to,
+        pass.shift_to,
+        pass.bit_from,
+        pass.bit_to,
+        pass.category,
+        pass.action,
+        pass.lfsr_before,
+        pass.lfsr_after,
     )
 }
 
@@ -3121,6 +3387,8 @@ fn run_desktop_with_startup_fallback_persistence(
         save_directory_dialog: PathSelectionDialog::new(),
         trace_capture: DesktopTraceCapture::from_env()?,
         ch4_nr43_trace: DesktopCh4Nr43TraceCapture::from_env()?,
+        ch4_startup_trace: DesktopCh4StartupTraceCapture::from_env()?,
+        cpu_window_trace: DesktopCpuWindowTraceCapture::from_env(),
         printer_output: PrinterOutputState::default(),
     };
     apply_canvas_video_options_for_dimensions(
@@ -3550,6 +3818,8 @@ fn run_desktop_with_startup_fallback_persistence(
     }
     runtime.trace_capture.write_artifact()?;
     runtime.ch4_nr43_trace.write_artifact()?;
+    runtime.ch4_startup_trace.write_artifact()?;
+    runtime.cpu_window_trace.write_artifact()?;
 
     Ok(())
 }
@@ -4359,6 +4629,14 @@ fn step_until_next_frame(
             context
                 .runtime
                 .ch4_nr43_trace
+                .record_t_cycle(audio_source_machine(context.machine));
+            context
+                .runtime
+                .ch4_startup_trace
+                .record_t_cycle(audio_source_machine(context.machine));
+            context
+                .runtime
+                .cpu_window_trace
                 .record_t_cycle(audio_source_machine(context.machine));
 
             if let Some(audio_output) = &mut context.runtime.audio_output {
@@ -7336,13 +7614,14 @@ mod tests {
     use crate::audio_recording::DesktopAudioRecordingOptions;
     use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
     use gb_core::{
-        Apu, ApuRecordedChannel, ApuRecordedChannelMask, ApuRegisterWriteObservation,
-        ApuRegisterWriteState, CartridgeDiagnostic, CartridgeDiagnosticSeverity, ConsoleModel,
-        CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,
-        CpuBusActivitySnapshot, ExecutionMode, ExternalPortAttachmentKind, JoypadSnapshot,
-        JoypadStatus, LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion,
-        PersistentCartState, PpuFramebufferLayerSource, PpuStepRegion, PrinterCommand, StartupMode,
-        TraceSummaryBuffer,
+        Apu, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory, ApuCh4Nr43LiveWriteTrace,
+        ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel, ApuRecordedChannelMask,
+        ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
+        CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
+        CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
+        ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus, LinkedTopologyKind, Machine,
+        MachineConfig, MachineStepRegion, PersistentCartState, PpuFramebufferLayerSource,
+        PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
@@ -8071,6 +8350,17 @@ mod tests {
                 ch4_nr43_trace: super::DesktopCh4Nr43TraceCapture {
                     output_path: None,
                     records: Vec::new(),
+                },
+                ch4_startup_trace: super::DesktopCh4StartupTraceCapture {
+                    output_path: None,
+                    records: Vec::new(),
+                    last_ch4: None,
+                },
+                cpu_window_trace: super::DesktopCpuWindowTraceCapture {
+                    output_path: None,
+                    records: Vec::new(),
+                    active: false,
+                    finished: false,
                 },
                 printer_output: super::PrinterOutputState::default(),
             };
@@ -9198,6 +9488,163 @@ mod tests {
     }
 
     #[test]
+    fn desktop_ch4_nr43_trace_capture_records_live_writes_and_writes_the_artifact() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("ch4-nr43-trace-capture");
+        let output_path = root.join("artifacts").join("ch4-nr43-trace.txt");
+        unsafe {
+            std::env::set_var(super::DESKTOP_CH4_NR43_TRACE_PATH_ENV_VAR, &output_path);
+        }
+        let mut capture =
+            super::DesktopCh4Nr43TraceCapture::from_env().expect("trace capture from env");
+        unsafe {
+            std::env::remove_var(super::DESKTOP_CH4_NR43_TRACE_PATH_ENV_VAR);
+        }
+
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine.write_bus(0xFF26, 0x80);
+        machine.write_bus(super::CH4_NR42_ADDRESS, 0xF0);
+        machine.write_bus(super::CH4_NR43_ADDRESS, 0x00);
+
+        capture.record_t_cycle(&machine);
+
+        assert_eq!(capture.records.len(), 1);
+        assert_eq!(
+            capture.records[0].apu_write.address,
+            super::CH4_NR43_ADDRESS
+        );
+        capture
+            .write_artifact()
+            .expect("CH4 NR43 trace artifact should be writable");
+        let rendered =
+            fs::read_to_string(&output_path).expect("CH4 NR43 trace artifact should exist");
+        assert!(rendered.contains("apu.last_write=write@0xFF22=0x00"));
+
+        super::DesktopCh4Nr43TraceCapture {
+            output_path: None,
+            records: Vec::new(),
+        }
+        .write_artifact()
+        .expect("disabled CH4 NR43 trace capture should be a no-op");
+    }
+
+    #[test]
+    fn desktop_ch4_startup_trace_capture_records_register_writes_and_delayed_start_events() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("ch4-startup-trace-capture");
+        let output_path = root.join("artifacts").join("ch4-startup-trace.txt");
+        unsafe {
+            std::env::set_var(super::DESKTOP_CH4_STARTUP_TRACE_PATH_ENV_VAR, &output_path);
+        }
+        let mut capture =
+            super::DesktopCh4StartupTraceCapture::from_env().expect("trace capture from env");
+        unsafe {
+            std::env::remove_var(super::DESKTOP_CH4_STARTUP_TRACE_PATH_ENV_VAR);
+        }
+
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine.write_bus(super::MASTER_NR52_ADDRESS, 0x80);
+        capture.record_t_cycle(&machine);
+
+        assert_eq!(capture.records.len(), 1);
+        assert_eq!(
+            capture.records[0].event,
+            super::DesktopCh4StartupTraceEventKind::RegisterWrite
+        );
+        assert_eq!(
+            capture.records[0]
+                .apu_write
+                .as_ref()
+                .expect("register-write event should keep the write observation")
+                .address,
+            super::MASTER_NR52_ADDRESS
+        );
+
+        let idle_machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        let mut previous_ch4 = idle_machine.apu().channel_4_debug_snapshot();
+        previous_ch4.dmg_delayed_start = 1;
+        capture.last_ch4 = Some(previous_ch4);
+        capture.record_t_cycle(&idle_machine);
+
+        assert_eq!(capture.records.len(), 2);
+        assert_eq!(
+            capture.records[1].event,
+            super::DesktopCh4StartupTraceEventKind::DelayedStartFired
+        );
+        assert!(capture.records[1].apu_write.is_none());
+
+        capture
+            .write_artifact()
+            .expect("CH4 startup trace artifact should be writable");
+        let rendered =
+            fs::read_to_string(&output_path).expect("CH4 startup trace artifact should exist");
+        assert!(rendered.contains("event=RegisterWrite"));
+        assert!(rendered.contains("event=DelayedStartFired"));
+
+        super::DesktopCh4StartupTraceCapture {
+            output_path: None,
+            records: Vec::new(),
+            last_ch4: None,
+        }
+        .write_artifact()
+        .expect("disabled CH4 startup trace capture should be a no-op");
+    }
+
+    #[test]
+    fn desktop_cpu_window_trace_capture_from_env_writes_a_prebuilt_artifact() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("cpu-window-trace-capture");
+        let output_path = root.join("artifacts").join("cpu-window-trace.txt");
+        unsafe {
+            std::env::set_var(super::DESKTOP_CPU_WINDOW_TRACE_PATH_ENV_VAR, &output_path);
+        }
+        let mut capture = super::DesktopCpuWindowTraceCapture::from_env();
+        unsafe {
+            std::env::remove_var(super::DESKTOP_CPU_WINDOW_TRACE_PATH_ENV_VAR);
+        }
+
+        assert_eq!(capture.output_path.as_deref(), Some(output_path.as_path()));
+        assert!(!capture.active);
+        assert!(!capture.finished);
+
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine.step_t_cycle();
+        capture.records.push(super::DesktopCpuWindowTraceRecord {
+            t_cycle: machine.next_t_cycle().get().saturating_sub(1),
+            cpu: machine.cpu().snapshot(),
+            interrupts: machine.interrupts().snapshot(),
+            ppu: machine.ppu().snapshot(),
+            ppu_ly_read: machine.ppu().read_register(0xFF44),
+            ppu_stat_read: machine.ppu().read_register(0xFF41),
+        });
+
+        capture
+            .write_artifact()
+            .expect("CPU window trace artifact should be writable");
+        let rendered =
+            fs::read_to_string(&output_path).expect("CPU window trace artifact should exist");
+        assert!(rendered.contains("ppu.ly_read="));
+        assert!(rendered.contains("ppu.stat_read="));
+
+        super::DesktopCpuWindowTraceCapture {
+            output_path: None,
+            records: Vec::new(),
+            active: false,
+            finished: false,
+        }
+        .write_artifact()
+        .expect("disabled CPU window trace capture should be a no-op");
+    }
+
+    #[test]
     fn desktop_trace_helpers_cover_bus_address_joypad_and_apu_formatting() {
         assert_eq!(super::format_cpu_bus_activity(None), "none");
         assert_eq!(
@@ -9351,6 +9798,118 @@ mod tests {
             }),
             0x0F
         );
+        assert_eq!(
+            super::format_ch4_live_nr43_trace(None),
+            " ch4.last_nr43_live_write=none"
+        );
+        let ch4_trace = ApuCh4Nr43LiveWriteTrace {
+            runtime_active: true,
+            same_shift_group: false,
+            old_nr43: 0x4C,
+            ff_value: 0xFF,
+            glitch_1_value: 0x4C,
+            glitch_2_value: Some(0x7C),
+            old_shift: 4,
+            ff_shift: 15,
+            glitch_1_shift: 4,
+            glitch_2_shift: Some(7),
+            new_shift: 3,
+            new_nr43: 0x3C,
+            effective_counter: 0x0123,
+            countdown_reloaded: true,
+            old_bit: false,
+            ff_bit: true,
+            glitch_1_bit: false,
+            glitch_2_bit: Some(true),
+            new_bit: true,
+            decision_category: ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+            lfsr_action: ApuCh4Nr43LfsrAction::ForcedShortStep,
+            reload_seam: Some(ApuCh4Nr43PassTrace {
+                kind: ApuCh4Nr43PassKind::ReloadSeam,
+                value_from: 0x4C,
+                value_to: 0x4C,
+                shift_from: 4,
+                shift_to: 4,
+                bit_from: false,
+                bit_to: false,
+                category: ApuCh4Nr43LiveWriteCategory::None,
+                action: ApuCh4Nr43LfsrAction::PlainStep,
+                lfsr_before: 0x7FFF,
+                lfsr_after: 0x3FFF,
+            }),
+            old_to_ff: Some(ApuCh4Nr43PassTrace {
+                kind: ApuCh4Nr43PassKind::OldToFf,
+                value_from: 0x4C,
+                value_to: 0xFF,
+                shift_from: 4,
+                shift_to: 15,
+                bit_from: false,
+                bit_to: true,
+                category: ApuCh4Nr43LiveWriteCategory::Category2,
+                action: ApuCh4Nr43LfsrAction::PlainStep,
+                lfsr_before: 0x3FFF,
+                lfsr_after: 0x1FFF,
+            }),
+            ff_to_glitch_1: Some(ApuCh4Nr43PassTrace {
+                kind: ApuCh4Nr43PassKind::FfToGlitch1,
+                value_from: 0xFF,
+                value_to: 0x4C,
+                shift_from: 15,
+                shift_to: 4,
+                bit_from: true,
+                bit_to: false,
+                category: ApuCh4Nr43LiveWriteCategory::Category1,
+                action: ApuCh4Nr43LfsrAction::SetFeedbackBits,
+                lfsr_before: 0x1FFF,
+                lfsr_after: 0x5FFF,
+            }),
+            glitch_1_to_glitch_2: Some(ApuCh4Nr43PassTrace {
+                kind: ApuCh4Nr43PassKind::Glitch1ToGlitch2,
+                value_from: 0x4C,
+                value_to: 0x7C,
+                shift_from: 4,
+                shift_to: 7,
+                bit_from: false,
+                bit_to: true,
+                category: ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                action: ApuCh4Nr43LfsrAction::ForcedShortStep,
+                lfsr_before: 0x5FFF,
+                lfsr_after: 0x2FFF,
+            }),
+            glitch_to_new: Some(ApuCh4Nr43PassTrace {
+                kind: ApuCh4Nr43PassKind::GlitchToNew,
+                value_from: 0x7C,
+                value_to: 0x3C,
+                shift_from: 7,
+                shift_to: 3,
+                bit_from: true,
+                bit_to: true,
+                category: ApuCh4Nr43LiveWriteCategory::None,
+                action: ApuCh4Nr43LfsrAction::None,
+                lfsr_before: 0x2FFF,
+                lfsr_after: 0x2FFF,
+            }),
+            low_shift_followup: Some(ApuCh4Nr43PassTrace {
+                kind: ApuCh4Nr43PassKind::LowShiftFollowup,
+                value_from: 0x3C,
+                value_to: 0x3C,
+                shift_from: 3,
+                shift_to: 3,
+                bit_from: true,
+                bit_to: true,
+                category: ApuCh4Nr43LiveWriteCategory::LowShiftFollowup,
+                action: ApuCh4Nr43LfsrAction::PlainStep,
+                lfsr_before: 0x2FFF,
+                lfsr_after: 0x17FF,
+            }),
+            lfsr_before: 0x7FFF,
+            lfsr_after: 0x17FF,
+        };
+        let ch4_trace_text = super::format_ch4_live_nr43_trace(Some(&ch4_trace));
+        assert!(ch4_trace_text.contains("ff(0xFF/shift=15/bit=true)"));
+        assert!(ch4_trace_text.contains("glitch2(0x7C/shift=7/bit=true)"));
+        assert!(ch4_trace_text.contains("old_to_ff:OldToFf"));
+        assert!(ch4_trace_text.contains("low_shift_followup:LowShiftFollowup"));
 
         let base_state = ApuRegisterWriteState {
             powered: true,

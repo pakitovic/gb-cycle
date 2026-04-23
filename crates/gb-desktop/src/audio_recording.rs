@@ -1,5 +1,5 @@
 use gb_core::{
-    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostDcBlocker, ApuHostSample, ApuRecordedChannel,
+    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostHpf, ApuHostSample, ApuRecordedChannel,
     ApuRecordedChannelMask, ApuSampleCapture, ApuSampleCaptureError, ConsoleModel,
 };
 use std::ffi::OsStr;
@@ -45,7 +45,7 @@ struct AudioRecordingStream {
     captured_samples: Vec<ApuHostSample>,
     encoded_bytes: Vec<u8>,
     writer: AudioRecordingWriter,
-    dc_blocker: Option<ApuHostDcBlocker>,
+    post_hpf_filter: Option<ApuHostHpf>,
 }
 
 #[derive(Debug)]
@@ -79,7 +79,7 @@ impl DesktopAudioRecorder {
                 stream: AudioRecordingStream::new(
                     &stem_output_path(&options.output_path, channel)?,
                     options.sample_rate_hz,
-                    Some(ApuHostDcBlocker::new(console_model, options.sample_rate_hz)),
+                    Some(ApuHostHpf::new(console_model)),
                 )?,
             });
         }
@@ -96,16 +96,25 @@ impl DesktopAudioRecorder {
         if self.channel_mask.is_all() {
             self.mixed_stream.capture.record_t_cycle(apu);
         } else {
-            self.mixed_stream
-                .capture
-                .record_output_t_cycle(apu.recorded_channel_mix_pre_hpf(self.channel_mask));
+            let tap = apu.recorded_channel_mix_tap_pre_hpf(self.channel_mask);
+            let filtered = self
+                .mixed_stream
+                .post_hpf_filter
+                .as_mut()
+                .expect("subset recording must own a masked-mix HPF")
+                .filter_t_cycle(tap.sample, tap.any_output_connected);
+            self.mixed_stream.capture.record_output_t_cycle(filtered);
         }
 
         for stem_stream in &mut self.stem_streams {
-            stem_stream
+            let tap = apu.recorded_channel_tap_pre_hpf(stem_stream.channel);
+            let filtered = stem_stream
                 .stream
-                .capture
-                .record_output_t_cycle(apu.recorded_channel_sample_pre_hpf(stem_stream.channel));
+                .post_hpf_filter
+                .as_mut()
+                .expect("channel stems must own a post-HPF filter")
+                .filter_t_cycle(tap.sample, tap.any_output_connected);
+            stem_stream.stream.capture.record_output_t_cycle(filtered);
         }
     }
 
@@ -158,16 +167,13 @@ impl DesktopAudioRecorder {
     }
 
     fn reset_mixed_stream_capture(&mut self) -> Result<(), String> {
-        let dc_blocker = if self.channel_mask.is_all() {
+        let post_hpf_filter = if self.channel_mask.is_all() {
             None
         } else {
-            Some(ApuHostDcBlocker::new(
-                self.console_model,
-                self.mixed_stream.writer.sample_rate_hz,
-            ))
+            Some(ApuHostHpf::new(self.console_model))
         };
         self.mixed_stream
-            .reset_capture(self.mixed_stream.writer.sample_rate_hz, dc_blocker)
+            .reset_capture(self.mixed_stream.writer.sample_rate_hz, post_hpf_filter)
     }
 
     fn reset_all_capture_state(&mut self) -> Result<(), String> {
@@ -175,10 +181,7 @@ impl DesktopAudioRecorder {
         for stem_stream in &mut self.stem_streams {
             stem_stream.stream.reset_capture(
                 stem_stream.stream.writer.sample_rate_hz,
-                Some(ApuHostDcBlocker::new(
-                    self.console_model,
-                    stem_stream.stream.writer.sample_rate_hz,
-                )),
+                Some(ApuHostHpf::new(self.console_model)),
             )?;
         }
         Ok(())
@@ -274,14 +277,14 @@ impl AudioRecordingStream {
     fn new(
         output_path: &Path,
         sample_rate_hz: u32,
-        dc_blocker: Option<ApuHostDcBlocker>,
+        post_hpf_filter: Option<ApuHostHpf>,
     ) -> Result<Self, String> {
         Ok(Self {
             capture: ApuSampleCapture::new(sample_rate_hz).map_err(format_capture_error)?,
             captured_samples: Vec::new(),
             encoded_bytes: Vec::new(),
             writer: AudioRecordingWriter::new(output_path, sample_rate_hz)?,
-            dc_blocker,
+            post_hpf_filter,
         })
     }
 
@@ -296,12 +299,8 @@ impl AudioRecordingStream {
             .reserve(self.captured_samples.len() * AUDIO_RECORDING_BYTES_PER_FRAME as usize);
 
         for sample in self.captured_samples.iter().copied() {
-            let filtered = match &mut self.dc_blocker {
-                Some(dc_blocker) => dc_blocker.filter_sample(sample),
-                None => sample,
-            };
-            let left = encode_recorded_sample(filtered.left);
-            let right = encode_recorded_sample(filtered.right);
+            let left = encode_recorded_sample(sample.left);
+            let right = encode_recorded_sample(sample.right);
             self.writer.format.push_i16(&mut self.encoded_bytes, left);
             self.writer.format.push_i16(&mut self.encoded_bytes, right);
         }
@@ -317,12 +316,12 @@ impl AudioRecordingStream {
     fn reset_capture(
         &mut self,
         sample_rate_hz: u32,
-        dc_blocker: Option<ApuHostDcBlocker>,
+        post_hpf_filter: Option<ApuHostHpf>,
     ) -> Result<(), String> {
         self.capture = ApuSampleCapture::new(sample_rate_hz).map_err(format_capture_error)?;
         self.captured_samples.clear();
         self.encoded_bytes.clear();
-        self.dc_blocker = dc_blocker;
+        self.post_hpf_filter = post_hpf_filter;
         Ok(())
     }
 }
@@ -1070,14 +1069,14 @@ mod tests {
         recorder
             .set_channel_mask(ApuRecordedChannelMask::ALL)
             .expect("setting the existing full mask should be a no-op");
-        assert!(recorder.mixed_stream.dc_blocker.is_none());
+        assert!(recorder.mixed_stream.post_hpf_filter.is_none());
 
         let subset_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch1, true);
         recorder
             .set_channel_mask(subset_mask)
             .expect("subset mask should reset the mixed stream capture");
         assert_eq!(recorder.channel_mask(), subset_mask);
-        assert!(recorder.mixed_stream.dc_blocker.is_some());
+        assert!(recorder.mixed_stream.post_hpf_filter.is_some());
 
         for _ in 0..8 {
             recorder.capture_t_cycle(&apu);
@@ -1098,8 +1097,8 @@ mod tests {
                 .pending_sample_count(),
             0
         );
-        assert!(recorder.mixed_stream.dc_blocker.is_some());
-        assert!(recorder.stem_streams[0].stream.dc_blocker.is_some());
+        assert!(recorder.mixed_stream.post_hpf_filter.is_some());
+        assert!(recorder.stem_streams[0].stream.post_hpf_filter.is_some());
 
         recorder
             .reset_for_session_swap(ConsoleModel::Mgb)
@@ -1107,9 +1106,9 @@ mod tests {
 
         recorder
             .set_channel_mask(ApuRecordedChannelMask::ALL)
-            .expect("restoring the full mask should drop the mixed-stream blocker");
+            .expect("restoring the full mask should drop the mixed-stream post-HPF filter");
         assert_eq!(recorder.channel_mask(), ApuRecordedChannelMask::ALL);
-        assert!(recorder.mixed_stream.dc_blocker.is_none());
+        assert!(recorder.mixed_stream.post_hpf_filter.is_none());
 
         recorder.finish().expect("recorder should finish");
 

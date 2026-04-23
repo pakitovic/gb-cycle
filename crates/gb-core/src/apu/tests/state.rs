@@ -79,6 +79,28 @@ fn nr52_power_off_clears_audio_registers_but_preserves_wave_ram() {
 }
 
 #[test]
+fn nr52_power_on_restarts_the_ch4_hidden_startup_phase_from_zero() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF26, 0x00);
+
+    for t_cycle in 0..5 {
+        tick_apu_with_edges(&mut apu, t_cycle, &[]);
+    }
+    assert_ne!(apu.channel_4_debug_snapshot().alignment, 0);
+    assert!(apu.channels.channel_4.nr43_live_write.alignment_subphase);
+
+    apu.write_register(0xFF26, 0x80);
+
+    let snapshot = apu.channel_4_debug_snapshot();
+    assert_eq!(snapshot.alignment, 0);
+    assert!(!apu.channels.channel_4.nr43_live_write.alignment_subphase);
+    assert!(!snapshot.countdown_reloaded);
+    assert_eq!(snapshot.counter_timer, 0);
+    assert_eq!(snapshot.noise_counter, 0);
+}
+
+#[test]
 fn dmg_powered_off_length_writes_preserve_internal_length_counters_without_restoring_register_state()
  {
     let mut apu = Apu::new(ConsoleModel::Dmg);

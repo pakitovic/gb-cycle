@@ -118,7 +118,8 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 ## LY / LYC coincidence baseline
 
 - [hardware fact] `LY` should advance through the live scanline range `0..=153`, including `144..=153` during VBlank.
-- [inference] On DMG-family timing, the bus-facing `FF44` readback should advance to the next scanline during the last machine cycle of HBlank before the full raster wrap completes; do not force bus-visible `LY` reads to be identical to the internal raster/comparison line at every dot.
+- [inference] On DMG-family timing, the bus-facing `FF44` readback can advance to the next scanline during the last machine cycle of visible-line HBlank before the full raster wrap completes; do not force bus-visible `LY` reads to be identical to the internal raster/comparison line at every dot.
+- [inference] Do not apply that early-read seam uniformly through VBlank. For VBlank lines, keep the bus-facing `LY` transition aligned to the explicit line-start update path instead of pre-advancing from the previous line's tail.
 - [hardware fact] The `LYC==LY` flag should come from a continuous comparison between the live `LY` and `LYC` values, not from a once-per-line event cache.
 - [hardware fact] Writing `LYC` should immediately reevaluate the live coincidence state rather than waiting for the next scanline boundary.
 - [inference] For a from-scratch implementation, do not treat LCD-off readback as "retain the last active-LCD coincidence result". While the LCD is disabled, the external `LY` / `STAT` contract should follow the LCD-off readback rules explicitly instead of pretending the active raster comparison is still live.

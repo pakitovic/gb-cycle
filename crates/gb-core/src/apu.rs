@@ -21,7 +21,7 @@ pub(crate) use self::frame_sequencer::div_apu_phase_from_system_counter;
 #[cfg(test)]
 use self::output::HpfChargeModel;
 pub use self::output::{
-    ApuHostDcBlocker, ApuHostSample, ApuHpfCapacitorSnapshot, ApuOutputSnapshot,
+    ApuHostDcBlocker, ApuHostHpf, ApuHostSample, ApuHpfCapacitorSnapshot, ApuOutputSnapshot,
     ApuStereoOutputSnapshot,
 };
 use self::output::{
@@ -102,6 +102,12 @@ impl ApuRecordedChannelMask {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ApuRecordedChannelMixTap {
+    pub sample: ApuHostSample,
+    pub any_output_connected: bool,
+}
+
 impl Default for ApuRecordedChannelMask {
     fn default() -> Self {
         Self::ALL
@@ -141,6 +147,34 @@ pub enum ApuCh4Nr43LfsrAction {
     PlainStep,
     ForcedShortStep,
     ForcedShortStepThenLowShiftCorruption,
+    StepThenAndPrevious,
+    StepThenSetFeedbackBits,
+    SetFeedbackBits,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApuCh4Nr43PassKind {
+    ReloadSeam,
+    OldToFf,
+    FfToGlitch1,
+    Glitch1ToGlitch2,
+    GlitchToNew,
+    LowShiftFollowup,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApuCh4Nr43PassTrace {
+    pub kind: ApuCh4Nr43PassKind,
+    pub value_from: u8,
+    pub value_to: u8,
+    pub shift_from: u8,
+    pub shift_to: u8,
+    pub bit_from: bool,
+    pub bit_to: bool,
+    pub category: ApuCh4Nr43LiveWriteCategory,
+    pub action: ApuCh4Nr43LfsrAction,
+    pub lfsr_before: u16,
+    pub lfsr_after: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,28 +182,31 @@ pub struct ApuCh4Nr43LiveWriteTrace {
     pub runtime_active: bool,
     pub same_shift_group: bool,
     pub old_nr43: u8,
-    pub new_nr43: u8,
-    pub glitch_value: u8,
-    pub second_glitch_value: u8,
+    pub ff_value: u8,
+    pub glitch_1_value: u8,
+    pub glitch_2_value: Option<u8>,
     pub old_shift: u8,
-    pub glitch_shift: u8,
-    pub second_glitch_shift: u8,
+    pub ff_shift: u8,
+    pub glitch_1_shift: u8,
+    pub glitch_2_shift: Option<u8>,
     pub new_shift: u8,
+    pub new_nr43: u8,
     pub effective_counter: u16,
     pub countdown_reloaded: bool,
     pub old_bit: bool,
-    pub glitch_bit: bool,
-    pub second_glitch_bit: bool,
+    pub ff_bit: bool,
+    pub glitch_1_bit: bool,
+    pub glitch_2_bit: Option<bool>,
     pub new_bit: bool,
+    // Compatibility aliases derived from the explicit per-pass trace set.
     pub decision_category: ApuCh4Nr43LiveWriteCategory,
     pub lfsr_action: ApuCh4Nr43LfsrAction,
-    pub reload_seam_step: bool,
-    pub old_to_ff_step: bool,
-    pub old_to_ff_forced_short_width: bool,
-    pub ff_to_new_step: bool,
-    pub ff_to_new_forced_short_width: bool,
-    pub low_shift_extra_step: bool,
-    pub feedback_corruption: bool,
+    pub reload_seam: Option<ApuCh4Nr43PassTrace>,
+    pub old_to_ff: Option<ApuCh4Nr43PassTrace>,
+    pub ff_to_glitch_1: Option<ApuCh4Nr43PassTrace>,
+    pub glitch_1_to_glitch_2: Option<ApuCh4Nr43PassTrace>,
+    pub glitch_to_new: Option<ApuCh4Nr43PassTrace>,
+    pub low_shift_followup: Option<ApuCh4Nr43PassTrace>,
     pub lfsr_before: u16,
     pub lfsr_after: u16,
 }
@@ -184,6 +221,13 @@ pub struct ApuCh4DebugSnapshot {
     pub counter_timer: u32,
     pub noise_counter: u16,
     pub countdown_reloaded: bool,
+    pub did_step_counter: bool,
+    pub counter_active: bool,
+    pub background_counting: bool,
+    pub started_with_dac_disabled: bool,
+    pub dmg_delayed_start: u8,
+    pub runtime_active: bool,
+    pub runtime_dac_enabled: bool,
     pub period_timer: u32,
     pub lfsr_state: u16,
     pub current_digital_output: u8,
@@ -259,6 +303,8 @@ impl Apu {
 
         if self.master.powered {
             self.channels.tick_fast_timers();
+        } else {
+            self.channels.tick_powered_off_timebase();
         }
 
         for edge in context.derived_edges() {
@@ -297,6 +343,17 @@ impl Apu {
         self.output_path.current_output.into()
     }
 
+    pub fn recorded_channel_tap_pre_hpf(
+        &self,
+        channel: ApuRecordedChannel,
+    ) -> ApuRecordedChannelMixTap {
+        let sample = self.recorded_channel_sample_pre_hpf(channel);
+        ApuRecordedChannelMixTap {
+            sample,
+            any_output_connected: sample.left != 0 || sample.right != 0,
+        }
+    }
+
     pub fn recorded_channel_sample_pre_hpf(&self, channel: ApuRecordedChannel) -> ApuHostSample {
         let index = channel.index();
         let channel_dac_output = self.output_path.channel_dac_outputs[index];
@@ -317,19 +374,27 @@ impl Apu {
         }
     }
 
-    pub fn recorded_channel_mix_pre_hpf(
+    pub fn recorded_channel_mix_tap_pre_hpf(
         &self,
         channel_mask: ApuRecordedChannelMask,
-    ) -> ApuHostSample {
+    ) -> ApuRecordedChannelMixTap {
         if channel_mask.is_empty() {
-            return ApuHostSample::default();
+            return ApuRecordedChannelMixTap::default();
         }
 
         if channel_mask.is_all() {
-            return self.output_path.master_output.into();
+            return ApuRecordedChannelMixTap {
+                sample: self.output_path.master_output.into(),
+                any_output_connected: self
+                    .output_path
+                    .channel_dac_outputs
+                    .iter()
+                    .any(|&value| value != 0),
+            };
         }
 
         let mut mixed = ApuHostSample::default();
+        let mut any_output_connected = false;
         for channel in ApuRecordedChannel::ALL {
             if !channel_mask.contains(channel) {
                 continue;
@@ -338,9 +403,20 @@ impl Apu {
             let channel_sample = self.recorded_channel_sample_pre_hpf(channel);
             mixed.left += channel_sample.left;
             mixed.right += channel_sample.right;
+            any_output_connected |= channel_sample.left != 0 || channel_sample.right != 0;
         }
 
-        mixed
+        ApuRecordedChannelMixTap {
+            sample: mixed,
+            any_output_connected,
+        }
+    }
+
+    pub fn recorded_channel_mix_pre_hpf(
+        &self,
+        channel_mask: ApuRecordedChannelMask,
+    ) -> ApuHostSample {
+        self.recorded_channel_mix_tap_pre_hpf(channel_mask).sample
     }
 
     pub fn last_register_write(&self) -> Option<&ApuRegisterWriteObservation> {

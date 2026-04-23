@@ -443,6 +443,28 @@ fn recorded_channel_mix_pre_hpf_sums_only_the_selected_channels() {
 }
 
 #[test]
+fn recorded_channel_mix_tap_reports_connection_state_for_selected_channels() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.write_register(0xFF12, 0x08);
+    apu.write_register(0xFF24, NR50_MAX_VOLUME_BOTH);
+    apu.write_register(0xFF25, NR51_LEFT_ROUTE_CH1_BIT | NR51_RIGHT_ROUTE_CH1_BIT);
+
+    let ch1_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch1, true);
+    let tap = apu.recorded_channel_mix_tap_pre_hpf(ch1_mask);
+    assert_eq!(
+        tap.sample,
+        apu.recorded_channel_sample_pre_hpf(ApuRecordedChannel::Ch1)
+    );
+    assert!(tap.any_output_connected);
+
+    let unrouted_mask = ApuRecordedChannelMask::NONE.with_channel(ApuRecordedChannel::Ch4, true);
+    let unrouted_tap = apu.recorded_channel_mix_tap_pre_hpf(unrouted_mask);
+    assert_eq!(unrouted_tap.sample, ApuHostSample::default());
+    assert!(!unrouted_tap.any_output_connected);
+}
+
+#[test]
 fn host_dc_blocker_decays_constant_dc_bias_towards_zero() {
     let mut blocker = ApuHostDcBlocker::new(ConsoleModel::Dmg, 96_000);
     let mut filtered = ApuHostSample::default();
@@ -480,6 +502,55 @@ fn host_dc_blocker_reset_restores_the_initial_step_response() {
     });
 
     assert_eq!(first, after_reset);
+}
+
+#[test]
+fn host_hpf_matches_the_output_path_step_response() {
+    let mut hpf = ApuHostHpf::new(ConsoleModel::Dmg);
+
+    let first = hpf.filter_t_cycle(
+        ApuHostSample {
+            left: ANALOG_ONE,
+            right: -ANALOG_ONE,
+        },
+        true,
+    );
+    assert_eq!(
+        first,
+        ApuHostSample {
+            left: ANALOG_ONE,
+            right: -ANALOG_ONE,
+        }
+    );
+
+    let second = hpf.filter_t_cycle(
+        ApuHostSample {
+            left: ANALOG_ONE,
+            right: -ANALOG_ONE,
+        },
+        true,
+    );
+    assert!(second.left < first.left);
+    assert!(second.right > first.right);
+
+    let disconnected = hpf.filter_t_cycle(
+        ApuHostSample {
+            left: ANALOG_ONE,
+            right: -ANALOG_ONE,
+        },
+        false,
+    );
+    assert_eq!(disconnected, ApuHostSample::default());
+
+    hpf.reset();
+    let after_reset = hpf.filter_t_cycle(
+        ApuHostSample {
+            left: ANALOG_ONE,
+            right: -ANALOG_ONE,
+        },
+        true,
+    );
+    assert_eq!(after_reset, first);
 }
 
 #[test]

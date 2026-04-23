@@ -275,6 +275,43 @@ fn lyc_coincidence_tracks_vblank_lines_and_the_153_to_0_wrap() {
 }
 
 #[test]
+fn ly_read_advances_early_only_on_visible_hblank_lines() {
+    let mut visible = PpuTestRig::dmg();
+    visible.apply_startup_state(PpuStartupState {
+        lcdc: 0x80,
+        stat: 0x00,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x20,
+        lyc: 0x00,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    visible.line_dot = LY_READ_ADVANCE_START_DOT;
+    assert_eq!(visible.snapshot().mode, PpuAccessMode::HBlank);
+    assert_eq!(visible.read_register(0xFF44), 0x21);
+
+    let mut vblank = PpuTestRig::dmg();
+    vblank.apply_startup_state(PpuStartupState {
+        lcdc: 0x80,
+        stat: 0x01,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x90,
+        lyc: 0x00,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    vblank.line_dot = LY_READ_ADVANCE_START_DOT;
+    assert_eq!(vblank.snapshot().mode, PpuAccessMode::VBlank);
+    assert_eq!(vblank.read_register(0xFF44), 0x90);
+}
+
+#[test]
 fn ly_is_read_only_and_obj_palettes_keep_an_explicit_uninitialized_policy() {
     let mut ppu = PpuTestRig::dmg();
     ppu.apply_startup_state(PpuStartupState {
