@@ -106,10 +106,6 @@ pub(in crate::cartridge) fn classify_loaded_cartridge(
         return classification;
     }
 
-    if let Some(classification) = classify_documented_special_variant(header, rom_bytes) {
-        return classification;
-    }
-
     if compatibility.heuristic_policy == crate::model::HeuristicPolicy::AllowExperimental
         && let Some(classification) = classify_experimental_heuristic(header, rom_bytes)
     {
@@ -123,6 +119,24 @@ fn classify_supported_signature_variant(
     header: &CartridgeHeader,
     rom_bytes: &[u8],
 ) -> Option<CartridgeClassification> {
+    if is_m161_multicart_signature(header, rom_bytes) {
+        return Some(supported_with_reason(
+            header.cartridge_type,
+            "M161",
+            SupportedCartridgeFamily::M161,
+            "M161 multicart classification came from the explicit Mani 4-in-1 signature path",
+        ));
+    }
+
+    if is_mani_mmm01_signature(header, rom_bytes) {
+        return Some(supported_with_reason(
+            header.cartridge_type,
+            "MMM01",
+            SupportedCartridgeFamily::Mmm01,
+            "MMM01 classification came from the explicit later Mani trailing-menu signature path",
+        ));
+    }
+
     if is_mbc1m_multicart_signature(header, rom_bytes) {
         return Some(supported_with_reason(
             header.cartridge_type,
@@ -146,23 +160,6 @@ fn classify_planned_variant(header: &CartridgeHeader) -> Option<CartridgeClassif
         _ => None,
     }
 }
-
-fn classify_documented_special_variant(
-    header: &CartridgeHeader,
-    rom_bytes: &[u8],
-) -> Option<CartridgeClassification> {
-    if is_m161_multicart_signature(header, rom_bytes) {
-        return Some(unsupported(
-            header.cartridge_type,
-            "M161",
-            UnsupportedCartridgeCategory::DocumentedButUnsupported,
-            "M161 multicart classification came from the explicit Mani 4-in-1 signature path",
-        ));
-    }
-
-    None
-}
-
 fn classify_experimental_heuristic(
     header: &CartridgeHeader,
     rom_bytes: &[u8],
@@ -230,10 +227,20 @@ pub(in crate::cartridge) fn is_mbc1m_multicart_signature(
 }
 
 fn is_m161_multicart_signature(header: &CartridgeHeader, rom_bytes: &[u8]) -> bool {
-    if rom_bytes.len() < M161_KNOWN_SUBTITLE_SET.len() * M161_BANK_BYTES
+    if rom_bytes.len() < M161_SUPPORTED_ROM_BYTES_MIN
         || rom_bytes.len() > M161_SUPPORTED_ROM_BYTES_MAX
         || !rom_bytes.len().is_multiple_of(M161_BANK_BYTES)
     {
+        return false;
+    }
+
+    if !matches_padded_title(&header.title_bytes, M161_SYNTHETIC_MENU_TITLE)
+        && !matches_padded_title(&header.title_bytes, M161_COMMERCIAL_MENU_TITLE)
+    {
+        return false;
+    }
+
+    if header.ram_size.raw_code != 0x00 {
         return false;
     }
 
@@ -271,6 +278,52 @@ fn is_m161_multicart_signature(header: &CartridgeHeader, rom_bytes: &[u8]) -> bo
     }
 
     seen_titles.into_iter().all(|seen| seen)
+}
+
+fn is_mani_mmm01_signature(header: &CartridgeHeader, rom_bytes: &[u8]) -> bool {
+    if header.cartridge_type != MANI_MMM01_MENU_TYPE
+        || header.ram_size.raw_code != 0x00
+        || header.ram_size.decoded_bytes != Some(0)
+        || header.rom_size.decoded_bytes != Some(rom_bytes.len())
+        || !header.title.ends_with(MANI_MMM01_MENU_SUFFIX)
+        || !MANI_MMM01_SUPPORTED_ROM_BYTES.contains(&rom_bytes.len())
+    {
+        return false;
+    }
+
+    let Ok(primary_header) = CartridgeHeader::parse(rom_bytes) else {
+        return false;
+    };
+    if !matches!(primary_header.cartridge_type, 0x01..=0x03)
+        || primary_header.ram_size.raw_code != 0x00
+        || primary_header.nintendo_logo != header.nintendo_logo
+    {
+        return false;
+    }
+
+    let mut game_header_count = 0;
+    for base_offset in (0..rom_bytes.len()).step_by(0x4000) {
+        let Ok(candidate) = CartridgeHeader::parse_at_offset(rom_bytes, base_offset) else {
+            continue;
+        };
+        let Some(subrom_bytes) = candidate.rom_size.decoded_bytes else {
+            continue;
+        };
+
+        if candidate.nintendo_logo != header.nintendo_logo
+            || !matches!(candidate.cartridge_type, 0x00..=0x03)
+            || candidate.ram_size.raw_code != 0x00
+            || subrom_bytes >= rom_bytes.len()
+            || candidate.title.is_empty()
+            || candidate.title.ends_with(MANI_MMM01_MENU_SUFFIX)
+        {
+            continue;
+        }
+
+        game_header_count += 1;
+    }
+
+    game_header_count >= 4
 }
 
 fn is_ems_multicart_signature(title_bytes: &[u8], raw_type: u8, destination_code: u8) -> bool {

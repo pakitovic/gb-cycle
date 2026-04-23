@@ -169,6 +169,50 @@ pub(in crate::cartridge) fn validate_mmm01(
     Ok(header.ram_size.decoded_bytes.unwrap_or(0))
 }
 
+pub(in crate::cartridge) fn validate_m161(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<(), CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    if header.ram_size.raw_code != 0x00 || header.ram_size.decoded_bytes != Some(0) {
+        return Err(ctx.reject(format!(
+            "{} expects no external RAM, but the header resolved to {:?} bytes from code {:#04X}",
+            ctx.name(),
+            header.ram_size.decoded_bytes,
+            header.ram_size.raw_code
+        )));
+    }
+
+    if !actual_rom_size.is_multiple_of(M161_BANK_BYTES) {
+        return Err(ctx.reject(format!(
+            "{} expects a ROM image sized in 32 KiB banks, but the loaded ROM is {} bytes",
+            ctx.name(),
+            actual_rom_size
+        )));
+    }
+
+    let bank_count = actual_rom_size / M161_BANK_BYTES;
+    if !(M161_SUPPORTED_ROM_BANKS_MIN..=M161_SUPPORTED_ROM_BANKS_MAX).contains(&bank_count) {
+        return Err(ctx.reject(format!(
+            "{} expects between {} and {} total 32 KiB banks, but the loaded ROM resolves to {} banks",
+            ctx.name(),
+            M161_SUPPORTED_ROM_BANKS_MIN,
+            M161_SUPPORTED_ROM_BANKS_MAX,
+            bank_count
+        )));
+    }
+
+    Ok(())
+}
+
 pub(in crate::cartridge) fn validate_huc1(
     header: &CartridgeHeader,
     actual_rom_size: usize,

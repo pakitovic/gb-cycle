@@ -204,14 +204,22 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `MMM01` should live in a dedicated multicart path because Pan Docs documents additional game-selection state and an initial unmapped boot mode where the last `32 KiB` of the ROM is visible first.
 - The loader must not assume that the only meaningful boot header for every cartridge necessarily lives at the physical start of the ROM image once `MMM01` support is under consideration.
 - The loader should prefer the boot-visible MMM01 menu header at `(rom_size - 32 KiB) + 0x0100` when that trailing header resolves to one of the MMM01 type codes and declares the full loaded ROM size, instead of trusting the physical-start header of the first embedded game.
+- The current baseline also admits one narrow second trailing-menu path for the later Mani `4-in-1` multicarts that Pan Docs attributes to `MMM01`: the boot-visible physical header may still look like plain `MBC1`, but a trailing `... SET` menu header with the observed `0x11` outer type and at least four coherent embedded no-RAM game subheaders (`NoMbc`/`MBC1` shapes in the local dumps) is treated explicitly as `MMM01`.
+- That later-Mani path is intentionally narrow and signature-backed. It is not a generic "`SET` means MMM01" heuristic, and it does not reopen `M161`; the original `Tetris + Alleyway + Yakuman + Tennis` Mani cart remains on the dedicated `M161` path.
 - The current repo baseline now includes a dedicated `MMM01` cartridge device with explicit `unmapped` versus `mapped` mode, menu-startup mapping to the last `32 KiB` of the ROM, dedicated game-select masks, and mapper-local ROM / RAM banking instead of routing MMM01 through ordinary `MBC1`.
 - In the current baseline, the runtime path already covers the released non-CGB commercial shape: dedicated multicart selection, explicit ROM-bank mask locking, RAM-bank mask locking, mapped-mode write restrictions for the extended bits, and battery-backed RAM persistence when the header declares it.
-- The current implementation has commercial validation through `Momotarou Collection 2 (Japan) (SGB Enhanced)`: the MMM01 menu boots correctly and both included games run correctly after the menu-to-game transition.
+- The current implementation has commercial validation through `Momotarou Collection 2 (Japan) (SGB Enhanced)`, plus the four later Mani local multicarts that enter through the explicit trailing-`... SET` signature path; the menu boots correctly and the included games run correctly after the menu-to-game transition on both the standard header-coded and later-Mani shapes.
 - `MBC1M` should also be a distinct typed variant rather than being mixed into standard `MBC1` banking formulas with ad hoc conditionals.
 - `MBC1M` now enters through an explicit supported `MBC1`-family signature path on `1 MiB` multicarts with repeated valid subheaders in banks such as `0x10`, `0x20`, and `0x30`, instead of being left as a future-only planned variant.
 - `MBC1M` is still a near-family variant of `MBC1`, but it is not interchangeable with standard `MBC1`; the factory should reserve explicit variant space for it even though the current baseline now instantiates that variant.
 - Treat `M161` as a separate multicart special case rather than as `NoMbc` or `MBC1`.
-- Until implemented, `M161` should classify as `DocumentedButUnsupported` or an equivalent multicart-special bucket because its whole-`32 KiB` switching and "only one bankswitch until power-off" rule are not compatible with standard MBC assumptions.
+- `M161` now enters through an explicit supported signature path for the known Mani `4-in-1` multicart instead of falling back to ordinary `NoMbc`.
+- The current signature path accepts both the synthetic baseline menu-header shape (`MANI 4 IN 1` with no-MBC header fields) and the known commercial outer-header shape (`TETRIS SET`, type `0x10`, ROM size `0x03`, RAM size `0x00`) because the real mapper hardware still behaves as `M161` even when the boot-visible menu header does not describe a standard no-MBC cartridge.
+- The current baseline now includes a dedicated `M161` cartridge device with:
+  - whole-`32 KiB` ROM switching across up to `8` banks
+  - a literal one-time bank latch where the first ROM-space write selects bank bits `0..=2` and all later bankswitch writes are ignored until power-off
+  - no external RAM aperture beyond the ordinary absent/open contract and no battery-backed persistence payload.
+- The current implementation now has end-to-end commercial validation through `Mani 4 in 1 - Tetris + Alleyway + Yakuman + Tennis (China) (Ja)`: the menu boots correctly and all four embedded games run correctly after selection.
 - `Strict` and `Permissive` must not enable broad multicart heuristics for `EMS` or `Bung`, but they may now use the explicit `MBC1M` subheader signature path because real commercial multicarts rely on it.
 - `Experimental` may still enable the broader heuristic paths, but diagnostics must state that those classifications did not come from a standard header-backed or signature-backed supported path.
 
@@ -603,7 +611,7 @@ Priority order:
 - tests that rumble-capable MBC5 distinguishes effective RAM-bank selection from `rumble_on`, that `bit 3` of the `0x4000-0x5FFF` control register keeps the motor on until software clears it, and that rumble state is observable without moving that responsibility into the bus or frontend
 - tests that MBC5 validation reports clear diagnostics for ROM sizes above `8 MiB`, impossible RAM declarations, and rumble-capable header types loaded without an observable rumble state
 - tests that MMM01 can load through the trailing menu header instead of the physical-start header, starts in explicit unmapped mode on the last `32 KiB` of the ROM, switches into the selected game mapping through the mapper registers, and still keeps `MBC1M` as a distinct future variant rather than inferring it as ordinary `MBC1`
-- tests that `M161`, `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, and `Bandai TAMA5` all produce specific structured unsupported classifications and never silently fall back to supported mapper families
+- tests that `M161` loads through its own dedicated supported signature path and never silently falls back to `NoMbc`, while `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, and `Bandai TAMA5` still produce specific structured typed handling rather than silently degrading to nearby supported mapper families
 - tests that heuristic `EMS`, `Bung`, and `Wisdom Tree` detection is disabled by default in strict mode and only activates when the explicit experimental loader policy is enabled
 - tests that hardware-style persistence round-trips the complete cartridge backing store rather than the currently visible `0xA000-0xBFFF` window, including linear SRAM on `NoMbc`, banked SRAM on `MBC1`, `MBC3`, and `MBC5`, plus nibble RAM on `MBC2`
 - tests that persistence eligibility comes from `0x0147` capability decoding, that `ram_enabled` does not gate save contents, and that non-battery cartridges do not auto-produce hardware-style saves by default
@@ -746,13 +754,14 @@ Priority order:
   of the physical-start header, power-up exposes the last `32 KiB` menu window
   in explicit unmapped mode, and mapped-mode ROM / RAM banking now stays in one
   dedicated MMM01 implementation instead of falling back to ordinary `MBC1`.
-- In the current baseline, `M161` identification is now closed through one
-  explicit documented-special signature path for the known Mani `4-in-1`
-  multicart shape. The loader recognizes the distinct set of `32 KiB`
-  no-MBC subheaders for `Tetris`, `Tennis`, `Alleyway`, and `Yakuman` in
-  strict mode, reports `M161` deliberately as documented-but-unsupported
-  hardware, and keeps that path separate from the lower-confidence opt-in
-  experimental heuristics used for `EMS`, `Bung`, and `Wisdom Tree`.
+- In the current baseline, `M161` identification and runtime now live on one
+  explicit supported signature path for the known Mani `4-in-1` multicart
+  shape. The loader recognizes the distinct set of `32 KiB` no-MBC subheaders
+  for `Tetris`, `Tennis`, `Alleyway`, and `Yakuman` in strict mode, instantiates
+  a dedicated `M161` device with full-window `32 KiB` banking plus the
+  documented one-bankswitch latch-until-power-off rule, and keeps that path
+  separate from the lower-confidence opt-in experimental heuristics used for
+  `EMS`, `Bung`, and `Wisdom Tree`.
 - In the current baseline, `cartridge` now exposes a typed persistence contract
   directly from the mapper layer, including explicit capability metadata plus
   per-mapper payload shapes for `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, and `Mbc5`.

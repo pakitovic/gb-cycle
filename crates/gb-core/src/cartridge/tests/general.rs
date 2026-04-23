@@ -140,7 +140,39 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
     assert_eq!(m161_classification.detected_name(), "M161");
     assert_eq!(
         m161_classification.selection(),
-        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::DocumentedButUnsupported)
+        CartridgeSelection::Supported(SupportedCartridgeFamily::M161)
+    );
+
+    let mani_mmm01_rom = build_mani_mmm01_rom(0x04);
+    let mani_mmm01_header =
+        CartridgeHeader::parse_for_load(&mani_mmm01_rom).expect("header should parse");
+    let mani_mmm01_classification = classify_loaded_cartridge(
+        &mani_mmm01_header,
+        &mani_mmm01_rom,
+        &CompatibilityPolicy::strict(),
+    );
+    assert_eq!(mani_mmm01_classification.detected_name(), "MMM01");
+    assert_eq!(
+        mani_mmm01_classification.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
+    );
+    assert_eq!(
+        mani_mmm01_classification.reason(),
+        "MMM01 classification came from the explicit later Mani trailing-menu signature path"
+    );
+
+    let standard_mmm01_rom = build_mmm01_rom(0x03, 0x00, 0x0B);
+    let standard_mmm01_header =
+        CartridgeHeader::parse_for_load(&standard_mmm01_rom).expect("header should parse");
+    let standard_mmm01_classification = classify_loaded_cartridge(
+        &standard_mmm01_header,
+        &standard_mmm01_rom,
+        &CompatibilityPolicy::strict(),
+    );
+    assert_eq!(standard_mmm01_classification.detected_name(), "MMM01");
+    assert_eq!(
+        standard_mmm01_classification.reason(),
+        "supported cartridge family"
     );
 }
 

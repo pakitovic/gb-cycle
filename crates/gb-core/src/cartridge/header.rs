@@ -87,10 +87,14 @@ impl CartridgeHeader {
     ) -> Result<Self, CartridgeHeaderParseError> {
         let primary = Self::parse(rom_bytes)?;
 
-        Ok(Self::parse_mmm01_menu_header(rom_bytes).unwrap_or(primary))
+        if let Some(menu_header) = Self::parse_mmm01_menu_header(rom_bytes) {
+            return Ok(menu_header);
+        }
+
+        Ok(Self::parse_mani_mmm01_menu_header(rom_bytes, &primary).unwrap_or(primary))
     }
 
-    fn parse_at_offset(
+    pub(in crate::cartridge) fn parse_at_offset(
         rom_bytes: &[u8],
         base_offset: usize,
     ) -> Result<Self, CartridgeHeaderParseError> {
@@ -196,6 +200,61 @@ impl CartridgeHeader {
 
         Some(candidate)
     }
+
+    fn parse_mani_mmm01_menu_header(rom_bytes: &[u8], primary: &Self) -> Option<Self> {
+        if !matches!(primary.cartridge_type, 0x01..=0x03)
+            || primary.ram_size.raw_code != 0x00
+            || !MANI_MMM01_SUPPORTED_ROM_BYTES.contains(&rom_bytes.len())
+        {
+            return None;
+        }
+
+        let base_offset = rom_bytes.len().checked_sub(MMM01_MENU_BYTES)?;
+        if base_offset == 0 {
+            return None;
+        }
+
+        let candidate = Self::parse_at_offset(rom_bytes, base_offset).ok()?;
+        if candidate.cartridge_type != MANI_MMM01_MENU_TYPE
+            || candidate.ram_size.raw_code != 0x00
+            || candidate.ram_size.decoded_bytes != Some(0)
+            || candidate.rom_size.decoded_bytes != Some(rom_bytes.len())
+            || !candidate.title.ends_with(MANI_MMM01_MENU_SUFFIX)
+            || candidate.nintendo_logo != primary.nintendo_logo
+        {
+            return None;
+        }
+
+        (count_mani_mmm01_subheaders(rom_bytes, &candidate.nintendo_logo) >= 4).then_some(candidate)
+    }
+}
+
+fn count_mani_mmm01_subheaders(rom_bytes: &[u8], expected_logo: &[u8; NINTENDO_LOGO_LEN]) -> usize {
+    let mut match_count = 0;
+
+    for base_offset in (0..rom_bytes.len()).step_by(0x4000) {
+        let Ok(candidate) = CartridgeHeader::parse_at_offset(rom_bytes, base_offset) else {
+            continue;
+        };
+
+        let Some(subrom_bytes) = candidate.rom_size.decoded_bytes else {
+            continue;
+        };
+
+        if candidate.nintendo_logo != *expected_logo
+            || !matches!(candidate.cartridge_type, 0x00..=0x03)
+            || candidate.ram_size.raw_code != 0x00
+            || subrom_bytes >= rom_bytes.len()
+            || candidate.title.is_empty()
+            || candidate.title.ends_with(MANI_MMM01_MENU_SUFFIX)
+        {
+            continue;
+        }
+
+        match_count += 1;
+    }
+
+    match_count
 }
 
 const fn uses_cgb_title_layout(raw_flag: u8) -> bool {

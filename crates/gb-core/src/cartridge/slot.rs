@@ -1,7 +1,7 @@
 use super::classify::{classify_loaded_cartridge, unsupported_load_reason};
 use super::validate::{
-    validate_huc1, validate_huc3, validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5,
-    validate_mmm01, validate_no_mbc,
+    validate_huc1, validate_huc3, validate_m161, validate_mbc1, validate_mbc2, validate_mbc3,
+    validate_mbc5, validate_mmm01, validate_no_mbc,
 };
 use super::*;
 use crate::model::CompatibilityPolicy;
@@ -93,6 +93,31 @@ impl CartridgeSlot {
                         banking_mode: 0,
                         rom_bank_mask: 0,
                         multiplex_enabled: false,
+                    })),
+                };
+
+                Ok(CartridgeLoadReport {
+                    cartridge,
+                    diagnostics,
+                })
+            }
+            CartridgeSelection::Supported(SupportedCartridgeFamily::M161) => {
+                validate_m161(
+                    &header,
+                    rom_bytes.len(),
+                    compatibility,
+                    &classification,
+                    &mut diagnostics,
+                )?;
+
+                let cartridge = Self {
+                    device: Some(CartridgeDevice::M161(M161Cartridge {
+                        rom: rom_bytes,
+                        header,
+                        classification,
+                        selected_bank: 0,
+                        bank_switch_locked: false,
+                        last_bank_write: None,
                     })),
                 };
 
@@ -318,6 +343,7 @@ impl CartridgeSlot {
             None => CartridgeSlotState::Empty,
             Some(CartridgeDevice::NoMbc(_)) => CartridgeSlotState::NoMbc,
             Some(CartridgeDevice::Mmm01(_)) => CartridgeSlotState::Mmm01,
+            Some(CartridgeDevice::M161(_)) => CartridgeSlotState::M161,
             Some(CartridgeDevice::Huc1(_)) => CartridgeSlotState::Huc1,
             Some(CartridgeDevice::Huc3(_)) => CartridgeSlotState::Huc3,
             Some(CartridgeDevice::Mbc1(_)) => CartridgeSlotState::Mbc1,

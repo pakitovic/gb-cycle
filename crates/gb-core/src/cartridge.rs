@@ -6,6 +6,7 @@ mod device;
 mod header;
 mod huc1;
 mod huc3;
+mod m161;
 mod mbc1;
 mod mbc2;
 mod mbc3;
@@ -26,7 +27,7 @@ use header::{decode_cgb_flag, decode_sgb_flag};
 #[cfg(test)]
 use validate::{
     expected_ram_code_decompressed, record_degradable_issue, validate_huc1, validate_huc3,
-    validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5, validate_no_mbc,
+    validate_m161, validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5, validate_no_mbc,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -58,7 +59,10 @@ const NO_MBC_SUPPORTED_RAM_BYTES: usize = 8 * 1024;
 const MBC1_STANDARD_RAM_BYTES_MAX: usize = 32 * 1024;
 const MBC1_LARGE_ROM_RAM_BYTES: usize = 8 * 1024;
 const M161_BANK_BYTES: usize = 32 * 1024;
-const M161_SUPPORTED_ROM_BYTES_MAX: usize = 8 * M161_BANK_BYTES;
+const M161_SUPPORTED_ROM_BANKS_MIN: usize = 5;
+const M161_SUPPORTED_ROM_BANKS_MAX: usize = 8;
+const M161_SUPPORTED_ROM_BYTES_MIN: usize = M161_SUPPORTED_ROM_BANKS_MIN * M161_BANK_BYTES;
+const M161_SUPPORTED_ROM_BYTES_MAX: usize = M161_SUPPORTED_ROM_BANKS_MAX * M161_BANK_BYTES;
 const MBC2_SUPPORTED_ROM_BYTES_MAX: usize = 256 * 1024;
 const MBC2_RAM_CELL_COUNT: usize = 512;
 const MBC2_RAM_ADDRESS_MASK: usize = MBC2_RAM_CELL_COUNT - 1;
@@ -66,6 +70,9 @@ const MBC2_RAM_READ_HIGH_NIBBLE: u8 = 0xF0;
 const MMM01_MENU_BYTES: usize = 32 * 1024;
 const MMM01_MIN_ROM_BYTES: usize = 64 * 1024;
 const MMM01_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
+const MANI_MMM01_SUPPORTED_ROM_BYTES: [usize; 2] = [512 * 1024, 1024 * 1024];
+const MANI_MMM01_MENU_TYPE: u8 = 0x11;
+const MANI_MMM01_MENU_SUFFIX: &str = " SET";
 const HUC1_SUPPORTED_ROM_BYTES_MAX: usize = 1024 * 1024;
 const HUC1_SUPPORTED_RAM_BYTES_MAX: usize = 32 * 1024;
 const HUC3_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
@@ -79,6 +86,8 @@ const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
 const MBC1_STANDARD_ROM_SIZES: [usize; 5] =
     [32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024];
 const MBC1_LARGE_ROM_SIZES: [usize; 2] = [1024 * 1024, 2 * 1024 * 1024];
+const M161_SYNTHETIC_MENU_TITLE: &[u8] = b"MANI 4 IN 1";
+const M161_COMMERCIAL_MENU_TITLE: &[u8] = b"TETRIS SET";
 const M161_KNOWN_SUBTITLE_SET: [&[u8]; 4] = [b"TETRIS", b"TENNIS", b"ALLEY WAY", b"YAKUMAN"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +95,7 @@ pub enum CartridgeSlotState {
     Empty,
     NoMbc,
     Mmm01,
+    M161,
     Huc1,
     Huc3,
     Mbc1,
@@ -154,6 +164,7 @@ pub enum CartridgeHeaderParseError {
 pub enum SupportedCartridgeFamily {
     NoMbc,
     Mmm01,
+    M161,
     Huc1,
     Huc3,
     Mbc1,
@@ -226,6 +237,7 @@ pub struct CartridgeSlot {
 enum CartridgeDevice {
     NoMbc(NoMbcCartridge),
     Mmm01(Mmm01Cartridge),
+    M161(M161Cartridge),
     Huc1(Huc1Cartridge),
     Huc3(Huc3Cartridge),
     Mbc1(Mbc1Cartridge),
@@ -262,6 +274,16 @@ struct Mmm01Cartridge {
     banking_mode: u8,
     rom_bank_mask: u8,
     multiplex_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct M161Cartridge {
+    rom: Vec<u8>,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    selected_bank: u8,
+    bank_switch_locked: bool,
+    last_bank_write: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

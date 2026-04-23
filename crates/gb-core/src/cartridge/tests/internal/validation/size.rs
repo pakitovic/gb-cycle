@@ -305,4 +305,88 @@ fn private_validation_helpers_cover_remaining_size_code_and_image_mismatch_rejec
         CartridgeLoadError::Rejected { reason, .. }
             if reason.contains("unsupported RAM size code")
     ));
+
+    diagnostics.clear();
+    let valid_m161_rom = build_m161_signature_rom();
+    let valid_m161_header =
+        CartridgeHeader::parse(&valid_m161_rom).expect("M161 header should parse");
+    let valid_m161_classification =
+        classify_loaded_cartridge(&valid_m161_header, &valid_m161_rom, &strict);
+    validate_m161(
+        &valid_m161_header,
+        valid_m161_rom.len(),
+        &strict,
+        &valid_m161_classification,
+        &mut diagnostics,
+    )
+    .expect("baseline M161 image should validate");
+    assert!(diagnostics.is_empty());
+
+    diagnostics.clear();
+    let m161_short_error = validate_m161(
+        &valid_m161_header,
+        4 * M161_BANK_BYTES,
+        &strict,
+        &valid_m161_classification,
+        &mut diagnostics,
+    )
+    .expect_err("M161 should reject images smaller than the documented menu+game minimum");
+    assert!(matches!(
+        m161_short_error,
+        CartridgeLoadError::Rejected { reason, .. }
+            if reason.contains("expects between")
+    ));
+
+    diagnostics.clear();
+    let m161_large_error = validate_m161(
+        &valid_m161_header,
+        9 * M161_BANK_BYTES,
+        &strict,
+        &valid_m161_classification,
+        &mut diagnostics,
+    )
+    .expect_err("M161 should reject images above the documented 8-bank ceiling");
+    assert!(matches!(
+        m161_large_error,
+        CartridgeLoadError::Rejected { reason, .. }
+            if reason.contains("expects between")
+    ));
+
+    diagnostics.clear();
+    let mut invalid_m161_ram = valid_m161_rom.clone();
+    invalid_m161_ram[RAM_SIZE_ADDRESS] = 0x02;
+    let invalid_m161_ram_header =
+        CartridgeHeader::parse(&invalid_m161_ram).expect("mutated M161 header should parse");
+    let m161_ram_error = validate_m161(
+        &invalid_m161_ram_header,
+        valid_m161_rom.len(),
+        &strict,
+        &valid_m161_classification,
+        &mut diagnostics,
+    )
+    .expect_err("M161 should reject menu headers that claim RAM");
+    assert!(matches!(
+        m161_ram_error,
+        CartridgeLoadError::Rejected { reason, .. }
+            if reason.contains("expects no external RAM")
+    ));
+}
+
+#[test]
+fn m161_validation_accepts_the_known_commercial_menu_header_shape() {
+    let strict = CompatibilityPolicy::strict();
+    let mut diagnostics = Vec::new();
+    let commercial_rom = build_m161_commercial_rom();
+    let header = CartridgeHeader::parse(&commercial_rom).expect("header should parse");
+    let classification = classify_loaded_cartridge(&header, &commercial_rom, &strict);
+
+    validate_m161(
+        &header,
+        commercial_rom.len(),
+        &strict,
+        &classification,
+        &mut diagnostics,
+    )
+    .expect("commercial M161 menu header should validate");
+    assert!(diagnostics.is_empty());
 }

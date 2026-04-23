@@ -233,6 +233,90 @@ fn mmm01_menu_headers_promote_the_family_to_supported_even_if_the_physical_start
 }
 
 #[test]
+fn mani_like_trailing_set_menu_headers_promote_the_family_to_mmm01_without_touching_m161() {
+    let report = CartridgeSlot::load(build_mani_mmm01_rom(0x04), &CompatibilityPolicy::strict())
+        .expect("later Mani MMM01 should load through the trailing menu header");
+
+    assert_eq!(report.cartridge().state(), CartridgeSlotState::Mmm01);
+    let classification = report
+        .cartridge()
+        .classification()
+        .expect("classification should exist");
+    assert_eq!(classification.detected_name(), "MMM01");
+    assert_eq!(
+        classification.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
+    );
+    assert_eq!(
+        classification.reason(),
+        "MMM01 classification came from the explicit later Mani trailing-menu signature path"
+    );
+    assert_eq!(
+        report
+            .cartridge()
+            .header()
+            .expect("header should exist")
+            .cartridge_type,
+        0x11
+    );
+    assert_eq!(
+        report
+            .cartridge()
+            .header()
+            .expect("header should exist")
+            .title,
+        "SAGAIA SET"
+    );
+}
+
+#[test]
+fn fake_trailing_set_menu_headers_without_coherent_internal_games_stay_plain_mbc1() {
+    let mut rom = build_banked_mbc1_rom(0x04, 0x00);
+    let menu_offset = rom.len() - 32 * 1024;
+
+    rom[menu_offset + ENTRY_POINT_START..menu_offset + ENTRY_POINT_START + 4]
+        .copy_from_slice(&[0x31, 0xFE, 0xFF, 0xAF]);
+    rom[menu_offset + LOGO_START..menu_offset + LOGO_START + 48].copy_from_slice(&[0xCE; 48]);
+    rom[menu_offset + TITLE_START..=menu_offset + TITLE_START + 15].fill(0x00);
+    rom[menu_offset + TITLE_START..menu_offset + TITLE_START + 8].copy_from_slice(b"FAKE SET");
+    rom[menu_offset + CARTRIDGE_TYPE_ADDRESS] = 0x11;
+    rom[menu_offset + ROM_SIZE_ADDRESS] = 0x04;
+    rom[menu_offset + RAM_SIZE_ADDRESS] = 0x00;
+    rom[menu_offset + HEADER_CHECKSUM_ADDRESS] = 0x7F;
+
+    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect("ordinary MBC1 image should still load");
+
+    assert_eq!(report.cartridge().state(), CartridgeSlotState::Mbc1);
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc1)
+    );
+}
+
+#[test]
+fn standard_mmm01_headers_keep_the_standard_trailing_route_before_mani_signature_checks() {
+    let report = CartridgeSlot::load(
+        build_mmm01_rom(0x03, 0x00, 0x0B),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("MMM01 should load");
+
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .reason(),
+        "supported cartridge family"
+    );
+}
+
+#[test]
 fn experimental_heuristic_policy_reclassifies_magic_signatures_while_strict_mode_keeps_them_disabled()
  {
     let mut ems_rom = build_banked_mbc5_rom(0x1B, 0x03, 0x03);

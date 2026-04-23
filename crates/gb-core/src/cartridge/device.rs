@@ -4,6 +4,7 @@ use crate::scheduler::TCycle;
 impl CartridgeDevice {
     pub(in crate::cartridge) fn trace_summary(&self) -> String {
         match self {
+            Self::M161(cartridge) => cartridge.trace_summary(),
             Self::Huc1(cartridge) => cartridge.trace_summary(),
             Self::Huc3(cartridge) => cartridge.trace_summary(),
             Self::NoMbc(_)
@@ -22,6 +23,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.describe_external_access(address),
             Self::Mmm01(cartridge) => cartridge.describe_external_access(address),
+            Self::M161(cartridge) => cartridge.describe_external_access(address),
             Self::Huc1(cartridge) => cartridge.describe_external_access(address),
             Self::Huc3(cartridge) => cartridge.describe_external_access(address),
             Self::Mbc1(cartridge) => cartridge.describe_external_access(address),
@@ -35,6 +37,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => &cartridge.header,
             Self::Mmm01(cartridge) => &cartridge.header,
+            Self::M161(cartridge) => &cartridge.header,
             Self::Huc1(cartridge) => &cartridge.header,
             Self::Huc3(cartridge) => &cartridge.header,
             Self::Mbc1(cartridge) => &cartridge.header,
@@ -48,6 +51,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.classification,
             Self::Mmm01(cartridge) => cartridge.classification,
+            Self::M161(cartridge) => cartridge.classification,
             Self::Huc1(cartridge) => cartridge.classification,
             Self::Huc3(cartridge) => cartridge.classification,
             Self::Mbc1(cartridge) => cartridge.classification,
@@ -61,6 +65,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.read_rom(address),
             Self::Mmm01(cartridge) => cartridge.read_rom(address),
+            Self::M161(cartridge) => cartridge.read_rom(address),
             Self::Huc1(cartridge) => cartridge.read_rom(address),
             Self::Huc3(cartridge) => cartridge.read_rom(address),
             Self::Mbc1(cartridge) => cartridge.read_rom(address),
@@ -74,6 +79,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.write_rom(address, value),
             Self::Mmm01(cartridge) => cartridge.write_rom(address, value),
+            Self::M161(cartridge) => cartridge.write_rom(address, value),
             Self::Huc1(cartridge) => cartridge.write_rom(address, value),
             Self::Huc3(cartridge) => cartridge.write_rom(address, value),
             Self::Mbc1(cartridge) => cartridge.write_rom(address, value),
@@ -87,6 +93,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.read_ram(address),
             Self::Mmm01(cartridge) => cartridge.read_ram(address),
+            Self::M161(cartridge) => cartridge.read_ram(address),
             Self::Huc1(cartridge) => cartridge.read_ram(address),
             Self::Huc3(cartridge) => cartridge.read_ram(address),
             Self::Mbc1(cartridge) => cartridge.read_ram(address),
@@ -100,6 +107,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.read_ram(address),
             Self::Mmm01(cartridge) => cartridge.read_ram(address),
+            Self::M161(cartridge) => cartridge.read_ram(address),
             Self::Huc1(cartridge) => cartridge.read_ram(address),
             Self::Huc3(cartridge) => cartridge.read_ram(address),
             Self::Mbc1(cartridge) => cartridge.read_ram(address),
@@ -113,6 +121,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.write_ram(address, value),
             Self::Mmm01(cartridge) => cartridge.write_ram(address, value),
+            Self::M161(cartridge) => cartridge.write_ram(address, value),
             Self::Huc1(cartridge) => cartridge.write_ram(address, value),
             Self::Huc3(cartridge) => cartridge.write_ram(address, value),
             Self::Mbc1(cartridge) => cartridge.write_ram(address, value),
@@ -131,6 +140,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.write_ram(address, value),
             Self::Mmm01(cartridge) => cartridge.write_ram(address, value),
+            Self::M161(cartridge) => cartridge.write_ram(address, value),
             Self::Huc1(cartridge) => cartridge.write_ram(address, value),
             Self::Huc3(cartridge) => cartridge.write_ram(address, value),
             Self::Mbc1(cartridge) => cartridge.write_ram(address, value),
@@ -144,6 +154,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(_)
             | Self::Mmm01(_)
+            | Self::M161(_)
             | Self::Huc1(_)
             | Self::Mbc1(_)
             | Self::Mbc2(_)
@@ -158,6 +169,7 @@ impl CartridgeDevice {
             Self::Mbc5(cartridge) => cartridge.rumble_on(),
             Self::NoMbc(_)
             | Self::Mmm01(_)
+            | Self::M161(_)
             | Self::Huc1(_)
             | Self::Huc3(_)
             | Self::Mbc1(_)
@@ -171,6 +183,7 @@ impl CartridgeDevice {
             Self::Mbc5(cartridge) => cartridge.has_rumble(),
             Self::NoMbc(_)
             | Self::Mmm01(_)
+            | Self::M161(_)
             | Self::Huc1(_)
             | Self::Huc3(_)
             | Self::Mbc1(_)
@@ -183,6 +196,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.persistence_metadata(),
             Self::Mmm01(cartridge) => cartridge.persistence_metadata(),
+            Self::M161(cartridge) => cartridge.persistence_metadata(),
             Self::Huc1(cartridge) => cartridge.persistence_metadata(),
             Self::Huc3(cartridge) => cartridge.persistence_metadata(),
             Self::Mbc1(cartridge) => cartridge.persistence_metadata(),
@@ -197,6 +211,7 @@ impl CartridgeDevice {
             Self::Mbc3(cartridge) => cartridge.rtc_access_ready_at,
             Self::NoMbc(_)
             | Self::Mmm01(_)
+            | Self::M161(_)
             | Self::Huc1(_)
             | Self::Huc3(_)
             | Self::Mbc1(_)
@@ -209,6 +224,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.persistent_state(),
             Self::Mmm01(cartridge) => cartridge.persistent_state(),
+            Self::M161(cartridge) => cartridge.persistent_state(),
             Self::Huc1(cartridge) => cartridge.persistent_state(),
             Self::Huc3(cartridge) => cartridge.persistent_state(),
             Self::Mbc1(cartridge) => cartridge.persistent_state(),
@@ -225,6 +241,7 @@ impl CartridgeDevice {
         match self {
             Self::NoMbc(cartridge) => cartridge.restore_persistent_state(state),
             Self::Mmm01(cartridge) => cartridge.restore_persistent_state(state),
+            Self::M161(cartridge) => cartridge.restore_persistent_state(state),
             Self::Huc1(cartridge) => cartridge.restore_persistent_state(state),
             Self::Huc3(cartridge) => cartridge.restore_persistent_state(state),
             Self::Mbc1(cartridge) => cartridge.restore_persistent_state(state),
