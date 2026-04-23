@@ -8423,8 +8423,9 @@ mod tests {
     use crate::audio_recording::DesktopAudioRecordingOptions;
     use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
     use gb_core::{
-        Apu, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory, ApuCh4Nr43LiveWriteTrace,
-        ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace, ApuRecordedChannel, ApuRecordedChannelMask,
+        Apu, ApuCh4DebugSnapshot, ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory,
+        ApuCh4Nr43LiveWriteTrace, ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace,
+        ApuRecordedChannel, ApuRecordedChannelMask,
         ApuRegisterWriteObservation, ApuRegisterWriteState, CartridgeDiagnostic,
         CartridgeDiagnosticSeverity, ConsoleModel, CpuAddressEvent, CpuAddressEventKind,
         CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, ExecutionMode,
@@ -10824,6 +10825,153 @@ mod tests {
         assert_eq!(artifact.lines().count(), 2);
         assert!(artifact.contains("enter_pc(0x4C00..=0x4C41)"));
         assert!(artifact.contains("change(data_read@0xFF82:0x30->0x31)"));
+    }
+
+    #[test]
+    fn desktop_ch4_nr43_trace_capture_and_formatters_cover_env_filter_and_artifact() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("ch4-nr43-trace-capture");
+        let output_path = root.join("artifacts").join("desktop-ch4-nr43-trace.txt");
+        unsafe {
+            std::env::set_var(super::DESKTOP_CH4_NR43_TRACE_PATH_ENV_VAR, &output_path);
+        }
+        let mut capture =
+            super::DesktopCh4Nr43TraceCapture::from_env().expect("CH4 trace capture from env");
+        unsafe {
+            std::env::remove_var(super::DESKTOP_CH4_NR43_TRACE_PATH_ENV_VAR);
+        }
+
+        assert_eq!(capture.output_path.as_deref(), Some(output_path.as_path()));
+        assert!(capture.records.is_empty());
+
+        let mut machine = Machine::new_summary(
+            MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine.write_bus(0xFF26, 0x80);
+        capture.record_t_cycle(&machine);
+        assert!(capture.records.is_empty());
+
+        machine.write_bus(super::CH4_NR43_ADDRESS, 0x35);
+        capture.record_t_cycle(&machine);
+        assert_eq!(capture.records.len(), 1);
+        let record = &capture.records[0];
+        assert_eq!(record.apu_write.address, super::CH4_NR43_ADDRESS);
+        let rendered = super::render_desktop_ch4_nr43_trace_record(record);
+        assert!(rendered.contains("apu.last_write=write@0xFF22=0x35"));
+        assert!(rendered.contains("ch4.nr43=0x35"));
+        assert!(rendered.contains("ch4.last_nr43_live_write="));
+
+        let rich_rendered = super::format_ch4_debug_snapshot(&ApuCh4DebugSnapshot {
+            nr43: 0x3F,
+            clock_shift: 7,
+            short_width_mode: true,
+            clock_divider_code: 3,
+            alignment: 2,
+            counter_timer: 96,
+            noise_counter: 0x1234,
+            countdown_reloaded: true,
+            period_timer: 48,
+            lfsr_state: 0x4567,
+            current_digital_output: 0x0F,
+            last_nr43_live_write: Some(ApuCh4Nr43LiveWriteTrace {
+                runtime_active: true,
+                same_shift_group: false,
+                old_nr43: 0x15,
+                new_nr43: 0x3F,
+                glitch_value: 0xFF,
+                second_glitch_value: 0x3F,
+                old_shift: 1,
+                glitch_shift: 14,
+                second_glitch_shift: 7,
+                new_shift: 7,
+                effective_counter: 0x2345,
+                countdown_reloaded: true,
+                old_bit: false,
+                glitch_bit: true,
+                second_glitch_bit: false,
+                new_bit: true,
+                decision_category: ApuCh4Nr43LiveWriteCategory::LowShiftFollowup,
+                lfsr_action: ApuCh4Nr43LfsrAction::ForcedShortStepThenLowShiftCorruption,
+                reload_seam_step: true,
+                old_to_ff_step: false,
+                old_to_ff_forced_short_width: true,
+                ff_to_new_step: false,
+                ff_to_new_forced_short_width: true,
+                low_shift_extra_step: true,
+                feedback_corruption: true,
+                lfsr_before: 0x7FFF,
+                lfsr_after: 0x3F7F,
+            }),
+        });
+        assert!(rich_rendered.contains("ch4.nr43=0x3F"));
+        assert!(rich_rendered.contains("category=LowShiftFollowup"));
+        assert!(rich_rendered.contains("action=ForcedShortStepThenLowShiftCorruption"));
+        assert!(rich_rendered.contains("feedback_corruption:true"));
+        assert!(rich_rendered.contains("lfsr=0x7FFF->0x3F7F"));
+
+        capture
+            .write_artifact()
+            .expect("CH4 trace artifact should be writable");
+        let artifact = fs::read_to_string(&output_path).expect("CH4 trace artifact should exist");
+        assert_eq!(artifact.lines().count(), 1);
+        assert!(artifact.contains("apu.last_write=write@0xFF22=0x35"));
+        assert!(artifact.contains("ch4.nr43=0x35"));
+
+        assert_eq!(
+            super::format_ch4_live_nr43_trace(None),
+            " ch4.last_nr43_live_write=none"
+        );
+        super::DesktopCh4Nr43TraceCapture::from_env()
+            .expect("capture without env should still construct")
+            .write_artifact()
+            .expect("trace capture without a path should be a no-op");
+    }
+
+    #[test]
+    fn desktop_trace_artifact_errors_surface_target_paths_for_edge_and_ch4_traces() {
+        let _guard = crate::lock_sdl_test();
+        let root = temp_test_root("trace-artifact-errors");
+
+        let edge_dir_path = root.join("edge-artifact-dir");
+        fs::create_dir_all(&edge_dir_path).expect("edge artifact directory should be creatable");
+        let edge_error = super::DesktopEdgeTraceCapture {
+            output_path: Some(edge_dir_path.clone()),
+            watched_addresses: BTreeSet::new(),
+            watched_pc_ranges: Vec::new(),
+            active_pc_ranges: BTreeSet::new(),
+            last_observed_values: BTreeMap::new(),
+            max_records: 1,
+            records: VecDeque::new(),
+        }
+        .write_artifact()
+        .expect_err("writing an edge trace to a directory should fail");
+        assert!(edge_error.contains("failed to write desktop edge trace artifact"));
+        assert!(edge_error.contains(&format!("{edge_dir_path:?}")));
+
+        let blocked_parent = root.join("blocked-parent");
+        fs::write(&blocked_parent, b"not a directory")
+            .expect("blocked parent file should be creatable");
+        let ch4_parent_error = super::DesktopCh4Nr43TraceCapture {
+            output_path: Some(blocked_parent.join("artifact.txt")),
+            records: Vec::new(),
+        }
+        .write_artifact()
+        .expect_err("creating a CH4 trace directory under a file should fail");
+        assert!(
+            ch4_parent_error
+                .contains("failed to create condensed CH4 NR43 trace artifact directory")
+        );
+
+        let ch4_dir_path = root.join("ch4-artifact-dir");
+        fs::create_dir_all(&ch4_dir_path).expect("CH4 artifact directory should be creatable");
+        let ch4_write_error = super::DesktopCh4Nr43TraceCapture {
+            output_path: Some(ch4_dir_path.clone()),
+            records: Vec::new(),
+        }
+        .write_artifact()
+        .expect_err("writing a CH4 trace to a directory should fail");
+        assert!(ch4_write_error.contains("failed to write condensed CH4 NR43 trace artifact"));
+        assert!(ch4_write_error.contains(&format!("{ch4_dir_path:?}")));
     }
 
     #[test]
