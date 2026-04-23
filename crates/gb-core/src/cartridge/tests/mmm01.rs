@@ -97,3 +97,46 @@ fn mmm01_ram_enable_and_banked_ram_follow_the_non_multiplex_mode_rules() {
     cartridge.write_rom(0x4000, 0x02);
     assert_eq!(cartridge.read_ram(0xA000), 0x22);
 }
+
+#[test]
+fn mmm01_slot_timed_ram_helpers_surface_disabled_then_accessible_external_ram() {
+    let rom = build_mmm01_rom(0x03, 0x03, 0x0D);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MMM01 should load");
+    let (mut cartridge, _) = report.into_parts();
+
+    assert_eq!(
+        cartridge.describe_external_access(0xA000),
+        CartridgeExternalAccessInfo::new(
+            0xA000,
+            CartridgeExternalTarget::BankedRam { bank: 0 },
+            CartridgeExternalAvailability::Disabled,
+            CartridgeExternalReadBehavior::FallbackValue(RAM_ABSENT_READ_VALUE),
+            CartridgeExternalWriteBehavior::Ignored,
+        )
+    );
+    assert_eq!(
+        cartridge.read_ram_timed(0xA000, crate::scheduler::TCycle::new(1)),
+        RAM_ABSENT_READ_VALUE
+    );
+
+    cartridge.write_rom(0x4000, 0x02);
+    cartridge.write_rom(0x0000, 0x2A);
+    cartridge.write_rom(0x0000, 0x6A);
+    cartridge.write_ram_timed(0xA000, 0x55, crate::scheduler::TCycle::new(7));
+
+    assert_eq!(
+        cartridge.describe_external_access(0xA000),
+        CartridgeExternalAccessInfo::new(
+            0xA000,
+            CartridgeExternalTarget::BankedRam { bank: 2 },
+            CartridgeExternalAvailability::Accessible,
+            CartridgeExternalReadBehavior::Storage,
+            CartridgeExternalWriteBehavior::Storage,
+        )
+    );
+    assert_eq!(
+        cartridge.read_ram_timed(0xA000, crate::scheduler::TCycle::new(11)),
+        0x55
+    );
+}

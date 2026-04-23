@@ -873,8 +873,9 @@ mod tests {
     use super::{
         AppliedGamepadRumble, FrontendInputState, GAMEPAD_RUMBLE_REFRESH_INTERVAL, GamepadManager,
         STRONG_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY, axis_direction_state,
-        default_gamepad_name, gamepad_button_binding_from_sdl_button, joystick_id_from_event,
-        rumble_intensity, sdl_button_for_binding,
+        default_gamepad_name, format_gamepad_enumeration_error, format_open_gamepad_error,
+        gamepad_button_binding_from_sdl_button, joystick_id_from_event, rumble_intensity,
+        sdl_button_for_binding,
     };
     use gb_core::{
         ConsoleModel, JoypadButton, Machine, MachineConfig, StartupMode, TraceSummaryBuffer,
@@ -905,6 +906,22 @@ mod tests {
         let joystick_id = JoystickId::from(sdl3::sys::joystick::SDL_JoystickID(7));
 
         assert_eq!(default_gamepad_name(joystick_id), "SDL gamepad 7");
+    }
+
+    #[test]
+    fn gamepad_error_formatters_include_the_host_context() {
+        sdl3::clear_error();
+        sdl3::set_error("enumeration failed").expect("SDL test error should be writable");
+        let enumeration = format_gamepad_enumeration_error(sdl3::get_error());
+        assert!(enumeration.contains("failed to enumerate SDL3 gamepads"));
+        assert!(enumeration.contains("enumeration failed"));
+
+        sdl3::clear_error();
+        sdl3::set_error("open failed").expect("SDL test error should be writable");
+        let joystick_id = JoystickId::from(sdl3::sys::joystick::SDL_JoystickID(9));
+        let open_error = format_open_gamepad_error(joystick_id, sdl3::get_error());
+        assert!(open_error.contains("failed to open SDL3 gamepad 9"));
+        assert!(open_error.contains("open failed"));
     }
 
     fn test_machine() -> Machine<TraceSummaryBuffer> {

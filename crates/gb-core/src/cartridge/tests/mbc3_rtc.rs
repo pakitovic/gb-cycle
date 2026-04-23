@@ -97,6 +97,31 @@ fn mbc3_external_access_descriptor_surfaces_rtc_access_ready_t_cycle() {
 }
 
 #[test]
+fn mbc3_slot_timed_access_helpers_route_through_wrapper_state() {
+    let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC3 should load");
+    let (mut cartridge, _) = report.into_parts();
+
+    assert_eq!(cartridge.rtc_access_ready_at(), None);
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x08);
+    cartridge.write_ram_timed(0xA000, 0x12, TCycle::new(100));
+    assert_eq!(cartridge.rtc_access_ready_at(), Some(TCycle::new(116)));
+    assert_eq!(
+        cartridge
+            .describe_external_access(0xA000)
+            .rtc_access_ready_at(),
+        Some(TCycle::new(116))
+    );
+
+    assert_eq!(cartridge.read_ram_timed(0xA000, TCycle::new(140)), 0x00);
+    assert_eq!(cartridge.rtc_access_ready_at(), Some(TCycle::new(156)));
+    assert!(cartridge.trace_summary().contains("state=Mbc3"));
+}
+
+#[test]
 fn mbc3_rtc_latch_reads_from_snapshot_while_writes_hit_live_state() {
     let rom = build_banked_mbc3_rom(0x10, 0x03, 0x03);
     let report =

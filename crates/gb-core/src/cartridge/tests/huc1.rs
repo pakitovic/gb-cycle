@@ -140,3 +140,57 @@ fn huc1_scheduler_trace_surfaces_mode_and_bank_state_for_hang_debugging() {
     assert!(trace.contains("effective_ram_bank=2"));
     assert!(trace.contains("ir_emitter_on=true"));
 }
+
+#[test]
+fn huc1_slot_and_device_helpers_surface_dedicated_trace_and_external_aperture_state() {
+    let report = CartridgeSlot::load(
+        build_banked_huc1_rom(0x04, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("HuC1 should load");
+    let (mut cartridge, _) = report.into_parts();
+
+    let trace = cartridge.trace_summary();
+    assert!(trace.contains("state=Huc1"));
+    assert!(trace.contains("io_mode=Ram"));
+    assert_eq!(
+        cartridge
+            .header()
+            .expect("HuC1 slot should expose the parsed header")
+            .cartridge_type,
+        0xFF
+    );
+    assert_eq!(
+        cartridge.describe_external_access(0xA000),
+        CartridgeExternalAccessInfo::new(
+            0xA000,
+            CartridgeExternalTarget::BankedRam { bank: 0 },
+            CartridgeExternalAvailability::Accessible,
+            CartridgeExternalReadBehavior::Storage,
+            CartridgeExternalWriteBehavior::Storage,
+        )
+    );
+    cartridge.write_ram_timed(0xA000, 0x5A, crate::scheduler::TCycle::new(7));
+    assert_eq!(
+        cartridge.read_ram_timed(0xA000, crate::scheduler::TCycle::new(11)),
+        0x5A
+    );
+
+    let Some(CartridgeDevice::Huc1(device)) = cartridge.device.clone() else {
+        panic!("expected HuC1 cartridge");
+    };
+    assert!(device.has_battery());
+    assert!(device.trace_summary().contains("io_mode=Ram"));
+
+    cartridge.write_rom(0x0000, 0x0E);
+    assert_eq!(
+        cartridge.describe_external_access(0xA123),
+        CartridgeExternalAccessInfo::new(
+            0xA123,
+            CartridgeExternalTarget::IrRegister,
+            CartridgeExternalAvailability::Accessible,
+            CartridgeExternalReadBehavior::InfraredSensor,
+            CartridgeExternalWriteBehavior::InfraredTransmitter,
+        )
+    );
+}

@@ -223,6 +223,28 @@ fn huc1_header_type_loads_through_the_supported_family_instead_of_the_documented
 }
 
 #[test]
+fn empty_slot_helpers_keep_the_no_device_contract_explicit() {
+    let mut cartridge = CartridgeSlot::empty();
+
+    assert!(cartridge.is_empty());
+    assert_eq!(cartridge.trace_summary(), "state=Empty");
+    assert_eq!(
+        cartridge.describe_external_access(0xA000),
+        CartridgeExternalAccessInfo::no_device(0xA000)
+    );
+    assert_eq!(
+        cartridge.read_ram_timed(0xA000, crate::scheduler::TCycle::new(5)),
+        0xFF
+    );
+
+    cartridge.write_ram(0xA000, 0x12);
+    cartridge.write_ram_timed(0xA000, 0x34, crate::scheduler::TCycle::new(7));
+    cartridge.advance_rtc_seconds(1);
+
+    assert_eq!(cartridge.rtc_access_ready_at(), None);
+}
+
+#[test]
 fn size_decoders_cover_extended_and_unknown_header_codes() {
     assert_eq!(
         RomSizeInfo::decode(0x52),
