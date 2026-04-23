@@ -1,6 +1,7 @@
 use gb_core::{
     CartridgePersistenceProfile, CartridgeRamPayloadKind, CartridgeSlot, CompatibilityPolicy,
-    ConsoleModel, Machine, MachineConfig, Mbc3RtcPersistentState, PersistentCartState,
+    ConsoleModel, Huc3RtcPersistentState, Machine, MachineConfig, Mbc3RtcPersistentState,
+    PersistentCartState,
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveKey,
@@ -123,6 +124,29 @@ fn build_banked_huc1_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
     };
     let bank_count = rom_size / 0x4000;
     let mut rom = build_test_rom(rom_size, 0xFF, rom_size_code, ram_size_code);
+
+    for bank in 0..bank_count {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
+
+    rom
+}
+
+fn build_banked_huc3_rom(rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
+    let rom_size = match rom_size_code {
+        0x00 => 32 * 1024,
+        0x01 => 64 * 1024,
+        0x02 => 128 * 1024,
+        0x03 => 256 * 1024,
+        0x04 => 512 * 1024,
+        0x05 => 1024 * 1024,
+        0x06 => 2 * 1024 * 1024,
+        _ => panic!("unsupported HuC-3 ROM size code for test"),
+    };
+    let bank_count = rom_size / 0x4000;
+    let mut rom = build_test_rom(rom_size, 0xFE, rom_size_code, ram_size_code);
 
     for bank in 0..bank_count {
         let start = bank * 0x4000;
@@ -459,6 +483,69 @@ fn in_memory_backend_round_trips_huc1_battery_ram_backing_store() {
     restored.write_rom(0x0000, 0x00);
     restored.write_rom(0x4000, 0x03);
     assert_eq!(restored.read_ram(0xA000), 0x33);
+}
+
+#[test]
+fn in_memory_backend_round_trips_huc3_ram_and_rtc_state() {
+    let mut cartridge = load_cartridge(build_banked_huc3_rom(0x03, 0x03));
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_rom(0x4000, 0x02);
+    cartridge.write_ram(0xA000, 0x22);
+    cartridge.write_rom(0x0000, 0x0B);
+    cartridge.write_ram(0xA000, 0x62);
+    cartridge.write_rom(0x0000, 0x0D);
+    cartridge.write_ram(0xA000, 0xFE);
+
+    let key = CartridgeSaveKey::new("huc3_roundtrip").expect("key should be valid");
+    let mut backend =
+        InMemoryCartridgeSaveBackend::with_time_source(FixedCartridgeSaveTimeSource::new(1001));
+    let saved = backend
+        .save(
+            &key,
+            cartridge.persistence_metadata(),
+            &cartridge.persistent_state(),
+        )
+        .expect("save should succeed");
+
+    assert_eq!(
+        saved.cartridge_metadata.profile,
+        CartridgePersistenceProfile::PersistentRamAndRtc {
+            ram: CartridgeRamPayloadKind::Linear {
+                byte_len: 32 * 1024,
+            },
+        }
+    );
+    match saved.persistent_state {
+        PersistentCartState::Huc3 { ref ram, rtc, .. } => {
+            assert_eq!(ram[2 * 0x2000], 0x22);
+            assert_eq!(
+                rtc,
+                Huc3RtcPersistentState {
+                    current_minutes_of_day: 0,
+                    current_days: 0,
+                    current_subminute_seconds: 0,
+                    event_minutes_of_day: 0,
+                    event_days: 0,
+                }
+            );
+        }
+        ref other => panic!("expected HuC-3 payload, got {other:?}"),
+    }
+
+    let loaded = backend
+        .load(&key)
+        .expect("load should succeed")
+        .expect("save should exist");
+    let mut restored = load_cartridge(build_banked_huc3_rom(0x03, 0x03));
+    restored
+        .restore_persistent_state(&loaded.persistent_state)
+        .expect("restore should accept the persisted payload");
+
+    restored.write_rom(0x0000, 0x0A);
+    restored.write_rom(0x4000, 0x02);
+    assert_eq!(restored.read_ram(0xA000), 0x22);
+    restored.write_rom(0x0000, 0x0C);
+    assert_eq!(restored.read_ram(0xA000), 0xE1);
 }
 
 #[test]

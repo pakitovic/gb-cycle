@@ -65,12 +65,7 @@ impl CartridgeClassification {
                 UnsupportedCartridgeCategory::AccessorySpecialCase,
                 "Bandai TAMA5 needs dedicated accessory hardware",
             ),
-            0xFE => unsupported(
-                raw_type,
-                "HuC-3",
-                UnsupportedCartridgeCategory::DocumentedButUnsupported,
-                "HuC-3 is a documented special cartridge with its own protocol",
-            ),
+            0xFE => supported(raw_type, "HuC-3", SupportedCartridgeFamily::Huc3),
             0xFF => supported(raw_type, "HuC1+RAM+BATTERY", SupportedCartridgeFamily::Huc1),
             _ => unsupported(
                 raw_type,

@@ -1,7 +1,7 @@
 use super::classify::{classify_loaded_cartridge, unsupported_load_reason};
 use super::validate::{
-    validate_huc1, validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5, validate_mmm01,
-    validate_no_mbc,
+    validate_huc1, validate_huc3, validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5,
+    validate_mmm01, validate_no_mbc,
 };
 use super::*;
 use crate::model::CompatibilityPolicy;
@@ -123,6 +123,44 @@ impl CartridgeSlot {
                         ir_emitter_on: false,
                         ir_light_detected: false,
                     })),
+                };
+
+                Ok(CartridgeLoadReport {
+                    cartridge,
+                    diagnostics,
+                })
+            }
+            CartridgeSelection::Supported(SupportedCartridgeFamily::Huc3) => {
+                let ram_len = validate_huc3(
+                    &header,
+                    rom_bytes.len(),
+                    compatibility,
+                    &classification,
+                    &mut diagnostics,
+                )?;
+
+                let mut mapper = Huc3Cartridge {
+                    rom: rom_bytes,
+                    ram: vec![0; ram_len],
+                    has_battery: true,
+                    header,
+                    classification,
+                    select_mode: Huc3SelectMode::RamReadOnly,
+                    rom_bank: 0,
+                    ram_bank: 0,
+                    access_address: 0,
+                    mailbox: Huc3Mailbox::default(),
+                    mcu_ram: [0; HUC3_MCU_RAM_NIBBLE_COUNT],
+                    rtc: Huc3RtcState::default(),
+                    ir_emitter_on: false,
+                    ir_light_detected: false,
+                    last_control_write: None,
+                    last_unsupported_command: None,
+                    last_unsupported_argument: None,
+                };
+                mapper.initialize_runtime_state();
+                let cartridge = Self {
+                    device: Some(CartridgeDevice::Huc3(mapper)),
                 };
 
                 Ok(CartridgeLoadReport {
@@ -281,6 +319,7 @@ impl CartridgeSlot {
             Some(CartridgeDevice::NoMbc(_)) => CartridgeSlotState::NoMbc,
             Some(CartridgeDevice::Mmm01(_)) => CartridgeSlotState::Mmm01,
             Some(CartridgeDevice::Huc1(_)) => CartridgeSlotState::Huc1,
+            Some(CartridgeDevice::Huc3(_)) => CartridgeSlotState::Huc3,
             Some(CartridgeDevice::Mbc1(_)) => CartridgeSlotState::Mbc1,
             Some(CartridgeDevice::Mbc2(_)) => CartridgeSlotState::Mbc2,
             Some(CartridgeDevice::Mbc3(_)) => CartridgeSlotState::Mbc3,

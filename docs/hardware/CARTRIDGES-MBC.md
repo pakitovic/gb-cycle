@@ -228,9 +228,23 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `0xA000-0xBFFF` now routes either banked cartridge RAM or the IR register depending on the selected mode, and the persistent backing store lives under its own `HuC1` payload instead of being serialized as `MBC1`.
 - The current IR baseline exposes transmitter control and the documented `0xC0` / `0xC1` readback contract. For the current DMG roadmap, host-side light injection is intentionally out of scope unless a later concrete title investigation proves it necessary.
 - Treat `HuC-3` as a documented but poorly understood special cartridge, not as a close `MBC3` derivative.
-- `HuC-3` should classify as `DocumentedButUnsupported`, not as ordinary `MBC3`.
+- `HuC-3` should now classify as its own supported mapper family, not as ordinary `MBC3`.
 - Header code `0xFE` should classify as `HuC-3`.
-- Loader diagnostics for `HuC-3` should explain that the type requires cartridge-local RTC / IR / speaker behavior with its own protocol, and must not fall back automatically to ordinary `MBC3`.
+- `HuC-3` must keep its cartridge-local RTC / IR / speaker protocol explicit and must not fall back automatically to ordinary `MBC3`.
+- The current baseline now includes a dedicated `HuC-3` cartridge device with:
+  - a literal `7`-bit ROM-bank register where bank `0` remains valid in `0x4000-0x7FFF`
+  - a dedicated RAM-bank register for the banked `8 KiB` external-RAM aperture
+  - explicit select modes for RAM read-only, RAM read/write, RTC command, RTC response, RTC semaphore, IR, and invalid-selector open bus
+  - an explicit mailbox + `256`-nybble MCU-window model for the documented RTC protocol instead of `MBC3`-style RTC registers
+  - dedicated persistence carrying battery-backed RAM plus HuC-3 RTC / MCU state, rather than reusing `MBC3` payload shapes.
+- The current RTC baseline implements the documented command subset:
+  - `0x1` read + increment
+  - `0x3` write + increment
+  - `0x4` / `0x5` access-address setup
+  - `0x6` extended commands `0x0`, `0x1`, and `0x2`
+- The current RTC baseline keeps command execution synchronous when the semaphore is cleared, masks all MCU-window cells to `4`-bit values, ignores address offsets within `0xA000-0xBFFF` for HuC-3 register accesses, and treats undocumented commands (including extended `0xE`) as explicit unsupported protocol states surfaced through trace output rather than heuristically emulating `MBC3`.
+- For the current DMG roadmap, host-side IR injection and audible tone generation remain out of scope unless a later concrete title investigation proves they are needed.
+- Commercial oracle validation for the current baseline is now confirmed locally with `Pocket Family GB (Japan) (SGB Enhanced)`, so `HuC-3` is no longer only a unit-tested/runtime-baseline path in this repo.
 
 ### MBC6 and MBC7
 

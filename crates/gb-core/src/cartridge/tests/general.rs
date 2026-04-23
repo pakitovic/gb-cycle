@@ -160,12 +160,6 @@ fn documented_special_cartridge_loads_fail_with_explicit_typed_classification_in
             UnsupportedCartridgeCategory::DocumentedButUnsupported,
             "EEPROM and accelerometer",
         ),
-        (
-            build_test_rom(256 * 1024, 0xFE, 0x03, 0x00),
-            "HuC-3",
-            UnsupportedCartridgeCategory::DocumentedButUnsupported,
-            "its own protocol",
-        ),
     ];
 
     for (rom, expected_name, expected_category, expected_reason_snippet) in cases {
@@ -219,6 +213,33 @@ fn huc1_header_type_loads_through_the_supported_family_instead_of_the_documented
             .expect("classification should exist")
             .selection(),
         CartridgeSelection::Supported(SupportedCartridgeFamily::Huc1)
+    );
+}
+
+#[test]
+fn huc3_header_type_loads_through_the_supported_family_instead_of_the_documented_unsupported_path()
+{
+    let report = CartridgeSlot::load(
+        build_banked_huc3_rom(0x03, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("HuC-3 should load");
+
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .detected_name(),
+        "HuC-3"
+    );
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Huc3)
     );
 }
 

@@ -5,6 +5,7 @@ mod classify;
 mod device;
 mod header;
 mod huc1;
+mod huc3;
 mod mbc1;
 mod mbc2;
 mod mbc3;
@@ -24,8 +25,8 @@ use classify::{
 use header::{decode_cgb_flag, decode_sgb_flag};
 #[cfg(test)]
 use validate::{
-    expected_ram_code_decompressed, record_degradable_issue, validate_huc1, validate_mbc1,
-    validate_mbc2, validate_mbc3, validate_mbc5, validate_no_mbc,
+    expected_ram_code_decompressed, record_degradable_issue, validate_huc1, validate_huc3,
+    validate_mbc1, validate_mbc2, validate_mbc3, validate_mbc5, validate_no_mbc,
 };
 
 const HEADER_MINIMUM_ROM_LEN: usize = 0x0150;
@@ -67,6 +68,11 @@ const MMM01_MIN_ROM_BYTES: usize = 64 * 1024;
 const MMM01_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
 const HUC1_SUPPORTED_ROM_BYTES_MAX: usize = 1024 * 1024;
 const HUC1_SUPPORTED_RAM_BYTES_MAX: usize = 32 * 1024;
+const HUC3_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
+const HUC3_SUPPORTED_RAM_BYTES_MAX: usize = 32 * 1024;
+const HUC3_MCU_RAM_NIBBLE_COUNT: usize = 256;
+const HUC3_DAY_COUNTER_MODULUS: u16 = 0x1000;
+const HUC3_MINUTES_PER_DAY: u16 = 1440;
 const MBC3_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
 const MBC3_RTC_ACCESS_SPACING_T_CYCLES: u64 = 16;
 const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
@@ -81,6 +87,7 @@ pub enum CartridgeSlotState {
     NoMbc,
     Mmm01,
     Huc1,
+    Huc3,
     Mbc1,
     Mbc2,
     Mbc3,
@@ -148,6 +155,7 @@ pub enum SupportedCartridgeFamily {
     NoMbc,
     Mmm01,
     Huc1,
+    Huc3,
     Mbc1,
     Mbc2,
     Mbc3,
@@ -219,6 +227,7 @@ enum CartridgeDevice {
     NoMbc(NoMbcCartridge),
     Mmm01(Mmm01Cartridge),
     Huc1(Huc1Cartridge),
+    Huc3(Huc3Cartridge),
     Mbc1(Mbc1Cartridge),
     Mbc2(Mbc2Cartridge),
     Mbc3(Mbc3Cartridge),
@@ -273,6 +282,55 @@ struct Huc1Cartridge {
     ram_bank: u8,
     ir_emitter_on: bool,
     ir_light_detected: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Huc3SelectMode {
+    RamReadOnly,
+    RamReadWrite,
+    RtcCommandArgument,
+    RtcCommandResponse,
+    RtcSemaphore,
+    Ir,
+    OpenBus(u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Huc3Mailbox {
+    command: u8,
+    argument: u8,
+    last_response_nybble: u8,
+    semaphore_ready: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct Huc3RtcState {
+    current_minutes_of_day: u16,
+    current_days: u16,
+    current_subminute_seconds: u8,
+    event_minutes_of_day: u16,
+    event_days: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Huc3Cartridge {
+    rom: Vec<u8>,
+    ram: Vec<u8>,
+    has_battery: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    select_mode: Huc3SelectMode,
+    rom_bank: u8,
+    ram_bank: u8,
+    access_address: u8,
+    mailbox: Huc3Mailbox,
+    mcu_ram: [u8; HUC3_MCU_RAM_NIBBLE_COUNT],
+    rtc: Huc3RtcState,
+    ir_emitter_on: bool,
+    ir_light_detected: bool,
+    last_control_write: Option<u8>,
+    last_unsupported_command: Option<u8>,
+    last_unsupported_argument: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -421,6 +479,10 @@ pub enum CartridgeExternalTarget {
     BankedRam { bank: u8 },
     Mbc2InternalRam,
     IrRegister,
+    Huc3CommandMailbox,
+    Huc3ResponseMailbox,
+    Huc3Semaphore,
+    Huc3InvalidSelector(u8),
     RtcRegister(CartridgeRtcRegister),
     ReservedSelector(u8),
 }
@@ -437,6 +499,9 @@ pub enum CartridgeExternalAvailability {
 pub enum CartridgeExternalReadBehavior {
     Storage,
     InfraredSensor,
+    OpenBus,
+    Huc3MailboxResponse,
+    Huc3SemaphoreReady,
     RtcLatched,
     FallbackValue(u8),
 }
@@ -445,6 +510,8 @@ pub enum CartridgeExternalReadBehavior {
 pub enum CartridgeExternalWriteBehavior {
     Storage,
     InfraredTransmitter,
+    Huc3MailboxCommandArgument,
+    Huc3SemaphoreControl,
     RtcLive,
     Ignored,
 }
@@ -549,6 +616,15 @@ pub struct Mbc3RtcPersistentState {
     pub carry: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Huc3RtcPersistentState {
+    pub current_minutes_of_day: u16,
+    pub current_days: u16,
+    pub current_subminute_seconds: u8,
+    pub event_minutes_of_day: u16,
+    pub event_days: u16,
+}
+
 // Persist the full mapper-owned backing store shape explicitly, including the
 // MBC2 nibble array, instead of hiding those semantics behind ad hoc packing.
 #[allow(clippy::large_enum_variant)]
@@ -563,6 +639,24 @@ pub enum PersistentCartState {
     },
     Huc1Ram {
         ram: Vec<u8>,
+    },
+    Huc3 {
+        ram: Vec<u8>,
+        mcu_ram: [u8; HUC3_MCU_RAM_NIBBLE_COUNT],
+        rtc: Huc3RtcPersistentState,
+        rom_bank: u8,
+        ram_bank: u8,
+        select_mode: u8,
+        access_address: u8,
+        mailbox_command: u8,
+        mailbox_argument: u8,
+        last_response_nybble: u8,
+        semaphore_ready: bool,
+        ir_emitter_on: bool,
+        ir_light_detected: bool,
+        last_control_write: Option<u8>,
+        last_unsupported_command: Option<u8>,
+        last_unsupported_argument: Option<u8>,
     },
     Mbc1Ram {
         ram: Vec<u8>,
@@ -596,6 +690,10 @@ pub enum CartridgePersistentStateError {
         actual: usize,
     },
     InvalidMbc2NibbleValue {
+        index: usize,
+        value: u8,
+    },
+    InvalidHuc3NibbleValue {
         index: usize,
         value: u8,
     },

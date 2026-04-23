@@ -23,6 +23,13 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
         CartridgeSelection::Supported(SupportedCartridgeFamily::Huc1)
     );
 
+    let huc3 = CartridgeClassification::classify(0xFE);
+    assert_eq!(huc3.detected_name(), "HuC-3");
+    assert_eq!(
+        huc3.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Huc3)
+    );
+
     let tama5 = CartridgeClassification::classify(0xFD);
     assert_eq!(tama5.detected_name(), "BANDAI TAMA5");
     assert_eq!(
@@ -72,6 +79,34 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
     assert_eq!(
         PersistentCartState::Huc1Ram { ram: vec![] }.kind_name(),
         "Huc1Ram"
+    );
+    assert_eq!(
+        PersistentCartState::Huc3 {
+            ram: vec![],
+            mcu_ram: [0; HUC3_MCU_RAM_NIBBLE_COUNT],
+            rtc: Huc3RtcPersistentState {
+                current_minutes_of_day: 0,
+                current_days: 0,
+                current_subminute_seconds: 0,
+                event_minutes_of_day: 0,
+                event_days: 0,
+            },
+            rom_bank: 0,
+            ram_bank: 0,
+            select_mode: 0,
+            access_address: 0,
+            mailbox_command: 0,
+            mailbox_argument: 0,
+            last_response_nybble: 0,
+            semaphore_ready: true,
+            ir_emitter_on: false,
+            ir_light_detected: false,
+            last_control_write: None,
+            last_unsupported_command: None,
+            last_unsupported_argument: None,
+        }
+        .kind_name(),
+        "Huc3"
     );
 
     let mut diagnostics = Vec::new();
