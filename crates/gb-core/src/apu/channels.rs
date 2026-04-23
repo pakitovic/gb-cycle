@@ -51,6 +51,15 @@ impl ApuChannels {
         self.channel_4.tick_fast_timer();
     }
 
+    pub(super) fn tick_powered_off_timebase(&mut self) {
+        /*
+         SameBoy keeps CH4's alignment phase advancing even while NR52 is powered off. The noise
+         hidden counter itself still stays idle because the start path and active/background flags
+         remain off; only the timebase that future DMG delayed starts observe keeps moving.
+        */
+        self.channel_4.tick_alignment_phase_only();
+    }
+
     pub(super) fn clock_length_all(&mut self) {
         self.channel_1.clock_length();
         self.channel_2.clock_length();
@@ -115,6 +124,7 @@ impl ApuChannels {
     pub(super) fn mark_powered_on(&mut self) {
         self.channel_1.mark_powered_on();
         self.channel_2.mark_powered_on();
+        self.channel_4.mark_powered_on();
     }
 
     pub(super) fn power_off_registers(&mut self, console_model: ConsoleModel) {

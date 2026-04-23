@@ -1,5 +1,5 @@
 use gb_core::{
-    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostDcBlocker, ApuHostSample, ApuRecordedChannelMask,
+    APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostHpf, ApuHostSample, ApuRecordedChannelMask,
     ApuSampleCapture, ApuSampleCaptureError, ConsoleModel,
 };
 use gb_desktop::AudioOptions;
@@ -60,7 +60,7 @@ pub struct DesktopAudioOutput {
     last_submit_telemetry: Option<AudioSubmitTelemetry>,
     console_model: ConsoleModel,
     channel_mask: ApuRecordedChannelMask,
-    masked_mix_dc_blocker: Option<ApuHostDcBlocker>,
+    masked_mix_hpf: Option<ApuHostHpf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -226,7 +226,7 @@ impl DesktopAudioOutput {
             last_submit_telemetry: None,
             console_model,
             channel_mask: ApuRecordedChannelMask::ALL,
-            masked_mix_dc_blocker: None,
+            masked_mix_hpf: None,
         };
         output.telemetry.log_event(
             "init",
@@ -247,8 +247,13 @@ impl DesktopAudioOutput {
         if self.channel_mask.is_all() {
             self.capture.record_t_cycle(apu);
         } else {
-            self.capture
-                .record_output_t_cycle(apu.recorded_channel_mix_pre_hpf(self.channel_mask));
+            let tap = apu.recorded_channel_mix_tap_pre_hpf(self.channel_mask);
+            let filtered = self
+                .masked_mix_hpf
+                .as_mut()
+                .expect("subset playback must own a masked-mix HPF")
+                .filter_t_cycle(tap.sample, tap.any_output_connected);
+            self.capture.record_output_t_cycle(filtered);
         }
     }
 
@@ -301,14 +306,10 @@ impl DesktopAudioOutput {
         self.interleaved_buffer
             .reserve(self.captured_samples.len() * 2);
         for sample in self.captured_samples.iter().copied() {
-            let filtered = match &mut self.masked_mix_dc_blocker {
-                Some(dc_blocker) => dc_blocker.filter_sample(sample),
-                None => sample,
-            };
             self.interleaved_buffer
-                .push(normalize_sample(filtered.left) * sample_scale);
+                .push(normalize_sample(sample.left) * sample_scale);
             self.interleaved_buffer
-                .push(normalize_sample(filtered.right) * sample_scale);
+                .push(normalize_sample(sample.right) * sample_scale);
         }
 
         map_audio_result(
@@ -417,8 +418,8 @@ impl DesktopAudioOutput {
             ApuSampleCapture::new(self.output_sample_rate_hz).map_err(format_capture_error)?;
         self.captured_samples.clear();
         self.interleaved_buffer.clear();
-        if let Some(dc_blocker) = &mut self.masked_mix_dc_blocker {
-            dc_blocker.reset();
+        if let Some(masked_mix_hpf) = &mut self.masked_mix_hpf {
+            masked_mix_hpf.reset();
         }
         self.oversized_queue_streak = 0;
         self.captured_t_cycles_since_submit = 0;
@@ -441,7 +442,7 @@ impl DesktopAudioOutput {
         }
 
         self.channel_mask = channel_mask;
-        self.reset_masked_mix_dc_blocker();
+        self.reset_masked_mix_hpf();
         self.telemetry.log_event(
             "channel-mask",
             format!("channel_mask={:#04X}", self.channel_mask.bits()),
@@ -452,7 +453,7 @@ impl DesktopAudioOutput {
     pub fn reset_for_session_swap(&mut self, console_model: ConsoleModel) -> Result<(), String> {
         if self.console_model != console_model {
             self.console_model = console_model;
-            self.reset_masked_mix_dc_blocker();
+            self.reset_masked_mix_hpf();
             self.telemetry
                 .log_event("console-model", format!("console_model={console_model:?}"));
         } else {
@@ -502,14 +503,11 @@ impl DesktopAudioOutput {
         Some(sample_frames as f64 * 1_000.0 / f64::from(self.output_sample_rate_hz))
     }
 
-    fn reset_masked_mix_dc_blocker(&mut self) {
-        self.masked_mix_dc_blocker = if self.channel_mask.is_all() {
+    fn reset_masked_mix_hpf(&mut self) {
+        self.masked_mix_hpf = if self.channel_mask.is_all() {
             None
         } else {
-            Some(ApuHostDcBlocker::new(
-                self.console_model,
-                self.output_sample_rate_hz,
-            ))
+            Some(ApuHostHpf::new(self.console_model))
         };
     }
 
@@ -830,13 +828,13 @@ mod tests {
             .set_channel_mask(subset_mask)
             .expect("subset channel mask should update");
         assert_eq!(output.channel_mask, subset_mask);
-        assert!(output.masked_mix_dc_blocker.is_some());
+        assert!(output.masked_mix_hpf.is_some());
 
         output
             .set_channel_mask(subset_mask)
             .expect("setting the same mask should be a no-op");
         assert_eq!(output.channel_mask, subset_mask);
-        assert!(output.masked_mix_dc_blocker.is_some());
+        assert!(output.masked_mix_hpf.is_some());
 
         let mut apu = Apu::new(ConsoleModel::Dmg);
         configure_constant_ch1_output(&mut apu);
@@ -852,7 +850,7 @@ mod tests {
             .reset_for_session_swap(ConsoleModel::Mgb)
             .expect("console model changes should reset the masked capture");
         assert_eq!(output.console_model, ConsoleModel::Mgb);
-        assert!(output.masked_mix_dc_blocker.is_some());
+        assert!(output.masked_mix_hpf.is_some());
         assert!(output.captured_samples.is_empty());
         assert!(output.interleaved_buffer.is_empty());
 
@@ -863,9 +861,9 @@ mod tests {
 
         output
             .set_channel_mask(ApuRecordedChannelMask::ALL)
-            .expect("restoring the full mask should drop the host dc blocker");
+            .expect("restoring the full mask should drop the masked HPF");
         assert_eq!(output.channel_mask, ApuRecordedChannelMask::ALL);
-        assert!(output.masked_mix_dc_blocker.is_none());
+        assert!(output.masked_mix_hpf.is_none());
     }
 
     #[test]
@@ -897,7 +895,7 @@ mod tests {
         assert_eq!(output.console_model, ConsoleModel::Dmg);
         assert!(output.captured_samples.is_empty());
         assert!(output.interleaved_buffer.is_empty());
-        assert!(output.masked_mix_dc_blocker.is_some());
+        assert!(output.masked_mix_hpf.is_some());
     }
 
     #[test]

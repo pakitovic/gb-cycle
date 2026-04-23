@@ -126,25 +126,46 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    `10-wave trigger while on`, and `12-wave write while on` pass in the
    current branch.
 6. `Phase 7.5` — Noise channel (`CH4`)
-   Scope: decoded `NR43`, explicit `noise_timer`, live LFSR progression,
+   Scope: decoded `NR43`, live LFSR progression,
    envelope/length wiring, and width-mode / lock-up behavior.
    Done criteria: CH4 unit tests cover `NR43` decode, active-state semantics,
    and retrigger recovery from lock-up; integration tests cover length/envelope
    clocks on the shared timeline.
    Status: closed in the current branch baseline for the DMG-facing scope.
-   `CH4` now owns explicit `NR43` decode, `noise_timer`, `lfsr_state`,
+   `CH4` now owns explicit `NR43` decode, `lfsr_state`,
    envelope runtime, trigger-time timer/envelope/LFSR reload, shared
    extra-length-clock handling, and `NR52` bit `3` clearing on length expiry;
    unit coverage now includes CH4 timer/LFSR/envelope seams, the Pan Docs
    zeroed trigger state, live `15-bit -> 7-bit` width-change lock-up, retrigger
    recovery from that lock-up, explicit timer hand-off into / out of the
    shift-`14` / `15` no-clocks state, inactive-channel slow-control clocking
-   for CH1 sweep and CH1 / CH2 / CH4 envelopes, inactive-channel fast-timer
-   continuation for CH1 / CH2 / CH3 / CH4, DMG-oriented hidden-noise-counter
+   for CH1 sweep and CH1 / CH2 / CH4 envelopes, DMG-oriented hidden-noise-counter
    phase tracking plus a dedicated live-`NR43` resolver block and a
    conservative DMG-oriented live-write subset that covers one
-   reload-seam step, a SameBoy-style single-intermediate `old_bit / glitch_bit / new_bit`
-   path, some low-shift two-step / feedback-corruption cases, a small repo-local narrow-staircase Zelda-tail tuning layer (the remaining `0x5C -> 0x4C` mid-band descent, the leading `0x5C -> 0x6C` ascent, and the late `0x4C -> 0x3C` rise are suppressed, leaving `0x7C -> 0x6C` as the last active narrow return edge), an explicit category-1/category-2/rising-edge/follow-up resolver split, an explicit per-category LFSR-action seam recorded in CH4 traces/debug snapshots, and both the single-intermediate selector plus a staged-upper-nibble second-intermediate candidate exported in those traces so the next phase can decide from data whether a true two-intermediate behavior change is justified, and DMG powered-off `NR41`
+   reload-seam step, an explicit SameBoy-guided `old -> FF` then `FF -> new`
+   write path, and an explicit per-pass trace seam recorded in CH4 traces/debug
+   snapshots. The current branch now exports every staged pass (`old_to_ff`,
+   `ff_to_glitch_1`, optional `glitch_1_to_glitch_2`, `glitch_to_new`, and
+   optional `low_shift_followup`) together with its value/bit/shift transition
+   and LFSR before/after state, and it has deliberately removed the old
+   repo-local Zelda-tail suppression guards so remaining audio differences come
+   from the staged pass model itself. The current DMG/CGB-C-oriented subset
+   now also ports SameBoy's hidden-counter start and tick state more literally:
+   triggers preserve the running counter/alignment, recompute the hidden
+   countdown with the SameBoy-guided start helper, honor the DMG delayed-start
+   seam when `alignment & 3 != 0`, gate hidden counting through explicit
+   `counter_active` / `background_counting` state, and let the preserved hidden
+   counter drive ordinary CH4 LFSR stepping instead of relying on a second
+   independent repo-local noise clock. The current pre-`CGB-D` subset still
+   has to translate SameBoy's `2 MHz` alignment/delayed-start bookkeeping into
+   this repo's `T-cycle` domain explicitly (`alignment` advances every other
+   `T`, delayed-start lasts `12 T`), otherwise the preserved `effective_counter`
+   drifts and Zelda's final CH4 staircase stops matching the oracle pass map.
+   uses the SameBoy-guided primary-action rule (`Category1` inert, `Category2`
+   plain step, `!old_bit && new_bit` forced-short, low-shift
+   follow-up/corruption on the SameBoy-style conditions), while the richer
+   revision-specific FF-write / multi-intermediate matrix remains deferred
+   until stronger hardware-backed evidence exists, and DMG powered-off `NR41`
    length writes, while machine
    integration coverage
    includes DMG `NR41` length persistence through an `NR52` power cycle.
@@ -269,7 +290,7 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
    Acceptance criteria: `NR41` remains write-only, `NR44` bit `7` acts as trigger, `NR44` bit `6` acts as immediate length enable, and CH4 ownership is not split informally across generic APU helpers.
 2. Implement CH4 LFSR, `noise_timer`, and `NR43` decoding.
    Scope: explicit `lfsr_state`, explicit fast timer, decoded clock shift / width mode / divider state, and the shared `15`-bit versus `7`-bit LFSR path.
-   Acceptance criteria: the ordinary `15`-bit and `7`-bit paths are both correct, divider `0` is treated as `0.5`, clock-shift values `14` and `15` suppress CH4 clocks, and live `NR43` writes alter timer behavior without mutating CH4 into a texture-swap abstraction.
+   Acceptance criteria: the ordinary `15`-bit and `7`-bit paths are both correct, divider `0` is treated as `0.5`, clock-shift values `14` and `15` suppress CH4 clocks, and live `NR43` writes alter timer behavior without mutating CH4 into a texture-swap abstraction. The current DMG/pre-`CGB-D` branch should validate those writes as an explicit SameBoy-guided `old -> FF` write plus `FF -> new` write, with the hidden-counter seam and optional low-shift follow-up remaining explicit and testable.
 3. Implement CH4 DAC state and general trigger behavior.
    Scope: `dac_enabled`, `channel_active`, trigger-time state reload, lock-up recovery on retrigger, and `NR52` bit `3` integration.
    Acceptance criteria: DAC-off disables CH4 immediately, a DAC-off trigger does not activate CH4 but still runs the documented envelope/LFSR/timer reload path, retrigger exits LFSR lock-up, and `NR52` bit `3` reflects live CH4 activity rather than mere audibility.
@@ -313,3 +334,5 @@ Build the audio subsystem as a real temporal part of the hardware, integrated wi
 
 - effort dispersion while CPU/PPU/bus are not yet closed
 - difficulty isolating bugs if the base system is still unstable
+
+- CH4 DMG/pre-`CGB-D`: the hidden noise-counter countdown and DMG delayed-start seam now live in an explicit `2 MHz` subdomain instead of doubled T-cycle countdowns, and CH4's hidden `alignment` timebase now keeps advancing while `NR52` is powered off. That first collapsed the Zelda/SameBoy `effective_counter` mismatch from a drifting `+0x84` staircase error to a constant `-0x08` offset from the very first external `NR43` write, and short startup traces now move that first-thunder gap again to roughly `+0x03/+0x04`. Cadence is matched; the remaining gap is concentrated in the very first powered-on CH4 trigger / `NR52`-on interaction.

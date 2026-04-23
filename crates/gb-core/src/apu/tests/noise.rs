@@ -1,4 +1,5 @@
 use super::*;
+use crate::apu::registers::Channel4Register;
 
 #[test]
 fn channel_4_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
@@ -39,6 +40,47 @@ fn channel_4_retrigger_after_unfreezing_zero_length_does_not_extra_clock_again()
 
     assert_eq!(apu.channels.channel_4.length_counter, 63);
     assert!(apu.channels.channel_4.runtime.active);
+}
+
+#[test]
+fn channel_4_delayed_trigger_with_zero_length_enabled_reloads_and_clocks_it() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.frame_sequencer.apply_startup_phase(7);
+    apu.write_register(0xFF21, 0x08);
+    apu.write_register(0xFF20, pulse_length_load(1));
+    apu.write_register(0xFF23, LENGTH_ENABLE_BIT);
+    apu.channels.channel_4.nr43_live_write.alignment = 1;
+
+    assert_eq!(apu.channels.channel_4.length_counter, 0);
+    assert!(!apu.channels.channel_4.runtime.active);
+
+    apu.write_register(0xFF23, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
+
+    assert_eq!(apu.channels.channel_4.length_counter, 63);
+    assert!(!apu.channels.channel_4.runtime.active);
+    assert_eq!(apu.channels.channel_4.debug_snapshot().dmg_delayed_start, 6);
+}
+
+#[test]
+fn channel_4_delayed_retrigger_after_unfreezing_zero_length_does_not_extra_clock_again() {
+    let mut apu = Apu::new(ConsoleModel::Dmg);
+    apu.write_register(0xFF26, 0x80);
+    apu.frame_sequencer.apply_startup_phase(7);
+    apu.write_register(0xFF21, 0x08);
+    apu.write_register(0xFF20, pulse_length_load(1));
+    apu.write_register(0xFF23, LENGTH_ENABLE_BIT);
+    apu.channels.channel_4.nr43_live_write.alignment = 1;
+
+    apu.write_register(0xFF23, 0x00);
+    apu.write_register(0xFF23, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
+    assert_eq!(apu.channels.channel_4.length_counter, 63);
+    assert!(!apu.channels.channel_4.runtime.active);
+
+    apu.write_register(0xFF23, CHANNEL_TRIGGER_BIT | LENGTH_ENABLE_BIT);
+
+    assert_eq!(apu.channels.channel_4.length_counter, 63);
+    assert!(!apu.channels.channel_4.runtime.active);
 }
 
 #[test]
@@ -87,10 +129,55 @@ fn channel_4_trigger_reloads_state_but_does_not_activate_while_the_dac_is_off() 
 }
 
 #[test]
-fn channel_4_noise_timer_steps_the_lfsr_and_short_width_mode_copies_feedback_into_bit_six() {
+fn channel_4_hidden_counter_stays_idle_until_the_channel_has_started() {
+    let mut channel = Channel4State::default();
+    channel.runtime.dac_enabled = true;
+    channel.write_nr43(0x4C);
+    let counter_timer_after_write = channel.nr43_live_write.counter_timer;
+
+    for _ in 0..16 {
+        channel.tick_fast_timer();
+    }
+
+    assert_eq!(channel.nr43_live_write.noise_counter, 0);
+    assert_eq!(
+        channel.nr43_live_write.counter_timer,
+        counter_timer_after_write
+    );
+    assert!(!channel.nr43_live_write.background_counting);
+    assert!(!channel.nr43_live_write.counter_active);
+}
+
+#[test]
+fn channel_4_trigger_uses_the_sameboy_guided_hidden_counter_start_state() {
+    let mut channel = Channel4State::default();
+    channel.runtime.dac_enabled = true;
+    channel.nr43_live_write.alignment = 0;
+    channel.nr43_live_write.noise_counter = 0x1234;
+    channel.nr43_live_write.counter_timer = 0;
+    channel.write_register(Channel4Register::Nr42, 0xF0, ConsoleModel::Dmg, 0);
+    channel.write_register(Channel4Register::Nr43, 0x4C, ConsoleModel::Dmg, 0);
+    channel.write_register(Channel4Register::Nr44, 0x80, ConsoleModel::Dmg, 0);
+
+    assert_eq!(channel.nr43_live_write.alignment, 0);
+    assert_eq!(channel.nr43_live_write.noise_counter, 0x1234);
+    assert!(channel.runtime.active);
+    assert!(channel.nr43_live_write.counter_timer > 0);
+    assert!(!channel.nr43_live_write.countdown_reloaded);
+    assert!(channel.nr43_live_write.counter_active);
+    assert!(channel.nr43_live_write.background_counting);
+}
+
+#[test]
+fn channel_4_hidden_counter_tick_steps_the_lfsr_and_short_width_mode_copies_feedback_into_bit_six()
+{
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
+    channel.nr43_live_write.counter_active = true;
+    channel.nr43_live_write.background_counting = true;
+    channel.nr43_live_write.counter_timer = 1;
+    channel.nr43_live_write.noise_counter = 0;
     channel.noise.short_width_mode = true;
     channel.noise.clock_shift = 0;
     channel.noise.clock_divider_code = 0;
@@ -106,10 +193,13 @@ fn channel_4_noise_timer_steps_the_lfsr_and_short_width_mode_copies_feedback_int
 }
 
 #[test]
-fn channel_4_noise_timer_keeps_running_while_the_channel_is_inactive() {
+fn channel_4_hidden_counter_does_not_step_the_lfsr_while_the_channel_is_inactive() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = false;
+    channel.nr43_live_write.background_counting = true;
+    channel.nr43_live_write.counter_timer = 1;
+    channel.nr43_live_write.noise_counter = 0;
     channel.noise.short_width_mode = true;
     channel.noise.clock_shift = 0;
     channel.noise.clock_divider_code = 0;
@@ -120,7 +210,7 @@ fn channel_4_noise_timer_keeps_running_while_the_channel_is_inactive() {
     channel.tick_fast_timer();
 
     assert_eq!(channel.noise.period_timer, 8);
-    assert_eq!(channel.noise.lfsr_state, 0x4040);
+    assert_eq!(channel.noise.lfsr_state, NOISE_LFSR_INITIAL_STATE);
     assert!(!channel.runtime.active);
     assert_eq!(channel.current_digital_output(), 0);
 }
@@ -172,11 +262,11 @@ fn channel_4_live_nr43_write_out_of_shift_14_reloads_from_the_new_clocked_timer_
     channel.tick_fast_timer();
 
     assert_eq!(channel.noise.period_timer, noise_timer_reload(0, 0));
-    assert_ne!(channel.noise.lfsr_state, lfsr_before);
+    assert_eq!(channel.noise.lfsr_state, lfsr_before);
 }
 
 #[test]
-fn channel_4_live_nr43_write_between_clocked_rates_reloads_the_new_timer_without_stepping_lfsr() {
+fn channel_4_live_nr43_write_between_clocked_rates_can_use_the_explicit_old_to_ff_pass() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
@@ -191,23 +281,48 @@ fn channel_4_live_nr43_write_between_clocked_rates_reloads_the_new_timer_without
     channel.write_nr43(0x00);
 
     assert_eq!(channel.noise.period_timer, noise_timer_reload(0, 0));
-    assert_eq!(channel.noise.lfsr_state, 0x1234);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(
+        require_nr43_pass(trace.old_to_ff, "old_to_ff").category,
+        ApuCh4Nr43LiveWriteCategory::None
+    );
+    assert_eq!(
+        require_nr43_pass(trace.old_to_ff, "old_to_ff").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+    assert!(trace.low_shift_followup.is_none());
+    let stepped_lfsr = channel.noise.lfsr_state;
     assert_eq!(channel.current_digital_output(), 0x0F);
 
     for expected_timer in (1..noise_timer_reload(0, 0)).rev() {
         channel.tick_fast_timer();
         assert_eq!(channel.noise.period_timer, expected_timer);
-        assert_eq!(channel.noise.lfsr_state, 0x1234);
+        assert_eq!(channel.noise.lfsr_state, stepped_lfsr);
     }
 
     channel.tick_fast_timer();
 
     assert_eq!(channel.noise.period_timer, noise_timer_reload(0, 0));
-    assert_ne!(channel.noise.lfsr_state, 0x1234);
+    assert_eq!(channel.noise.lfsr_state, stepped_lfsr);
+}
+
+fn last_channel_4_nr43_trace(channel: &Channel4State) -> ApuCh4Nr43LiveWriteTrace {
+    channel
+        .nr43_live_write
+        .last_trace
+        .expect("trace should record the live NR43 write")
+}
+
+fn require_nr43_pass(trace: Option<ApuCh4Nr43PassTrace>, label: &str) -> ApuCh4Nr43PassTrace {
+    trace.unwrap_or_else(|| panic!("{label} pass should be present"))
 }
 
 #[test]
-fn channel_4_live_nr43_write_steps_the_lfsr_when_the_new_selected_counter_bit_is_high() {
+fn channel_4_live_nr43_write_records_explicit_pre_cgb_d_passes() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
@@ -218,35 +333,52 @@ fn channel_4_live_nr43_write_steps_the_lfsr_when_the_new_selected_counter_bit_is
 
     channel.write_nr43(0x10);
 
-    assert_eq!(channel.noise.lfsr_state, 0x4040);
     assert_eq!(channel.noise.period_timer, noise_timer_reload(1, 0));
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the live NR43 write");
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(trace.ff_value, 0xFF);
+    assert_eq!(trace.glitch_1_value, 0x7F);
+    assert_eq!(trace.glitch_2_value, None);
+    assert_eq!(trace.old_shift, 0);
+    assert_eq!(trace.ff_shift, 15);
+    assert_eq!(trace.glitch_1_shift, 7);
+    assert_eq!(trace.glitch_2_shift, None);
+    assert!(!trace.old_bit);
+    assert!(!trace.ff_bit);
+    assert!(!trace.glitch_1_bit);
+    assert_eq!(trace.glitch_2_bit, None);
+    assert!(trace.new_bit);
+
+    let old_to_ff = require_nr43_pass(trace.old_to_ff, "old_to_ff");
+    assert_eq!(old_to_ff.kind, ApuCh4Nr43PassKind::OldToFf);
+    assert_eq!(old_to_ff.category, ApuCh4Nr43LiveWriteCategory::None);
+    assert_eq!(old_to_ff.action, ApuCh4Nr43LfsrAction::None);
+
+    let ff_to_glitch_1 = require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1");
+    assert_eq!(ff_to_glitch_1.kind, ApuCh4Nr43PassKind::FfToGlitch1);
+    assert_eq!(
+        ff_to_glitch_1.category,
+        ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
+    );
+    assert_eq!(ff_to_glitch_1.action, ApuCh4Nr43LfsrAction::ForcedShortStep);
+
+    assert!(trace.glitch_1_to_glitch_2.is_none());
+
+    let glitch_to_new = require_nr43_pass(trace.glitch_to_new, "glitch_to_new");
+    assert_eq!(glitch_to_new.kind, ApuCh4Nr43PassKind::GlitchToNew);
+    assert_eq!(
+        glitch_to_new.category,
+        ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
+    );
+    assert_eq!(glitch_to_new.action, ApuCh4Nr43LfsrAction::None);
+    assert!(trace.low_shift_followup.is_none());
     assert_eq!(
         trace.decision_category,
         ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
     );
-    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::ForcedShortStep);
-    assert_eq!(trace.glitch_value, 0x00);
-    assert_eq!(trace.second_glitch_value, 0x10);
-    assert_eq!(trace.glitch_shift, 0);
-    assert_eq!(trace.second_glitch_shift, 1);
-    assert!(!trace.old_bit);
-    assert!(!trace.glitch_bit);
-    assert!(trace.second_glitch_bit);
-    assert!(trace.new_bit);
-    assert!(trace.runtime_active);
-    assert!(trace.ff_to_new_step);
-    assert!(!trace.old_to_ff_step);
-    assert!(!trace.old_to_ff_forced_short_width);
-    assert!(trace.ff_to_new_forced_short_width);
-    assert!(!trace.reload_seam_step);
 }
 
 #[test]
-fn channel_4_single_intermediate_category_2_is_a_plain_step_in_the_current_subset() {
+fn channel_4_explicit_old_to_ff_pass_can_resolve_category_2() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
@@ -259,29 +391,26 @@ fn channel_4_single_intermediate_category_2_is_a_plain_step_in_the_current_subse
     channel.write_nr43(0x90);
 
     assert_eq!(channel.noise.lfsr_state, 0x3217);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the category-2 write");
+    let trace = last_channel_4_nr43_trace(&channel);
+    let old_to_ff = require_nr43_pass(trace.old_to_ff, "old_to_ff");
+    assert_eq!(old_to_ff.value_from, 0x00);
+    assert_eq!(old_to_ff.value_to, 0xFF);
+    assert!(!old_to_ff.bit_from);
+    assert!(!old_to_ff.bit_to);
+    assert_eq!(old_to_ff.category, ApuCh4Nr43LiveWriteCategory::Category2);
+    assert_eq!(old_to_ff.action, ApuCh4Nr43LfsrAction::PlainStep);
+    let ff_to_glitch_1 = require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1");
+    assert_eq!(ff_to_glitch_1.category, ApuCh4Nr43LiveWriteCategory::None);
+    assert_eq!(ff_to_glitch_1.action, ApuCh4Nr43LfsrAction::None);
     assert_eq!(
         trace.decision_category,
         ApuCh4Nr43LiveWriteCategory::Category2
     );
     assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::PlainStep);
-    assert_eq!(trace.glitch_value, 0x80);
-    assert_eq!(trace.second_glitch_value, 0x80);
-    assert_eq!(trace.glitch_shift, 8);
-    assert_eq!(trace.second_glitch_shift, 8);
-    assert!(!trace.old_bit);
-    assert!(trace.glitch_bit);
-    assert!(trace.second_glitch_bit);
-    assert!(!trace.new_bit);
-    assert!(trace.ff_to_new_step);
-    assert!(!trace.ff_to_new_forced_short_width);
 }
 
 #[test]
-fn channel_4_single_intermediate_category_1_is_currently_inert_in_the_dmg_subset() {
+fn channel_4_explicit_ff_to_glitch_1_pass_can_resolve_category_1() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
@@ -293,30 +422,24 @@ fn channel_4_single_intermediate_category_1_is_currently_inert_in_the_dmg_subset
 
     channel.write_nr43(0x90);
 
-    assert_eq!(channel.noise.lfsr_state, 0x642E);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the category-1 write");
+    let trace = last_channel_4_nr43_trace(&channel);
+    let ff_to_glitch_1 = require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1");
+    assert_eq!(ff_to_glitch_1.value_from, 0xFF);
+    assert_eq!(ff_to_glitch_1.value_to, 0xFF);
+    assert_eq!(
+        ff_to_glitch_1.category,
+        ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
+    );
+    assert_eq!(ff_to_glitch_1.action, ApuCh4Nr43LfsrAction::ForcedShortStep);
     assert_eq!(
         trace.decision_category,
-        ApuCh4Nr43LiveWriteCategory::Category1
+        ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
     );
-    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::None);
-    assert_eq!(trace.glitch_value, 0x80);
-    assert_eq!(trace.second_glitch_value, 0x80);
-    assert_eq!(trace.glitch_shift, 8);
-    assert_eq!(trace.second_glitch_shift, 8);
-    assert!(trace.old_bit);
-    assert!(!trace.glitch_bit);
-    assert!(!trace.second_glitch_bit);
-    assert!(trace.new_bit);
-    assert!(!trace.ff_to_new_step);
-    assert!(!trace.ff_to_new_forced_short_width);
+    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::ForcedShortStep);
 }
 
 #[test]
-fn channel_4_live_nr43_write_does_not_step_when_the_new_selected_counter_bit_stays_low() {
+fn channel_4_live_nr43_write_can_remain_inert_across_all_primary_passes() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
@@ -329,23 +452,23 @@ fn channel_4_live_nr43_write_does_not_step_when_the_new_selected_counter_bit_sta
 
     assert_eq!(channel.noise.lfsr_state, 0x1234);
     assert_eq!(channel.noise.period_timer, noise_timer_reload(1, 0));
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the live NR43 write");
+    let trace = last_channel_4_nr43_trace(&channel);
     assert_eq!(trace.decision_category, ApuCh4Nr43LiveWriteCategory::None);
     assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::None);
-    assert_eq!(trace.glitch_value, 0x00);
-    assert_eq!(trace.second_glitch_value, 0x10);
-    assert_eq!(trace.glitch_shift, 0);
-    assert_eq!(trace.second_glitch_shift, 1);
-    assert!(trace.old_bit);
-    assert!(trace.glitch_bit);
-    assert!(!trace.second_glitch_bit);
-    assert!(!trace.new_bit);
-    assert!(!trace.reload_seam_step);
-    assert!(!trace.old_to_ff_step);
-    assert!(!trace.ff_to_new_step);
+    assert_eq!(
+        require_nr43_pass(trace.old_to_ff, "old_to_ff").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+    assert!(trace.glitch_1_to_glitch_2.is_none());
+    assert_eq!(
+        require_nr43_pass(trace.glitch_to_new, "glitch_to_new").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+    assert!(trace.low_shift_followup.is_none());
 }
 
 #[test]
@@ -362,17 +485,15 @@ fn channel_4_live_nr43_write_can_take_the_reload_seam_without_forcing_an_extra_s
 
     channel.write_nr43(0x50);
 
-    assert_eq!(channel.noise.lfsr_state, 0x4000);
     assert_eq!(channel.noise.period_timer, noise_timer_reload(5, 0));
     assert_eq!(channel.nr43_live_write.counter_timer, 2);
     assert!(!channel.nr43_live_write.countdown_reloaded);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the seam write");
-    assert!(trace.reload_seam_step);
-    assert!(!trace.ff_to_new_step);
-    assert!(!trace.feedback_corruption);
+    let trace = last_channel_4_nr43_trace(&channel);
+    let seam = require_nr43_pass(trace.reload_seam, "reload_seam");
+    assert_eq!(seam.kind, ApuCh4Nr43PassKind::ReloadSeam);
+    assert_eq!(seam.action, ApuCh4Nr43LfsrAction::PlainStep);
+    assert_eq!(trace.lfsr_before, NOISE_LFSR_INITIAL_STATE);
+    assert_eq!(trace.lfsr_after, channel.noise.lfsr_state);
 }
 
 #[test]
@@ -410,17 +531,25 @@ fn channel_4_live_nr43_write_can_step_twice_with_feedback_corruption_in_low_shif
     channel.envelope.current_volume = 0x0F;
     channel.noise.lfsr_state = 0x642E;
     channel.write_nr43(0x80);
-    channel.nr43_live_write.noise_counter = 0x0003;
+    channel.nr43_live_write.noise_counter = 0x0082;
     channel.nr43_live_write.countdown_reloaded = false;
 
     channel.write_nr43(0x10);
 
-    assert_eq!(channel.noise.lfsr_state, 0x190B);
     assert_eq!(channel.noise.period_timer, noise_timer_reload(1, 0));
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the low-shift write");
+    let trace = last_channel_4_nr43_trace(&channel);
+    let old_to_ff = require_nr43_pass(trace.old_to_ff, "old_to_ff");
+    assert_eq!(old_to_ff.category, ApuCh4Nr43LiveWriteCategory::None);
+    assert_eq!(old_to_ff.action, ApuCh4Nr43LfsrAction::None);
+    let ff_to_glitch_1 = require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1");
+    assert_eq!(
+        ff_to_glitch_1.category,
+        ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
+    );
+    assert_eq!(
+        ff_to_glitch_1.action,
+        ApuCh4Nr43LfsrAction::ForcedShortStepThenLowShiftCorruption
+    );
     assert_eq!(
         trace.decision_category,
         ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
@@ -429,24 +558,15 @@ fn channel_4_live_nr43_write_can_step_twice_with_feedback_corruption_in_low_shif
         trace.lfsr_action,
         ApuCh4Nr43LfsrAction::ForcedShortStepThenLowShiftCorruption
     );
-    assert_eq!(trace.glitch_value, 0x00);
-    assert_eq!(trace.second_glitch_value, 0x00);
-    assert_eq!(trace.glitch_shift, 0);
-    assert_eq!(trace.second_glitch_shift, 0);
-    assert!(!trace.old_bit);
-    assert!(trace.glitch_bit);
-    assert!(trace.second_glitch_bit);
-    assert!(trace.new_bit);
-    assert!(!trace.old_to_ff_step);
-    assert!(!trace.old_to_ff_forced_short_width);
-    assert!(trace.ff_to_new_step);
-    assert!(trace.ff_to_new_forced_short_width);
-    assert!(trace.low_shift_extra_step);
-    assert!(trace.feedback_corruption);
+    assert_eq!(
+        require_nr43_pass(trace.glitch_to_new, "glitch_to_new").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+    assert!(trace.low_shift_followup.is_none());
 }
 
 #[test]
-fn channel_4_high_shift_narrow_staircase_uses_the_sameboy_style_single_intermediate_bits() {
+fn channel_4_high_shift_narrow_staircase_runs_through_explicit_pre_cgb_d_passes() {
     let mut channel = Channel4State::default();
     channel.runtime.dac_enabled = true;
     channel.runtime.active = true;
@@ -454,123 +574,110 @@ fn channel_4_high_shift_narrow_staircase_uses_the_sameboy_style_single_intermedi
 
     channel.noise.lfsr_state = 0x6189;
     channel.write_nr43(0x03);
-    channel.nr43_live_write.noise_counter = 0x3CEA;
+    channel.nr43_live_write.noise_counter = 0x2078;
     channel.nr43_live_write.countdown_reloaded = false;
     channel.write_nr43(0x2C);
-    assert_eq!(channel.noise.lfsr_state, 0x3084);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the 03 -> 2C write");
-    assert!(trace.ff_to_new_step);
-    assert!(!trace.ff_to_new_forced_short_width);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(
+        require_nr43_pass(trace.old_to_ff, "old_to_ff").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+    assert_eq!(
+        require_nr43_pass(trace.low_shift_followup, "low_shift_followup").action,
+        ApuCh4Nr43LfsrAction::PlainStep
+    );
+    assert!(trace.glitch_1_to_glitch_2.is_none());
 
     channel.noise.lfsr_state = 0x3F3F;
     channel.write_nr43(0x4C);
-    channel.nr43_live_write.noise_counter = 0x19BC;
+    channel.nr43_live_write.noise_counter = 0x3A31;
     channel.nr43_live_write.countdown_reloaded = false;
     channel.write_nr43(0x5C);
-    assert_eq!(channel.noise.lfsr_state, 0x3F3F);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the 4C -> 5C write");
-    assert!(!trace.old_to_ff_step);
-    assert!(!trace.ff_to_new_step);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::ForcedShortStep
+    );
 
     channel.noise.lfsr_state = 0x3F3F;
     channel.write_nr43(0x5C);
-    channel.nr43_live_write.noise_counter = 0x224E;
+    channel.nr43_live_write.noise_counter = 0x02C3;
     channel.nr43_live_write.countdown_reloaded = false;
     channel.write_nr43(0x6C);
-    assert_eq!(channel.noise.lfsr_state, 0x3F3F);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the 5C -> 6C write");
-    assert_eq!(trace.glitch_value, 0x5C);
-    assert_eq!(trace.second_glitch_value, 0x6C);
-    assert!(!trace.glitch_bit);
-    assert!(trace.second_glitch_bit);
-    assert!(!trace.ff_to_new_step);
-    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::None);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(trace.glitch_1_value, 0x7F);
+    assert_eq!(trace.glitch_2_value, None);
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::ForcedShortStep
+    );
 
     channel.noise.lfsr_state = 0x3ABA;
     channel.write_nr43(0x6C);
-    channel.nr43_live_write.noise_counter = 0x2AE1;
-    channel.nr43_live_write.countdown_reloaded = true;
+    channel.nr43_live_write.noise_counter = 0x0B55;
+    channel.nr43_live_write.countdown_reloaded = false;
     channel.write_nr43(0x7C);
-    assert_eq!(channel.noise.lfsr_state, 0x3ABA);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the 6C -> 7C write");
-    assert!(!trace.reload_seam_step);
-    assert!(!trace.ff_to_new_step);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::None
+    );
 
     channel.noise.lfsr_state = 0x7676;
     channel.write_nr43(0x7C);
-    channel.nr43_live_write.noise_counter = 0x3374;
+    channel.nr43_live_write.noise_counter = 0x13E8;
     channel.nr43_live_write.countdown_reloaded = false;
     channel.write_nr43(0x6C);
-    assert_eq!(channel.noise.lfsr_state, 0x3B3B);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the 7C -> 6C write");
-    assert_eq!(trace.glitch_value, 0x7C);
-    assert_eq!(trace.second_glitch_value, 0x6C);
-    assert!(!trace.glitch_bit);
-    assert!(trace.second_glitch_bit);
-    assert!(trace.ff_to_new_step);
-    assert!(trace.ff_to_new_forced_short_width);
-    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::ForcedShortStep);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::ForcedShortStep
+    );
 
     channel.noise.lfsr_state = 0x0909;
     channel.write_nr43(0x5C);
-    channel.nr43_live_write.noise_counter = 0x0499;
+    channel.nr43_live_write.noise_counter = 0x250D;
     channel.nr43_live_write.countdown_reloaded = false;
     channel.write_nr43(0x4C);
-    assert_eq!(channel.noise.lfsr_state, 0x0909);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the 5C -> 4C write");
-    assert_eq!(trace.glitch_value, 0x5C);
-    assert_eq!(trace.second_glitch_value, 0x4C);
-    assert!(!trace.glitch_bit);
-    assert!(trace.second_glitch_bit);
-    assert!(!trace.ff_to_new_step);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(
+        require_nr43_pass(trace.old_to_ff, "old_to_ff").action,
+        ApuCh4Nr43LfsrAction::PlainStep
+    );
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::None
+    );
 
     channel.noise.lfsr_state = 0x0707;
     channel.write_nr43(0x4C);
-    channel.nr43_live_write.noise_counter = 0x0D2B;
+    channel.nr43_live_write.noise_counter = 0x2D9F;
     channel.nr43_live_write.countdown_reloaded = false;
     channel.write_nr43(0x3C);
-    assert_eq!(channel.noise.lfsr_state, 0x0707);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the 4C -> 3C write");
-    assert_eq!(trace.glitch_value, 0x4C);
-    assert_eq!(trace.second_glitch_value, 0x7C);
-    assert!(!trace.glitch_bit);
-    assert!(!trace.second_glitch_bit);
-    assert!(!trace.ff_to_new_step);
-    assert!(!trace.ff_to_new_forced_short_width);
-    assert_eq!(trace.lfsr_action, ApuCh4Nr43LfsrAction::None);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::ForcedShortStep
+    );
 
     channel.noise.lfsr_state = 0x4BCB;
     channel.write_nr43(0x3C);
-    channel.nr43_live_write.noise_counter = 0x15BE;
+    channel.nr43_live_write.noise_counter = 0x3632;
     channel.nr43_live_write.countdown_reloaded = false;
     channel.write_nr43(0x09);
-    assert_eq!(channel.noise.lfsr_state, 0x4BCB);
-    let trace = channel
-        .nr43_live_write
-        .last_trace
-        .expect("trace should record the 3C -> 09 write");
-    assert!(!trace.ff_to_new_step);
+    let trace = last_channel_4_nr43_trace(&channel);
+    assert_eq!(
+        require_nr43_pass(trace.ff_to_glitch_1, "ff_to_glitch_1").action,
+        ApuCh4Nr43LfsrAction::None
+    );
+    assert_eq!(
+        require_nr43_pass(trace.glitch_to_new, "glitch_to_new").action,
+        ApuCh4Nr43LfsrAction::None
+    );
 }
 
 #[test]
@@ -687,6 +794,10 @@ fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window_silentl
     let mut wide = Channel4State::default();
     wide.runtime.dac_enabled = true;
     wide.runtime.active = true;
+    wide.nr43_live_write.counter_active = true;
+    wide.nr43_live_write.background_counting = true;
+    wide.nr43_live_write.counter_timer = 1;
+    wide.nr43_live_write.noise_counter = 0;
     wide.write_nr43(0x00);
     wide.noise.period_timer = 1;
     wide.envelope.current_volume = 0x0F;
@@ -703,6 +814,7 @@ fn channel_4_live_15_bit_to_7_bit_switch_can_lock_the_active_lfsr_window_silentl
     assert_eq!(narrow.current_digital_output(), 0);
     assert!(narrow.runtime.active);
 
+    narrow.nr43_live_write.counter_timer = 1;
     narrow.noise.period_timer = 1;
     narrow.tick_fast_timer();
 

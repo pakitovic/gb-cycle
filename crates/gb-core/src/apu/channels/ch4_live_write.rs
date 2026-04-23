@@ -1,10 +1,12 @@
 use super::super::common::{
     NOISE_CLOCK_SHIFT_MASK, NOISE_CLOCK_SHIFT_SHIFT, NOISE_COUNTER_MASK, NOISE_LFSR_FEEDBACK_BIT,
     NOISE_LFSR_OUTPUT_BIT, NOISE_LFSR_SHORT_WIDTH_FEEDBACK_BIT, NOISE_LFSR_TAP_BIT,
-    NOISE_SHORT_WIDTH_BIT, noise_counter_bit, noise_counter_phase_after_trigger,
-    noise_counter_timer_reload,
+    NOISE_SHORT_WIDTH_BIT, noise_counter_bit,
 };
-use super::super::{ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory, ApuCh4Nr43LiveWriteTrace};
+use super::super::{
+    ApuCh4Nr43LfsrAction, ApuCh4Nr43LiveWriteCategory, ApuCh4Nr43LiveWriteTrace,
+    ApuCh4Nr43PassKind, ApuCh4Nr43PassTrace,
+};
 use super::ch4::{Channel4NoiseSignalState, Channel4Nr43LiveWriteState};
 
 pub(super) fn trace_channel4_live_nr43_write(
@@ -43,26 +45,45 @@ pub(super) fn step_channel4_lfsr(noise: &mut Channel4NoiseSignalState) {
     noise.lfsr_state = (noise.lfsr_state & !(1 << NOISE_LFSR_FEEDBACK_BIT))
         | (feedback_bit << NOISE_LFSR_FEEDBACK_BIT);
     if noise.short_width_mode {
-        // In short mode the feedback path also overwrites bit 6, so a live
-        // 15-bit -> 7-bit switch can trap the active 7-bit window at ones
-        // until a retrigger reloads the LFSR.
         noise.lfsr_state = (noise.lfsr_state & !(1 << NOISE_LFSR_SHORT_WIDTH_FEEDBACK_BIT))
             | (feedback_bit << NOISE_LFSR_SHORT_WIDTH_FEEDBACK_BIT);
     }
 }
 
 fn seed_channel4_noise_counter_phase_if_uninitialized(
-    old_nr43: u8,
-    noise: &Channel4NoiseSignalState,
-    nr43_live_write: &mut Channel4Nr43LiveWriteState,
+    _old_nr43: u8,
+    _noise: &Channel4NoiseSignalState,
+    _nr43_live_write: &mut Channel4Nr43LiveWriteState,
 ) {
-    if nr43_live_write.counter_timer != 0 || noise.period_timer != 0 {
-        return;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Channel4Stage {
+    value: u8,
+    shift: u8,
+    bit: bool,
+    short_width_mode: bool,
+}
+
+impl Channel4Stage {
+    fn from_nr43(value: u8, effective_counter: u16) -> Self {
+        let shift = decode_nr43_clock_shift(value);
+        Self {
+            value,
+            shift,
+            bit: noise_counter_bit(effective_counter, shift),
+            short_width_mode: value & NOISE_SHORT_WIDTH_BIT != 0,
+        }
     }
 
-    let old_shift = decode_nr43_clock_shift(old_nr43);
-    nr43_live_write.noise_counter = noise_counter_phase_after_trigger(old_shift);
-    nr43_live_write.counter_timer = noise_counter_timer_reload(noise.clock_divider_code);
+    fn synthetic_ff(effective_counter: u16) -> Self {
+        Self {
+            value: 0xFF,
+            shift: 15,
+            bit: noise_counter_bit(effective_counter, 15),
+            short_width_mode: true,
+        }
+    }
 }
 
 struct Channel4Nr43LiveWriteResolver<'a> {
@@ -71,67 +92,6 @@ struct Channel4Nr43LiveWriteResolver<'a> {
     new_nr43: u8,
     noise: &'a mut Channel4NoiseSignalState,
     nr43_live_write: &'a mut Channel4Nr43LiveWriteState,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Channel4SingleIntermediateDecision {
-    glitch_value: u8,
-    second_glitch_value: u8,
-    old_shift: u8,
-    new_shift: u8,
-    glitch_shift: u8,
-    second_glitch_shift: u8,
-    old_bit: bool,
-    new_bit: bool,
-    glitch_bit: bool,
-    second_glitch_bit: bool,
-    new_short_width_mode: bool,
-}
-
-impl Channel4SingleIntermediateDecision {
-    fn new(old_nr43: u8, new_nr43: u8, effective_counter: u16) -> Self {
-        let old_shift = decode_nr43_clock_shift(old_nr43);
-        let new_shift = decode_nr43_clock_shift(new_nr43);
-        let glitch_value = (old_nr43 & 0x7F) | (new_nr43 & 0x80);
-        let glitch_shift = decode_nr43_clock_shift(glitch_value);
-        let second_glitch_value = candidate_second_intermediate_nr43_value(old_nr43, new_nr43);
-        let second_glitch_shift = decode_nr43_clock_shift(second_glitch_value);
-
-        Self {
-            glitch_value,
-            second_glitch_value,
-            old_shift,
-            new_shift,
-            glitch_shift,
-            second_glitch_shift,
-            old_bit: noise_counter_bit(effective_counter, old_shift),
-            new_bit: noise_counter_bit(effective_counter, new_shift),
-            glitch_bit: noise_counter_bit(effective_counter, glitch_shift),
-            second_glitch_bit: noise_counter_bit(effective_counter, second_glitch_shift),
-            new_short_width_mode: new_nr43 & NOISE_SHORT_WIDTH_BIT != 0,
-        }
-    }
-
-    fn category(self, effective_counter: u16) -> ApuCh4Nr43LiveWriteCategory {
-        if self.old_bit == self.new_bit && self.new_bit != self.glitch_bit {
-            if self.new_bit {
-                ApuCh4Nr43LiveWriteCategory::Category1
-            } else {
-                ApuCh4Nr43LiveWriteCategory::Category2
-            }
-        } else if !self.old_bit && self.new_bit {
-            ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
-        } else if self.new_shift <= 2
-            && !self.glitch_bit
-            && !self.new_bit
-            && !self.old_bit
-            && effective_counter & 0x08 != 0
-        {
-            ApuCh4Nr43LiveWriteCategory::LowShiftFollowup
-        } else {
-            ApuCh4Nr43LiveWriteCategory::None
-        }
-    }
 }
 
 impl<'a> Channel4Nr43LiveWriteResolver<'a> {
@@ -153,36 +113,46 @@ impl<'a> Channel4Nr43LiveWriteResolver<'a> {
 
     fn resolve(&mut self) -> ApuCh4Nr43LiveWriteTrace {
         let same_shift_group = self.old_nr43 & 0xF0 == self.new_nr43 & 0xF0;
-        let old_shift = decode_nr43_clock_shift(self.old_nr43);
-        let new_shift = decode_nr43_clock_shift(self.new_nr43);
         let effective_counter = self.effective_noise_counter();
+        let old_stage = Channel4Stage::from_nr43(self.old_nr43, effective_counter);
+        let ff_stage = Channel4Stage::synthetic_ff(effective_counter);
+        let glitch_1_stage = Channel4Stage::from_nr43(
+            first_glitch_value(ff_stage.value, self.new_nr43),
+            effective_counter,
+        );
+        let glitch_2_stage = second_glitch_value(ff_stage.value, self.new_nr43)
+            .map(|value| Channel4Stage::from_nr43(value, effective_counter));
+        let new_stage = Channel4Stage::from_nr43(self.new_nr43, effective_counter);
         let lfsr_before = self.noise.lfsr_state;
+
         let mut trace = ApuCh4Nr43LiveWriteTrace {
             runtime_active: self.runtime_active,
             same_shift_group,
             old_nr43: self.old_nr43,
+            ff_value: ff_stage.value,
+            glitch_1_value: glitch_1_stage.value,
+            glitch_2_value: glitch_2_stage.map(|stage| stage.value),
+            old_shift: old_stage.shift,
+            ff_shift: ff_stage.shift,
+            glitch_1_shift: glitch_1_stage.shift,
+            glitch_2_shift: glitch_2_stage.map(|stage| stage.shift),
+            new_shift: new_stage.shift,
             new_nr43: self.new_nr43,
-            glitch_value: self.old_nr43,
-            second_glitch_value: self.old_nr43,
-            old_shift,
-            glitch_shift: old_shift,
-            second_glitch_shift: old_shift,
-            new_shift,
             effective_counter,
             countdown_reloaded: self.nr43_live_write.countdown_reloaded,
-            old_bit: false,
-            glitch_bit: false,
-            second_glitch_bit: false,
-            new_bit: false,
+            old_bit: old_stage.bit,
+            ff_bit: ff_stage.bit,
+            glitch_1_bit: glitch_1_stage.bit,
+            glitch_2_bit: glitch_2_stage.map(|stage| stage.bit),
+            new_bit: new_stage.bit,
             decision_category: ApuCh4Nr43LiveWriteCategory::None,
             lfsr_action: ApuCh4Nr43LfsrAction::None,
-            reload_seam_step: false,
-            old_to_ff_step: false,
-            old_to_ff_forced_short_width: false,
-            ff_to_new_step: false,
-            ff_to_new_forced_short_width: false,
-            low_shift_extra_step: false,
-            feedback_corruption: false,
+            reload_seam: None,
+            old_to_ff: None,
+            ff_to_glitch_1: None,
+            glitch_1_to_glitch_2: None,
+            glitch_to_new: None,
+            low_shift_followup: None,
             lfsr_before,
             lfsr_after: lfsr_before,
         };
@@ -192,11 +162,51 @@ impl<'a> Channel4Nr43LiveWriteResolver<'a> {
         }
 
         if self.nr43_live_write.countdown_reloaded {
-            self.apply_reload_seam_glitch(&mut trace);
+            trace.reload_seam = Some(self.apply_reload_seam_pass(old_stage));
         }
 
-        self.apply_single_intermediate_glitch(effective_counter, &mut trace);
+        let old_to_ff_action =
+            self.resolve_sameboy_pre_cgb_d_write(old_stage, ff_stage, effective_counter);
+        let ff_to_new_action =
+            self.resolve_sameboy_pre_cgb_d_write(ff_stage, new_stage, effective_counter);
+
+        trace.old_to_ff = Some(self.materialize_actionable_pass_trace(
+            ApuCh4Nr43PassKind::OldToFf,
+            old_stage,
+            ff_stage,
+            old_to_ff_action,
+            ff_stage.short_width_mode,
+        ));
+        trace.ff_to_glitch_1 = Some(self.materialize_actionable_pass_trace(
+            ApuCh4Nr43PassKind::FfToGlitch1,
+            ff_stage,
+            glitch_1_stage,
+            ff_to_new_action,
+            new_stage.short_width_mode,
+        ));
+        trace.glitch_1_to_glitch_2 = glitch_2_stage.map(|stage| {
+            self.materialize_descriptive_pass_trace(
+                ApuCh4Nr43PassKind::Glitch1ToGlitch2,
+                glitch_1_stage,
+                stage,
+            )
+        });
+        let pre_new_stage = glitch_2_stage.unwrap_or(glitch_1_stage);
+        trace.glitch_to_new = Some(self.materialize_descriptive_pass_trace(
+            ApuCh4Nr43PassKind::GlitchToNew,
+            pre_new_stage,
+            new_stage,
+        ));
+
+        if ff_to_new_action.low_shift_followup {
+            trace.low_shift_followup = Some(self.execute_low_shift_followup_pass(new_stage));
+        }
+
+        self.noise.short_width_mode = new_stage.short_width_mode;
         trace.lfsr_after = self.noise.lfsr_state;
+        let (decision_category, lfsr_action) = derive_compatibility_aliases(&trace);
+        trace.decision_category = decision_category;
+        trace.lfsr_action = lfsr_action;
         trace
     }
 
@@ -209,136 +219,220 @@ impl<'a> Channel4Nr43LiveWriteResolver<'a> {
         }
     }
 
-    fn apply_reload_seam_glitch(&mut self, trace: &mut ApuCh4Nr43LiveWriteTrace) {
+    fn apply_reload_seam_pass(&mut self, old_stage: Channel4Stage) -> ApuCh4Nr43PassTrace {
         let current_counter = self.nr43_live_write.noise_counter;
         let previous_counter = current_counter.wrapping_sub(1) & NOISE_COUNTER_MASK;
-        let old_shift = decode_nr43_clock_shift(self.old_nr43);
-        let new_shift = decode_nr43_clock_shift(self.new_nr43);
         let current_glitch_bit = noise_counter_bit(current_counter, 7);
-
-        if !noise_counter_bit(current_counter, old_shift)
+        let new_shift = decode_nr43_clock_shift(self.new_nr43);
+        let lfsr_before = self.noise.lfsr_state;
+        let should_step = !noise_counter_bit(current_counter, old_stage.shift)
             && noise_counter_bit(current_counter, new_shift)
             && current_glitch_bit
-            && noise_counter_bit(previous_counter, old_shift)
+            && noise_counter_bit(previous_counter, old_stage.shift)
             && !noise_counter_bit(previous_counter, new_shift)
-            && noise_counter_bit(previous_counter, 7)
-        {
+            && noise_counter_bit(previous_counter, 7);
+        let action = if should_step {
             step_channel4_lfsr(self.noise);
-            trace.reload_seam_step = true;
+            ApuCh4Nr43LfsrAction::PlainStep
+        } else {
+            ApuCh4Nr43LfsrAction::None
+        };
+
+        ApuCh4Nr43PassTrace {
+            kind: ApuCh4Nr43PassKind::ReloadSeam,
+            value_from: self.old_nr43,
+            value_to: self.old_nr43,
+            shift_from: old_stage.shift,
+            shift_to: old_stage.shift,
+            bit_from: old_stage.bit,
+            bit_to: old_stage.bit,
+            category: ApuCh4Nr43LiveWriteCategory::None,
+            action,
+            lfsr_before,
+            lfsr_after: self.noise.lfsr_state,
         }
     }
 
-    fn apply_single_intermediate_glitch(
-        &mut self,
+    fn resolve_sameboy_pre_cgb_d_write(
+        &self,
+        old_stage: Channel4Stage,
+        new_stage: Channel4Stage,
         effective_counter: u16,
-        trace: &mut ApuCh4Nr43LiveWriteTrace,
-    ) {
-        let decision = Channel4SingleIntermediateDecision::new(
-            self.old_nr43,
-            self.new_nr43,
+    ) -> Channel4ActualWriteResolution {
+        let glitch_stage = Channel4Stage::from_nr43(
+            first_glitch_value(old_stage.value, new_stage.value),
             effective_counter,
         );
-        trace.glitch_value = decision.glitch_value;
-        trace.second_glitch_value = decision.second_glitch_value;
-        trace.glitch_shift = decision.glitch_shift;
-        trace.second_glitch_shift = decision.second_glitch_shift;
-        trace.old_bit = decision.old_bit;
-        trace.glitch_bit = decision.glitch_bit;
-        trace.second_glitch_bit = decision.second_glitch_bit;
-        trace.new_bit = decision.new_bit;
-        let category = decision.category(effective_counter);
-        self.noise.short_width_mode = decision.new_short_width_mode;
 
-        let action = match category {
-            ApuCh4Nr43LiveWriteCategory::None => ApuCh4Nr43LfsrAction::None,
-            ApuCh4Nr43LiveWriteCategory::Category1 => {
-                self.category_1_action(decision, effective_counter)
+        if old_stage.bit == new_stage.bit && new_stage.bit != glitch_stage.bit {
+            if new_stage.bit {
+                Channel4ActualWriteResolution {
+                    category: ApuCh4Nr43LiveWriteCategory::Category1,
+                    action: ApuCh4Nr43LfsrAction::None,
+                    low_shift_followup: false,
+                }
+            } else {
+                Channel4ActualWriteResolution {
+                    category: ApuCh4Nr43LiveWriteCategory::Category2,
+                    action: ApuCh4Nr43LfsrAction::PlainStep,
+                    low_shift_followup: false,
+                }
             }
-            ApuCh4Nr43LiveWriteCategory::Category2 => {
-                self.category_2_action(decision, effective_counter)
+        } else if !old_stage.bit && new_stage.bit {
+            Channel4ActualWriteResolution {
+                category: ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                action: if new_stage.shift <= 2 && glitch_stage.bit && effective_counter & 0x08 == 0
+                {
+                    ApuCh4Nr43LfsrAction::ForcedShortStepThenLowShiftCorruption
+                } else {
+                    ApuCh4Nr43LfsrAction::ForcedShortStep
+                },
+                low_shift_followup: false,
             }
-            ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort => {
-                self.rising_edge_forced_short_action(decision, effective_counter)
-            }
-            ApuCh4Nr43LiveWriteCategory::LowShiftFollowup => {
-                self.low_shift_followup_action(decision, effective_counter)
-            }
-        };
-        trace.decision_category = category;
-        trace.lfsr_action = action;
-        self.apply_lfsr_action(action, trace);
-    }
-
-    fn category_1_action(
-        &self,
-        _decision: Channel4SingleIntermediateDecision,
-        _effective_counter: u16,
-    ) -> ApuCh4Nr43LfsrAction {
-        // In the current DMG/CGB-C-oriented deterministic subset, the richer
-        // SameBoy category-1 behavior only appears on later revisions.
-        // Keep this path explicit (and currently inert) so future matrix work
-        // can deepen it without re-entangling the classifier.
-        ApuCh4Nr43LfsrAction::None
-    }
-
-    fn category_2_action(
-        &self,
-        _decision: Channel4SingleIntermediateDecision,
-        _effective_counter: u16,
-    ) -> ApuCh4Nr43LfsrAction {
-        ApuCh4Nr43LfsrAction::PlainStep
-    }
-
-    fn rising_edge_forced_short_action(
-        &self,
-        decision: Channel4SingleIntermediateDecision,
-        effective_counter: u16,
-    ) -> ApuCh4Nr43LfsrAction {
-        if suppress_repo_local_narrow_forced_short_step(self.old_nr43, self.new_nr43) {
-            return ApuCh4Nr43LfsrAction::None;
-        }
-
-        if decision.new_shift <= 2 && decision.glitch_bit && effective_counter & 0x08 == 0 {
-            ApuCh4Nr43LfsrAction::ForcedShortStepThenLowShiftCorruption
         } else {
-            ApuCh4Nr43LfsrAction::ForcedShortStep
+            Channel4ActualWriteResolution {
+                category: ApuCh4Nr43LiveWriteCategory::None,
+                action: ApuCh4Nr43LfsrAction::None,
+                low_shift_followup: new_stage.shift <= 2
+                    && !glitch_stage.bit
+                    && !new_stage.bit
+                    && !old_stage.bit
+                    && effective_counter & 0x08 != 0,
+            }
         }
     }
 
-    fn low_shift_followup_action(
-        &self,
-        _decision: Channel4SingleIntermediateDecision,
-        _effective_counter: u16,
-    ) -> ApuCh4Nr43LfsrAction {
-        ApuCh4Nr43LfsrAction::PlainStep
+    fn execute_low_shift_followup_pass(&mut self, new_stage: Channel4Stage) -> ApuCh4Nr43PassTrace {
+        self.materialize_actionable_pass_trace(
+            ApuCh4Nr43PassKind::LowShiftFollowup,
+            new_stage,
+            new_stage,
+            Channel4ActualWriteResolution {
+                category: ApuCh4Nr43LiveWriteCategory::LowShiftFollowup,
+                action: ApuCh4Nr43LfsrAction::PlainStep,
+                low_shift_followup: true,
+            },
+            new_stage.short_width_mode,
+        )
     }
 
-    fn apply_lfsr_action(
+    fn materialize_actionable_pass_trace(
         &mut self,
-        action: ApuCh4Nr43LfsrAction,
-        trace: &mut ApuCh4Nr43LiveWriteTrace,
-    ) {
+        kind: ApuCh4Nr43PassKind,
+        from: Channel4Stage,
+        to: Channel4Stage,
+        resolution: Channel4ActualWriteResolution,
+        action_short_width_mode: bool,
+    ) -> ApuCh4Nr43PassTrace {
+        let lfsr_before = self.noise.lfsr_state;
+        self.noise.short_width_mode = action_short_width_mode;
+        self.apply_lfsr_action(resolution.action);
+        ApuCh4Nr43PassTrace {
+            kind,
+            value_from: from.value,
+            value_to: to.value,
+            shift_from: from.shift,
+            shift_to: to.shift,
+            bit_from: from.bit,
+            bit_to: to.bit,
+            category: resolution.category,
+            action: resolution.action,
+            lfsr_before,
+            lfsr_after: self.noise.lfsr_state,
+        }
+    }
+
+    fn materialize_descriptive_pass_trace(
+        &self,
+        kind: ApuCh4Nr43PassKind,
+        from: Channel4Stage,
+        to: Channel4Stage,
+    ) -> ApuCh4Nr43PassTrace {
+        ApuCh4Nr43PassTrace {
+            kind,
+            value_from: from.value,
+            value_to: to.value,
+            shift_from: from.shift,
+            shift_to: to.shift,
+            bit_from: from.bit,
+            bit_to: to.bit,
+            category: classify_adjacent_pass(from, to),
+            action: ApuCh4Nr43LfsrAction::None,
+            lfsr_before: self.noise.lfsr_state,
+            lfsr_after: self.noise.lfsr_state,
+        }
+    }
+
+    fn apply_lfsr_action(&mut self, action: ApuCh4Nr43LfsrAction) {
         match action {
             ApuCh4Nr43LfsrAction::None => {}
-            ApuCh4Nr43LfsrAction::PlainStep => {
-                step_channel4_lfsr(self.noise);
-                trace.ff_to_new_step = true;
-            }
+            ApuCh4Nr43LfsrAction::PlainStep => step_channel4_lfsr(self.noise),
             ApuCh4Nr43LfsrAction::ForcedShortStep => {
-                step_channel4_lfsr_with_forced_short_width(self.noise);
-                trace.ff_to_new_step = true;
-                trace.ff_to_new_forced_short_width = true;
+                step_channel4_lfsr_with_forced_short_width(self.noise)
             }
             ApuCh4Nr43LfsrAction::ForcedShortStepThenLowShiftCorruption => {
                 step_channel4_lfsr_with_forced_short_width(self.noise);
-                trace.ff_to_new_step = true;
-                trace.ff_to_new_forced_short_width = true;
                 step_channel4_lfsr(self.noise);
                 apply_channel4_feedback_bit_corruption(self.noise);
-                trace.low_shift_extra_step = true;
-                trace.feedback_corruption = true;
+            }
+            ApuCh4Nr43LfsrAction::StepThenAndPrevious => {
+                let previous_lfsr = self.noise.lfsr_state;
+                step_channel4_lfsr(self.noise);
+                self.noise.lfsr_state &= previous_lfsr | 1;
+            }
+            ApuCh4Nr43LfsrAction::StepThenSetFeedbackBits => {
+                step_channel4_lfsr(self.noise);
+                set_channel4_feedback_bits(self.noise);
+            }
+            ApuCh4Nr43LfsrAction::SetFeedbackBits => {
+                set_channel4_feedback_bits(self.noise);
             }
         }
+    }
+}
+
+fn derive_compatibility_aliases(
+    trace: &ApuCh4Nr43LiveWriteTrace,
+) -> (ApuCh4Nr43LiveWriteCategory, ApuCh4Nr43LfsrAction) {
+    let ordered_passes = [
+        trace.low_shift_followup,
+        trace.ff_to_glitch_1,
+        trace.old_to_ff,
+        trace.glitch_to_new,
+        trace.glitch_1_to_glitch_2,
+        trace.reload_seam,
+    ];
+
+    for pass in ordered_passes.into_iter().flatten() {
+        if pass.action != ApuCh4Nr43LfsrAction::None {
+            return (pass.category, pass.action);
+        }
+    }
+
+    (
+        ApuCh4Nr43LiveWriteCategory::None,
+        ApuCh4Nr43LfsrAction::None,
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Channel4ActualWriteResolution {
+    category: ApuCh4Nr43LiveWriteCategory,
+    action: ApuCh4Nr43LfsrAction,
+    low_shift_followup: bool,
+}
+
+fn classify_adjacent_pass(from: Channel4Stage, to: Channel4Stage) -> ApuCh4Nr43LiveWriteCategory {
+    if from.bit && !to.bit {
+        if to.value & 0x80 != 0 {
+            ApuCh4Nr43LiveWriteCategory::Category1
+        } else {
+            ApuCh4Nr43LiveWriteCategory::Category2
+        }
+    } else if !from.bit && to.bit {
+        ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort
+    } else {
+        ApuCh4Nr43LiveWriteCategory::None
     }
 }
 
@@ -351,31 +445,16 @@ fn decode_nr43_noise_counter_reload(value: u8) -> u32 {
     if divisor == 0 { 2 } else { divisor }
 }
 
-fn suppress_repo_local_narrow_forced_short_step(old_nr43: u8, new_nr43: u8) -> bool {
-    if old_nr43 & NOISE_SHORT_WIDTH_BIT == 0 || new_nr43 & NOISE_SHORT_WIDTH_BIT == 0 {
-        return false;
-    }
-
-    if old_nr43 & 0x0F != 0x0C || new_nr43 & 0x0F != 0x0C {
-        return false;
-    }
-
-    let old_shift = decode_nr43_clock_shift(old_nr43);
-    let new_shift = decode_nr43_clock_shift(new_nr43);
-    matches!((old_shift, new_shift), (5, 6) | (5, 4) | (4, 3))
+fn first_glitch_value(old_nr43: u8, new_nr43: u8) -> u8 {
+    (old_nr43 & 0x7F) | (new_nr43 & 0x80)
 }
 
-fn candidate_second_intermediate_nr43_value(old_nr43: u8, new_nr43: u8) -> u8 {
+fn second_glitch_value(old_nr43: u8, new_nr43: u8) -> Option<u8> {
     if old_nr43 & 0x80 != new_nr43 & 0x80 {
-        return (old_nr43 & 0x7F) | (new_nr43 & 0x80);
+        return None;
     }
 
-    // Repo-local staged-upper-nibble candidate used only for observability in
-    // the current DMG/CGB-C-oriented subset. This mirrors SameBoy's rougher
-    // staged-bit migration idea closely enough to tell us whether bit7-stable
-    // writes like Zelda's `0x5C -> 0x6C` tail would actually gain signal from a
-    // second intermediate before we let that second stage affect behavior.
-    (old_nr43 & 0xCF) | (new_nr43 & 0x30)
+    Some((old_nr43 & 0xCF) | (new_nr43 & 0x30))
 }
 
 fn step_channel4_lfsr_with_forced_short_width(noise: &mut Channel4NoiseSignalState) {
@@ -398,4 +477,298 @@ fn apply_channel4_feedback_bit_corruption(noise: &mut Channel4NoiseSignalState) 
     };
     noise.lfsr_state &= !feedback_mask;
     noise.lfsr_state |= (noise.lfsr_state & previous_feedback_mask) << 1;
+}
+
+fn set_channel4_feedback_bits(noise: &mut Channel4NoiseSignalState) {
+    let feedback_mask = if noise.short_width_mode {
+        0x4040
+    } else {
+        0x4000
+    };
+    noise.lfsr_state |= feedback_mask;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resolver_with_lfsr(
+        lfsr_state: u16,
+        short_width_mode: bool,
+    ) -> Channel4Nr43LiveWriteResolver<'static> {
+        let noise = Box::leak(Box::new(Channel4NoiseSignalState {
+            clock_shift: 0,
+            short_width_mode,
+            clock_divider_code: 0,
+            period_timer: 0,
+            lfsr_state,
+        }));
+        let live = Box::leak(Box::new(Channel4Nr43LiveWriteState::default()));
+        Channel4Nr43LiveWriteResolver::new(false, 0, 0, noise, live)
+    }
+
+    #[test]
+    fn richer_lfsr_actions_cover_feedback_bit_variants() {
+        let mut set_feedback = resolver_with_lfsr(0x0001, false);
+        set_feedback.apply_lfsr_action(ApuCh4Nr43LfsrAction::SetFeedbackBits);
+        assert_eq!(set_feedback.noise.lfsr_state, 0x4001);
+
+        let mut step_then_set_feedback = resolver_with_lfsr(0x4001, true);
+        let previous = step_then_set_feedback.noise.lfsr_state;
+        step_then_set_feedback.apply_lfsr_action(ApuCh4Nr43LfsrAction::StepThenSetFeedbackBits);
+        assert_ne!(step_then_set_feedback.noise.lfsr_state, previous);
+        assert_ne!(step_then_set_feedback.noise.lfsr_state & 0x4040, 0);
+
+        let mut step_then_and_previous = resolver_with_lfsr(0x2000, false);
+        let before_and = step_then_and_previous.noise.lfsr_state;
+        step_then_and_previous.apply_lfsr_action(ApuCh4Nr43LfsrAction::StepThenAndPrevious);
+        assert_ne!(step_then_and_previous.noise.lfsr_state, before_and);
+        assert_eq!(step_then_and_previous.noise.lfsr_state & !before_and, 0);
+    }
+
+    #[test]
+    fn sameboy_zelda_tail_staircase_matches_expected_pass_actions() {
+        #[derive(Clone, Copy)]
+        struct Case {
+            old: u8,
+            new: u8,
+            stored_counter: u16,
+            countdown_reloaded: bool,
+            expected_effective_counter: u16,
+            old_to_ff: (ApuCh4Nr43LiveWriteCategory, ApuCh4Nr43LfsrAction),
+            ff_to_new: (ApuCh4Nr43LiveWriteCategory, ApuCh4Nr43LfsrAction),
+            low_shift_followup: Option<(ApuCh4Nr43LiveWriteCategory, ApuCh4Nr43LfsrAction)>,
+        }
+
+        let cases = [
+            Case {
+                old: 0x03,
+                new: 0x2C,
+                stored_counter: 0x2078,
+                countdown_reloaded: false,
+                expected_effective_counter: 0x2078,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                low_shift_followup: Some((
+                    ApuCh4Nr43LiveWriteCategory::LowShiftFollowup,
+                    ApuCh4Nr43LfsrAction::PlainStep,
+                )),
+            },
+            Case {
+                old: 0x2C,
+                new: 0x3C,
+                stored_counter: 0x290B,
+                countdown_reloaded: false,
+                expected_effective_counter: 0x290B,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                    ApuCh4Nr43LfsrAction::ForcedShortStep,
+                ),
+                low_shift_followup: None,
+            },
+            Case {
+                old: 0x3C,
+                new: 0x4C,
+                stored_counter: 0x319E,
+                countdown_reloaded: true,
+                expected_effective_counter: 0x319F,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                    ApuCh4Nr43LfsrAction::ForcedShortStep,
+                ),
+                low_shift_followup: None,
+            },
+            Case {
+                old: 0x4C,
+                new: 0x5C,
+                stored_counter: 0x3A31,
+                countdown_reloaded: true,
+                expected_effective_counter: 0x3A31,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                    ApuCh4Nr43LfsrAction::ForcedShortStep,
+                ),
+                low_shift_followup: None,
+            },
+            Case {
+                old: 0x5C,
+                new: 0x6C,
+                stored_counter: 0x02C3,
+                countdown_reloaded: false,
+                expected_effective_counter: 0x02C3,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                    ApuCh4Nr43LfsrAction::ForcedShortStep,
+                ),
+                low_shift_followup: None,
+            },
+            Case {
+                old: 0x6C,
+                new: 0x7C,
+                stored_counter: 0x0B55,
+                countdown_reloaded: false,
+                expected_effective_counter: 0x0B55,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                low_shift_followup: None,
+            },
+            Case {
+                old: 0x7C,
+                new: 0x6C,
+                stored_counter: 0x13E8,
+                countdown_reloaded: false,
+                expected_effective_counter: 0x13E8,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                    ApuCh4Nr43LfsrAction::ForcedShortStep,
+                ),
+                low_shift_followup: None,
+            },
+            Case {
+                old: 0x6C,
+                new: 0x5C,
+                stored_counter: 0x1C7A,
+                countdown_reloaded: false,
+                expected_effective_counter: 0x1C7A,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                    ApuCh4Nr43LfsrAction::ForcedShortStep,
+                ),
+                low_shift_followup: None,
+            },
+            Case {
+                old: 0x5C,
+                new: 0x4C,
+                stored_counter: 0x250D,
+                countdown_reloaded: false,
+                expected_effective_counter: 0x250D,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::Category2,
+                    ApuCh4Nr43LfsrAction::PlainStep,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                low_shift_followup: None,
+            },
+            Case {
+                old: 0x4C,
+                new: 0x3C,
+                stored_counter: 0x2D9F,
+                countdown_reloaded: false,
+                expected_effective_counter: 0x2D9F,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::RisingEdgeForcedShort,
+                    ApuCh4Nr43LfsrAction::ForcedShortStep,
+                ),
+                low_shift_followup: None,
+            },
+            Case {
+                old: 0x3C,
+                new: 0x09,
+                stored_counter: 0x3632,
+                countdown_reloaded: false,
+                expected_effective_counter: 0x3632,
+                old_to_ff: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                ff_to_new: (
+                    ApuCh4Nr43LiveWriteCategory::None,
+                    ApuCh4Nr43LfsrAction::None,
+                ),
+                low_shift_followup: None,
+            },
+        ];
+
+        for case in cases {
+            let mut noise = Channel4NoiseSignalState {
+                short_width_mode: case.old & NOISE_SHORT_WIDTH_BIT != 0,
+                lfsr_state: 0x7BFB,
+                ..Channel4NoiseSignalState::default()
+            };
+            let mut live = Channel4Nr43LiveWriteState {
+                noise_counter: case.stored_counter,
+                countdown_reloaded: case.countdown_reloaded,
+                counter_active: true,
+                background_counting: true,
+                ..Channel4Nr43LiveWriteState::default()
+            };
+
+            let trace =
+                trace_channel4_live_nr43_write(true, case.old, case.new, &mut noise, &mut live);
+
+            assert_eq!(
+                trace.effective_counter, case.expected_effective_counter,
+                "effective counter mismatch for {:#04X}->{:#04X}",
+                case.old, case.new
+            );
+            assert_eq!(
+                trace.old_to_ff.map(|pass| (pass.category, pass.action)),
+                Some(case.old_to_ff),
+                "old->FF mismatch for {:#04X}->{:#04X}",
+                case.old,
+                case.new
+            );
+            assert_eq!(
+                trace
+                    .ff_to_glitch_1
+                    .map(|pass| (pass.category, pass.action)),
+                Some(case.ff_to_new),
+                "FF->new mismatch for {:#04X}->{:#04X}",
+                case.old,
+                case.new
+            );
+            assert_eq!(
+                trace
+                    .low_shift_followup
+                    .map(|pass| (pass.category, pass.action)),
+                case.low_shift_followup,
+                "low-shift follow-up mismatch for {:#04X}->{:#04X}",
+                case.old,
+                case.new
+            );
+        }
+    }
 }

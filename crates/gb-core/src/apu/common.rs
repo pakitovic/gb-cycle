@@ -285,7 +285,8 @@ pub(super) const fn noise_timer_reload(clock_shift: u8, clock_divider_code: u8) 
 }
 
 pub(super) const fn noise_counter_timer_reload(clock_divider_code: u8) -> u32 {
-    noise_divisor_base(clock_divider_code) >> 1
+    let divisor = ((clock_divider_code & NOISE_DIVIDER_CODE_MASK) as u32) << 2;
+    if divisor == 0 { 2 } else { divisor }
 }
 
 pub(super) const fn noise_clocking_suppressed(clock_shift: u8) -> bool {
@@ -297,14 +298,6 @@ pub(super) const fn noise_counter_bit(counter: u16, clock_shift: u8) -> bool {
         false
     } else {
         counter & (1 << (clock_shift & NOISE_CLOCK_SHIFT_MASK)) != 0
-    }
-}
-
-pub(super) const fn noise_counter_phase_after_trigger(clock_shift: u8) -> u16 {
-    if noise_clocking_suppressed(clock_shift) {
-        0
-    } else {
-        1 << (clock_shift & NOISE_CLOCK_SHIFT_MASK)
     }
 }
 

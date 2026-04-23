@@ -245,6 +245,7 @@ impl Ppu {
     pub(super) fn read_ly(&self) -> u8 {
         if self.is_lcd_enabled()
             && !self.blank_frame_active
+            && self.ly < VISIBLE_SCANLINES
             && self.line_dot >= self.current_ly_read_advance_start_dot()
             && self.ly + 1 < TOTAL_SCANLINES
         {

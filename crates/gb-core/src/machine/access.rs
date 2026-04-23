@@ -181,7 +181,6 @@ impl<S: TraceSink> Machine<S> {
             self.bus
                 .apply_startup_memory_policy(startup_state.startup_memory_policy);
         }
-
         self.external_port.apply_startup_reset();
         self.sync_serial_peer_from_external_port();
         self.pending_external_events
