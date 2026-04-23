@@ -13,3 +13,7 @@ criterion = "0.5.1"
 [[bench]]
 name = "cpu_phase6"
 harness = false
+
+[[bench]]
+name = "ppu_phase6"
+harness = false

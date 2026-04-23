@@ -68,7 +68,7 @@ fn sprite_coupled_line10_startup_tail_renders_correctly_once_panel_blank_is_lift
     ppu.refresh_visible_output();
     assert_eq!(ppu.visible_output, PpuVisibleOutputState::Driving);
     ppu.advance_until_tile_sel_replay_position(10, 99);
-    let front_cached = ppu.bg_pipeline_state.fifo_cached_pixels[0].expect(
+    let front_cached = ppu.bg_pipeline_state.fifo.cached_slot(0).expect("BG FIFO cached slot must exist").expect(
         "the first visible startup-tail pixel should already be materialized before line_dot 100",
     );
     assert_eq!(

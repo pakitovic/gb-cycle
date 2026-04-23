@@ -112,6 +112,47 @@ fn lcd_disabled_state_freezes_the_raster_and_forces_blank_output() {
 }
 
 #[test]
+fn lcd_disabled_mmio_writes_refresh_visible_and_pipeline_latches_immediately() {
+    let mut ppu = dmg_lcd_rig(0x00, 0x80, 0x00, 0x00, 0xFC);
+
+    ppu.visible_registers = PpuVisibleRegisters {
+        lcdc: 0x91,
+        scy: 0x11,
+        scx: 0x22,
+        bgp: 0xE4,
+        obp0: None,
+        obp1: None,
+        wy: 0x33,
+        wx: 0x44,
+    };
+    ppu.pipeline_registers = ppu.visible_registers;
+
+    ppu.write_register_with_source(0xFF42, 0x12, PpuRegisterWriteSource::CpuMmioCommit);
+    ppu.write_register_with_source(0xFF43, 0x34, PpuRegisterWriteSource::CpuMmioCommit);
+    ppu.write_register_with_source(0xFF47, 0x1B, PpuRegisterWriteSource::CpuMmioCommit);
+    ppu.write_register_with_source(0xFF4A, 0x56, PpuRegisterWriteSource::CpuMmioCommit);
+    ppu.write_register_with_source(0xFF4B, 0x78, PpuRegisterWriteSource::CpuMmioCommit);
+
+    assert_eq!(ppu.scy, 0x12);
+    assert_eq!(ppu.scx, 0x34);
+    assert_eq!(ppu.bgp, 0x1B);
+    assert_eq!(ppu.wy, 0x56);
+    assert_eq!(ppu.wx, 0x78);
+
+    assert_eq!(ppu.visible_registers.scy, 0x12);
+    assert_eq!(ppu.visible_registers.scx, 0x34);
+    assert_eq!(ppu.visible_registers.bgp, 0x1B);
+    assert_eq!(ppu.visible_registers.wy, 0x56);
+    assert_eq!(ppu.visible_registers.wx, 0x78);
+
+    assert_eq!(ppu.pipeline_registers.scy, 0x12);
+    assert_eq!(ppu.pipeline_registers.scx, 0x34);
+    assert_eq!(ppu.pipeline_registers.bgp, 0x1B);
+    assert_eq!(ppu.pipeline_registers.wy, 0x56);
+    assert_eq!(ppu.pipeline_registers.wx, 0x78);
+}
+
+#[test]
 fn lcd_disable_resets_the_live_pipeline_and_reenable_starts_with_mode0_readback() {
     let mut ppu = dmg_lcd_rig(0x82, 0x82, 0x00, 0x00, 0x00);
     ppu.write_oam_entry(0, 16, 8, 0);

@@ -20,7 +20,11 @@ fn visible_fifo_sideband_keeps_full_cached_slice_metadata_for_future_closure_wor
             ..BgCachedSlice::default()
         });
 
-    let cached = ppu.bg_pipeline_state.fifo_cached_pixels[3]
+    let cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(3)
+        .expect("BG FIFO cached slot must exist")
         .expect("visible FIFO pixel should keep cached slice metadata");
     assert_eq!(
         cached.cached.origin,
@@ -40,8 +44,8 @@ fn snapshot_exports_visible_fifo_cached_slice_metadata() {
 
     ppu.bg_pipeline_state.fifo.push_back(2);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 origin: BgCachedSliceOrigin::StartupContinuation(
@@ -143,8 +147,8 @@ fn scheduler_trace_reports_mode3_startup_and_cached_slice_observability() {
     );
     ppu.bg_pipeline_state.fifo.push_back(2);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 origin: BgCachedSliceOrigin::StartupContinuation(

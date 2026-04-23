@@ -48,8 +48,9 @@ fn push_selected_sprite(ppu: &mut Ppu, spec: SelectedSpriteSpec) -> PpuSelectedS
 
 fn queue_current_obj_hit(ppu: &mut Ppu, sprite_slot: u8) {
     let ownership = ppu.current_obj_hit_ownership();
+    let current_obj_height = ppu.current_obj_height();
     ppu.obj_pipeline_state
-        .queue_fetch_hit(sprite_slot, ownership, ppu.current_obj_height());
+        .queue_fetch_hit(sprite_slot, ownership, current_obj_height);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

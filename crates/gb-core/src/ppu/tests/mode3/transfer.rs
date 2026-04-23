@@ -79,11 +79,10 @@ fn current_bg_push_dot_ownership_distinguishes_fill_wait_and_obj_handoff_paths()
         tile_index: 0,
         attributes: 0,
     });
-    ppu.obj_pipeline_state.queue_fetch_hit(
-        0,
-        ppu.current_obj_hit_ownership(),
-        ppu.current_obj_height(),
-    );
+    let current_obj_hit_ownership = ppu.current_obj_hit_ownership();
+    let current_obj_height = ppu.current_obj_height();
+    ppu.obj_pipeline_state
+        .queue_fetch_hit(0, current_obj_hit_ownership, current_obj_height);
 
     assert_eq!(
         ppu.current_bg_push_dot_ownership(),
@@ -444,13 +443,13 @@ fn flushing_bg_fill_tracks_cached_slice_in_fifo_sideband() {
 
     assert_eq!(ppu.bg_pipeline_state.fifo.len(), BG_TILE_WIDTH as usize);
     assert_eq!(
-        ppu.bg_pipeline_state.fifo_cached_pixels.len(),
+        ppu.bg_pipeline_state.fifo.cached_len(),
         BG_TILE_WIDTH as usize
     );
     assert!(
         ppu.bg_pipeline_state
-            .fifo_cached_pixels
-            .iter()
+            .fifo
+            .cached_slots()
             .enumerate()
             .all(|(pixel_index, cached)| {
                 let Some(cached) = cached else {
@@ -466,7 +465,7 @@ fn flushing_bg_fill_tracks_cached_slice_in_fifo_sideband() {
     );
 
     let _ = ppu.bg_pipeline_state.pop_real_fifo_pixel();
-    assert_eq!(ppu.bg_pipeline_state.fifo_cached_pixels.len(), 7);
+    assert_eq!(ppu.bg_pipeline_state.fifo.cached_len(), 7);
 }
 
 #[test]
@@ -476,8 +475,8 @@ fn consuming_effective_fifo_pixel_keeps_the_visible_fifo_sideband_in_sync() {
     ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.fifo.push_back(2);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 origin: BgCachedSliceOrigin::StartupContinuation(
@@ -497,7 +496,7 @@ fn consuming_effective_fifo_pixel_keeps_the_visible_fifo_sideband_in_sync() {
     );
     assert_eq!(ppu.bg_pipeline_state.startup_fifo_placeholders, 0);
     assert!(ppu.bg_pipeline_state.fifo.is_empty());
-    assert!(ppu.bg_pipeline_state.fifo_cached_pixels.is_empty());
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
 }
 
 #[test]
@@ -506,11 +505,10 @@ fn visible_fifo_pop_skips_residual_startup_placeholder_before_real_pixels() {
 
     ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.fifo.push_back(0);
-    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
     ppu.bg_pipeline_state.fifo.push_back(3);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 origin: BgCachedSliceOrigin::StartupAlignmentFill,
@@ -530,7 +528,7 @@ fn visible_fifo_pop_skips_residual_startup_placeholder_before_real_pixels() {
     assert_eq!(pixel.color(), 3);
     assert_eq!(ppu.bg_pipeline_state.startup_fifo_placeholders, 0);
     assert!(ppu.bg_pipeline_state.fifo.is_empty());
-    assert!(ppu.bg_pipeline_state.fifo_cached_pixels.is_empty());
+    assert!(ppu.bg_pipeline_state.fifo.is_empty());
 }
 
 #[test]
@@ -539,13 +537,11 @@ fn visible_fifo_pop_preserves_multi_placeholder_startup_tail_timing() {
 
     ppu.bg_pipeline_state.startup_fifo_placeholders = 2;
     ppu.bg_pipeline_state.fifo.push_back(0);
-    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
     ppu.bg_pipeline_state.fifo.push_back(0);
-    ppu.bg_pipeline_state.fifo_cached_pixels.push_back(None);
     ppu.bg_pipeline_state.fifo.push_back(3);
     ppu.bg_pipeline_state
-        .fifo_cached_pixels
-        .push_back(Some(BgFifoPixelCached::new(
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
                 origin: BgCachedSliceOrigin::StartupAlignmentFill,
@@ -566,5 +562,5 @@ fn visible_fifo_pop_preserves_multi_placeholder_startup_tail_timing() {
     assert!(pixel.cached.is_none());
     assert_eq!(ppu.bg_pipeline_state.startup_fifo_placeholders, 2);
     assert_eq!(ppu.bg_pipeline_state.fifo.len(), 2);
-    assert_eq!(ppu.bg_pipeline_state.fifo_cached_pixels.len(), 2);
+    assert_eq!(ppu.bg_pipeline_state.fifo.cached_len(), 2);
 }

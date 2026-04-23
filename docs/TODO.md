@@ -40,7 +40,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 #### Current checkpoint
 
-- The broad PPU refactor is structurally landed: explicit visible and pipeline register snapshots, explicit `Mode 3` transfer/readiness/execution state, push/fill ownership, startup-alignment seam, cached-slice ownership across `Push -> fill -> FIFO`, and typed cached-slice origins for the second and third visible post-startup BG tiles.
+- The broad PPU refactor is structurally landed: explicit runtime/pipeline versus panel/live-output ownership, staged `Mode 3` MMIO live-write routing, ordered published-`STAT` rule evaluation, stage-split `Mode 3` helpers, typed `BgFifo` ownership, grouped `DmgWindowRestartState`, explicit `classify -> plan -> apply` palette-conflict handling, startup-alignment seam ownership, and cached-slice ownership across `Push -> fill -> FIFO`.
 - The current external report snapshot is `.roms/test/test-report.md = 167/167`: `165` passed, `0` known failing, and `2` informational (`acid/which.gb`, `daid/rom_and_ram.gb`). `make ci` and `make test-roms` are green at this checkpoint; keep both green as the acceptance gate for follow-up PPU work.
 - The full active Mealybug DMG window-mechanics ladder is green in the current tree (orders `40..49` in `docs/hardware/PPU.md`).
 
@@ -73,6 +73,8 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 - Do not reopen generic startup realignment, broad tilemap rereads, broad cached-slice / visible-FIFO retargeting, broad `SCX`/`SCY` retargeting, fill-only `LCDC.0` overrides, materialized-slice-only `LCDC.0` overrides, synthetic `visible_tile2_window` repaint windows, or isolated "strict push" experiments before a new oracle shows the fault starts there.
 - Do not retry broad dummy-startup fill retiming without a new oracle; a previous discard-first-BG-fetch experiment improved one ROM but regressed baseline raster gates.
+- Do not prioritize a broad per-dot `Mode 3` context cache as a first-line perf experiment. Recent release sampling on representative BG-only and OBJ-heavy scenes did not surface `mode3_register_latches()` or `mode3_window_policy()` as standalone hotspots; the measured hot leaf in that family was narrower transfer/raster-publication work instead.
+- Do not land a shared `push_obj_pixels()` / `rewrite_obj_fifo_pixels()` kernel as a perf change alone. The measured OBJ-heavy hotspot gain was only borderline and still landed inside Criterion's noise threshold; keep that idea in reserve for a future maintainability-driven cleanup or stronger benchmark evidence.
 - If a future `LCDC` or live-write regression appears, keep onset rules localized per write class and per boundary; do not retry a fill-only or generic materialized-slice override.
 
 ##### Validation minimum

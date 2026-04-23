@@ -62,7 +62,11 @@ fn traced_lcdc3_write_on_visible_tile2_tail_keeps_tail_pixels_live_and_retargets
 
     ppu.write_register(0xFF40, 0x83);
 
-    let front_cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+    let front_cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(0)
+        .expect("BG FIFO cached slot must exist")
         .expect("visible tail should keep cached slice metadata after the traced write");
     assert_eq!(front_cached.pixel_index, 2);
     assert!(front_cached.cached.needs_live_tilemap_refetch);
@@ -82,9 +86,8 @@ fn traced_lcdc3_write_on_visible_tile2_tail_keeps_tail_pixels_live_and_retargets
 
     let remaining_visible_tile2 = ppu
         .bg_pipeline_state
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
+        .fifo
+        .cached_pixels()
         .filter(|cached| {
             cached.cached.origin
                 == BgCachedSliceOrigin::StartupContinuation(
@@ -101,9 +104,8 @@ fn traced_lcdc3_write_on_visible_tile2_tail_keeps_tail_pixels_live_and_retargets
 
     let first_visible_tile3 = ppu
         .bg_pipeline_state
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
+        .fifo
+        .cached_pixels()
         .find(|cached| {
             cached.cached.origin
                 == BgCachedSliceOrigin::StartupContinuation(
@@ -178,7 +180,11 @@ fn traced_lcdc3_write_on_visible_tile2_earlier_tail_keeps_tail_pixels_live_and_r
 
     ppu.write_register(0xFF40, 0x83);
 
-    let front_cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+    let front_cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(0)
+        .expect("BG FIFO cached slot must exist")
         .expect("visible earlier tail should keep cached slice metadata after the traced write");
     assert_eq!(front_cached.pixel_index, 1);
     assert!(front_cached.cached.needs_live_tilemap_refetch);
@@ -198,9 +204,8 @@ fn traced_lcdc3_write_on_visible_tile2_earlier_tail_keeps_tail_pixels_live_and_r
 
     let remaining_visible_tile2 = ppu
         .bg_pipeline_state
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
+        .fifo
+        .cached_pixels()
         .filter(|cached| {
             cached.cached.origin
                 == BgCachedSliceOrigin::StartupContinuation(
@@ -217,9 +222,8 @@ fn traced_lcdc3_write_on_visible_tile2_earlier_tail_keeps_tail_pixels_live_and_r
 
     let first_visible_tile3 = ppu
         .bg_pipeline_state
-        .fifo_cached_pixels
-        .iter()
-        .flatten()
+        .fifo
+        .cached_pixels()
         .find(|cached| {
             cached.cached.origin
                 == BgCachedSliceOrigin::StartupContinuation(

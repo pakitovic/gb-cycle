@@ -83,7 +83,11 @@ fn traced_lcdc4_write_behind_startup_alignment_fill_retains_visible_tile2_until_
 
     assert!(!ppu.bg_pipeline_state.push.pending);
     assert!(!ppu.bg_pipeline_state.fill.pending);
-    let front_cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+    let front_cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(0)
+        .expect("BG FIFO cached slot must exist")
         .expect("VisibleTile2 should be at the FIFO front before the first visible handoff");
     assert_eq!(
         front_cached.cached.origin,
@@ -181,7 +185,11 @@ fn traced_lcdc4_write_after_first_left_edge_pixel_still_retargets_visible_tile2_
         ppu.line_dot += 1;
     }
 
-    let front_cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+    let front_cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(0)
+        .expect("BG FIFO cached slot must exist")
         .expect("VisibleTile2 should reach the FIFO front after the alignment fill tail");
     assert_eq!(
         front_cached.cached.origin,
@@ -242,7 +250,11 @@ fn traced_startup_alignment_fill_keeps_front_visible_pixels_before_visible_tile2
 
     ppu.flush_pending_bg_fifo_fill();
 
-    let front_cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+    let front_cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(0)
+        .expect("BG FIFO cached slot must exist")
         .expect("startup alignment fill should still be at the FIFO front after the flush");
     assert_eq!(
         front_cached.cached.origin,
@@ -257,7 +269,11 @@ fn traced_startup_alignment_fill_keeps_front_visible_pixels_before_visible_tile2
         ppu.line_dot += 1;
     }
 
-    let next_cached = ppu.bg_pipeline_state.fifo_cached_pixels[0]
+    let next_cached = ppu
+        .bg_pipeline_state
+        .fifo
+        .cached_slot(0)
+        .expect("BG FIFO cached slot must exist")
         .expect("VisibleTile2 should take ownership once the alignment fill tail is gone");
     assert_eq!(
         next_cached.cached.origin,

@@ -14,14 +14,38 @@ Nothing in this file overrides those documents.
 2. Use [TODO.md](../TODO.md) for the current frontier and active regression gates.
 3. Use this file only to avoid reopening already-closed repo-local seams while reworking internals.
 
+## Current Repo-Local Structural Landing State
+
+The broad PPU internal cleanup is now structurally landed. Future work should preserve these repo-local ownership boundaries unless a stronger hardware reason forces a redesign:
+
+- Keep the top-level `Ppu` split between runtime/pipeline ownership and panel/live-output ownership instead of collapsing everything back into one monolithic owner.
+- Keep Mode `3` MMIO live-write handling routed through staged helpers (`store/register view -> live-write context -> BG/window/panel/OBJ routing`) instead of reintroducing one large imperative write handler.
+- Keep published `STAT` evaluation as an ordered rule evaluator with named rule families instead of an inline cascade of ad hoc branches.
+- Keep the large `Mode 3` state machines split by stage/handler (`BG` fetch, transfer service, `OBJ` fetch) while preserving the explicit dot timeline.
+- Keep the BG FIFO as a typed owner that stores the output color plus optional cached BG/window metadata in one entry; do not return to parallel FIFO deques for color and cached sideband state.
+- Keep the DMG same-line window restart/retarget seam grouped under one dedicated owner (`DmgWindowRestartState`) instead of scattering the carry/glitch/restart flags across `BgPipelineState`.
+- Keep DMG palette-conflict handling in an explicit `classify -> plan -> apply` flow, and keep panel-history / palette-history types under the palette-conflict subsystem rather than under generic visible-register helpers.
+
+## Repo-Local Measured Performance Guidance
+
+The broad structural cleanup is landed, and the first follow-up perf probes have already been measured. Preserve these conclusions unless a stronger benchmark or profiler trace says otherwise:
+
+- Keep using the strict `ppu_phase6` harness as the default before/after gate for PPU runtime experiments; it already measures scanline cost, frame cost, and focused `Mode 3` hotspot windows.
+- Do not prioritize a broad per-dot `Mode 3` context cache (`mode3_register_latches()`, `mode3_window_policy()`, and similar tiny helper views) without new profiling evidence. Release sampling on representative BG-only and OBJ-heavy scenes did not show those helpers as standalone hotspots.
+- If runtime work in this area is revisited, the more promising narrow target is transfer / raster-publication work (`current_transfer()` and related mode-boundary publication), not a generic cache layer over every per-dot helper.
+- A shared OBJ FIFO write kernel for `push_obj_pixels()` / `rewrite_obj_fifo_pixels()` is acceptable as local deduplication work, but current benchmark evidence only showed a borderline, noise-threshold gain. Do not land it as a performance change alone.
+
 ## Repo-Local Migration Constraints
 
 ### Scheduler, MMIO, and STAT
 
+- Keep the runtime/pipeline owner split from the panel/live-output owner explicit at the top level; do not re-collapse internal ownership into a single broad `Ppu` state bag.
 - Keep MMIO-owned storage separate from the register view visible to the active pixel pipeline.
 - Keep previous-dot or pipeline-visible snapshots explicit where live-write-sensitive DMG behavior needs them.
 - Keep the scheduler seam explicit: CPU phase, then PPU MMIO commit, then interrupt aggregation.
 - Keep one internal LCD STAT line and request LCD STAT only on rising edges.
+- Keep published `STAT` / visible access-mode evaluation expressed as ordered named rule families, not as one large inline branch chain.
+- Keep Mode `3` MMIO live-write handling expressed as staged dispatch over explicit helper phases rather than as one monolithic register-write function.
 - Route both VBlank and LCD STAT through the shared interrupt-controller path.
 - LCD off must enter one explicit disabled state; LCD on must restart from one explicit raster-start state.
 - The first blank frame after LCD re-enable is panel behavior, not a delayed scheduler start.
@@ -30,11 +54,13 @@ Nothing in this file overrides those documents.
 ### Mode 3 ownership and arbitration
 
 - Keep BG/window as one shared fetcher-plus-FIFO pipeline.
+- Keep BG FIFO ownership typed: one FIFO entry should carry both the output color and its optional cached BG/window sideband metadata.
 - Keep pending OBJ hits explicit; do not rediscover them from transient X-position checks.
 - Keep cached BG/window slices explicit across `Push -> fill.pending -> FIFO`.
 - Keep push-side ownership explicit: entry delay, FIFO-empty wait, fill queue, OBJ handoff, and combined fill-plus-OBJ dots.
 - Keep one transfer-dot model that exposes explicit context, readiness, and execution effect.
 - Let output-side transfer service and FIFO-backed OBJ start consume that same transfer-dot model.
+- Keep the stage-split `Mode 3` helpers (`BG` fetch, transfer service, `OBJ` fetch) explicit; do not fold them back into monolithic state-machine functions unless the split itself proves observably wrong.
 - Do not attempt isolated "strict push" or "push-state-only OBJ start" changes; those already regressed stable closures.
 
 ### Startup, left-edge, and window seams
@@ -52,6 +78,7 @@ Nothing in this file overrides those documents.
 - The first real BG/window push after startup still skips the ordinary one-dot push-entry delay.
 - Keep `current_transfer_x`-style ownership explicit for Mode `3` arbitration.
 - Keep the `WY` latch and runtime `WX` trigger distinct.
+- Keep the DMG same-line window restart / retarget seam grouped under one explicit owner with `arm / clear / expire / followup` transitions rather than as loose flags spread across the BG pipeline state.
 - Treat the activation dot as separate from the restarted window fetch.
 - Turning `LCDC.5` off mid-window must finish the current window tile before BG resumes on a tile boundary.
 - Keep `WX = 0`, `WX = 166`, and the `WX = 0 && (SCX & 7) > 0` shortening case explicit.
@@ -69,6 +96,7 @@ Nothing in this file overrides those documents.
 
 - Keep the DMG BG palette-output model split from the raw current-scanline color pipeline.
 - Keep DMG panel live-write owner state explicit on the PPU side too: `LCDC.0`, CPU-path `BGP`, and recent panel-dot history should live under a dedicated panel-live-write owner instead of as ad hoc top-level scalar fields.
+- Keep DMG palette-conflict writes expressed as `classify -> plan -> apply`, and keep the panel-history / CPU-commit history types under the palette-conflict subsystem rather than under generic register-visibility helpers.
 - Keep the narrow CPU-path `BGP` previous-line boundary repaint seam explicit, panel-only, DMG-only, and fed only by the delayed pipeline-visible write class.
 - Keep the DMG CPU-path `BGP` live-write seam explicitly bifurcated: the first visible-line CPU write stays retroactive while `visible_pixels_output == 0`, `current_transfer_x == 0`, and no sprites were selected; after that startup seam, retroactive panel recolor should only happen when the already-visible BG tail is all color `0`. Dots that were already emitted as `LCDC.0`-forced white are not palette-conflict candidates and must stay white through both current-line and previous-boundary repaint paths.
 - Keep the sprite-coupled DMG `BGP` live-write follow-up explicit too: a single left sprite shifts the first two CPU-path write onsets by sprite phase and can expose a short transient left-edge range on the second write before the final palette becomes visible; when that second write lands early, keep the previous palette active until the modeled onset window starts.

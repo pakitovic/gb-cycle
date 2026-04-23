@@ -398,13 +398,132 @@ impl OamCorruptionController {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(super) struct BgFifo {
+    entries: VecDeque<BgFifoPixel>,
+}
+
+impl BgFifo {
+    pub(super) fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    pub(super) fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub(super) fn iter(&self) -> impl Iterator<Item = &u8> {
+        self.entries.iter().map(|pixel| &pixel.color)
+    }
+
+    pub(super) fn cached_slots(&self) -> impl Iterator<Item = Option<BgFifoPixelCached>> + '_ {
+        self.entries.iter().map(|pixel| pixel.cached)
+    }
+
+    pub(super) fn cached_pixels(&self) -> impl Iterator<Item = BgFifoPixelCached> + '_ {
+        self.cached_slots().flatten()
+    }
+
+    pub(super) fn cached_pixels_mut(&mut self) -> impl Iterator<Item = &mut BgFifoPixelCached> {
+        self.entries
+            .iter_mut()
+            .filter_map(|pixel| pixel.cached.as_mut())
+    }
+
+    #[cfg(test)]
+    pub(super) fn cached_len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub(super) fn cached_front(&self) -> Option<Option<BgFifoPixelCached>> {
+        self.entries.front().map(|pixel| pixel.cached)
+    }
+
+    #[cfg(test)]
+    pub(super) fn cached_slot(&self, index: usize) -> Option<Option<BgFifoPixelCached>> {
+        self.entries.get(index).map(|pixel| pixel.cached)
+    }
+
+    pub(super) fn first_cached(&self) -> Option<BgFifoPixelCached> {
+        self.entries.iter().find_map(|pixel| pixel.cached)
+    }
+
+    #[cfg(test)]
+    pub(super) fn back(&self) -> Option<&u8> {
+        self.entries.back().map(|pixel| &pixel.color)
+    }
+
+    pub(super) fn push_back(&mut self, color: u8) {
+        self.push_back_pixel(BgFifoPixel::new(color, None));
+    }
+
+    pub(super) fn push_front(&mut self, color: u8) {
+        self.push_front_pixel(BgFifoPixel::new(color, None));
+    }
+
+    #[cfg(test)]
+    pub(super) fn push_back_cached_slot(&mut self, cached: Option<BgFifoPixelCached>) {
+        if let Some(back) = self.entries.back_mut()
+            && back.cached.is_none()
+        {
+            back.cached = cached;
+            return;
+        }
+
+        self.push_back_pixel(BgFifoPixel::new(0, cached));
+    }
+
+    pub(super) fn push_back_pixel(&mut self, pixel: BgFifoPixel) {
+        self.entries.push_back(pixel);
+    }
+
+    pub(super) fn push_front_pixel(&mut self, pixel: BgFifoPixel) {
+        self.entries.push_front(pixel);
+    }
+
+    #[cfg(test)]
+    pub(super) fn pop_front(&mut self) -> Option<u8> {
+        self.pop_front_pixel().map(BgFifoPixel::color)
+    }
+
+    pub(super) fn pop_front_pixel(&mut self) -> Option<BgFifoPixel> {
+        self.entries.pop_front()
+    }
+}
+
+impl Extend<u8> for BgFifo {
+    fn extend<T: IntoIterator<Item = u8>>(&mut self, iter: T) {
+        self.entries
+            .extend(iter.into_iter().map(|color| BgFifoPixel::new(color, None)));
+    }
+}
+
+impl FromIterator<u8> for BgFifo {
+    fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
+        let mut fifo = Self::default();
+        fifo.extend(iter);
+        fifo
+    }
+}
+
+impl std::ops::Index<usize> for BgFifo {
+    type Output = u8;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.entries[index].color
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct BgPipelineState {
     pub(super) fetcher: BgFetcherState,
     pub(super) push: BgPushState,
     pub(super) fill: BgFifoFillState,
-    pub(super) fifo: VecDeque<u8>,
-    pub(super) fifo_cached_pixels: VecDeque<Option<BgFifoPixelCached>>,
+    pub(super) fifo: BgFifo,
     pub(super) startup_fetch_seam: BgStartupFetchSeamState,
     pub(super) startup_fifo_placeholders: u8,
     pub(super) mode3_started: bool,
@@ -431,14 +550,7 @@ pub(super) struct BgPipelineState {
     pub(super) window_activation_tilemap_select_latch: Option<bool>,
     pub(super) dmg_wx0_window_disable_prefix_state: Option<DmgWx0WindowDisablePrefixState>,
     pub(super) dmg_late_window_enable_override: Option<DmgLateWindowEnableOverride>,
-    pub(super) dmg_pending_window_reenable_resume: Option<DmgPendingWindowReenableResume>,
-    pub(super) dmg_previsible_wx_retarget: Option<DmgPrevisibleWxRetarget>,
-    pub(super) dmg_previsible_wx_cancel_uses_visible_wx_once: bool,
-    pub(super) dmg_previsible_wx_cancel_background_override_onset_x: Option<u8>,
-    pub(super) dmg_previsible_wx_retained_trigger_glitch_x: Option<u8>,
-    pub(super) dmg_pending_previsible_wx_onset_glitch: Option<u8>,
-    pub(super) dmg_pending_previsible_wx_carry: Option<DmgPendingPrevisibleWxCarry>,
-    pub(super) dmg_pending_live_wx_trigger_glitch: Option<DmgPendingLiveWxTriggerGlitch>,
+    pub(super) dmg_window_restart: DmgWindowRestartState,
     pub(super) dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState,
 }
 
@@ -602,6 +714,99 @@ impl DmgPendingWindowReenableResume {
             disable_stage,
             disable_stage_dot,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct DmgWindowRestartState {
+    pub(super) pending_window_reenable_resume: Option<DmgPendingWindowReenableResume>,
+    pub(super) previsible_wx_retarget: Option<DmgPrevisibleWxRetarget>,
+    pub(super) previsible_wx_cancel_uses_visible_wx_once: bool,
+    pub(super) previsible_wx_cancel_background_override_onset_x: Option<u8>,
+    pub(super) previsible_wx_retained_trigger_glitch_x: Option<u8>,
+    pub(super) pending_previsible_wx_onset_glitch: Option<u8>,
+    pub(super) pending_previsible_wx_carry: Option<DmgPendingPrevisibleWxCarry>,
+    pub(super) pending_live_wx_trigger_glitch: Option<DmgPendingLiveWxTriggerGlitch>,
+}
+
+impl DmgWindowRestartState {
+    pub(super) fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    pub(super) fn apply_followup_markers(
+        &mut self,
+        cancel_uses_visible_wx_once: bool,
+        cancel_background_override_onset_x: Option<u8>,
+        retained_trigger_glitch_x: Option<u8>,
+    ) {
+        self.previsible_wx_cancel_uses_visible_wx_once = cancel_uses_visible_wx_once;
+        self.previsible_wx_cancel_background_override_onset_x = cancel_background_override_onset_x;
+        self.previsible_wx_retained_trigger_glitch_x = retained_trigger_glitch_x;
+    }
+
+    pub(super) fn clear_followup_markers(&mut self) {
+        self.apply_followup_markers(false, None, None);
+    }
+
+    pub(super) fn clear_followup_overrides(&mut self) {
+        self.previsible_wx_cancel_background_override_onset_x = None;
+        self.previsible_wx_retained_trigger_glitch_x = None;
+    }
+
+    pub(super) fn arm_previsible_wx_retarget_state(
+        &mut self,
+        retarget: DmgPrevisibleWxRetarget,
+        onset_glitch: Option<u8>,
+        carry: Option<DmgPendingPrevisibleWxCarry>,
+    ) {
+        self.previsible_wx_retarget = Some(retarget);
+        self.pending_previsible_wx_onset_glitch = onset_glitch;
+        self.pending_previsible_wx_carry = carry;
+        self.clear_live_trigger_glitch();
+    }
+
+    pub(super) fn clear_retarget_state(&mut self) {
+        self.previsible_wx_retarget = None;
+    }
+
+    pub(super) fn clear_carry(&mut self) {
+        self.pending_previsible_wx_carry = None;
+    }
+
+    pub(super) fn clear_live_trigger_glitch(&mut self) {
+        self.pending_live_wx_trigger_glitch = None;
+    }
+
+    pub(super) fn clear_onset_glitch(&mut self) {
+        self.pending_previsible_wx_onset_glitch = None;
+    }
+
+    pub(super) fn clear_gap_artifacts(&mut self) {
+        self.clear_onset_glitch();
+        self.clear_carry();
+    }
+
+    pub(super) fn clear_retarget_and_gap_artifacts(&mut self) {
+        self.clear_retarget_state();
+        self.clear_gap_artifacts();
+    }
+
+    pub(super) fn clear_expired_retarget_state(&mut self) {
+        self.clear_retarget_state();
+        self.clear_followup_overrides();
+        self.clear_gap_artifacts();
+    }
+
+    pub(super) fn clear_restart_transients(&mut self) {
+        self.clear_retarget_state();
+        self.clear_followup_markers();
+        self.clear_carry();
+        self.clear_live_trigger_glitch();
+    }
+
+    pub(super) fn arm_live_trigger_glitch(&mut self, trigger_x: u8) {
+        self.pending_live_wx_trigger_glitch = Some(DmgPendingLiveWxTriggerGlitch::new(trigger_x));
     }
 }
 
@@ -983,7 +1188,6 @@ impl BgPipelineState {
         self.push.reset();
         self.fill.reset();
         self.fifo.clear();
-        self.fifo_cached_pixels.clear();
         self.startup_fetch_seam = BgStartupFetchSeamState::Inactive;
         self.startup_fifo_placeholders = 0;
         self.mode3_started = false;
@@ -1010,14 +1214,7 @@ impl BgPipelineState {
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
-        self.dmg_pending_window_reenable_resume = None;
-        self.dmg_previsible_wx_retarget = None;
-        self.dmg_previsible_wx_cancel_uses_visible_wx_once = false;
-        self.dmg_previsible_wx_cancel_background_override_onset_x = None;
-        self.dmg_previsible_wx_retained_trigger_glitch_x = None;
-        self.dmg_pending_previsible_wx_onset_glitch = None;
-        self.dmg_pending_previsible_wx_carry = None;
-        self.dmg_pending_live_wx_trigger_glitch = None;
+        self.dmg_window_restart.clear();
         self.dmg_mode3_live_lcdc_bg_state = Default::default();
     }
 
@@ -1028,7 +1225,6 @@ impl BgPipelineState {
         self.mode0_start_dot = MODE0_START_DOT;
         self.scx_discard_remaining = 0;
         self.fifo.clear();
-        self.fifo_cached_pixels.clear();
         self.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
         self.startup_scy_tiledata_latch = None;
         self.window_activation_tilemap_select_latch = None;
@@ -1104,14 +1300,7 @@ impl BgPipelineState {
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
-        self.dmg_pending_window_reenable_resume = None;
-        self.dmg_previsible_wx_retarget = None;
-        self.dmg_previsible_wx_cancel_uses_visible_wx_once = false;
-        self.dmg_previsible_wx_cancel_background_override_onset_x = None;
-        self.dmg_previsible_wx_retained_trigger_glitch_x = None;
-        self.dmg_pending_previsible_wx_onset_glitch = None;
-        self.dmg_pending_previsible_wx_carry = None;
-        self.dmg_pending_live_wx_trigger_glitch = None;
+        self.dmg_window_restart.clear();
     }
 
     pub(super) fn extend_mode3_by_one_dot(&mut self) {
@@ -1195,16 +1384,13 @@ impl BgPipelineState {
     }
 
     pub(super) fn pop_fifo_pixel(&mut self) -> Option<BgFifoPixel> {
-        let color = self.fifo.pop_front()?;
-        debug_assert!(self.fifo_cached_pixels.len() <= self.fifo.len() + 1);
-        let cached = self.fifo_cached_pixels.pop_front().unwrap_or(None);
-        Some(BgFifoPixel { color, cached })
+        self.fifo.pop_front_pixel()
     }
 
     pub(super) fn pop_visible_fifo_pixel(&mut self) -> Option<BgFifoPixel> {
         if self.startup_fifo_placeholders == 1
             && self.fifo.len() > self.startup_fifo_placeholders as usize
-            && matches!(self.fifo_cached_pixels.front(), Some(None))
+            && matches!(self.fifo.cached_front(), Some(None))
         {
             self.startup_fifo_placeholders -= 1;
             let _ = self.pop_fifo_pixel();
@@ -1220,9 +1406,8 @@ impl BgPipelineState {
         window_tile_row: u8,
     ) {
         let first_window_pixel_index = self
-            .fifo_cached_pixels
-            .iter()
-            .flatten()
+            .fifo
+            .cached_pixels()
             .find(|cached| cached.cached.source == PpuBgFetcherSource::Window)
             .map(|cached| cached.pixel_index);
         let allow_current_window_tail_repaint = window_tile_row >= 24;
@@ -1243,7 +1428,7 @@ impl BgPipelineState {
         let mut previous_window_pixel_index = first_window_pixel_index;
         let mut crossed_window_tile_boundary = false;
 
-        for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+        for cached in self.fifo.cached_pixels_mut() {
             if cached.cached.source == PpuBgFetcherSource::Window {
                 cached
                     .cached
@@ -1289,11 +1474,10 @@ impl BgPipelineState {
         let seam_still_open = self.window_started_this_line
             && self.fetcher.source == PpuBgFetcherSource::Window
             && self.fetcher.fetch_x <= BG_TILE_WIDTH as u16 * 2;
-        let fifo_contains_activation_tiles =
-            self.fifo_cached_pixels.iter().flatten().any(|cached| {
-                cached.cached.source == PpuBgFetcherSource::Window
-                    && cached.cached.fetch_x <= BG_TILE_WIDTH as u16 * 2
-            });
+        let fifo_contains_activation_tiles = self.fifo.cached_pixels().any(|cached| {
+            cached.cached.source == PpuBgFetcherSource::Window
+                && cached.cached.fetch_x <= BG_TILE_WIDTH as u16 * 2
+        });
         let push_contains_activation_tiles = self.push.pending
             && self.push.cached.source == PpuBgFetcherSource::Window
             && self.push.cached.fetch_x <= BG_TILE_WIDTH as u16 * 2;
@@ -1338,7 +1522,7 @@ impl BgPipelineState {
                 .cached
                 .force_window_activation_previous_tilemap_select(previous_tilemap_select);
         }
-        for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+        for cached in self.fifo.cached_pixels_mut() {
             cached
                 .cached
                 .force_window_activation_previous_tilemap_select(previous_tilemap_select);
@@ -1366,7 +1550,7 @@ impl BgPipelineState {
     }
 
     fn for_each_mut_cached_slice(&mut self, mut f: impl FnMut(&mut BgCachedSlice)) {
-        for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+        for cached in self.fifo.cached_pixels_mut() {
             f(&mut cached.cached);
         }
         f(&mut self.push.cached);
@@ -1519,13 +1703,12 @@ impl BgPipelineState {
             return;
         }
 
-        let has_unlatched_startup_alignment_pixel =
-            self.fifo_cached_pixels.iter().flatten().any(|cached| {
-                matches!(
-                    cached.cached.origin,
-                    BgCachedSliceOrigin::StartupAlignmentFill
-                ) && !cached.cached.needs_live_tile_data_refetch
-            });
+        let has_unlatched_startup_alignment_pixel = self.fifo.cached_pixels().any(|cached| {
+            matches!(
+                cached.cached.origin,
+                BgCachedSliceOrigin::StartupAlignmentFill
+            ) && !cached.cached.needs_live_tile_data_refetch
+        });
         if !has_unlatched_startup_alignment_pixel {
             return;
         }
@@ -1535,7 +1718,7 @@ impl BgPipelineState {
             return;
         };
 
-        for cached in self.fifo_cached_pixels.iter_mut().flatten() {
+        for cached in self.fifo.cached_pixels_mut() {
             apply_startup_scy_tiledata_latch_to_cached(&mut cached.cached, latch);
         }
         apply_startup_scy_tiledata_latch_to_cached(&mut self.push.cached, latch);
@@ -1569,8 +1752,6 @@ impl BgPipelineState {
 
     pub(super) fn push_dummy_fifo_pixels(&mut self, count: u8) {
         self.fifo.extend(std::iter::repeat_n(0, count as usize));
-        self.fifo_cached_pixels
-            .extend(std::iter::repeat_n(None, count as usize));
     }
 
     #[cfg(test)]
@@ -1584,13 +1765,10 @@ impl BgPipelineState {
         leading_pixel_skip: u8,
     ) {
         for pixel_index in leading_pixel_skip.min(BG_TILE_WIDTH)..BG_TILE_WIDTH {
-            self.fifo.push_back(bg_tile_pixel_value(
-                cached.tile_low,
-                cached.tile_high,
-                pixel_index,
+            self.fifo.push_back_pixel(BgFifoPixel::new(
+                bg_tile_pixel_value(cached.tile_low, cached.tile_high, pixel_index),
+                Some(BgFifoPixelCached::new(cached, pixel_index)),
             ));
-            self.fifo_cached_pixels
-                .push_back(Some(BgFifoPixelCached::new(cached, pixel_index)));
         }
     }
 
@@ -1803,8 +1981,7 @@ impl Default for BgPipelineState {
             fetcher: BgFetcherState::default(),
             push: BgPushState::default(),
             fill: BgFifoFillState::default(),
-            fifo: VecDeque::default(),
-            fifo_cached_pixels: VecDeque::default(),
+            fifo: BgFifo::default(),
             startup_fetch_seam: BgStartupFetchSeamState::Inactive,
             startup_fifo_placeholders: 0,
             mode3_started: false,
@@ -1831,14 +2008,7 @@ impl Default for BgPipelineState {
             window_activation_tilemap_select_latch: None,
             dmg_wx0_window_disable_prefix_state: None,
             dmg_late_window_enable_override: None,
-            dmg_pending_window_reenable_resume: None,
-            dmg_previsible_wx_retarget: None,
-            dmg_previsible_wx_cancel_uses_visible_wx_once: false,
-            dmg_previsible_wx_cancel_background_override_onset_x: None,
-            dmg_previsible_wx_retained_trigger_glitch_x: None,
-            dmg_pending_previsible_wx_onset_glitch: None,
-            dmg_pending_previsible_wx_carry: None,
-            dmg_pending_live_wx_trigger_glitch: None,
+            dmg_window_restart: DmgWindowRestartState::default(),
             dmg_mode3_live_lcdc_bg_state: DmgMode3LiveLcdcBgState::default(),
         }
     }
@@ -2582,6 +2752,10 @@ pub(super) struct BgFifoPixel {
 }
 
 impl BgFifoPixel {
+    pub(super) const fn new(color: u8, cached: Option<BgFifoPixelCached>) -> Self {
+        Self { color, cached }
+    }
+
     pub(super) const fn color(self) -> u8 {
         self.color
     }
