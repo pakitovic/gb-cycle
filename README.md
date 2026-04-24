@@ -104,11 +104,6 @@ make test-roms
 make coverage
 ```
 
-Before opening or updating a PR, run at least `make ci` locally.
-When changing CI, coverage, dependency policy, repo tooling, or the external ROM workflow, run `make test-roms` and `make coverage` locally as well so the external DMG gate and coverage pipeline do not first fail in GitHub Actions.
-`make` defaults to `make ci`, and the configured pre-push hook also runs `make ci`.
-Use Conventional Commits for commit messages and PR titles so the repository history and review metadata follow the same naming scheme.
-
 ### External ROM suites
 
 See [docs/ROM-SUITES.md](docs/ROM-SUITES.md) for the full external ROM suite workflow: fetching, running, differential oracles, and commercial ROM testing.
