@@ -156,9 +156,10 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - Root overlay also exposes `QUIT` directly at the first menu level.
 - `RESUME` and root-level back/cancel (`Escape` / `Guide`) both clear an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
 - When the loaded session includes a `Pocket Camera` cartridge, the root overlay also exposes:
+  - `CAM LIVE ON` / `CAM LIVE OFF` — opens or stops the first SDL3 camera device with SDL's native stream selection, converts each available frame to grayscale, mirrors it horizontally for self-facing Pocket Camera orientation, and pushes it through the same core API used by `CAM IMAGE`
   - `CAM IMAGE` — native PNG picker that decodes the selected image in the frontend and pushes it into the core as a grayscale host frame
-  - `CAM LIVE` / `CAM LIVE ON` — opens the first SDL3 camera device with SDL's native stream selection, converts each available frame to grayscale, mirrors it horizontally for self-facing Pocket Camera orientation, and pushes it through the same core API used by `CAM IMAGE`
   - `CAM RESET` — stops live capture if active, clears the current session image, and restores the core's deterministic placeholder frame
+  These entries are ordered immediately after `RESUME` so Camera ROM sessions expose live capture state before the general ROM/system menus.
 - Pocket Camera still-image selection and live-camera state are session-scoped only. A chosen still image is reapplied across ROM reloads / resets while the desktop app stays open, but neither still-image path nor live-camera state is persisted into desktop settings.
 - Camera permission, device selection, native frame acquisition, RGB conversion, horizontal live-frame mirroring, and warm-up frame dropping are frontend-owned. `gb-core` only receives grayscale host frames and performs the deterministic `128x112` normalization.
 - If SDL opens a camera but no frames arrive, the desktop log reports whether SDL still considers camera permission `pending`, `approved`, or `denied`; this keeps OS permission stalls distinguishable from frame acquisition stalls.

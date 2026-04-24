@@ -60,12 +60,12 @@ pub const RECENT_ROM_MENU_CAPACITY: usize = 12;
 
 const ROOT_MENU_ITEMS: [MenuItem; 13] = [
     MenuItem::Resume,
+    MenuItem::CameraLive,
+    MenuItem::CameraImage,
+    MenuItem::CameraReset,
     MenuItem::OpenRom,
     MenuItem::RecentMenu,
     MenuItem::SaveBattery,
-    MenuItem::CameraImage,
-    MenuItem::CameraLive,
-    MenuItem::CameraReset,
     MenuItem::VideoMenu,
     MenuItem::AudioMenu,
     MenuItem::InputMenu,
@@ -606,7 +606,7 @@ impl MenuPresentation {
                 if self.pocket_camera_live_enabled {
                     "CAM LIVE ON".to_string()
                 } else {
-                    "CAM LIVE".to_string()
+                    "CAM LIVE OFF".to_string()
                 }
             }
             MenuItem::CameraReset => "CAM RESET".to_string(),
@@ -2444,7 +2444,7 @@ mod tests {
         CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
         KeyboardBindingTarget, KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction,
         MenuInput, MenuItem, MenuPresentation, MenuScreen, OverlayMenuState,
-        PerformanceHudSnapshot, RECENT_MENU_ITEMS, RECENT_ROM_MENU_CAPACITY,
+        PerformanceHudSnapshot, RECENT_MENU_ITEMS, RECENT_ROM_MENU_CAPACITY, ROOT_MENU_ITEMS,
         ScrollIndicatorDirection, VIDEO_MENU_ITEMS, gamepad_binding_label,
         normalized_selected_index, performance_hud_lines, previous_enabled_index,
         render_performance_hud, rendered_recent_rom_item_label, scroll_indicator_rows,
@@ -3433,6 +3433,13 @@ mod tests {
 
     #[test]
     fn recent_and_video_menu_order_matches_the_overlay_contract() {
+        assert_eq!(ROOT_MENU_ITEMS[0], MenuItem::Resume);
+        assert_eq!(ROOT_MENU_ITEMS[1], MenuItem::CameraLive);
+        assert_eq!(ROOT_MENU_ITEMS[2], MenuItem::CameraImage);
+        assert_eq!(ROOT_MENU_ITEMS[3], MenuItem::CameraReset);
+        assert_eq!(ROOT_MENU_ITEMS[4], MenuItem::OpenRom);
+        assert_eq!(ROOT_MENU_ITEMS[5], MenuItem::RecentMenu);
+
         assert_eq!(RECENT_MENU_ITEMS[0], MenuItem::RecentRom1);
         assert_eq!(RECENT_MENU_ITEMS[7], MenuItem::RecentRom8);
         assert_eq!(RECENT_MENU_ITEMS[8], MenuItem::RecentRom9);
@@ -3444,6 +3451,37 @@ mod tests {
         assert_eq!(VIDEO_MENU_ITEMS[1], MenuItem::PresentationFilter);
         assert_eq!(VIDEO_MENU_ITEMS[6], MenuItem::Screenshot);
         assert_eq!(VIDEO_MENU_ITEMS[7], MenuItem::ShowBackground);
+    }
+
+    #[test]
+    fn camera_root_actions_appear_after_resume_when_supported() {
+        let presentation = MenuPresentation {
+            cartridge_pocket_camera_supported: true,
+            recent_rom_count: 1,
+            manual_save_available: true,
+            ..test_presentation()
+        };
+
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 0, presentation),
+            Some(MenuItem::Resume)
+        );
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 1, presentation),
+            Some(MenuItem::CameraLive)
+        );
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 2, presentation),
+            Some(MenuItem::CameraImage)
+        );
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 3, presentation),
+            Some(MenuItem::CameraReset)
+        );
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 4, presentation),
+            Some(MenuItem::OpenRom)
+        );
     }
 
     #[test]
@@ -3643,7 +3681,10 @@ mod tests {
         assert!(presentation.item_visible(MenuItem::CameraLive));
         assert!(presentation.item_visible(MenuItem::CameraReset));
         assert_eq!(presentation.item_label(MenuItem::CameraImage), "CAM IMAGE");
-        assert_eq!(presentation.item_label(MenuItem::CameraLive), "CAM LIVE");
+        assert_eq!(
+            presentation.item_label(MenuItem::CameraLive),
+            "CAM LIVE OFF"
+        );
         presentation.pocket_camera_live_enabled = true;
         assert_eq!(presentation.item_label(MenuItem::CameraLive), "CAM LIVE ON");
         presentation.pocket_camera_live_enabled = false;
