@@ -34,7 +34,7 @@ This document refines the Pocket Camera-specific behavior under the broader cart
 - `gb-desktop` exposes session-scoped:
   - `CAM IMAGE` / `CAM RESET` still-image flow backed by PNG decoding
   - `CAM LIVE` live-frame flow backed by SDL3 camera capture
-- Live camera support remains frontend-only: the desktop frontend opens the host camera with SDL's native stream selection, handles permission/device errors, drops a few warm-up frames, converts each acquired frame through RGB24 into grayscale, and repeatedly calls the same `Machine::set_pocket_camera_frame(...)` seam. The core has no webcam dependency.
+- Live camera support remains frontend-only: the desktop frontend opens the host camera with SDL's native stream selection, handles permission/device errors, drops a few warm-up frames, converts each acquired frame through RGB24 into grayscale, mirrors live frames horizontally for self-facing camera orientation, and repeatedly calls the same `Machine::set_pocket_camera_frame(...)` seam. The core has no webcam dependency.
 
 ## Official ROM validation matrix
 

@@ -201,7 +201,9 @@ impl CameraFrame<'_> {
     fn to_pocket_camera_frame(&self) -> Result<PocketCameraFrame, String> {
         // SAFETY: `surface` is an SDL camera frame that remains valid until this
         // CameraFrame is dropped and releases it back to SDL.
-        unsafe { pocket_camera_frame_from_surface(self.surface.as_ptr()) }
+        let mut frame = unsafe { pocket_camera_frame_from_surface(self.surface.as_ptr()) }?;
+        mirror_frame_horizontally(&mut frame.grayscale_pixels, usize::from(frame.width));
+        Ok(frame)
     }
 }
 
@@ -377,6 +379,15 @@ fn grayscale_from_rgb(red: u8, green: u8, blue: u8) -> u8 {
         / 1000) as u8
 }
 
+fn mirror_frame_horizontally(grayscale_pixels: &mut [u8], width: usize) {
+    if width == 0 {
+        return;
+    }
+    for row in grayscale_pixels.chunks_exact_mut(width) {
+        row.reverse();
+    }
+}
+
 fn camera_permission_state_label(state: camera::SDL_CameraPermissionState) -> &'static str {
     if state == camera::SDL_CAMERA_PERMISSION_STATE_DENIED {
         "denied"
@@ -439,6 +450,15 @@ mod tests {
             rgb24_pixels_to_grayscale(3, 1, 8, pixels.as_ptr()),
             Err("camera frame pitch is smaller than its RGB row width".to_string())
         );
+    }
+
+    #[test]
+    fn live_camera_frames_are_mirrored_horizontally_for_selfie_orientation() {
+        let mut grayscale = vec![1, 2, 3, 4, 5, 6];
+
+        mirror_frame_horizontally(&mut grayscale, 3);
+
+        assert_eq!(grayscale, vec![3, 2, 1, 6, 5, 4]);
     }
 
     #[test]
