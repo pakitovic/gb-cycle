@@ -58,6 +58,11 @@ evidence or a clearer architectural need overrides them later.
    coordination.**
    The hard problem is not windowing; it is advancing multiple consoles on one
    shared T-cycle timeline with the repo's scheduler phase rules intact.
+7. **`DMG-07` is not the 2-player `DMG-04` path with more ports.**
+   Even when only two consoles participate, the 4-Player Adapter remains an
+   active adapter protocol with adapter-owned clocks, ping/status packets, and
+   port-indexed transmission slots. Normal two-player cable games should keep
+   using `DMG-04` unless the game explicitly speaks the adapter protocol.
 
 ## Phase 0 glossary
 
@@ -903,26 +908,99 @@ left/right panel names instead.
 Implement the real `DMG-07` 4-Player Adapter only after the printer and
 two-console `DMG-04` stack are stable.
 
+### Hardware-shaped contract
+
+Phase `9` should start from the adapter model in `hardware/LINK.md`:
+
+- `DMG-07` is an active adapter topology, not a passive extension of
+  `DMG-04`.
+- The adapter owns its serial clocks and drives connected consoles through the
+  external-clock boundary.
+- Physical adapter ports are stable identities. Port `P4` remains `P4` even if
+  `P2` and `P3` are absent or not responding.
+- A powered session keeps the `P1` adapter cable explicit. Connection-status
+  bits are protocol-observed participation, not merely the existence of a
+  `Machine` value.
+- The implementation must model ping phase, transmission phase, transition
+  indicators, one-packet-delayed transmission buffering, and ping restart as
+  adapter state.
+- Ping acknowledgements, transmission `RATE`, and transmission `SIZE` are
+  software-provided bytes observed during ping replies. The first two reply
+  bytes establish protocol participation; the later two configure transmission
+  behavior.
+- For Phase `9`, prefer the current Pan Docs timing model when it differs from
+  older reverse-engineering notes, but keep those older notes as compatibility
+  clues for real-game behavior such as shortened transition sequences.
+
 ### Core outcomes
 
-- Add explicit `DMG-07` attachment/session behavior
-- Support 2-, 3-, and 4-console participation
-- Keep `DMG-07` distinct from the passive `DMG-04` cable model
+- Add explicit `DMG-07` attachment/session behavior separate from
+  `DMG-04`.
+- Support 2-, 3-, and 4-console participation through physical adapter ports,
+  with non-contiguous effective occupancy treated as normal behavior.
+- Add adapter-owned clock scheduling on the shared T-cycle timeline.
+- Keep adapter-port identity separate from frontend `PlayerSlot` policy.
+- Keep `DMG-07` distinct from the passive `DMG-04` cable model even for
+  two-console sessions.
 
 ### `gb-test-runner` outcomes
 
-- Extend linked manifests to 2/3/4 linked participants
-- Add deterministic adapter-focused tests and retained traces
+- Extend linked manifests with `topology = "dmg07"` and explicit participant
+  port assignment.
+- Validate adapter-port invariants before executing a session:
+  - 2 to 4 physical participants for this phase,
+  - no duplicate adapter ports,
+  - a powered session includes port `P1`,
+  - sparse optional ports are allowed.
+- Add deterministic adapter-focused tests and retained traces for ping,
+  transmission, sparse occupancy, and restart behavior.
 
 ### Design guidance
 
 - The adapter is active hardware and should remain architecturally separate
   from a plain cable
 - Sparse occupancy must be treated as a first-class case, not a corner case
+- Do not expose desktop input, audio, view, or mute policy from `gb-core`.
+- Do not reuse the `DMG-04` exchange path as a fallback when a `DMG-07`
+  participant uses the wrong clock mode.
+- Prefer protocol-shaped oracles over large whole-session fixtures when the
+  contract can be asserted directly.
+
+### Suggested implementation slices
+
+1. **Phase 9.1 — adapter contract and type boundary**
+   - Add the adapter-port vocabulary to core / runner APIs.
+   - Add manifest parsing and validation for `topology = "dmg07"` without
+     routing bytes yet if that keeps the first patch reviewable.
+   - Add docs and tests that prove `DMG-07` is not accepted as a `DMG-04`
+     substitute.
+2. **Phase 9.2 — ping phase**
+   - Implement adapter-owned external clocks for armed slave-mode transfers.
+   - Emit ping packets and update status bits from observed replies.
+   - Cover mid-packet status updates when acknowledgement replies arrive before
+     later status bytes.
+   - Cover fixed adapter-port IDs and sparse participation.
+3. **Phase 9.3 — transmission phase**
+   - Implement the begin-transmission sequence and indicator packet.
+   - Implement `SIZE * 4` packet layout and one-packet-delayed port buffers.
+   - Zero-fill missing/non-participating ports without renumbering.
+   - Ignore filler bytes outside a port's `SIZE` input window.
+4. **Phase 9.4 — ping restart and edge cases**
+   - Implement the restart sequence and ping indicator packet.
+   - Cover wrong clock mode, unarmed participants, detach/reset, and startup
+     snapshot behavior.
+   - Add compatibility coverage for observed shortened transition / restart
+     sequences only if tests make the accepted threshold explicit.
+5. **Phase 9.5 — runner artifacts and closure**
+   - Add retained traces / fixtures for representative 2-, 3-, and 4-console
+     sessions.
+   - Confirm repeated runs of the same manifest produce the same outputs.
 
 ### Crates / files
 
-- `gb-core` adapter/session modules
+- `gb-core` adapter/session modules, likely following the existing
+  `link.rs + link/` layout
+- `gb-core` external-port attachment taxonomy and snapshots
 - `gb-test-runner` multi-participant manifests and execution path
 
 ### Validation gate
@@ -930,6 +1008,16 @@ two-console `DMG-04` stack are stable.
 - unit tests for adapter-specific behavior
 - integration tests for 2/3/4 attached consoles
 - retained traces for adapter-state transitions where timing matters
+- manifest validation tests for port assignment and sparse occupancy
+- deterministic rerun tests for retained `DMG-07` fixtures
+
+### Non-goals
+
+- No desktop `4 PLAYER ADAPTER` UX until Phase `10`.
+- No host-level input/audio/view policy inside `gb-core`.
+- No `SGB` / `SGB2` multiplayer wrapper in this phase.
+- No compatibility alias where ordinary `DMG-04` two-player games silently run
+  through `DMG-07`.
 
 ### Done criteria
 
