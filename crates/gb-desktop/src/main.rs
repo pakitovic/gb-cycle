@@ -5943,6 +5943,7 @@ fn process_pocket_camera_live_frame(
             }
         }
         Err(error) => {
+            context.runtime.pocket_camera_live.stop();
             show_warning_message(Some(canvas.window()), "Pocket Camera live", &error);
             eprintln!("warning: {error}");
         }
@@ -6886,9 +6887,9 @@ fn execute_menu_action(
             if context.runtime.pocket_camera_live.is_enabled() {
                 context.runtime.pocket_camera_live.stop();
             } else {
-                context.session.pocket_camera_frame = None;
                 match context.runtime.pocket_camera_live.start() {
                     Ok(()) => {
+                        context.session.pocket_camera_frame = None;
                         if let Some(camera_name) = context.runtime.pocket_camera_live.camera_name()
                         {
                             eprintln!("info: Pocket Camera live input started from {camera_name}");
@@ -14077,6 +14078,41 @@ mod tests {
     }
 
     #[test]
+    fn camera_live_start_failure_preserves_the_static_session_frame() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-start-failure", false, false, false);
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(super::session_has_pocket_camera(&harness.machine));
+
+        let static_frame = PocketCameraFrame {
+            width: 1,
+            height: 1,
+            grayscale_pixels: vec![0x44],
+        };
+        harness.session.pocket_camera_frame = Some(static_frame.clone());
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleCameraLive)
+                .expect("unavailable live backend should be reported without failing the menu")
+                .is_none()
+        );
+
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+        assert_eq!(harness.session.pocket_camera_frame, Some(static_frame));
+    }
+
+    #[test]
     fn desktop_format_grayscale_and_key_helpers_cover_camera_paths() {
         assert_eq!(
             super::format_display_error("context", "error"),
@@ -14216,6 +14252,30 @@ mod tests {
         harness.runtime.pocket_camera_live =
             super::PocketCameraLiveInput::enabled_without_camera_for_tests();
         harness.process_pocket_camera_live_frame();
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+    }
+
+    #[test]
+    fn pocket_camera_live_processing_stops_poll_error_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-poll-error", false, false, false);
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(super::session_has_pocket_camera(&harness.machine));
+
+        harness.runtime.pocket_camera_live =
+            super::PocketCameraLiveInput::enabled_with_poll_error_for_tests("bad camera frame");
+        harness.process_pocket_camera_live_frame();
+
         assert!(!harness.runtime.pocket_camera_live.is_enabled());
     }
 

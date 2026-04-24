@@ -15,6 +15,8 @@ pub struct PocketCameraLiveInput {
     frames_delivered: u64,
     polls_without_frame: u16,
     camera_name: Option<String>,
+    #[cfg(test)]
+    poll_error: Option<String>,
 }
 
 impl PocketCameraLiveInput {
@@ -29,6 +31,8 @@ impl PocketCameraLiveInput {
                 frames_delivered: 0,
                 polls_without_frame: 0,
                 camera_name: None,
+                #[cfg(test)]
+                poll_error: None,
             },
             Err(error) => Self {
                 subsystem: None,
@@ -39,6 +43,8 @@ impl PocketCameraLiveInput {
                 frames_delivered: 0,
                 polls_without_frame: 0,
                 camera_name: None,
+                #[cfg(test)]
+                poll_error: None,
             },
         }
     }
@@ -59,6 +65,22 @@ impl PocketCameraLiveInput {
             frames_delivered: 0,
             polls_without_frame: 0,
             camera_name: Some("test camera".to_string()),
+            poll_error: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn enabled_with_poll_error_for_tests(error: impl Into<String>) -> Self {
+        Self {
+            subsystem: None,
+            unavailable_reason: None,
+            camera: None,
+            enabled: true,
+            warmup_frames_remaining: LIVE_CAMERA_WARMUP_FRAMES,
+            frames_delivered: 0,
+            polls_without_frame: 0,
+            camera_name: Some("test camera".to_string()),
+            poll_error: Some(error.into()),
         }
     }
 
@@ -108,6 +130,11 @@ impl PocketCameraLiveInput {
     pub fn poll_frame(&mut self) -> Result<Option<PocketCameraFrame>, String> {
         if !self.enabled {
             return Ok(None);
+        }
+
+        #[cfg(test)]
+        if let Some(error) = self.poll_error.clone() {
+            return Err(error);
         }
 
         let Some(camera) = self.camera.as_ref() else {
@@ -442,6 +469,7 @@ mod tests {
             frames_delivered: 7,
             polls_without_frame: 9,
             camera_name: Some("fake camera".to_string()),
+            poll_error: None,
         }
     }
 
