@@ -12,7 +12,8 @@ impl CartridgeDevice {
             | Self::Mbc1(_)
             | Self::Mbc2(_)
             | Self::Mbc3(_)
-            | Self::Mbc5(_) => String::new(),
+            | Self::Mbc5(_)
+            | Self::PocketCamera(_) => String::new(),
         }
     }
 

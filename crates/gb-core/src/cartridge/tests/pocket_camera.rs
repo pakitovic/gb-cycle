@@ -152,6 +152,66 @@ fn pocket_camera_mapper_keeps_bank_zero_reachable_and_register_window_mirrored()
 }
 
 #[test]
+fn pocket_camera_access_descriptions_cover_ram_busy_reserved_registers_and_writable_ram() {
+    let mut camera = load_pocket_camera_device();
+
+    camera.write_rom(0x4000, 0x0E);
+    let disabled_write_access = camera.describe_external_access(0xA001);
+    assert_eq!(
+        disabled_write_access.target(),
+        CartridgeExternalTarget::BankedRam { bank: 0x0E }
+    );
+    assert_eq!(
+        disabled_write_access.write_behavior(),
+        CartridgeExternalWriteBehavior::Ignored
+    );
+
+    camera.write_rom(0x0000, 0x0A);
+    let enabled_write_access = camera.describe_external_access(0xA001);
+    assert_eq!(
+        enabled_write_access.write_behavior(),
+        CartridgeExternalWriteBehavior::Storage
+    );
+
+    camera.write_rom(0x4000, 0x10);
+    camera.write_ram_timed(0xA000, 0x01, TCycle::ZERO);
+    camera.write_rom(0x4000, 0x00);
+    let busy_access = camera.describe_external_access(0xA001);
+    assert_eq!(
+        busy_access.availability(),
+        CartridgeExternalAvailability::Disabled
+    );
+    assert_eq!(
+        busy_access.read_behavior(),
+        CartridgeExternalReadBehavior::FallbackValue(POCKET_CAMERA_WORKING_RAM_READ_VALUE)
+    );
+    assert_eq!(
+        busy_access.write_behavior(),
+        CartridgeExternalWriteBehavior::Ignored
+    );
+
+    camera.write_rom(0x4000, 0x10);
+    let reserved_register_access = camera.describe_external_access(0xA036);
+    assert_eq!(
+        reserved_register_access.target(),
+        CartridgeExternalTarget::PocketCameraRegister { offset: 0x36 }
+    );
+    assert_eq!(
+        reserved_register_access.availability(),
+        CartridgeExternalAvailability::Reserved
+    );
+    assert_eq!(
+        reserved_register_access.read_behavior(),
+        CartridgeExternalReadBehavior::FallbackValue(0)
+    );
+    assert_eq!(
+        reserved_register_access.write_behavior(),
+        CartridgeExternalWriteBehavior::Ignored
+    );
+    assert_eq!(camera.read_ram(0xA036), 0x00);
+}
+
+#[test]
 fn pocket_camera_busy_timing_and_pause_resume_follow_a000_bit0_semantics() {
     let mut camera = load_pocket_camera_device();
     camera.write_rom(0x0000, 0x0A);
@@ -193,6 +253,26 @@ fn pocket_camera_busy_timing_and_pause_resume_follow_a000_bit0_semantics() {
 
     finish_capture(&mut camera);
     assert_eq!(camera.capture_ready_at(), None);
+}
+
+#[test]
+fn pocket_camera_persistence_restore_rejects_wrong_kind_and_ram_length() {
+    let mut camera = load_pocket_camera_device();
+
+    assert_eq!(
+        camera.restore_persistent_state(&PersistentCartState::PocketCameraRam { ram: vec![0] }),
+        Err(CartridgePersistentStateError::RamLengthMismatch {
+            expected: POCKET_CAMERA_SUPPORTED_RAM_BYTES,
+            actual: 1,
+        })
+    );
+    assert_eq!(
+        camera.restore_persistent_state(&PersistentCartState::None),
+        Err(CartridgePersistentStateError::KindMismatch {
+            expected: "PocketCameraRam",
+            actual: "None",
+        })
+    );
 }
 
 #[test]
@@ -379,4 +459,34 @@ fn pocket_camera_edge_mode_changes_the_captured_tiles_for_at_least_one_supported
     }
 
     assert!(found_difference);
+}
+
+#[test]
+fn pocket_camera_horizontal_edge_mode_uses_the_mode_two_filter_path() {
+    let mut camera = load_pocket_camera_device();
+    camera
+        .set_host_frame(PocketCameraFrame {
+            width: POCKET_CAMERA_CAPTURE_WIDTH as u16,
+            height: POCKET_CAMERA_CAPTURE_HEIGHT as u16,
+            grayscale_pixels: (0..POCKET_CAMERA_CAPTURE_PIXEL_COUNT)
+                .map(|index| {
+                    let x = index % POCKET_CAMERA_CAPTURE_WIDTH;
+                    ((x * 255) / (POCKET_CAMERA_CAPTURE_WIDTH - 1)) as u8
+                })
+                .collect(),
+        })
+        .expect("gradient frame should normalize");
+    set_simple_matrix_thresholds(&mut camera);
+
+    camera.write_rom(0x4000, 0x10);
+    camera.write_ram(0xA001, 0x20);
+    camera.write_ram(0xA002, 0x03);
+    camera.write_ram(0xA003, 0x00);
+    camera.write_ram(0xA004, 0x10);
+    camera.write_ram_timed(0xA000, 0x03, TCycle::ZERO);
+    finish_capture(&mut camera);
+
+    let tiles = &camera.ram[POCKET_CAMERA_CAPTURE_TILE_BASE_OFFSET
+        ..POCKET_CAMERA_CAPTURE_TILE_BASE_OFFSET + POCKET_CAMERA_CAPTURE_TILE_BYTES];
+    assert!(tiles.iter().any(|&byte| byte != 0x00));
 }
