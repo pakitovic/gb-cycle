@@ -1,5 +1,5 @@
 use super::*;
-use crate::model::{CompatibilityPolicy, DiagnosticPolicy, ValidationPolicy};
+use crate::model::{CompatibilityPolicy, ValidationPolicy};
 
 /// Bundles the parameters shared by every mapper validator, providing
 /// helpers that eliminate the repeated `CartridgeLoadError::Rejected`
@@ -106,6 +106,231 @@ pub(in crate::cartridge) fn validate_no_mbc(
     Ok(())
 }
 
+pub(in crate::cartridge) fn validate_mmm01(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<usize, CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
+    };
+
+    if actual_rom_size != declared_rom_bytes {
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
+    }
+
+    if !(MMM01_MIN_ROM_BYTES..=MMM01_SUPPORTED_ROM_BYTES_MAX).contains(&declared_rom_bytes) {
+        return Err(ctx.reject(format!(
+            "{} expects a total ROM size between {} and {} bytes, but the header resolved to {} bytes",
+            ctx.name(),
+            MMM01_MIN_ROM_BYTES,
+            MMM01_SUPPORTED_ROM_BYTES_MAX,
+            declared_rom_bytes
+        )));
+    }
+
+    let has_ram = matches!(classification.raw_type(), 0x0C | 0x0D);
+    let allowed_ram_codes = if has_ram {
+        [0x02, 0x03, 0x04].as_slice()
+    } else {
+        [0x00].as_slice()
+    };
+    if !allowed_ram_codes.contains(&header.ram_size.raw_code) {
+        let capability_label = if has_ram {
+            "MMM01 with external RAM"
+        } else {
+            "MMM01 without RAM"
+        };
+        return Err(ctx.reject(format!(
+            "{} declared RAM size code {:#04X}, which contradicts the current {} baseline",
+            ctx.name(),
+            header.ram_size.raw_code,
+            capability_label
+        )));
+    }
+
+    Ok(header.ram_size.decoded_bytes.unwrap_or(0))
+}
+
+pub(in crate::cartridge) fn validate_m161(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<(), CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    if header.ram_size.raw_code != 0x00 || header.ram_size.decoded_bytes != Some(0) {
+        return Err(ctx.reject(format!(
+            "{} expects no external RAM, but the header resolved to {:?} bytes from code {:#04X}",
+            ctx.name(),
+            header.ram_size.decoded_bytes,
+            header.ram_size.raw_code
+        )));
+    }
+
+    if !actual_rom_size.is_multiple_of(M161_BANK_BYTES) {
+        return Err(ctx.reject(format!(
+            "{} expects a ROM image sized in 32 KiB banks, but the loaded ROM is {} bytes",
+            ctx.name(),
+            actual_rom_size
+        )));
+    }
+
+    let bank_count = actual_rom_size / M161_BANK_BYTES;
+    if !(M161_SUPPORTED_ROM_BANKS_MIN..=M161_SUPPORTED_ROM_BANKS_MAX).contains(&bank_count) {
+        return Err(ctx.reject(format!(
+            "{} expects between {} and {} total 32 KiB banks, but the loaded ROM resolves to {} banks",
+            ctx.name(),
+            M161_SUPPORTED_ROM_BANKS_MIN,
+            M161_SUPPORTED_ROM_BANKS_MAX,
+            bank_count
+        )));
+    }
+
+    Ok(())
+}
+
+pub(in crate::cartridge) fn validate_huc1(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<usize, CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
+    };
+
+    if actual_rom_size != declared_rom_bytes {
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
+    }
+
+    if declared_rom_bytes > HUC1_SUPPORTED_ROM_BYTES_MAX {
+        return Err(ctx.reject(format!(
+            "{} exceeds the current HuC1 ROM limit of {} bytes with {} bytes",
+            ctx.name(),
+            HUC1_SUPPORTED_ROM_BYTES_MAX,
+            declared_rom_bytes
+        )));
+    }
+
+    let Some(ram_len) = header.ram_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported RAM size code {:#04X}",
+            ctx.name(),
+            header.ram_size.raw_code
+        )));
+    };
+
+    if ram_len == 0 || ram_len > HUC1_SUPPORTED_RAM_BYTES_MAX {
+        return Err(ctx.reject(format!(
+            "{} expects cartridge RAM between 1 and {} bytes, but the header resolved to {} bytes",
+            ctx.name(),
+            HUC1_SUPPORTED_RAM_BYTES_MAX,
+            ram_len
+        )));
+    }
+
+    Ok(ram_len)
+}
+
+pub(in crate::cartridge) fn validate_huc3(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<usize, CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
+    };
+
+    if actual_rom_size != declared_rom_bytes {
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            declared_rom_bytes,
+            actual_rom_size
+        )));
+    }
+
+    if declared_rom_bytes > HUC3_SUPPORTED_ROM_BYTES_MAX {
+        return Err(ctx.reject(format!(
+            "{} exceeds the current HuC-3 ROM limit of {} bytes with {} bytes",
+            ctx.name(),
+            HUC3_SUPPORTED_ROM_BYTES_MAX,
+            declared_rom_bytes
+        )));
+    }
+
+    let Some(ram_len) = header.ram_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported RAM size code {:#04X}",
+            ctx.name(),
+            header.ram_size.raw_code
+        )));
+    };
+
+    if ram_len == 0 || ram_len > HUC3_SUPPORTED_RAM_BYTES_MAX {
+        return Err(ctx.reject(format!(
+            "{} expects cartridge RAM between 1 and {} bytes, but the header resolved to {} bytes",
+            ctx.name(),
+            HUC3_SUPPORTED_RAM_BYTES_MAX,
+            ram_len
+        )));
+    }
+
+    Ok(ram_len)
+}
+
 pub(in crate::cartridge) fn validate_mbc1(
     header: &CartridgeHeader,
     actual_rom_size: usize,
@@ -137,27 +362,22 @@ pub(in crate::cartridge) fn validate_mbc1(
     }
 
     if classification.detected_name() == "MBC1M" {
-        if header.ram_size.raw_code != 0x00 {
-            return Err(ctx.reject(format!(
-                "{} currently only supports the no-RAM 1 MiB multicart baseline",
-                ctx.name()
-            )));
-        }
+        let has_ram = matches!(classification.raw_type(), 0x02 | 0x03);
+        let expected_ram_code = if has_ram { 0x02 } else { 0x00 };
 
-        if compatibility.diagnostic_policy != DiagnosticPolicy::Quiet {
-            ctx.diagnostics.push(CartridgeDiagnostic {
-                severity: CartridgeDiagnosticSeverity::Warning,
-                message: format!(
-                    "{} banking was enabled through an explicit experimental multicart heuristic and remains non-oracle",
-                    ctx.name()
-                ),
-            });
+        if header.ram_size.raw_code != expected_ram_code {
+            let capability_label = if has_ram { "fixed 8 KiB RAM" } else { "no RAM" };
+            return Err(ctx.reject(format!(
+                "{} currently only supports the 1 MiB multicart baseline with {}",
+                ctx.name(),
+                capability_label
+            )));
         }
 
         return Ok(Mbc1Layout {
             wiring: Mbc1Wiring::LargeRom,
             variant: Mbc1Variant::Mbc1M,
-            ram_len: 0,
+            ram_len: if has_ram { 8 * 1024 } else { 0 },
         });
     }
 

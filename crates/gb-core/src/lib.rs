@@ -43,8 +43,9 @@ pub use cartridge::{
     CartridgeHeaderParseError, CartridgeLoadError, CartridgeLoadReport,
     CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
     CartridgeRamPayloadKind, CartridgeRtcRegister, CartridgeSelection, CartridgeSlot,
-    CartridgeSlotState, CartridgeSnapshot, CgbFlag, Mbc3RtcPersistentState, PersistentCartState,
-    RamSizeInfo, RomSizeInfo, SgbFlag, SupportedCartridgeFamily, UnsupportedCartridgeCategory,
+    CartridgeSlotState, CartridgeSnapshot, CgbFlag, Huc3RtcPersistentState, Mbc3RtcPersistentState,
+    PersistentCartState, RamSizeInfo, RomSizeInfo, SgbFlag, SupportedCartridgeFamily,
+    UnsupportedCartridgeCategory,
 };
 pub use cpu::{
     CpuAddressEvent, CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind,

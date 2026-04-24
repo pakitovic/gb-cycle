@@ -1,6 +1,7 @@
 use super::*;
 use gb_core::{
-    BootRomAssetError, CartridgeClassification, Mbc3RtcPersistentState, SupportedCartridgeFamily,
+    BootRomAssetError, CartridgeClassification, Huc3RtcPersistentState, Mbc3RtcPersistentState,
+    SupportedCartridgeFamily,
 };
 use gb_persistence::{CartridgeSaveBackendError, FilesystemCartridgeSaveBackend};
 use std::io;
@@ -1180,6 +1181,42 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
             assert_ne!(rtc, original_rtc);
         }
         other => panic!("expected Mbc3RamRtc, got {other:?}"),
+    }
+
+    let original_huc3_rtc = Huc3RtcPersistentState {
+        current_minutes_of_day: 10,
+        current_days: 2,
+        current_subminute_seconds: 58,
+        event_minutes_of_day: 30,
+        event_days: 2,
+    };
+    let mut huc3 = PersistentCartState::Huc3 {
+        ram: vec![0xAA; 8],
+        mcu_ram: [0; 256],
+        rtc: original_huc3_rtc,
+        rom_bank: 0,
+        ram_bank: 0,
+        select_mode: 0x0D,
+        access_address: 0,
+        mailbox_command: 0,
+        mailbox_argument: 0,
+        last_response_nybble: 0,
+        semaphore_ready: true,
+        ir_emitter_on: false,
+        ir_light_detected: false,
+        last_control_write: None,
+        last_unsupported_command: None,
+        last_unsupported_argument: None,
+    };
+    apply_elapsed_off_session_seconds(&mut huc3, 5);
+    match huc3 {
+        PersistentCartState::Huc3 { ram, rtc, .. } => {
+            assert_eq!(ram, vec![0xAA; 8]);
+            assert_eq!(rtc.current_minutes_of_day, 11);
+            assert_eq!(rtc.current_days, 2);
+            assert_eq!(rtc.current_subminute_seconds, 3);
+        }
+        other => panic!("expected Huc3, got {other:?}"),
     }
 
     let mut untouched = PersistentCartState::None;

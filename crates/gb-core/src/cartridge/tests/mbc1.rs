@@ -190,21 +190,17 @@ fn mbc1_large_rom_keeps_one_fixed_8kib_ram_window_across_modes() {
 }
 
 #[test]
-fn experimental_mbc1m_multicart_banking_uses_the_documented_game_select_layout() {
+fn mbc1m_multicart_banking_uses_the_documented_game_select_layout() {
     let mut rom = build_banked_mbc1_rom_with_type(0x01, 0x05, 0x00);
     mark_mbc1_multicart_subheaders(&mut rom);
-    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::experimental())
-        .expect("experimental MBC1M should load");
+    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect("MBC1M should load through the default signature path");
     let Some(CartridgeDevice::Mbc1(mut cartridge)) = report.cartridge().device.clone() else {
         panic!("expected MBC1 cartridge");
     };
 
     assert_eq!(cartridge.variant, Mbc1Variant::Mbc1M);
-    assert!(report.diagnostics().iter().any(|diagnostic| {
-        diagnostic
-            .message
-            .contains("explicit experimental multicart heuristic")
-    }));
+    assert!(report.diagnostics().is_empty());
 
     cartridge.write_rom(0x2000, 0x00);
     cartridge.write_rom(0x4000, 0x00);
@@ -227,6 +223,42 @@ fn experimental_mbc1m_multicart_banking_uses_the_documented_game_select_layout()
 
     cartridge.write_rom(0x2000, 0x01);
     assert_eq!(cartridge.read_rom(0x4000), 0x21);
+}
+
+#[test]
+fn mbc1m_with_battery_backed_8kib_ram_keeps_a_fixed_ram_window() {
+    let mut rom = build_banked_mbc1_rom_with_type(0x03, 0x05, 0x02);
+    mark_mbc1_multicart_subheaders_in_banks(&mut rom, &[0x10, 0x20]);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1M should load");
+    let Some(CartridgeDevice::Mbc1(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected MBC1 cartridge");
+    };
+
+    assert_eq!(cartridge.variant, Mbc1Variant::Mbc1M);
+    assert_eq!(
+        cartridge.persistence_metadata(),
+        CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 8 * 1024 },
+            },
+        }
+    );
+
+    cartridge.write_rom(0x0000, 0x0A);
+    cartridge.write_ram(0xA000, 0x11);
+
+    cartridge.write_rom(0x4000, 0x02);
+    cartridge.write_rom(0x6000, 0x01);
+    assert_eq!(cartridge.read_ram(0xA000), 0x11);
+
+    let PersistentCartState::Mbc1Ram { ram } = cartridge.persistent_state() else {
+        panic!("expected MBC1 RAM persistence");
+    };
+    assert_eq!(ram.len(), 8 * 1024);
+    assert_eq!(ram[0], 0x11);
 }
 
 #[test]

@@ -1,6 +1,7 @@
 use gb_core::{
     CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
-    CartridgeRamPayloadKind, CartridgeSlot, Mbc3RtcPersistentState, PersistentCartState,
+    CartridgeRamPayloadKind, CartridgeSlot, Huc3RtcPersistentState, Mbc3RtcPersistentState,
+    PersistentCartState,
 };
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -29,6 +30,9 @@ const STATE_MBC3_RTC_TAG: u8 = 4;
 const STATE_MBC3_RAM_TAG: u8 = 5;
 const STATE_MBC3_RAM_RTC_TAG: u8 = 6;
 const STATE_MBC5_RAM_TAG: u8 = 7;
+const STATE_MMM01_RAM_TAG: u8 = 8;
+const STATE_HUC1_RAM_TAG: u8 = 9;
+const STATE_HUC3_TAG: u8 = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CartridgeSaveKey(String);
@@ -463,6 +467,10 @@ pub enum CartridgeSaveBackendError {
         index: usize,
         value: u8,
     },
+    InvalidHuc3NibbleValue {
+        index: usize,
+        value: u8,
+    },
     TrailingBytes {
         remaining: usize,
     },
@@ -504,6 +512,10 @@ impl fmt::Display for CartridgeSaveBackendError {
             Self::InvalidMbc2NibbleValue { index, value } => write!(
                 f,
                 "invalid MBC2 nibble value {value:#04X} at logical cell {index}"
+            ),
+            Self::InvalidHuc3NibbleValue { index, value } => write!(
+                f,
+                "invalid HuC-3 nibble value {value:#04X} at logical cell {index}"
             ),
             Self::TrailingBytes { remaining } => {
                 write!(f, "save payload has {remaining} trailing bytes")
@@ -826,6 +838,7 @@ fn apply_elapsed_off_session_seconds(state: &mut PersistentCartState, elapsed_se
     match state {
         PersistentCartState::Mbc3Rtc { rtc } => rtc.apply_elapsed_seconds(elapsed_seconds),
         PersistentCartState::Mbc3RamRtc { rtc, .. } => rtc.apply_elapsed_seconds(elapsed_seconds),
+        PersistentCartState::Huc3 { rtc, .. } => rtc.apply_elapsed_seconds(elapsed_seconds),
         _ => {}
     }
 }
@@ -945,6 +958,56 @@ fn encode_persistent_state(
             bytes.push(STATE_MBC5_RAM_TAG);
             encode_linear_ram(bytes, ram, "MBC5 RAM")?;
         }
+        PersistentCartState::Mmm01Ram { ram } => {
+            bytes.push(STATE_MMM01_RAM_TAG);
+            encode_linear_ram(bytes, ram, "MMM01 RAM")?;
+        }
+        PersistentCartState::Huc1Ram { ram } => {
+            bytes.push(STATE_HUC1_RAM_TAG);
+            encode_linear_ram(bytes, ram, "HuC1 RAM")?;
+        }
+        PersistentCartState::Huc3 {
+            ram,
+            mcu_ram,
+            rtc,
+            rom_bank,
+            ram_bank,
+            select_mode,
+            access_address,
+            mailbox_command,
+            mailbox_argument,
+            last_response_nybble,
+            semaphore_ready,
+            ir_emitter_on,
+            ir_light_detected,
+            last_control_write,
+            last_unsupported_command,
+            last_unsupported_argument,
+        } => {
+            bytes.push(STATE_HUC3_TAG);
+            encode_linear_ram(bytes, ram, "HuC-3 RAM")?;
+            write_u32_checked(bytes, mcu_ram.len(), "HuC-3 MCU RAM nibble count")?;
+            for (index, value) in mcu_ram.iter().copied().enumerate() {
+                if value > 0x0F {
+                    return Err(CartridgeSaveBackendError::InvalidHuc3NibbleValue { index, value });
+                }
+                bytes.push(value);
+            }
+            encode_huc3_rtc(bytes, *rtc);
+            bytes.push(*rom_bank);
+            bytes.push(*ram_bank);
+            bytes.push(*select_mode);
+            bytes.push(*access_address);
+            bytes.push(*mailbox_command);
+            bytes.push(*mailbox_argument);
+            bytes.push(*last_response_nybble);
+            write_bool(bytes, *semaphore_ready);
+            write_bool(bytes, *ir_emitter_on);
+            write_bool(bytes, *ir_light_detected);
+            encode_optional_u8(bytes, *last_control_write);
+            encode_optional_u8(bytes, *last_unsupported_command);
+            encode_optional_u8(bytes, *last_unsupported_argument);
+        }
     }
     Ok(())
 }
@@ -992,6 +1055,54 @@ fn decode_persistent_state(
         STATE_MBC5_RAM_TAG => Ok(PersistentCartState::Mbc5Ram {
             ram: decode_linear_ram(cursor)?,
         }),
+        STATE_MMM01_RAM_TAG => Ok(PersistentCartState::Mmm01Ram {
+            ram: decode_linear_ram(cursor)?,
+        }),
+        STATE_HUC1_RAM_TAG => Ok(PersistentCartState::Huc1Ram {
+            ram: decode_linear_ram(cursor)?,
+        }),
+        STATE_HUC3_TAG => {
+            let ram = decode_linear_ram(cursor)?;
+            let nibble_count = cursor.read_u32()? as usize;
+            if nibble_count != 256 {
+                return Err(CartridgeSaveBackendError::LengthOverflow {
+                    field: "decoded HuC-3 MCU RAM nibble count",
+                    value: nibble_count,
+                });
+            }
+            let nibble_bytes = cursor.read_vec(nibble_count)?;
+            let mut mcu_ram = [0; 256];
+            for (index, value) in nibble_bytes.into_iter().enumerate() {
+                if value > 0x0F {
+                    return Err(CartridgeSaveBackendError::InvalidHuc3NibbleValue { index, value });
+                }
+                mcu_ram[index] = value;
+            }
+            Ok(PersistentCartState::Huc3 {
+                ram,
+                mcu_ram,
+                rtc: decode_huc3_rtc(cursor)?,
+                rom_bank: cursor.read_u8()?,
+                ram_bank: cursor.read_u8()?,
+                select_mode: cursor.read_u8()?,
+                access_address: cursor.read_u8()?,
+                mailbox_command: cursor.read_u8()?,
+                mailbox_argument: cursor.read_u8()?,
+                last_response_nybble: cursor.read_u8()?,
+                semaphore_ready: cursor.read_bool("huc3.semaphore_ready")?,
+                ir_emitter_on: cursor.read_bool("huc3.ir_emitter_on")?,
+                ir_light_detected: cursor.read_bool("huc3.ir_light_detected")?,
+                last_control_write: decode_optional_u8(cursor, "huc3.last_control_write")?,
+                last_unsupported_command: decode_optional_u8(
+                    cursor,
+                    "huc3.last_unsupported_command",
+                )?,
+                last_unsupported_argument: decode_optional_u8(
+                    cursor,
+                    "huc3.last_unsupported_argument",
+                )?,
+            })
+        }
         _ => Err(CartridgeSaveBackendError::UnsupportedPersistentStateTag { tag }),
     }
 }
@@ -1031,6 +1142,40 @@ fn decode_rtc(
         halt: cursor.read_bool("rtc.halt")?,
         carry: cursor.read_bool("rtc.carry")?,
     })
+}
+
+fn encode_huc3_rtc(bytes: &mut Vec<u8>, rtc: Huc3RtcPersistentState) {
+    write_u16(bytes, rtc.current_minutes_of_day);
+    write_u16(bytes, rtc.current_days);
+    bytes.push(rtc.current_subminute_seconds);
+    write_u16(bytes, rtc.event_minutes_of_day);
+    write_u16(bytes, rtc.event_days);
+}
+
+fn decode_huc3_rtc(
+    cursor: &mut ByteCursor<'_>,
+) -> Result<Huc3RtcPersistentState, CartridgeSaveBackendError> {
+    Ok(Huc3RtcPersistentState {
+        current_minutes_of_day: cursor.read_u16()?,
+        current_days: cursor.read_u16()?,
+        current_subminute_seconds: cursor.read_u8()?,
+        event_minutes_of_day: cursor.read_u16()?,
+        event_days: cursor.read_u16()?,
+    })
+}
+
+fn encode_optional_u8(bytes: &mut Vec<u8>, value: Option<u8>) {
+    write_bool(bytes, value.is_some());
+    bytes.push(value.unwrap_or(0));
+}
+
+fn decode_optional_u8(
+    cursor: &mut ByteCursor<'_>,
+    field: &'static str,
+) -> Result<Option<u8>, CartridgeSaveBackendError> {
+    let present = cursor.read_bool(field)?;
+    let value = cursor.read_u8()?;
+    Ok(present.then_some(value))
 }
 
 fn write_bool(bytes: &mut Vec<u8>, value: bool) {
@@ -1185,7 +1330,12 @@ mod tests {
 
     #[test]
     fn round_trip_covers_remaining_profile_and_state_variants() {
-        let profiles_and_states = [
+        let mut huc3_mcu_ram = [0; 256];
+        huc3_mcu_ram[0] = 0x0A;
+        huc3_mcu_ram[1] = 0x0B;
+        huc3_mcu_ram[255] = 0x0F;
+
+        let profiles_and_states = vec![
             CartridgeSaveEnvelope {
                 backend_metadata: CartridgeSaveBackendMetadata {
                     format_version: CURRENT_SAVE_FORMAT_VERSION,
@@ -1267,6 +1417,75 @@ mod tests {
                     ram: vec![0x66, 0x77],
                 },
             },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 16,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: true,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::PersistentRam {
+                        ram: CartridgeRamPayloadKind::Linear { byte_len: 4 },
+                    },
+                },
+                persistent_state: PersistentCartState::Mmm01Ram {
+                    ram: vec![0x88, 0x99, 0xAA, 0xBB],
+                },
+            },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 17,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: true,
+                    has_rtc: false,
+                    profile: CartridgePersistenceProfile::PersistentRam {
+                        ram: CartridgeRamPayloadKind::Linear { byte_len: 3 },
+                    },
+                },
+                persistent_state: PersistentCartState::Huc1Ram {
+                    ram: vec![0xCC, 0xDD, 0xEE],
+                },
+            },
+            CartridgeSaveEnvelope {
+                backend_metadata: CartridgeSaveBackendMetadata {
+                    format_version: CURRENT_SAVE_FORMAT_VERSION,
+                    saved_at_unix_seconds: 18,
+                },
+                cartridge_metadata: CartridgePersistenceMetadata {
+                    has_battery: true,
+                    has_rtc: true,
+                    profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                        ram: CartridgeRamPayloadKind::Linear { byte_len: 5 },
+                    },
+                },
+                persistent_state: PersistentCartState::Huc3 {
+                    ram: vec![0x01, 0x23, 0x45, 0x67, 0x89],
+                    mcu_ram: huc3_mcu_ram,
+                    rtc: Huc3RtcPersistentState {
+                        current_minutes_of_day: 1439,
+                        current_days: 0x0FFF,
+                        current_subminute_seconds: 59,
+                        event_minutes_of_day: 123,
+                        event_days: 0x0123,
+                    },
+                    rom_bank: 0x3F,
+                    ram_bank: 0x02,
+                    select_mode: 0x0E,
+                    access_address: 0xA5,
+                    mailbox_command: 0x06,
+                    mailbox_argument: 0x02,
+                    last_response_nybble: 0x01,
+                    semaphore_ready: true,
+                    ir_emitter_on: true,
+                    ir_light_detected: false,
+                    last_control_write: Some(0x77),
+                    last_unsupported_command: Some(0x06),
+                    last_unsupported_argument: Some(0x0E),
+                },
+            },
         ];
 
         for envelope in profiles_and_states {
@@ -1297,6 +1516,213 @@ mod tests {
                 },
             }
         );
+
+        let mut huc3_state = PersistentCartState::Huc3 {
+            ram: vec![],
+            mcu_ram: [0; 256],
+            rtc: Huc3RtcPersistentState {
+                current_minutes_of_day: 1439,
+                current_days: 0x0FFF,
+                current_subminute_seconds: 59,
+                event_minutes_of_day: 3,
+                event_days: 0,
+            },
+            rom_bank: 0,
+            ram_bank: 0,
+            select_mode: 0x0D,
+            access_address: 0,
+            mailbox_command: 0,
+            mailbox_argument: 0,
+            last_response_nybble: 0,
+            semaphore_ready: true,
+            ir_emitter_on: false,
+            ir_light_detected: false,
+            last_control_write: None,
+            last_unsupported_command: None,
+            last_unsupported_argument: None,
+        };
+        apply_elapsed_off_session_seconds(&mut huc3_state, 2);
+        assert_eq!(
+            huc3_state,
+            PersistentCartState::Huc3 {
+                ram: vec![],
+                mcu_ram: [0; 256],
+                rtc: Huc3RtcPersistentState {
+                    current_minutes_of_day: 0,
+                    current_days: 0,
+                    current_subminute_seconds: 1,
+                    event_minutes_of_day: 3,
+                    event_days: 0,
+                },
+                rom_bank: 0,
+                ram_bank: 0,
+                select_mode: 0x0D,
+                access_address: 0,
+                mailbox_command: 0,
+                mailbox_argument: 0,
+                last_response_nybble: 0,
+                semaphore_ready: true,
+                ir_emitter_on: false,
+                ir_light_detected: false,
+                last_control_write: None,
+                last_unsupported_command: None,
+                last_unsupported_argument: None,
+            }
+        );
+    }
+
+    #[test]
+    fn huc3_and_mbc2_error_paths_are_reported_explicitly() {
+        let mbc2_error = encode_cartridge_save_envelope(&CartridgeSaveEnvelope {
+            backend_metadata: CartridgeSaveBackendMetadata {
+                format_version: CURRENT_SAVE_FORMAT_VERSION,
+                saved_at_unix_seconds: 21,
+            },
+            cartridge_metadata: CartridgePersistenceMetadata {
+                has_battery: true,
+                has_rtc: false,
+                profile: CartridgePersistenceProfile::PersistentRam {
+                    ram: CartridgeRamPayloadKind::Mbc2Nibbles { cell_count: 1 },
+                },
+            },
+            persistent_state: PersistentCartState::Mbc2Ram {
+                ram_nibbles: {
+                    let mut ram_nibbles = [0; MBC2_RAM_NIBBLE_COUNT];
+                    ram_nibbles[0] = 0x10;
+                    ram_nibbles
+                },
+            },
+        })
+        .expect_err("invalid MBC2 nibbles should fail to encode");
+        assert_eq!(
+            mbc2_error.to_string(),
+            "invalid MBC2 nibble value 0x10 at logical cell 0"
+        );
+
+        let mut invalid_huc3_mcu_ram = [0; 256];
+        invalid_huc3_mcu_ram[7] = 0x10;
+        let huc3_error = encode_cartridge_save_envelope(&CartridgeSaveEnvelope {
+            backend_metadata: CartridgeSaveBackendMetadata {
+                format_version: CURRENT_SAVE_FORMAT_VERSION,
+                saved_at_unix_seconds: 22,
+            },
+            cartridge_metadata: CartridgePersistenceMetadata {
+                has_battery: true,
+                has_rtc: true,
+                profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                    ram: CartridgeRamPayloadKind::Linear { byte_len: 0 },
+                },
+            },
+            persistent_state: PersistentCartState::Huc3 {
+                ram: vec![],
+                mcu_ram: invalid_huc3_mcu_ram,
+                rtc: Huc3RtcPersistentState {
+                    current_minutes_of_day: 0,
+                    current_days: 0,
+                    current_subminute_seconds: 0,
+                    event_minutes_of_day: 0,
+                    event_days: 0,
+                },
+                rom_bank: 0,
+                ram_bank: 0,
+                select_mode: 0x0D,
+                access_address: 0,
+                mailbox_command: 0,
+                mailbox_argument: 0,
+                last_response_nybble: 0,
+                semaphore_ready: true,
+                ir_emitter_on: false,
+                ir_light_detected: false,
+                last_control_write: None,
+                last_unsupported_command: None,
+                last_unsupported_argument: None,
+            },
+        })
+        .expect_err("invalid HuC-3 nibbles should fail to encode");
+        assert!(matches!(
+            huc3_error,
+            CartridgeSaveBackendError::InvalidHuc3NibbleValue {
+                index: 7,
+                value: 0x10,
+            }
+        ));
+        assert_eq!(
+            huc3_error.to_string(),
+            "invalid HuC-3 nibble value 0x10 at logical cell 7"
+        );
+    }
+
+    #[test]
+    fn huc3_decode_rejects_invalid_mcu_lengths_and_nibbles() {
+        let rtc = Huc3RtcPersistentState {
+            current_minutes_of_day: 1,
+            current_days: 2,
+            current_subminute_seconds: 3,
+            event_minutes_of_day: 4,
+            event_days: 5,
+        };
+
+        let mut bad_len_bytes = Vec::new();
+        bad_len_bytes.push(STATE_HUC3_TAG);
+        encode_linear_ram(&mut bad_len_bytes, &[0xAA], "HuC-3 RAM").expect("RAM should encode");
+        write_u32_checked(
+            &mut bad_len_bytes,
+            255,
+            "decoded HuC-3 MCU RAM nibble count",
+        )
+        .expect("length should encode");
+        bad_len_bytes.extend(std::iter::repeat_n(0x00, 255));
+        encode_huc3_rtc(&mut bad_len_bytes, rtc);
+        bad_len_bytes.extend_from_slice(&[0x3F, 0x02, 0x0D, 0xA5, 0x06, 0x02, 0x01]);
+        write_bool(&mut bad_len_bytes, true);
+        write_bool(&mut bad_len_bytes, false);
+        write_bool(&mut bad_len_bytes, true);
+        encode_optional_u8(&mut bad_len_bytes, Some(0x77));
+        encode_optional_u8(&mut bad_len_bytes, Some(0x06));
+        encode_optional_u8(&mut bad_len_bytes, Some(0x0E));
+
+        let mut bad_len_cursor = ByteCursor::new(&bad_len_bytes);
+        let bad_len_error =
+            decode_persistent_state(&mut bad_len_cursor).expect_err("invalid nibble count");
+        assert!(matches!(
+            bad_len_error,
+            CartridgeSaveBackendError::LengthOverflow {
+                field: "decoded HuC-3 MCU RAM nibble count",
+                value: 255,
+            }
+        ));
+
+        let mut bad_nibble_bytes = Vec::new();
+        bad_nibble_bytes.push(STATE_HUC3_TAG);
+        encode_linear_ram(&mut bad_nibble_bytes, &[0xBB], "HuC-3 RAM").expect("RAM should encode");
+        write_u32_checked(
+            &mut bad_nibble_bytes,
+            256,
+            "decoded HuC-3 MCU RAM nibble count",
+        )
+        .expect("length should encode");
+        let mut nibble_bytes = [0u8; 256];
+        nibble_bytes[9] = 0x10;
+        bad_nibble_bytes.extend_from_slice(&nibble_bytes);
+        encode_huc3_rtc(&mut bad_nibble_bytes, rtc);
+        bad_nibble_bytes.extend_from_slice(&[0x3F, 0x02, 0x0D, 0xA5, 0x06, 0x02, 0x01]);
+        write_bool(&mut bad_nibble_bytes, true);
+        write_bool(&mut bad_nibble_bytes, false);
+        write_bool(&mut bad_nibble_bytes, true);
+        encode_optional_u8(&mut bad_nibble_bytes, Some(0x77));
+        encode_optional_u8(&mut bad_nibble_bytes, Some(0x06));
+        encode_optional_u8(&mut bad_nibble_bytes, Some(0x0E));
+
+        let mut bad_nibble_cursor = ByteCursor::new(&bad_nibble_bytes);
+        let bad_nibble_error =
+            decode_persistent_state(&mut bad_nibble_cursor).expect_err("invalid HuC-3 nibble");
+        assert!(matches!(
+            bad_nibble_error,
+            CartridgeSaveBackendError::InvalidHuc3NibbleValue {
+                index: 9,
+                value: 0x10,
+            }
+        ));
     }
 
     #[test]

@@ -157,6 +157,7 @@ fn apply_elapsed_off_session_seconds(state: &mut PersistentCartState, elapsed_se
         PersistentCartState::Mbc3Rtc { rtc } | PersistentCartState::Mbc3RamRtc { rtc, .. } => {
             rtc.apply_elapsed_seconds(elapsed_seconds);
         }
+        PersistentCartState::Huc3 { rtc, .. } => rtc.apply_elapsed_seconds(elapsed_seconds),
         _ => {}
     }
 }
@@ -570,6 +571,38 @@ mod tests {
             assert_eq!(rtc.minutes, 0);
             assert_eq!(rtc.hours, 0);
             assert_eq!(rtc.day_counter, 1);
+        }
+
+        let mut huc3_state = PersistentCartState::Huc3 {
+            ram: vec![0x11; 8],
+            mcu_ram: [0; 256],
+            rtc: gb_core::Huc3RtcPersistentState {
+                current_minutes_of_day: 1,
+                current_days: 0,
+                current_subminute_seconds: 59,
+                event_minutes_of_day: 5,
+                event_days: 0,
+            },
+            rom_bank: 0,
+            ram_bank: 0,
+            select_mode: 0x0D,
+            access_address: 0,
+            mailbox_command: 0,
+            mailbox_argument: 0,
+            last_response_nybble: 0,
+            semaphore_ready: true,
+            ir_emitter_on: false,
+            ir_light_detected: false,
+            last_control_write: None,
+            last_unsupported_command: None,
+            last_unsupported_argument: None,
+        };
+        apply_elapsed_off_session_seconds(&mut huc3_state, 2);
+        if let PersistentCartState::Huc3 { rtc, .. } = huc3_state {
+            assert_eq!(rtc.current_minutes_of_day, 2);
+            assert_eq!(rtc.current_subminute_seconds, 1);
+        } else {
+            panic!("expected Huc3 state");
         }
 
         let mut plain_ram = PersistentCartState::Mbc5Ram { ram: vec![1, 2, 3] };

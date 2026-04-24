@@ -615,13 +615,12 @@ mod tests {
     use std::os::fd::{FromRawFd, IntoRawFd};
     use std::os::unix::net::UnixStream;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEMP_RECORDING_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temp_recording_path(extension: &str) -> PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time should be after the epoch")
-            .as_nanos();
+        let unique = TEMP_RECORDING_COUNTER.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("gb-cycle-audio-recording-{unique}.{extension}"))
     }
 

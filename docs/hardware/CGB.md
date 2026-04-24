@@ -101,6 +101,7 @@ Priority order:
 - DMG-family behavior should remain the baseline shared path where possible, with CGB-specific features layered on through explicit model capabilities.
 - `ConsoleModel::Cgb` plus `OperatingMode::CgbCompatibility` should mean "CGB-family silicon running monochrome software-visible mode", not "pretend this machine is a DMG".
 - CGB readiness today should focus on architecture seams for banked memory, palette state, extra I/O, HDMA, and speed switching, not on partial functional implementation.
+- Do not claim functional closure for CGB-only special cartridges such as `MBC30`, `MBC7`, or `MBC6` before the base CGB implementation can boot and validate CGB-only software end to end; before that point, keep only explicit classification, typed variant space, and clear TODO tracking.
 - The shared CPU execution model should already be based on in-flight fetch/read/write/internal steps so future double-speed behavior can scale the same engine instead of replacing an opcode-duration-based core.
 - CPU `STOP` should already be represented separately from `HALT`, because future CGB speed-switch behavior should attach to an existing explicit control state rather than force a later CPU-state redesign.
 - The boot subsystem and bus should already treat boot-ROM mapping as model-aware routing state so future CGB split boot-ROM windows can extend the same abstraction while preserving cartridge-header visibility around `0x0100-0x014F`.
@@ -135,6 +136,7 @@ These can stay unimplemented in the first DMG-family core as long as the archite
 - CGB tile attributes
 - CGB boot ROM behavior
 - DMG-on-CGB compatibility details
+- functional support for CGB-only special cartridges such as `MBC30`, `MBC7`, and `MBC6`
 
 ## Known pitfalls
 

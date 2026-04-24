@@ -22,11 +22,12 @@ This phase closes cartridge-local persistence only; whole-machine save states re
 
 #### Deliverables
 
-- standard MBC1 support with explicit wiring validation, immediate access-ordered bank effects, and reserved future MBC1M variant space
+- standard MBC1 support with explicit wiring validation, immediate access-ordered bank effects, and a distinct MBC1M variant path
 - standard MBC2 support with address-bit-`8` control decode, internal `512 x 4-bit` RAM, echo aliasing, and explicit header validation
 - banking and RTC support for MBC3
 - banking support for MBC5
 - special-cartridge taxonomy and unsupported policy covering `MBC30`, multicarts, documented-but-unsupported mapper families, accessory cartridges, and optional heuristics
+- DMG-relevant special-cartridge runtime follow-up for `MMM01`, `MBC1M`, `HuC1`, `HuC-3`, and `M161`, while keeping CGB-only special-cartridge runtime work explicitly deferred until the base CGB implementation exists
 - functional mapper-controlled external RAM beyond the No MBC linear baseline
 - typed cartridge persistence contracts for full backing stores such as linear SRAM, banked SRAM, MBC2 nibble RAM, and MBC3 SRAM plus RTC
 - portable cartridge-persistence boundaries across frontends and tools
@@ -141,7 +142,7 @@ This phase closes cartridge-local persistence only; whole-machine save states re
 1. Establish the special-cartridge taxonomy and unsupported categories.
    Scope: one central classification path for `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`, plus stable names for `MBC30`, `MBC1M`, `MMM01`, `M161`, `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, `Bandai TAMA5`, `EMS`, `Bung`, and `Wisdom Tree`.
    Acceptance criteria: the loader produces stable classification for all of those cases, the frontend does not need to reparse headers to explain them, and the classification preserves raw `0x0147`, detected name, category, and reason.
-   Status: done in the current branch baseline. The loader now owns one central classification path covering `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`, with stable names and reasons for header-coded special families, the currently wired experimental heuristics for `EMS`, `Bung`, and `Wisdom Tree`, and one strict-mode explicit documented-special signature path for the known Mani `4-in-1` `M161` multicart.
+   Status: done in the current branch baseline. The loader now owns one central classification path covering `Supported`, `PlannedVariant`, `DocumentedButUnsupported`, `ExperimentalHeuristic`, `AccessorySpecialCase`, and `UnknownCode`, with stable names and reasons for header-coded special families, the currently wired experimental heuristics for `EMS`, `Bung`, and `Wisdom Tree`, and one strict-mode explicit supported signature path for the known Mani `4-in-1` `M161` multicart.
 2. Add explicit `MBC30` detection.
    Scope: detect the `MBC3`-family plus `64 KiB` SRAM case as `MBC30`, return a typed planned variant or supported variant entry point instead of ordinary standard `MBC3`, and reserve matching persistence / banking work.
    Acceptance criteria: `MBC3 + 64 KiB SRAM` never falls through to standard `MBC3`, loader diagnostics name `MBC30` explicitly, and the code path is ready for future concrete `MBC30` implementation.
@@ -149,15 +150,42 @@ This phase closes cartridge-local persistence only; whole-machine save states re
 3. Add multicart and near-variant classification.
    Scope: classify `MMM01` from `0x0B..=0x0D`, reserve future `MBC1M` as a distinct `MBC1`-family variant, keep `M161` in a multicart-special path, and avoid assuming that `MMM01` boot/header handling is identical to standard cartridges.
    Acceptance criteria: `0x0B`, `0x0C`, and `0x0D` are emitted as `MMM01`, `MBC1M` remains a separate future variant instead of being merged into standard `MBC1`, and multicarts do not silently degrade to ordinary `MBC1` or `NoMbc`.
-   Status: done in the current branch baseline. Header-coded `MMM01` variants already classify explicitly as multicart-special documented-but-unsupported hardware, standard `MBC1` still reserves a distinct internal future `MBC1M` variant instead of merging those rules into ordinary `MBC1`, and the known Mani `4-in-1` multicart now classifies explicitly as `M161` through a deliberate signature path instead of falling through to ordinary `NoMbc` or generic unknown handling.
+   Status: done in the current branch baseline. Header-coded `MMM01` variants already classify explicitly as multicart-special documented-but-unsupported hardware, standard `MBC1` still reserves a distinct internal future `MBC1M` variant instead of merging those rules into ordinary `MBC1`, and the known Mani `4-in-1` multicart now classifies explicitly as supported `M161` hardware through a deliberate signature path instead of falling through to ordinary `NoMbc` or generic unknown handling.
 4. Enforce controlled failure for documented special hardware.
-   Scope: explicit diagnostics for `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, `Bandai TAMA5`, and `M161`, plus a hard rule against automatic fallback to `MBC1`, `MBC3`, `MBC5`, or other nearby supported mappers.
-   Acceptance criteria: those types fail with clear messages naming the exact detected cartridge, `UnknownCode` reports the raw `0x0147` byte, and no silent degradations or fake "best effort" mapper substitutions remain.
-   Status: done in the current branch baseline. `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, `Bandai TAMA5`, `M161`, and generic `UnknownCode` values now fail with explicit typed diagnostics and without silent fallback to nearby supported mappers.
+   Scope: explicit diagnostics for `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, and `Bandai TAMA5`, plus a hard rule against automatic fallback to `MBC1`, `MBC3`, `MBC5`, or other nearby supported mappers.
+   Acceptance criteria: those unsupported types fail with clear messages naming the exact detected cartridge, `UnknownCode` reports the raw `0x0147` byte, and no silent degradations or fake "best effort" mapper substitutions remain.
+   Status: done in the current branch baseline. `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, `Bandai TAMA5`, and generic `UnknownCode` values now fail with explicit typed diagnostics and without silent fallback to nearby supported mappers, while `M161` has its own dedicated supported signature path instead of degrading to `NoMbc`.
 5. Add optional experimental heuristic mode.
    Scope: isolate `EMS`, `Bung`, and `Wisdom Tree` detection behind an explicit dev / experimental loader policy, keep strict default behavior header-driven, and document that heuristic paths are lower priority than `MBC30`, multicarts, and documented special hardware.
    Acceptance criteria: heuristic detection is off by default, can be enabled explicitly for development and research, and diagnostics clearly state when a classification came from heuristics instead of a standard header mapping.
    Status: done in the current branch baseline. The loader now keeps heuristic detection disabled in `Strict` and `Permissive`, while `Experimental` with heuristics enabled can reclassify the currently wired `EMS`, `Bung`, and `Wisdom Tree` signatures into explicit `ExperimentalHeuristic` results whose rejection reasons say that the classification came from an experimental heuristic path.
+
+#### DMG-only execution split for special-cartridge follow-up
+
+Within the current DMG-only but CGB-ready project plan, execute the special-cartridge follow-up in this order:
+
+1. classification / no-fallback / typed variant space — in scope now and already closed in the current baseline
+2. `MMM01` runtime support — in scope before CGB
+3. `MBC1M` runtime support — in scope before CGB
+4. `HuC1` runtime support — in scope before CGB
+5. `HuC-3` runtime support — in scope before CGB
+6. `M161` runtime support — in scope before CGB
+7. base CGB bring-up gate — deferred to `TODO.md`
+8. `MBC30` runtime support — deferred to `TODO.md` until point `7` is closed
+9. `MBC7` runtime support — deferred to `TODO.md` until point `7` is closed
+10. `MBC6` runtime support — deferred to `TODO.md` until point `7` is closed
+
+The purpose of that split is to close the remaining DMG-relevant special-cartridge work first while keeping CGB-only specials explicit, typed, and impossible to misclassify. Before point `7` is closed, `MBC30`, `MBC7`, and `MBC6` may grow diagnostics, validation hooks, persistence shapes, or device skeletons, but they must not be counted as functionally supported runtime targets.
+
+Current status for point `2`: done in the current branch baseline. `MMM01` now loads through the boot-visible trailing menu header, starts in explicit unmapped mode on the last `32 KiB` of the ROM, and supports mapped-mode ROM / RAM banking through a dedicated cartridge device instead of falling back to `MBC1`. In addition to the standard header-coded `0x0B..=0x0D` path validated by `Momotarou Collection 2 (Japan) (SGB Enhanced)`, the loader now also carries one narrow explicit signature path for the later Mani multicarts whose physical start header still looks like `MBC1` but whose real menu lives in the trailing `32 KiB` as a `... SET` outer header. That second path still resolves to the existing `MMM01` runtime and intentionally does not widen `M161`, and local commercial oracle validation is now confirmed for the four retained later-Mani dumps as well.
+
+Current status for point `3`: done in the current branch baseline. `MBC1M` now enters through an explicit repeated-subheader signature path in strict mode for `1 MiB` multicarts, and the runtime path already covers both the no-RAM baseline and the fixed-`8 KiB` RAM commercial shape used by `Momotarou Collection`. The current implementation has already been validated against the commercial `Momotarou Collection (Japan) (SGB Enhanced)` cartridge path, including menu startup and both included games.
+
+Current status for point `4`: done in the current branch baseline. `HuC1` now loads through its own supported mapper family, uses explicit `ram_mode` versus `ir_mode` state instead of MBC1 RAM gating, exposes dedicated HuC1 ROM / RAM banking plus ignored `0x6000-0x7FFF` writes, and persists battery-backed RAM through its own payload shape instead of masquerading as `MBC1`. The commercial validation set for this point is explicitly `Daikaijuu Monogatari - The Miracle of the Zone II`, `Pokemon Card GB`, and `Pocket Bomberman`; the earlier `Pocket Bomberman` hang was closed as a desktop-input merge bug rather than a HuC1 hardware issue, and the host-side IR light-input seam remains intentionally out of scope for the current DMG roadmap.
+
+Current status for point `5`: done in the current branch baseline. `HuC-3` now loads through its own supported mapper family, keeps `0xFE` on a dedicated device path instead of failing as documented-but-unsupported, exposes explicit ROM / RAM banking plus select-mode routing for RAM, RTC mailbox, semaphore, and IR, and persists battery-backed RAM together with dedicated HuC-3 RTC / MCU state. The current command baseline covers the documented mailbox subset (`0x1`, `0x3`, `0x4`, `0x5`, extended `0x0`, `0x1`, `0x2`) and leaves undocumented commands as explicit unsupported traceable states instead of approximating `MBC3`. Commercial oracle validation is now confirmed locally with `Pocket Family GB (Japan) (SGB Enhanced)`, which exercises the current HuC-3 runtime path end to end.
+
+Current status for point `6`: done. `M161` now loads through its own supported multicart signature path for the known Mani `4-in-1` shape instead of failing as documented-but-unsupported, switches the entire `0x0000-0x7FFF` ROM window in `32 KiB` units, and keeps the documented hardware rule that the first ROM-space write latches bank bits `0..=2` and blocks all later bankswitch writes until power-off. The current implementation intentionally exposes no external RAM or battery-backed persistence because `M161` only supports embedded no-MBC games. The signature path now covers both the synthetic `MANI 4 IN 1` menu-header baseline and the known commercial `TETRIS SET` / `0x10` outer-header shape seen in the local Mani dump, and commercial runtime validation is now confirmed locally with `Mani 4 in 1 - Tetris + Alleyway + Yakuman + Tennis (China) (Ja)` booting the menu and running all four embedded games correctly.
 
 #### Cartridge-persistence sequencing inside Phase 6
 

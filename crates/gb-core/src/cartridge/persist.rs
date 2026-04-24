@@ -14,6 +14,17 @@ impl Mbc3RtcPersistentState {
     }
 }
 
+impl Huc3RtcPersistentState {
+    pub fn apply_elapsed_seconds(&mut self, elapsed_seconds: u64) {
+        advance_huc3_rtc_fields(
+            &mut self.current_minutes_of_day,
+            &mut self.current_days,
+            &mut self.current_subminute_seconds,
+            elapsed_seconds,
+        );
+    }
+}
+
 impl From<Mbc3RtcState> for Mbc3RtcPersistentState {
     fn from(value: Mbc3RtcState) -> Self {
         Self {
@@ -36,6 +47,30 @@ impl From<Mbc3RtcPersistentState> for Mbc3RtcState {
             day_counter: value.day_counter,
             halt: value.halt,
             carry: value.carry,
+        }
+    }
+}
+
+impl From<Huc3RtcState> for Huc3RtcPersistentState {
+    fn from(value: Huc3RtcState) -> Self {
+        Self {
+            current_minutes_of_day: value.current_minutes_of_day,
+            current_days: value.current_days,
+            current_subminute_seconds: value.current_subminute_seconds,
+            event_minutes_of_day: value.event_minutes_of_day,
+            event_days: value.event_days,
+        }
+    }
+}
+
+impl From<Huc3RtcPersistentState> for Huc3RtcState {
+    fn from(value: Huc3RtcPersistentState) -> Self {
+        Self {
+            current_minutes_of_day: value.current_minutes_of_day,
+            current_days: value.current_days,
+            current_subminute_seconds: value.current_subminute_seconds,
+            event_minutes_of_day: value.event_minutes_of_day,
+            event_days: value.event_days,
         }
     }
 }
@@ -120,11 +155,44 @@ pub(in crate::cartridge) fn advance_mbc3_rtc_fields(
     *seconds = (day_seconds % 60) as u8;
 }
 
+pub(in crate::cartridge) fn advance_huc3_rtc_fields(
+    current_minutes_of_day: &mut u16,
+    current_days: &mut u16,
+    current_subminute_seconds: &mut u8,
+    elapsed_seconds: u64,
+) {
+    if elapsed_seconds == 0 {
+        return;
+    }
+
+    *current_minutes_of_day %= HUC3_MINUTES_PER_DAY;
+    *current_days %= HUC3_DAY_COUNTER_MODULUS;
+    *current_subminute_seconds %= 60;
+
+    let total_seconds = *current_subminute_seconds as u64 + elapsed_seconds;
+    let minute_delta = total_seconds / 60;
+    *current_subminute_seconds = (total_seconds % 60) as u8;
+
+    if minute_delta == 0 {
+        return;
+    }
+
+    let current_total_minutes =
+        *current_days as u64 * HUC3_MINUTES_PER_DAY as u64 + *current_minutes_of_day as u64;
+    let wrapped_total_minutes = (current_total_minutes + minute_delta)
+        % (HUC3_DAY_COUNTER_MODULUS as u64 * HUC3_MINUTES_PER_DAY as u64);
+    *current_days = (wrapped_total_minutes / HUC3_MINUTES_PER_DAY as u64) as u16;
+    *current_minutes_of_day = (wrapped_total_minutes % HUC3_MINUTES_PER_DAY as u64) as u16;
+}
+
 impl PersistentCartState {
     pub(in crate::cartridge) fn kind_name(&self) -> &'static str {
         match self {
             Self::None => "None",
             Self::NoMbcRam { .. } => "NoMbcRam",
+            Self::Mmm01Ram { .. } => "Mmm01Ram",
+            Self::Huc1Ram { .. } => "Huc1Ram",
+            Self::Huc3 { .. } => "Huc3",
             Self::Mbc1Ram { .. } => "Mbc1Ram",
             Self::Mbc2Ram { .. } => "Mbc2Ram",
             Self::Mbc3Rtc { .. } => "Mbc3Rtc",

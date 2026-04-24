@@ -33,6 +33,7 @@ fn header_parser_decodes_typed_core_fields() {
 #[test]
 fn classification_keeps_supported_families_and_structured_unsupported_categories_explicit() {
     let no_mbc = CartridgeClassification::classify(0x09);
+    let mmm01 = CartridgeClassification::classify(0x0B);
     let mbc1 = CartridgeClassification::classify(0x03);
     let camera = CartridgeClassification::classify(0xFC);
     let unknown = CartridgeClassification::classify(0xAA);
@@ -40,6 +41,10 @@ fn classification_keeps_supported_families_and_structured_unsupported_categories
     assert_eq!(
         no_mbc.selection(),
         CartridgeSelection::Supported(SupportedCartridgeFamily::NoMbc)
+    );
+    assert_eq!(
+        mmm01.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
     );
     assert_eq!(
         mbc1.selection(),
@@ -111,7 +116,7 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
 
     let strict_mbc1m =
         classify_loaded_cartridge(&mbc1m_header, &mbc1m_rom, &CompatibilityPolicy::strict());
-    assert_eq!(strict_mbc1m.detected_name(), "MBC1");
+    assert_eq!(strict_mbc1m.detected_name(), "MBC1M");
     assert_eq!(
         strict_mbc1m.selection(),
         CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc1)
@@ -135,8 +140,161 @@ fn contextual_classification_promotes_mbc30_and_opt_in_heuristics_over_the_raw_h
     assert_eq!(m161_classification.detected_name(), "M161");
     assert_eq!(
         m161_classification.selection(),
-        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::DocumentedButUnsupported)
+        CartridgeSelection::Supported(SupportedCartridgeFamily::M161)
     );
+
+    let mani_mmm01_rom = build_mani_mmm01_rom(0x04);
+    let mani_mmm01_header =
+        CartridgeHeader::parse_for_load(&mani_mmm01_rom).expect("header should parse");
+    let mani_mmm01_classification = classify_loaded_cartridge(
+        &mani_mmm01_header,
+        &mani_mmm01_rom,
+        &CompatibilityPolicy::strict(),
+    );
+    assert_eq!(mani_mmm01_classification.detected_name(), "MMM01");
+    assert_eq!(
+        mani_mmm01_classification.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
+    );
+    assert_eq!(
+        mani_mmm01_classification.reason(),
+        "MMM01 classification came from the explicit later Mani trailing-menu signature path"
+    );
+
+    let standard_mmm01_rom = build_mmm01_rom(0x03, 0x00, 0x0B);
+    let standard_mmm01_header =
+        CartridgeHeader::parse_for_load(&standard_mmm01_rom).expect("header should parse");
+    let standard_mmm01_classification = classify_loaded_cartridge(
+        &standard_mmm01_header,
+        &standard_mmm01_rom,
+        &CompatibilityPolicy::strict(),
+    );
+    assert_eq!(standard_mmm01_classification.detected_name(), "MMM01");
+    assert_eq!(
+        standard_mmm01_classification.reason(),
+        "supported cartridge family"
+    );
+}
+
+#[test]
+fn documented_special_cartridge_loads_fail_with_explicit_typed_classification_instead_of_fallback()
+{
+    let cases = [
+        (
+            build_test_rom(256 * 1024, 0x20, 0x03, 0x00),
+            "MBC6",
+            UnsupportedCartridgeCategory::DocumentedButUnsupported,
+            "dedicated cartridge-local implementation",
+        ),
+        (
+            build_test_rom(256 * 1024, 0x22, 0x03, 0x00),
+            "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
+            UnsupportedCartridgeCategory::DocumentedButUnsupported,
+            "EEPROM and accelerometer",
+        ),
+    ];
+
+    for (rom, expected_name, expected_category, expected_reason_snippet) in cases {
+        let error = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+            .expect_err("documented special cartridges must not fall back to nearby mappers");
+
+        match error {
+            CartridgeLoadError::Rejected {
+                classification,
+                execution_mode,
+                reason,
+                diagnostics,
+            } => {
+                assert_eq!(execution_mode, ExecutionMode::Strict);
+                assert_eq!(classification.detected_name(), expected_name);
+                assert_eq!(
+                    classification.selection(),
+                    CartridgeSelection::Unsupported(expected_category)
+                );
+                assert!(classification.reason().contains(expected_reason_snippet));
+                assert!(reason.contains(expected_name));
+                assert!(reason.contains(expected_reason_snippet));
+                assert!(diagnostics.is_empty());
+            }
+            other => panic!("expected typed rejection, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn huc1_header_type_loads_through_the_supported_family_instead_of_the_documented_unsupported_path()
+{
+    let report = CartridgeSlot::load(
+        build_banked_huc1_rom(0x03, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("HuC1 should load");
+
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .detected_name(),
+        "HuC1+RAM+BATTERY"
+    );
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Huc1)
+    );
+}
+
+#[test]
+fn huc3_header_type_loads_through_the_supported_family_instead_of_the_documented_unsupported_path()
+{
+    let report = CartridgeSlot::load(
+        build_banked_huc3_rom(0x03, 0x03),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("HuC-3 should load");
+
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .detected_name(),
+        "HuC-3"
+    );
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Huc3)
+    );
+}
+
+#[test]
+fn empty_slot_helpers_keep_the_no_device_contract_explicit() {
+    let mut cartridge = CartridgeSlot::empty();
+
+    assert!(cartridge.is_empty());
+    assert_eq!(cartridge.trace_summary(), "state=Empty");
+    assert_eq!(
+        cartridge.describe_external_access(0xA000),
+        CartridgeExternalAccessInfo::no_device(0xA000)
+    );
+    assert_eq!(
+        cartridge.read_ram_timed(0xA000, crate::scheduler::TCycle::new(5)),
+        0xFF
+    );
+
+    cartridge.write_ram(0xA000, 0x12);
+    cartridge.write_ram_timed(0xA000, 0x34, crate::scheduler::TCycle::new(7));
+    cartridge.advance_rtc_seconds(1);
+
+    assert_eq!(cartridge.rtc_access_ready_at(), None);
 }
 
 #[test]

@@ -1227,6 +1227,7 @@ fn apply_elapsed_off_session_seconds(state: &mut PersistentCartState, elapsed_se
         PersistentCartState::Mbc3Rtc { rtc } | PersistentCartState::Mbc3RamRtc { rtc, .. } => {
             rtc.apply_elapsed_seconds(elapsed_seconds);
         }
+        PersistentCartState::Huc3 { rtc, .. } => rtc.apply_elapsed_seconds(elapsed_seconds),
         _ => {}
     }
 }

@@ -6,14 +6,28 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
     assert_eq!(mmm01_ram.detected_name(), "MMM01+RAM");
     assert_eq!(
         mmm01_ram.selection(),
-        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::DocumentedButUnsupported)
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
     );
 
     let mmm01_battery = CartridgeClassification::classify(0x0D);
     assert_eq!(mmm01_battery.detected_name(), "MMM01+RAM+BATTERY");
     assert_eq!(
         mmm01_battery.selection(),
-        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::DocumentedButUnsupported)
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mmm01)
+    );
+
+    let huc1 = CartridgeClassification::classify(0xFF);
+    assert_eq!(huc1.detected_name(), "HuC1+RAM+BATTERY");
+    assert_eq!(
+        huc1.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Huc1)
+    );
+
+    let huc3 = CartridgeClassification::classify(0xFE);
+    assert_eq!(huc3.detected_name(), "HuC-3");
+    assert_eq!(
+        huc3.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Huc3)
     );
 
     let tama5 = CartridgeClassification::classify(0xFD);
@@ -57,6 +71,42 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
     assert_eq!(
         PersistentCartState::Mbc5Ram { ram: vec![] }.kind_name(),
         "Mbc5Ram"
+    );
+    assert_eq!(
+        PersistentCartState::Mmm01Ram { ram: vec![] }.kind_name(),
+        "Mmm01Ram"
+    );
+    assert_eq!(
+        PersistentCartState::Huc1Ram { ram: vec![] }.kind_name(),
+        "Huc1Ram"
+    );
+    assert_eq!(
+        PersistentCartState::Huc3 {
+            ram: vec![],
+            mcu_ram: [0; HUC3_MCU_RAM_NIBBLE_COUNT],
+            rtc: Huc3RtcPersistentState {
+                current_minutes_of_day: 0,
+                current_days: 0,
+                current_subminute_seconds: 0,
+                event_minutes_of_day: 0,
+                event_days: 0,
+            },
+            rom_bank: 0,
+            ram_bank: 0,
+            select_mode: 0,
+            access_address: 0,
+            mailbox_command: 0,
+            mailbox_argument: 0,
+            last_response_nybble: 0,
+            semaphore_ready: true,
+            ir_emitter_on: false,
+            ir_light_detected: false,
+            last_control_write: None,
+            last_unsupported_command: None,
+            last_unsupported_argument: None,
+        }
+        .kind_name(),
+        "Huc3"
     );
 
     let mut diagnostics = Vec::new();

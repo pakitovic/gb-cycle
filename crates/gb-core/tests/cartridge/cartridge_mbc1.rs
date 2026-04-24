@@ -45,6 +45,24 @@ fn loading_supported_mbc1_family_constructs_the_mapper_device() {
 }
 
 #[test]
+fn loading_mbc1m_signature_in_strict_mode_keeps_the_distinct_multicart_variant() {
+    let mut rom = build_banked_mbc1_rom(0x05, 0x00);
+    mark_mbc1_multicart_subheaders(&mut rom);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1M should load");
+
+    assert_eq!(report.cartridge().state(), CartridgeSlotState::Mbc1);
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .detected_name(),
+        "MBC1M"
+    );
+}
+
+#[test]
 fn loading_32kib_mbc1_family_constructs_the_mapper_device() {
     let rom = build_banked_mbc1_rom(0x00, 0x00);
     let report =
@@ -312,6 +330,57 @@ fn mbc1_large_rom_mode_one_remaps_the_low_window_through_the_bus() {
             Some(&cartridge)
         ),
         0x41
+    );
+}
+
+#[test]
+fn mbc1m_with_battery_ram_keeps_a_fixed_8kib_window_through_the_bus() {
+    let mut rom = build_banked_mbc1_rom(0x05, 0x02);
+    rom[CARTRIDGE_TYPE_ADDRESS] = 0x03;
+    mark_mbc1_multicart_subheaders_in_banks(&mut rom, &[0x10, 0x20]);
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("MBC1M should load");
+    let (mut cartridge, _) = report.into_parts();
+    let mut bus = Bus::new(ConsoleModel::Dmg);
+    let state = BusArbitrationState::default();
+
+    bus.write_partial_harness_with_cartridge(
+        0x0000,
+        0x0A,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    bus.write_partial_harness_with_cartridge(
+        0xA000,
+        0x44,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    bus.write_partial_harness_with_cartridge(
+        0x4000,
+        0x02,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+    bus.write_partial_harness_with_cartridge(
+        0x6000,
+        0x01,
+        BusRequester::Cpu,
+        &state,
+        Some(&mut cartridge),
+    );
+
+    assert_eq!(
+        bus.read_partial_harness_with_cartridge(
+            0xA000,
+            BusRequester::Cpu,
+            &state,
+            Some(&cartridge)
+        ),
+        0x44
     );
 }
 
