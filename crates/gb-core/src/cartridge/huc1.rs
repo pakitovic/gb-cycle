@@ -144,7 +144,15 @@ impl Huc1Cartridge {
     pub(in crate::cartridge) fn effective_ram_offset(&self, address: u16) -> usize {
         let base_offset = (address - 0xA000) as usize;
         let bank = self.effective_ram_bank() as usize;
-        bank * 0x2000 + base_offset
+        let offset = bank * 0x2000 + base_offset;
+
+        self.ram.as_ref().map_or(offset, |ram| {
+            if ram.is_empty() {
+                offset
+            } else {
+                offset % ram.len()
+            }
+        })
     }
 
     #[allow(dead_code)]

@@ -84,6 +84,20 @@ fn build_mmm01_rom(rom_size_code: u8, ram_size_code: u8, cartridge_type: u8) -> 
     rom[RAM_SIZE_ADDRESS] = 0x00;
 
     let menu_offset = rom_size - MMM01_MENU_BYTES;
+    let secondary_header_offset = (menu_offset / 2 / 0x4000) * 0x4000;
+    rom[secondary_header_offset + ENTRY_POINT_START
+        ..secondary_header_offset + ENTRY_POINT_START + ENTRY_POINT_LEN]
+        .copy_from_slice(&[0x00, 0xC3, 0x50, 0x01]);
+    rom[secondary_header_offset + NINTENDO_LOGO_START
+        ..secondary_header_offset + NINTENDO_LOGO_START + NINTENDO_LOGO_LEN]
+        .copy_from_slice(&[0xCE; NINTENDO_LOGO_LEN]);
+    rom[secondary_header_offset + TITLE_START..=secondary_header_offset + TITLE_END_INCLUSIVE]
+        .fill(0x00);
+    rom[secondary_header_offset + TITLE_START..secondary_header_offset + TITLE_START + 7]
+        .copy_from_slice(b"GAMETWO");
+    rom[secondary_header_offset + CARTRIDGE_TYPE_ADDRESS] = 0x00;
+    rom[secondary_header_offset + ROM_SIZE_ADDRESS] = 0x00;
+    rom[secondary_header_offset + RAM_SIZE_ADDRESS] = 0x00;
     rom[menu_offset + ENTRY_POINT_START..menu_offset + ENTRY_POINT_START + ENTRY_POINT_LEN]
         .copy_from_slice(&[0x00, 0xC3, 0x50, 0x01]);
     rom[menu_offset + NINTENDO_LOGO_START..menu_offset + NINTENDO_LOGO_START + NINTENDO_LOGO_LEN]

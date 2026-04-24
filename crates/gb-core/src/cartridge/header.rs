@@ -197,6 +197,12 @@ impl CartridgeHeader {
         if candidate.rom_size.decoded_bytes != Some(rom_bytes.len()) {
             return None;
         }
+        if candidate.title.is_empty() {
+            return None;
+        }
+        if count_standard_mmm01_subheaders(rom_bytes, &candidate.nintendo_logo) < 2 {
+            return None;
+        }
 
         Some(candidate)
     }
@@ -247,6 +253,37 @@ fn count_mani_mmm01_subheaders(rom_bytes: &[u8], expected_logo: &[u8; NINTENDO_L
             || subrom_bytes >= rom_bytes.len()
             || candidate.title.is_empty()
             || candidate.title.ends_with(MANI_MMM01_MENU_SUFFIX)
+        {
+            continue;
+        }
+
+        match_count += 1;
+    }
+
+    match_count
+}
+
+fn count_standard_mmm01_subheaders(
+    rom_bytes: &[u8],
+    expected_logo: &[u8; NINTENDO_LOGO_LEN],
+) -> usize {
+    let Some(menu_offset) = rom_bytes.len().checked_sub(MMM01_MENU_BYTES) else {
+        return 0;
+    };
+
+    let mut match_count = 0;
+    for base_offset in (0..menu_offset).step_by(0x4000) {
+        let Ok(candidate) = CartridgeHeader::parse_at_offset(rom_bytes, base_offset) else {
+            continue;
+        };
+        let Some(subrom_bytes) = candidate.rom_size.decoded_bytes else {
+            continue;
+        };
+
+        if candidate.nintendo_logo != *expected_logo
+            || matches!(candidate.cartridge_type, 0x0B..=0x0D)
+            || subrom_bytes >= rom_bytes.len()
+            || candidate.title.is_empty()
         {
             continue;
         }

@@ -270,6 +270,35 @@ fn mani_like_trailing_set_menu_headers_promote_the_family_to_mmm01_without_touch
 }
 
 #[test]
+fn fake_trailing_standard_mmm01_menu_headers_without_coherent_embedded_games_stay_plain_mbc1() {
+    let mut rom = build_banked_mbc1_rom(0x04, 0x00);
+    let menu_offset = rom.len() - 32 * 1024;
+    let logo = rom[LOGO_START..LOGO_START + 48].to_vec();
+
+    rom[menu_offset + ENTRY_POINT_START..menu_offset + ENTRY_POINT_START + 4]
+        .copy_from_slice(&[0x31, 0xFE, 0xFF, 0xAF]);
+    rom[menu_offset + LOGO_START..menu_offset + LOGO_START + 48].copy_from_slice(&logo);
+    rom[menu_offset + TITLE_START..=menu_offset + TITLE_START + 15].fill(0x00);
+    rom[menu_offset + TITLE_START..menu_offset + TITLE_START + 8].copy_from_slice(b"FAKESTD!");
+    rom[menu_offset + CARTRIDGE_TYPE_ADDRESS] = 0x0B;
+    rom[menu_offset + ROM_SIZE_ADDRESS] = 0x04;
+    rom[menu_offset + RAM_SIZE_ADDRESS] = 0x00;
+
+    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect("ordinary MBC1 image should still load");
+
+    assert_eq!(report.cartridge().state(), CartridgeSlotState::Mbc1);
+    assert_eq!(
+        report
+            .cartridge()
+            .classification()
+            .expect("classification should exist")
+            .selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc1)
+    );
+}
+
+#[test]
 fn fake_trailing_set_menu_headers_without_coherent_internal_games_stay_plain_mbc1() {
     let mut rom = build_banked_mbc1_rom(0x04, 0x00);
     let menu_offset = rom.len() - 32 * 1024;

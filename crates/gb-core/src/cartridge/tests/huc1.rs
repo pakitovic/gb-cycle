@@ -116,6 +116,31 @@ fn huc1_persistence_and_external_access_follow_the_dedicated_mapper_contract() {
 }
 
 #[test]
+fn huc1_small_ram_payloads_mirror_within_the_visible_8kib_window() {
+    let report = CartridgeSlot::load(
+        build_banked_huc1_rom(0x04, 0x01),
+        &CompatibilityPolicy::strict(),
+    )
+    .expect("HuC1 with 2 KiB RAM should load");
+    let Some(CartridgeDevice::Huc1(mut cartridge)) = report.cartridge().device.clone() else {
+        panic!("expected HuC1 cartridge");
+    };
+
+    cartridge.write_rom(0x0000, 0x00);
+    cartridge.write_ram(0xA123, 0x56);
+    assert_eq!(cartridge.read_ram(0xA123), 0x56);
+    assert_eq!(cartridge.read_ram(0xA923), 0x56);
+    assert_eq!(cartridge.read_ram(0xB123), 0x56);
+
+    cartridge.write_rom(0x4000, 0x03);
+    cartridge.write_ram(0xA123, 0x89);
+    assert_eq!(cartridge.read_ram(0xA923), 0x89);
+    assert_eq!(cartridge.effective_ram_offset(0xA123), 0x123);
+    assert_eq!(cartridge.effective_ram_offset(0xA923), 0x123);
+    assert_eq!(cartridge.effective_ram_offset(0xB123), 0x123);
+}
+
+#[test]
 fn huc1_scheduler_trace_surfaces_mode_and_bank_state_for_hang_debugging() {
     let report = CartridgeSlot::load(
         build_banked_huc1_rom(0x05, 0x03),

@@ -110,6 +110,21 @@ fn build_mmm01_rom(rom_size_code: u8, ram_size_code: u8, cartridge_type: u8) -> 
     rom[RAM_SIZE_ADDRESS] = 0x00;
 
     let menu_offset = rom_size - 32 * 1024;
+    let secondary_header_offset = (menu_offset / 2 / 0x4000) * 0x4000;
+    rom[secondary_header_offset + ENTRY_POINT_START
+        ..secondary_header_offset + ENTRY_POINT_START + 4]
+        .copy_from_slice(&[0x31, 0xFE, 0xFF, 0xAF]);
+    rom[secondary_header_offset + LOGO_START..secondary_header_offset + LOGO_START + 48]
+        .copy_from_slice(&[0xCE; 48]);
+    rom[secondary_header_offset + TITLE_START..=secondary_header_offset + TITLE_START + 15]
+        .fill(0x00);
+    rom[secondary_header_offset + TITLE_START..secondary_header_offset + TITLE_START + 7]
+        .copy_from_slice(b"GAMETWO");
+    rom[secondary_header_offset + CARTRIDGE_TYPE_ADDRESS] = 0x00;
+    rom[secondary_header_offset + ROM_SIZE_ADDRESS] = 0x00;
+    rom[secondary_header_offset + RAM_SIZE_ADDRESS] = 0x00;
+    rom[secondary_header_offset + HEADER_CHECKSUM_ADDRESS] = 0x7F;
+
     rom[menu_offset + ENTRY_POINT_START..menu_offset + ENTRY_POINT_START + 4]
         .copy_from_slice(&[0x31, 0xFE, 0xFF, 0xAF]);
     rom[menu_offset + LOGO_START..menu_offset + LOGO_START + 48].copy_from_slice(&[0xCE; 48]);
