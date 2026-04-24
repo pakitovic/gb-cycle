@@ -5,6 +5,10 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 profile="${GB_CYCLE_DESKTOP_PROFILE:-release}"
 app_root="${GB_CYCLE_DESKTOP_APP_BUNDLE:-$repo_root/target/macos/GB Cycle.app}"
 launch_mode="${GB_CYCLE_DESKTOP_LAUNCH_MODE:-direct}"
+app_args=("$@")
+if [[ "${app_args[0]:-}" == "--" ]]; then
+    app_args=("${app_args[@]:1}")
+fi
 profile_flag=()
 if [[ "$profile" == "release" ]]; then
     profile_flag=(--release)
@@ -32,18 +36,18 @@ fi
 
 case "$launch_mode" in
     direct)
-        exec "$macos_dir/gb-desktop" "$@"
+        exec "$macos_dir/gb-desktop" "${app_args[@]}"
         ;;
     open)
         stdout_log="${GB_CYCLE_DESKTOP_STDOUT_LOG:-$repo_root/target/macos/gb-desktop.stdout.log}"
         stderr_log="${GB_CYCLE_DESKTOP_STDERR_LOG:-$repo_root/target/macos/gb-desktop.stderr.log}"
         : >"$stdout_log"
         : >"$stderr_log"
-        if ! open -n -W -o "$stdout_log" --stderr "$stderr_log" "$app_root" --args "$@"; then
+        if ! open -n -W -o "$stdout_log" --stderr "$stderr_log" "$app_root" --args "${app_args[@]}"; then
             echo "warning: LaunchServices failed; retrying the bundled executable directly" >&2
             echo "warning: LaunchServices stdout log: $stdout_log" >&2
             echo "warning: LaunchServices stderr log: $stderr_log" >&2
-            exec "$macos_dir/gb-desktop" "$@"
+            exec "$macos_dir/gb-desktop" "${app_args[@]}"
         fi
         ;;
     *)
