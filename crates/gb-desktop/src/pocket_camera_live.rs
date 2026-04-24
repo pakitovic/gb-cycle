@@ -1,0 +1,415 @@
+use gb_core::PocketCameraFrame;
+use sdl3::sys::{camera, error, pixels, stdinc, surface};
+use std::ffi::CStr;
+use std::ptr::NonNull;
+use std::slice;
+
+const LIVE_CAMERA_WIDTH: i32 = 128;
+const LIVE_CAMERA_HEIGHT: i32 = 112;
+const LIVE_CAMERA_FRAMERATE_NUMERATOR: i32 = 15;
+const LIVE_CAMERA_FRAMERATE_DENOMINATOR: i32 = 1;
+const LIVE_CAMERA_WARMUP_FRAMES: u8 = 5;
+
+pub struct PocketCameraLiveInput {
+    subsystem: Option<sdl3::CameraSubsystem>,
+    unavailable_reason: Option<String>,
+    camera: Option<OpenCamera>,
+    enabled: bool,
+    warmup_frames_remaining: u8,
+    camera_name: Option<String>,
+}
+
+impl PocketCameraLiveInput {
+    pub fn new(subsystem: Result<sdl3::CameraSubsystem, String>) -> Self {
+        match subsystem {
+            Ok(subsystem) => Self {
+                subsystem: Some(subsystem),
+                unavailable_reason: None,
+                camera: None,
+                enabled: false,
+                warmup_frames_remaining: 0,
+                camera_name: None,
+            },
+            Err(error) => Self {
+                subsystem: None,
+                unavailable_reason: Some(error),
+                camera: None,
+                enabled: false,
+                warmup_frames_remaining: 0,
+                camera_name: None,
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub fn unavailable_for_tests(reason: impl Into<String>) -> Self {
+        Self::new(Err(reason.into()))
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn camera_name(&self) -> Option<&str> {
+        self.camera_name.as_deref()
+    }
+
+    pub fn start(&mut self) -> Result<(), String> {
+        if self.enabled {
+            return Ok(());
+        }
+        if self.subsystem.is_none() {
+            return Err(self
+                .unavailable_reason
+                .clone()
+                .unwrap_or_else(|| "SDL3 camera subsystem is not available".to_string()));
+        }
+
+        let cameras = connected_cameras()?;
+        let Some(camera_id) = cameras.first().copied() else {
+            return Err("no SDL3 camera devices are currently available".to_string());
+        };
+        let camera_name = camera_name(camera_id);
+        let camera = OpenCamera::open(camera_id)?;
+        self.camera = Some(camera);
+        self.enabled = true;
+        self.warmup_frames_remaining = LIVE_CAMERA_WARMUP_FRAMES;
+        self.camera_name = Some(camera_name);
+        Ok(())
+    }
+
+    pub fn stop(&mut self) {
+        self.camera = None;
+        self.enabled = false;
+        self.warmup_frames_remaining = 0;
+        self.camera_name = None;
+    }
+
+    pub fn poll_frame(&mut self) -> Result<Option<PocketCameraFrame>, String> {
+        if !self.enabled {
+            return Ok(None);
+        }
+
+        let Some(camera) = self.camera.as_ref() else {
+            self.stop();
+            return Ok(None);
+        };
+
+        match camera.permission_state() {
+            state if state == camera::SDL_CAMERA_PERMISSION_STATE_DENIED => {
+                self.stop();
+                return Err("camera permission was denied by the operating system".to_string());
+            }
+            state if state == camera::SDL_CAMERA_PERMISSION_STATE_PENDING => return Ok(None),
+            _ => {}
+        }
+
+        let mut latest_frame = None;
+        loop {
+            let Some(frame) = camera.acquire_frame()? else {
+                break;
+            };
+            let frame_result = frame.to_pocket_camera_frame();
+            if self.warmup_frames_remaining > 0 {
+                self.warmup_frames_remaining -= 1;
+                continue;
+            }
+            latest_frame = Some(frame_result?);
+        }
+        Ok(latest_frame)
+    }
+}
+
+struct OpenCamera {
+    raw: NonNull<camera::SDL_Camera>,
+}
+
+impl OpenCamera {
+    fn open(camera_id: camera::SDL_CameraID) -> Result<Self, String> {
+        let spec = camera::SDL_CameraSpec {
+            format: pixels::SDL_PIXELFORMAT_RGB24,
+            colorspace: pixels::SDL_COLORSPACE_SRGB,
+            width: LIVE_CAMERA_WIDTH,
+            height: LIVE_CAMERA_HEIGHT,
+            framerate_numerator: LIVE_CAMERA_FRAMERATE_NUMERATOR,
+            framerate_denominator: LIVE_CAMERA_FRAMERATE_DENOMINATOR,
+        };
+
+        // SAFETY: `camera_id` comes from SDL_GetCameras and `spec` points to a valid
+        // stack-allocated SDL_CameraSpec for the duration of the call.
+        let raw = unsafe { camera::SDL_OpenCamera(camera_id, &spec) };
+        let raw = NonNull::new(raw).ok_or_else(|| {
+            let error = sdl_error();
+            if error.is_empty() {
+                "failed to open SDL3 camera".to_string()
+            } else {
+                format!("failed to open SDL3 camera: {error}")
+            }
+        })?;
+        Ok(Self { raw })
+    }
+
+    fn permission_state(&self) -> camera::SDL_CameraPermissionState {
+        // SAFETY: `raw` is a live SDL_Camera owned by this wrapper until Drop.
+        unsafe { camera::SDL_GetCameraPermissionState(self.raw.as_ptr()) }
+    }
+
+    fn acquire_frame(&self) -> Result<Option<CameraFrame<'_>>, String> {
+        let mut timestamp_ns = 0;
+        // SAFETY: `raw` is a live SDL_Camera and `timestamp_ns` is a valid out pointer.
+        let surface =
+            unsafe { camera::SDL_AcquireCameraFrame(self.raw.as_ptr(), &mut timestamp_ns) };
+        let Some(surface) = NonNull::new(surface) else {
+            return Ok(None);
+        };
+        Ok(Some(CameraFrame {
+            camera: self,
+            surface,
+        }))
+    }
+}
+
+impl Drop for OpenCamera {
+    fn drop(&mut self) {
+        // SAFETY: `raw` is owned by this wrapper and is closed exactly once here.
+        unsafe { camera::SDL_CloseCamera(self.raw.as_ptr()) };
+    }
+}
+
+struct CameraFrame<'camera> {
+    camera: &'camera OpenCamera,
+    surface: NonNull<surface::SDL_Surface>,
+}
+
+impl CameraFrame<'_> {
+    fn to_pocket_camera_frame(&self) -> Result<PocketCameraFrame, String> {
+        // SAFETY: `surface` is an SDL camera frame that remains valid until this
+        // CameraFrame is dropped and releases it back to SDL.
+        unsafe { pocket_camera_frame_from_surface(self.surface.as_ptr()) }
+    }
+}
+
+impl Drop for CameraFrame<'_> {
+    fn drop(&mut self) {
+        // SAFETY: `surface` was returned by SDL_AcquireCameraFrame for `camera.raw`
+        // and must be returned with SDL_ReleaseCameraFrame exactly once.
+        unsafe {
+            camera::SDL_ReleaseCameraFrame(self.camera.raw.as_ptr(), self.surface.as_ptr());
+        }
+    }
+}
+
+fn connected_cameras() -> Result<Vec<camera::SDL_CameraID>, String> {
+    let mut count = 0;
+    // SAFETY: `count` is a valid out pointer. SDL returns an allocation that we
+    // copy immediately and free with SDL_free below.
+    let cameras = unsafe { camera::SDL_GetCameras(&mut count) };
+    if cameras.is_null() {
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+        let error = sdl_error();
+        return Err(if error.is_empty() {
+            "failed to enumerate SDL3 cameras".to_string()
+        } else {
+            format!("failed to enumerate SDL3 cameras: {error}")
+        });
+    }
+
+    let count = usize::try_from(count).map_err(|_| "SDL3 returned a negative camera count")?;
+    // SAFETY: SDL_GetCameras returned at least `count` entries before the
+    // terminating zero. We copy the IDs before freeing the SDL allocation.
+    let ids = unsafe { slice::from_raw_parts(cameras, count) }.to_vec();
+    // SAFETY: `cameras` was allocated by SDL_GetCameras and must be released by SDL_free.
+    unsafe { stdinc::SDL_free(cameras.cast()) };
+    Ok(ids)
+}
+
+fn camera_name(camera_id: camera::SDL_CameraID) -> String {
+    // SAFETY: `camera_id` comes from SDL_GetCameras. SDL owns the returned string.
+    let name = unsafe { camera::SDL_GetCameraName(camera_id) };
+    if name.is_null() {
+        format!("camera {}", camera_id.value())
+    } else {
+        // SAFETY: SDL_GetCameraName returns a NUL-terminated C string while the
+        // device remains known to SDL; we copy it immediately.
+        unsafe { CStr::from_ptr(name) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+unsafe fn pocket_camera_frame_from_surface(
+    source: *mut surface::SDL_Surface,
+) -> Result<PocketCameraFrame, String> {
+    if source.is_null() {
+        return Err("SDL3 camera produced a null surface".to_string());
+    }
+
+    // SAFETY: caller guarantees `source` points to a live SDL_Surface.
+    if unsafe { (*source).format } == pixels::SDL_PIXELFORMAT_RGB24 {
+        // SAFETY: source is a live RGB24 surface.
+        unsafe { rgb24_surface_to_pocket_camera_frame(source) }
+    } else {
+        // SAFETY: source is a live surface; SDL returns a newly allocated converted
+        // surface or NULL on failure.
+        let converted =
+            unsafe { surface::SDL_ConvertSurface(source, pixels::SDL_PIXELFORMAT_RGB24) };
+        let Some(converted) = NonNull::new(converted) else {
+            let error = sdl_error();
+            return Err(if error.is_empty() {
+                "failed to convert SDL3 camera frame to RGB24".to_string()
+            } else {
+                format!("failed to convert SDL3 camera frame to RGB24: {error}")
+            });
+        };
+        // SAFETY: converted points to a live RGB24 SDL surface allocated above.
+        let frame = unsafe { rgb24_surface_to_pocket_camera_frame(converted.as_ptr()) };
+        // SAFETY: converted was allocated by SDL_ConvertSurface and is no longer used.
+        unsafe { surface::SDL_DestroySurface(converted.as_ptr()) };
+        frame
+    }
+}
+
+unsafe fn rgb24_surface_to_pocket_camera_frame(
+    source: *mut surface::SDL_Surface,
+) -> Result<PocketCameraFrame, String> {
+    // SAFETY: caller guarantees `source` points to a live SDL_Surface. These
+    // fields are read-only SDL surface metadata.
+    let width =
+        usize::try_from(unsafe { (*source).w }).map_err(|_| "camera frame width is negative")?;
+    // SAFETY: caller guarantees `source` points to a live SDL_Surface.
+    let height =
+        usize::try_from(unsafe { (*source).h }).map_err(|_| "camera frame height is negative")?;
+    // SAFETY: caller guarantees `source` points to a live SDL_Surface.
+    let pitch = usize::try_from(unsafe { (*source).pitch })
+        .map_err(|_| "camera frame pitch is negative")?;
+    if width == 0 || height == 0 {
+        return Err("camera frame has zero dimensions".to_string());
+    }
+    let width_u16 =
+        u16::try_from(width).map_err(|_| "camera frame width exceeds Pocket Camera API limits")?;
+    let height_u16 = u16::try_from(height)
+        .map_err(|_| "camera frame height exceeds Pocket Camera API limits")?;
+
+    // SAFETY: source is a live SDL_Surface.
+    let must_unlock = unsafe { surface::SDL_MUSTLOCK(source) };
+    if must_unlock {
+        // SAFETY: source is a live SDL_Surface that SDL reports requires locking.
+        let locked = unsafe { surface::SDL_LockSurface(source) };
+        if !locked {
+            let error = sdl_error();
+            return Err(if error.is_empty() {
+                "failed to lock SDL3 camera frame".to_string()
+            } else {
+                format!("failed to lock SDL3 camera frame: {error}")
+            });
+        }
+    }
+
+    // SAFETY: source is a live SDL_Surface and, if needed, is locked above so
+    // its pixels can be accessed directly until it is unlocked below.
+    let pixels = unsafe { (*source).pixels };
+    let result = rgb24_pixels_to_grayscale(width, height, pitch, pixels.cast());
+    if must_unlock {
+        // SAFETY: source was successfully locked above.
+        unsafe { surface::SDL_UnlockSurface(source) };
+    }
+
+    Ok(PocketCameraFrame {
+        width: width_u16,
+        height: height_u16,
+        grayscale_pixels: result?,
+    })
+}
+
+fn rgb24_pixels_to_grayscale(
+    width: usize,
+    height: usize,
+    pitch: usize,
+    pixels: *const u8,
+) -> Result<Vec<u8>, String> {
+    let row_bytes = width
+        .checked_mul(3)
+        .ok_or_else(|| "camera RGB row width overflowed".to_string())?;
+    if pitch < row_bytes {
+        return Err("camera frame pitch is smaller than its RGB row width".to_string());
+    }
+    let len = pitch
+        .checked_mul(height.saturating_sub(1))
+        .and_then(|prefix| prefix.checked_add(row_bytes))
+        .ok_or_else(|| "camera pixel buffer length overflowed".to_string())?;
+    if pixels.is_null() {
+        return Err("camera frame has no pixel buffer".to_string());
+    }
+    // SAFETY: callers pass SDL surface memory whose accessible byte range covers
+    // the computed pitched rows.
+    let pixels = unsafe { slice::from_raw_parts(pixels, len) };
+    let mut grayscale_pixels = Vec::with_capacity(width * height);
+    for y in 0..height {
+        let row_start = y * pitch;
+        let row = &pixels[row_start..row_start + row_bytes];
+        for rgb in row.chunks_exact(3) {
+            grayscale_pixels.push(grayscale_from_rgb(rgb[0], rgb[1], rgb[2]));
+        }
+    }
+    Ok(grayscale_pixels)
+}
+
+fn grayscale_from_rgb(red: u8, green: u8, blue: u8) -> u8 {
+    ((299_u32 * u32::from(red) + 587_u32 * u32::from(green) + 114_u32 * u32::from(blue) + 500)
+        / 1000) as u8
+}
+
+fn sdl_error() -> String {
+    let error = error::SDL_GetError();
+    if error.is_null() {
+        String::new()
+    } else {
+        // SAFETY: SDL_GetError returns a NUL-terminated string owned by SDL; we
+        // copy it immediately.
+        unsafe { CStr::from_ptr(error) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unavailable_live_input_reports_start_error_without_enabling() {
+        let mut live = PocketCameraLiveInput::unavailable_for_tests("camera backend disabled");
+
+        assert!(!live.is_enabled());
+        assert_eq!(live.start(), Err("camera backend disabled".to_string()));
+        assert!(!live.is_enabled());
+        assert_eq!(
+            live.poll_frame().expect("disabled poll should succeed"),
+            None
+        );
+    }
+
+    #[test]
+    fn rgb24_pixels_to_grayscale_respects_pitch_padding() {
+        let pixels = [
+            255, 0, 0, 0, 255, 0, 99, 99, 99, 0, 0, 255, 255, 255, 255, 77, 77, 77,
+        ];
+
+        let grayscale = rgb24_pixels_to_grayscale(2, 2, 9, pixels.as_ptr())
+            .expect("pitched RGB24 rows should convert");
+
+        assert_eq!(grayscale, vec![76, 150, 29, 255]);
+    }
+
+    #[test]
+    fn rgb24_pixels_to_grayscale_rejects_short_pitch() {
+        let pixels = [0; 6];
+
+        assert_eq!(
+            rgb24_pixels_to_grayscale(3, 1, 8, pixels.as_ptr()),
+            Err("camera frame pitch is smaller than its RGB row width".to_string())
+        );
+    }
+}

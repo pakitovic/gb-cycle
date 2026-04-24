@@ -5,6 +5,7 @@ mod cli;
 mod input;
 mod linked_session;
 mod menu;
+mod pocket_camera_live;
 mod printer_output;
 mod save_session;
 mod screenshot_output;
@@ -48,6 +49,7 @@ use menu::{
     OverlayMenuState, PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, render_performance_hud,
 };
 use png::{ColorType, Decoder, Transformations};
+use pocket_camera_live::PocketCameraLiveInput;
 use printer_output::PrinterOutputState;
 use save_session::DesktopSaveSession;
 use sdl3::dialog::{DialogError, DialogFileFilter, show_open_file_dialog, show_open_folder_dialog};
@@ -253,6 +255,7 @@ struct FrontendRuntime {
     open_rom_dialog: PathSelectionDialog,
     open_rom_dialog_mode: OpenRomDialogMode,
     camera_image_dialog: PathSelectionDialog,
+    pocket_camera_live: PocketCameraLiveInput,
     boot_rom_file_dialog: PathSelectionDialog,
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
@@ -4183,6 +4186,12 @@ fn run_desktop_with_startup_fallback_persistence(
         open_rom_dialog: PathSelectionDialog::new(),
         open_rom_dialog_mode: OpenRomDialogMode::Primary,
         camera_image_dialog: PathSelectionDialog::new(),
+        pocket_camera_live: PocketCameraLiveInput::new(sdl.camera().map_err(|error| {
+            format_display_error(
+                "failed to initialize SDL3 camera subsystem",
+                &error.to_string(),
+            )
+        })),
         boot_rom_file_dialog: PathSelectionDialog::new(),
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
@@ -4276,6 +4285,7 @@ fn run_desktop_with_startup_fallback_persistence(
             };
             process_pending_open_rom_dialog(&event_pump, &mut canvas, &mut context)?;
             process_pending_camera_image_dialog(&mut canvas, &mut context)?;
+            process_pocket_camera_live_frame(&mut canvas, &mut context);
             process_pending_boot_rom_file_dialog(&mut canvas, &mut context)?;
             process_pending_boot_rom_directory_dialog(&mut canvas, &mut context)?;
             process_pending_save_directory_dialog(&mut canvas, &mut context)?;
@@ -4829,6 +4839,36 @@ fn apply_session_pocket_camera_frame_to_desktop_session(
     apply_session_pocket_camera_frame_to_machine(session, machine.primary_machine_mut())?;
     if let Some(secondary_machine) = machine.secondary_machine_mut() {
         apply_session_pocket_camera_frame_to_machine(session, secondary_machine)?;
+    }
+    Ok(())
+}
+
+fn apply_pocket_camera_live_frame_to_machine(
+    frame: &PocketCameraFrame,
+    machine: &mut Machine<TraceSummaryBuffer>,
+    machine_name: &str,
+) -> Result<(), String> {
+    if !machine.has_pocket_camera() {
+        return Ok(());
+    }
+
+    machine
+        .set_pocket_camera_frame(frame.clone())
+        .map_err(|error| {
+            format_debug_error(
+                &format!("failed to apply live Pocket Camera frame to the {machine_name} machine"),
+                &format!("{error:?}"),
+            )
+        })
+}
+
+fn apply_pocket_camera_live_frame_to_desktop_session(
+    frame: &PocketCameraFrame,
+    machine: &mut DesktopEmulationSession,
+) -> Result<(), String> {
+    apply_pocket_camera_live_frame_to_machine(frame, machine.primary_machine_mut(), "primary")?;
+    if let Some(secondary_machine) = machine.secondary_machine_mut() {
+        apply_pocket_camera_live_frame_to_machine(frame, secondary_machine, "secondary")?;
     }
     Ok(())
 }
@@ -5813,6 +5853,7 @@ fn process_pending_camera_image_dialog(
         PathDialogResult::Selected(path) => {
             let result: Result<(), String> = (|| {
                 let frame = load_selected_camera_image(path, context.session)?;
+                context.runtime.pocket_camera_live.stop();
                 if context.machine.primary_machine().has_pocket_camera() {
                     context
                         .machine
@@ -5858,6 +5899,37 @@ fn process_pending_camera_image_dialog(
 
     restore_window_after_native_dialog(canvas);
     Ok(())
+}
+
+fn process_pocket_camera_live_frame(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) {
+    if !context.runtime.pocket_camera_live.is_enabled() {
+        return;
+    }
+
+    if !session_has_pocket_camera(context.machine) {
+        context.runtime.pocket_camera_live.stop();
+        return;
+    }
+
+    match context.runtime.pocket_camera_live.poll_frame() {
+        Ok(Some(frame)) => {
+            if let Err(error) =
+                apply_pocket_camera_live_frame_to_desktop_session(&frame, context.machine)
+            {
+                context.runtime.pocket_camera_live.stop();
+                show_warning_message(Some(canvas.window()), "Pocket Camera live", &error);
+                eprintln!("warning: {error}");
+            }
+        }
+        Ok(None) => {}
+        Err(error) => {
+            show_warning_message(Some(canvas.window()), "Pocket Camera live", &error);
+            eprintln!("warning: {error}");
+        }
+    }
 }
 
 fn process_pending_boot_rom_file_dialog(
@@ -6793,7 +6865,30 @@ fn execute_menu_action(
             }
             Ok(None)
         }
+        MenuAction::ToggleCameraLive => {
+            if context.runtime.pocket_camera_live.is_enabled() {
+                context.runtime.pocket_camera_live.stop();
+            } else {
+                context.session.pocket_camera_frame = None;
+                match context.runtime.pocket_camera_live.start() {
+                    Ok(()) => {
+                        if let Some(camera_name) = context.runtime.pocket_camera_live.camera_name()
+                        {
+                            eprintln!("info: Pocket Camera live input started from {camera_name}");
+                        } else {
+                            eprintln!("info: Pocket Camera live input started");
+                        }
+                    }
+                    Err(error) => {
+                        show_warning_message(Some(canvas.window()), "Pocket Camera live", &error);
+                        eprintln!("warning: {error}");
+                    }
+                }
+            }
+            Ok(None)
+        }
         MenuAction::ResetCameraImage => {
+            context.runtime.pocket_camera_live.stop();
             context.session.pocket_camera_frame = None;
             if context.machine.primary_machine().has_pocket_camera() {
                 context
@@ -7288,6 +7383,7 @@ fn current_menu_presentation(
                 .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual),
         any_dialog_pending: runtime.any_dialog_pending(),
         cartridge_pocket_camera_supported,
+        pocket_camera_live_enabled: runtime.pocket_camera_live.is_enabled(),
         gamepad_available,
         gamepad_directional_source: runtime.gamepad_manager.as_ref().map_or(
             GamepadDirectionalSource::default(),
@@ -9462,6 +9558,9 @@ mod tests {
                 open_rom_dialog: super::PathSelectionDialog::new(),
                 open_rom_dialog_mode: super::OpenRomDialogMode::Primary,
                 camera_image_dialog: super::PathSelectionDialog::new(),
+                pocket_camera_live: super::PocketCameraLiveInput::unavailable_for_tests(
+                    "test camera backend disabled",
+                ),
                 boot_rom_file_dialog: super::PathSelectionDialog::new(),
                 boot_rom_directory_dialog: super::PathSelectionDialog::new(),
                 save_directory_dialog: super::PathSelectionDialog::new(),
@@ -13586,6 +13685,7 @@ mod tests {
             &harness.session,
         );
         assert!(!no_rom_presentation.cartridge_pocket_camera_supported);
+        assert!(!no_rom_presentation.pocket_camera_live_enabled);
 
         let camera_rom_name = "camera.gb";
         let camera_rom_path = write_test_camera_rom(&harness.root, camera_rom_name);
@@ -13607,6 +13707,7 @@ mod tests {
             &harness.session,
         );
         assert!(camera_presentation.cartridge_pocket_camera_supported);
+        assert!(!camera_presentation.pocket_camera_live_enabled);
     }
 
     #[test]

@@ -135,8 +135,10 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - `RESUME` and root-level back/cancel (`Escape` / `Guide`) both clear an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
 - When the loaded session includes a `Pocket Camera` cartridge, the root overlay also exposes:
   - `CAM IMAGE` — native PNG picker that decodes the selected image in the frontend and pushes it into the core as a grayscale host frame
-  - `CAM RESET` — clears the current session image and restores the core's deterministic placeholder frame
-- Pocket Camera image selection is session-scoped only. The chosen image is reapplied across ROM reloads / resets while the desktop app stays open, but it is not persisted into desktop settings.
+  - `CAM LIVE` / `CAM LIVE ON` — opens the first SDL3 camera device, requests `128x112` RGB frames at a low host frame rate, converts them to grayscale, and pushes each available frame through the same core API used by `CAM IMAGE`
+  - `CAM RESET` — stops live capture if active, clears the current session image, and restores the core's deterministic placeholder frame
+- Pocket Camera still-image selection and live-camera state are session-scoped only. A chosen still image is reapplied across ROM reloads / resets while the desktop app stays open, but neither still-image path nor live-camera state is persisted into desktop settings.
+- Camera permission, device selection, frame acquisition, RGB conversion, and warm-up frame dropping are frontend-owned. `gb-core` only receives grayscale host frames.
 - **`VIDEO`** — stats HUD visibility, host-side presentation filter, fullscreen, vsync, window scale, integer presentation, screenshot capture, and BG/WIN/OBJ presentation masks.
 - **`AUDIO`** — toggle mute, cycle host volume, host-mask `CH1..CH4`, and start/stop automatic `WAV` captures under `audios/`.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).

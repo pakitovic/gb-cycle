@@ -18,7 +18,7 @@ This document refines the Pocket Camera-specific behavior under the broader cart
   - optional session UX such as choosing or clearing a still image
 - The core/frontend seam is an explicit grayscale frame API. The core must never depend on a host webcam API directly.
 
-## Current V1 baseline
+## Current baseline
 
 - Header code `0xFC` is supported in `Strict`.
 - Validation accepts only the official commercial shape:
@@ -31,8 +31,10 @@ This document refines the Pocket Camera-specific behavior under the broader cart
   - `Machine::has_pocket_camera()`
   - `Machine::set_pocket_camera_frame(...)`
   - `Machine::clear_pocket_camera_frame()`
-- `gb-desktop` currently exposes a session-scoped `CAM IMAGE` / `CAM RESET` flow backed by PNG decoding.
-- V1 is intentionally **static-image only**. Webcam / live-camera support is deferred.
+- `gb-desktop` exposes session-scoped:
+  - `CAM IMAGE` / `CAM RESET` still-image flow backed by PNG decoding
+  - `CAM LIVE` live-frame flow backed by SDL3 camera capture
+- Live camera support remains frontend-only: the desktop frontend opens the host camera, handles permission/device errors, drops a few warm-up frames, converts RGB24 frames to grayscale, and repeatedly calls the same `Machine::set_pocket_camera_frame(...)` seam. The core has no webcam dependency.
 
 ## Official ROM validation matrix
 
@@ -123,9 +125,9 @@ Non-retail variants are tracked separately:
 
 ## Deferred work
 
-- frontend webcam / live-frame plumbing on top of the existing frame API
 - broader oracle validation for printer-exposed flows and lower-level capture observables
 - higher-fidelity analog modeling beyond the current Pan Docs-oriented static-frame baseline
+- richer desktop live-camera UX such as device selection, preview, and persistent user preference if that becomes necessary
 
 ## References
 
