@@ -139,6 +139,7 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
   - `CAM RESET` — stops live capture if active, clears the current session image, and restores the core's deterministic placeholder frame
 - Pocket Camera still-image selection and live-camera state are session-scoped only. A chosen still image is reapplied across ROM reloads / resets while the desktop app stays open, but neither still-image path nor live-camera state is persisted into desktop settings.
 - Camera permission, device selection, native frame acquisition, RGB conversion, and warm-up frame dropping are frontend-owned. `gb-core` only receives grayscale host frames and performs the deterministic `128x112` normalization.
+- If SDL opens a camera but no frames arrive, the desktop log reports whether SDL still considers camera permission `pending`, `approved`, or `denied`; this keeps OS permission stalls distinguishable from frame acquisition stalls.
 - **`VIDEO`** — stats HUD visibility, host-side presentation filter, fullscreen, vsync, window scale, integer presentation, screenshot capture, and BG/WIN/OBJ presentation masks.
 - **`AUDIO`** — toggle mute, cycle host volume, host-mask `CH1..CH4`, and start/stop automatic `WAV` captures under `audios/`.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).

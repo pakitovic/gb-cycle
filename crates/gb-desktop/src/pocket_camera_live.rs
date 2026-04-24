@@ -101,13 +101,10 @@ impl PocketCameraLiveInput {
             return Ok(None);
         };
 
-        match camera.permission_state() {
-            state if state == camera::SDL_CAMERA_PERMISSION_STATE_DENIED => {
-                self.stop();
-                return Err("camera permission was denied by the operating system".to_string());
-            }
-            state if state == camera::SDL_CAMERA_PERMISSION_STATE_PENDING => return Ok(None),
-            _ => {}
+        let permission_state = camera.permission_state();
+        if permission_state == camera::SDL_CAMERA_PERMISSION_STATE_DENIED {
+            self.stop();
+            return Err("camera permission was denied by the operating system".to_string());
         }
 
         let mut latest_frame = None;
@@ -137,6 +134,12 @@ impl PocketCameraLiveInput {
 
     pub fn polls_without_frame(&self) -> u16 {
         self.polls_without_frame
+    }
+
+    pub fn permission_state_label(&self) -> Option<&'static str> {
+        self.camera
+            .as_ref()
+            .map(|camera| camera_permission_state_label(camera.permission_state()))
     }
 }
 
@@ -374,6 +377,18 @@ fn grayscale_from_rgb(red: u8, green: u8, blue: u8) -> u8 {
         / 1000) as u8
 }
 
+fn camera_permission_state_label(state: camera::SDL_CameraPermissionState) -> &'static str {
+    if state == camera::SDL_CAMERA_PERMISSION_STATE_DENIED {
+        "denied"
+    } else if state == camera::SDL_CAMERA_PERMISSION_STATE_PENDING {
+        "pending"
+    } else if state == camera::SDL_CAMERA_PERMISSION_STATE_APPROVED {
+        "approved"
+    } else {
+        "unknown"
+    }
+}
+
 fn sdl_error() -> String {
     let error = error::SDL_GetError();
     if error.is_null() {
@@ -423,6 +438,26 @@ mod tests {
         assert_eq!(
             rgb24_pixels_to_grayscale(3, 1, 8, pixels.as_ptr()),
             Err("camera frame pitch is smaller than its RGB row width".to_string())
+        );
+    }
+
+    #[test]
+    fn camera_permission_state_labels_cover_known_sdl_states() {
+        assert_eq!(
+            camera_permission_state_label(camera::SDL_CAMERA_PERMISSION_STATE_DENIED),
+            "denied"
+        );
+        assert_eq!(
+            camera_permission_state_label(camera::SDL_CAMERA_PERMISSION_STATE_PENDING),
+            "pending"
+        );
+        assert_eq!(
+            camera_permission_state_label(camera::SDL_CAMERA_PERMISSION_STATE_APPROVED),
+            "approved"
+        );
+        assert_eq!(
+            camera_permission_state_label(camera::SDL_CameraPermissionState::new(99)),
+            "unknown"
         );
     }
 }

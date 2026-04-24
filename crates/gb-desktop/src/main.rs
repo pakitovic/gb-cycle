@@ -5932,8 +5932,13 @@ fn process_pocket_camera_live_frame(
         }
         Ok(None) => {
             if context.runtime.pocket_camera_live.polls_without_frame() == 180 {
+                let permission_state = context
+                    .runtime
+                    .pocket_camera_live
+                    .permission_state_label()
+                    .unwrap_or("closed");
                 eprintln!(
-                    "info: Pocket Camera live input is still waiting for the first SDL3 camera frame"
+                    "info: Pocket Camera live input is still waiting for the first SDL3 camera frame (permission: {permission_state})"
                 );
             }
         }
