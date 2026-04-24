@@ -108,6 +108,10 @@ fn classification_and_private_helper_paths_cover_remaining_documented_types_and_
         .kind_name(),
         "Huc3"
     );
+    assert_eq!(
+        PersistentCartState::PocketCameraRam { ram: vec![] }.kind_name(),
+        "PocketCameraRam"
+    );
 
     let mut diagnostics = Vec::new();
     assert_eq!(

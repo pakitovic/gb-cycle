@@ -5,6 +5,7 @@ mod cli;
 mod input;
 mod linked_session;
 mod menu;
+mod pocket_camera_live;
 mod printer_output;
 mod save_session;
 mod screenshot_output;
@@ -23,7 +24,7 @@ use gb_core::{
     CartridgeDiagnostic, CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind,
     CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState,
     CpuSnapshot, ExecutionMode, InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine,
-    MachineConfig, MachineStepObserver, MachineStepRegion, PpuAccessMode,
+    MachineConfig, MachineStepObserver, MachineStepRegion, PocketCameraFrame, PpuAccessMode,
     PpuFramebufferLayerSource, PpuSnapshot, PpuStepRegion, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
@@ -47,6 +48,8 @@ use menu::{
     KeyboardBindingTarget, KeyboardMenuBindingTarget, MenuAction, MenuInput, MenuPresentation,
     OverlayMenuState, PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, render_performance_hud,
 };
+use png::{ColorType, Decoder, Transformations};
+use pocket_camera_live::PocketCameraLiveInput;
 use printer_output::PrinterOutputState;
 use save_session::DesktopSaveSession;
 use sdl3::dialog::{DialogError, DialogFileFilter, show_open_file_dialog, show_open_folder_dialog};
@@ -167,6 +170,16 @@ const BOOT_ROM_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
         pattern: "*",
     },
 ];
+const CAMERA_IMAGE_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
+    DialogFileFilter {
+        name: "PNG images",
+        pattern: "png",
+    },
+    DialogFileFilter {
+        name: "All files",
+        pattern: "*",
+    },
+];
 
 #[cfg(test)]
 fn sdl_test_lock() -> &'static Mutex<()> {
@@ -241,6 +254,8 @@ struct FrontendRuntime {
     rtc_sync: HostRtcSync,
     open_rom_dialog: PathSelectionDialog,
     open_rom_dialog_mode: OpenRomDialogMode,
+    camera_image_dialog: PathSelectionDialog,
+    pocket_camera_live: PocketCameraLiveInput,
     boot_rom_file_dialog: PathSelectionDialog,
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
@@ -269,6 +284,7 @@ struct DesktopSession {
     linked_secondary_rom: Option<LoadedRom>,
     last_open_directory: Option<PathBuf>,
     recent_roms: Vec<PathBuf>,
+    pocket_camera_frame: Option<PocketCameraFrame>,
     external_port_selection: DesktopExternalPortSelection,
 }
 
@@ -699,6 +715,7 @@ impl PathSelectionDialog {
 impl FrontendRuntime {
     fn any_dialog_pending(&self) -> bool {
         self.open_rom_dialog.is_pending()
+            || self.camera_image_dialog.is_pending()
             || self.boot_rom_file_dialog.is_pending()
             || self.boot_rom_directory_dialog.is_pending()
             || self.save_directory_dialog.is_pending()
@@ -4052,6 +4069,7 @@ fn run_desktop_with_startup_fallback_persistence(
         linked_secondary_rom,
         last_open_directory,
         recent_roms: settings_store.recent_roms().to_vec(),
+        pocket_camera_frame: None,
         external_port_selection: if startup_links_peer {
             DesktopExternalPortSelection::GameLink
         } else {
@@ -4167,6 +4185,13 @@ fn run_desktop_with_startup_fallback_persistence(
         rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
         open_rom_dialog_mode: OpenRomDialogMode::Primary,
+        camera_image_dialog: PathSelectionDialog::new(),
+        pocket_camera_live: PocketCameraLiveInput::new(sdl.camera().map_err(|error| {
+            format_display_error(
+                "failed to initialize SDL3 camera subsystem",
+                &error.to_string(),
+            )
+        })),
         boot_rom_file_dialog: PathSelectionDialog::new(),
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
@@ -4259,6 +4284,8 @@ fn run_desktop_with_startup_fallback_persistence(
                 settings_store: &mut settings_store,
             };
             process_pending_open_rom_dialog(&event_pump, &mut canvas, &mut context)?;
+            process_pending_camera_image_dialog(&mut canvas, &mut context)?;
+            process_pocket_camera_live_frame(&mut canvas, &mut context);
             process_pending_boot_rom_file_dialog(&mut canvas, &mut context)?;
             process_pending_boot_rom_directory_dialog(&mut canvas, &mut context)?;
             process_pending_save_directory_dialog(&mut canvas, &mut context)?;
@@ -4642,10 +4669,11 @@ fn load_initial_emulation_session(
             log_boot_rom_fallback_warning(primary_loaded.boot_rom_fallback_warning.as_deref());
             log_boot_rom_fallback_warning(secondary_loaded.boot_rom_fallback_warning.as_deref());
             session.config = primary_loaded.effective_config;
-            let machine = DesktopEmulationSession::new_linked_dmg04_two_player(
+            let mut machine = DesktopEmulationSession::new_linked_dmg04_two_player(
                 primary_loaded.machine,
                 secondary_loaded.machine,
             )?;
+            apply_session_pocket_camera_frame_to_desktop_session(session, &mut machine)?;
             let mut diagnostics = primary_loaded.diagnostics;
             diagnostics.extend(secondary_loaded.diagnostics);
             Ok((machine, diagnostics))
@@ -4656,6 +4684,7 @@ fn load_initial_emulation_session(
             session.config = loaded.effective_config;
             let mut machine = DesktopEmulationSession::new_single(loaded.machine);
             apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
+            apply_session_pocket_camera_frame_to_desktop_session(session, &mut machine)?;
             Ok((machine, loaded.diagnostics))
         }
         (None, _, _) => {
@@ -4665,6 +4694,7 @@ fn load_initial_emulation_session(
             let mut machine =
                 DesktopEmulationSession::new_single(Machine::new_summary(prepared.machine_config));
             apply_external_port_selection_to_machine(&mut machine, session.external_port_selection);
+            apply_session_pocket_camera_frame_to_desktop_session(session, &mut machine)?;
             Ok((machine, Vec::new()))
         }
     }
@@ -4777,6 +4807,70 @@ fn apply_external_port_selection_to_machine(
     selection: DesktopExternalPortSelection,
 ) {
     machine.set_external_port_attachment(selection.core_attachment_kind());
+}
+
+fn session_has_pocket_camera(machine: &DesktopEmulationSession) -> bool {
+    machine.primary_machine().has_pocket_camera()
+        || machine
+            .secondary_machine()
+            .is_some_and(Machine::has_pocket_camera)
+}
+
+fn apply_session_pocket_camera_frame_to_machine(
+    session: &DesktopSession,
+    machine: &mut Machine<TraceSummaryBuffer>,
+) -> Result<(), String> {
+    let Some(frame) = session.pocket_camera_frame.clone() else {
+        return Ok(());
+    };
+    if !machine.has_pocket_camera() {
+        return Ok(());
+    }
+
+    machine.set_pocket_camera_frame(frame).map_err(|error| {
+        format_debug_error("failed to apply Pocket Camera frame", &format!("{error:?}"))
+    })
+}
+
+fn apply_session_pocket_camera_frame_to_desktop_session(
+    session: &DesktopSession,
+    machine: &mut DesktopEmulationSession,
+) -> Result<(), String> {
+    apply_session_pocket_camera_frame_to_machine(session, machine.primary_machine_mut())?;
+    if let Some(secondary_machine) = machine.secondary_machine_mut() {
+        apply_session_pocket_camera_frame_to_machine(session, secondary_machine)?;
+    }
+    Ok(())
+}
+
+fn apply_pocket_camera_live_frame_to_machine(
+    frame: &PocketCameraFrame,
+    machine: &mut Machine<TraceSummaryBuffer>,
+    machine_name: &str,
+) -> Result<(), String> {
+    if !machine.has_pocket_camera() {
+        return Ok(());
+    }
+
+    machine
+        .set_pocket_camera_frame(frame.clone())
+        .map_err(|error| {
+            format_debug_error(
+                &format!("failed to apply live Pocket Camera frame to the {machine_name} machine"),
+                &format!("{error:?}"),
+            )
+        })
+}
+
+fn apply_pocket_camera_live_frame_to_desktop_session(
+    frame: &PocketCameraFrame,
+    machine: &mut DesktopEmulationSession,
+) -> Result<(), String> {
+    apply_pocket_camera_live_frame_to_machine(frame, machine.primary_machine_mut(), "primary")?;
+    if let Some(secondary_machine) = machine.secondary_machine_mut() {
+        apply_pocket_camera_live_frame_to_machine(frame, secondary_machine, "secondary")?;
+    }
+    Ok(())
 }
 
 fn drain_printed_pages_into_printer_output(
@@ -5747,6 +5841,115 @@ fn process_pending_open_rom_dialog(
     Ok(())
 }
 
+fn process_pending_camera_image_dialog(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    let Some(result) = context.runtime.camera_image_dialog.take_result() else {
+        return Ok(());
+    };
+
+    match result {
+        PathDialogResult::Selected(path) => {
+            let result: Result<(), String> = (|| {
+                let frame = load_selected_camera_image(path, context.session)?;
+                context.runtime.pocket_camera_live.stop();
+                if context.machine.primary_machine().has_pocket_camera() {
+                    context
+                        .machine
+                        .primary_machine_mut()
+                        .set_pocket_camera_frame(frame.clone())
+                        .map_err(|error| {
+                            format_debug_error(
+                                "failed to load Pocket Camera image into the primary machine",
+                                &format!("{error:?}"),
+                            )
+                        })?;
+                }
+                if let Some(secondary_machine) = context.machine.secondary_machine_mut()
+                    && secondary_machine.has_pocket_camera()
+                {
+                    secondary_machine
+                        .set_pocket_camera_frame(frame.clone())
+                        .map_err(|error| {
+                            format_debug_error(
+                                "failed to load Pocket Camera image into the secondary machine",
+                                &format!("{error:?}"),
+                            )
+                        })?;
+                }
+                context.session.pocket_camera_frame = Some(frame);
+                Ok(())
+            })();
+            if let Err(error) = result {
+                show_error_message(Some(canvas.window()), "Pocket Camera image", &error);
+                eprintln!("warning: {error}");
+            }
+        }
+        PathDialogResult::Canceled => {}
+        PathDialogResult::Failed(error) => {
+            show_error_message(
+                Some(canvas.window()),
+                "Pocket Camera image",
+                &format!("failed to complete SDL3 Pocket Camera image dialog: {error}"),
+            );
+            eprintln!("warning: failed to complete SDL3 Pocket Camera image dialog: {error}");
+        }
+    }
+
+    restore_window_after_native_dialog(canvas);
+    Ok(())
+}
+
+fn process_pocket_camera_live_frame(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) {
+    if !context.runtime.pocket_camera_live.is_enabled() {
+        return;
+    }
+
+    if !session_has_pocket_camera(context.machine) {
+        context.runtime.pocket_camera_live.stop();
+        return;
+    }
+
+    match context.runtime.pocket_camera_live.poll_frame() {
+        Ok(Some(frame)) => {
+            let first_live_frame = context.runtime.pocket_camera_live.frames_delivered() == 1;
+            if let Err(error) =
+                apply_pocket_camera_live_frame_to_desktop_session(&frame, context.machine)
+            {
+                context.runtime.pocket_camera_live.stop();
+                show_warning_message(Some(canvas.window()), "Pocket Camera live", &error);
+                eprintln!("warning: {error}");
+            } else if first_live_frame {
+                eprintln!(
+                    "info: first Pocket Camera live frame applied ({}x{})",
+                    frame.width, frame.height
+                );
+            }
+        }
+        Ok(None) => {
+            if context.runtime.pocket_camera_live.polls_without_frame() == 180 {
+                let permission_state = context
+                    .runtime
+                    .pocket_camera_live
+                    .permission_state_label()
+                    .unwrap_or("closed");
+                eprintln!(
+                    "info: Pocket Camera live input is still waiting for the first SDL3 camera frame (permission: {permission_state})"
+                );
+            }
+        }
+        Err(error) => {
+            context.runtime.pocket_camera_live.stop();
+            show_warning_message(Some(canvas.window()), "Pocket Camera live", &error);
+            eprintln!("warning: {error}");
+        }
+    }
+}
+
 fn process_pending_boot_rom_file_dialog(
     canvas: &mut Canvas<Window>,
     context: &mut FrontendActionContext<'_>,
@@ -5928,6 +6131,7 @@ fn rebuild_machine_for_config(
             linked_secondary_rom: context.session.linked_secondary_rom.clone(),
             last_open_directory: context.session.last_open_directory.clone(),
             recent_roms: context.session.recent_roms.clone(),
+            pocket_camera_frame: context.session.pocket_camera_frame.clone(),
             external_port_selection: context.session.external_port_selection,
         };
 
@@ -5988,6 +6192,10 @@ fn rebuild_machine_for_config(
                         "failed to restore linked battery-backed persistence after reconfigure: {error:?}"
                     ));
                 }
+                apply_session_pocket_camera_frame_to_desktop_session(
+                    &next_session,
+                    &mut next_machine,
+                )?;
 
                 let effective_config = primary_loaded.effective_config;
                 let next_primary_save_session = open_save_session_for_session(
@@ -6035,6 +6243,10 @@ fn rebuild_machine_for_config(
                         "failed to restore battery-backed persistence after reconfigure: {error:?}"
                     ));
                 }
+                apply_session_pocket_camera_frame_to_desktop_session(
+                    &next_session,
+                    &mut next_machine,
+                )?;
 
                 let effective_config = loaded.effective_config;
                 let next_primary_save_session = open_save_session_for_session(
@@ -6145,6 +6357,88 @@ fn save_directory_dialog_default_location(session: &DesktopSession) -> PathBuf {
     }
 }
 
+fn load_selected_camera_image(
+    selected_path: PathBuf,
+    session: &DesktopSession,
+) -> Result<PocketCameraFrame, String> {
+    let image_path = if selected_path.is_absolute() {
+        selected_path
+    } else {
+        resolve_path(&session.current_dir, &selected_path)
+    };
+    let file = fs::File::open(&image_path).map_err(|error| {
+        format_path_error(
+            "failed to read Pocket Camera image",
+            &image_path,
+            &error.to_string(),
+        )
+    })?;
+
+    let mut decoder = Decoder::new(file);
+    decoder.set_transformations(Transformations::EXPAND | Transformations::STRIP_16);
+    let mut reader = decoder.read_info().map_err(|error| {
+        format_path_error(
+            "failed to decode PNG metadata",
+            &image_path,
+            &error.to_string(),
+        )
+    })?;
+    let mut buffer = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buffer).map_err(|error| {
+        format_path_error(
+            "failed to decode PNG image",
+            &image_path,
+            &error.to_string(),
+        )
+    })?;
+    let width = u16::try_from(info.width).map_err(|_| {
+        format_path_error(
+            "PNG width exceeds Pocket Camera limits",
+            &image_path,
+            &info.width.to_string(),
+        )
+    })?;
+    let height = u16::try_from(info.height).map_err(|_| {
+        format_path_error(
+            "PNG height exceeds Pocket Camera limits",
+            &image_path,
+            &info.height.to_string(),
+        )
+    })?;
+    let frame_bytes = &buffer[..info.buffer_size()];
+
+    let grayscale_pixels = match info.color_type {
+        ColorType::Grayscale => frame_bytes.to_vec(),
+        ColorType::GrayscaleAlpha => frame_bytes.chunks_exact(2).map(|chunk| chunk[0]).collect(),
+        ColorType::Rgb => frame_bytes
+            .chunks_exact(3)
+            .map(|chunk| grayscale_from_rgb(chunk[0], chunk[1], chunk[2]))
+            .collect(),
+        ColorType::Rgba => frame_bytes
+            .chunks_exact(4)
+            .map(|chunk| grayscale_from_rgb(chunk[0], chunk[1], chunk[2]))
+            .collect(),
+        ColorType::Indexed => {
+            return Err(format_path_error(
+                "unsupported indexed PNG after expansion",
+                &image_path,
+                "decoder left the image indexed",
+            ));
+        }
+    };
+
+    Ok(PocketCameraFrame {
+        width,
+        height,
+        grayscale_pixels,
+    })
+}
+
+fn grayscale_from_rgb(red: u8, green: u8, blue: u8) -> u8 {
+    ((299_u32 * u32::from(red) + 587_u32 * u32::from(green) + 114_u32 * u32::from(blue) + 500)
+        / 1000) as u8
+}
+
 fn load_selected_rom(
     selected_path: PathBuf,
     session: &DesktopSession,
@@ -6219,8 +6513,10 @@ fn open_selected_rom(
         linked_secondary_rom: None,
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
+        pocket_camera_frame: context.session.pocket_camera_frame.clone(),
         external_port_selection: next_external_port_selection,
     };
+    apply_session_pocket_camera_frame_to_machine(&next_session, &mut next_machine)?;
     let next_save_session = open_save_session_for_session(&next_session, &mut next_machine)?;
 
     close_runtime_save_sessions(context.runtime, context.machine)?;
@@ -6363,8 +6659,10 @@ fn open_selected_linked_secondary_rom(
         linked_secondary_rom: Some(next_secondary_rom),
         last_open_directory: context.session.last_open_directory.clone(),
         recent_roms: context.session.recent_roms.clone(),
+        pocket_camera_frame: context.session.pocket_camera_frame.clone(),
         external_port_selection: DesktopExternalPortSelection::GameLink,
     };
+    apply_session_pocket_camera_frame_to_desktop_session(&next_session, &mut next_machine)?;
     let next_primary_save_session =
         open_save_session_for_session(&next_session, next_machine.primary_machine_mut())?;
     let next_secondary_save_session = open_secondary_save_session_for_session(
@@ -6571,6 +6869,69 @@ fn execute_menu_action(
         }
         MenuAction::SaveBattery => {
             flush_runtime_save_sessions_if_changed(context.runtime, context.machine, "menu")?;
+            Ok(None)
+        }
+        MenuAction::SelectCameraImage => {
+            let default_location = context.session.rom_directory_hint();
+            if let Err(error) = context.runtime.camera_image_dialog.show_file(
+                &CAMERA_IMAGE_FILE_DIALOG_FILTERS,
+                canvas.window(),
+                default_location,
+            ) {
+                show_warning_message(Some(canvas.window()), "Pocket Camera image", &error);
+                eprintln!("warning: {error}");
+            }
+            Ok(None)
+        }
+        MenuAction::ToggleCameraLive => {
+            if context.runtime.pocket_camera_live.is_enabled() {
+                context.runtime.pocket_camera_live.stop();
+            } else {
+                match context.runtime.pocket_camera_live.start() {
+                    Ok(()) => {
+                        context.session.pocket_camera_frame = None;
+                        if let Some(camera_name) = context.runtime.pocket_camera_live.camera_name()
+                        {
+                            eprintln!("info: Pocket Camera live input started from {camera_name}");
+                        } else {
+                            eprintln!("info: Pocket Camera live input started");
+                        }
+                    }
+                    Err(error) => {
+                        show_warning_message(Some(canvas.window()), "Pocket Camera live", &error);
+                        eprintln!("warning: {error}");
+                    }
+                }
+            }
+            Ok(None)
+        }
+        MenuAction::ResetCameraImage => {
+            context.runtime.pocket_camera_live.stop();
+            context.session.pocket_camera_frame = None;
+            if context.machine.primary_machine().has_pocket_camera() {
+                context
+                    .machine
+                    .primary_machine_mut()
+                    .clear_pocket_camera_frame()
+                    .map_err(|error| {
+                        format_debug_error(
+                            "failed to reset Pocket Camera image on the primary machine",
+                            &format!("{error:?}"),
+                        )
+                    })?;
+            }
+            if let Some(secondary_machine) = context.machine.secondary_machine_mut()
+                && secondary_machine.has_pocket_camera()
+            {
+                secondary_machine
+                    .clear_pocket_camera_frame()
+                    .map_err(|error| {
+                        format_debug_error(
+                            "failed to reset Pocket Camera image on the secondary machine",
+                            &format!("{error:?}"),
+                        )
+                    })?;
+            }
             Ok(None)
         }
         MenuAction::SaveScreenshot => {
@@ -6955,7 +7316,7 @@ fn execute_menu_action(
 fn current_menu_presentation(
     window: &Window,
     runtime: &FrontendRuntime,
-    machine: &Machine<TraceSummaryBuffer>,
+    machine: &DesktopEmulationSession,
     session: &DesktopSession,
 ) -> MenuPresentation {
     let gamepad_available = runtime.gamepad_manager.is_some();
@@ -6965,7 +7326,8 @@ fn current_menu_presentation(
         .and_then(GamepadManager::active_gamepad_name)
         .map(CompactMenuLabel::from_gamepad_name)
         .unwrap_or_default();
-    let cartridge_rumble_supported = machine.cartridge().has_rumble();
+    let cartridge_rumble_supported = machine.primary_machine().cartridge().has_rumble();
+    let cartridge_pocket_camera_supported = session_has_pocket_camera(machine);
     let preferred_gamepad_configured = runtime
         .gamepad_manager
         .as_ref()
@@ -7038,6 +7400,8 @@ fn current_menu_presentation(
                 .as_ref()
                 .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual),
         any_dialog_pending: runtime.any_dialog_pending(),
+        cartridge_pocket_camera_supported,
+        pocket_camera_live_enabled: runtime.pocket_camera_live.is_enabled(),
         gamepad_available,
         gamepad_directional_source: runtime.gamepad_manager.as_ref().map_or(
             GamepadDirectionalSource::default(),
@@ -7742,6 +8106,7 @@ fn reset_machine(
                     "failed to restore linked battery-backed persistence after reset: {error:?}"
                 ));
             }
+            apply_session_pocket_camera_frame_to_desktop_session(session, &mut reset_machine)?;
 
             let effective_config = primary_loaded.effective_config;
             let next_save_session = open_save_session_for_session(
@@ -7798,6 +8163,7 @@ fn reset_machine(
                 reset_machine.primary_machine_mut(),
                 session.external_port_selection,
             );
+            apply_session_pocket_camera_frame_to_desktop_session(session, &mut reset_machine)?;
 
             let effective_config = loaded.effective_config;
             let next_save_session = open_save_session_for_session(
@@ -8398,11 +8764,11 @@ fn framebuffer_pixel_to_grayscale(pixel: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BOOT_ROM_FILE_DIALOG_FILTERS, DEFAULT_BOOT_ROM_DIR, DesktopRunOptions,
-        DesktopSettingsStore, GamepadBindingTarget, GamepadMenuBindingTarget, HostRtcSync,
-        KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult, PerformanceHudSnapshot,
-        ROM_FILE_DIALOG_FILTERS, assign_gamepad_binding, assign_gamepad_menu_binding,
-        assign_keyboard_binding, assign_keyboard_menu_binding,
+        BOOT_ROM_FILE_DIALOG_FILTERS, CAMERA_IMAGE_FILE_DIALOG_FILTERS, DEFAULT_BOOT_ROM_DIR,
+        DesktopRunOptions, DesktopSettingsStore, GamepadBindingTarget, GamepadMenuBindingTarget,
+        HostRtcSync, KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult,
+        PerformanceHudSnapshot, ROM_FILE_DIALOG_FILTERS, assign_gamepad_binding,
+        assign_gamepad_menu_binding, assign_keyboard_binding, assign_keyboard_menu_binding,
         assignable_key_for_binding_target_from_keycode,
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
         desktop_key_from_keycode, desktop_key_scancode, entered_pc_ranges,
@@ -8430,7 +8796,8 @@ mod tests {
         CpuAddressEventKind, CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot,
         ExecutionMode, ExternalPortAttachmentKind, JoypadSnapshot, JoypadStatus,
         LinkedTopologyKind, Machine, MachineConfig, MachineStepRegion, PersistentCartState,
-        PpuFramebufferLayerSource, PpuStepRegion, PrinterCommand, StartupMode, TraceSummaryBuffer,
+        PocketCameraFrame, PpuFramebufferLayerSource, PpuStepRegion, PrinterCommand, StartupMode,
+        TraceSummaryBuffer,
     };
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
@@ -8503,6 +8870,77 @@ mod tests {
         fs::write(&rom_path, build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
             .expect("test ROM should be writable");
         rom_path
+    }
+
+    fn write_test_camera_rom(root: &Path, name: &str) -> PathBuf {
+        let rom_path = root.join(name);
+        fs::write(&rom_path, build_test_rom(1024 * 1024, 0xFC, 0x05, 0x04))
+            .expect("Pocket Camera test ROM should be writable");
+        rom_path
+    }
+
+    fn write_grayscale_png(
+        root: &Path,
+        name: &str,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) -> PathBuf {
+        write_png(root, name, width, height, png::ColorType::Grayscale, pixels)
+    }
+
+    fn write_png(
+        root: &Path,
+        name: &str,
+        width: u32,
+        height: u32,
+        color_type: png::ColorType,
+        pixels: &[u8],
+    ) -> PathBuf {
+        let path = root.join(name);
+        let file = fs::File::create(&path).expect("test PNG should be creatable");
+        let mut encoder = png::Encoder::new(file, width, height);
+        encoder.set_color(color_type);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder
+            .write_header()
+            .expect("test PNG header should encode");
+        writer
+            .write_image_data(pixels)
+            .expect("test PNG pixels should encode");
+        path
+    }
+
+    fn capture_camera_tile_bytes(machine: &mut Machine<TraceSummaryBuffer>) -> [u8; 16] {
+        machine.write_bus(0x4000, 0x10);
+        machine.write_bus(0xA001, 0x80);
+        machine.write_bus(0xA002, 0x03);
+        machine.write_bus(0xA003, 0x00);
+        machine.write_bus(0xA004, 0x00);
+        for cell in 0..16 {
+            let base = 0xA006 + cell * 3;
+            machine.write_bus(base, 64);
+            machine.write_bus(base + 1, 128);
+            machine.write_bus(base + 2, 192);
+        }
+        machine.write_bus(0xA000, 0x01);
+
+        let mut guard = 0;
+        while machine.read_bus(0xA000) & 0x01 != 0 {
+            machine.step_t_cycle();
+            guard += 1;
+            assert!(
+                guard < 300_000,
+                "Pocket Camera capture should finish within the timing budget"
+            );
+        }
+
+        machine.write_bus(0x4000, 0x00);
+        let mut bytes = [0_u8; 16];
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            *byte = machine.read_bus(0xA100 + index as u16);
+        }
+        bytes
     }
 
     fn serial_transfer_byte(machine: &mut Machine<TraceSummaryBuffer>, outgoing_byte: u8) -> u8 {
@@ -9080,6 +9518,7 @@ mod tests {
                 linked_secondary_rom: None,
                 last_open_directory: Some(root.clone()),
                 recent_roms: Vec::new(),
+                pocket_camera_frame: None,
                 external_port_selection: DesktopExternalPortSelection::None,
             };
 
@@ -9147,6 +9586,10 @@ mod tests {
                 rtc_sync: super::HostRtcSync::from_host_clock(),
                 open_rom_dialog: super::PathSelectionDialog::new(),
                 open_rom_dialog_mode: super::OpenRomDialogMode::Primary,
+                camera_image_dialog: super::PathSelectionDialog::new(),
+                pocket_camera_live: super::PocketCameraLiveInput::unavailable_for_tests(
+                    "test camera backend disabled",
+                ),
                 boot_rom_file_dialog: super::PathSelectionDialog::new(),
                 boot_rom_directory_dialog: super::PathSelectionDialog::new(),
                 save_directory_dialog: super::PathSelectionDialog::new(),
@@ -9289,6 +9732,30 @@ mod tests {
                 settings_store: &mut self.settings_store,
             };
             super::process_pending_boot_rom_file_dialog(&mut self.canvas, &mut context)
+        }
+
+        fn process_pending_camera_image_dialog(&mut self) -> Result<(), String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_pending_camera_image_dialog(&mut self.canvas, &mut context)
+        }
+
+        fn process_pocket_camera_live_frame(&mut self) {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_pocket_camera_live_frame(&mut self.canvas, &mut context);
         }
 
         fn process_pending_boot_rom_directory_dialog(&mut self) -> Result<(), String> {
@@ -11884,6 +12351,78 @@ mod tests {
     }
 
     #[test]
+    fn camera_image_dialog_filters_include_png_and_all_files() {
+        assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[0].name, "PNG images");
+        assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[0].pattern, "png");
+        assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[1].name, "All files");
+        assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[1].pattern, "*");
+    }
+
+    #[test]
+    fn desktop_session_path_helpers_cover_linked_and_directory_fallbacks() {
+        let root = temp_test_root("desktop-session-path-helpers");
+        let current_dir = root.join("current");
+        let last_open = root.join("last-open");
+        let primary_path = root.join("roms").join("primary.gb");
+        let linked_path = root.join("linked").join("secondary.gb");
+        let mut session = super::DesktopSession {
+            config: DesktopConfig::default(),
+            current_dir: current_dir.clone(),
+            loaded_rom: None,
+            linked_secondary_rom: None,
+            last_open_directory: None,
+            recent_roms: vec![primary_path.clone()],
+            pocket_camera_frame: None,
+            external_port_selection: DesktopExternalPortSelection::None,
+        };
+
+        assert_eq!(session.linked_secondary_rom_path(), None);
+        assert_eq!(session.linked_secondary_rom_bytes(), None);
+        assert_eq!(session.rom_directory_hint(), current_dir.as_path());
+        assert_eq!(session.recent_roms(), [primary_path.clone()].as_slice());
+
+        session.last_open_directory = Some(last_open.clone());
+        assert_eq!(session.rom_directory_hint(), last_open.as_path());
+
+        session.loaded_rom = Some(super::LoadedRom {
+            path: primary_path.clone(),
+            bytes: vec![0x01, 0x02],
+        });
+        session.linked_secondary_rom = Some(super::LoadedRom {
+            path: linked_path.clone(),
+            bytes: vec![0x03, 0x04],
+        });
+
+        assert_eq!(
+            session.rom_directory_hint(),
+            primary_path
+                .parent()
+                .expect("primary ROM should have a parent")
+        );
+        assert_eq!(
+            session.linked_secondary_rom_path(),
+            Some(linked_path.as_path())
+        );
+        assert_eq!(
+            session.linked_secondary_rom_bytes(),
+            Some([0x03, 0x04].as_slice())
+        );
+    }
+
+    #[test]
+    fn path_selection_dialog_reports_disconnected_results_as_empty() {
+        let mut dialog = super::PathSelectionDialog::new();
+        dialog.pending = true;
+        let (replacement_sender, _replacement_receiver) = std::sync::mpsc::channel();
+        let original_sender = std::mem::replace(&mut dialog.sender, replacement_sender);
+
+        drop(original_sender);
+
+        assert_eq!(dialog.take_result(), None);
+        assert!(!dialog.is_pending());
+    }
+
+    #[test]
     fn system_option_cycle_helpers_wrap_in_the_expected_order() {
         assert_eq!(
             next_console_model(DesktopConsoleModel::Dmg0),
@@ -12621,6 +13160,7 @@ mod tests {
             }),
             last_open_directory: Some(root.clone()),
             recent_roms: Vec::new(),
+            pocket_camera_frame: None,
             external_port_selection: super::DesktopExternalPortSelection::GameLink,
         };
 
@@ -13205,7 +13745,7 @@ mod tests {
             .open(super::current_menu_presentation(
                 harness.canvas.window(),
                 &harness.runtime,
-                harness.machine.primary_machine(),
+                &harness.machine,
                 &harness.session,
             ));
 
@@ -13224,7 +13764,7 @@ mod tests {
                 super::current_menu_presentation(
                     harness.canvas.window(),
                     &harness.runtime,
-                    harness.machine.primary_machine(),
+                    &harness.machine,
                     &harness.session,
                 ),
             )
@@ -13244,6 +13784,499 @@ mod tests {
             harness.machine.primary_machine(),
             &harness.runtime,
         ));
+    }
+
+    #[test]
+    fn current_menu_presentation_only_exposes_camera_actions_for_camera_cartridges() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-menu-presentation", false, false, false);
+
+        let no_rom_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(!no_rom_presentation.cartridge_pocket_camera_supported);
+        assert!(!no_rom_presentation.pocket_camera_live_enabled);
+
+        let camera_rom_name = "camera.gb";
+        let camera_rom_path = write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert_eq!(harness.session.rom_path(), Some(camera_rom_path.as_path()));
+
+        let camera_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(camera_presentation.cartridge_pocket_camera_supported);
+        assert!(!camera_presentation.pocket_camera_live_enabled);
+    }
+
+    #[test]
+    fn camera_image_dialog_updates_the_session_and_reset_reapplies_it_until_cam_reset() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-image-dialog", false, false, false);
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(harness.machine.primary_machine().has_pocket_camera());
+
+        let png_path = write_grayscale_png(&harness.root, "camera.png", 1, 1, &[0x00]);
+        harness
+            .runtime
+            .camera_image_dialog
+            .sender
+            .send(PathDialogResult::Selected(png_path))
+            .expect("Pocket Camera image selection should send");
+        harness
+            .process_pending_camera_image_dialog()
+            .expect("Pocket Camera image dialog should complete");
+        assert_eq!(
+            harness.session.pocket_camera_frame,
+            Some(PocketCameraFrame {
+                width: 1,
+                height: 1,
+                grayscale_pixels: vec![0x00],
+            })
+        );
+
+        let expected_black_tiles = [
+            0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
+            0x00, 0xFF,
+        ];
+        let initial_tiles = capture_camera_tile_bytes(harness.machine.primary_machine_mut());
+        assert_eq!(initial_tiles, expected_black_tiles);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::Reset)
+                .expect("reset should succeed")
+                .is_none()
+        );
+        let after_reset_tiles = capture_camera_tile_bytes(harness.machine.primary_machine_mut());
+        assert_eq!(after_reset_tiles, expected_black_tiles);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ResetCameraImage)
+                .expect("CAM RESET should succeed")
+                .is_none()
+        );
+        assert_eq!(harness.session.pocket_camera_frame, None);
+        let placeholder_tiles = capture_camera_tile_bytes(harness.machine.primary_machine_mut());
+        assert_ne!(placeholder_tiles, expected_black_tiles);
+    }
+
+    #[test]
+    fn camera_image_loader_converts_supported_png_color_types() {
+        let _guard = crate::lock_sdl_test();
+        let harness = FrontendHarness::new("camera-image-loader-colors", false, false, false);
+
+        write_png(
+            &harness.root,
+            "gray-alpha.png",
+            1,
+            1,
+            png::ColorType::GrayscaleAlpha,
+            &[0x44, 0x99],
+        );
+        write_png(
+            &harness.root,
+            "rgb.png",
+            1,
+            1,
+            png::ColorType::Rgb,
+            &[255, 0, 0],
+        );
+        write_png(
+            &harness.root,
+            "rgba.png",
+            1,
+            1,
+            png::ColorType::Rgba,
+            &[0, 255, 0, 0x80],
+        );
+
+        assert_eq!(
+            super::load_selected_camera_image(PathBuf::from("gray-alpha.png"), &harness.session)
+                .expect("grayscale alpha PNG should load"),
+            PocketCameraFrame {
+                width: 1,
+                height: 1,
+                grayscale_pixels: vec![0x44],
+            }
+        );
+        assert_eq!(
+            super::load_selected_camera_image(PathBuf::from("rgb.png"), &harness.session)
+                .expect("RGB PNG should load"),
+            PocketCameraFrame {
+                width: 1,
+                height: 1,
+                grayscale_pixels: vec![76],
+            }
+        );
+        assert_eq!(
+            super::load_selected_camera_image(PathBuf::from("rgba.png"), &harness.session)
+                .expect("RGBA PNG should load"),
+            PocketCameraFrame {
+                width: 1,
+                height: 1,
+                grayscale_pixels: vec![150],
+            }
+        );
+
+        let error =
+            super::load_selected_camera_image(PathBuf::from("missing.png"), &harness.session)
+                .expect_err("missing image should report a file error");
+        assert!(error.contains("failed to read Pocket Camera image"));
+        assert!(error.contains("missing.png"));
+    }
+
+    #[test]
+    fn camera_image_dialog_reports_failure_and_cancel_edges() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-image-dialog-edges", false, false, false);
+        fs::write(harness.root.join("not-a-png.png"), b"not a png")
+            .expect("invalid PNG fixture should be writable");
+
+        harness
+            .runtime
+            .camera_image_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("not-a-png.png")))
+            .expect("invalid Pocket Camera image selection should send");
+        harness
+            .process_pending_camera_image_dialog()
+            .expect("invalid Pocket Camera image selection should be reported");
+
+        harness
+            .runtime
+            .camera_image_dialog
+            .sender
+            .send(PathDialogResult::Canceled)
+            .expect("Pocket Camera image cancel should send");
+        harness
+            .process_pending_camera_image_dialog()
+            .expect("canceled Pocket Camera image dialog should be ignored");
+
+        harness
+            .runtime
+            .camera_image_dialog
+            .sender
+            .send(PathDialogResult::Failed("camera image failed".to_string()))
+            .expect("Pocket Camera image failure should send");
+        harness
+            .process_pending_camera_image_dialog()
+            .expect("failed Pocket Camera image dialog should be reported");
+    }
+
+    #[test]
+    fn camera_image_loader_reports_png_decode_errors() {
+        let _guard = crate::lock_sdl_test();
+        let harness = FrontendHarness::new("camera-image-loader-errors", false, false, false);
+        fs::write(harness.root.join("not-a-png.png"), b"not a png")
+            .expect("invalid PNG fixture should be writable");
+        fs::write(
+            harness.root.join("truncated.png"),
+            [
+                0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n', 0, 0, 0, 0x0D, b'I', b'H', b'D',
+                b'R',
+            ],
+        )
+        .expect("truncated PNG fixture should be writable");
+
+        let metadata_error =
+            super::load_selected_camera_image(PathBuf::from("not-a-png.png"), &harness.session)
+                .expect_err("non-PNG image should fail metadata decoding");
+        assert!(metadata_error.contains("failed to decode PNG metadata"));
+
+        let image_error =
+            super::load_selected_camera_image(PathBuf::from("truncated.png"), &harness.session)
+                .expect_err("truncated PNG image should fail image decoding");
+        assert!(
+            image_error.contains("failed to decode PNG metadata")
+                || image_error.contains("failed to decode PNG image")
+        );
+    }
+
+    #[test]
+    fn desktop_rom_and_external_port_helpers_cover_error_edges() {
+        let _guard = crate::lock_sdl_test();
+        let harness = FrontendHarness::new("desktop-rom-helper-edges", false, false, false);
+
+        let missing_rom_error =
+            match super::load_selected_rom(PathBuf::from("missing.gb"), &harness.session) {
+                Ok(_) => panic!("missing ROM should report a file read error"),
+                Err(error) => error,
+            };
+        assert!(missing_rom_error.contains("failed to read ROM"));
+        assert_eq!(
+            super::next_single_external_port_selection(DesktopExternalPortSelection::GameLink),
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            super::next_single_external_port_selection(
+                DesktopExternalPortSelection::FourPlayerAdapter,
+            ),
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            super::next_single_external_port_selection(DesktopExternalPortSelection::Printer),
+            DesktopExternalPortSelection::Printer
+        );
+    }
+
+    #[test]
+    fn pocket_camera_live_menu_actions_cover_unavailable_and_no_rom_edges() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-menu-error", false, false, false);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleCameraLive)
+                .expect("unavailable live backend should be reported without failing the menu")
+                .is_none()
+        );
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ResetCameraImage)
+                .expect("CAM RESET should be a no-op without a Camera ROM")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::GameLink,
+                ))
+                .expect("GAME LINK should be ignored without a primary ROM")
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::Primary
+        );
+    }
+
+    #[test]
+    fn camera_live_start_failure_preserves_the_static_session_frame() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-start-failure", false, false, false);
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(super::session_has_pocket_camera(&harness.machine));
+
+        let static_frame = PocketCameraFrame {
+            width: 1,
+            height: 1,
+            grayscale_pixels: vec![0x44],
+        };
+        harness.session.pocket_camera_frame = Some(static_frame.clone());
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleCameraLive)
+                .expect("unavailable live backend should be reported without failing the menu")
+                .is_none()
+        );
+
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+        assert_eq!(harness.session.pocket_camera_frame, Some(static_frame));
+    }
+
+    #[test]
+    fn desktop_format_grayscale_and_key_helpers_cover_camera_paths() {
+        assert_eq!(
+            super::format_display_error("context", "error"),
+            "context: error"
+        );
+        assert_eq!(
+            super::format_debug_error("context", "error"),
+            "context: error"
+        );
+        assert_eq!(super::startup_mode_name(StartupMode::SkipBoot), "skip-boot");
+        assert_eq!(super::startup_mode_name(StartupMode::RealBoot), "real-boot");
+        assert_eq!(super::execution_mode_name(ExecutionMode::Strict), "strict");
+        assert_eq!(
+            super::execution_mode_name(ExecutionMode::Permissive),
+            "permissive"
+        );
+        assert_eq!(
+            super::execution_mode_name(ExecutionMode::Experimental),
+            "experimental"
+        );
+        assert_eq!(super::EmulationProfileSessionKind::Single.label(), "single");
+        assert_eq!(
+            super::EmulationProfileSessionKind::LinkedDmg04TwoPlayer.label(),
+            "linked-dmg04-2p"
+        );
+        assert!(super::key_matches(DesktopKey::Escape, Keycode::Escape));
+        assert!(!super::key_matches(DesktopKey::Escape, Keycode::A));
+        assert_eq!(super::grayscale_from_rgb(255, 0, 0), 76);
+        assert_eq!(super::grayscale_from_rgb(0, 255, 0), 150);
+        assert_eq!(super::grayscale_from_rgb(0, 0, 255), 29);
+        assert_eq!(keycode_to_test_scancode(Keycode::A), Scancode::A);
+        assert_eq!(keycode_to_test_scancode(Keycode::C), Scancode::C);
+        assert_eq!(keycode_to_test_scancode(Keycode::D), Scancode::D);
+        assert_eq!(keycode_to_test_scancode(Keycode::E), Scancode::E);
+        assert_eq!(keycode_to_test_scancode(Keycode::Q), Scancode::Q);
+        assert_eq!(keycode_to_test_scancode(Keycode::S), Scancode::S);
+        assert_eq!(keycode_to_test_scancode(Keycode::V), Scancode::V);
+        assert_eq!(keycode_to_test_scancode(Keycode::W), Scancode::W);
+    }
+
+    #[test]
+    fn pocket_camera_frame_helpers_apply_only_to_camera_machines() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-frame-helpers", false, false, false);
+        let live_frame = PocketCameraFrame {
+            width: 1,
+            height: 1,
+            grayscale_pixels: vec![0x00],
+        };
+
+        assert!(!super::session_has_pocket_camera(&harness.machine));
+        assert!(
+            super::apply_pocket_camera_live_frame_to_desktop_session(
+                &live_frame,
+                &mut harness.machine,
+            )
+            .is_ok()
+        );
+
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(super::session_has_pocket_camera(&harness.machine));
+
+        harness.session.pocket_camera_frame = Some(live_frame.clone());
+        super::apply_session_pocket_camera_frame_to_desktop_session(
+            &harness.session,
+            &mut harness.machine,
+        )
+        .expect("session image should apply to the camera machine");
+        let expected_black_tiles = [
+            0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
+            0x00, 0xFF,
+        ];
+        assert_eq!(
+            capture_camera_tile_bytes(harness.machine.primary_machine_mut()),
+            expected_black_tiles
+        );
+
+        let white_live_frame = PocketCameraFrame {
+            width: 1,
+            height: 1,
+            grayscale_pixels: vec![0xFF],
+        };
+        super::apply_pocket_camera_live_frame_to_desktop_session(
+            &white_live_frame,
+            &mut harness.machine,
+        )
+        .expect("live image should apply to the camera machine");
+        assert_ne!(
+            capture_camera_tile_bytes(harness.machine.primary_machine_mut()),
+            expected_black_tiles
+        );
+    }
+
+    #[test]
+    fn disabled_pocket_camera_live_processing_is_a_noop() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-disabled", false, false, false);
+
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+        harness.process_pocket_camera_live_frame();
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+    }
+
+    #[test]
+    fn pocket_camera_live_processing_stops_missing_camera_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-missing-camera", false, false, false);
+
+        harness.runtime.pocket_camera_live =
+            super::PocketCameraLiveInput::enabled_without_camera_for_tests();
+        harness.process_pocket_camera_live_frame();
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(super::session_has_pocket_camera(&harness.machine));
+
+        harness.runtime.pocket_camera_live =
+            super::PocketCameraLiveInput::enabled_without_camera_for_tests();
+        harness.process_pocket_camera_live_frame();
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+    }
+
+    #[test]
+    fn pocket_camera_live_processing_stops_poll_error_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-poll-error", false, false, false);
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(super::session_has_pocket_camera(&harness.machine));
+
+        harness.runtime.pocket_camera_live =
+            super::PocketCameraLiveInput::enabled_with_poll_error_for_tests("bad camera frame");
+        harness.process_pocket_camera_live_frame();
+
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
     }
 
     #[test]
@@ -13317,7 +14350,7 @@ mod tests {
             .open(super::current_menu_presentation(
                 harness.canvas.window(),
                 &harness.runtime,
-                harness.machine.primary_machine(),
+                &harness.machine,
                 &harness.session,
             ));
 
@@ -13367,7 +14400,7 @@ mod tests {
             .open(super::current_menu_presentation(
                 harness.canvas.window(),
                 &harness.runtime,
-                harness.machine.primary_machine(),
+                &harness.machine,
                 &harness.session,
             ));
 

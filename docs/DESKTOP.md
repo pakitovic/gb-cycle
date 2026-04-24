@@ -8,6 +8,28 @@ cargo run --release -p gb-desktop -- [path/to/rom.gb]
 
 Can start without a ROM and wait in a launcher-style root menu until a ROM is selected.
 
+On macOS, `CAM LIVE` needs the process to run from an app bundle that declares
+`NSCameraUsageDescription`; otherwise the OS can leave SDL camera permission in
+`pending` without listing the binary under Privacy & Security. Use the
+development bundle launcher when testing Pocket Camera live input:
+
+```bash
+scripts/run-gb-desktop-macos-app -- [path/to/rom.gb]
+```
+
+The launcher builds `gb-desktop`, creates `target/macos/GB Cycle.app` with the
+camera usage string from `crates/gb-desktop/macos/Info.plist`, ad-hoc signs it
+when `codesign` is available, and launches it through LaunchServices so macOS
+attributes camera permission to the `GB Cycle` bundle instead of the terminal or
+editor process that ran the script. Because LaunchServices detaches standard
+streams, this mode writes logs to `target/macos/gb-desktop.stdout.log` and
+`target/macos/gb-desktop.stderr.log`. macOS should then prompt for **GB Cycle**
+camera access, and the app appears under **System Settings -> Privacy &
+Security -> Camera**. If LaunchServices reports a launch error such as `-10810`,
+the script falls back to direct bundled execution; set
+`GB_CYCLE_DESKTOP_LAUNCH_MODE=direct` only when you explicitly want that fallback
+path for debugging.
+
 For direct local `DMG-04` startup and reproducible profiling runs, the desktop
 CLI also supports:
 
@@ -133,6 +155,14 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - While a native file dialog is pending from the overlay, the triggering entry stays selected but disabled until the dialog resolves.
 - Root overlay also exposes `QUIT` directly at the first menu level.
 - `RESUME` and root-level back/cancel (`Escape` / `Guide`) both clear an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
+- When the loaded session includes a `Pocket Camera` cartridge, the root overlay also exposes:
+  - `CAM LIVE ON` / `CAM LIVE OFF` — opens or stops the first SDL3 camera device with SDL's native stream selection, converts each available frame to grayscale, mirrors it horizontally for self-facing Pocket Camera orientation, and pushes it through the same core API used by `CAM IMAGE`
+  - `CAM IMAGE` — native PNG picker that decodes the selected image in the frontend and pushes it into the core as a grayscale host frame
+  - `CAM RESET` — stops live capture if active, clears the current session image, and restores the core's deterministic placeholder frame
+  These entries are ordered immediately after `RESUME` so Camera ROM sessions expose live capture state before the general ROM/system menus.
+- Pocket Camera still-image selection and live-camera state are session-scoped only. A chosen still image is reapplied across ROM reloads / resets while the desktop app stays open, but neither still-image path nor live-camera state is persisted into desktop settings.
+- Camera permission, device selection, native frame acquisition, RGB conversion, horizontal live-frame mirroring, and warm-up frame dropping are frontend-owned. `gb-core` only receives grayscale host frames and performs the deterministic `128x112` normalization.
+- If SDL opens a camera but no frames arrive, the desktop log reports whether SDL still considers camera permission `pending`, `approved`, or `denied`; this keeps OS permission stalls distinguishable from frame acquisition stalls.
 - **`VIDEO`** — stats HUD visibility, host-side presentation filter, fullscreen, vsync, window scale, integer presentation, screenshot capture, and BG/WIN/OBJ presentation masks.
 - **`AUDIO`** — toggle mute, cycle host volume, host-mask `CH1..CH4`, and start/stop automatic `WAV` captures under `audios/`.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).

@@ -58,8 +58,11 @@ const RECENT_ROM_SCROLL_STEP: Duration = Duration::from_millis(150);
 const RECENT_ROM_SCROLL_GAP_CHARS: usize = 3;
 pub const RECENT_ROM_MENU_CAPACITY: usize = 12;
 
-const ROOT_MENU_ITEMS: [MenuItem; 10] = [
+const ROOT_MENU_ITEMS: [MenuItem; 13] = [
     MenuItem::Resume,
+    MenuItem::CameraLive,
+    MenuItem::CameraImage,
+    MenuItem::CameraReset,
     MenuItem::OpenRom,
     MenuItem::RecentMenu,
     MenuItem::SaveBattery,
@@ -206,6 +209,9 @@ pub enum MenuAction {
     OpenRecentRom(usize),
     ClearRecentList,
     SaveBattery,
+    SelectCameraImage,
+    ToggleCameraLive,
+    ResetCameraImage,
     SaveScreenshot,
     CycleConsoleModel,
     CycleStartupMode,
@@ -423,6 +429,8 @@ pub struct MenuPresentation {
     pub ch4_enabled: bool,
     pub manual_save_available: bool,
     pub any_dialog_pending: bool,
+    pub cartridge_pocket_camera_supported: bool,
+    pub pocket_camera_live_enabled: bool,
     pub gamepad_available: bool,
     pub gamepad_directional_source: GamepadDirectionalSource,
     pub gamepad_rumble_mode: GamepadRumbleMode,
@@ -443,6 +451,9 @@ impl MenuPresentation {
     fn item_visible(self, item: MenuItem) -> bool {
         match item {
             MenuItem::SaveBattery => self.manual_save_available,
+            MenuItem::CameraImage | MenuItem::CameraLive | MenuItem::CameraReset => {
+                self.cartridge_pocket_camera_supported
+            }
             MenuItem::RecentMenu => self.recent_rom_count > 0,
             MenuItem::RecentRom1 => self.recent_rom_count >= 1,
             MenuItem::RecentRom2 => self.recent_rom_count >= 2,
@@ -480,7 +491,10 @@ impl MenuPresentation {
             | MenuItem::RecentRom12
             | MenuItem::BootRomFilePath
             | MenuItem::BootRomDirectoryPath
-            | MenuItem::SaveDirectoryPath => !self.any_dialog_pending,
+            | MenuItem::SaveDirectoryPath
+            | MenuItem::CameraImage
+            | MenuItem::CameraLive => !self.any_dialog_pending,
+            MenuItem::CameraReset => self.cartridge_pocket_camera_supported,
             MenuItem::SaveBattery => self.manual_save_available,
             MenuItem::AudioMenu => self.audio_available || self.rom_loaded,
             MenuItem::ToggleMute | MenuItem::AudioVolume => self.audio_available,
@@ -587,6 +601,15 @@ impl MenuPresentation {
             MenuItem::RecentRom12 => recent_rom_item_label(self.recent_rom_labels[11]),
             MenuItem::ClearRecentList => "CLEAR LIST".to_string(),
             MenuItem::SaveBattery => "SAVE BATTERY".to_string(),
+            MenuItem::CameraImage => "CAM IMAGE".to_string(),
+            MenuItem::CameraLive => {
+                if self.pocket_camera_live_enabled {
+                    "CAM LIVE ON".to_string()
+                } else {
+                    "CAM LIVE OFF".to_string()
+                }
+            }
+            MenuItem::CameraReset => "CAM RESET".to_string(),
             MenuItem::VideoMenu => "VIDEO".to_string(),
             MenuItem::AudioMenu => "AUDIO".to_string(),
             MenuItem::InputMenu => "INPUT".to_string(),
@@ -991,6 +1014,9 @@ enum MenuItem {
     RecentRom12,
     ClearRecentList,
     SaveBattery,
+    CameraImage,
+    CameraLive,
+    CameraReset,
     VideoMenu,
     AudioMenu,
     InputMenu,
@@ -1559,6 +1585,9 @@ impl OverlayMenuState {
             MenuItem::RecentRom12 => Some(MenuAction::OpenRecentRom(11)),
             MenuItem::ClearRecentList => Some(MenuAction::ClearRecentList),
             MenuItem::SaveBattery => Some(MenuAction::SaveBattery),
+            MenuItem::CameraImage => Some(MenuAction::SelectCameraImage),
+            MenuItem::CameraLive => Some(MenuAction::ToggleCameraLive),
+            MenuItem::CameraReset => Some(MenuAction::ResetCameraImage),
             MenuItem::VideoMenu => {
                 self.push_screen(MenuScreen::Video, presentation);
                 None
@@ -2415,7 +2444,7 @@ mod tests {
         CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
         KeyboardBindingTarget, KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction,
         MenuInput, MenuItem, MenuPresentation, MenuScreen, OverlayMenuState,
-        PerformanceHudSnapshot, RECENT_MENU_ITEMS, RECENT_ROM_MENU_CAPACITY,
+        PerformanceHudSnapshot, RECENT_MENU_ITEMS, RECENT_ROM_MENU_CAPACITY, ROOT_MENU_ITEMS,
         ScrollIndicatorDirection, VIDEO_MENU_ITEMS, gamepad_binding_label,
         normalized_selected_index, performance_hud_lines, previous_enabled_index,
         render_performance_hud, rendered_recent_rom_item_label, scroll_indicator_rows,
@@ -2463,6 +2492,8 @@ mod tests {
             ch4_enabled: true,
             manual_save_available: false,
             any_dialog_pending: false,
+            cartridge_pocket_camera_supported: false,
+            pocket_camera_live_enabled: false,
             gamepad_available: false,
             gamepad_directional_source: GamepadDirectionalSource::DpadAndLeftStick,
             gamepad_rumble_mode: GamepadRumbleMode::Strong,
@@ -3402,6 +3433,13 @@ mod tests {
 
     #[test]
     fn recent_and_video_menu_order_matches_the_overlay_contract() {
+        assert_eq!(ROOT_MENU_ITEMS[0], MenuItem::Resume);
+        assert_eq!(ROOT_MENU_ITEMS[1], MenuItem::CameraLive);
+        assert_eq!(ROOT_MENU_ITEMS[2], MenuItem::CameraImage);
+        assert_eq!(ROOT_MENU_ITEMS[3], MenuItem::CameraReset);
+        assert_eq!(ROOT_MENU_ITEMS[4], MenuItem::OpenRom);
+        assert_eq!(ROOT_MENU_ITEMS[5], MenuItem::RecentMenu);
+
         assert_eq!(RECENT_MENU_ITEMS[0], MenuItem::RecentRom1);
         assert_eq!(RECENT_MENU_ITEMS[7], MenuItem::RecentRom8);
         assert_eq!(RECENT_MENU_ITEMS[8], MenuItem::RecentRom9);
@@ -3413,6 +3451,37 @@ mod tests {
         assert_eq!(VIDEO_MENU_ITEMS[1], MenuItem::PresentationFilter);
         assert_eq!(VIDEO_MENU_ITEMS[6], MenuItem::Screenshot);
         assert_eq!(VIDEO_MENU_ITEMS[7], MenuItem::ShowBackground);
+    }
+
+    #[test]
+    fn camera_root_actions_appear_after_resume_when_supported() {
+        let presentation = MenuPresentation {
+            cartridge_pocket_camera_supported: true,
+            recent_rom_count: 1,
+            manual_save_available: true,
+            ..test_presentation()
+        };
+
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 0, presentation),
+            Some(MenuItem::Resume)
+        );
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 1, presentation),
+            Some(MenuItem::CameraLive)
+        );
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 2, presentation),
+            Some(MenuItem::CameraImage)
+        );
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 3, presentation),
+            Some(MenuItem::CameraReset)
+        );
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 4, presentation),
+            Some(MenuItem::OpenRom)
+        );
     }
 
     #[test]
@@ -3604,6 +3673,30 @@ mod tests {
             presentation.item_label(MenuItem::GamepadRumble),
             "RUMBLE OFF"
         );
+        assert!(!presentation.item_visible(MenuItem::CameraImage));
+        assert!(!presentation.item_visible(MenuItem::CameraLive));
+        assert!(!presentation.item_visible(MenuItem::CameraReset));
+        presentation.cartridge_pocket_camera_supported = true;
+        assert!(presentation.item_visible(MenuItem::CameraImage));
+        assert!(presentation.item_visible(MenuItem::CameraLive));
+        assert!(presentation.item_visible(MenuItem::CameraReset));
+        assert_eq!(presentation.item_label(MenuItem::CameraImage), "CAM IMAGE");
+        assert_eq!(
+            presentation.item_label(MenuItem::CameraLive),
+            "CAM LIVE OFF"
+        );
+        presentation.pocket_camera_live_enabled = true;
+        assert_eq!(presentation.item_label(MenuItem::CameraLive), "CAM LIVE ON");
+        presentation.pocket_camera_live_enabled = false;
+        assert_eq!(presentation.item_label(MenuItem::CameraReset), "CAM RESET");
+        assert!(presentation.item_enabled(MenuItem::CameraImage));
+        assert!(presentation.item_enabled(MenuItem::CameraLive));
+        assert!(presentation.item_enabled(MenuItem::CameraReset));
+        presentation.any_dialog_pending = true;
+        assert!(!presentation.item_enabled(MenuItem::CameraImage));
+        assert!(!presentation.item_enabled(MenuItem::CameraLive));
+        assert!(presentation.item_enabled(MenuItem::CameraReset));
+        presentation.any_dialog_pending = false;
 
         presentation.active_gamepad_connected = true;
         presentation.active_gamepad_label = CompactMenuLabel::from_text("SWITCH");
@@ -3780,6 +3873,8 @@ mod tests {
             recent_rom_count: 1,
             audio_available: true,
             manual_save_available: true,
+            cartridge_pocket_camera_supported: true,
+            pocket_camera_live_enabled: true,
             gamepad_available: true,
             ..test_presentation()
         };
@@ -3855,6 +3950,18 @@ mod tests {
         assert_eq!(
             menu.apply_item_action(MenuItem::SaveBattery, presentation),
             Some(MenuAction::SaveBattery)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CameraImage, presentation),
+            Some(MenuAction::SelectCameraImage)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CameraLive, presentation),
+            Some(MenuAction::ToggleCameraLive)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::CameraReset, presentation),
+            Some(MenuAction::ResetCameraImage)
         );
         assert_eq!(
             menu.apply_item_action(MenuItem::GamepadActive, presentation),

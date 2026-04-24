@@ -40,12 +40,17 @@ fn public_header_parser_keeps_cgb_titles_conservative_when_manufacturer_bytes_ar
 #[test]
 fn public_classification_distinguishes_supported_and_structured_unsupported_types() {
     let supported = CartridgeClassification::classify(0x1B);
-    let accessory = CartridgeClassification::classify(0xFC);
+    let camera = CartridgeClassification::classify(0xFC);
+    let accessory = CartridgeClassification::classify(0xFD);
     let unknown = CartridgeClassification::classify(0xAA);
 
     assert_eq!(
         supported.selection(),
         CartridgeSelection::Supported(SupportedCartridgeFamily::Mbc5)
+    );
+    assert_eq!(
+        camera.selection(),
+        CartridgeSelection::Supported(SupportedCartridgeFamily::PocketCamera)
     );
     assert_eq!(
         accessory.selection(),
@@ -143,11 +148,6 @@ fn documented_special_headers_keep_explicit_categories_and_do_not_fall_back_sile
             0x22,
             "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
             UnsupportedCartridgeCategory::DocumentedButUnsupported,
-        ),
-        (
-            0xFC,
-            "POCKET CAMERA",
-            UnsupportedCartridgeCategory::AccessorySpecialCase,
         ),
         (
             0xFD,

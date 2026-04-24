@@ -52,7 +52,7 @@ fn classification_keeps_supported_families_and_structured_unsupported_categories
     );
     assert_eq!(
         camera.selection(),
-        CartridgeSelection::Unsupported(UnsupportedCartridgeCategory::AccessorySpecialCase)
+        CartridgeSelection::Supported(SupportedCartridgeFamily::PocketCamera)
     );
     assert_eq!(
         unknown.selection(),

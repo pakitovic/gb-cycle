@@ -1,7 +1,7 @@
 use super::classify::{classify_loaded_cartridge, unsupported_load_reason};
 use super::validate::{
     validate_huc1, validate_huc3, validate_m161, validate_mbc1, validate_mbc2, validate_mbc3,
-    validate_mbc5, validate_mmm01, validate_no_mbc,
+    validate_mbc5, validate_mmm01, validate_no_mbc, validate_pocket_camera,
 };
 use super::*;
 use crate::model::CompatibilityPolicy;
@@ -329,6 +329,35 @@ impl CartridgeSlot {
                     diagnostics,
                 })
             }
+            CartridgeSelection::Supported(SupportedCartridgeFamily::PocketCamera) => {
+                validate_pocket_camera(
+                    &header,
+                    rom_bytes.len(),
+                    compatibility,
+                    &classification,
+                    &mut diagnostics,
+                )?;
+
+                let cartridge = Self {
+                    device: Some(CartridgeDevice::PocketCamera(PocketCameraCartridge {
+                        rom: rom_bytes,
+                        ram: vec![0; POCKET_CAMERA_SUPPORTED_RAM_BYTES],
+                        header,
+                        classification,
+                        ram_enabled: false,
+                        rom_bank: 1,
+                        ram_bank_or_register_select: 0,
+                        registers: [0; POCKET_CAMERA_REGISTER_COUNT],
+                        host_frame: PocketCameraCartridge::placeholder_frame(),
+                        capture_state: PocketCameraCaptureState::Idle,
+                    })),
+                };
+
+                Ok(CartridgeLoadReport {
+                    cartridge,
+                    diagnostics,
+                })
+            }
             CartridgeSelection::Unsupported(category) => Err(CartridgeLoadError::Rejected {
                 classification,
                 execution_mode: compatibility.execution_mode,
@@ -350,6 +379,7 @@ impl CartridgeSlot {
             Some(CartridgeDevice::Mbc2(_)) => CartridgeSlotState::Mbc2,
             Some(CartridgeDevice::Mbc3(_)) => CartridgeSlotState::Mbc3,
             Some(CartridgeDevice::Mbc5(_)) => CartridgeSlotState::Mbc5,
+            Some(CartridgeDevice::PocketCamera(_)) => CartridgeSlotState::PocketCamera,
         }
     }
 
@@ -421,6 +451,14 @@ impl CartridgeSlot {
         CartridgeSnapshot {
             state: self.state(),
             rtc_access_ready_at: self.rtc_access_ready_at(),
+            camera_capture_ready_at: self
+                .device
+                .as_ref()
+                .and_then(CartridgeDevice::camera_capture_ready_at),
+            camera_registers_selected: self
+                .device
+                .as_ref()
+                .is_some_and(CartridgeDevice::camera_registers_selected),
         }
     }
 
@@ -465,6 +503,29 @@ impl CartridgeSlot {
 
     pub fn rumble_on(&self) -> bool {
         self.device.as_ref().is_some_and(CartridgeDevice::rumble_on)
+    }
+
+    pub fn has_pocket_camera(&self) -> bool {
+        self.device
+            .as_ref()
+            .is_some_and(CartridgeDevice::has_pocket_camera)
+    }
+
+    pub fn set_pocket_camera_frame(
+        &mut self,
+        frame: PocketCameraFrame,
+    ) -> Result<(), PocketCameraFrameError> {
+        match &mut self.device {
+            Some(device) => device.set_pocket_camera_frame(frame),
+            None => Err(PocketCameraFrameError::UnsupportedCartridge),
+        }
+    }
+
+    pub fn clear_pocket_camera_frame(&mut self) -> Result<(), PocketCameraFrameError> {
+        match &mut self.device {
+            Some(device) => device.clear_pocket_camera_frame(),
+            None => Err(PocketCameraFrameError::UnsupportedCartridge),
+        }
     }
 
     pub(crate) fn advance_rtc_seconds(&mut self, seconds: u64) {

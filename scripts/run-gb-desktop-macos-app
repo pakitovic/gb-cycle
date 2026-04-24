@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+profile="${GB_CYCLE_DESKTOP_PROFILE:-release}"
+app_root="${GB_CYCLE_DESKTOP_APP_BUNDLE:-$repo_root/target/macos/GB Cycle.app}"
+launch_mode="${GB_CYCLE_DESKTOP_LAUNCH_MODE:-open}"
+app_args=("$@")
+if [[ "${app_args[0]:-}" == "--" ]]; then
+    app_args=("${app_args[@]:1}")
+fi
+profile_flag=()
+if [[ "$profile" == "release" ]]; then
+    profile_flag=(--release)
+else
+    profile_flag=(--profile "$profile")
+fi
+
+cargo build "${profile_flag[@]}" -p gb-desktop
+
+executable="$repo_root/target/$profile/gb-desktop"
+plist="$repo_root/crates/gb-desktop/macos/Info.plist"
+macos_dir="$app_root/Contents/MacOS"
+resources_dir="$app_root/Contents/Resources"
+
+rm -rf "$app_root"
+mkdir -p "$macos_dir" "$resources_dir"
+cp "$executable" "$macos_dir/gb-desktop"
+cp "$plist" "$app_root/Contents/Info.plist"
+printf 'APPL????' > "$app_root/Contents/PkgInfo"
+chmod +x "$macos_dir/gb-desktop"
+
+if command -v codesign >/dev/null 2>&1; then
+    codesign --force --deep --sign - "$app_root" >/dev/null 2>&1 || true
+fi
+
+case "$launch_mode" in
+    direct)
+        exec "$macos_dir/gb-desktop" "${app_args[@]}"
+        ;;
+    open)
+        stdout_log="${GB_CYCLE_DESKTOP_STDOUT_LOG:-$repo_root/target/macos/gb-desktop.stdout.log}"
+        stderr_log="${GB_CYCLE_DESKTOP_STDERR_LOG:-$repo_root/target/macos/gb-desktop.stderr.log}"
+        : >"$stdout_log"
+        : >"$stderr_log"
+        if ! open -n -W -o "$stdout_log" --stderr "$stderr_log" "$app_root" --args "${app_args[@]}"; then
+            echo "warning: LaunchServices failed; retrying the bundled executable directly" >&2
+            echo "warning: LaunchServices stdout log: $stdout_log" >&2
+            echo "warning: LaunchServices stderr log: $stderr_log" >&2
+            exec "$macos_dir/gb-desktop" "${app_args[@]}"
+        fi
+        ;;
+    *)
+        echo "unknown GB_CYCLE_DESKTOP_LAUNCH_MODE=$launch_mode; expected open or direct" >&2
+        exit 2
+        ;;
+esac

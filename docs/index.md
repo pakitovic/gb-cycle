@@ -80,6 +80,7 @@ Use `ROADMAP.md` when a task needs phase context, when resuming incomplete work,
 - `hardware/LINK.md`
 - `hardware/SERIAL.md`
 - `hardware/CARTRIDGES-MBC.md`
+- `hardware/GAME-BOY-CAMERA.md`
 - `hardware/BOOT-ROM.md`
 - `hardware/CGB.md`
 - `hardware/SGB.md`

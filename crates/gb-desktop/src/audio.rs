@@ -578,9 +578,10 @@ fn format_capture_error(error: ApuSampleCaptureError) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIO_CHANNEL_COUNT, AudioTelemetryMode, AutoQueueClearPolicy, BYTES_PER_F32_SAMPLE,
-        DesktopAudioOutput, OVERSIZED_QUEUE_CLEAR_STREAK, format_audio_error, format_capture_error,
-        format_optional_i32, format_optional_ms, map_audio_result, normalize_sample,
+        AUDIO_CHANNEL_COUNT, AudioTelemetry, AudioTelemetryMode, AutoQueueClearPolicy,
+        BYTES_PER_F32_SAMPLE, DesktopAudioOutput, OVERSIZED_QUEUE_CLEAR_STREAK, format_audio_error,
+        format_capture_error, format_optional_i32, format_optional_ms, map_audio_result,
+        normalize_sample,
     };
     use gb_core::{
         APU_HOST_MAX_ABS_SAMPLE, Apu, ApuHostSample, ApuRecordedChannel, ApuRecordedChannelMask,
@@ -588,6 +589,7 @@ mod tests {
     };
     use gb_desktop::AudioOptions;
     use sdl3::{AudioSubsystem, hint};
+    use std::cell::Cell;
     use std::ffi::OsStr;
 
     fn init_audio_subsystem() -> AudioSubsystem {
@@ -979,6 +981,7 @@ mod tests {
             .expect("audio output");
         output.output_sample_rate_hz = 0;
         assert_eq!(output.queued_duration_ms(), None);
+        assert_eq!(output.sample_frames_duration_ms(1), None);
         assert_eq!(
             output
                 .clear_buffer()
@@ -988,5 +991,28 @@ mod tests {
 
         assert_eq!(AUDIO_CHANNEL_COUNT, 2);
         assert_eq!(BYTES_PER_F32_SAMPLE, std::mem::size_of::<f32>() as i32);
+    }
+
+    #[test]
+    fn audio_telemetry_logging_advances_sequence_numbers_when_enabled() {
+        let telemetry = AudioTelemetry {
+            mode: AudioTelemetryMode::Events,
+            next_sequence: Cell::new(0),
+            queue_clear_count: Cell::new(0),
+        };
+
+        telemetry.log_event("test", "first=true");
+        telemetry.log_event("test", "second=true");
+
+        assert_eq!(telemetry.next_sequence.get(), 2);
+        assert_eq!(telemetry.queue_clear_count.get(), 0);
+
+        let verbose_telemetry = AudioTelemetry {
+            mode: AudioTelemetryMode::Verbose,
+            next_sequence: Cell::new(0),
+            queue_clear_count: Cell::new(0),
+        };
+        verbose_telemetry.log_submit_batch("submit", "batch=true");
+        assert_eq!(verbose_telemetry.next_sequence.get(), 1);
     }
 }
