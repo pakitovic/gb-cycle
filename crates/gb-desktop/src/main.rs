@@ -5916,15 +5916,27 @@ fn process_pocket_camera_live_frame(
 
     match context.runtime.pocket_camera_live.poll_frame() {
         Ok(Some(frame)) => {
+            let first_live_frame = context.runtime.pocket_camera_live.frames_delivered() == 1;
             if let Err(error) =
                 apply_pocket_camera_live_frame_to_desktop_session(&frame, context.machine)
             {
                 context.runtime.pocket_camera_live.stop();
                 show_warning_message(Some(canvas.window()), "Pocket Camera live", &error);
                 eprintln!("warning: {error}");
+            } else if first_live_frame {
+                eprintln!(
+                    "info: first Pocket Camera live frame applied ({}x{})",
+                    frame.width, frame.height
+                );
             }
         }
-        Ok(None) => {}
+        Ok(None) => {
+            if context.runtime.pocket_camera_live.polls_without_frame() == 180 {
+                eprintln!(
+                    "info: Pocket Camera live input is still waiting for the first SDL3 camera frame"
+                );
+            }
+        }
         Err(error) => {
             show_warning_message(Some(canvas.window()), "Pocket Camera live", &error);
             eprintln!("warning: {error}");

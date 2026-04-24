@@ -4,10 +4,6 @@ use std::ffi::CStr;
 use std::ptr::NonNull;
 use std::slice;
 
-const LIVE_CAMERA_WIDTH: i32 = 128;
-const LIVE_CAMERA_HEIGHT: i32 = 112;
-const LIVE_CAMERA_FRAMERATE_NUMERATOR: i32 = 15;
-const LIVE_CAMERA_FRAMERATE_DENOMINATOR: i32 = 1;
 const LIVE_CAMERA_WARMUP_FRAMES: u8 = 5;
 
 pub struct PocketCameraLiveInput {
@@ -16,6 +12,8 @@ pub struct PocketCameraLiveInput {
     camera: Option<OpenCamera>,
     enabled: bool,
     warmup_frames_remaining: u8,
+    frames_delivered: u64,
+    polls_without_frame: u16,
     camera_name: Option<String>,
 }
 
@@ -28,6 +26,8 @@ impl PocketCameraLiveInput {
                 camera: None,
                 enabled: false,
                 warmup_frames_remaining: 0,
+                frames_delivered: 0,
+                polls_without_frame: 0,
                 camera_name: None,
             },
             Err(error) => Self {
@@ -36,6 +36,8 @@ impl PocketCameraLiveInput {
                 camera: None,
                 enabled: false,
                 warmup_frames_remaining: 0,
+                frames_delivered: 0,
+                polls_without_frame: 0,
                 camera_name: None,
             },
         }
@@ -74,6 +76,8 @@ impl PocketCameraLiveInput {
         self.camera = Some(camera);
         self.enabled = true;
         self.warmup_frames_remaining = LIVE_CAMERA_WARMUP_FRAMES;
+        self.frames_delivered = 0;
+        self.polls_without_frame = 0;
         self.camera_name = Some(camera_name);
         Ok(())
     }
@@ -82,6 +86,8 @@ impl PocketCameraLiveInput {
         self.camera = None;
         self.enabled = false;
         self.warmup_frames_remaining = 0;
+        self.frames_delivered = 0;
+        self.polls_without_frame = 0;
         self.camera_name = None;
     }
 
@@ -116,7 +122,21 @@ impl PocketCameraLiveInput {
             }
             latest_frame = Some(frame_result?);
         }
+        if latest_frame.is_some() {
+            self.frames_delivered += 1;
+            self.polls_without_frame = 0;
+        } else {
+            self.polls_without_frame = self.polls_without_frame.saturating_add(1);
+        }
         Ok(latest_frame)
+    }
+
+    pub fn frames_delivered(&self) -> u64 {
+        self.frames_delivered
+    }
+
+    pub fn polls_without_frame(&self) -> u16 {
+        self.polls_without_frame
     }
 }
 
@@ -126,18 +146,11 @@ struct OpenCamera {
 
 impl OpenCamera {
     fn open(camera_id: camera::SDL_CameraID) -> Result<Self, String> {
-        let spec = camera::SDL_CameraSpec {
-            format: pixels::SDL_PIXELFORMAT_RGB24,
-            colorspace: pixels::SDL_COLORSPACE_SRGB,
-            width: LIVE_CAMERA_WIDTH,
-            height: LIVE_CAMERA_HEIGHT,
-            framerate_numerator: LIVE_CAMERA_FRAMERATE_NUMERATOR,
-            framerate_denominator: LIVE_CAMERA_FRAMERATE_DENOMINATOR,
-        };
-
-        // SAFETY: `camera_id` comes from SDL_GetCameras and `spec` points to a valid
-        // stack-allocated SDL_CameraSpec for the duration of the call.
-        let raw = unsafe { camera::SDL_OpenCamera(camera_id, &spec) };
+        // SAFETY: `camera_id` comes from SDL_GetCameras. Passing a null spec lets
+        // SDL pick the camera's native stream; this avoids platform backends that
+        // open successfully but never deliver frames for uncommon requested sizes
+        // like the Pocket Camera's final 128x112 input.
+        let raw = unsafe { camera::SDL_OpenCamera(camera_id, std::ptr::null()) };
         let raw = NonNull::new(raw).ok_or_else(|| {
             let error = sdl_error();
             if error.is_empty() {
