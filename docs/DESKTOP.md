@@ -19,14 +19,16 @@ scripts/run-gb-desktop-macos-app -- [path/to/rom.gb]
 
 The launcher builds `gb-desktop`, creates `target/macos/GB Cycle.app` with the
 camera usage string from `crates/gb-desktop/macos/Info.plist`, ad-hoc signs it
-when `codesign` is available, and runs the executable from inside the bundle so
-stdout/stderr remain attached to the terminal. macOS should then prompt for
-**GB Cycle** camera access, and the app appears under **System Settings ->
-Privacy & Security -> Camera**. If you need to test the LaunchServices path,
-set `GB_CYCLE_DESKTOP_LAUNCH_MODE=open`; that mode writes logs to
-`target/macos/gb-desktop.stdout.log` and `target/macos/gb-desktop.stderr.log`,
-and falls back to direct bundled execution if `open` reports a launch error such
-as `-10810`.
+when `codesign` is available, and launches it through LaunchServices so macOS
+attributes camera permission to the `GB Cycle` bundle instead of the terminal or
+editor process that ran the script. Because LaunchServices detaches standard
+streams, this mode writes logs to `target/macos/gb-desktop.stdout.log` and
+`target/macos/gb-desktop.stderr.log`. macOS should then prompt for **GB Cycle**
+camera access, and the app appears under **System Settings -> Privacy &
+Security -> Camera**. If LaunchServices reports a launch error such as `-10810`,
+the script falls back to direct bundled execution; set
+`GB_CYCLE_DESKTOP_LAUNCH_MODE=direct` only when you explicitly want that fallback
+path for debugging.
 
 For direct local `DMG-04` startup and reproducible profiling runs, the desktop
 CLI also supports:

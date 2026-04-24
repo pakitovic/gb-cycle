@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 profile="${GB_CYCLE_DESKTOP_PROFILE:-release}"
 app_root="${GB_CYCLE_DESKTOP_APP_BUNDLE:-$repo_root/target/macos/GB Cycle.app}"
-launch_mode="${GB_CYCLE_DESKTOP_LAUNCH_MODE:-direct}"
+launch_mode="${GB_CYCLE_DESKTOP_LAUNCH_MODE:-open}"
 app_args=("$@")
 if [[ "${app_args[0]:-}" == "--" ]]; then
     app_args=("${app_args[@]:1}")
@@ -51,7 +51,7 @@ case "$launch_mode" in
         fi
         ;;
     *)
-        echo "unknown GB_CYCLE_DESKTOP_LAUNCH_MODE=$launch_mode; expected direct or open" >&2
+        echo "unknown GB_CYCLE_DESKTOP_LAUNCH_MODE=$launch_mode; expected open or direct" >&2
         exit 2
         ;;
 esac
