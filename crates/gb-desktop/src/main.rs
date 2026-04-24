@@ -8763,11 +8763,11 @@ fn framebuffer_pixel_to_grayscale(pixel: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BOOT_ROM_FILE_DIALOG_FILTERS, DEFAULT_BOOT_ROM_DIR, DesktopRunOptions,
-        DesktopSettingsStore, GamepadBindingTarget, GamepadMenuBindingTarget, HostRtcSync,
-        KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult, PerformanceHudSnapshot,
-        ROM_FILE_DIALOG_FILTERS, assign_gamepad_binding, assign_gamepad_menu_binding,
-        assign_keyboard_binding, assign_keyboard_menu_binding,
+        BOOT_ROM_FILE_DIALOG_FILTERS, CAMERA_IMAGE_FILE_DIALOG_FILTERS, DEFAULT_BOOT_ROM_DIR,
+        DesktopRunOptions, DesktopSettingsStore, GamepadBindingTarget, GamepadMenuBindingTarget,
+        HostRtcSync, KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult,
+        PerformanceHudSnapshot, ROM_FILE_DIALOG_FILTERS, assign_gamepad_binding,
+        assign_gamepad_menu_binding, assign_keyboard_binding, assign_keyboard_menu_binding,
         assignable_key_for_binding_target_from_keycode,
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
         desktop_key_from_keycode, desktop_key_scancode, entered_pc_ranges,
@@ -8885,10 +8885,21 @@ mod tests {
         height: u32,
         pixels: &[u8],
     ) -> PathBuf {
+        write_png(root, name, width, height, png::ColorType::Grayscale, pixels)
+    }
+
+    fn write_png(
+        root: &Path,
+        name: &str,
+        width: u32,
+        height: u32,
+        color_type: png::ColorType,
+        pixels: &[u8],
+    ) -> PathBuf {
         let path = root.join(name);
         let file = fs::File::create(&path).expect("test PNG should be creatable");
         let mut encoder = png::Encoder::new(file, width, height);
-        encoder.set_color(png::ColorType::Grayscale);
+        encoder.set_color(color_type);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder
             .write_header()
@@ -9732,6 +9743,18 @@ mod tests {
                 settings_store: &mut self.settings_store,
             };
             super::process_pending_camera_image_dialog(&mut self.canvas, &mut context)
+        }
+
+        fn process_pocket_camera_live_frame(&mut self) {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_pocket_camera_live_frame(&mut self.canvas, &mut context);
         }
 
         fn process_pending_boot_rom_directory_dialog(&mut self) -> Result<(), String> {
@@ -12327,6 +12350,78 @@ mod tests {
     }
 
     #[test]
+    fn camera_image_dialog_filters_include_png_and_all_files() {
+        assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[0].name, "PNG images");
+        assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[0].pattern, "png");
+        assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[1].name, "All files");
+        assert_eq!(CAMERA_IMAGE_FILE_DIALOG_FILTERS[1].pattern, "*");
+    }
+
+    #[test]
+    fn desktop_session_path_helpers_cover_linked_and_directory_fallbacks() {
+        let root = temp_test_root("desktop-session-path-helpers");
+        let current_dir = root.join("current");
+        let last_open = root.join("last-open");
+        let primary_path = root.join("roms").join("primary.gb");
+        let linked_path = root.join("linked").join("secondary.gb");
+        let mut session = super::DesktopSession {
+            config: DesktopConfig::default(),
+            current_dir: current_dir.clone(),
+            loaded_rom: None,
+            linked_secondary_rom: None,
+            last_open_directory: None,
+            recent_roms: vec![primary_path.clone()],
+            pocket_camera_frame: None,
+            external_port_selection: DesktopExternalPortSelection::None,
+        };
+
+        assert_eq!(session.linked_secondary_rom_path(), None);
+        assert_eq!(session.linked_secondary_rom_bytes(), None);
+        assert_eq!(session.rom_directory_hint(), current_dir.as_path());
+        assert_eq!(session.recent_roms(), [primary_path.clone()].as_slice());
+
+        session.last_open_directory = Some(last_open.clone());
+        assert_eq!(session.rom_directory_hint(), last_open.as_path());
+
+        session.loaded_rom = Some(super::LoadedRom {
+            path: primary_path.clone(),
+            bytes: vec![0x01, 0x02],
+        });
+        session.linked_secondary_rom = Some(super::LoadedRom {
+            path: linked_path.clone(),
+            bytes: vec![0x03, 0x04],
+        });
+
+        assert_eq!(
+            session.rom_directory_hint(),
+            primary_path
+                .parent()
+                .expect("primary ROM should have a parent")
+        );
+        assert_eq!(
+            session.linked_secondary_rom_path(),
+            Some(linked_path.as_path())
+        );
+        assert_eq!(
+            session.linked_secondary_rom_bytes(),
+            Some([0x03, 0x04].as_slice())
+        );
+    }
+
+    #[test]
+    fn path_selection_dialog_reports_disconnected_results_as_empty() {
+        let mut dialog = super::PathSelectionDialog::new();
+        dialog.pending = true;
+        let (replacement_sender, _replacement_receiver) = std::sync::mpsc::channel();
+        let original_sender = std::mem::replace(&mut dialog.sender, replacement_sender);
+
+        drop(original_sender);
+
+        assert_eq!(dialog.take_result(), None);
+        assert!(!dialog.is_pending());
+    }
+
+    #[test]
     fn system_option_cycle_helpers_wrap_in_the_expected_order() {
         assert_eq!(
             next_console_model(DesktopConsoleModel::Dmg0),
@@ -13788,6 +13883,340 @@ mod tests {
         assert_eq!(harness.session.pocket_camera_frame, None);
         let placeholder_tiles = capture_camera_tile_bytes(harness.machine.primary_machine_mut());
         assert_ne!(placeholder_tiles, expected_black_tiles);
+    }
+
+    #[test]
+    fn camera_image_loader_converts_supported_png_color_types() {
+        let _guard = crate::lock_sdl_test();
+        let harness = FrontendHarness::new("camera-image-loader-colors", false, false, false);
+
+        write_png(
+            &harness.root,
+            "gray-alpha.png",
+            1,
+            1,
+            png::ColorType::GrayscaleAlpha,
+            &[0x44, 0x99],
+        );
+        write_png(
+            &harness.root,
+            "rgb.png",
+            1,
+            1,
+            png::ColorType::Rgb,
+            &[255, 0, 0],
+        );
+        write_png(
+            &harness.root,
+            "rgba.png",
+            1,
+            1,
+            png::ColorType::Rgba,
+            &[0, 255, 0, 0x80],
+        );
+
+        assert_eq!(
+            super::load_selected_camera_image(PathBuf::from("gray-alpha.png"), &harness.session)
+                .expect("grayscale alpha PNG should load"),
+            PocketCameraFrame {
+                width: 1,
+                height: 1,
+                grayscale_pixels: vec![0x44],
+            }
+        );
+        assert_eq!(
+            super::load_selected_camera_image(PathBuf::from("rgb.png"), &harness.session)
+                .expect("RGB PNG should load"),
+            PocketCameraFrame {
+                width: 1,
+                height: 1,
+                grayscale_pixels: vec![76],
+            }
+        );
+        assert_eq!(
+            super::load_selected_camera_image(PathBuf::from("rgba.png"), &harness.session)
+                .expect("RGBA PNG should load"),
+            PocketCameraFrame {
+                width: 1,
+                height: 1,
+                grayscale_pixels: vec![150],
+            }
+        );
+
+        let error =
+            super::load_selected_camera_image(PathBuf::from("missing.png"), &harness.session)
+                .expect_err("missing image should report a file error");
+        assert!(error.contains("failed to read Pocket Camera image"));
+        assert!(error.contains("missing.png"));
+    }
+
+    #[test]
+    fn camera_image_dialog_reports_failure_and_cancel_edges() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-image-dialog-edges", false, false, false);
+        fs::write(harness.root.join("not-a-png.png"), b"not a png")
+            .expect("invalid PNG fixture should be writable");
+
+        harness
+            .runtime
+            .camera_image_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from("not-a-png.png")))
+            .expect("invalid Pocket Camera image selection should send");
+        harness
+            .process_pending_camera_image_dialog()
+            .expect("invalid Pocket Camera image selection should be reported");
+
+        harness
+            .runtime
+            .camera_image_dialog
+            .sender
+            .send(PathDialogResult::Canceled)
+            .expect("Pocket Camera image cancel should send");
+        harness
+            .process_pending_camera_image_dialog()
+            .expect("canceled Pocket Camera image dialog should be ignored");
+
+        harness
+            .runtime
+            .camera_image_dialog
+            .sender
+            .send(PathDialogResult::Failed("camera image failed".to_string()))
+            .expect("Pocket Camera image failure should send");
+        harness
+            .process_pending_camera_image_dialog()
+            .expect("failed Pocket Camera image dialog should be reported");
+    }
+
+    #[test]
+    fn camera_image_loader_reports_png_decode_errors() {
+        let _guard = crate::lock_sdl_test();
+        let harness = FrontendHarness::new("camera-image-loader-errors", false, false, false);
+        fs::write(harness.root.join("not-a-png.png"), b"not a png")
+            .expect("invalid PNG fixture should be writable");
+        fs::write(
+            harness.root.join("truncated.png"),
+            [
+                0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n', 0, 0, 0, 0x0D, b'I', b'H', b'D',
+                b'R',
+            ],
+        )
+        .expect("truncated PNG fixture should be writable");
+
+        let metadata_error =
+            super::load_selected_camera_image(PathBuf::from("not-a-png.png"), &harness.session)
+                .expect_err("non-PNG image should fail metadata decoding");
+        assert!(metadata_error.contains("failed to decode PNG metadata"));
+
+        let image_error =
+            super::load_selected_camera_image(PathBuf::from("truncated.png"), &harness.session)
+                .expect_err("truncated PNG image should fail image decoding");
+        assert!(
+            image_error.contains("failed to decode PNG metadata")
+                || image_error.contains("failed to decode PNG image")
+        );
+    }
+
+    #[test]
+    fn desktop_rom_and_external_port_helpers_cover_error_edges() {
+        let _guard = crate::lock_sdl_test();
+        let harness = FrontendHarness::new("desktop-rom-helper-edges", false, false, false);
+
+        let missing_rom_error =
+            match super::load_selected_rom(PathBuf::from("missing.gb"), &harness.session) {
+                Ok(_) => panic!("missing ROM should report a file read error"),
+                Err(error) => error,
+            };
+        assert!(missing_rom_error.contains("failed to read ROM"));
+        assert_eq!(
+            super::next_single_external_port_selection(DesktopExternalPortSelection::GameLink),
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            super::next_single_external_port_selection(
+                DesktopExternalPortSelection::FourPlayerAdapter,
+            ),
+            DesktopExternalPortSelection::None
+        );
+        assert_eq!(
+            super::next_single_external_port_selection(DesktopExternalPortSelection::Printer),
+            DesktopExternalPortSelection::Printer
+        );
+    }
+
+    #[test]
+    fn pocket_camera_live_menu_actions_cover_unavailable_and_no_rom_edges() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-menu-error", false, false, false);
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ToggleCameraLive)
+                .expect("unavailable live backend should be reported without failing the menu")
+                .is_none()
+        );
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+        assert!(
+            harness
+                .execute_action(super::MenuAction::ResetCameraImage)
+                .expect("CAM RESET should be a no-op without a Camera ROM")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetExternalPort(
+                    DesktopExternalPortSelection::GameLink,
+                ))
+                .expect("GAME LINK should be ignored without a primary ROM")
+                .is_none()
+        );
+        assert_eq!(
+            harness.runtime.open_rom_dialog_mode,
+            super::OpenRomDialogMode::Primary
+        );
+    }
+
+    #[test]
+    fn desktop_format_grayscale_and_key_helpers_cover_camera_paths() {
+        assert_eq!(
+            super::format_display_error("context", "error"),
+            "context: error"
+        );
+        assert_eq!(
+            super::format_debug_error("context", "error"),
+            "context: error"
+        );
+        assert_eq!(super::startup_mode_name(StartupMode::SkipBoot), "skip-boot");
+        assert_eq!(super::startup_mode_name(StartupMode::RealBoot), "real-boot");
+        assert_eq!(super::execution_mode_name(ExecutionMode::Strict), "strict");
+        assert_eq!(
+            super::execution_mode_name(ExecutionMode::Permissive),
+            "permissive"
+        );
+        assert_eq!(
+            super::execution_mode_name(ExecutionMode::Experimental),
+            "experimental"
+        );
+        assert_eq!(super::EmulationProfileSessionKind::Single.label(), "single");
+        assert_eq!(
+            super::EmulationProfileSessionKind::LinkedDmg04TwoPlayer.label(),
+            "linked-dmg04-2p"
+        );
+        assert!(super::key_matches(DesktopKey::Escape, Keycode::Escape));
+        assert!(!super::key_matches(DesktopKey::Escape, Keycode::A));
+        assert_eq!(super::grayscale_from_rgb(255, 0, 0), 76);
+        assert_eq!(super::grayscale_from_rgb(0, 255, 0), 150);
+        assert_eq!(super::grayscale_from_rgb(0, 0, 255), 29);
+        assert_eq!(keycode_to_test_scancode(Keycode::A), Scancode::A);
+        assert_eq!(keycode_to_test_scancode(Keycode::C), Scancode::C);
+        assert_eq!(keycode_to_test_scancode(Keycode::D), Scancode::D);
+        assert_eq!(keycode_to_test_scancode(Keycode::E), Scancode::E);
+        assert_eq!(keycode_to_test_scancode(Keycode::Q), Scancode::Q);
+        assert_eq!(keycode_to_test_scancode(Keycode::S), Scancode::S);
+        assert_eq!(keycode_to_test_scancode(Keycode::V), Scancode::V);
+        assert_eq!(keycode_to_test_scancode(Keycode::W), Scancode::W);
+    }
+
+    #[test]
+    fn pocket_camera_frame_helpers_apply_only_to_camera_machines() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-frame-helpers", false, false, false);
+        let live_frame = PocketCameraFrame {
+            width: 1,
+            height: 1,
+            grayscale_pixels: vec![0x00],
+        };
+
+        assert!(!super::session_has_pocket_camera(&harness.machine));
+        assert!(
+            super::apply_pocket_camera_live_frame_to_desktop_session(
+                &live_frame,
+                &mut harness.machine,
+            )
+            .is_ok()
+        );
+
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(super::session_has_pocket_camera(&harness.machine));
+
+        harness.session.pocket_camera_frame = Some(live_frame.clone());
+        super::apply_session_pocket_camera_frame_to_desktop_session(
+            &harness.session,
+            &mut harness.machine,
+        )
+        .expect("session image should apply to the camera machine");
+        let expected_black_tiles = [
+            0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
+            0x00, 0xFF,
+        ];
+        assert_eq!(
+            capture_camera_tile_bytes(harness.machine.primary_machine_mut()),
+            expected_black_tiles
+        );
+
+        let white_live_frame = PocketCameraFrame {
+            width: 1,
+            height: 1,
+            grayscale_pixels: vec![0xFF],
+        };
+        super::apply_pocket_camera_live_frame_to_desktop_session(
+            &white_live_frame,
+            &mut harness.machine,
+        )
+        .expect("live image should apply to the camera machine");
+        assert_ne!(
+            capture_camera_tile_bytes(harness.machine.primary_machine_mut()),
+            expected_black_tiles
+        );
+    }
+
+    #[test]
+    fn disabled_pocket_camera_live_processing_is_a_noop() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-disabled", false, false, false);
+
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+        harness.process_pocket_camera_live_frame();
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+    }
+
+    #[test]
+    fn pocket_camera_live_processing_stops_missing_camera_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("camera-live-missing-camera", false, false, false);
+
+        harness.runtime.pocket_camera_live =
+            super::PocketCameraLiveInput::enabled_without_camera_for_tests();
+        harness.process_pocket_camera_live_frame();
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
+
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(super::session_has_pocket_camera(&harness.machine));
+
+        harness.runtime.pocket_camera_live =
+            super::PocketCameraLiveInput::enabled_without_camera_for_tests();
+        harness.process_pocket_camera_live_frame();
+        assert!(!harness.runtime.pocket_camera_live.is_enabled());
     }
 
     #[test]
