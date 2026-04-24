@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+profile="${GB_CYCLE_DESKTOP_PROFILE:-release}"
+app_root="${GB_CYCLE_DESKTOP_APP_BUNDLE:-$repo_root/target/macos/GB Cycle.app}"
+profile_flag=()
+if [[ "$profile" == "release" ]]; then
+    profile_flag=(--release)
+else
+    profile_flag=(--profile "$profile")
+fi
+
+cargo build "${profile_flag[@]}" -p gb-desktop
+
+executable="$repo_root/target/$profile/gb-desktop"
+plist="$repo_root/crates/gb-desktop/macos/Info.plist"
+macos_dir="$app_root/Contents/MacOS"
+resources_dir="$app_root/Contents/Resources"
+
+rm -rf "$app_root"
+mkdir -p "$macos_dir" "$resources_dir"
+cp "$executable" "$macos_dir/gb-desktop"
+cp "$plist" "$app_root/Contents/Info.plist"
+printf 'APPL????' > "$app_root/Contents/PkgInfo"
+chmod +x "$macos_dir/gb-desktop"
+
+if command -v codesign >/dev/null 2>&1; then
+    codesign --force --deep --sign - "$app_root" >/dev/null 2>&1 || true
+fi
+
+if [[ "${GB_CYCLE_DESKTOP_DIRECT_EXEC:-0}" == "1" ]]; then
+    exec "$macos_dir/gb-desktop" "$@"
+else
+    open -n -W -o /dev/stdout --stderr /dev/stderr "$app_root" --args "$@"
+fi

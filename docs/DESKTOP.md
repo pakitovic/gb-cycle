@@ -8,6 +8,24 @@ cargo run --release -p gb-desktop -- [path/to/rom.gb]
 
 Can start without a ROM and wait in a launcher-style root menu until a ROM is selected.
 
+On macOS, `CAM LIVE` needs the process to run from an app bundle that declares
+`NSCameraUsageDescription`; otherwise the OS can leave SDL camera permission in
+`pending` without listing the binary under Privacy & Security. Use the
+development bundle launcher when testing Pocket Camera live input:
+
+```bash
+scripts/run-gb-desktop-macos-app -- [path/to/rom.gb]
+```
+
+The launcher builds `gb-desktop`, creates `target/macos/GB Cycle.app` with the
+camera usage string from `crates/gb-desktop/macos/Info.plist`, ad-hoc signs it
+when `codesign` is available, and launches the bundle through LaunchServices
+with stdout/stderr attached to the terminal. macOS should then prompt for
+**GB Cycle** camera access, and the app appears under **System Settings ->
+Privacy & Security -> Camera**. Set `GB_CYCLE_DESKTOP_DIRECT_EXEC=1` only when
+you explicitly want to bypass LaunchServices and execute the bundled binary
+directly.
+
 For direct local `DMG-04` startup and reproducible profiling runs, the desktop
 CLI also supports:
 
