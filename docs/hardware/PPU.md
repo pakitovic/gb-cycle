@@ -420,7 +420,7 @@ Consult [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) only when you need 
 
 - The highest remaining residual uncertainty is concentrated in left-edge/startup seams, fine window restart and live-write timing, and some LCD on/off plus `STAT` boundary timing.
 - Keep those seams explicit and localized in the design rather than folding them back into the canonical external fetcher contract above.
-- Use [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) for repo-local closure status, rollout constraints, and compatibility notes.
+- Use [PPU-REIMPLEMENTATION.md](./PPU-REIMPLEMENTATION.md) for repo-local guardrails that prevent reopened regressions during internal rewrites.
 
 ## Dependencies
 
@@ -462,9 +462,9 @@ For PPU work, this order is weighted by usefulness for DMG pixel FIFO, window ti
 
 ## Tests
 
-For DMG bring-up and PPU refactor closure, use the following finer-grained maturity ladder as the practical test-order guideline:
+The following DMG ROMs are the PPU no-regression catalog for the already-closed external raster and timing work. Treat the order as a diagnostic grouping, not as an active phase-progress ledger:
 
-| order | maturity stage | family | ROM | domain | complexity | PPU ownership | original # |
+| order | diagnostic group | family | ROM | domain | complexity | PPU ownership | original # |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Base raster / smoke | acid | `dmg-acid2.gb` | PPU | VERY LOW | general Mode 3 raster, BG/WIN/OBJ mixing, left edge / startup | 2 |
 | 2 | Visible raster and post-boot state | daid | `ppu_scanline_bgp.gb` | PPU | MEDIUM | per-scanline `BGP`, visible raster | 41 |
@@ -516,63 +516,20 @@ For DMG bring-up and PPU refactor closure, use the following finer-grained matur
 | 48 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_wx_6_change.gb` | PPU | VERY HIGH | Mode `3`, live `WX` timing | 167 |
 | 49 | Mode 3 window mechanics | mealybug-tearoom-tests | `ppu/m3_wx_4_change_sprites.gb` | PPU | VERY HIGH | Mode `3`, live `WX` with OBJ interaction | 165 |
 
-Project-owned tests:
+Project-owned regression intent:
 
-This status tracks repo-owned unit, integration, and synthetic-ROM coverage. It does not replace the external ROM rows above; green mealybug / mooneye / differential coverage remains a separate closure signal.
+The external ROM table above is the main no-regression catalog. Repo-owned unit,
+integration, and synthetic-ROM tests should stay focused on the local invariants
+that make those ROM outcomes explainable: variable `Mode 3`, BG/window/OBJ
+fetch arbitration, STAT/LY/LYC chronology, LCD on/off restart behavior,
+VRAM/OAM blocking, DMG OAM corruption, panel/live-palette seams, and
+`SkipBoot` continuity.
 
-Covered:
-- variable Mode `3` timing, `SCX` discard behavior, and sprite-induced stalls
-- BG/window `Push` retry behavior: retry until the BG FIFO is empty, and never push into a non-empty BG FIFO
-- OBJ fetch arbitration at eligible BG/window `Push` points, with BG refill still taking priority when the BG FIFO is empty
-- Mode `2` sprite selection using Y only, including horizontally off-screen sprites still consuming one of the `10` slots
-- DMG OBJ/OBJ priority: lower `X` wins, then OAM order on equal `X`
-- BG/OBJ mixing using the winning OBJ pixel before applying the BG-over-OBJ rule
-- `8x8` versus `8x16` selection and row mapping, including bit `0` ignored on `8x16` tile indices
-- top-edge and bottom-edge partial sprite visibility such as `Y = 2` and `Y = 154`
-- WY latch timing at Mode `2` start and WX-trigger timing during Mode `3`
-- window fetcher reset and BG FIFO clear when the window starts mid-scanline
-- DMG same-scanline low-`WX` window retarget seams: cancel-only previsible aborts before `x = 0` restore the background FIFO, retained-prefix restarts preserve the observed left-edge tail, and the `WX 4 -> 7` resume continues from the next window tilemap entry after that preserved tail
-- `WX = 0` and `WX = 166` special behavior
-- live `STAT` readback composition: documented writable enable bits, live mode/coincidence bits, and the chosen bit-`7` model
-- `LY` covering `0..=153`, including `LYC` matches at `144`, `153`, and the `153 -> 0` wrap
-- immediate `LYC` write reevaluation of `STAT.2` and the internal STAT interrupt line
-- each enabled LCD STAT mode source path for Mode `0`, Mode `1`, and Mode `2`
-- LCD STAT rising-edge behavior and STAT blocking across consecutive enabled sources such as Mode `0` followed by Mode `1`
-- Mode `3` never acting as a direct LCD STAT interrupt source
-- entering Mode `1` requesting both VBlank interrupt and LCD STAT interrupt independently
-- DMG-family `STAT` write quirk in Mode `2`, Mode `0`, Mode `1`, and coincidence-active cases, plus a negative test for Mode `3`
-- mode reported through `STAT` matching the same live state used by the bus to block or allow VRAM/OAM access
-- blocked CPU VRAM/OAM access semantics, including ignored writes and blocked-read return values in the relevant modes
-- LCD off/on behavior around `STAT`, including LCD-off `STAT` mode readback, release of ordinary LCD-mode VRAM/OAM restrictions, and re-enable without stale STAT-line or coincidence carry-over
-- `LCDC.7: 1 -> 0` causing immediate LCD/PPU disable, visible white output, and release of ordinary VRAM/OAM mode restrictions
-- `LCDC.7: 0 -> 1` causing immediate internal PPU restart while keeping the visible output blank for the first full frame
-- LCD disable resetting pipeline state so re-enable does not resume a corrupted partial scanline
-- one explicit LY/off/re-enable policy covering the disable point, steady LCD-off state, and re-enable boundary rather than accidental continued line counting during LCD-disabled state
-- mid-scanline `LCDC.7` writes taking effect immediately rather than waiting for scanline or frame end
-- Mode `2` OAM row exposure as deterministic state that advances one row per `4` dots
-- OAM corruption trigger families for ordinary OAM access, `FEA0-FEFF` read/write during Mode `2`, and IDU-driven `inc/dec` events in `FE00-FEFF`
-- first-row immunity of the basic OAM corruption patterns
-- write corruption and read corruption using the documented deterministic word formulas rather than random damage
-- `write + inc/dec` collapsing to one effective write-corruption path
-- dedicated `read + inc/dec` behavior, including row exclusions for the first four rows and the last row
-- DMG-family models being affected by OAM corruption while future CGB-family models are not
-- direct-boot continuity for the first LCD-visible dots after `SkipBoot` being coherent with the published post-boot `LCDC`, `STAT`, and `LY` snapshot
-
-Partial:
-- canonical BG/window fetcher phase order: the hardware contract is `TileIndex -> TileDataLow -> TileDataHigh -> Sleep -> Push`, while the current project model tests the explicit fetch stages and push-entry / retry behavior without a separately named `Sleep` enum stage
-- OBJ color `0` transparency is covered; transparent object FIFO filler behavior is covered only indirectly through OBJ FIFO and mixing tests
-- mid-frame `LCDC.1` / `LCDC.2` coverage exists for OBJ fetch cancellation, live Mode `2` size selection, and size-row safety, but not as complete external-oracle closure for all Mode `3` toggle cases
-- internal window line counter coverage includes increment-only-when-started behavior and reset through LCD pipeline reset paths; VBlank reset should remain visible as a dedicated assertion if this area changes again
-- mid-frame `WX`, `WY`, and `LCDC.5` writes have focused local coverage for latching, previous-dot WX, and window-fetch aborts, but not a complete glitch matrix
-- `LCDC.5` disable during active window fetch is covered, and the current DMG Mealybug window block is green for same-scanline re-enable plus low-`WX` / live-`WX` retarget seams (`m3_lcdc_win_en_change_multiple*`, `m3_wx_4/5/6_change*`); a complete hardware glitch matrix for arbitrary mid-frame `WX` / `WY` / `LCDC.5` interactions is still incomplete
-- window-start plus OBJ mixing is covered without spurious OBJ FIFO reset; broader window-glitch continuation into later BG/OBJ mixing remains incomplete
-- line-start Mode `2` / LCD STAT chronology has focused local and synthetic-ROM coverage for raster-effect timing, but handler-writeback and first-line variants remain partly diagnostic
-- OAM corruption instruction-family routing is covered for `[hli]` / `[hld]`, `push`, interrupt service, and generic CPU address-event classes; `pop`, `call`, `ret`, `rst`, and executing code from OAM still need direct end-to-end coverage if they are claimed individually
-
-Open:
-- direct project-owned test for DMG `LCDC.0 = 0` suppressing window rendering when `LCDC.5 = 1`
-- direct end-to-end OAM-corruption fixtures for `pop`, `call`, `ret`, `rst`, and executing code from OAM
-- explicit project decision and matching test wording for whether the canonical fetcher `Sleep` phase is represented as a named state or as the current push-entry / retry timing
+If one of those areas is rewritten, keep or add a direct project-owned test for
+the specific invariant instead of relying only on an external framebuffer or
+serial result. Concrete open project-owned gaps are tracked in
+[TODO.md](../TODO.md); do not duplicate a historical covered/partial checklist
+here.
 
 ## Known pitfalls
 

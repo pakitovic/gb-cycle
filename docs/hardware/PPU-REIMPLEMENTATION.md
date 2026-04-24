@@ -1,145 +1,72 @@
-# PPU Reimplementation Notes
+# PPU Reimplementation Guardrails
 
 ## Scope
 
-This file keeps repo-local migration constraints and regression watch points for touching the current PPU implementation.
+This file is not a phase-progress ledger. The Phase `4` PPU work is considered closed against the current external DMG report (`167/167`: `165` passing, `2` informational). Keep this document only as repo-local guardrails for touching the current implementation without reopening already-closed seams.
 
-[PPU.md](./PPU.md) remains the hardware-facing contract.
-[TODO.md](../TODO.md) remains the active ledger of open closure work.
-Nothing in this file overrides those documents.
+[PPU.md](./PPU.md) remains the hardware-facing contract and owns the no-regression ROM catalog. [TODO.md](../TODO.md) owns concrete open follow-ups. Nothing in this file overrides those documents.
 
-## How To Use This File
+## Re-entry Rules
 
-1. Implement or reason from [PPU.md](./PPU.md) first.
-2. Use [TODO.md](../TODO.md) for the current frontier and active regression gates.
-3. Use this file only to avoid reopening already-closed repo-local seams while reworking internals.
+- Start from [PPU.md](./PPU.md) when changing hardware behavior; use this file only to preserve repo-local seams while editing the current implementation.
+- Treat the PPU ROM table in [PPU.md](./PPU.md#tests) as the diagnostic no-regression catalog, not as an active roadmap. Keep the relevant rows green for accepted PPU behavior changes.
+- For exploratory ROM-driven work, preserve baseline and final `/.roms/test/test-report.md` snapshots, compare them before keeping the change, and isolate one failing family at a time.
+- If an old broad fix looks tempting, first check the subsystem-specific guardrails below; most closed regressions depended on narrow ownership seams, not on global retiming or scanline-wide rewrites.
 
-## Current Repo-Local Structural Landing State
+## Repo-Local Seams To Preserve
 
-The broad PPU internal cleanup is now structurally landed. Future work should preserve these repo-local ownership boundaries unless a stronger hardware reason forces a redesign:
+### Ownership and scheduling
 
-- Keep the top-level `Ppu` split between runtime/pipeline ownership and panel/live-output ownership instead of collapsing everything back into one monolithic owner.
-- Keep Mode `3` MMIO live-write handling routed through staged helpers (`store/register view -> live-write context -> BG/window/panel/OBJ routing`) instead of reintroducing one large imperative write handler.
-- Keep published `STAT` evaluation as an ordered rule evaluator with named rule families instead of an inline cascade of ad hoc branches.
-- Keep the large `Mode 3` state machines split by stage/handler (`BG` fetch, transfer service, `OBJ` fetch) while preserving the explicit dot timeline.
-- Keep the BG FIFO as a typed owner that stores the output color plus optional cached BG/window metadata in one entry; do not return to parallel FIFO deques for color and cached sideband state.
-- Keep the DMG same-line window restart/retarget seam grouped under one dedicated owner (`DmgWindowRestartState`) instead of scattering the carry/glitch/restart flags across `BgPipelineState`.
-- Keep DMG palette-conflict handling in an explicit `classify -> plan -> apply` flow, and keep panel-history / palette-history types under the palette-conflict subsystem rather than under generic visible-register helpers.
-
-## Repo-Local Measured Performance Guidance
-
-The broad structural cleanup is landed, and the first follow-up perf probes have already been measured. Preserve these conclusions unless a stronger benchmark or profiler trace says otherwise:
-
-- Keep using the strict `ppu_phase6` harness as the default before/after gate for PPU runtime experiments; it already measures scanline cost, frame cost, and focused `Mode 3` hotspot windows.
-- Do not prioritize a broad per-dot `Mode 3` context cache (`mode3_register_latches()`, `mode3_window_policy()`, and similar tiny helper views) without new profiling evidence. Release sampling on representative BG-only and OBJ-heavy scenes did not show those helpers as standalone hotspots.
-- If runtime work in this area is revisited, the more promising narrow target is transfer / raster-publication work (`current_transfer()` and related mode-boundary publication), not a generic cache layer over every per-dot helper.
-- A shared OBJ FIFO write kernel for `push_obj_pixels()` / `rewrite_obj_fifo_pixels()` is acceptable as local deduplication work, but current benchmark evidence only showed a borderline, noise-threshold gain. Do not land it as a performance change alone.
-
-## Repo-Local Migration Constraints
-
-### Scheduler, MMIO, and STAT
-
-- Keep the runtime/pipeline owner split from the panel/live-output owner explicit at the top level; do not re-collapse internal ownership into a single broad `Ppu` state bag.
-- Keep MMIO-owned storage separate from the register view visible to the active pixel pipeline.
-- Keep previous-dot or pipeline-visible snapshots explicit where live-write-sensitive DMG behavior needs them.
-- Keep the scheduler seam explicit: CPU phase, then PPU MMIO commit, then interrupt aggregation.
+- Keep top-level `Ppu` ownership split between runtime/pipeline state and panel/live-output state.
+- Keep MMIO-owned storage separate from the register view visible to the active pixel pipeline, including previous-dot or pipeline-visible snapshots where live-write-sensitive DMG behavior needs them.
+- Keep the scheduler seam explicit: CPU micro-op effects stage first, PPU MMIO commits on the same T-cycle, then interrupt aggregation observes the result.
 - Keep one internal LCD STAT line and request LCD STAT only on rising edges.
-- Keep published `STAT` / visible access-mode evaluation expressed as ordered named rule families, not as one large inline branch chain.
-- Keep Mode `3` MMIO live-write handling expressed as staged dispatch over explicit helper phases rather than as one monolithic register-write function.
-- Route both VBlank and LCD STAT through the shared interrupt-controller path.
-- LCD off must enter one explicit disabled state; LCD on must restart from one explicit raster-start state.
-- The first blank frame after LCD re-enable is panel behavior, not a delayed scheduler start.
-- `STOP` blanking is distinct from LCD-off blanking.
+- Keep published `STAT` / visible access-mode evaluation expressed as ordered named rule families rather than one large inline branch chain.
+- LCD off must enter one explicit disabled state; LCD on must restart from one explicit raster-start state. The first blank frame after re-enable is panel behavior, not a delayed internal scheduler start.
 
-### Mode 3 ownership and arbitration
+### Mode 3 and fetch arbitration
 
-- Keep BG/window as one shared fetcher-plus-FIFO pipeline.
-- Keep BG FIFO ownership typed: one FIFO entry should carry both the output color and its optional cached BG/window sideband metadata.
-- Keep pending OBJ hits explicit; do not rediscover them from transient X-position checks.
+- Keep BG/window as one shared fetcher-plus-FIFO pipeline, with typed FIFO entries that carry output color plus cached BG/window sideband metadata.
 - Keep cached BG/window slices explicit across `Push -> fill.pending -> FIFO`.
-- Keep push-side ownership explicit: entry delay, FIFO-empty wait, fill queue, OBJ handoff, and combined fill-plus-OBJ dots.
-- Keep one transfer-dot model that exposes explicit context, readiness, and execution effect.
-- Let output-side transfer service and FIFO-backed OBJ start consume that same transfer-dot model.
-- Keep the stage-split `Mode 3` helpers (`BG` fetch, transfer service, `OBJ` fetch) explicit; do not fold them back into monolithic state-machine functions unless the split itself proves observably wrong.
-- Do not attempt isolated "strict push" or "push-state-only OBJ start" changes; those already regressed stable closures.
+- Keep pending OBJ hits explicit; do not rediscover them from transient X checks.
+- Keep one transfer-dot model that exposes context, readiness, and whether the dot consumed discard, hidden transfer, visible transfer, or a stall.
+- Keep the stage-split `Mode 3` helpers (`BG` fetch, transfer service, `OBJ` fetch) unless the split itself proves observably wrong.
+- Keep startup transfer progress driven by served transfer dots, not raw `line_dot`; lane ownership, startup window, and effective BG FIFO occupancy must remain distinct.
+- Do not start timing-regression work from broad cached-slice / visible-FIFO retargeting, broad `SCX` / `SCY` retargeting, isolated "strict push" experiments, or broad dummy-startup fill retiming. First prove the affected transfer boundary with a narrow trace or oracle.
 
-### Startup, left-edge, and window seams
+### Live writes, startup, and window seams
 
-- Startup transfer progress is driven by served transfer dots, not raw `line_dot`.
-- Keep lane ownership, startup window (`AbstractStartup` versus `FifoBacked`), and effective BG FIFO occupancy as separate state.
-- Keep the alignment/discard fetch distinct from the first real BG push.
-- When OBJ startup helpers need the remaining hidden pops before the first visible pixel, distinguish physical left-edge clipping from logical startup-visible alignment: partially offscreen-left sprite pushes must keep the raw `current_transfer_x < 8` prefix so negative OBJ pixels are only consumed by real hidden dots, while on-screen startup alignment can still key off the logical startup-visible X (`current_transfer_x + initial_scx_discard`) to keep `m3_lcdc_obj_size_change_scx` closed.
-- When overlapping DMG `LCDC.2` shrink writes land before the affected sprite finishes fetching, keep one retained older pending write for the pending repaint/rewrite effects, but only reuse that retained write for late OBJ push/output selection in the narrow `sprite.x = 32`, `SCX & 7 = 4..7` upper-half seam; applying the fallback broadly reopens plain `m3_lcdc_obj_size_change.gb`.
-- Keep DMG startup-continuation live-write owner state explicit and grouped inside the BG pipeline: `LCDC.3` and `LCDC.4` startup overrides should share a dedicated startup-continuation owner instead of scattering per-slice scalars across `BgPipelineState`.
-- Keep sprite-phased DMG Mode `3` live-write hypotheses declarative: `LCDC.3` and `LCDC.4` startup quirks should live in explicit observed policy tables that return typed decisions, not in ad hoc imperative branches inside the control path.
-- Keep the DMG `LCDC.3` startup map-change seam explicit: prefer narrow startup-continuation / live-refetch overrides over any synthetic retroactive `visible_tile2_window` repaint. For the late second-write class in `m3_lcdc_bg_map_change.gb` (`sprite.x >= 16`), clear the startup `visible_tile2` live-refetch instead of painting an extra black prefix.
-- Keep the DMG `LCDC.4` startup tile-select seam explicit too: prefer startup-continuation overrides on `VisibleTile2` / `VisibleTile3` cached slices over a broad fetcher retarget, and allow the low and high tile-data planes to carry different signed/unsigned selection when the single-left-sprite seam demands it. `m3_lcdc_tile_sel_change.gb` closes with phase-specific per-plane overrides, not with a generic FIFO rewrite.
-- For curated `SkipBoot` ROMs that depend on DMG boot-logo VRAM contents, seed those tiles explicitly in the manifest instead of hiding the dependency inside PPU behavior. `m3_lcdc_bg_map_change.gb` and `m3_lcdc_tile_sel_change.gb` depend on the boot trademark tile (`tile $19` at `0x8190`).
-- The first real BG/window push after startup still skips the ordinary one-dot push-entry delay.
+- Keep `LCDC.3` / `LCDC.4` startup-continuation owner state explicit in the BG pipeline; do not replace it with broad startup realignment, broad tilemap rereads, broad FIFO rewrites, or synthetic repaint windows.
+- Treat the current green Mode `3` live-write seams as narrow DMG hypotheses: `BGP` / `OBP0` panel paths, sprite-coupled `STAT` publication, `SCX` startup carry handling, curated `SkipBoot` boot-trademark seeding for `LCDC.3` / `LCDC.4`, and startup-continuation overrides on `VisibleTile2` / `VisibleTile3`. Do not generalize them into wider rewrite permissions.
+- Keep sprite-phased live-write hypotheses declarative through observed policy tables, not ad hoc imperative branches.
 - Keep `current_transfer_x`-style ownership explicit for Mode `3` arbitration.
 - Keep the `WY` latch and runtime `WX` trigger distinct.
-- Keep the DMG same-line window restart / retarget seam grouped under one explicit owner with `arm / clear / expire / followup` transitions rather than as loose flags spread across the BG pipeline state.
+- Keep the DMG same-line window restart / retarget seam grouped under one owner with `arm / clear / expire / followup` transitions.
 - Treat the activation dot as separate from the restarted window fetch.
 - Turning `LCDC.5` off mid-window must finish the current window tile before BG resumes on a tile boundary.
-- Keep `WX = 0`, `WX = 166`, and the `WX = 0 && (SCX & 7) > 0` shortening case explicit.
-- Keep the `WX = 0` trigger reachable when `SCX & 7` startup discard makes the first visible transfer dot occur at or before `current_transfer_x == 8`.
+- Keep `WX = 0`, `WX = 166`, and `WX = 0 && (SCX & 7) > 0` as explicit edge-case paths.
 
 ### DMA, OAM, and corruption
 
 - Keep the live Mode `2` OAM row as `line_dot / 4`.
 - Keep `OamCorruptionController` explicit and DMG-family only.
 - Late Mode `3` OBJ metadata during OAM DMA must be able to see the current DMA destination word and in-flight byte.
-- Use domain-specific OAM/VRAM bus views instead of raw backing slices at the PPU boundary.
+- Use domain-specific OAM/VRAM bus views at the PPU boundary rather than raw backing slices.
 - Keep the PPU as source of truth for mode, `LY`, current Mode `2` row, and VRAM/OAM accessibility; let the bus enforce blocked-access results.
 
-### DMG panel-output and palette seams
+### Panel output and palette seams
 
 - Keep the DMG BG palette-output model split from the raw current-scanline color pipeline.
-- Keep DMG panel live-write owner state explicit on the PPU side too: `LCDC.0`, CPU-path `BGP`, and recent panel-dot history should live under a dedicated panel-live-write owner instead of as ad hoc top-level scalar fields.
-- Keep DMG palette-conflict writes expressed as `classify -> plan -> apply`, and keep the panel-history / CPU-commit history types under the palette-conflict subsystem rather than under generic register-visibility helpers.
+- Keep DMG panel live-write owner state explicit for `LCDC.0`, CPU-path `BGP`, and recent panel-dot history.
+- Keep palette-conflict handling as `classify -> plan -> apply`, with panel-history and CPU-commit history owned by the palette-conflict subsystem.
 - Keep the narrow CPU-path `BGP` previous-line boundary repaint seam explicit, panel-only, DMG-only, and fed only by the delayed pipeline-visible write class.
-- Keep the DMG CPU-path `BGP` live-write seam explicitly bifurcated: the first visible-line CPU write stays retroactive while `visible_pixels_output == 0`, `current_transfer_x == 0`, and no sprites were selected; after that startup seam, retroactive panel recolor should only happen when the already-visible BG tail is all color `0`. Dots that were already emitted as `LCDC.0`-forced white are not palette-conflict candidates and must stay white through both current-line and previous-boundary repaint paths.
-- Keep the sprite-coupled DMG `BGP` live-write follow-up explicit too: a single left sprite shifts the first two CPU-path write onsets by sprite phase and can expose a short transient left-edge range on the second write before the final palette becomes visible; when that second write lands early, keep the previous palette active until the modeled onset window starts.
-- Keep the DMG `LCDC.0` live-write panel path separate from raw BG color production too: when BG is disabled mid-line, visible BG dots should still retain their underlying mixed BG color so later retroactive re-enables can repaint them, while the presented panel output stays forced white. Historical `LCDC.0` repaint should only touch BG dots, not OBJ dots, and restored BG shades should come from a stable BGP source that ignores current/future CPU-commit output-delay overrides. For the single-left-sprite `m3_lcdc_bg_en_change.gb` seam, keep the onset model explicit and sprite-phased: the second write window starts one pixel later than the earlier baseline, the third lands at `WRITE1 + 8`, and future-only onsets must hold the previous BG-enable state until `visible_pixels_output` reaches the modeled onset instead of repainting too early.
-- Keep the sprite-phased DMG `LCDC.0` onset model declarative too: the control path should consume an observed onset table rather than restating the per-write arrays inline.
-- Keep DMG palette-conflict handling asymmetric where repo-local evidence requires it; do not assume `BGP` and `OBP*` share the same retroactive span.
+- Keep `BGP` and `OBP*` conflict handling separate; do not assume shared retroactive spans or conflict windows.
+- Keep `LCDC.0` repaint rules BG-only. Dots already emitted as forced white are not palette-conflict candidates, and OBJ dots must not be repainted as BG.
+- Do not use fill-only or materialized-slice-only `LCDC.0` overrides as generic fixes; keep onset rules localized per write class and per boundary.
 
-## Known Unstable Areas
+## Performance Notes
 
-Use [TODO.md](../TODO.md) for the exact still-red ROM list, active closure target, and current no-regression set.
-This file only keeps the broader instability classes that remain easy to reopen during internal rewrites:
-
-- Remaining `Mode 3` live-write families beyond the current `BGP` / `OBP0` closures.
-- `SkipBoot` oracle closure.
-- Exact late-HBlank `FF44` readback seam.
-- Same-line window restart and `WX` edge behavior.
-- Mid-frame `LCDC.2` sprite-size artifacts.
-
-## Regressions To Watch
-
-Use [TODO.md](../TODO.md) for the full active rerun set.
-This watch list keeps the smaller set of repo-local closures that have already regressed during internal PPU refactors.
-
-Timing and interrupt chronology:
-- `mooneye acceptance/ppu/hblank_ly_scx_timing-GS.gb`
-- `mooneye acceptance/ppu/lcdon_timing-GS.gb`
-- `mooneye acceptance/ppu/lcdon_write_timing-GS.gb`
-- `mooneye acceptance/ppu/intr_2_mode0_timing_sprites.gb`
-
-Raster and panel-visible behavior:
-- `acid/dmg-acid2.gb`
-- `daid/ppu_scanline_bgp.gb`
-- `hacktix/strikethrough.gb`
-- `mealybug ppu/m3_bgp_change.gb`
-- `mealybug ppu/m3_bgp_change_sprites.gb`
-- `mealybug ppu/m3_obp0_change.gb`
-
-OAM corruption:
-- `blargg oam_bug/4-scanline_timing.gb`
-- `blargg oam_bug/5-timing_bug.gb`
-
-## Workflow Reminder
-
-- Capture a baseline copy of `/.roms/test/test-report.md` before rerunning known external-ROM closures.
-- Capture the final report after the run.
-- Compare before and after before deciding to keep a timing-sensitive change.
+- Use the strict `ppu_phase6` harness as the default before/after gate for PPU runtime experiments.
+- Do not prioritize a broad per-dot `Mode 3` context cache without new profiling evidence; previous release sampling did not show `mode3_register_latches()` or `mode3_window_policy()` as standalone hotspots.
+- If runtime work is revisited, transfer / raster-publication work (`current_transfer()` and related mode-boundary publication) is a better first target than a generic helper-view cache.
+- A shared OBJ FIFO write kernel may be acceptable as local deduplication, but previous benchmark evidence was noise-threshold; do not land it as a performance change alone.
