@@ -768,6 +768,45 @@ previous `core_other` remainder split into external-event ingress, timer, APU,
 DMA, serial, and interrupt buckets, so later optimizations can target a
 specific linked-session cost center instead of a single opaque aggregate.
 
+### Phase 7.6.d status
+
+Re-running the reproducible release benchmark after the later `main` PPU
+refactors keeps the Phase `7.6` decision evidence-based:
+
+- test ROM: `Tetris (W) (V1.1) [!].gb`
+- command shape: `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`,
+  `--mute --no-gamepad --no-vsync --exit-after-frames 360`, release build
+- profiler sampling: `GB_CYCLE_DESKTOP_EMU_PROFILE=summary:30`, first summary
+  discarded as warm-up
+
+Measured averages:
+
+| Session | FPS | Speed | Frame ms | Emu ms | Core estimate | PPU | CPU | Other core | Host |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| single | 59.66 | 100% | 16.75 | 13.63 | 13.60 | 8.59 | 1.14 | 3.87 | 0.03 |
+| `DMG-04` 2P | 29.73 | 49.8% | 33.63 | 33.25 | 33.22 | 20.87 | 2.84 | 9.50 | 0.03 |
+
+The no-profiler wall-clock check with the same dummy drivers and frame count
+matched the profiler result closely:
+
+- single: `360` frames in `6.13s` (`~58.7 FPS`)
+- `DMG-04` 2P: `360` frames in `12.04s` (`~29.9 FPS`)
+
+Decision:
+
+- Phase `7.6.a` through `7.6.c` did remove the obvious linked-session and
+  desktop bookkeeping overhead without changing timing semantics.
+- Phase `7.6.d` confirms the remaining linked desktop gap is not host
+  presentation, event polling, audio submit, or `DMG-04` routing overhead.
+  The two-console run is still dominated by duplicated core work, especially
+  PPU time, with `core_other` now split enough to guide later non-PPU work.
+- Do not expand user-facing multiplayer UX on performance grounds alone until
+  the dedicated PPU optimization branch is re-measured and brings the linked
+  path closer to realtime.
+- Phase `8` may still proceed as an internal desktop architecture refactor
+  if needed, but it should not be treated as solving the linked-play
+  performance problem.
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`
