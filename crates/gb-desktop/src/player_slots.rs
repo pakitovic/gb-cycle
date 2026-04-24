@@ -59,8 +59,8 @@ pub enum DesktopPlayerSessionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerKeyboardProfile {
-    ConfiguredPrimary,
-    LinkedDmg04Secondary,
+    ConfiguredJoypad,
+    LinkedDmg04P2,
     Disabled,
 }
 
@@ -72,8 +72,8 @@ pub enum PlayerAudioPolicy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerViewPolicy {
-    PrimaryPanel,
-    SecondaryPanel,
+    LeftPanel,
+    RightPanel,
     Hidden,
 }
 
@@ -88,8 +88,8 @@ pub struct PlayerHostPolicy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerViewSlots {
-    pub primary: PlayerSlot,
-    pub secondary: Option<PlayerSlot>,
+    pub left: PlayerSlot,
+    pub right: Option<PlayerSlot>,
 }
 
 pub const fn host_policy_for_slot(
@@ -100,23 +100,23 @@ pub const fn host_policy_for_slot(
         (DesktopPlayerSessionKind::Single, PlayerSlot::P1) => PlayerHostPolicy {
             slot,
             machine_index: Some(0),
-            keyboard_profile: PlayerKeyboardProfile::ConfiguredPrimary,
+            keyboard_profile: PlayerKeyboardProfile::ConfiguredJoypad,
             audio: PlayerAudioPolicy::Audible,
-            view: PlayerViewPolicy::PrimaryPanel,
+            view: PlayerViewPolicy::LeftPanel,
         },
         (DesktopPlayerSessionKind::LinkedDmg04TwoPlayer, PlayerSlot::P1) => PlayerHostPolicy {
             slot,
             machine_index: Some(0),
-            keyboard_profile: PlayerKeyboardProfile::ConfiguredPrimary,
+            keyboard_profile: PlayerKeyboardProfile::ConfiguredJoypad,
             audio: PlayerAudioPolicy::Audible,
-            view: PlayerViewPolicy::PrimaryPanel,
+            view: PlayerViewPolicy::LeftPanel,
         },
         (DesktopPlayerSessionKind::LinkedDmg04TwoPlayer, PlayerSlot::P2) => PlayerHostPolicy {
             slot,
             machine_index: Some(1),
-            keyboard_profile: PlayerKeyboardProfile::LinkedDmg04Secondary,
+            keyboard_profile: PlayerKeyboardProfile::LinkedDmg04P2,
             audio: PlayerAudioPolicy::Muted,
-            view: PlayerViewPolicy::SecondaryPanel,
+            view: PlayerViewPolicy::RightPanel,
         },
         (_, _) => PlayerHostPolicy {
             slot,
@@ -135,12 +135,12 @@ pub const fn audio_source_slot(_session_kind: DesktopPlayerSessionKind) -> Playe
 pub const fn view_slots_for_session(session_kind: DesktopPlayerSessionKind) -> PlayerViewSlots {
     match session_kind {
         DesktopPlayerSessionKind::Single => PlayerViewSlots {
-            primary: PlayerSlot::P1,
-            secondary: None,
+            left: PlayerSlot::P1,
+            right: None,
         },
         DesktopPlayerSessionKind::LinkedDmg04TwoPlayer => PlayerViewSlots {
-            primary: PlayerSlot::P1,
-            secondary: Some(PlayerSlot::P2),
+            left: PlayerSlot::P1,
+            right: Some(PlayerSlot::P2),
         },
     }
 }
@@ -216,12 +216,9 @@ mod tests {
     fn host_policy_keeps_single_player_on_p1_only() {
         let p1 = host_policy_for_slot(DesktopPlayerSessionKind::Single, PlayerSlot::P1);
         assert_eq!(p1.machine_index, Some(0));
-        assert_eq!(
-            p1.keyboard_profile,
-            PlayerKeyboardProfile::ConfiguredPrimary
-        );
+        assert_eq!(p1.keyboard_profile, PlayerKeyboardProfile::ConfiguredJoypad);
         assert_eq!(p1.audio, PlayerAudioPolicy::Audible);
-        assert_eq!(p1.view, PlayerViewPolicy::PrimaryPanel);
+        assert_eq!(p1.view, PlayerViewPolicy::LeftPanel);
 
         let p2 = host_policy_for_slot(DesktopPlayerSessionKind::Single, PlayerSlot::P2);
         assert_eq!(p2.machine_index, None);
@@ -246,20 +243,14 @@ mod tests {
         );
 
         assert_eq!(p1.machine_index, Some(0));
-        assert_eq!(
-            p1.keyboard_profile,
-            PlayerKeyboardProfile::ConfiguredPrimary
-        );
+        assert_eq!(p1.keyboard_profile, PlayerKeyboardProfile::ConfiguredJoypad);
         assert_eq!(p1.audio, PlayerAudioPolicy::Audible);
-        assert_eq!(p1.view, PlayerViewPolicy::PrimaryPanel);
+        assert_eq!(p1.view, PlayerViewPolicy::LeftPanel);
 
         assert_eq!(p2.machine_index, Some(1));
-        assert_eq!(
-            p2.keyboard_profile,
-            PlayerKeyboardProfile::LinkedDmg04Secondary
-        );
+        assert_eq!(p2.keyboard_profile, PlayerKeyboardProfile::LinkedDmg04P2);
         assert_eq!(p2.audio, PlayerAudioPolicy::Muted);
-        assert_eq!(p2.view, PlayerViewPolicy::SecondaryPanel);
+        assert_eq!(p2.view, PlayerViewPolicy::RightPanel);
 
         assert_eq!(p3.machine_index, None);
         assert_eq!(p3.view, PlayerViewPolicy::Hidden);
@@ -277,11 +268,11 @@ mod tests {
         );
 
         assert_eq!(
-            view_slots_for_session(DesktopPlayerSessionKind::Single).secondary,
+            view_slots_for_session(DesktopPlayerSessionKind::Single).right,
             None
         );
         assert_eq!(
-            view_slots_for_session(DesktopPlayerSessionKind::LinkedDmg04TwoPlayer).secondary,
+            view_slots_for_session(DesktopPlayerSessionKind::LinkedDmg04TwoPlayer).right,
             Some(PlayerSlot::P2)
         );
     }

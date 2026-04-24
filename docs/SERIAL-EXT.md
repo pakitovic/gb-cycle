@@ -863,16 +863,21 @@ the `gb-core` linked-machine model untouched:
   `P3` and `P4` remain reserved for later `DMG-07` / host multiplayer work.
 - Keyboard profiles are selected by player slot:
   - `P1` uses the existing configurable joypad keyboard bindings.
-  - `P2` uses the explicit local `DMG-04` secondary keyboard profile.
+  - `P2` uses the explicit local `DMG-04` `P2` keyboard profile.
 - Audio and view defaults are also expressed as frontend player policy:
   - `P1` is the default audible source.
-  - `P2` is visible in the secondary panel for local `DMG-04` but muted by
+  - `P2` is visible in the right-hand panel for local `DMG-04` but muted by
     default.
   - inactive slots are hidden and muted.
 
 This is not a performance change and does not add `DMG-07`; it removes the
-previous ad hoc primary/secondary desktop wiring so Phase `9` and Phase `10`
+previous ad hoc two-console desktop wiring so Phase `9` and Phase `10`
 can attach more players without reopening core serial ownership.
+
+Follow-up audit note: remaining `primary` / `secondary` wording is reserved for
+ROM loading, save sessions, and `DMG-04` linked-session hardware ownership.
+Frontend input, audio, and view/layout policy should use player-slot names or
+left/right panel names instead.
 
 ### Crates / files
 

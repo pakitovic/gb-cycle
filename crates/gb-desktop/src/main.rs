@@ -122,8 +122,8 @@ struct FramebufferPanelInput<'a> {
 #[derive(Debug, Clone, Copy)]
 struct FramebufferRenderInput<'a> {
     dimensions: FramebufferDimensions,
-    primary: FramebufferPanelInput<'a>,
-    secondary: Option<FramebufferPanelInput<'a>>,
+    left: FramebufferPanelInput<'a>,
+    right: Option<FramebufferPanelInput<'a>>,
 }
 const DEFAULT_EMU_PROFILE_SAMPLE_EVERY_FRAMES: u32 = 15;
 const DMG_GRAYSCALE_SHADES: [u8; 4] = [255, 170, 85, 0];
@@ -4183,7 +4183,7 @@ fn run_desktop_with_startup_fallback_persistence(
             player_inputs.input_mut(PlayerSlot::P1),
             machine
                 .machine_for_player_slot_mut(PlayerSlot::P1)
-                .expect("P1 should always map to the primary desktop machine"),
+                .expect("P1 should always map to an active desktop machine"),
         )?)
     } else {
         None
@@ -5056,7 +5056,7 @@ fn process_events(
                 runtime.player_inputs.input_mut(PlayerSlot::P1),
                 machine
                     .machine_for_player_slot_mut(PlayerSlot::P1)
-                    .expect("P1 should always map to the primary desktop machine"),
+                    .expect("P1 should always map to an active desktop machine"),
             )?;
             if let Event::ControllerButtonDown { which, .. } = &event {
                 gamepad_manager.activate_gamepad_from_input(
@@ -5064,7 +5064,7 @@ fn process_events(
                     runtime.player_inputs.input_mut(PlayerSlot::P1),
                     machine
                         .machine_for_player_slot_mut(PlayerSlot::P1)
-                        .expect("P1 should always map to the primary desktop machine"),
+                        .expect("P1 should always map to an active desktop machine"),
                 );
             }
         }
@@ -5321,7 +5321,7 @@ fn process_events(
             runtime.player_inputs.input_mut(PlayerSlot::P1),
             machine
                 .machine_for_player_slot_mut(PlayerSlot::P1)
-                .expect("P1 should always map to the primary desktop machine"),
+                .expect("P1 should always map to an active desktop machine"),
         );
     }
     sync_gamepad_rumble(runtime, machine, Instant::now())?;
@@ -7416,7 +7416,7 @@ fn execute_menu_action(
                     context
                         .machine
                         .machine_for_player_slot_mut(PlayerSlot::P1)
-                        .expect("P1 should always map to the primary desktop machine"),
+                        .expect("P1 should always map to an active desktop machine"),
                 );
                 clear_live_input_state(context.machine, context.runtime);
                 context
@@ -7445,7 +7445,7 @@ fn execute_menu_action(
                     context
                         .machine
                         .machine_for_player_slot_mut(PlayerSlot::P1)
-                        .expect("P1 should always map to the primary desktop machine"),
+                        .expect("P1 should always map to an active desktop machine"),
                 );
                 context
                     .settings_store
@@ -7490,7 +7490,7 @@ fn execute_menu_action(
                     context
                         .machine
                         .machine_for_player_slot_mut(PlayerSlot::P1)
-                        .expect("P1 should always map to the primary desktop machine"),
+                        .expect("P1 should always map to an active desktop machine"),
                 );
                 gamepad_manager.set_menu_bindings(defaults.gamepad.menu);
                 gamepad_manager.set_directional_source(
@@ -7499,7 +7499,7 @@ fn execute_menu_action(
                     context
                         .machine
                         .machine_for_player_slot_mut(PlayerSlot::P1)
-                        .expect("P1 should always map to the primary desktop machine"),
+                        .expect("P1 should always map to an active desktop machine"),
                 );
                 gamepad_manager.set_rumble_mode(defaults.gamepad.rumble_mode);
                 gamepad_manager.set_preferred_device(
@@ -7508,7 +7508,7 @@ fn execute_menu_action(
                     context
                         .machine
                         .machine_for_player_slot_mut(PlayerSlot::P1)
-                        .expect("P1 should always map to the primary desktop machine"),
+                        .expect("P1 should always map to an active desktop machine"),
                 );
             }
             context.settings_store.reset_input_defaults()?;
@@ -7532,7 +7532,7 @@ fn execute_menu_action(
                     context
                         .machine
                         .machine_for_player_slot_mut(PlayerSlot::P1)
-                        .expect("P1 should always map to the primary desktop machine"),
+                        .expect("P1 should always map to an active desktop machine"),
                 );
                 context.settings_store.set_gamepad_bindings(bindings)?;
             }
@@ -8144,7 +8144,7 @@ fn sync_live_input_state(
             runtime.player_inputs.input_mut(PlayerSlot::P1),
             machine
                 .machine_for_player_slot_mut(PlayerSlot::P1)
-                .expect("P1 should always map to the primary desktop machine"),
+                .expect("P1 should always map to an active desktop machine"),
         );
     }
 }
@@ -8172,7 +8172,7 @@ fn sync_player_keyboard_state(
 
     let keyboard_state = event_pump.keyboard_state();
     match keyboard_profile {
-        PlayerKeyboardProfile::ConfiguredPrimary => {
+        PlayerKeyboardProfile::ConfiguredJoypad => {
             let joypad = keyboard_bindings.joypad;
             let bindings = [
                 (JoypadButton::Up, desktop_key_scancode(joypad.up)),
@@ -8192,7 +8192,7 @@ fn sync_player_keyboard_state(
                 );
             }
         }
-        PlayerKeyboardProfile::LinkedDmg04Secondary => {
+        PlayerKeyboardProfile::LinkedDmg04P2 => {
             for (joypad_button, scancode) in player_slots::LINKED_DMG04_P2_KEYBOARD_BINDINGS {
                 input_state.set_keyboard_button(
                     machine,
@@ -8243,10 +8243,10 @@ fn joypad_button_for_player_keyboard_event(
     scancode: Option<Scancode>,
 ) -> Option<JoypadButton> {
     match keyboard_profile {
-        PlayerKeyboardProfile::ConfiguredPrimary => {
+        PlayerKeyboardProfile::ConfiguredJoypad => {
             joypad_button_for_key(keyboard_bindings.joypad, keycode)
         }
-        PlayerKeyboardProfile::LinkedDmg04Secondary => {
+        PlayerKeyboardProfile::LinkedDmg04P2 => {
             scancode.and_then(linked_dmg04_p2_button_for_scancode)
         }
         PlayerKeyboardProfile::Disabled => None,
@@ -8536,10 +8536,10 @@ fn save_screenshot_for_session(
 ) -> Result<PathBuf, String> {
     let view_slots = view_slots_for_session(player_session_kind(machine));
     let rendered = screenshot_output::render_screenshot(
-        framebuffer_panel_input_for_player_slot(machine, view_slots.primary)
-            .expect("desktop primary screenshot slot should map to an active machine"),
+        framebuffer_panel_input_for_player_slot(machine, view_slots.left)
+            .expect("desktop left screenshot slot should map to an active machine"),
         view_slots
-            .secondary
+            .right
             .and_then(|slot| framebuffer_panel_input_for_player_slot(machine, slot)),
         video_options,
     );
@@ -8688,10 +8688,10 @@ fn framebuffer_render_input_for_session(
     let view_slots = view_slots_for_session(player_session_kind(machine));
     FramebufferRenderInput {
         dimensions,
-        primary: framebuffer_panel_input_for_player_slot(machine, view_slots.primary)
-            .expect("desktop primary view slot should map to an active machine"),
-        secondary: view_slots
-            .secondary
+        left: framebuffer_panel_input_for_player_slot(machine, view_slots.left)
+            .expect("desktop left view slot should map to an active machine"),
+        right: view_slots
+            .right
             .and_then(|slot| framebuffer_panel_input_for_player_slot(machine, slot)),
     }
 }
@@ -8846,15 +8846,15 @@ fn render_frame(
         rgb_frame,
         framebuffer.dimensions,
         0,
-        framebuffer.primary,
+        framebuffer.left,
         video_options,
     );
-    if let Some(secondary_panel) = framebuffer.secondary {
+    if let Some(right_panel) = framebuffer.right {
         write_monochrome_framebuffer_region(
             rgb_frame,
             framebuffer.dimensions,
             FRAMEBUFFER_WIDTH as usize,
-            secondary_panel,
+            right_panel,
             video_options,
         );
     }
@@ -9951,7 +9951,7 @@ mod tests {
                     player_inputs.input_mut(super::PlayerSlot::P1),
                     machine
                         .machine_for_player_slot_mut(super::PlayerSlot::P1)
-                        .expect("P1 should always map to the primary desktop machine"),
+                        .expect("P1 should always map to an active desktop machine"),
                 )
                 .expect("frontend harness gamepad manager")
             });
@@ -15514,7 +15514,7 @@ mod tests {
                     harness
                         .machine
                         .machine_for_player_slot_mut(super::PlayerSlot::P1)
-                        .expect("P1 should always map to the primary desktop machine"),
+                        .expect("P1 should always map to an active desktop machine"),
                 );
             assert_eq!(
                 super::toggled_preferred_gamepad_device(
@@ -15603,7 +15603,7 @@ mod tests {
                     width: super::FRAMEBUFFER_WIDTH,
                     height: super::FRAMEBUFFER_HEIGHT,
                 },
-                primary: super::FramebufferPanelInput {
+                left: super::FramebufferPanelInput {
                     framebuffer: harness.machine.ppu().framebuffer(),
                     framebuffer_layer_sources: harness.machine.ppu().framebuffer_layer_sources(),
                     bgwin_framebuffer: harness.machine.ppu().framebuffer_bgwin_panel_shades(),
@@ -15613,7 +15613,7 @@ mod tests {
                         .ppu()
                         .framebuffer_bgwin_layer_sources(),
                 },
-                secondary: None,
+                right: None,
             },
             &harness.runtime.video_options,
             Some((&harness.runtime.menu_state, open_menu_presentation)),
@@ -15633,7 +15633,7 @@ mod tests {
                     width: super::FRAMEBUFFER_WIDTH,
                     height: super::FRAMEBUFFER_HEIGHT,
                 },
-                primary: super::FramebufferPanelInput {
+                left: super::FramebufferPanelInput {
                     framebuffer: harness.machine.ppu().framebuffer(),
                     framebuffer_layer_sources: harness.machine.ppu().framebuffer_layer_sources(),
                     bgwin_framebuffer: harness.machine.ppu().framebuffer_bgwin_panel_shades(),
@@ -15643,7 +15643,7 @@ mod tests {
                         .ppu()
                         .framebuffer_bgwin_layer_sources(),
                 },
-                secondary: None,
+                right: None,
             },
             &harness.runtime.video_options,
             None,
@@ -15662,7 +15662,7 @@ mod tests {
     }
 
     #[test]
-    fn linked_runtime_routes_primary_and_secondary_keyboard_input_independently() {
+    fn linked_runtime_routes_p1_and_p2_keyboard_input_independently() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("linked-keyboard-routing", true, false, false);
         let secondary_machine = Machine::new_summary(
@@ -15683,7 +15683,8 @@ mod tests {
         assert_eq!(
             harness
                 .machine
-                .primary_machine()
+                .machine_for_player_slot(super::PlayerSlot::P1)
+                .expect("P1 should map to the linked runtime machine")
                 .joypad()
                 .snapshot()
                 .pressed_mask,
@@ -15692,8 +15693,8 @@ mod tests {
         assert_eq!(
             harness
                 .machine
-                .secondary_machine()
-                .expect("linked runtime should expose a secondary machine")
+                .machine_for_player_slot(super::PlayerSlot::P2)
+                .expect("P2 should map to the linked runtime secondary machine")
                 .joypad()
                 .snapshot()
                 .pressed_mask,
@@ -15710,7 +15711,8 @@ mod tests {
         assert_eq!(
             harness
                 .machine
-                .primary_machine()
+                .machine_for_player_slot(super::PlayerSlot::P1)
+                .expect("P1 should map to the linked runtime machine")
                 .joypad()
                 .snapshot()
                 .pressed_mask,
@@ -15719,8 +15721,8 @@ mod tests {
         assert_eq!(
             harness
                 .machine
-                .secondary_machine()
-                .expect("linked runtime should expose a secondary machine")
+                .machine_for_player_slot(super::PlayerSlot::P2)
+                .expect("P2 should map to the linked runtime secondary machine")
                 .joypad()
                 .snapshot()
                 .pressed_mask,
@@ -15729,7 +15731,7 @@ mod tests {
     }
 
     #[test]
-    fn audio_source_machine_is_primary_for_single_and_linked_sessions() {
+    fn audio_source_machine_follows_the_p1_host_policy_for_single_and_linked_sessions() {
         let _guard = crate::lock_sdl_test();
         let single = FrontendHarness::new("audio-source-single", true, false, false).machine;
         assert_eq!(
@@ -15738,7 +15740,9 @@ mod tests {
         );
         assert!(std::ptr::eq(
             super::audio_source_machine(&single),
-            single.primary_machine()
+            single
+                .machine_for_player_slot(super::PlayerSlot::P1)
+                .expect("P1 should map to the single runtime machine")
         ));
 
         let primary = dmg_skip_boot_summary_machine();
@@ -15754,7 +15758,9 @@ mod tests {
         );
         assert!(std::ptr::eq(
             super::audio_source_machine(&linked),
-            linked.primary_machine()
+            linked
+                .machine_for_player_slot(super::PlayerSlot::P1)
+                .expect("P1 should map to the linked runtime machine")
         ));
     }
 
@@ -15821,7 +15827,7 @@ mod tests {
     }
 
     #[test]
-    fn render_frame_places_linked_secondary_output_in_the_right_panel() {
+    fn render_frame_places_p2_output_in_the_right_panel() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("linked-render", true, false, false);
         let texture_creator = harness.canvas.texture_creator();
@@ -15842,14 +15848,12 @@ mod tests {
                 linked_dimensions.height as usize
                     * super::framebuffer_pitch_bytes_for_dimensions(linked_dimensions)
             ];
-        let primary_framebuffer =
+        let left_framebuffer =
             vec![0_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
-        let secondary_framebuffer =
+        let right_framebuffer =
             vec![3_u8; (super::FRAMEBUFFER_WIDTH * super::FRAMEBUFFER_HEIGHT) as usize];
-        let primary_sources =
-            vec![PpuFramebufferLayerSource::Background; primary_framebuffer.len()];
-        let secondary_sources =
-            vec![PpuFramebufferLayerSource::Background; secondary_framebuffer.len()];
+        let left_sources = vec![PpuFramebufferLayerSource::Background; left_framebuffer.len()];
+        let right_sources = vec![PpuFramebufferLayerSource::Background; right_framebuffer.len()];
 
         let _ = super::render_frame(
             &mut harness.canvas,
@@ -15857,19 +15861,19 @@ mod tests {
             &mut rgb_frame,
             super::FramebufferRenderInput {
                 dimensions: linked_dimensions,
-                primary: super::FramebufferPanelInput {
-                    framebuffer: &primary_framebuffer,
-                    framebuffer_layer_sources: &primary_sources,
-                    bgwin_framebuffer: &primary_framebuffer,
-                    backdrop_framebuffer: &primary_framebuffer,
-                    bgwin_framebuffer_layer_sources: &primary_sources,
+                left: super::FramebufferPanelInput {
+                    framebuffer: &left_framebuffer,
+                    framebuffer_layer_sources: &left_sources,
+                    bgwin_framebuffer: &left_framebuffer,
+                    backdrop_framebuffer: &left_framebuffer,
+                    bgwin_framebuffer_layer_sources: &left_sources,
                 },
-                secondary: Some(super::FramebufferPanelInput {
-                    framebuffer: &secondary_framebuffer,
-                    framebuffer_layer_sources: &secondary_sources,
-                    bgwin_framebuffer: &secondary_framebuffer,
-                    backdrop_framebuffer: &secondary_framebuffer,
-                    bgwin_framebuffer_layer_sources: &secondary_sources,
+                right: Some(super::FramebufferPanelInput {
+                    framebuffer: &right_framebuffer,
+                    framebuffer_layer_sources: &right_sources,
+                    bgwin_framebuffer: &right_framebuffer,
+                    backdrop_framebuffer: &right_framebuffer,
+                    bgwin_framebuffer_layer_sources: &right_sources,
                 }),
             },
             &harness.runtime.video_options,
@@ -15919,14 +15923,14 @@ mod tests {
                     width: super::FRAMEBUFFER_WIDTH,
                     height: super::FRAMEBUFFER_HEIGHT,
                 },
-                primary: super::FramebufferPanelInput {
+                left: super::FramebufferPanelInput {
                     framebuffer: &framebuffer,
                     framebuffer_layer_sources: &layer_sources,
                     bgwin_framebuffer: &bgwin_framebuffer,
                     backdrop_framebuffer: &bgwin_framebuffer,
                     bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
                 },
-                secondary: None,
+                right: None,
             },
             &video_options,
             None,
@@ -15975,14 +15979,14 @@ mod tests {
                     width: super::FRAMEBUFFER_WIDTH,
                     height: super::FRAMEBUFFER_HEIGHT,
                 },
-                primary: super::FramebufferPanelInput {
+                left: super::FramebufferPanelInput {
                     framebuffer: &framebuffer,
                     framebuffer_layer_sources: &layer_sources,
                     bgwin_framebuffer: &bgwin_framebuffer,
                     backdrop_framebuffer: &backdrop_framebuffer,
                     bgwin_framebuffer_layer_sources: &bgwin_layer_sources,
                 },
-                secondary: None,
+                right: None,
             },
             &video_options,
             None,
@@ -16014,7 +16018,7 @@ mod tests {
                 width: super::FRAMEBUFFER_WIDTH,
                 height: super::FRAMEBUFFER_HEIGHT,
             },
-            primary: super::FramebufferPanelInput {
+            left: super::FramebufferPanelInput {
                 framebuffer: harness.machine.ppu().framebuffer(),
                 framebuffer_layer_sources: harness.machine.ppu().framebuffer_layer_sources(),
                 bgwin_framebuffer: harness.machine.ppu().framebuffer_bgwin_panel_shades(),
@@ -16024,7 +16028,7 @@ mod tests {
                     .ppu()
                     .framebuffer_bgwin_layer_sources(),
             },
-            secondary: None,
+            right: None,
         };
         let mut video_options = harness.runtime.video_options.clone();
 
@@ -16082,7 +16086,7 @@ mod tests {
                 harness
                     .machine
                     .machine_for_player_slot_mut(super::PlayerSlot::P1)
-                    .expect("P1 should always map to the primary desktop machine"),
+                    .expect("P1 should always map to an active desktop machine"),
             );
         assert_eq!(
             harness
@@ -16204,7 +16208,7 @@ mod tests {
                 harness
                     .machine
                     .machine_for_player_slot_mut(super::PlayerSlot::P1)
-                    .expect("P1 should always map to the primary desktop machine"),
+                    .expect("P1 should always map to an active desktop machine"),
             );
 
         let events = harness
@@ -16262,7 +16266,7 @@ mod tests {
                 harness
                     .machine
                     .machine_for_player_slot_mut(super::PlayerSlot::P1)
-                    .expect("P1 should always map to the primary desktop machine"),
+                    .expect("P1 should always map to an active desktop machine"),
             );
 
         let events = harness
@@ -16503,7 +16507,7 @@ mod tests {
                 gamepad_harness
                     .machine
                     .machine_for_player_slot_mut(super::PlayerSlot::P1)
-                    .expect("P1 should always map to the primary desktop machine"),
+                    .expect("P1 should always map to an active desktop machine"),
             );
         let gamepad_presentation = super::current_menu_presentation(
             gamepad_harness.canvas.window(),
