@@ -34,6 +34,11 @@ impl CartridgeClassification {
                 "MBC5+RUMBLE+RAM+BATTERY",
                 SupportedCartridgeFamily::Mbc5,
             ),
+            0xFC => supported(
+                raw_type,
+                "POCKET CAMERA",
+                SupportedCartridgeFamily::PocketCamera,
+            ),
             0x0B => supported(raw_type, "MMM01", SupportedCartridgeFamily::Mmm01),
             0x0C => supported(raw_type, "MMM01+RAM", SupportedCartridgeFamily::Mmm01),
             0x0D => supported(
@@ -52,12 +57,6 @@ impl CartridgeClassification {
                 "MBC7+SENSOR+RUMBLE+RAM+BATTERY",
                 UnsupportedCartridgeCategory::DocumentedButUnsupported,
                 "MBC7 requires EEPROM and accelerometer behavior that is not implemented yet",
-            ),
-            0xFC => unsupported(
-                raw_type,
-                "POCKET CAMERA",
-                UnsupportedCartridgeCategory::AccessorySpecialCase,
-                "Pocket Camera needs dedicated accessory hardware",
             ),
             0xFD => unsupported(
                 raw_type,

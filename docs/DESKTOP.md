@@ -133,6 +133,10 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - While a native file dialog is pending from the overlay, the triggering entry stays selected but disabled until the dialog resolves.
 - Root overlay also exposes `QUIT` directly at the first menu level.
 - `RESUME` and root-level back/cancel (`Escape` / `Guide`) both clear an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
+- When the loaded session includes a `Pocket Camera` cartridge, the root overlay also exposes:
+  - `CAM IMAGE` — native PNG picker that decodes the selected image in the frontend and pushes it into the core as a grayscale host frame
+  - `CAM RESET` — clears the current session image and restores the core's deterministic placeholder frame
+- Pocket Camera image selection is session-scoped only. The chosen image is reapplied across ROM reloads / resets while the desktop app stays open, but it is not persisted into desktop settings.
 - **`VIDEO`** — stats HUD visibility, host-side presentation filter, fullscreen, vsync, window scale, integer presentation, screenshot capture, and BG/WIN/OBJ presentation masks.
 - **`AUDIO`** — toggle mute, cycle host volume, host-mask `CH1..CH4`, and start/stop automatic `WAV` captures under `audios/`.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).

@@ -626,6 +626,59 @@ pub(in crate::cartridge) fn validate_mbc5(
     Ok(variant)
 }
 
+pub(in crate::cartridge) fn validate_pocket_camera(
+    header: &CartridgeHeader,
+    actual_rom_size: usize,
+    compatibility: &CompatibilityPolicy,
+    classification: &CartridgeClassification,
+    diagnostics: &mut Vec<CartridgeDiagnostic>,
+) -> Result<(), CartridgeLoadError> {
+    let ctx = ValidationContext {
+        compatibility,
+        classification,
+        diagnostics,
+    };
+
+    let Some(declared_rom_bytes) = header.rom_size.decoded_bytes else {
+        return Err(ctx.reject(format!(
+            "{} declared an unsupported ROM size code {:#04X}",
+            ctx.name(),
+            header.rom_size.raw_code
+        )));
+    };
+
+    if header.rom_size.raw_code != 0x05 || declared_rom_bytes != POCKET_CAMERA_SUPPORTED_ROM_BYTES {
+        return Err(ctx.reject(format!(
+            "{} expects the official 1 MiB ROM declaration (code 0x05), but the header declared code {:#04X} ({:?} bytes)",
+            ctx.name(),
+            header.rom_size.raw_code,
+            header.rom_size.decoded_bytes
+        )));
+    }
+
+    if actual_rom_size != POCKET_CAMERA_SUPPORTED_ROM_BYTES {
+        return Err(ctx.reject(format!(
+            "{} expects a {}-byte image, but the loaded ROM is {} bytes",
+            ctx.name(),
+            POCKET_CAMERA_SUPPORTED_ROM_BYTES,
+            actual_rom_size
+        )));
+    }
+
+    if header.ram_size.raw_code != 0x04
+        || header.ram_size.decoded_bytes != Some(POCKET_CAMERA_SUPPORTED_RAM_BYTES)
+    {
+        return Err(ctx.reject(format!(
+            "{} expects the official 128 KiB RAM declaration (code 0x04), but the header declared code {:#04X} ({:?} bytes)",
+            ctx.name(),
+            header.ram_size.raw_code,
+            header.ram_size.decoded_bytes
+        )));
+    }
+
+    Ok(())
+}
+
 pub(in crate::cartridge) fn record_degradable_issue(
     diagnostics: &mut Vec<CartridgeDiagnostic>,
     validation_policy: ValidationPolicy,

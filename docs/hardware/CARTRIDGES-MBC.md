@@ -64,7 +64,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 - `NoMbc` should be the non-banked family covering header codes `0x00`, `0x08`, and `0x09`, while preserving the raw header type for RAM/battery distinctions and diagnostics.
 - The cartridge type must drive more than bank switching. It also defines whether the cartridge has external RAM, mapper-local RAM such as MBC2 internal RAM, battery-backed persistence, RTC, rumble, or other mapper-local hardware.
 - The classification result must preserve at least the raw `0x0147` type byte, the detected name, the category, and a concise reason suitable for diagnostics or frontend display.
-- Less common types such as `MMM01`, `MBC6`, `MBC7`, `HuC1`, `HuC-3`, camera, or sensor cartridges may begin life under a structured special / unsupported classification, but they should remain explicitly identified rather than silently coerced into a nearby supported mapper.
+- Less common types such as `MMM01`, `MBC6`, `MBC7`, `HuC1`, `HuC-3`, or sensor cartridges may begin life under a structured special / unsupported classification, but they should remain explicitly identified rather than silently coerced into a nearby supported mapper. `Pocket Camera` is now the explicit exception: it already ships as a dedicated supported cartridge-local hardware path rather than an unsupported fallback.
 
 ## ROM-size and RAM-size baseline
 
@@ -189,7 +189,7 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
   3. `HuC1` and `HuC-3`
   4. `MBC6` and `MBC7`
   5. `M161`
-  6. `Pocket Camera` and `Bandai TAMA5`
+  6. `Bandai TAMA5`
   7. lower-priority heuristic / partially verified cases such as `EMS`, `Bung`, and `Wisdom Tree`
 - Keep a design distinction between "close to an already supported mapper family" and "requires a new cartridge-local hardware subsystem."
 - That global ordering is a hardware / family-priority statement, not a mandate to implement CGB-gated cartridges during the current DMG-only execution phase.
@@ -266,11 +266,12 @@ The cartridge should not be modeled as "ROM bytes plus a few MBC conditionals." 
 
 ### Accessory cartridges
 
-- Treat `Pocket Camera` and `Bandai TAMA5` as accessory special cases rather than ordinary MBCs.
-- `Pocket Camera` and `Bandai TAMA5` should classify as `AccessorySpecialCase`.
-- Header code `0xFC` should classify as `Pocket Camera`, and `0xFD` should classify as `Bandai TAMA5`.
-- Diagnostics for these types should state explicitly that they require dedicated cartridge-local accessory hardware rather than only ROM / RAM banking.
-- The loader must not try to execute them under an approximate supported mapper "just to see if they boot."
+- Treat `Pocket Camera` as dedicated cartridge-local hardware rather than as an ordinary MBC or an accessory-special unsupported placeholder.
+- `Pocket Camera` should classify as a supported dedicated family, while `Bandai TAMA5` should remain `AccessorySpecialCase` until implemented.
+- Header code `0xFC` should classify as `Pocket Camera`, and header code `0xFD` should classify as `Bandai TAMA5`.
+- The `Pocket Camera` loader path should accept only the official `1 MiB` ROM / `128 KiB` RAM shape in `Strict`, keep the hardware inside the cartridge subsystem, and expose a host-frame seam instead of a frontend-owned fake mapper. See `GAME-BOY-CAMERA.md` for the detailed register, timing, and frontend-boundary notes.
+- `Bandai TAMA5` diagnostics should continue to state explicitly that the type requires dedicated cartridge-local accessory hardware rather than only ROM / RAM banking.
+- The loader must not try to execute `Pocket Camera` or `Bandai TAMA5` under an approximate supported mapper "just to see if they boot."
 
 ### Experimental and heuristic cases
 
@@ -612,7 +613,8 @@ Priority order:
 - tests that rumble-capable MBC5 distinguishes effective RAM-bank selection from `rumble_on`, that `bit 3` of the `0x4000-0x5FFF` control register keeps the motor on until software clears it, and that rumble state is observable without moving that responsibility into the bus or frontend
 - tests that MBC5 validation reports clear diagnostics for ROM sizes above `8 MiB`, impossible RAM declarations, and rumble-capable header types loaded without an observable rumble state
 - tests that MMM01 can load through the trailing menu header instead of the physical-start header, starts in explicit unmapped mode on the last `32 KiB` of the ROM, switches into the selected game mapping through the mapper registers, and still keeps `MBC1M` as a distinct future variant rather than inferring it as ordinary `MBC1`
-- tests that `M161` loads through its own dedicated supported signature path and never silently falls back to `NoMbc`, while `HuC1`, `HuC-3`, `MBC6`, `MBC7`, `Pocket Camera`, and `Bandai TAMA5` still produce specific structured typed handling rather than silently degrading to nearby supported mapper families
+- tests that `M161`, `HuC1`, and `HuC-3` load through their own dedicated supported cartridge paths and never silently fall back to nearby MBC or no-MBC families, while `MBC6`, `MBC7`, and `Bandai TAMA5` still produce specific structured typed handling rather than silent degradation
+- explicit `Pocket Camera` tests for `0xFC`, strict official-shape validation, bank-`0` reachability in the high ROM window, register-window mirroring, busy/pause/resume timing in T-cycles, static-frame capture golden outputs, and full `128 KiB` SRAM persistence
 - tests that heuristic `EMS`, `Bung`, and `Wisdom Tree` detection is disabled by default in strict mode and only activates when the explicit experimental loader policy is enabled
 - tests that hardware-style persistence round-trips the complete cartridge backing store rather than the currently visible `0xA000-0xBFFF` window, including linear SRAM on `NoMbc`, banked SRAM on `MBC1`, `MBC3`, and `MBC5`, plus nibble RAM on `MBC2`
 - tests that persistence eligibility comes from `0x0147` capability decoding, that `ram_enabled` does not gate save contents, and that non-battery cartridges do not auto-produce hardware-style saves by default
@@ -763,6 +765,12 @@ Priority order:
   documented one-bankswitch latch-until-power-off rule, and keeps that path
   separate from the lower-confidence opt-in experimental heuristics used for
   `EMS`, `Bung`, and `Wisdom Tree`.
+- In the current baseline, `Pocket Camera` is now a dedicated supported
+  cartridge family rather than an accessory-special rejection path. The loader
+  admits only the official `1 MiB` ROM / `128 KiB` RAM shape in `Strict`, the
+  runtime keeps camera registers, capture timing, SRAM, and host-frame state
+  inside the cartridge subsystem, and the exported host seam is an explicit
+  grayscale frame API rather than a frontend-owned mapper hack.
 - In the current baseline, `cartridge` now exposes a typed persistence contract
   directly from the mapper layer, including explicit capability metadata plus
   per-mapper payload shapes for `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, and `Mbc5`.
@@ -804,7 +812,7 @@ Priority order:
   or frontend-integration-grade rather than mapper- or persistence-contract-
   grade.
 - Keep multicarts as a first-class classification concern distinct from standard MBC families; `MMM01`, future `MBC1M`, and `M161` should not be redistributed across `MBC1` or `NoMbc` code paths by default.
-- Keep accessory cartridges such as `Pocket Camera` and `Bandai TAMA5` in a separate classification lane from ordinary MBCs so frontends can report them accurately without reparsing headers.
+- Keep accessory cartridges such as `Bandai TAMA5` in a separate classification lane from ordinary MBCs so frontends can report them accurately without reparsing headers, and keep `Pocket Camera` in its own dedicated supported hardware lane rather than reclassifying it as a nearby MBC.
 - Keep heuristic detection policy outside the supported-mapper fast path, and default strict-mode behavior to "no heuristics unless explicitly enabled."
 - Keep execution-mode policy out of runtime mapper semantics for already supported hardware; mode should change admission and diagnostics, not T-cycle-visible cartridge behavior.
 - For MBC5, keep the raw low `8` ROM-bank bits and raw high `1` ROM-bank bit separate instead of flattening them into one opaque field too early.

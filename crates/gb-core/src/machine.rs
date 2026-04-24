@@ -4,7 +4,10 @@ mod step;
 use crate::apu::Apu;
 use crate::boot::BootController;
 use crate::bus::Bus;
-use crate::cartridge::{CartridgePersistentStateError, CartridgeSlot, PersistentCartState};
+use crate::cartridge::{
+    CartridgePersistentStateError, CartridgeSlot, PersistentCartState, PocketCameraFrame,
+    PocketCameraFrameError,
+};
 use crate::cpu::{CpuCore, CpuExecutionState};
 use crate::debugger::{
     DebugControl, MachineSnapshot, TraceBuffer, TraceSink, TraceSnapshotProvider,
@@ -350,6 +353,21 @@ impl<S: TraceSink> Machine<S> {
 
     pub fn cartridge(&self) -> &CartridgeSlot {
         &self.cartridge
+    }
+
+    pub fn has_pocket_camera(&self) -> bool {
+        self.cartridge.has_pocket_camera()
+    }
+
+    pub fn set_pocket_camera_frame(
+        &mut self,
+        frame: PocketCameraFrame,
+    ) -> Result<(), PocketCameraFrameError> {
+        self.cartridge.set_pocket_camera_frame(frame)
+    }
+
+    pub fn clear_pocket_camera_frame(&mut self) -> Result<(), PocketCameraFrameError> {
+        self.cartridge.clear_pocket_camera_frame()
     }
 
     pub fn restore_cartridge_persistent_state(

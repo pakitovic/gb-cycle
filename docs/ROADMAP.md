@@ -34,6 +34,11 @@ Two workstreams span multiple phases:
 
 ## Final notes
 
+- Current Phase `6` follow-up after the Pocket Camera V1 baseline:
+  - `gb-core` now supports the official `0xFC` Pocket Camera cartridge as dedicated cartridge-local hardware with static host-frame injection and SRAM persistence.
+  - `gb-desktop` now exposes a session-scoped PNG-based `CAM IMAGE` / `CAM RESET` workflow for that hardware.
+  - Manual acceptance covers `Game Boy Camera (USA, Europe) (SGB Enhanced)`, `Game Boy Camera Gold (USA) (SGB Enhanced)`, and `Pocket Camera (Japan) (Rev 1) (SGB Enhanced)` for boot, still-image capture, SRAM photo save / reload, and reset-to-placeholder behavior.
+  - Deferred work remains for webcam / live-frame frontend plumbing, higher-fidelity analog sensor behavior, and broader oracle validation for printer-facing flows / lower-level capture observables.
 - This document defines the recommended implementation order, not necessarily the exact merge order if work happens in parallel.
 - Whenever a later block requires additional observability, the `debugger/` infrastructure should be expanded incrementally without changing its transversal role.
 - Any local simplification that contradicts the T-cycle model or the dot-by-dot PPU must be treated as explicit and documented technical debt.

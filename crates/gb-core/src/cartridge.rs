@@ -14,6 +14,7 @@ mod mbc5;
 mod mmm01;
 mod no_mbc;
 mod persist;
+mod pocket_camera;
 mod slot;
 mod validate;
 
@@ -83,6 +84,24 @@ const HUC3_MINUTES_PER_DAY: u16 = 1440;
 const MBC3_SUPPORTED_ROM_BYTES_MAX: usize = 2 * 1024 * 1024;
 const MBC3_RTC_ACCESS_SPACING_T_CYCLES: u64 = 16;
 const MBC5_SUPPORTED_ROM_BYTES_MAX: usize = 8 * 1024 * 1024;
+const POCKET_CAMERA_SUPPORTED_ROM_BYTES: usize = 1024 * 1024;
+const POCKET_CAMERA_SUPPORTED_RAM_BYTES: usize = 128 * 1024;
+const POCKET_CAMERA_RAM_BANK_BYTES: usize = 8 * 1024;
+const POCKET_CAMERA_CAPTURE_TILE_BASE_OFFSET: usize = 0x0100;
+const POCKET_CAMERA_CAPTURE_TILE_BYTES: usize = 14 * 16 * 16;
+const POCKET_CAMERA_CAPTURE_TILE_WIDTH: usize = 16;
+const POCKET_CAMERA_CAPTURE_WIDTH: usize = 128;
+const POCKET_CAMERA_CAPTURE_HEIGHT: usize = 112;
+const POCKET_CAMERA_CAPTURE_PIXEL_COUNT: usize =
+    POCKET_CAMERA_CAPTURE_WIDTH * POCKET_CAMERA_CAPTURE_HEIGHT;
+const POCKET_CAMERA_SENSOR_EXTRA_LINES: usize = 8;
+const POCKET_CAMERA_SENSOR_HEIGHT: usize =
+    POCKET_CAMERA_CAPTURE_HEIGHT + POCKET_CAMERA_SENSOR_EXTRA_LINES;
+const POCKET_CAMERA_SENSOR_PIXEL_COUNT: usize =
+    POCKET_CAMERA_CAPTURE_WIDTH * POCKET_CAMERA_SENSOR_HEIGHT;
+const POCKET_CAMERA_REGISTER_COUNT: usize = 0x36;
+const POCKET_CAMERA_REGISTER_MIRROR_MASK: usize = 0x7F;
+const POCKET_CAMERA_WORKING_RAM_READ_VALUE: u8 = 0x00;
 const MBC1_STANDARD_ROM_SIZES: [usize; 5] =
     [32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024];
 const MBC1_LARGE_ROM_SIZES: [usize; 2] = [1024 * 1024, 2 * 1024 * 1024];
@@ -102,6 +121,7 @@ pub enum CartridgeSlotState {
     Mbc2,
     Mbc3,
     Mbc5,
+    PocketCamera,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,6 +191,7 @@ pub enum SupportedCartridgeFamily {
     Mbc2,
     Mbc3,
     Mbc5,
+    PocketCamera,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,6 +265,7 @@ enum CartridgeDevice {
     Mbc2(Mbc2Cartridge),
     Mbc3(Mbc3Cartridge),
     Mbc5(Mbc5Cartridge),
+    PocketCamera(PocketCameraCartridge),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -480,9 +502,38 @@ struct Mbc5Cartridge {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct PocketCameraCartridge {
+    rom: Vec<u8>,
+    ram: Vec<u8>,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    ram_enabled: bool,
+    rom_bank: u8,
+    ram_bank_or_register_select: u8,
+    registers: [u8; POCKET_CAMERA_REGISTER_COUNT],
+    host_frame: Vec<u8>,
+    capture_state: PocketCameraCaptureState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PocketCameraCaptureState {
+    Idle,
+    Working {
+        ready_at: TCycle,
+        staged_tiles: Vec<u8>,
+    },
+    Paused {
+        remaining_t_cycles: u64,
+        staged_tiles: Vec<u8>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CartridgeSnapshot {
     pub state: CartridgeSlotState,
     pub rtc_access_ready_at: Option<TCycle>,
+    pub camera_capture_ready_at: Option<TCycle>,
+    pub camera_registers_selected: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -507,6 +558,7 @@ pub enum CartridgeExternalTarget {
     Huc3InvalidSelector(u8),
     RtcRegister(CartridgeRtcRegister),
     ReservedSelector(u8),
+    PocketCameraRegister { offset: u8 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -699,6 +751,9 @@ pub enum PersistentCartState {
     Mbc5Ram {
         ram: Vec<u8>,
     },
+    PocketCameraRam {
+        ram: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -718,6 +773,23 @@ pub enum CartridgePersistentStateError {
     InvalidHuc3NibbleValue {
         index: usize,
         value: u8,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PocketCameraFrame {
+    pub width: u16,
+    pub height: u16,
+    pub grayscale_pixels: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PocketCameraFrameError {
+    UnsupportedCartridge,
+    InvalidDimensions {
+        width: u16,
+        height: u16,
+        pixel_len: usize,
     },
 }
 

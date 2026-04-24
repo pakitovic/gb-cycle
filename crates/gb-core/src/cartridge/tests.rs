@@ -16,6 +16,7 @@ mod mbc5;
 mod mmm01;
 mod no_mbc;
 mod persistence;
+mod pocket_camera;
 
 fn build_test_rom(len: usize, cartridge_type: u8, rom_size_code: u8, ram_size_code: u8) -> Vec<u8> {
     let mut rom = vec![0xFF; len.max(HEADER_MINIMUM_ROM_LEN)];
@@ -337,6 +338,17 @@ fn build_banked_mbc5_rom(cartridge_type: u8, rom_size_code: u8, ram_size_code: u
         rom[start + 0x0100] = bank as u8;
     }
 
+    rom
+}
+
+fn build_pocket_camera_rom() -> Vec<u8> {
+    let mut rom = build_test_rom(POCKET_CAMERA_SUPPORTED_ROM_BYTES, 0xFC, 0x05, 0x04);
+    for bank in 0..(POCKET_CAMERA_SUPPORTED_ROM_BYTES / 0x4000) {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 1] = bank as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
     rom
 }
 

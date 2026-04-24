@@ -1,6 +1,6 @@
 use super::step::{PendingPpuMmioWrite, commit_pending_ppu_mmio_write};
 use super::*;
-use crate::cartridge::PersistentCartState;
+use crate::cartridge::{PersistentCartState, PocketCameraFrame, PocketCameraFrameError};
 use crate::debugger::BreakpointCondition;
 use crate::external_port::{ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::joypad::JoypadButton;
@@ -32,6 +32,27 @@ fn build_test_rom_with_header(
     rom[0x0147] = cartridge_type;
     rom[0x0148] = rom_size;
     rom[0x0149] = ram_size;
+    rom
+}
+
+fn build_pocket_camera_rom() -> Vec<u8> {
+    let mut rom = vec![0xFF; 1024 * 1024];
+    rom[0x0000] = 0x12;
+    rom[0x0100..0x0104].copy_from_slice(&[0x31, 0xFE, 0xFF, 0xAF]);
+    rom[0x0104..0x0134].fill(0xCE);
+    rom[0x0134..0x013C].copy_from_slice(b"CAMTEST!");
+    rom[0x0143] = 0x80;
+    rom[0x0146] = 0x03;
+    rom[0x0147] = 0xFC;
+    rom[0x0148] = 0x05;
+    rom[0x0149] = 0x04;
+
+    for bank in 0..(rom.len() / 0x4000) {
+        let start = bank * 0x4000;
+        rom[start] = bank as u8;
+        rom[start + 0x0100] = bank as u8;
+    }
+
     rom
 }
 
@@ -133,6 +154,48 @@ fn machine_can_restore_cartridge_persistent_state_through_a_narrow_host_api() {
         .expect("restoring cartridge RAM should succeed");
 
     assert_eq!(machine.read_bus(0xA000), 0xAB);
+}
+
+#[test]
+fn machine_pocket_camera_host_api_is_gated_by_the_loaded_cartridge_family() {
+    let frame = PocketCameraFrame {
+        width: 1,
+        height: 1,
+        grayscale_pixels: vec![0x44],
+    };
+
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    assert!(!machine.has_pocket_camera());
+    assert_eq!(
+        machine.set_pocket_camera_frame(frame.clone()),
+        Err(PocketCameraFrameError::UnsupportedCartridge)
+    );
+    assert_eq!(
+        machine.clear_pocket_camera_frame(),
+        Err(PocketCameraFrameError::UnsupportedCartridge)
+    );
+
+    machine
+        .load_cartridge(build_test_rom_with_header(&[0x00], 0x09, 0x00, 0x02))
+        .expect("NoMBC+RAM+BATTERY test ROM should load");
+    assert!(!machine.has_pocket_camera());
+    assert_eq!(
+        machine.set_pocket_camera_frame(frame.clone()),
+        Err(PocketCameraFrameError::UnsupportedCartridge)
+    );
+
+    machine
+        .load_cartridge(build_pocket_camera_rom())
+        .expect("Pocket Camera test ROM should load");
+    assert!(machine.has_pocket_camera());
+    machine
+        .set_pocket_camera_frame(frame)
+        .expect("Pocket Camera machines should accept host frames");
+    machine
+        .clear_pocket_camera_frame()
+        .expect("Pocket Camera machines should restore the placeholder frame");
 }
 
 #[test]

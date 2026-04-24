@@ -584,7 +584,7 @@ impl MachineSnapshot {
                 "boot.console_model={:?} boot.startup_mode={:?} boot.status={:?} boot.boot_rom_kind={:?} boot.boot_rom_mapped={} boot.asset_configured={} boot.memory_policy={:?}\n",
                 "interrupts.console_model={:?} interrupts.status={:?}\n",
                 "joypad.console_model={:?} joypad.status={:?}\n",
-                "cartridge.state={:?} cartridge.rtc_access_ready_at={:?}\n"
+                "cartridge.state={:?} cartridge.rtc_access_ready_at={:?} cartridge.camera_capture_ready_at={:?} cartridge.camera_registers_selected={}\n"
             ),
             self.config.console_model,
             self.config.startup_mode,
@@ -675,6 +675,8 @@ impl MachineSnapshot {
             self.joypad.status,
             self.cartridge.state,
             self.cartridge.rtc_access_ready_at,
+            self.cartridge.camera_capture_ready_at,
+            self.cartridge.camera_registers_selected,
         )
     }
 }
