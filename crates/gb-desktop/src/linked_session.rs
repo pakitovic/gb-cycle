@@ -1,3 +1,4 @@
+use crate::player_slots::PlayerSlot;
 #[cfg(test)]
 use gb_core::LinkedTopologyKind;
 use gb_core::{
@@ -82,6 +83,28 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine_mut(1),
+        }
+    }
+
+    pub fn machine_for_player_slot(
+        &self,
+        slot: PlayerSlot,
+    ) -> Option<&Machine<TraceSummaryBuffer>> {
+        match slot {
+            PlayerSlot::P1 => Some(self.primary_machine()),
+            PlayerSlot::P2 => self.secondary_machine(),
+            PlayerSlot::P3 | PlayerSlot::P4 => None,
+        }
+    }
+
+    pub fn machine_for_player_slot_mut(
+        &mut self,
+        slot: PlayerSlot,
+    ) -> Option<&mut Machine<TraceSummaryBuffer>> {
+        match slot {
+            PlayerSlot::P1 => Some(self.primary_machine_mut()),
+            PlayerSlot::P2 => self.secondary_machine_mut(),
+            PlayerSlot::P3 | PlayerSlot::P4 => None,
         }
     }
 

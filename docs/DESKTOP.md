@@ -134,6 +134,10 @@ cargo run --release -p gb-desktop -- /path/to/tetris.gb \
 - Basic gamepad hotplug plus preferred-device selection and remappable gamepad bindings.
 - Shows the current active gamepad in the `GAMEPAD` submenu; can pin or clear the preferred device from that UI.
 - Can move gamepad focus to the last used controller whenever no preferred device is currently locked.
+- Local multi-console sessions route host input through frontend-owned player
+  slots. `P1` keeps the configurable keyboard/gamepad profile, while the
+  current local `DMG-04` secondary console is `P2` with its explicit secondary
+  keyboard profile. `P3` and `P4` are reserved for later adapter/session types.
 
 ### Rebinding
 

@@ -6,6 +6,7 @@ mod input;
 mod linked_session;
 mod menu;
 mod pocket_camera_live;
+mod player_slots;
 mod printer_output;
 mod save_session;
 mod screenshot_output;
@@ -50,6 +51,11 @@ use menu::{
     CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
     KeyboardBindingTarget, KeyboardMenuBindingTarget, MenuAction, MenuInput, MenuPresentation,
     OverlayMenuState, PerformanceHudSnapshot, RECENT_ROM_MENU_CAPACITY, render_performance_hud,
+};
+use player_slots::{
+    DesktopPlayerSessionKind, PlayerInputStates, PlayerKeyboardProfile, PlayerSlot,
+    audio_source_slot, host_policy_for_slot, linked_dmg04_p2_button_for_scancode,
+    view_slots_for_session,
 };
 use png::{ColorType, Decoder, Transformations};
 use pocket_camera_live::PocketCameraLiveInput;
@@ -98,17 +104,6 @@ const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
 const DEFAULT_WATCH_TRACE_EVENTS: usize = 4_096;
 const DEFAULT_PC_WATCH_TRACE_EVENTS: usize = 4_096;
 const DEFAULT_EDGE_TRACE_EVENTS: usize = 4_096;
-const LINKED_SECONDARY_KEYBOARD_BINDINGS: [(JoypadButton, Scancode); 8] = [
-    (JoypadButton::Up, Scancode::W),
-    (JoypadButton::Down, Scancode::S),
-    (JoypadButton::Left, Scancode::A),
-    (JoypadButton::Right, Scancode::D),
-    (JoypadButton::A, Scancode::V),
-    (JoypadButton::B, Scancode::C),
-    (JoypadButton::Select, Scancode::Q),
-    (JoypadButton::Start, Scancode::E),
-];
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FramebufferDimensions {
     width: u32,
@@ -255,8 +250,7 @@ enum HotkeyAction {
 struct FrontendRuntime {
     paused: bool,
     menu_state: OverlayMenuState,
-    input_state: FrontendInputState,
-    secondary_input_state: FrontendInputState,
+    player_inputs: PlayerInputStates,
     keyboard_bindings: KeyboardBindings,
     video_options: VideoOptions,
     audio_volume_percent: u8,
@@ -3933,8 +3927,19 @@ fn emulation_paused(machine: &Machine<TraceSummaryBuffer>, runtime: &FrontendRun
     machine.cartridge().is_empty() || runtime.paused || runtime.menu_state.is_open()
 }
 
+fn player_session_kind(machine: &DesktopEmulationSession) -> DesktopPlayerSessionKind {
+    if machine.is_linked_dmg04_two_player() {
+        DesktopPlayerSessionKind::LinkedDmg04TwoPlayer
+    } else {
+        DesktopPlayerSessionKind::Single
+    }
+}
+
 fn audio_source_machine(machine: &DesktopEmulationSession) -> &Machine<TraceSummaryBuffer> {
-    machine.primary_machine()
+    let slot = audio_source_slot(player_session_kind(machine));
+    machine
+        .machine_for_player_slot(slot)
+        .expect("desktop audio source slot should map to an active machine")
 }
 
 fn build_automatic_audio_recording_options(
@@ -4146,7 +4151,7 @@ fn run_desktop_with_startup_fallback_persistence(
     }
 
     let sdl = map_display_result(sdl3::init(), "failed to initialize SDL3")?;
-    let mut input_state = FrontendInputState::new();
+    let mut player_inputs = PlayerInputStates::new();
     let audio_channel_mask = ApuRecordedChannelMask::ALL;
     let audio_output = if session.config.audio.enabled {
         let mut audio_output = DesktopAudioOutput::new(
@@ -4175,8 +4180,10 @@ fn run_desktop_with_startup_fallback_persistence(
         Some(GamepadManager::new(
             &map_display_result(sdl.gamepad(), "failed to initialize SDL3 gamepad subsystem")?,
             session.config.input.gamepad.clone(),
-            &mut input_state,
-            &mut machine,
+            player_inputs.input_mut(PlayerSlot::P1),
+            machine
+                .machine_for_player_slot_mut(PlayerSlot::P1)
+                .expect("P1 should always map to the primary desktop machine"),
         )?)
     } else {
         None
@@ -4216,8 +4223,7 @@ fn run_desktop_with_startup_fallback_persistence(
     let mut runtime = FrontendRuntime {
         paused: !session.has_loaded_rom(),
         menu_state: OverlayMenuState::default(),
-        input_state,
-        secondary_input_state: FrontendInputState::new(),
+        player_inputs,
         keyboard_bindings: session.config.input.keyboard,
         video_options: session.config.video.clone(),
         audio_volume_percent: session.config.audio.volume_percent,
@@ -4283,39 +4289,7 @@ fn run_desktop_with_startup_fallback_persistence(
         &mut canvas,
         &mut texture,
         &mut rgb_frame,
-        FramebufferRenderInput {
-            dimensions: current_framebuffer_dimensions,
-            primary: FramebufferPanelInput {
-                framebuffer: machine.primary_machine().ppu().framebuffer(),
-                framebuffer_layer_sources: machine
-                    .primary_machine()
-                    .ppu()
-                    .framebuffer_layer_sources(),
-                bgwin_framebuffer: machine
-                    .primary_machine()
-                    .ppu()
-                    .framebuffer_bgwin_panel_shades(),
-                backdrop_framebuffer: machine
-                    .primary_machine()
-                    .ppu()
-                    .framebuffer_backdrop_panel_shades(),
-                bgwin_framebuffer_layer_sources: machine
-                    .primary_machine()
-                    .ppu()
-                    .framebuffer_bgwin_layer_sources(),
-            },
-            secondary: machine
-                .secondary_machine()
-                .map(|secondary| FramebufferPanelInput {
-                    framebuffer: secondary.ppu().framebuffer(),
-                    framebuffer_layer_sources: secondary.ppu().framebuffer_layer_sources(),
-                    bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
-                    backdrop_framebuffer: secondary.ppu().framebuffer_backdrop_panel_shades(),
-                    bgwin_framebuffer_layer_sources: secondary
-                        .ppu()
-                        .framebuffer_bgwin_layer_sources(),
-                }),
-        },
+        framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
         &runtime.video_options,
         initial_menu_presentation,
         None,
@@ -4377,43 +4351,7 @@ fn run_desktop_with_startup_fallback_persistence(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
-                    FramebufferRenderInput {
-                        dimensions: current_framebuffer_dimensions,
-                        primary: FramebufferPanelInput {
-                            framebuffer: machine.primary_machine().ppu().framebuffer(),
-                            framebuffer_layer_sources: machine
-                                .primary_machine()
-                                .ppu()
-                                .framebuffer_layer_sources(),
-                            bgwin_framebuffer: machine
-                                .primary_machine()
-                                .ppu()
-                                .framebuffer_bgwin_panel_shades(),
-                            backdrop_framebuffer: machine
-                                .primary_machine()
-                                .ppu()
-                                .framebuffer_backdrop_panel_shades(),
-                            bgwin_framebuffer_layer_sources: machine
-                                .primary_machine()
-                                .ppu()
-                                .framebuffer_bgwin_layer_sources(),
-                        },
-                        secondary: machine.secondary_machine().map(|secondary| {
-                            FramebufferPanelInput {
-                                framebuffer: secondary.ppu().framebuffer(),
-                                framebuffer_layer_sources: secondary
-                                    .ppu()
-                                    .framebuffer_layer_sources(),
-                                bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
-                                backdrop_framebuffer: secondary
-                                    .ppu()
-                                    .framebuffer_backdrop_panel_shades(),
-                                bgwin_framebuffer_layer_sources: secondary
-                                    .ppu()
-                                    .framebuffer_bgwin_layer_sources(),
-                            }
-                        }),
-                    },
+                    framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
                     &runtime.video_options,
                     menu_presentation,
                     None,
@@ -4464,43 +4402,7 @@ fn run_desktop_with_startup_fallback_persistence(
                     &mut canvas,
                     &mut texture,
                     &mut rgb_frame,
-                    FramebufferRenderInput {
-                        dimensions: current_framebuffer_dimensions,
-                        primary: FramebufferPanelInput {
-                            framebuffer: machine.primary_machine().ppu().framebuffer(),
-                            framebuffer_layer_sources: machine
-                                .primary_machine()
-                                .ppu()
-                                .framebuffer_layer_sources(),
-                            bgwin_framebuffer: machine
-                                .primary_machine()
-                                .ppu()
-                                .framebuffer_bgwin_panel_shades(),
-                            backdrop_framebuffer: machine
-                                .primary_machine()
-                                .ppu()
-                                .framebuffer_backdrop_panel_shades(),
-                            bgwin_framebuffer_layer_sources: machine
-                                .primary_machine()
-                                .ppu()
-                                .framebuffer_bgwin_layer_sources(),
-                        },
-                        secondary: machine.secondary_machine().map(|secondary| {
-                            FramebufferPanelInput {
-                                framebuffer: secondary.ppu().framebuffer(),
-                                framebuffer_layer_sources: secondary
-                                    .ppu()
-                                    .framebuffer_layer_sources(),
-                                bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
-                                backdrop_framebuffer: secondary
-                                    .ppu()
-                                    .framebuffer_backdrop_panel_shades(),
-                                bgwin_framebuffer_layer_sources: secondary
-                                    .ppu()
-                                    .framebuffer_bgwin_layer_sources(),
-                            }
-                        }),
-                    },
+                    framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
                     &runtime.video_options,
                     menu_presentation,
                     None,
@@ -4524,39 +4426,7 @@ fn run_desktop_with_startup_fallback_persistence(
             &mut canvas,
             &mut texture,
             &mut rgb_frame,
-            FramebufferRenderInput {
-                dimensions: current_framebuffer_dimensions,
-                primary: FramebufferPanelInput {
-                    framebuffer: machine.primary_machine().ppu().framebuffer(),
-                    framebuffer_layer_sources: machine
-                        .primary_machine()
-                        .ppu()
-                        .framebuffer_layer_sources(),
-                    bgwin_framebuffer: machine
-                        .primary_machine()
-                        .ppu()
-                        .framebuffer_bgwin_panel_shades(),
-                    backdrop_framebuffer: machine
-                        .primary_machine()
-                        .ppu()
-                        .framebuffer_backdrop_panel_shades(),
-                    bgwin_framebuffer_layer_sources: machine
-                        .primary_machine()
-                        .ppu()
-                        .framebuffer_bgwin_layer_sources(),
-                },
-                secondary: machine
-                    .secondary_machine()
-                    .map(|secondary| FramebufferPanelInput {
-                        framebuffer: secondary.ppu().framebuffer(),
-                        framebuffer_layer_sources: secondary.ppu().framebuffer_layer_sources(),
-                        bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
-                        backdrop_framebuffer: secondary.ppu().framebuffer_backdrop_panel_shades(),
-                        bgwin_framebuffer_layer_sources: secondary
-                            .ppu()
-                            .framebuffer_bgwin_layer_sources(),
-                    }),
-            },
+            framebuffer_render_input_for_session(&machine, current_framebuffer_dimensions),
             &runtime.video_options,
             None,
             performance_counter.hud_snapshot(),
@@ -5183,14 +5053,18 @@ fn process_events(
         if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
             gamepad_manager.handle_event(
                 &event,
-                &mut runtime.input_state,
-                machine.primary_machine_mut(),
+                runtime.player_inputs.input_mut(PlayerSlot::P1),
+                machine
+                    .machine_for_player_slot_mut(PlayerSlot::P1)
+                    .expect("P1 should always map to the primary desktop machine"),
             )?;
             if let Event::ControllerButtonDown { which, .. } = &event {
                 gamepad_manager.activate_gamepad_from_input(
                     gamepad_event_joystick_id(*which),
-                    &mut runtime.input_state,
-                    machine.primary_machine_mut(),
+                    runtime.player_inputs.input_mut(PlayerSlot::P1),
+                    machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to the primary desktop machine"),
                 );
             }
         }
@@ -5420,25 +5294,7 @@ fn process_events(
                         sync_audio_playback_state(machine, runtime)?;
                     }
                 }
-                if let Some(button) =
-                    joypad_button_for_key_event(runtime.keyboard_bindings.joypad, keycode, scancode)
-                {
-                    runtime.input_state.set_keyboard_button(
-                        machine.primary_machine_mut(),
-                        button,
-                        true,
-                    );
-                }
-                if let Some(scancode) = scancode
-                    && let Some(button) = linked_secondary_joypad_button_for_scancode(scancode)
-                    && let Some(secondary_machine) = machine.secondary_machine_mut()
-                {
-                    runtime.secondary_input_state.set_keyboard_button(
-                        secondary_machine,
-                        button,
-                        true,
-                    );
-                }
+                apply_keyboard_event_to_player_slots(runtime, machine, keycode, scancode, true);
             }
             Event::KeyUp {
                 keycode,
@@ -5449,25 +5305,7 @@ fn process_events(
                 if repeat {
                     continue;
                 }
-                if let Some(button) =
-                    joypad_button_for_key_event(runtime.keyboard_bindings.joypad, keycode, scancode)
-                {
-                    runtime.input_state.set_keyboard_button(
-                        machine.primary_machine_mut(),
-                        button,
-                        false,
-                    );
-                }
-                if let Some(scancode) = scancode
-                    && let Some(button) = linked_secondary_joypad_button_for_scancode(scancode)
-                    && let Some(secondary_machine) = machine.secondary_machine_mut()
-                {
-                    runtime.secondary_input_state.set_keyboard_button(
-                        secondary_machine,
-                        button,
-                        false,
-                    );
-                }
+                apply_keyboard_event_to_player_slots(runtime, machine, keycode, scancode, false);
             }
             _ => {}
         }
@@ -5479,8 +5317,12 @@ fn process_events(
     }
 
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-        gamepad_manager
-            .poll_active_gamepad_state(&mut runtime.input_state, machine.primary_machine_mut());
+        gamepad_manager.poll_active_gamepad_state(
+            runtime.player_inputs.input_mut(PlayerSlot::P1),
+            machine
+                .machine_for_player_slot_mut(PlayerSlot::P1)
+                .expect("P1 should always map to the primary desktop machine"),
+        );
     }
     sync_gamepad_rumble(runtime, machine, Instant::now())?;
 
@@ -7570,8 +7412,11 @@ fn execute_menu_action(
                     next_gamepad_directional_source(gamepad_manager.directional_source());
                 gamepad_manager.set_directional_source(
                     next_directional_source,
-                    &mut context.runtime.input_state,
-                    context.machine,
+                    context.runtime.player_inputs.input_mut(PlayerSlot::P1),
+                    context
+                        .machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to the primary desktop machine"),
                 );
                 clear_live_input_state(context.machine, context.runtime);
                 context
@@ -7596,8 +7441,11 @@ fn execute_menu_action(
                 let preferred_device = toggled_preferred_gamepad_device(gamepad_manager);
                 gamepad_manager.set_preferred_device(
                     preferred_device.clone(),
-                    &mut context.runtime.input_state,
-                    context.machine,
+                    context.runtime.player_inputs.input_mut(PlayerSlot::P1),
+                    context
+                        .machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to the primary desktop machine"),
                 );
                 context
                     .settings_store
@@ -7638,20 +7486,29 @@ fn execute_menu_action(
             if let Some(gamepad_manager) = &mut context.runtime.gamepad_manager {
                 gamepad_manager.set_button_bindings(
                     defaults.gamepad.bindings,
-                    &mut context.runtime.input_state,
-                    context.machine,
+                    context.runtime.player_inputs.input_mut(PlayerSlot::P1),
+                    context
+                        .machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to the primary desktop machine"),
                 );
                 gamepad_manager.set_menu_bindings(defaults.gamepad.menu);
                 gamepad_manager.set_directional_source(
                     defaults.gamepad.directional_source,
-                    &mut context.runtime.input_state,
-                    context.machine,
+                    context.runtime.player_inputs.input_mut(PlayerSlot::P1),
+                    context
+                        .machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to the primary desktop machine"),
                 );
                 gamepad_manager.set_rumble_mode(defaults.gamepad.rumble_mode);
                 gamepad_manager.set_preferred_device(
                     defaults.gamepad.preferred_device,
-                    &mut context.runtime.input_state,
-                    context.machine,
+                    context.runtime.player_inputs.input_mut(PlayerSlot::P1),
+                    context
+                        .machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to the primary desktop machine"),
                 );
             }
             context.settings_store.reset_input_defaults()?;
@@ -7671,8 +7528,11 @@ fn execute_menu_action(
                 assign_gamepad_binding(&mut bindings, target, binding);
                 gamepad_manager.set_button_bindings(
                     bindings,
-                    &mut context.runtime.input_state,
-                    context.machine,
+                    context.runtime.player_inputs.input_mut(PlayerSlot::P1),
+                    context
+                        .machine
+                        .machine_for_player_slot_mut(PlayerSlot::P1)
+                        .expect("P1 should always map to the primary desktop machine"),
                 );
                 context.settings_store.set_gamepad_bindings(bindings)?;
             }
@@ -8268,62 +8128,40 @@ fn sync_live_input_state(
     runtime: &mut FrontendRuntime,
 ) {
     clear_live_input_state(machine, runtime);
-    sync_keyboard_state(
-        event_pump,
-        keyboard_bindings,
-        &mut runtime.input_state,
-        machine.primary_machine_mut(),
-    );
-    sync_linked_secondary_keyboard_state(
-        event_pump,
-        &mut runtime.secondary_input_state,
-        machine.secondary_machine_mut(),
-    );
+    for slot in PlayerSlot::ALL {
+        let session_kind = player_session_kind(machine);
+        let policy = host_policy_for_slot(session_kind, slot);
+        sync_player_keyboard_state(
+            event_pump,
+            keyboard_bindings,
+            policy.keyboard_profile,
+            runtime.player_inputs.input_mut(slot),
+            machine.machine_for_player_slot_mut(slot),
+        );
+    }
     if let Some(gamepad_manager) = &mut runtime.gamepad_manager {
-        gamepad_manager
-            .sync_active_gamepad_state(&mut runtime.input_state, machine.primary_machine_mut());
-    }
-}
-
-fn clear_live_input_state(machine: &mut DesktopEmulationSession, runtime: &mut FrontendRuntime) {
-    runtime.input_state.clear_all(machine.primary_machine_mut());
-    if let Some(secondary_machine) = machine.secondary_machine_mut() {
-        runtime.secondary_input_state.clear_all(secondary_machine);
-    } else {
-        runtime.secondary_input_state.reset();
-    }
-}
-
-fn sync_keyboard_state(
-    event_pump: &sdl3::EventPump,
-    keyboard_bindings: &KeyboardBindings,
-    input_state: &mut FrontendInputState,
-    machine: &mut Machine<TraceSummaryBuffer>,
-) {
-    let keyboard_state = event_pump.keyboard_state();
-    let joypad = keyboard_bindings.joypad;
-    let bindings = [
-        (JoypadButton::Up, joypad.up),
-        (JoypadButton::Down, joypad.down),
-        (JoypadButton::Left, joypad.left),
-        (JoypadButton::Right, joypad.right),
-        (JoypadButton::A, joypad.a),
-        (JoypadButton::B, joypad.b),
-        (JoypadButton::Select, joypad.select),
-        (JoypadButton::Start, joypad.start),
-    ];
-
-    for (joypad_button, desktop_key) in bindings {
-        input_state.set_keyboard_button(
-            machine,
-            joypad_button,
-            keyboard_state.is_scancode_pressed(desktop_key_scancode(desktop_key)),
+        gamepad_manager.sync_active_gamepad_state(
+            runtime.player_inputs.input_mut(PlayerSlot::P1),
+            machine
+                .machine_for_player_slot_mut(PlayerSlot::P1)
+                .expect("P1 should always map to the primary desktop machine"),
         );
     }
 }
 
-fn sync_linked_secondary_keyboard_state(
+fn clear_live_input_state(machine: &mut DesktopEmulationSession, runtime: &mut FrontendRuntime) {
+    for slot in PlayerSlot::ALL {
+        match machine.machine_for_player_slot_mut(slot) {
+            Some(machine) => runtime.player_inputs.input_mut(slot).clear_all(machine),
+            None => runtime.player_inputs.input_mut(slot).reset(),
+        }
+    }
+}
+
+fn sync_player_keyboard_state(
     event_pump: &sdl3::EventPump,
+    keyboard_bindings: &KeyboardBindings,
+    keyboard_profile: PlayerKeyboardProfile,
     input_state: &mut FrontendInputState,
     machine: Option<&mut Machine<TraceSummaryBuffer>>,
 ) {
@@ -8333,19 +8171,86 @@ fn sync_linked_secondary_keyboard_state(
     };
 
     let keyboard_state = event_pump.keyboard_state();
-    for (joypad_button, scancode) in LINKED_SECONDARY_KEYBOARD_BINDINGS {
-        input_state.set_keyboard_button(
-            machine,
-            joypad_button,
-            keyboard_state.is_scancode_pressed(scancode),
-        );
+    match keyboard_profile {
+        PlayerKeyboardProfile::ConfiguredPrimary => {
+            let joypad = keyboard_bindings.joypad;
+            let bindings = [
+                (JoypadButton::Up, desktop_key_scancode(joypad.up)),
+                (JoypadButton::Down, desktop_key_scancode(joypad.down)),
+                (JoypadButton::Left, desktop_key_scancode(joypad.left)),
+                (JoypadButton::Right, desktop_key_scancode(joypad.right)),
+                (JoypadButton::A, desktop_key_scancode(joypad.a)),
+                (JoypadButton::B, desktop_key_scancode(joypad.b)),
+                (JoypadButton::Select, desktop_key_scancode(joypad.select)),
+                (JoypadButton::Start, desktop_key_scancode(joypad.start)),
+            ];
+            for (joypad_button, scancode) in bindings {
+                input_state.set_keyboard_button(
+                    machine,
+                    joypad_button,
+                    keyboard_state.is_scancode_pressed(scancode),
+                );
+            }
+        }
+        PlayerKeyboardProfile::LinkedDmg04Secondary => {
+            for (joypad_button, scancode) in player_slots::LINKED_DMG04_P2_KEYBOARD_BINDINGS {
+                input_state.set_keyboard_button(
+                    machine,
+                    joypad_button,
+                    keyboard_state.is_scancode_pressed(scancode),
+                );
+            }
+        }
+        PlayerKeyboardProfile::Disabled => {
+            input_state.reset();
+        }
     }
 }
 
-fn linked_secondary_joypad_button_for_scancode(scancode: Scancode) -> Option<JoypadButton> {
-    LINKED_SECONDARY_KEYBOARD_BINDINGS
-        .into_iter()
-        .find_map(|(button, binding)| (binding == scancode).then_some(button))
+fn apply_keyboard_event_to_player_slots(
+    runtime: &mut FrontendRuntime,
+    machine: &mut DesktopEmulationSession,
+    keycode: Keycode,
+    scancode: Option<Scancode>,
+    pressed: bool,
+) {
+    let session_kind = player_session_kind(machine);
+    let keyboard_bindings = runtime.keyboard_bindings;
+    for slot in PlayerSlot::ALL {
+        let policy = host_policy_for_slot(session_kind, slot);
+        let Some(button) = joypad_button_for_player_keyboard_event(
+            policy.keyboard_profile,
+            keyboard_bindings,
+            keycode,
+            scancode,
+        ) else {
+            continue;
+        };
+        let Some(slot_machine) = machine.machine_for_player_slot_mut(slot) else {
+            continue;
+        };
+        runtime
+            .player_inputs
+            .input_mut(slot)
+            .set_keyboard_button(slot_machine, button, pressed);
+    }
+}
+
+fn joypad_button_for_player_keyboard_event(
+    keyboard_profile: PlayerKeyboardProfile,
+    keyboard_bindings: KeyboardBindings,
+    keycode: Keycode,
+    scancode: Option<Scancode>,
+) -> Option<JoypadButton> {
+    match keyboard_profile {
+        PlayerKeyboardProfile::ConfiguredPrimary => {
+            joypad_button_for_key(keyboard_bindings.joypad, keycode)
+        }
+        PlayerKeyboardProfile::LinkedDmg04Secondary => {
+            scancode.and_then(linked_dmg04_p2_button_for_scancode)
+        }
+        PlayerKeyboardProfile::Disabled => None,
+    }
 }
 
 fn desktop_key_scancode(binding: DesktopKey) -> Scancode {
@@ -8629,23 +8534,13 @@ fn save_screenshot_for_session(
     machine: &DesktopEmulationSession,
     video_options: &VideoOptions,
 ) -> Result<PathBuf, String> {
+    let view_slots = view_slots_for_session(player_session_kind(machine));
     let rendered = screenshot_output::render_screenshot(
-        FramebufferPanelInput {
-            framebuffer: machine.ppu().framebuffer(),
-            framebuffer_layer_sources: machine.ppu().framebuffer_layer_sources(),
-            bgwin_framebuffer: machine.ppu().framebuffer_bgwin_panel_shades(),
-            backdrop_framebuffer: machine.ppu().framebuffer_backdrop_panel_shades(),
-            bgwin_framebuffer_layer_sources: machine.ppu().framebuffer_bgwin_layer_sources(),
-        },
-        machine
-            .secondary_machine()
-            .map(|secondary| FramebufferPanelInput {
-                framebuffer: secondary.ppu().framebuffer(),
-                framebuffer_layer_sources: secondary.ppu().framebuffer_layer_sources(),
-                bgwin_framebuffer: secondary.ppu().framebuffer_bgwin_panel_shades(),
-                backdrop_framebuffer: secondary.ppu().framebuffer_backdrop_panel_shades(),
-                bgwin_framebuffer_layer_sources: secondary.ppu().framebuffer_bgwin_layer_sources(),
-            }),
+        framebuffer_panel_input_for_player_slot(machine, view_slots.primary)
+            .expect("desktop primary screenshot slot should map to an active machine"),
+        view_slots
+            .secondary
+            .and_then(|slot| framebuffer_panel_input_for_player_slot(machine, slot)),
         video_options,
     );
     let output_path = screenshot_output::resolve_next_screenshot_output_path(
@@ -8769,6 +8664,35 @@ fn framebuffer_dimensions_for_session(machine: &DesktopEmulationSession) -> Fram
             FRAMEBUFFER_WIDTH
         },
         height: FRAMEBUFFER_HEIGHT,
+    }
+}
+
+fn framebuffer_panel_input_for_player_slot(
+    machine: &DesktopEmulationSession,
+    slot: PlayerSlot,
+) -> Option<FramebufferPanelInput<'_>> {
+    let machine = machine.machine_for_player_slot(slot)?;
+    Some(FramebufferPanelInput {
+        framebuffer: machine.ppu().framebuffer(),
+        framebuffer_layer_sources: machine.ppu().framebuffer_layer_sources(),
+        bgwin_framebuffer: machine.ppu().framebuffer_bgwin_panel_shades(),
+        backdrop_framebuffer: machine.ppu().framebuffer_backdrop_panel_shades(),
+        bgwin_framebuffer_layer_sources: machine.ppu().framebuffer_bgwin_layer_sources(),
+    })
+}
+
+fn framebuffer_render_input_for_session(
+    machine: &DesktopEmulationSession,
+    dimensions: FramebufferDimensions,
+) -> FramebufferRenderInput<'_> {
+    let view_slots = view_slots_for_session(player_session_kind(machine));
+    FramebufferRenderInput {
+        dimensions,
+        primary: framebuffer_panel_input_for_player_slot(machine, view_slots.primary)
+            .expect("desktop primary view slot should map to an active machine"),
+        secondary: view_slots
+            .secondary
+            .and_then(|slot| framebuffer_panel_input_for_player_slot(machine, slot)),
     }
 }
 
@@ -10002,7 +9926,7 @@ mod tests {
             };
 
             let sdl = sdl3::init().expect("frontend harness SDL should initialize");
-            let mut input_state = super::FrontendInputState::new();
+            let mut player_inputs = super::PlayerInputStates::new();
             let audio_output = if with_audio {
                 Some(
                     super::DesktopAudioOutput::new(
@@ -10024,8 +9948,10 @@ mod tests {
                 super::GamepadManager::new(
                     subsystem,
                     config.input.gamepad.clone(),
-                    &mut input_state,
-                    &mut machine,
+                    player_inputs.input_mut(super::PlayerSlot::P1),
+                    machine
+                        .machine_for_player_slot_mut(super::PlayerSlot::P1)
+                        .expect("P1 should always map to the primary desktop machine"),
                 )
                 .expect("frontend harness gamepad manager")
             });
@@ -10050,8 +9976,7 @@ mod tests {
             let runtime = super::FrontendRuntime {
                 paused: !with_rom,
                 menu_state: super::OverlayMenuState::default(),
-                input_state,
-                secondary_input_state: super::FrontendInputState::new(),
+                player_inputs,
                 keyboard_bindings: config.input.keyboard,
                 video_options: config.video.clone(),
                 audio_volume_percent: config.audio.volume_percent,
@@ -15582,8 +15507,14 @@ mod tests {
                 .expect("runtime test should have a gamepad manager")
                 .set_preferred_device(
                     expected_toggled_device.clone(),
-                    &mut harness.runtime.input_state,
-                    &mut harness.machine,
+                    harness
+                        .runtime
+                        .player_inputs
+                        .input_mut(super::PlayerSlot::P1),
+                    harness
+                        .machine
+                        .machine_for_player_slot_mut(super::PlayerSlot::P1)
+                        .expect("P1 should always map to the primary desktop machine"),
                 );
             assert_eq!(
                 super::toggled_preferred_gamepad_device(
@@ -16144,8 +16075,14 @@ mod tests {
                     path: None,
                     name: Some("Runtime Pad".to_string()),
                 },
-                &mut harness.runtime.input_state,
-                &mut harness.machine,
+                harness
+                    .runtime
+                    .player_inputs
+                    .input_mut(super::PlayerSlot::P1),
+                harness
+                    .machine
+                    .machine_for_player_slot_mut(super::PlayerSlot::P1)
+                    .expect("P1 should always map to the primary desktop machine"),
             );
         assert_eq!(
             harness
@@ -16260,8 +16197,14 @@ mod tests {
                     path: None,
                     name: Some("Launcher Pad".to_string()),
                 },
-                &mut harness.runtime.input_state,
-                &mut harness.machine,
+                harness
+                    .runtime
+                    .player_inputs
+                    .input_mut(super::PlayerSlot::P1),
+                harness
+                    .machine
+                    .machine_for_player_slot_mut(super::PlayerSlot::P1)
+                    .expect("P1 should always map to the primary desktop machine"),
             );
 
         let events = harness
@@ -16312,8 +16255,14 @@ mod tests {
                     path: None,
                     name: Some("Overlay Pad".to_string()),
                 },
-                &mut harness.runtime.input_state,
-                &mut harness.machine,
+                harness
+                    .runtime
+                    .player_inputs
+                    .input_mut(super::PlayerSlot::P1),
+                harness
+                    .machine
+                    .machine_for_player_slot_mut(super::PlayerSlot::P1)
+                    .expect("P1 should always map to the primary desktop machine"),
             );
 
         let events = harness
@@ -16547,8 +16496,14 @@ mod tests {
             .expect("gamepad harness should have a manager")
             .set_preferred_device(
                 preferred_device,
-                &mut gamepad_harness.runtime.input_state,
-                &mut gamepad_harness.machine,
+                gamepad_harness
+                    .runtime
+                    .player_inputs
+                    .input_mut(super::PlayerSlot::P1),
+                gamepad_harness
+                    .machine
+                    .machine_for_player_slot_mut(super::PlayerSlot::P1)
+                    .expect("P1 should always map to the primary desktop machine"),
             );
         let gamepad_presentation = super::current_menu_presentation(
             gamepad_harness.canvas.window(),

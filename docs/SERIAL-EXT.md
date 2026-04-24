@@ -852,9 +852,32 @@ future `SGB` / `SGB2` work can reuse the same host-side player model.
 - A player slot is not automatically the same thing as a `Machine`
 - Different session types may map slots to visible outputs differently later
 
+### Phase 8 status
+
+The first desktop player-slot layer is host-side only and deliberately leaves
+the `gb-core` linked-machine model untouched:
+
+- `gb-desktop` now has stable `P1..P4` slot identities.
+- Session policy maps a single-console session to active `P1` only.
+- Local `DMG-04` maps machine index `0` to `P1` and machine index `1` to `P2`;
+  `P3` and `P4` remain reserved for later `DMG-07` / host multiplayer work.
+- Keyboard profiles are selected by player slot:
+  - `P1` uses the existing configurable joypad keyboard bindings.
+  - `P2` uses the explicit local `DMG-04` secondary keyboard profile.
+- Audio and view defaults are also expressed as frontend player policy:
+  - `P1` is the default audible source.
+  - `P2` is visible in the secondary panel for local `DMG-04` but muted by
+    default.
+  - inactive slots are hidden and muted.
+
+This is not a performance change and does not add `DMG-07`; it removes the
+previous ad hoc primary/secondary desktop wiring so Phase `9` and Phase `10`
+can attach more players without reopening core serial ownership.
+
 ### Crates / files
 
 - `crates/gb-desktop/src/input.rs`
+- `crates/gb-desktop/src/player_slots.rs`
 - desktop settings/config
 - session-layer frontend code
 
