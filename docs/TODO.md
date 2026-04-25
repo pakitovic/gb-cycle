@@ -72,7 +72,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 ### Phase 8 — Full emulator save states and global serialization strategy
 
-- [SAVESTATE][COVERAGE-BREADTH] The Phase 8 baseline now has the core `MachineSaveState` boundary, strict `.gbstate` envelope, exact capture/restore, continuation, and rewind-cadence regression coverage. Before relying on save states as a final hardening oracle, expand targeted coverage across the planned timing-sensitive cases: mid-instruction CPU state, Mode 3 fetch/FIFO/window/OBJ state, active DMA, timer overflow pipeline, serial transfer, active APU channels/HPF, and representative mapper runtime states for NoMBC, MBC1, MBC2, MBC3 RAM+RTC, MBC5, and Pocket Camera.
+- [SAVESTATE][DTO-CONTRACTS] Phase 8.1 now validates restore continuation across the planned CPU, PPU, DMA, timer, serial, APU, and representative mapper runtime states while preserving `.gbstate` v1. The remaining durability debt is structural: current subsystem `*SaveState` wrappers still mirror some runtime structs. Do not change `.gbstate` v1 opportunistically; when CPU/PPU/APU refactors need stronger compatibility, introduce explicit owner DTOs through a planned Phase 8.2/v2 migration path with compatibility tests.
 
 ### Phase 9 — Final DMG hardening, differential validation, and closure
 

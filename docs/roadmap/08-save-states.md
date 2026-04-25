@@ -72,6 +72,13 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 - `gb-persistence` owns the `.gbstate` envelope (`GBSTATE\0`, version `1`, extension `.gbstate`) separately from `.gbsav`. Decode rejects unsupported versions, invalid magic, corrupt/truncated payloads, trailing bytes, unknown metadata tags, and envelope/payload metadata mismatches.
 - Phase 8 keeps `MachineSaveState` cloneable and usable entirely in memory. That is the future rewind hook: a later phase can add a frame/subframe ring buffer, compression, deltas, and UI without adding disk or timestamp policy to `gb-core`.
 
+#### Phase 8.1 semantic hardening contract
+
+- Keep the public `MachineSaveState` API and `.gbstate` version `1` compatible; this hardening step must not introduce rewind UI, ring buffers, compression, deltas, or a schema-breaking DTO conversion.
+- Validate restore semantics through one reusable continuation harness that captures a save state, forks an uninterrupted continuation, dirties and restores the original machine, then compares post-restore continuation state.
+- Coverage must include CPU mid-instruction / HALT / pending IME, PPU Mode 3 fetch/FIFO/window/OBJ state, active DMA with restart state, timer overflow pipeline, serial transfers in flight, active APU output state, and representative cartridge runtime state for NoMBC, MBC1, MBC2, MBC3 RAM+RTC, MBC5, and Pocket Camera.
+- A later Phase 8.2 may convert mirror-style subsystem wrappers into explicit durable DTOs, but only after the Phase 8.1 semantic coverage is green.
+
 #### Risks if delayed or underspecified
 
 - final hardening work lacks a stable save/load foundation
