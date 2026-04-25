@@ -15,7 +15,7 @@ use super::super::common::{
 };
 use super::super::registers::Channel3Register;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct Channel3State {
     nr30: u8,
     nr31: u8,

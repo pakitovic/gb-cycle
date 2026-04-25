@@ -23,7 +23,19 @@ const DMG07_TRANSMISSION_BASE_INTER_BYTE_DELAY_T_CYCLES: u64 = 3_720;
 const DMG07_TRANSMISSION_RATE_STEP_DELAY_T_CYCLES: u64 = 445;
 const DMG07_TRANSMISSION_BASE_PACKET_PERIOD_T_CYCLES: u64 = 71_303;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub enum Dmg07Port {
     #[default]
     P1,

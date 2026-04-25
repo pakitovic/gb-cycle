@@ -8,7 +8,9 @@ pub use printer::{
 use crate::link::Dmg07Port;
 use crate::serial::SerialPeer;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum ExternalPortAttachmentKind {
     #[default]
     None,
@@ -18,19 +20,21 @@ pub enum ExternalPortAttachmentKind {
     FourPlayerAdapterDmg07,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum ExternalPortResetPolicy {
     #[default]
     PreserveAttachmentKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ExternalPort {
     attachment: ExternalPortAttachment,
     reset_policy: ExternalPortResetPolicy,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExternalPortSnapshot {
     pub reset_policy: ExternalPortResetPolicy,
     pub attachment: ExternalPortAttachmentSnapshot,
@@ -42,7 +46,7 @@ impl ExternalPortSnapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ExternalPortAttachmentSnapshot {
     None,
     Loopback,
@@ -70,7 +74,7 @@ impl ExternalPortAttachmentSnapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 enum ExternalPortAttachment {
     #[default]
     None,
@@ -80,15 +84,19 @@ enum ExternalPortAttachment {
     FourPlayerAdapterDmg07(Dmg07AttachmentState),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 struct LoopbackAttachmentState;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 struct Dmg04AttachmentState {
     incoming_byte: Option<u8>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 struct Dmg07AttachmentState {
     port: Dmg07Port,
     incoming_byte: Option<u8>,

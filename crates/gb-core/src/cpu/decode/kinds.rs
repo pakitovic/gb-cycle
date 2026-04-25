@@ -1,6 +1,6 @@
 use super::super::CpuAddressUpdateDirection;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum Register8 {
     A,
     B,
@@ -11,7 +11,7 @@ pub(in crate::cpu) enum Register8 {
     L,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum Register16 {
     BC,
     DE,
@@ -19,7 +19,7 @@ pub(in crate::cpu) enum Register16 {
     SP,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum AluOperation {
     Add,
     Adc,
@@ -31,7 +31,7 @@ pub(in crate::cpu) enum AluOperation {
     Compare,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum StackRegister16 {
     BC,
     DE,
@@ -39,7 +39,7 @@ pub(in crate::cpu) enum StackRegister16 {
     AF,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum ConditionCode {
     Nz,
     Z,
@@ -47,20 +47,20 @@ pub(in crate::cpu) enum ConditionCode {
     C,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum Register8Operand {
     Register(Register8),
     IndirectHl,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum DirectAddressSource {
     BC,
     DE,
     HighC,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum InstructionExecutionGroup {
     Load,
     Arithmetic,
@@ -69,7 +69,7 @@ pub(in crate::cpu) enum InstructionExecutionGroup {
     CbPrefixed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum FetchCompletionKind {
     Nop,
     DecimalAdjustAccumulator,
@@ -100,7 +100,7 @@ pub(in crate::cpu) enum FetchCompletionKind {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum CbInstructionKind {
     RotateLeftCarry { target: Register8Operand },
     RotateRightCarry { target: Register8Operand },
@@ -133,7 +133,7 @@ impl CbInstructionKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum CpuInstructionKind {
     LoadRegisterImmediate {
         target: Register8,
@@ -261,7 +261,7 @@ impl CpuInstructionKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::cpu) enum DecodedOpcode {
     CompleteOnFetch(FetchCompletionKind),
     Execute(CpuInstructionKind),

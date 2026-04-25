@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3TransferPolicy {
     mode3_started: bool,
     startup_source_state: Mode3StartupSourceState,
@@ -153,14 +153,14 @@ impl PpuMode3TransferPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3LineTimingPolicy {
     visible_registers: PpuVisibleRegisters,
     mode3_started: bool,
     mode0_start_dot: u16,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3LineTimingContext {
     pub(in crate::ppu) line_dot: u16,
     pub(in crate::ppu) selected_sprite_count: u8,
@@ -213,7 +213,7 @@ impl PpuMode3LineTimingPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3WindowPolicy {
     visible_registers: PpuVisibleRegisters,
     activation: PpuMode3WindowActivationState,
@@ -345,7 +345,7 @@ impl PpuMode3WindowPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3BgWinFetchPolicy {
     register_latches: PpuMode3RegisterLatches,
     console_model: ConsoleModel,
@@ -425,7 +425,9 @@ impl PpuMode3BgWinFetchPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub(in crate::ppu) struct PpuMode3LiveScyWriteRouting {
     pub(in crate::ppu) pending_high_plane_only: bool,
     pub(in crate::ppu) pending_tilemap_row_refetch: bool,
@@ -433,7 +435,9 @@ pub(in crate::ppu) struct PpuMode3LiveScyWriteRouting {
     pub(in crate::ppu) startup_visible_tile2_phase6_tilemap_row_refetch: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub(in crate::ppu) struct PpuMode3LiveBackgroundWriteEffects {
     tilemap_refetch: bool,
     tilemap_full_refetch: bool,
@@ -772,7 +776,7 @@ impl PpuMode3LiveBackgroundWriteEffects {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) enum PpuMode3ScyObjPhaseOwner {
     PendingHit { match_x: u8 },
     ActiveFetch { sprite_x: u8 },
@@ -791,7 +795,7 @@ impl PpuMode3ScyObjPhaseOwner {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ScyObjPhaseContext {
     pub(in crate::ppu) phase_owner: PpuMode3ScyObjPhaseOwner,
     pub(in crate::ppu) current_transfer_x: u8,
@@ -804,7 +808,7 @@ pub(in crate::ppu) struct PpuMode3ScyObjPhaseContext {
     pub(in crate::ppu) obj_fetcher_stage_dot: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ScyTilemapRetarget {
     pub(in crate::ppu) tilemap_row_delta: i8,
     pub(in crate::ppu) tiledata_row_delta: i8,
@@ -813,7 +817,7 @@ pub(in crate::ppu) struct PpuMode3ScyTilemapRetarget {
 /// Observed DMG SCY/OBJ startup phase table that can perturb BG refetch routing.
 /// These ranges are an explicit hardware hypothesis until an oracle lets the
 /// pipeline derive them directly from shared BG/OBJ arbitration state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ObservedScyObjPhaseTable {
     obj_match_x: u8,
 }
@@ -893,7 +897,7 @@ impl PpuMode3ObservedScyObjPhaseTable {
 
 /// Resolves the current SCY/OBJ phase owner and exposes the observed table through
 /// an explicit context object, keeping the hypothesis away from mutation code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ScyObjPhasePolicy {
     context: PpuMode3ScyObjPhaseContext,
 }
@@ -965,7 +969,7 @@ impl PpuMode3ScyObjPhasePolicy {
 /// Resolves sprite-phased DMG Mode 3 live-write quirks through explicit
 /// observed tables, keeping imperative control code focused on applying
 /// the already-decided hardware hypothesis.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3SingleSpritePhasePolicy {
     sprite_x: u8,
 }
@@ -1008,7 +1012,7 @@ impl PpuMode3SingleSpritePhasePolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ObservedLcdc0OnsetTable {
     sprite_x: u8,
 }
@@ -1035,7 +1039,7 @@ impl PpuMode3ObservedLcdc0OnsetTable {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3Lcdc3StartupTilemapOverride {
     pub(in crate::ppu) tilemap_select: bool,
     pub(in crate::ppu) applies_to_visible_tile2: bool,
@@ -1048,7 +1052,7 @@ impl PpuMode3Lcdc3StartupTilemapOverride {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3Lcdc3LiveWriteDecision {
     pub(in crate::ppu) clear_visible_tile2_live_refetch: bool,
     pub(in crate::ppu) tilemap_override: Option<PpuMode3Lcdc3StartupTilemapOverride>,
@@ -1060,7 +1064,7 @@ impl PpuMode3Lcdc3LiveWriteDecision {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ObservedLcdc3PhaseTable {
     sprite_x: u8,
 }
@@ -1113,13 +1117,13 @@ impl PpuMode3ObservedLcdc3PhaseTable {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3Lcdc4StartupOverride {
     pub(in crate::ppu) slice: BgVisibleStartupSlice,
     pub(in crate::ppu) override_select: BgTileDataSelectOverride,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ObservedLcdc4PhaseTable {
     sprite_x: u8,
 }
@@ -1190,7 +1194,7 @@ impl PpuMode3ObservedLcdc4PhaseTable {
 /// pulses. The remaining hardware-visible difference is confined to which
 /// sprite bitplanes keep the line-start 8x16 interpretation across the active
 /// shrink window.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) enum PpuMode3Lcdc2ObjSizePlaneSelection {
     Live8,
     Live8LowLineStart16High,
@@ -1198,19 +1202,19 @@ pub(in crate::ppu) enum PpuMode3Lcdc2ObjSizePlaneSelection {
     LineStart16,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) enum PpuMode3Lcdc2ObjSizeObservedEffect {
     RetroactiveRepaint { background_only: bool },
     FifoRewrite,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3Lcdc2ObjSizeObservedDecision {
     pub(in crate::ppu) plane_selection: PpuMode3Lcdc2ObjSizePlaneSelection,
     pub(in crate::ppu) pending_effect: Option<PpuMode3Lcdc2ObjSizeObservedEffect>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3ObservedLcdc2ObjSizePhaseTable {
     sprite_x: u8,
     scx: u8,

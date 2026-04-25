@@ -6,7 +6,7 @@ mod lcdc4;
 mod live_refetch;
 mod snapshot;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ObservabilityRigConfig {
     lcdc: u8,
     ly: u8,

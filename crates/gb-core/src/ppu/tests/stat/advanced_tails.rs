@@ -1,6 +1,6 @@
 use super::super::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct TerminalTailConfig {
     stat: u8,
     ly: u8,

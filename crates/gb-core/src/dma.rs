@@ -12,39 +12,39 @@ const OAM_DMA_T_CYCLES_PER_BYTE: u8 = 4;
 const OAM_DMA_TOTAL_T_CYCLES: u16 = 648;
 const DMG_OAM_DMA_ECHO_ALIAS_OFFSET: u16 = 0x2000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DmaStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DmaTransferKind {
     Oam,
     Gdma,
     Hdma,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DmaCpuImpactPolicy {
     NoCpuStallButBusRestriction,
     CpuFullyStalledUntilDone,
     CpuStalledPerBlock,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DmaTransferFamily {
     FullBurst,
     BlockWindowed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DmaAdvanceCondition {
     EveryTCycle,
     HBlank,
     ExternalGate,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DmaTransferTiming {
     total_t_cycles: u16,
     first_byte_delay_t_cycles: u8,
@@ -70,7 +70,7 @@ impl DmaTransferTiming {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DmaTransfer {
     kind: DmaTransferKind,
     source_start: u16,
@@ -84,7 +84,7 @@ pub struct DmaTransfer {
     advance_condition: DmaAdvanceCondition,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 struct DmaTransferSpec {
     kind: DmaTransferKind,
     source_start: u16,
@@ -207,7 +207,7 @@ impl DmaTransfer {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DmaTransferProgress {
     transfer: DmaTransfer,
     elapsed_t_cycles: u16,
@@ -306,13 +306,15 @@ impl DmaTransferProgress {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 enum DmaSourceBus {
     External,
     VideoRam,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum DmaTransferState {
     #[default]
     Idle,
@@ -321,7 +323,9 @@ pub enum DmaTransferState {
     Completed(DmaTransferProgress),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum DmaTransferLifecycle {
     #[default]
     Idle,
@@ -371,7 +375,7 @@ impl DmaTransferState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DmaTransferStatusView {
     lifecycle: DmaTransferLifecycle,
     transfer: Option<DmaTransfer>,
@@ -418,7 +422,7 @@ impl DmaTransferStatusView {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct DmaTransferWork {
     transfer: DmaTransfer,
     byte_index: u16,
@@ -451,12 +455,12 @@ impl DmaTransferWork {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DmaStartupState {
     pub source_page_latch: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DmaController {
     console_model: ConsoleModel,
     status: DmaStatus,
@@ -465,7 +469,7 @@ pub struct DmaController {
     pending_restart: Option<DmaTransferProgress>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DmaSnapshot {
     pub console_model: ConsoleModel,
     pub status: DmaStatus,

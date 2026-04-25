@@ -1,6 +1,6 @@
 const FRAME_SEQUENCER_STEP_MASK: u8 = 0x07;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct FrameSequencerState {
     pub(super) step: u8,
     pub(super) length_clock_count: u64,
@@ -8,7 +8,7 @@ pub(super) struct FrameSequencerState {
     pub(super) envelope_clock_count: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct FrameSequencerClocks {
     pub(super) length: bool,
     pub(super) sweep: bool,

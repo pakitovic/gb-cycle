@@ -57,7 +57,7 @@ fn seed_channel4_noise_counter_phase_if_uninitialized(
 ) {
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Channel4Stage {
     value: u8,
     shift: u8,
@@ -415,7 +415,7 @@ fn derive_compatibility_aliases(
     )
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Channel4ActualWriteResolution {
     category: ApuCh4Nr43LiveWriteCategory,
     action: ApuCh4Nr43LfsrAction,

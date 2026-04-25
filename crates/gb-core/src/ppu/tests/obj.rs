@@ -5,7 +5,7 @@ mod fetch;
 mod render;
 mod same_x;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct SelectedSpriteSpec {
     oam_index: u8,
     y: u8,
@@ -53,7 +53,7 @@ fn queue_current_obj_hit(ppu: &mut Ppu, sprite_slot: u8) {
         .queue_fetch_hit(sprite_slot, ownership, current_obj_height);
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ObjRenderRigConfig {
     lcdc: u8,
     ly: u8,

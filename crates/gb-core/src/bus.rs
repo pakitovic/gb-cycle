@@ -37,7 +37,7 @@ const HRAM_LEN: usize = 0x007F;
 const BLOCKED_READ_VALUE: u8 = 0xFF;
 const DMG_UNUSABLE_READ_VALUE: u8 = 0x00;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Bus {
     console_model: ConsoleModel,
     status: BusStatus,

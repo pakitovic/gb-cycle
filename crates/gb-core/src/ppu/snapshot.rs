@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PpuSnapshot {
     pub console_model: ConsoleModel,
     pub status: PpuStatus,
@@ -109,7 +109,7 @@ pub struct PpuSnapshot {
     pub obj_palette_read_policy: DmgObjPaletteReadPolicy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuBgCachedSliceOriginSnapshot {
     Ordinary,
     StartupAlignmentSeed,
@@ -118,7 +118,7 @@ pub enum PpuBgCachedSliceOriginSnapshot {
     StartupContinuationVisibleTile3,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PpuBgFifoCachedPixelSnapshot {
     pub source: PpuBgFetcherSource,
     pub origin: PpuBgCachedSliceOriginSnapshot,
@@ -133,7 +133,7 @@ pub struct PpuBgFifoCachedPixelSnapshot {
     pub tile_index: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PpuBgCachedSliceSnapshot {
     pub source: PpuBgFetcherSource,
     pub origin: PpuBgCachedSliceOriginSnapshot,
@@ -145,44 +145,44 @@ pub struct PpuBgCachedSliceSnapshot {
     pub tile_high: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuBgPushDispositionSnapshot {
     Ready,
     InterruptedByObjectFetch,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuMode3TransferPhaseSnapshot {
     Priming,
     Output,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuMode3TransferLaneSnapshot {
     PreVisible,
     Hidden,
     Visible,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuMode3TransferSourceWindowSnapshot {
     AbstractStartup,
     FifoBacked,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuMode3TransferBackingSnapshot {
     Abstract,
     FifoBacked,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuMode3TransferReadinessSnapshot {
     WaitingForFifo,
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuMode3TransferDotKindSnapshot {
     NotServed,
     ServedPreVisibleTransfer,
@@ -190,21 +190,21 @@ pub enum PpuMode3TransferDotKindSnapshot {
     ServedVisiblePixel,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuMode3StartupSourceStateSnapshot {
     EntryDelay { remaining: u8 },
     Abstract { remaining: u8 },
     FifoBacked,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuBgStartupContinuationSliceSnapshot {
     None,
     VisibleTile2,
     VisibleTile3,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuBgStartupFetchSeamSnapshot {
     Inactive,
     AlignmentSeedPending,

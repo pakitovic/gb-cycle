@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(super) enum CpuTraceBusAccessKind {
     OpcodeFetch,
     OperandRead,
@@ -6,7 +6,7 @@ pub(super) enum CpuTraceBusAccessKind {
     DataWrite,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(super) struct CpuTraceBusActivity {
     pub(super) kind: CpuTraceBusAccessKind,
     pub(super) address: u16,

@@ -7,6 +7,7 @@ use crate::interrupts::InterruptStartupState;
 use crate::joypad::JoypadStartupState;
 use crate::model::{ConsoleModel, StartupMode};
 use crate::ppu::PpuStartupState;
+use crate::save_state::SaveStateByteFingerprint;
 use crate::scheduler::CycleContext;
 use crate::serial::SerialStartupState;
 use crate::timer::TimerStartupState;
@@ -20,7 +21,7 @@ const CGB_BOOT_ROM_RAW_LEN: usize = 0x0800;
 const CGB_BOOT_ROM_MAPPED_LEN: usize = 0x0900;
 const CGB_BOOT_ROM_UPPER_WINDOW_START: usize = 0x0200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BootRomKind {
     Dmg0,
     Dmg,
@@ -28,7 +29,7 @@ pub enum BootRomKind {
     Cgb,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct BootRomAssets {
     dmg0: Option<Vec<u8>>,
     dmg: Option<Vec<u8>>,
@@ -185,6 +186,11 @@ impl BootRomAssets {
         }
     }
 
+    pub fn fingerprint(&self, kind: BootRomKind) -> Option<SaveStateByteFingerprint> {
+        self.bytes_for(kind)
+            .map(SaveStateByteFingerprint::from_bytes)
+    }
+
     fn bytes_for(&self, kind: BootRomKind) -> Option<&[u8]> {
         match kind {
             BootRomKind::Dmg0 => self.dmg0.as_deref(),
@@ -220,7 +226,7 @@ fn read_cgb_boot_rom_byte(bytes: &[u8], address: u16) -> Option<u8> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum StartupMemoryPolicy {
     DeterministicPatterned,
 }
@@ -255,7 +261,7 @@ const fn deterministic_startup_byte(address: u16) -> u8 {
     mixed.rotate_left(((address >> 1) & 0x07) as u32) ^ 0xA5
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BootAudioSnapshot {
     pub nr10: u8,
     pub nr11: u8,
@@ -280,7 +286,7 @@ pub struct BootAudioSnapshot {
     pub nr52: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BootIoSnapshot {
     pub p1: u8,
     pub sb: u8,
@@ -304,7 +310,7 @@ pub struct BootIoSnapshot {
     pub audio: BootAudioSnapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BootDirectBootState {
     pub cpu: CpuStartupState,
     pub io: BootIoSnapshot,
@@ -318,12 +324,12 @@ pub struct BootDirectBootState {
     pub startup_memory_policy: StartupMemoryPolicy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BootStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BootController {
     console_model: ConsoleModel,
     startup_mode: StartupMode,
@@ -333,7 +339,7 @@ pub struct BootController {
     boot_rom_assets: BootRomAssets,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BootSnapshot {
     pub console_model: ConsoleModel,
     pub startup_mode: StartupMode,
@@ -378,6 +384,10 @@ impl BootController {
 
     pub fn is_boot_rom_mapped(&self) -> bool {
         self.boot_rom_mapped
+    }
+
+    pub fn boot_rom_fingerprint(&self) -> Option<SaveStateByteFingerprint> {
+        self.boot_rom_assets.fingerprint(self.boot_rom_kind)
     }
 
     pub fn has_boot_rom_asset(&self) -> bool {

@@ -5,12 +5,12 @@ const TIMER_ENABLE_MASK: u8 = 0x04;
 const TIMER_CONTROL_MASK: u8 = 0x07;
 const TIMER_RELOAD_DELAY_T_CYCLES: u8 = 4;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TimerStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct TimerStartupState {
     pub system_counter: u16,
     pub tima: u8,
@@ -18,7 +18,7 @@ pub struct TimerStartupState {
     pub tac: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Timer {
     console_model: ConsoleModel,
     status: TimerStatus,
@@ -31,7 +31,7 @@ pub struct Timer {
     reloaded_this_t_cycle: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TimerSnapshot {
     pub console_model: ConsoleModel,
     pub status: TimerStatus,
@@ -41,7 +41,7 @@ pub struct TimerSnapshot {
     pub tac: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct DividerResetEffects {
     pub apu_frame_sequencer_edge: bool,
 }
@@ -252,13 +252,13 @@ impl Timer {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum TimerOverflowState {
     Idle,
     Pending { ticks_until_reload: u8 },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum TimerSignalChangeOrigin {
     AutonomousTick,
     MmioWrite,

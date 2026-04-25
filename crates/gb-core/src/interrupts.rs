@@ -4,18 +4,18 @@ use crate::scheduler::{CycleContext, InterruptSource};
 const INTERRUPT_REQUEST_MASK: u8 = 0x1F;
 const INTERRUPT_FLAG_FORCED_HIGH_BITS: u8 = 0xE0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum InterruptControllerStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct InterruptStartupState {
     pub interrupt_flags: u8,
     pub interrupt_enable: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InterruptController {
     console_model: ConsoleModel,
     status: InterruptControllerStatus,
@@ -23,7 +23,7 @@ pub struct InterruptController {
     interrupt_enable: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InterruptControllerSnapshot {
     pub console_model: ConsoleModel,
     pub status: InterruptControllerStatus,

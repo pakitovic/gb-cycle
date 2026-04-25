@@ -8,7 +8,19 @@ const MAX_DERIVED_EDGES_PER_CYCLE: usize = 16;
 const MAX_SIDE_EFFECTS_PER_CYCLE: usize = 16;
 const MAX_INTERRUPT_REQUESTS_PER_CYCLE: usize = 16;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct TCycle(u64);
 
 impl TCycle {
@@ -37,7 +49,9 @@ impl fmt::Display for TCycle {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SchedulerPhase {
     #[default]
     ExternalEventIngress,
@@ -87,21 +101,21 @@ impl fmt::Display for SchedulerPhase {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ExternalEvent {
     HostInputChanged,
     ExternalSerialClock,
     DebugCommand,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DerivedEdge {
     DividerTick,
     TimerInputFallingEdge,
     ApuFrameSequencerEdge,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BusOwner {
     Cpu,
     Dma,
@@ -112,7 +126,7 @@ pub enum BusOwner {
     Boot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SchedulerSideEffect {
     CommitMmioWrite,
     BootRomUnmap,
@@ -120,7 +134,7 @@ pub enum SchedulerSideEffect {
     LcdPowerTransition,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum InterruptSource {
     VBlank,
     LcdStat,
@@ -260,12 +274,12 @@ impl CycleContext {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalScheduler {
     next_t_cycle: TCycle,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SchedulerSnapshot {
     pub next_t_cycle: TCycle,
 }

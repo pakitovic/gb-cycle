@@ -63,6 +63,15 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
    Scope: focused restore tests per subsystem, integration tests for continued execution equivalence, and at least one strict-mode end-to-end save/load case with banked-cartridge and active timing-sensitive subsystem coverage.
    Acceptance criteria: exact round-trip invariants are checked automatically, save/load continuation matches uninterrupted execution in covered scenarios, and failures retain enough metadata or snapshots to localize the first divergence quickly.
 
+#### Phase 8 implementation contract
+
+- `gb-core::save_state` owns `MachineSaveState`, `MachineSaveStateMetadata`, `MachineSaveStateRestoreError`, and typed subsystem state boundaries for scheduler, machine runtime events, CPU, bus, PPU, DMA, timer, APU, joypad, serial, boot, external port, interrupts, and cartridge runtime state.
+- `Machine::capture_save_state()` captures at the stable boundary between public T-cycle steps. The scheduler portion records `next_t_cycle`; machine-local pending external events are captured separately from scheduler timing.
+- `Machine::restore_save_state()` validates metadata before mutation, then restores owned subsystem fields directly. It does not replay MMIO writes and does not apply cartridge RTC elapsed off-session time.
+- Mandatory metadata includes console model, operating mode, host platform, startup mode, compatibility policy / execution mode / overrides, `next_t_cycle`, loaded cartridge kind and ROM fingerprint, plus boot-ROM kind, mapping state, and fingerprint when a boot ROM applies.
+- `gb-persistence` owns the `.gbstate` envelope (`GBSTATE\0`, version `1`, extension `.gbstate`) separately from `.gbsav`. Decode rejects unsupported versions, invalid magic, corrupt/truncated payloads, trailing bytes, unknown metadata tags, and envelope/payload metadata mismatches.
+- Phase 8 keeps `MachineSaveState` cloneable and usable entirely in memory. That is the future rewind hook: a later phase can add a frame/subframe ring buffer, compression, deltas, and UI without adding disk or timestamp policy to `gb-core`.
+
 #### Risks if delayed or underspecified
 
 - final hardening work lacks a stable save/load foundation
@@ -70,4 +79,3 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 - restore paths reconstruct only visible registers and lose hidden temporal state
 - cartridge persistence and whole-machine save states become conflated
 - debugger or replay tooling grows a second incompatible serialization path
-

@@ -1,7 +1,13 @@
 use gb_core::{
+    BootRomKind, CartridgeSlotState, CompatibilityPolicy, ConsoleModel, DiagnosticPolicy,
+    ExecutionMode, HeuristicPolicy, HostPlatform, OperatingMode, OverridePolicy, StartupMode,
+    TCycle, ValidationPolicy,
+};
+use gb_core::{
     CartridgePersistenceMetadata, CartridgePersistenceProfile, CartridgePersistentStateError,
-    CartridgeRamPayloadKind, CartridgeSlot, Huc3RtcPersistentState, Mbc3RtcPersistentState,
-    PersistentCartState,
+    CartridgeRamPayloadKind, CartridgeSlot, Huc3RtcPersistentState, MachineSaveState,
+    MachineSaveStateMetadata, Mbc3RtcPersistentState, PersistentCartState,
+    SaveStateByteFingerprint,
 };
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -12,9 +18,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const SAVE_MAGIC: [u8; 8] = *b"GBCSAVE\0";
+const MACHINE_SAVE_STATE_MAGIC: [u8; 8] = *b"GBSTATE\0";
 pub const CURRENT_SAVE_FORMAT_VERSION: u16 = 1;
+pub const CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION: u16 = 1;
 pub const SAVE_FILE_EXTENSION: &str = "gbsav";
 pub const EXTERNAL_SAVE_FILE_EXTENSION: &str = "sav";
+pub const MACHINE_SAVE_STATE_FILE_EXTENSION: &str = "gbstate";
 const MBC2_RAM_NIBBLE_COUNT: usize = 512;
 const MBC2_MGBA_PACKED_BYTE_COUNT: usize = MBC2_RAM_NIBBLE_COUNT / 2;
 const MBC3_EXTERNAL_RTC_SUFFIX_LEN: usize = 48;
@@ -120,6 +129,30 @@ pub struct CartridgeSaveEnvelope {
     pub backend_metadata: CartridgeSaveBackendMetadata,
     pub cartridge_metadata: CartridgePersistenceMetadata,
     pub persistent_state: PersistentCartState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MachineSaveStateBackendMetadata {
+    pub format_version: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineSaveStateEnvelope {
+    pub backend_metadata: MachineSaveStateBackendMetadata,
+    pub state_metadata: MachineSaveStateMetadata,
+    pub state: MachineSaveState,
+}
+
+impl MachineSaveStateEnvelope {
+    pub fn new(state: MachineSaveState) -> Self {
+        Self {
+            backend_metadata: MachineSaveStateBackendMetadata {
+                format_version: CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION,
+            },
+            state_metadata: state.metadata().clone(),
+            state,
+        }
+    }
 }
 
 pub trait CartridgeSaveTimeSource {
@@ -763,6 +796,10 @@ pub enum CartridgeSaveBackendError {
     UnsupportedPersistentStateTag {
         tag: u8,
     },
+    UnsupportedMachineSaveStateTag {
+        field: &'static str,
+        tag: u8,
+    },
     InvalidBooleanTag {
         field: &'static str,
         value: u8,
@@ -779,6 +816,11 @@ pub enum CartridgeSaveBackendError {
         index: usize,
         value: u8,
     },
+    MachineSaveStateCodec {
+        operation: &'static str,
+        message: String,
+    },
+    MachineSaveStateMetadataMismatch,
     TrailingBytes {
         remaining: usize,
     },
@@ -811,6 +853,12 @@ impl fmt::Display for CartridgeSaveBackendError {
             Self::UnsupportedPersistentStateTag { tag } => {
                 write!(f, "unsupported persistent state tag {tag:#04X}")
             }
+            Self::UnsupportedMachineSaveStateTag { field, tag } => {
+                write!(
+                    f,
+                    "unsupported machine save-state tag for {field}: {tag:#04X}"
+                )
+            }
             Self::InvalidBooleanTag { field, value } => {
                 write!(f, "invalid boolean tag for {field}: {value:#04X}")
             }
@@ -825,6 +873,15 @@ impl fmt::Display for CartridgeSaveBackendError {
                 f,
                 "invalid HuC-3 nibble value {value:#04X} at logical cell {index}"
             ),
+            Self::MachineSaveStateCodec { operation, message } => {
+                write!(f, "machine save-state {operation} failed: {message}")
+            }
+            Self::MachineSaveStateMetadataMismatch => {
+                write!(
+                    f,
+                    "machine save-state envelope metadata does not match payload metadata"
+                )
+            }
             Self::TrailingBytes { remaining } => {
                 write!(f, "save payload has {remaining} trailing bytes")
             }
@@ -1056,6 +1113,74 @@ pub fn decode_cartridge_save_envelope(
             profile,
         },
         persistent_state,
+    })
+}
+
+pub fn encode_machine_save_state_envelope(
+    envelope: &MachineSaveStateEnvelope,
+) -> Result<Vec<u8>, CartridgeSaveBackendError> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&MACHINE_SAVE_STATE_MAGIC);
+    write_u16(&mut bytes, envelope.backend_metadata.format_version);
+    encode_machine_save_state_metadata(&mut bytes, &envelope.state_metadata)?;
+
+    let mut payload = Vec::new();
+    ciborium::into_writer(&envelope.state, &mut payload).map_err(|error| {
+        CartridgeSaveBackendError::MachineSaveStateCodec {
+            operation: "encode",
+            message: error.to_string(),
+        }
+    })?;
+    write_u32_checked(
+        &mut bytes,
+        payload.len(),
+        "machine save-state payload byte_len",
+    )?;
+    bytes.extend_from_slice(&payload);
+    Ok(bytes)
+}
+
+pub fn decode_machine_save_state_envelope(
+    bytes: &[u8],
+) -> Result<MachineSaveStateEnvelope, CartridgeSaveBackendError> {
+    let mut cursor = ByteCursor::new(bytes);
+    let actual_magic = cursor.read_array::<{ MACHINE_SAVE_STATE_MAGIC.len() }>()?;
+    if actual_magic != MACHINE_SAVE_STATE_MAGIC {
+        return Err(CartridgeSaveBackendError::InvalidMagic {
+            actual: actual_magic,
+        });
+    }
+
+    let format_version = cursor.read_u16()?;
+    if format_version != CURRENT_MACHINE_SAVE_STATE_FORMAT_VERSION {
+        return Err(CartridgeSaveBackendError::UnsupportedFormatVersion {
+            version: format_version,
+        });
+    }
+
+    let state_metadata = decode_machine_save_state_metadata(&mut cursor)?;
+    let payload_len = cursor.read_u32()? as usize;
+    let payload = cursor.read_exact(payload_len)?;
+    let state: MachineSaveState = ciborium::from_reader(payload).map_err(|error| {
+        CartridgeSaveBackendError::MachineSaveStateCodec {
+            operation: "decode",
+            message: error.to_string(),
+        }
+    })?;
+
+    if state.metadata() != &state_metadata {
+        return Err(CartridgeSaveBackendError::MachineSaveStateMetadataMismatch);
+    }
+    if cursor.remaining() != 0 {
+        return Err(CartridgeSaveBackendError::TrailingBytes {
+            remaining: cursor.remaining(),
+        });
+    }
+
+    Ok(MachineSaveStateEnvelope {
+        backend_metadata: MachineSaveStateBackendMetadata { format_version },
+        state_metadata,
+        state,
     })
 }
 
@@ -1318,6 +1443,384 @@ fn persistent_state_kind_name(state: &PersistentCartState) -> &'static str {
         PersistentCartState::Mbc5Ram { .. } => "Mbc5Ram",
         PersistentCartState::PocketCameraRam { .. } => "PocketCameraRam",
     }
+}
+
+fn encode_machine_save_state_metadata(
+    bytes: &mut Vec<u8>,
+    metadata: &MachineSaveStateMetadata,
+) -> Result<(), CartridgeSaveBackendError> {
+    bytes.push(encode_console_model(metadata.console_model));
+    bytes.push(encode_operating_mode(metadata.operating_mode));
+    bytes.push(encode_host_platform(metadata.host_platform));
+    bytes.push(encode_startup_mode(metadata.startup_mode));
+    encode_compatibility_policy(bytes, &metadata.compatibility);
+    write_u64(bytes, metadata.next_t_cycle.get());
+    bytes.push(encode_cartridge_slot_state(metadata.cartridge.state));
+    encode_fingerprint(bytes, metadata.cartridge.rom_fingerprint);
+    bytes.push(encode_startup_mode(metadata.boot.startup_mode));
+    bytes.push(encode_boot_rom_kind(metadata.boot.boot_rom_kind));
+    write_bool(bytes, metadata.boot.boot_rom_mapped);
+    encode_fingerprint(bytes, metadata.boot.boot_rom_fingerprint);
+    Ok(())
+}
+
+fn decode_machine_save_state_metadata(
+    cursor: &mut ByteCursor<'_>,
+) -> Result<MachineSaveStateMetadata, CartridgeSaveBackendError> {
+    let console_model = decode_console_model(cursor.read_u8()?, "console_model")?;
+    let operating_mode = decode_operating_mode(cursor.read_u8()?, "operating_mode")?;
+    let host_platform = decode_host_platform(cursor.read_u8()?, "host_platform")?;
+    let startup_mode = decode_startup_mode(cursor.read_u8()?, "startup_mode")?;
+    let compatibility = decode_compatibility_policy(cursor)?;
+    let next_t_cycle = TCycle::new(cursor.read_u64()?);
+    let cartridge_state = decode_cartridge_slot_state(cursor.read_u8()?, "cartridge.state")?;
+    let rom_fingerprint = decode_fingerprint(cursor, "cartridge.rom_fingerprint")?;
+    let boot_startup_mode = decode_startup_mode(cursor.read_u8()?, "boot.startup_mode")?;
+    let boot_rom_kind = decode_boot_rom_kind(cursor.read_u8()?, "boot.boot_rom_kind")?;
+    let boot_rom_mapped = cursor.read_bool("boot.boot_rom_mapped")?;
+    let boot_rom_fingerprint = decode_fingerprint(cursor, "boot.boot_rom_fingerprint")?;
+
+    Ok(MachineSaveStateMetadata {
+        console_model,
+        operating_mode,
+        host_platform,
+        startup_mode,
+        compatibility,
+        next_t_cycle,
+        cartridge: gb_core::MachineCartridgeSaveStateMetadata {
+            state: cartridge_state,
+            rom_fingerprint,
+        },
+        boot: gb_core::MachineBootSaveStateMetadata {
+            startup_mode: boot_startup_mode,
+            boot_rom_kind,
+            boot_rom_mapped,
+            boot_rom_fingerprint,
+        },
+    })
+}
+
+fn encode_compatibility_policy(bytes: &mut Vec<u8>, policy: &CompatibilityPolicy) {
+    bytes.push(encode_execution_mode(policy.execution_mode));
+    bytes.push(encode_validation_policy(policy.validation_policy));
+    bytes.push(encode_heuristic_policy(policy.heuristic_policy));
+    encode_override_policy(bytes, &policy.override_policy);
+    bytes.push(encode_diagnostic_policy(policy.diagnostic_policy));
+}
+
+fn decode_compatibility_policy(
+    cursor: &mut ByteCursor<'_>,
+) -> Result<CompatibilityPolicy, CartridgeSaveBackendError> {
+    Ok(CompatibilityPolicy {
+        execution_mode: decode_execution_mode(cursor.read_u8()?, "compatibility.execution_mode")?,
+        validation_policy: decode_validation_policy(
+            cursor.read_u8()?,
+            "compatibility.validation_policy",
+        )?,
+        heuristic_policy: decode_heuristic_policy(
+            cursor.read_u8()?,
+            "compatibility.heuristic_policy",
+        )?,
+        override_policy: decode_override_policy(cursor)?,
+        diagnostic_policy: decode_diagnostic_policy(
+            cursor.read_u8()?,
+            "compatibility.diagnostic_policy",
+        )?,
+    })
+}
+
+fn encode_override_policy(bytes: &mut Vec<u8>, policy: &OverridePolicy) {
+    encode_optional_tag(bytes, policy.forced_console_model.map(encode_console_model));
+    encode_optional_tag(
+        bytes,
+        policy.forced_operating_mode.map(encode_operating_mode),
+    );
+    encode_optional_tag(bytes, policy.forced_host_platform.map(encode_host_platform));
+    encode_optional_tag(bytes, policy.forced_startup_mode.map(encode_startup_mode));
+}
+
+fn decode_override_policy(
+    cursor: &mut ByteCursor<'_>,
+) -> Result<OverridePolicy, CartridgeSaveBackendError> {
+    Ok(OverridePolicy {
+        forced_console_model: decode_optional_tag(cursor, "override.forced_console_model")?
+            .map(|tag| decode_console_model(tag, "override.forced_console_model"))
+            .transpose()?,
+        forced_operating_mode: decode_optional_tag(cursor, "override.forced_operating_mode")?
+            .map(|tag| decode_operating_mode(tag, "override.forced_operating_mode"))
+            .transpose()?,
+        forced_host_platform: decode_optional_tag(cursor, "override.forced_host_platform")?
+            .map(|tag| decode_host_platform(tag, "override.forced_host_platform"))
+            .transpose()?,
+        forced_startup_mode: decode_optional_tag(cursor, "override.forced_startup_mode")?
+            .map(|tag| decode_startup_mode(tag, "override.forced_startup_mode"))
+            .transpose()?,
+    })
+}
+
+fn encode_optional_tag(bytes: &mut Vec<u8>, tag: Option<u8>) {
+    write_bool(bytes, tag.is_some());
+    if let Some(tag) = tag {
+        bytes.push(tag);
+    }
+}
+
+fn decode_optional_tag(
+    cursor: &mut ByteCursor<'_>,
+    field: &'static str,
+) -> Result<Option<u8>, CartridgeSaveBackendError> {
+    let present = cursor.read_bool(field)?;
+    if present {
+        Ok(Some(cursor.read_u8()?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn encode_fingerprint(bytes: &mut Vec<u8>, fingerprint: Option<SaveStateByteFingerprint>) {
+    write_bool(bytes, fingerprint.is_some());
+    if let Some(fingerprint) = fingerprint {
+        write_u64(bytes, fingerprint.len);
+        write_u64(bytes, fingerprint.fnv1a64);
+    }
+}
+
+fn decode_fingerprint(
+    cursor: &mut ByteCursor<'_>,
+    field: &'static str,
+) -> Result<Option<SaveStateByteFingerprint>, CartridgeSaveBackendError> {
+    let present = cursor.read_bool(field)?;
+    if !present {
+        return Ok(None);
+    }
+
+    Ok(Some(SaveStateByteFingerprint {
+        len: cursor.read_u64()?,
+        fnv1a64: cursor.read_u64()?,
+    }))
+}
+
+fn encode_console_model(value: ConsoleModel) -> u8 {
+    match value {
+        ConsoleModel::Dmg0 => 0,
+        ConsoleModel::Dmg => 1,
+        ConsoleModel::Mgb => 2,
+        ConsoleModel::Cgb => 3,
+    }
+}
+
+fn decode_console_model(
+    tag: u8,
+    field: &'static str,
+) -> Result<ConsoleModel, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(ConsoleModel::Dmg0),
+        1 => Ok(ConsoleModel::Dmg),
+        2 => Ok(ConsoleModel::Mgb),
+        3 => Ok(ConsoleModel::Cgb),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_operating_mode(value: OperatingMode) -> u8 {
+    match value {
+        OperatingMode::Dmg => 0,
+        OperatingMode::Cgb => 1,
+        OperatingMode::CgbCompatibility => 2,
+    }
+}
+
+fn decode_operating_mode(
+    tag: u8,
+    field: &'static str,
+) -> Result<OperatingMode, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(OperatingMode::Dmg),
+        1 => Ok(OperatingMode::Cgb),
+        2 => Ok(OperatingMode::CgbCompatibility),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_host_platform(value: HostPlatform) -> u8 {
+    match value {
+        HostPlatform::Handheld => 0,
+        HostPlatform::Sgb1 => 1,
+        HostPlatform::Sgb2 => 2,
+    }
+}
+
+fn decode_host_platform(
+    tag: u8,
+    field: &'static str,
+) -> Result<HostPlatform, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(HostPlatform::Handheld),
+        1 => Ok(HostPlatform::Sgb1),
+        2 => Ok(HostPlatform::Sgb2),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_startup_mode(value: StartupMode) -> u8 {
+    match value {
+        StartupMode::SkipBoot => 0,
+        StartupMode::RealBoot => 1,
+    }
+}
+
+fn decode_startup_mode(
+    tag: u8,
+    field: &'static str,
+) -> Result<StartupMode, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(StartupMode::SkipBoot),
+        1 => Ok(StartupMode::RealBoot),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_execution_mode(value: ExecutionMode) -> u8 {
+    match value {
+        ExecutionMode::Strict => 0,
+        ExecutionMode::Permissive => 1,
+        ExecutionMode::Experimental => 2,
+    }
+}
+
+fn decode_execution_mode(
+    tag: u8,
+    field: &'static str,
+) -> Result<ExecutionMode, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(ExecutionMode::Strict),
+        1 => Ok(ExecutionMode::Permissive),
+        2 => Ok(ExecutionMode::Experimental),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_validation_policy(value: ValidationPolicy) -> u8 {
+    match value {
+        ValidationPolicy::Strict => 0,
+        ValidationPolicy::Warn => 1,
+        ValidationPolicy::Ignore => 2,
+    }
+}
+
+fn decode_validation_policy(
+    tag: u8,
+    field: &'static str,
+) -> Result<ValidationPolicy, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(ValidationPolicy::Strict),
+        1 => Ok(ValidationPolicy::Warn),
+        2 => Ok(ValidationPolicy::Ignore),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_heuristic_policy(value: HeuristicPolicy) -> u8 {
+    match value {
+        HeuristicPolicy::Disabled => 0,
+        HeuristicPolicy::AllowExperimental => 1,
+    }
+}
+
+fn decode_heuristic_policy(
+    tag: u8,
+    field: &'static str,
+) -> Result<HeuristicPolicy, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(HeuristicPolicy::Disabled),
+        1 => Ok(HeuristicPolicy::AllowExperimental),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_diagnostic_policy(value: DiagnosticPolicy) -> u8 {
+    match value {
+        DiagnosticPolicy::Quiet => 0,
+        DiagnosticPolicy::Standard => 1,
+        DiagnosticPolicy::Verbose => 2,
+    }
+}
+
+fn decode_diagnostic_policy(
+    tag: u8,
+    field: &'static str,
+) -> Result<DiagnosticPolicy, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(DiagnosticPolicy::Quiet),
+        1 => Ok(DiagnosticPolicy::Standard),
+        2 => Ok(DiagnosticPolicy::Verbose),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_cartridge_slot_state(value: CartridgeSlotState) -> u8 {
+    match value {
+        CartridgeSlotState::Empty => 0,
+        CartridgeSlotState::NoMbc => 1,
+        CartridgeSlotState::Mmm01 => 2,
+        CartridgeSlotState::M161 => 3,
+        CartridgeSlotState::Huc1 => 4,
+        CartridgeSlotState::Huc3 => 5,
+        CartridgeSlotState::Mbc1 => 6,
+        CartridgeSlotState::Mbc2 => 7,
+        CartridgeSlotState::Mbc3 => 8,
+        CartridgeSlotState::Mbc5 => 9,
+        CartridgeSlotState::PocketCamera => 10,
+    }
+}
+
+fn decode_cartridge_slot_state(
+    tag: u8,
+    field: &'static str,
+) -> Result<CartridgeSlotState, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(CartridgeSlotState::Empty),
+        1 => Ok(CartridgeSlotState::NoMbc),
+        2 => Ok(CartridgeSlotState::Mmm01),
+        3 => Ok(CartridgeSlotState::M161),
+        4 => Ok(CartridgeSlotState::Huc1),
+        5 => Ok(CartridgeSlotState::Huc3),
+        6 => Ok(CartridgeSlotState::Mbc1),
+        7 => Ok(CartridgeSlotState::Mbc2),
+        8 => Ok(CartridgeSlotState::Mbc3),
+        9 => Ok(CartridgeSlotState::Mbc5),
+        10 => Ok(CartridgeSlotState::PocketCamera),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn encode_boot_rom_kind(value: BootRomKind) -> u8 {
+    match value {
+        BootRomKind::Dmg0 => 0,
+        BootRomKind::Dmg => 1,
+        BootRomKind::Mgb => 2,
+        BootRomKind::Cgb => 3,
+    }
+}
+
+fn decode_boot_rom_kind(
+    tag: u8,
+    field: &'static str,
+) -> Result<BootRomKind, CartridgeSaveBackendError> {
+    match tag {
+        0 => Ok(BootRomKind::Dmg0),
+        1 => Ok(BootRomKind::Dmg),
+        2 => Ok(BootRomKind::Mgb),
+        3 => Ok(BootRomKind::Cgb),
+        _ => unsupported_machine_save_state_tag(field, tag),
+    }
+}
+
+fn unsupported_machine_save_state_tag<T>(
+    field: &'static str,
+    tag: u8,
+) -> Result<T, CartridgeSaveBackendError> {
+    Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { field, tag })
 }
 
 fn encode_persistence_profile(
@@ -1767,6 +2270,318 @@ mod tests {
         let bytes = encode_cartridge_save_envelope(&envelope).expect("encode should succeed");
         let decoded = decode_cartridge_save_envelope(&bytes).expect("decode should succeed");
         assert_eq!(decoded, envelope);
+    }
+
+    fn machine_save_state_envelope() -> MachineSaveStateEnvelope {
+        let mut machine = gb_core::Machine::new(
+            gb_core::MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        );
+        for _ in 0..16 {
+            machine.step_t_cycle();
+        }
+        MachineSaveStateEnvelope::new(machine.capture_save_state())
+    }
+
+    #[test]
+    fn machine_save_state_metadata_codec_covers_tags_fingerprints_and_overrides() {
+        for value in [
+            ConsoleModel::Dmg0,
+            ConsoleModel::Dmg,
+            ConsoleModel::Mgb,
+            ConsoleModel::Cgb,
+        ] {
+            assert_eq!(
+                decode_console_model(encode_console_model(value), "console_model")
+                    .expect("console model tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_console_model(0xFF, "console_model"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag {
+                field: "console_model",
+                tag: 0xFF,
+            })
+        ));
+
+        for value in [
+            OperatingMode::Dmg,
+            OperatingMode::Cgb,
+            OperatingMode::CgbCompatibility,
+        ] {
+            assert_eq!(
+                decode_operating_mode(encode_operating_mode(value), "operating_mode")
+                    .expect("operating mode tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_operating_mode(0xFF, "operating_mode"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [
+            HostPlatform::Handheld,
+            HostPlatform::Sgb1,
+            HostPlatform::Sgb2,
+        ] {
+            assert_eq!(
+                decode_host_platform(encode_host_platform(value), "host_platform")
+                    .expect("host platform tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_host_platform(0xFF, "host_platform"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [StartupMode::SkipBoot, StartupMode::RealBoot] {
+            assert_eq!(
+                decode_startup_mode(encode_startup_mode(value), "startup_mode")
+                    .expect("startup mode tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_startup_mode(0xFF, "startup_mode"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [
+            ExecutionMode::Strict,
+            ExecutionMode::Permissive,
+            ExecutionMode::Experimental,
+        ] {
+            assert_eq!(
+                decode_execution_mode(encode_execution_mode(value), "execution_mode")
+                    .expect("execution mode tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_execution_mode(0xFF, "execution_mode"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [
+            ValidationPolicy::Strict,
+            ValidationPolicy::Warn,
+            ValidationPolicy::Ignore,
+        ] {
+            assert_eq!(
+                decode_validation_policy(encode_validation_policy(value), "validation_policy")
+                    .expect("validation policy tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_validation_policy(0xFF, "validation_policy"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [
+            HeuristicPolicy::Disabled,
+            HeuristicPolicy::AllowExperimental,
+        ] {
+            assert_eq!(
+                decode_heuristic_policy(encode_heuristic_policy(value), "heuristic_policy")
+                    .expect("heuristic policy tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_heuristic_policy(0xFF, "heuristic_policy"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [
+            DiagnosticPolicy::Quiet,
+            DiagnosticPolicy::Standard,
+            DiagnosticPolicy::Verbose,
+        ] {
+            assert_eq!(
+                decode_diagnostic_policy(encode_diagnostic_policy(value), "diagnostic_policy")
+                    .expect("diagnostic policy tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_diagnostic_policy(0xFF, "diagnostic_policy"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [
+            CartridgeSlotState::Empty,
+            CartridgeSlotState::NoMbc,
+            CartridgeSlotState::Mmm01,
+            CartridgeSlotState::M161,
+            CartridgeSlotState::Huc1,
+            CartridgeSlotState::Huc3,
+            CartridgeSlotState::Mbc1,
+            CartridgeSlotState::Mbc2,
+            CartridgeSlotState::Mbc3,
+            CartridgeSlotState::Mbc5,
+            CartridgeSlotState::PocketCamera,
+        ] {
+            assert_eq!(
+                decode_cartridge_slot_state(encode_cartridge_slot_state(value), "cartridge.state")
+                    .expect("cartridge slot tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_cartridge_slot_state(0xFF, "cartridge.state"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        for value in [
+            BootRomKind::Dmg0,
+            BootRomKind::Dmg,
+            BootRomKind::Mgb,
+            BootRomKind::Cgb,
+        ] {
+            assert_eq!(
+                decode_boot_rom_kind(encode_boot_rom_kind(value), "boot.boot_rom_kind")
+                    .expect("boot ROM kind tag should decode"),
+                value
+            );
+        }
+        assert!(matches!(
+            decode_boot_rom_kind(0xFF, "boot.boot_rom_kind"),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag { .. })
+        ));
+
+        let metadata = MachineSaveStateMetadata {
+            console_model: ConsoleModel::Cgb,
+            operating_mode: OperatingMode::CgbCompatibility,
+            host_platform: HostPlatform::Sgb2,
+            startup_mode: StartupMode::RealBoot,
+            compatibility: CompatibilityPolicy {
+                execution_mode: ExecutionMode::Experimental,
+                validation_policy: ValidationPolicy::Ignore,
+                heuristic_policy: HeuristicPolicy::AllowExperimental,
+                override_policy: OverridePolicy {
+                    forced_console_model: Some(ConsoleModel::Mgb),
+                    forced_operating_mode: Some(OperatingMode::Dmg),
+                    forced_host_platform: Some(HostPlatform::Sgb1),
+                    forced_startup_mode: Some(StartupMode::SkipBoot),
+                },
+                diagnostic_policy: DiagnosticPolicy::Verbose,
+            },
+            next_t_cycle: TCycle::new(0x1234_5678),
+            cartridge: gb_core::MachineCartridgeSaveStateMetadata {
+                state: CartridgeSlotState::PocketCamera,
+                rom_fingerprint: Some(SaveStateByteFingerprint {
+                    len: 1024 * 1024,
+                    fnv1a64: 0xA5A5_5A5A_DEAD_BEEF,
+                }),
+            },
+            boot: gb_core::MachineBootSaveStateMetadata {
+                startup_mode: StartupMode::RealBoot,
+                boot_rom_kind: BootRomKind::Cgb,
+                boot_rom_mapped: true,
+                boot_rom_fingerprint: Some(SaveStateByteFingerprint {
+                    len: 0x900,
+                    fnv1a64: 0x55AA_AA55_1234_5678,
+                }),
+            },
+        };
+
+        let mut bytes = Vec::new();
+        encode_machine_save_state_metadata(&mut bytes, &metadata).expect("metadata should encode");
+        let mut cursor = ByteCursor::new(&bytes);
+        assert_eq!(
+            decode_machine_save_state_metadata(&mut cursor).expect("metadata should decode"),
+            metadata
+        );
+        assert_eq!(cursor.remaining(), 0);
+    }
+
+    #[test]
+    fn machine_save_state_envelope_round_trips_the_versioned_payload() {
+        let envelope = machine_save_state_envelope();
+        let bytes = encode_machine_save_state_envelope(&envelope).expect("encode should succeed");
+
+        assert_eq!(
+            &bytes[..MACHINE_SAVE_STATE_MAGIC.len()],
+            MACHINE_SAVE_STATE_MAGIC.as_slice()
+        );
+
+        let decoded = decode_machine_save_state_envelope(&bytes).expect("decode should succeed");
+        assert_eq!(decoded, envelope);
+    }
+
+    #[test]
+    fn machine_save_state_decode_rejects_invalid_headers_and_payload_shape() {
+        let envelope = machine_save_state_envelope();
+        let encoded = encode_machine_save_state_envelope(&envelope).expect("encode should succeed");
+
+        let mut invalid_magic = encoded.clone();
+        invalid_magic[0] = b'X';
+        assert!(matches!(
+            decode_machine_save_state_envelope(&invalid_magic),
+            Err(CartridgeSaveBackendError::InvalidMagic { .. })
+        ));
+
+        let mut invalid_version = encoded.clone();
+        invalid_version[MACHINE_SAVE_STATE_MAGIC.len()] = 0x02;
+        invalid_version[MACHINE_SAVE_STATE_MAGIC.len() + 1] = 0x00;
+        assert!(matches!(
+            decode_machine_save_state_envelope(&invalid_version),
+            Err(CartridgeSaveBackendError::UnsupportedFormatVersion { version: 2 })
+        ));
+
+        let mut invalid_model_tag = encoded.clone();
+        invalid_model_tag[MACHINE_SAVE_STATE_MAGIC.len() + 2] = 0xFF;
+        assert!(matches!(
+            decode_machine_save_state_envelope(&invalid_model_tag),
+            Err(CartridgeSaveBackendError::UnsupportedMachineSaveStateTag {
+                field: "console_model",
+                tag: 0xFF,
+            })
+        ));
+
+        let truncated = &encoded[..encoded.len() - 1];
+        assert!(matches!(
+            decode_machine_save_state_envelope(truncated),
+            Err(CartridgeSaveBackendError::UnexpectedEof { .. })
+        ));
+
+        let mut corrupt_payload = encoded.clone();
+        let last = corrupt_payload
+            .last_mut()
+            .expect("payload should not be empty");
+        *last ^= 0x5A;
+        assert!(matches!(
+            decode_machine_save_state_envelope(&corrupt_payload),
+            Err(CartridgeSaveBackendError::MachineSaveStateCodec {
+                operation: "decode",
+                ..
+            })
+        ));
+
+        let mut trailing = encoded.clone();
+        trailing.push(0xAA);
+        assert!(matches!(
+            decode_machine_save_state_envelope(&trailing),
+            Err(CartridgeSaveBackendError::TrailingBytes { remaining: 1 })
+        ));
+    }
+
+    #[test]
+    fn machine_save_state_decode_rejects_metadata_that_disagrees_with_payload() {
+        let envelope = machine_save_state_envelope();
+        let mut encoded =
+            encode_machine_save_state_envelope(&envelope).expect("encode should succeed");
+
+        let operating_mode_offset = MACHINE_SAVE_STATE_MAGIC.len() + 3;
+        encoded[operating_mode_offset] = encode_operating_mode(OperatingMode::CgbCompatibility);
+
+        assert!(matches!(
+            decode_machine_save_state_envelope(&encoded),
+            Err(CartridgeSaveBackendError::MachineSaveStateMetadataMismatch)
+        ));
     }
 
     #[test]
@@ -2397,6 +3212,13 @@ mod tests {
                 "unsupported persistent state tag 0xCC",
             ),
             (
+                CartridgeSaveBackendError::UnsupportedMachineSaveStateTag {
+                    field: "console_model",
+                    tag: 0xDD,
+                },
+                "unsupported machine save-state tag for console_model: 0xDD",
+            ),
+            (
                 CartridgeSaveBackendError::InvalidBooleanTag {
                     field: "rtc.halt",
                     value: 2,
@@ -2416,6 +3238,17 @@ mod tests {
                     value: 0x1F,
                 },
                 "invalid MBC2 nibble value 0x1F at logical cell 7",
+            ),
+            (
+                CartridgeSaveBackendError::MachineSaveStateCodec {
+                    operation: "decode",
+                    message: "bad payload".to_string(),
+                },
+                "machine save-state decode failed: bad payload",
+            ),
+            (
+                CartridgeSaveBackendError::MachineSaveStateMetadataMismatch,
+                "machine save-state envelope metadata does not match payload metadata",
             ),
             (
                 CartridgeSaveBackendError::TrailingBytes { remaining: 9 },

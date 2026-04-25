@@ -84,7 +84,7 @@ const OAM_CORRUPTION_ROW_BYTES: usize = 8;
 const OAM_CORRUPTION_ROW_WORDS: usize = 4;
 const OAM_CORRUPTION_ROW_COUNT: u8 = 20;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PpuStepRegion {
     Other,
     Mode0Or1,
@@ -103,7 +103,9 @@ pub trait PpuStepObserver {
     fn end_ppu_region(&mut self, _region: PpuStepRegion) {}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct NoopPpuStepObserver;
 
 impl PpuStepObserver for NoopPpuStepObserver {}
@@ -122,7 +124,9 @@ where
     result
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum PpuAccessMode {
     #[default]
     HBlank,
@@ -151,7 +155,7 @@ impl PpuAccessMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PpuBusState {
     lcd_enabled: bool,
     mode: PpuAccessMode,
@@ -187,14 +191,14 @@ impl Default for PpuBusState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PpuBusStateSnapshot {
     pub(crate) owner: PpuBusState,
     pub(crate) cpu_read: PpuBusState,
     pub(crate) cpu_write: PpuBusState,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PpuDmaOamConflict {
     address: u16,
     value: u8,
@@ -218,7 +222,9 @@ impl PpuDmaOamConflict {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum PpuLcdState {
     Enabled,
     #[default]
@@ -231,14 +237,18 @@ impl PpuLcdState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum PpuVisibleOutputState {
     Driving,
     #[default]
     ForcedBlank,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum PpuBgFetcherStage {
     #[default]
     Idle,
@@ -249,14 +259,18 @@ pub enum PpuBgFetcherStage {
     Push,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum PpuBgFetcherSource {
     #[default]
     Background,
     Window,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum PpuFramebufferLayerSource {
     #[default]
     Backdrop,
@@ -265,7 +279,9 @@ pub enum PpuFramebufferLayerSource {
     Object,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum PpuObjFetcherStage {
     #[default]
     Idle,
@@ -275,7 +291,7 @@ pub enum PpuObjFetcherStage {
     Push,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PpuSelectedSprite {
     pub oam_index: u8,
     pub y: u8,
@@ -284,24 +300,26 @@ pub struct PpuSelectedSprite {
     pub attributes: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PpuStatus {
     RegistersReady,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) enum PpuRegisterWriteSource {
     Immediate,
     CpuMmioCommit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) enum PpuRegisterReadSource {
     Immediate,
     CpuBusOperation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum DmgObjPaletteReadPolicy {
     #[default]
     ReadAsFfUntilWritten,
@@ -315,7 +333,7 @@ impl DmgObjPaletteReadPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PpuStartupState {
     pub lcdc: u8,
     pub stat: u8,
@@ -330,16 +348,23 @@ pub struct PpuStartupState {
 }
 
 #[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PpuPanelState {
     visible_output: PpuVisibleOutputState,
     dmg_panel_live_write_state: DmgPanelLiveWriteState,
+    #[serde(with = "serde_big_array::BigArray")]
     current_scanline_pixels: [u8; SCREEN_WIDTH],
+    #[serde(with = "serde_big_array::BigArray")]
     current_scanline_bg_pixels: [u8; SCREEN_WIDTH],
+    #[serde(with = "serde_big_array::BigArray")]
     current_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
+    #[serde(with = "serde_big_array::BigArray")]
     current_scanline_bg_dot_contexts: [Option<PpuRecentBgDotContext>; SCREEN_WIDTH],
+    #[serde(with = "serde_big_array::BigArray")]
     current_scanline_dmg_bg_forced_white: [bool; SCREEN_WIDTH],
+    #[serde(with = "serde_big_array::BigArray")]
     previous_scanline_mixed_pixels: [MixedPixel; SCREEN_WIDTH],
+    #[serde(with = "serde_big_array::BigArray")]
     previous_scanline_dmg_bg_forced_white: [bool; SCREEN_WIDTH],
     previous_scanline_ly: Option<u8>,
     pending_dmg_window_lcdc4_output_repaint: Option<BgTileDataSelect>,
@@ -384,7 +409,7 @@ impl Default for PpuPanelState {
 }
 
 #[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PpuRuntimeState {
     visible_registers: PpuVisibleRegisters,
     pipeline_registers: PpuVisibleRegisters,
@@ -441,7 +466,7 @@ impl DerefMut for PpuRuntimeState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Ppu {
     console_model: ConsoleModel,
     status: PpuStatus,

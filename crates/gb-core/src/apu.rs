@@ -29,12 +29,12 @@ use self::output::{
 };
 pub use self::sample_capture::{ApuSampleCapture, ApuSampleCaptureError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ApuStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ApuRecordedChannel {
     Ch1,
     Ch2,
@@ -55,7 +55,7 @@ impl ApuRecordedChannel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ApuRecordedChannelMask {
     bits: u8,
 }
@@ -102,7 +102,7 @@ impl ApuRecordedChannelMask {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ApuRecordedChannelMixTap {
     pub sample: ApuHostSample,
     pub any_output_connected: bool,
@@ -118,7 +118,9 @@ const fn channel_mask_bit(channel: ApuRecordedChannel) -> u8 {
     1 << channel.index()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum WaveRamStartupPolicy {
     #[default]
     DeterministicZeroed,
@@ -132,7 +134,7 @@ impl WaveRamStartupPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ApuCh4Nr43LiveWriteCategory {
     None,
     Category1,
@@ -141,7 +143,7 @@ pub enum ApuCh4Nr43LiveWriteCategory {
     LowShiftFollowup,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ApuCh4Nr43LfsrAction {
     None,
     PlainStep,
@@ -152,7 +154,7 @@ pub enum ApuCh4Nr43LfsrAction {
     SetFeedbackBits,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ApuCh4Nr43PassKind {
     ReloadSeam,
     OldToFf,
@@ -162,7 +164,7 @@ pub enum ApuCh4Nr43PassKind {
     LowShiftFollowup,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuCh4Nr43PassTrace {
     pub kind: ApuCh4Nr43PassKind,
     pub value_from: u8,
@@ -177,7 +179,7 @@ pub struct ApuCh4Nr43PassTrace {
     pub lfsr_after: u16,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuCh4Nr43LiveWriteTrace {
     pub runtime_active: bool,
     pub same_shift_group: bool,
@@ -211,7 +213,7 @@ pub struct ApuCh4Nr43LiveWriteTrace {
     pub lfsr_after: u16,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuCh4DebugSnapshot {
     pub nr43: u8,
     pub clock_shift: u8,
@@ -234,7 +236,7 @@ pub struct ApuCh4DebugSnapshot {
     pub last_nr43_live_write: Option<ApuCh4Nr43LiveWriteTrace>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Apu {
     console_model: ConsoleModel,
     status: ApuStatus,
@@ -246,7 +248,7 @@ pub struct Apu {
     wave_ram_startup_policy: WaveRamStartupPolicy,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuSnapshot {
     pub console_model: ConsoleModel,
     pub status: ApuStatus,
@@ -262,7 +264,7 @@ pub struct ApuSnapshot {
     pub last_register_write: Option<ApuRegisterWriteObservation>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct ApuOutputResolution {
     pub(in crate::apu) channel_output: ChannelOutputState,
 }

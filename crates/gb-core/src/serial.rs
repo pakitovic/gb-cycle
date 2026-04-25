@@ -6,19 +6,23 @@ const SC_FORCED_HIGH_BITS: u8 = 0x7E;
 const SC_CLOCK_MODE_BIT: u8 = 0x01;
 const DMG_INTERNAL_SERIAL_CLOCK_EDGE_BIT: u8 = 8;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SerialStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SerialClockMode {
     #[default]
     External,
     Internal,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SerialPeer {
     #[default]
     Disconnected,
@@ -28,7 +32,9 @@ pub enum SerialPeer {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SerialTransferState {
     #[default]
     Idle,
@@ -37,7 +43,7 @@ pub enum SerialTransferState {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SerialStartupState {
     pub sb: u8,
     pub clock_mode: SerialClockMode,
@@ -69,7 +75,7 @@ impl SerialStartupState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Serial {
     console_model: ConsoleModel,
     status: SerialStatus,
@@ -87,7 +93,7 @@ pub struct Serial {
     completed_output_bytes: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SerialSnapshot {
     pub console_model: ConsoleModel,
     pub status: SerialStatus,

@@ -18,7 +18,7 @@ pub(super) use ch2::Channel2State;
 pub(super) use ch3::Channel3State;
 pub(super) use ch4::Channel4State;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct ApuChannels {
     pub(in crate::apu) channel_1: Channel1State,
     pub(in crate::apu) channel_2: Channel2State,
@@ -26,14 +26,14 @@ pub(super) struct ApuChannels {
     pub(in crate::apu) channel_4: Channel4State,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct ChannelOutputState {
     pub(super) active_mask: u8,
     pub(super) dac_mask: u8,
     pub(super) digital_outputs: [u8; CHANNEL_COUNT],
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ChannelResolvedOutput {
     runtime: ChannelRuntimeState,
     digital_output: u8,

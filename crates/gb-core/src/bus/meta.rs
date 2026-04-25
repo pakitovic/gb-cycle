@@ -3,7 +3,7 @@ use crate::scheduler::CycleContext;
 
 use super::{Bus, BusArbitrationState, BusStatus};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BusSnapshot {
     pub console_model: ConsoleModel,
     pub status: BusStatus,

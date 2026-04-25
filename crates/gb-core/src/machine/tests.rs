@@ -258,6 +258,157 @@ fn machine_snapshot_exposes_scheduler_trace_and_live_phase_1_subsystems() {
 }
 
 #[test]
+fn save_state_round_trips_exactly_at_a_t_cycle_boundary() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_test_rom(&[
+            0x3E, 0x12, // ld a,$12
+            0xE0, 0x01, // ldh ($01),a
+            0x00, // nop
+            0x18, 0xFD, // jr $0104
+        ]))
+        .expect("NoMBC test ROM should load");
+    machine.set_external_port_attachment(ExternalPortAttachmentKind::Loopback);
+    machine.set_joypad_button_pressed(JoypadButton::A, true);
+
+    for _ in 0..64 {
+        machine.step_t_cycle();
+    }
+
+    let saved = machine.capture_save_state();
+
+    for _ in 0..37 {
+        machine.step_t_cycle();
+    }
+    machine
+        .restore_save_state(&saved)
+        .expect("matching machine metadata should restore");
+
+    assert_eq!(machine.capture_save_state(), saved);
+}
+
+#[test]
+fn save_state_continuation_matches_uninterrupted_execution() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_test_rom(&[
+            0x00, // nop
+            0x3C, // inc a
+            0xE0, 0x80, // ldh ($80),a
+            0x18, 0xFA, // jr $0100
+        ]))
+        .expect("NoMBC test ROM should load");
+
+    for _ in 0..91 {
+        machine.step_t_cycle();
+    }
+
+    let saved = machine.capture_save_state();
+    let mut uninterrupted = machine.clone();
+
+    for _ in 0..211 {
+        uninterrupted.step_t_cycle();
+    }
+    for _ in 0..53 {
+        machine.step_t_cycle();
+    }
+
+    machine
+        .restore_save_state(&saved)
+        .expect("matching machine metadata should restore");
+    for _ in 0..211 {
+        machine.step_t_cycle();
+    }
+
+    assert_eq!(
+        machine.capture_save_state(),
+        uninterrupted.capture_save_state()
+    );
+}
+
+#[test]
+fn save_state_restore_rejects_incompatible_model_before_mutating() {
+    let source = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    let saved = source.capture_save_state();
+    let mut target = Machine::new(
+        MachineConfig::new(ConsoleModel::Mgb).with_startup_mode(StartupMode::SkipBoot),
+    );
+    let before = target.capture_save_state();
+
+    let error = target
+        .restore_save_state(&saved)
+        .expect_err("model mismatch must be rejected");
+
+    assert!(matches!(
+        error,
+        MachineSaveStateRestoreError::ConsoleModelMismatch {
+            expected: ConsoleModel::Dmg,
+            actual: ConsoleModel::Mgb,
+        }
+    ));
+    assert_eq!(target.capture_save_state(), before);
+}
+
+#[test]
+fn save_state_restore_can_replace_runtime_boot_mapping_state() {
+    let mut source = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::RealBoot),
+    );
+    source.write_bus(0xFF50, 0x01);
+    assert!(!source.boot().is_boot_rom_mapped());
+    let saved = source.capture_save_state();
+
+    let mut target = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::RealBoot),
+    );
+    assert!(target.boot().is_boot_rom_mapped());
+
+    target
+        .restore_save_state(&saved)
+        .expect("matching boot ROM identity should restore even when mapping state differs");
+
+    assert_eq!(target.capture_save_state(), saved);
+}
+
+#[test]
+fn save_state_capture_restore_supports_rewind_style_subframe_cadence() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_test_rom(&[
+            0x3E, 0x80, // ld a,$80
+            0xE0, 0x02, // ldh ($02),a
+            0x3C, // inc a
+            0x18, 0xFB, // jr $0102
+        ]))
+        .expect("NoMBC test ROM should load");
+
+    for cadence in [1, 7, 57, 113] {
+        for _ in 0..cadence {
+            machine.step_t_cycle();
+        }
+
+        let saved = machine.capture_save_state();
+
+        for _ in 0..cadence {
+            machine.step_t_cycle();
+        }
+        machine
+            .restore_save_state(&saved)
+            .expect("matching machine metadata should restore");
+
+        assert_eq!(machine.capture_save_state(), saved);
+    }
+}
+
+#[test]
 fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
     let mut ppu = Ppu::new(ConsoleModel::Dmg);
     let mut pending = Some(PendingPpuMmioWrite {

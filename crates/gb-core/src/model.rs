@@ -1,12 +1,14 @@
 use crate::boot::BootRomAssets;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ConsoleFamily {
     Dmg,
     Cgb,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum ConsoleModel {
     Dmg0,
     #[default]
@@ -51,7 +53,9 @@ impl ConsoleModel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum OperatingMode {
     #[default]
     Dmg,
@@ -69,7 +73,9 @@ impl OperatingMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum HostPlatform {
     #[default]
     Handheld,
@@ -83,7 +89,7 @@ impl HostPlatform {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct CapabilitySet {
     console_model: ConsoleModel,
     console_family: ConsoleFamily,
@@ -149,7 +155,9 @@ impl CapabilitySet {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum StartupMode {
     #[default]
     SkipBoot,
@@ -162,7 +170,9 @@ impl StartupMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum ExecutionMode {
     #[default]
     Strict,
@@ -176,7 +186,9 @@ impl ExecutionMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum ValidationPolicy {
     #[default]
     Strict,
@@ -184,14 +196,18 @@ pub enum ValidationPolicy {
     Ignore,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum HeuristicPolicy {
     #[default]
     Disabled,
     AllowExperimental,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum DiagnosticPolicy {
     Quiet,
     #[default]
@@ -199,7 +215,7 @@ pub enum DiagnosticPolicy {
     Verbose,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct OverridePolicy {
     pub forced_console_model: Option<ConsoleModel>,
     pub forced_operating_mode: Option<OperatingMode>,
@@ -216,7 +232,7 @@ impl OverridePolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CompatibilityPolicy {
     pub execution_mode: ExecutionMode,
     pub validation_policy: ValidationPolicy,
@@ -263,7 +279,7 @@ impl Default for CompatibilityPolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MachineConfig {
     pub console_model: ConsoleModel,
     pub operating_mode: OperatingMode,

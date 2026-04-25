@@ -8,7 +8,7 @@ use super::super::common::{
 use super::super::registers::Channel2Register;
 use super::pulse::PulseChannelState;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::apu) struct Channel2State {
     nr21: u8,
     nr22: u8,

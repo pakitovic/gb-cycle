@@ -1,12 +1,12 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum DmgPanelRangeRepaint {
     Lcdc0BgEnable { bg_enabled: bool },
     Lcdc1ObjDisable,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgPanelRepaintContext {
     visible_output_driving: bool,
     row_start: usize,
@@ -15,7 +15,7 @@ struct DmgPanelRepaintContext {
 
 type PpuPublishedStatPredicate = fn(&Ppu) -> bool;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct PpuPublishedStatModeContext {
     published_mode: PpuAccessMode,
     current_mode: PpuAccessMode,

@@ -2,8 +2,9 @@ use crate::boot::StartupMemoryPolicy;
 
 use super::WRAM_LEN;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct WramDomain {
+    #[serde(with = "serde_big_array::BigArray")]
     bytes: [u8; WRAM_LEN],
 }
 

@@ -395,6 +395,10 @@ impl CartridgeSlot {
         self.device.as_ref().map(CartridgeDevice::classification)
     }
 
+    pub fn rom_fingerprint(&self) -> Option<SaveStateByteFingerprint> {
+        self.device.as_ref().map(CartridgeDevice::rom_fingerprint)
+    }
+
     pub fn read_rom(&self, address: u16) -> u8 {
         self.device
             .as_ref()

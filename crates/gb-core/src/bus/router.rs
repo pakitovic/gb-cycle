@@ -6,7 +6,7 @@ use super::map::{
 use super::{BLOCKED_READ_VALUE, BusAccessKind, BusArbitrationState, DMG_UNUSABLE_READ_VALUE};
 use crate::model::ConsoleModel;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct AddressRouter;
 
 const fn implemented_io(

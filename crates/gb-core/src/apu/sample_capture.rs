@@ -10,32 +10,32 @@ const BAND_LIMITED_RESAMPLER_HALF_TAPS: f64 = BAND_LIMITED_RESAMPLER_TAPS as f64
 const BAND_LIMITED_RESAMPLER_COEFFICIENT_ONE: i64 = 0x1_0000;
 const BAND_LIMITED_RESAMPLER_LOWPASS_MARGIN: f64 = 15.0 / 16.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ApuSampleCaptureError {
     OutputSampleRateZero,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuSampleCapture {
     output_sample_rate_hz: u32,
     mode: ApuSampleCaptureMode,
     pending_samples: Vec<ApuHostSample>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum ApuSampleCaptureMode {
     Integrated(IntegratedSampleCaptureState),
     BandLimited(Box<BandLimitedSampleCaptureState>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 struct IntegratedSampleCaptureState {
     sample_phase_accumulator: u64,
     integrated_left: i128,
     integrated_right: i128,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct BandLimitedSampleCaptureState {
     sample_phase_accumulator: u64,
     history: [ApuHostSample; BAND_LIMITED_RESAMPLER_TAPS],

@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgPrevisibleWxRetargetPlanContext {
     is_dmg_family: bool,
     drawing_mode: bool,
@@ -16,7 +16,7 @@ struct DmgPrevisibleWxRetargetPlanContext {
     fetcher_source: PpuBgFetcherSource,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgPrevisibleWxFollowupMarkers {
     cancel_uses_visible_wx_once: bool,
     cancel_background_override_onset_x: Option<u8>,
@@ -33,7 +33,7 @@ impl DmgPrevisibleWxFollowupMarkers {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum DmgPrevisibleWxPlanAction {
     KeepState,
     ClearOnsetGlitch,
@@ -45,7 +45,7 @@ enum DmgPrevisibleWxPlanAction {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct DmgPrevisibleWxPlan {
     followup_markers: DmgPrevisibleWxFollowupMarkers,
     action: DmgPrevisibleWxPlanAction,

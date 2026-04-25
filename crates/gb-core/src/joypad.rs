@@ -3,12 +3,12 @@ use crate::scheduler::CycleContext;
 
 const SELECT_MASK: u8 = 0x30;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum JoypadStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum JoypadButton {
     Right,
     Left,
@@ -20,13 +20,13 @@ pub enum JoypadButton {
     Start,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct JoypadStartupState {
     pub selection_bits: u8,
     pub pressed_mask: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Joypad {
     console_model: ConsoleModel,
     status: JoypadStatus,
@@ -37,7 +37,7 @@ pub struct Joypad {
     stop_wake_pending: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct JoypadSnapshot {
     pub console_model: ConsoleModel,
     pub status: JoypadStatus,

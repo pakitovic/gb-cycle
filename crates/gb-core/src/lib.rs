@@ -12,6 +12,7 @@ pub mod link;
 pub mod machine;
 pub mod model;
 pub mod ppu;
+pub mod save_state;
 pub mod scheduler;
 pub mod serial;
 pub mod timer;
@@ -89,6 +90,13 @@ pub use ppu::{
     DmgObjPaletteReadPolicy, Ppu, PpuAccessMode, PpuBgFetcherSource, PpuBgFetcherStage,
     PpuBusState, PpuFramebufferLayerSource, PpuLcdState, PpuObjFetcherStage, PpuSelectedSprite,
     PpuSnapshot, PpuStartupState, PpuStatus, PpuStepObserver, PpuStepRegion, PpuVisibleOutputState,
+};
+pub use save_state::{
+    ApuSaveState, BootSaveState, BusSaveState, CartridgeRuntimeSaveState, CpuSaveState,
+    DmaSaveState, ExternalPortSaveState, InterruptSaveState, JoypadSaveState,
+    MachineBootSaveStateMetadata, MachineCartridgeSaveStateMetadata, MachineSaveState,
+    MachineSaveStateMetadata, MachineSaveStateRestoreError, PpuSaveState, SaveStateByteFingerprint,
+    SchedulerSaveState, SerialSaveState, TimerSaveState,
 };
 pub use scheduler::{
     BusOwner, CycleContext, DerivedEdge, ExternalEvent, GlobalScheduler, InterruptSource,

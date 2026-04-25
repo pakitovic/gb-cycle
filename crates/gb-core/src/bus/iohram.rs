@@ -39,8 +39,9 @@ pub(crate) struct BusIoWriteView<'a> {
     pub ppu: Option<&'a mut Ppu>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct IoHramDomain {
+    #[serde(with = "serde_big_array::BigArray")]
     hram: [u8; HRAM_LEN],
 }
 

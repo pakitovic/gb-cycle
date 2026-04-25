@@ -2,6 +2,25 @@ use super::*;
 use crate::scheduler::TCycle;
 
 impl CartridgeDevice {
+    fn rom_bytes(&self) -> &[u8] {
+        match self {
+            Self::NoMbc(cartridge) => &cartridge.rom,
+            Self::Mmm01(cartridge) => &cartridge.rom,
+            Self::M161(cartridge) => &cartridge.rom,
+            Self::Huc1(cartridge) => &cartridge.rom,
+            Self::Huc3(cartridge) => &cartridge.rom,
+            Self::Mbc1(cartridge) => &cartridge.rom,
+            Self::Mbc2(cartridge) => &cartridge.rom,
+            Self::Mbc3(cartridge) => &cartridge.rom,
+            Self::Mbc5(cartridge) => &cartridge.rom,
+            Self::PocketCamera(cartridge) => &cartridge.rom,
+        }
+    }
+
+    pub(in crate::cartridge) fn rom_fingerprint(&self) -> SaveStateByteFingerprint {
+        SaveStateByteFingerprint::from_bytes(self.rom_bytes())
+    }
+
     pub(in crate::cartridge) fn trace_summary(&self) -> String {
         match self {
             Self::M161(cartridge) => cartridge.trace_summary(),

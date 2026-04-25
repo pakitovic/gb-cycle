@@ -1,6 +1,8 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub(in crate::ppu) struct PpuMode3RegisterLatches {
     visible: PpuVisibleRegisters,
     pipeline: PpuVisibleRegisters,
@@ -134,7 +136,7 @@ impl PpuMode3RegisterLatches {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3LiveRegisterWriteContext {
     previous: PpuVisibleRegisters,
     current: PpuVisibleRegisters,
@@ -196,7 +198,7 @@ impl PpuMode3LiveRegisterWriteContext {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3LiveBackgroundRefetchContext {
     registers: PpuVisibleRegisters,
     ly: u8,
@@ -247,7 +249,7 @@ impl PpuMode3LiveBackgroundRefetchContext {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3BackgroundFetchContext {
     tilemap_registers: PpuVisibleRegisters,
     tiledata_registers: PpuVisibleRegisters,
@@ -297,7 +299,7 @@ impl PpuMode3BackgroundFetchContext {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3WindowFetchContext {
     registers: PpuVisibleRegisters,
     window_line_counter: u8,
@@ -339,7 +341,7 @@ impl PpuMode3WindowFetchContext {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3WindowActivationState {
     registers: PpuVisibleRegisters,
     force_x0_this_line: bool,
@@ -391,7 +393,7 @@ impl PpuMode3WindowActivationState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3PreparedWindowLine {
     wy_triggered: bool,
     wy_latch: bool,
@@ -424,7 +426,7 @@ impl PpuMode3PreparedWindowLine {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) enum PpuMode3WindowStartDecision {
     NotReady,
     ArmWx166NextLine,

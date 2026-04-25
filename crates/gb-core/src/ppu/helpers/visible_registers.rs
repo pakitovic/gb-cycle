@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuRecentBgDotContext {
     pub(in crate::ppu) source: PpuBgFetcherSource,
     pub(in crate::ppu) fetch_x: u16,
@@ -8,7 +8,9 @@ pub(in crate::ppu) struct PpuRecentBgDotContext {
     pub(in crate::ppu) tile_index: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub(in crate::ppu) struct PpuVisibleRegisters {
     pub(in crate::ppu) lcdc: u8,
     pub(in crate::ppu) scy: u8,
