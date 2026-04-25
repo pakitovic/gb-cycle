@@ -33,7 +33,9 @@ cargo run -p gb-cli -- saves import path/to/rom.gb path/to/in.sav --save-dir pat
 Both commands load the ROM first, then validate the save payload against the
 cartridge mapper and persistence profile instead of inferring compatibility from
 the filename. Use `--save-key <key>` when the internal `.gbsav` key differs
-from the ROM stem.
+from the ROM stem. By default the derived key preserves the ROM's exact filename
+stem, so `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb`
+maps to `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav`.
 
 ## Console models
 
@@ -53,6 +55,11 @@ from the ROM stem.
 ## Battery saves
 
 `--save-dir` loads and stores battery-backed cartridge persistence using the host-side `.gbsav` format from `gb-persistence`.
+Default `.gbsav` names use the exact ROM filename stem plus the `.gbsav`
+extension; only path separators, control characters, and portable-filesystem
+reserved characters require an explicit `--save-key`. When a derived exact-stem
+save is missing, load/export paths still probe the previous sanitized
+underscore-style key so existing saves migrate naturally on the next write.
 
 `gb-cli saves export` writes emulator-compatible `.sav` files at the host
 boundary without changing the internal `.gbsav` format. Linear cartridge RAM is

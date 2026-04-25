@@ -789,6 +789,13 @@ Priority order:
   filesystem writes. The cartridge contract remains mapper-owned, while path
   policy, serialization format, and durable file handling stay outside the
   core as required by the architecture handbook.
+- The default host-side save key preserves the active ROM's exact filename stem
+  for both internal `.gbsav` paths and default external `.sav` dialog names.
+  Only path separators, control characters, and portable-filesystem reserved
+  characters are rejected; those edge cases require an explicit frontend/tool
+  save key override. Frontends and tools keep a read/export fallback for the old
+  underscore-sanitized derived key so existing saves are not orphaned when the
+  exact-stem path is introduced.
 - In the current baseline, `.sav` interchange with SameBoy and mGBA is an
   explicit host-side conversion boundary in `gb-persistence`; it does not change
   the internal `.gbsav` envelope. Linear RAM-backed cartridges export/import

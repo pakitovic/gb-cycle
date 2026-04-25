@@ -182,6 +182,12 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 ## Battery saves
 
 - Default policy: debounced auto-flush — once cartridge persistence changes, the frontend writes a safe replacement save after roughly `2s`, and forces a flush on ROM changes and shutdown.
+- Default internal save filenames preserve the active ROM's exact filename stem:
+  `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb` maps to
+  `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav`.
+  The same stem is used for the default external `.sav` export/import filename.
+  If only an older underscore-sanitized `.gbsav` exists, the desktop frontend
+  still restores it and then writes future changes through the exact-stem path.
 - For RTC-backed `MBC3` cartridges, the desktop loop also injects host wall-clock elapsed seconds into the live session, so clock-based games keep advancing while the ROM remains open instead of only catching up on the next save reload.
 - `SYSTEM -> SAVE -> EXPORT SAVE` writes the current primary/P1 cartridge
   persistence as a SameBoy/mGBA-compatible `.sav`. The native save dialog

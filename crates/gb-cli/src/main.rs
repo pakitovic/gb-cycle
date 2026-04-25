@@ -6,10 +6,10 @@ use gb_core::{
     TraceBuffer, TraceSummaryBuffer, UnsupportedCartridgeCategory,
 };
 use gb_persistence::{
-    CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveKey, CartridgeSaveKeyError,
-    EXTERNAL_SAVE_FILE_EXTENSION, ExternalSaveError, FilesystemCartridgeSaveBackend,
-    export_external_cartridge_save, import_external_cartridge_save,
-    uses_battery_backed_hardware_persistence,
+    CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveEnvelope, CartridgeSaveKey,
+    CartridgeSaveKeyError, EXTERNAL_SAVE_FILE_EXTENSION, ExternalSaveError,
+    FilesystemCartridgeSaveBackend, export_external_cartridge_save, import_external_cartridge_save,
+    legacy_sanitized_save_key, uses_battery_backed_hardware_persistence,
 };
 use sha2::{Digest, Sha256};
 use std::env;
@@ -46,7 +46,7 @@ const RUN_HELP_TEXT: &str = concat!(
     "  --framebuffer-out <path>               Save the final 160x144 framebuffer as PGM, or PNG when <path> ends in .png\n",
     "  --trace-out <path>                     Save the scheduler trace text for the run\n",
     "  --save-dir <dir>                       Load/save battery-backed cartridge persistence under this directory\n",
-    "  --save-key <key>                       Override the derived save key (ASCII alnum, '_' or '-')\n",
+    "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",
     "  --save-policy <manual|on-close|on-write>\n",
     "                                         Select automatic persistence behavior (default: on-close)\n",
 );
@@ -64,7 +64,7 @@ const SAVES_HELP_TEXT: &str = concat!(
     "\n",
     "Options:\n",
     "  --save-dir <dir>                       Directory containing gb-cycle .gbsav files\n",
-    "  --save-key <key>                       Override the derived save key (ASCII alnum, '_' or '-')\n",
+    "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",
 );
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1002,18 +1002,23 @@ fn saves_export_command(
     let save_root = resolve_path(&current_dir, &options.save_dir);
     validate_directory_input("--save-dir", &save_root)?;
     let key = resolve_saves_key(options.save_key.as_deref(), &rom_path)?;
+    let legacy_key = legacy_save_key_for_rom_path(options.save_key.as_deref(), &rom_path);
     let backend = FilesystemCartridgeSaveBackend::new(&save_root);
-    let save_path = backend.path_for_key(&key);
-    let envelope = backend
-        .load(&key)
-        .map_err(|error| format_save_load_error(&save_path, error))?
-        .ok_or_else(|| format!("no gb-cycle save found at {}", save_path.display()))?;
+    let (envelope, source_save_path) =
+        load_save_envelope_with_legacy_fallback(&backend, &key, legacy_key.as_ref())?.ok_or_else(
+            || {
+                format!(
+                    "no gb-cycle save found at {}",
+                    backend.path_for_key(&key).display()
+                )
+            },
+        )?;
     cartridge
         .restore_persistent_state(&envelope.persistent_state)
         .map_err(|error| {
             format!(
                 "save {} is not compatible with ROM {}: {error:?}",
-                save_path.display(),
+                source_save_path.display(),
                 rom_path.display()
             )
         })?;
@@ -1025,13 +1030,39 @@ fn saves_export_command(
 
     writeln_checked(output, &format!("rom={}", rom_path.display()))?;
     writeln_checked(output, &format!("save_key={}", key.as_str()))?;
-    writeln_checked(output, &format!("source_gbsav={}", save_path.display()))?;
+    writeln_checked(
+        output,
+        &format!("source_gbsav={}", source_save_path.display()),
+    )?;
     writeln_checked(
         output,
         &format!("external_save={}", external_path.display()),
     )?;
     writeln_checked(output, &format!("external_bytes={}", external_bytes.len()))?;
     Ok(())
+}
+
+fn load_save_envelope_with_legacy_fallback(
+    backend: &FilesystemCartridgeSaveBackend,
+    key: &CartridgeSaveKey,
+    legacy_key: Option<&CartridgeSaveKey>,
+) -> Result<Option<(CartridgeSaveEnvelope, PathBuf)>, String> {
+    let save_path = backend.path_for_key(key);
+    if let Some(envelope) = backend
+        .load(key)
+        .map_err(|error| format_save_load_error(&save_path, error))?
+    {
+        return Ok(Some((envelope, save_path)));
+    }
+
+    let Some(legacy_key) = legacy_key.filter(|legacy_key| *legacy_key != key) else {
+        return Ok(None);
+    };
+    let legacy_save_path = backend.path_for_key(legacy_key);
+    backend
+        .load(legacy_key)
+        .map_err(|error| format_save_load_error(&legacy_save_path, error))
+        .map(|envelope| envelope.map(|envelope| (envelope, legacy_save_path)))
 }
 
 fn saves_import_command(
@@ -1151,14 +1182,14 @@ fn open_save_session(
     } else {
         derive_save_key(rom_path)?
     };
+    let legacy_key = legacy_save_key_for_rom_path(options.save_key.as_deref(), rom_path);
 
     let backend = FilesystemCartridgeSaveBackend::new(save_root);
     let mut loaded_existing_save = false;
     let mut last_saved_state = machine.cartridge().persistent_state();
 
-    if let Some(envelope) = backend
-        .load(&key)
-        .map_err(|error| format_save_load_error(&backend.path_for_key(&key), error))?
+    if let Some((envelope, save_path)) =
+        load_save_envelope_with_legacy_fallback(&backend, &key, legacy_key.as_ref())?
     {
         let elapsed_seconds = backend
             .current_unix_seconds()
@@ -1174,7 +1205,7 @@ fn open_save_session(
             stderr,
             &format!(
                 "save_loaded path={} elapsed_seconds={elapsed_seconds}",
-                backend.path_for_key(&key).display()
+                save_path.display()
             ),
         )?;
     }
@@ -1454,26 +1485,24 @@ fn derive_save_key(rom_path: &Path) -> Result<CartridgeSaveKey, String> {
                 rom_path.display()
             )
         })?
+        .to_string_lossy()
+        .into_owned();
+    parse_save_key(&stem)
+        .map_err(|error| format!("could not use ROM stem {stem:?} as save key: {error}"))
+}
+
+fn legacy_save_key_for_rom_path(
+    explicit_key: Option<&str>,
+    rom_path: &Path,
+) -> Option<CartridgeSaveKey> {
+    if explicit_key.is_some() {
+        return None;
+    }
+    let stem = rom_path
+        .file_stem()
+        .or_else(|| rom_path.file_name())?
         .to_string_lossy();
-    let mut sanitized = String::new();
-    let mut inserted_separator = false;
-    for character in stem.chars() {
-        if character.is_ascii_alphanumeric() || matches!(character, '_' | '-') {
-            sanitized.push(character);
-            inserted_separator = false;
-        } else if !inserted_separator {
-            sanitized.push('_');
-            inserted_separator = true;
-        }
-    }
-    let sanitized = sanitized.trim_matches('_').to_string();
-    if sanitized.is_empty() {
-        return Err(format!(
-            "derived save key from {} is empty after sanitization; use --save-key instead",
-            rom_path.display()
-        ));
-    }
-    parse_save_key(&sanitized)
+    legacy_sanitized_save_key(&stem)
 }
 
 fn parse_save_key(key: &str) -> Result<CartridgeSaveKey, String> {

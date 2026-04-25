@@ -232,7 +232,8 @@ fn run_command_emits_requested_artifacts_and_persists_battery_backed_ram() {
     let temp_dir = unique_temp_dir("run-artifacts");
     fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
 
-    let rom_path = temp_dir.join("battery_serial.gb");
+    let rom_path =
+        temp_dir.join("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb");
     let serial_path = temp_dir.join("artifacts/serial.bin");
     let framebuffer_path = temp_dir.join("artifacts/framebuffer.png");
     let trace_path = temp_dir.join("artifacts/trace.txt");
@@ -317,7 +318,8 @@ fn saves_commands_export_and_import_external_sav_files() {
     let temp_dir = unique_temp_dir("saves-convert");
     fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
 
-    let rom_path = temp_dir.join("battery_serial.gb");
+    let rom_path =
+        temp_dir.join("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb");
     let save_root = temp_dir.join("saves");
     let external_path = temp_dir.join("exports/battery.sav");
     let rom = build_battery_backed_serial_and_ram_rom(b'S', 0x12);
@@ -326,17 +328,19 @@ fn saves_commands_export_and_import_external_sav_files() {
     let report = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
         .expect("test ROM should load for save seeding");
     let key = derive_save_key(&rom_path).expect("save key should derive");
+    let legacy_key =
+        legacy_save_key_for_rom_path(None, &rom_path).expect("legacy key should derive");
     let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
     let mut seeded_ram = vec![0; 8 * 1024];
     seeded_ram[0] = 0x5A;
     seeded_ram[1] = 0xC3;
     backend
         .save(
-            &key,
+            &legacy_key,
             report.cartridge().persistence_metadata(),
             &PersistentCartState::NoMbcRam { ram: seeded_ram },
         )
-        .expect("seed save should persist");
+        .expect("legacy seed save should persist");
 
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -358,6 +362,11 @@ fn saves_commands_export_and_import_external_sav_files() {
         &[0x5A, 0xC3]
     );
     let output = String::from_utf8(stdout).expect("stdout should be UTF-8");
+    assert!(
+        output.contains("save_key=Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)"),
+        "{output}"
+    );
+    assert!(output.contains("Legend_of_Zelda_The_-_Link_s_Awakening_USA_Europe_Rev_2.gbsav"));
     assert!(output.contains("external_bytes=8192"));
     let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
 
@@ -393,6 +402,251 @@ fn saves_commands_export_and_import_external_sav_files() {
     let output = String::from_utf8(stdout).expect("stdout should be UTF-8");
     assert!(output.contains("target_gbsav="));
     let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn saves_commands_cover_conversion_error_paths_and_legacy_session_loads() {
+    let temp_dir = unique_temp_dir("saves-convert-errors");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let plain_rom_path = temp_dir.join("plain.gb");
+    fs::write(&plain_rom_path, build_single_byte_serial_rom(b'N'))
+        .expect("plain ROM should be writable");
+    let save_root = temp_dir.join("saves");
+    let external_path = temp_dir.join("exports/plain.sav");
+    let plain_options = SavesOptions {
+        direction: SavesDirection::Export,
+        rom_path: plain_rom_path.clone(),
+        external_save_path: external_path.clone(),
+        save_dir: save_root.clone(),
+        save_key: None,
+    };
+    let export_error =
+        saves_export_command(plain_options.clone(), &mut Vec::new(), &mut Vec::new())
+            .expect_err("plain ROMs should not export saves");
+    assert!(export_error.contains("does not expose battery-backed cartridge persistence"));
+    let import_error = saves_import_command(
+        SavesOptions {
+            direction: SavesDirection::Import,
+            ..plain_options
+        },
+        &mut Vec::new(),
+        &mut Vec::new(),
+    )
+    .expect_err("plain ROMs should not import saves");
+    assert!(import_error.contains("does not expose battery-backed cartridge persistence"));
+
+    let battery_rom_path =
+        temp_dir.join("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb");
+    let battery_rom = build_battery_backed_serial_and_ram_rom(b'B', 0x7E);
+    fs::write(&battery_rom_path, &battery_rom).expect("battery ROM should be writable");
+    let battery_options = SavesOptions {
+        direction: SavesDirection::Export,
+        rom_path: battery_rom_path.clone(),
+        external_save_path: temp_dir.join("exports/battery.sav"),
+        save_dir: save_root.clone(),
+        save_key: None,
+    };
+    let no_save_error =
+        saves_export_command(battery_options.clone(), &mut Vec::new(), &mut Vec::new())
+            .expect_err("missing internal saves should fail export");
+    assert!(no_save_error.contains("no gb-cycle save found"));
+
+    let report = CartridgeSlot::load(battery_rom.clone(), &CompatibilityPolicy::strict())
+        .expect("battery ROM should load");
+    let exact_key = derive_save_key(&battery_rom_path).expect("exact key should derive");
+    let legacy_key =
+        legacy_save_key_for_rom_path(None, &battery_rom_path).expect("legacy key should derive");
+    let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
+    backend
+        .save(
+            &exact_key,
+            report.cartridge().persistence_metadata(),
+            &PersistentCartState::Mbc2Ram {
+                ram_nibbles: [0; 512],
+            },
+        )
+        .expect("mismatched save should still encode for compatibility checks");
+    let mismatch_error =
+        saves_export_command(battery_options.clone(), &mut Vec::new(), &mut Vec::new())
+            .expect_err("mismatched internal saves should fail restore");
+    assert!(mismatch_error.contains("is not compatible with ROM"));
+
+    backend
+        .delete(&exact_key)
+        .expect("mismatched exact save should be removable");
+
+    let legacy_path = backend.path_for_key(&legacy_key);
+    fs::create_dir_all(legacy_path.parent().expect("legacy parent should exist"))
+        .expect("legacy parent should be creatable");
+    fs::write(&legacy_path, b"not-a-valid-save").expect("broken legacy save should be writable");
+    let legacy_load_error =
+        saves_export_command(battery_options.clone(), &mut Vec::new(), &mut Vec::new())
+            .expect_err("broken legacy saves should surface load errors");
+    assert!(legacy_load_error.contains("failed to load save"));
+    fs::remove_file(&legacy_path).expect("broken legacy save should be removable");
+
+    let mut legacy_ram = vec![0; 8 * 1024];
+    legacy_ram[0] = 0x44;
+    backend
+        .save(
+            &legacy_key,
+            report.cartridge().persistence_metadata(),
+            &PersistentCartState::NoMbcRam { ram: legacy_ram },
+        )
+        .expect("legacy save should persist");
+    let mut machine = build_loaded_machine(battery_rom, false);
+    let session = open_save_session(
+        Some(&save_root),
+        &RunOptions::default_with_rom(battery_rom_path.clone()),
+        &battery_rom_path,
+        &mut machine,
+        &mut Vec::new(),
+    )
+    .expect("legacy save session should open")
+    .expect("battery-backed ROMs should create a save session");
+    assert!(session.loaded_existing_save);
+    assert_eq!(session.key, exact_key);
+
+    let missing_external_error = saves_import_command(
+        SavesOptions {
+            direction: SavesDirection::Import,
+            external_save_path: temp_dir.join("missing.sav"),
+            ..battery_options.clone()
+        },
+        &mut Vec::new(),
+        &mut Vec::new(),
+    )
+    .expect_err("missing external saves should fail import");
+    assert!(missing_external_error.contains("failed to read external .sav save"));
+
+    let invalid_external_path = temp_dir.join("imports/invalid.sav");
+    fs::create_dir_all(
+        invalid_external_path
+            .parent()
+            .expect("import parent should exist"),
+    )
+    .expect("import parent should be creatable");
+    fs::write(&invalid_external_path, [0xAA]).expect("invalid external save should be writable");
+    let invalid_external_error = saves_import_command(
+        SavesOptions {
+            direction: SavesDirection::Import,
+            external_save_path: invalid_external_path,
+            save_key: Some("explicit-slot".to_string()),
+            ..battery_options
+        },
+        &mut Vec::new(),
+        &mut Vec::new(),
+    )
+    .expect_err("invalid external save lengths should fail import");
+    assert!(invalid_external_error.contains("failed to convert external .sav save"));
+    assert!(resolve_saves_key(Some("manual-slot"), &battery_rom_path).is_ok());
+
+    let valid_external_path = temp_dir.join("imports/valid.sav");
+    fs::write(&valid_external_path, vec![0x55; 8 * 1024])
+        .expect("valid external save should be writable");
+    let blocked_save_root = temp_dir.join("blocked-import-save");
+    let blocked_backend = FilesystemCartridgeSaveBackend::new(&blocked_save_root);
+    let blocked_target_path = blocked_backend.path_for_key(&exact_key);
+    let mut blocked_temp_path = blocked_target_path.as_os_str().to_os_string();
+    blocked_temp_path.push(".tmp");
+    fs::create_dir_all(PathBuf::from(blocked_temp_path))
+        .expect("blocked temporary save path should be creatable");
+    let save_error = saves_import_command(
+        SavesOptions {
+            direction: SavesDirection::Import,
+            rom_path: battery_rom_path.clone(),
+            external_save_path: valid_external_path,
+            save_dir: blocked_save_root,
+            save_key: None,
+        },
+        &mut Vec::new(),
+        &mut Vec::new(),
+    )
+    .expect_err("import save backend failures should surface");
+    assert!(save_error.contains("failed to save cartridge persistence (saves-import)"));
+
+    let blocking_parent = temp_dir.join("blocking-parent");
+    fs::write(&blocking_parent, b"file").expect("blocking parent file should be writable");
+    let write_error = write_bytes_with_parent(&blocking_parent.join("child.bin"), b"bytes")
+        .expect_err("file parents should block directory creation");
+    assert!(write_error.contains("failed to create directory"));
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn saves_commands_surface_output_writer_failures() {
+    let temp_dir = unique_temp_dir("saves-writer-failures");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let rom_path = temp_dir.join("battery.gb");
+    let rom = build_battery_backed_serial_and_ram_rom(b'S', 0x22);
+    fs::write(&rom_path, &rom).expect("battery ROM should be writable");
+    let report =
+        CartridgeSlot::load(rom, &CompatibilityPolicy::strict()).expect("battery ROM should load");
+    let save_root = temp_dir.join("saves");
+    let save_key = derive_save_key(&rom_path).expect("save key should derive");
+    let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
+    backend
+        .save(
+            &save_key,
+            report.cartridge().persistence_metadata(),
+            &PersistentCartState::NoMbcRam {
+                ram: vec![0x66; 8 * 1024],
+            },
+        )
+        .expect("internal save should persist");
+
+    for fail_on_write in [5, 7] {
+        let options = SavesOptions {
+            direction: SavesDirection::Export,
+            rom_path: rom_path.clone(),
+            external_save_path: temp_dir.join(format!("exports/export-{fail_on_write}.sav")),
+            save_dir: save_root.clone(),
+            save_key: None,
+        };
+        let mut output = FailOnWrite {
+            fail_on_write: Some(fail_on_write),
+            ..FailOnWrite::default()
+        };
+        let error = saves_export_command(options, &mut output, &mut Vec::new())
+            .expect_err("export output write failures should surface");
+        assert!(error.contains("failed to write output"));
+    }
+
+    let import_path = temp_dir.join("imports/import.sav");
+    fs::create_dir_all(import_path.parent().expect("import parent should exist"))
+        .expect("import parent should be creatable");
+    fs::write(&import_path, vec![0x77; 8 * 1024]).expect("external save should be writable");
+    for fail_on_write in [5, 7, 9] {
+        let options = SavesOptions {
+            direction: SavesDirection::Import,
+            rom_path: rom_path.clone(),
+            external_save_path: import_path.clone(),
+            save_dir: temp_dir.join(format!("import-saves-{fail_on_write}")),
+            save_key: None,
+        };
+        let mut output = FailOnWrite {
+            fail_on_write: Some(fail_on_write),
+            ..FailOnWrite::default()
+        };
+        let error = saves_import_command(options, &mut output, &mut Vec::new())
+            .expect_err("import output write failures should surface");
+        assert!(error.contains("failed to write output"));
+    }
+
+    let wrapper_options = SavesOptions {
+        direction: SavesDirection::Export,
+        rom_path,
+        external_save_path: temp_dir.join("exports/wrapper.sav"),
+        save_dir: save_root,
+        save_key: None,
+    };
+    saves_command(wrapper_options, &mut Vec::new(), &mut Vec::new())
+        .expect("saves command wrapper should dispatch export");
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
@@ -678,6 +932,23 @@ fn parse_saves_arguments_cover_valid_help_and_error_paths() {
         "--save-dir requires a value"
     );
     assert_eq!(
+        parse_saves_arguments([
+            "export",
+            "demo.gb",
+            "demo.sav",
+            "--save-dir",
+            "saves",
+            "--save-key"
+        ])
+        .expect_err("save key value should be required"),
+        "--save-key requires a value"
+    );
+    assert_eq!(
+        parse_saves_arguments(["export", "demo.gb", "--save-dir", "saves"])
+            .expect_err("both positional paths should be required"),
+        "missing required ROM path or .sav path; run `gb-cli saves --help` for usage"
+    );
+    assert_eq!(
         parse_saves_arguments(["export", "demo.gb", "demo.sav", "--weird"])
             .expect_err("unknown option should fail"),
         "unknown saves option \"--weird\"; run `gb-cli saves --help`"
@@ -781,6 +1052,22 @@ fn save_session_helpers_cover_skip_restore_and_noop_flush_paths() {
             .contains("save_loaded path=")
     );
 
+    let mut failing_stderr = FailOnWrite {
+        fail_on_write: Some(1),
+        ..FailOnWrite::default()
+    };
+    let mut failing_machine =
+        build_loaded_machine(build_battery_backed_serial_and_ram_rom(b'R', 0), false);
+    let save_loaded_error = open_save_session(
+        Some(&save_root),
+        &RunOptions::default_with_rom(PathBuf::from("battery.gb")),
+        Path::new("battery.gb"),
+        &mut failing_machine,
+        &mut failing_stderr,
+    )
+    .expect_err("save-loaded status write failures should surface");
+    assert!(save_loaded_error.contains("failed to write output"));
+
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
 
@@ -829,6 +1116,31 @@ fn save_session_and_flush_error_paths_surface_backend_failures() {
     let save_error = flush_save_if_changed(&mut failing_session, &battery_machine, "forced-save")
         .expect_err("broken save roots should surface backend save errors");
     assert!(save_error.contains("failed to save cartridge persistence (forced-save)"));
+
+    let mut mismatch_options = RunOptions::default_with_rom(PathBuf::from("battery.gb"));
+    mismatch_options.save_key = Some("battery_mismatch".to_string());
+    let mismatch_key = CartridgeSaveKey::new("battery_mismatch").expect("save key should be valid");
+    let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
+    backend
+        .save(
+            &mismatch_key,
+            battery_machine.cartridge().persistence_metadata(),
+            &PersistentCartState::Mbc2Ram {
+                ram_nibbles: [0; 512],
+            },
+        )
+        .expect("mismatched save should persist for restore checks");
+    let mut mismatch_machine =
+        build_loaded_machine(build_battery_backed_serial_and_ram_rom(b'R', 0), false);
+    let restore_error = open_save_session(
+        Some(&save_root),
+        &mismatch_options,
+        Path::new("battery.gb"),
+        &mut mismatch_machine,
+        &mut Vec::new(),
+    )
+    .expect_err("incompatible saved state should surface restore errors");
+    assert!(restore_error.contains("failed to restore cartridge persistence"));
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
@@ -917,6 +1229,93 @@ fn run_command_covers_on_write_frame_flush_and_manual_save_policy() {
 }
 
 #[test]
+fn run_command_surfaces_summary_save_and_session_writer_failures() {
+    let temp_dir = unique_temp_dir("run-writer-failures");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let plain_rom_path = temp_dir.join("plain.gb");
+    fs::write(&plain_rom_path, build_single_byte_serial_rom(b'P'))
+        .expect("plain ROM should be writable");
+
+    let mut serial_write_options = RunOptions::default_with_rom(plain_rom_path.clone());
+    serial_write_options.serial_stdout = true;
+    serial_write_options.tcycle_limit = Some(10_000);
+    let mut stdout = FailOnWrite {
+        fail_on_write: Some(1),
+        ..FailOnWrite::default()
+    };
+    let serial_write_error = run_command(serial_write_options, &mut stdout, &mut Vec::new())
+        .expect_err("serial stdout write failures should surface");
+    assert!(serial_write_error.contains("failed to write serial stdout"));
+
+    let mut serial_flush_options = RunOptions::default_with_rom(plain_rom_path.clone());
+    serial_flush_options.serial_stdout = true;
+    serial_flush_options.tcycle_limit = Some(10_000);
+    let mut stdout = FailOnWrite {
+        fail_on_flush: true,
+        ..FailOnWrite::default()
+    };
+    let serial_flush_error = run_command(serial_flush_options, &mut stdout, &mut Vec::new())
+        .expect_err("serial stdout flush failures should surface");
+    assert!(serial_flush_error.contains("failed to flush serial stdout"));
+
+    for fail_on_write in [5, 7] {
+        let mut options = RunOptions::default_with_rom(plain_rom_path.clone());
+        options.tcycle_limit = Some(0);
+        let mut stderr = FailOnWrite {
+            fail_on_write: Some(fail_on_write),
+            ..FailOnWrite::default()
+        };
+        let error = run_command(options, &mut Vec::new(), &mut stderr)
+            .expect_err("summary write failures should surface");
+        assert!(error.contains("failed to write output"));
+    }
+
+    let mut framebuffer_options = RunOptions::default_with_rom(plain_rom_path.clone());
+    framebuffer_options.tcycle_limit = Some(0);
+    framebuffer_options.framebuffer_out = Some(temp_dir.join("framebuffer/frame.pgm"));
+    let mut stderr = FailOnWrite {
+        fail_on_write: Some(15),
+        ..FailOnWrite::default()
+    };
+    let framebuffer_error = run_command(framebuffer_options, &mut Vec::new(), &mut stderr)
+        .expect_err("framebuffer summary write failures should surface");
+    assert!(framebuffer_error.contains("failed to write output"));
+
+    let mut skipped_save_options = RunOptions::default_with_rom(plain_rom_path);
+    skipped_save_options.tcycle_limit = Some(0);
+    skipped_save_options.save_dir = Some(temp_dir.join("plain-saves"));
+    let mut stderr = FailOnWrite {
+        fail_on_write: Some(1),
+        ..FailOnWrite::default()
+    };
+    let skipped_save_error = run_command(skipped_save_options, &mut Vec::new(), &mut stderr)
+        .expect_err("save-session status write failures should surface");
+    assert!(skipped_save_error.contains("failed to write output"));
+
+    let battery_rom_path = temp_dir.join("battery.gb");
+    fs::write(
+        &battery_rom_path,
+        build_battery_backed_serial_and_ram_rom(b'B', 0x11),
+    )
+    .expect("battery ROM should be writable");
+    for fail_on_write in [17, 19, 21, 22] {
+        let mut options = RunOptions::default_with_rom(battery_rom_path.clone());
+        options.tcycle_limit = Some(0);
+        options.save_dir = Some(temp_dir.join(format!("battery-saves-{fail_on_write}")));
+        let mut stderr = FailOnWrite {
+            fail_on_write: Some(fail_on_write),
+            ..FailOnWrite::default()
+        };
+        let error = run_command(options, &mut Vec::new(), &mut stderr)
+            .expect_err("save summary write failures should surface");
+        assert!(error.contains("failed to write output"));
+    }
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
 fn inspect_rom_command_covers_rejected_and_header_error_paths() {
     let temp_dir = unique_temp_dir("inspect-rejected");
     fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
@@ -956,6 +1355,43 @@ fn inspect_rom_command_covers_rejected_and_header_error_paths() {
     )
     .expect_err("tiny ROMs should fail header parsing");
     assert!(error.contains("ROM image is too small to contain a cartridge header"));
+
+    let missing_error = inspect_rom_command(
+        InspectRomOptions {
+            rom_path: temp_dir.join("missing.gb"),
+            execution_mode: ExecutionMode::Strict,
+        },
+        &mut Vec::new(),
+    )
+    .expect_err("missing ROMs should surface read errors");
+    assert!(missing_error.contains("failed to read ROM"));
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn inspect_rom_command_surfaces_output_writer_failures() {
+    let temp_dir = unique_temp_dir("inspect-writer-failures");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let rom_path = temp_dir.join("inspect.gb");
+    fs::write(&rom_path, build_single_byte_serial_rom(b'I')).expect("test ROM should be writable");
+
+    for fail_on_write in [5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31] {
+        let mut output = FailOnWrite {
+            fail_on_write: Some(fail_on_write),
+            ..FailOnWrite::default()
+        };
+        let error = inspect_rom_command(
+            InspectRomOptions {
+                rom_path: rom_path.clone(),
+                execution_mode: ExecutionMode::Strict,
+            },
+            &mut output,
+        )
+        .expect_err("inspect output write failures should surface");
+        assert!(error.contains("failed to write output"));
+    }
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }
@@ -997,6 +1433,13 @@ fn boot_rom_path_resolution_and_verification_helpers_cover_host_side_paths() {
             .expect("stderr should be UTF-8")
             .contains("warning: boot ROM asset")
     );
+    let mut failing_stderr = FailOnWrite {
+        fail_on_write: Some(1),
+        ..FailOnWrite::default()
+    };
+    let warning_write_error = load_boot_rom_assets(&options, &current_dir, &mut failing_stderr)
+        .expect_err("warning write failures should surface");
+    assert!(warning_write_error.contains("failed to write output"));
 
     stderr.clear();
     options.boot_rom_verify = BootRomVerificationMode::Off;
@@ -1271,18 +1714,23 @@ fn expected_boot_rom_sha256_rejects_cgb_kind_in_the_dmg_only_cli_surface() {
 #[test]
 fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities() {
     assert_eq!(
-        derive_save_key(Path::new("Pokemon Red!.gb")).expect("save key should derive"),
-        CartridgeSaveKey::new("Pokemon_Red").expect("expected save key should be valid")
+        derive_save_key(Path::new(
+            "Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb"
+        ))
+        .expect("save key should derive"),
+        CartridgeSaveKey::new("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)")
+            .expect("expected save key should be valid")
     );
     assert!(
         derive_save_key(Path::new("/"))
             .expect_err("root paths do not provide a file name")
             .contains("could not derive a save key")
     );
+    assert_eq!(legacy_save_key_for_rom_path(None, Path::new("/")), None);
     assert!(
-        derive_save_key(Path::new("***"))
-            .expect_err("empty sanitized save keys should fail")
-            .contains("is empty after sanitization")
+        derive_save_key(Path::new("bad*name.gb"))
+            .expect_err("unsafe save key characters should fail")
+            .contains("invalid character `*`")
     );
     assert_eq!(
         parse_save_key("bad/key").expect_err("invalid save keys should fail"),
@@ -1477,6 +1925,17 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
     let write_error = write_bytes_with_parent(&blocking_parent.join("child.bin"), b"\x00")
         .expect_err("non-directory parents should fail");
     assert!(write_error.contains("failed to create directory"));
+    let blocking_target = temp_dir.join("target-dir.bin");
+    fs::create_dir_all(&blocking_target).expect("blocking target directory should be creatable");
+    let write_file_error = write_bytes_with_parent(&blocking_target, b"\x00")
+        .expect_err("directory targets should fail file writes");
+    assert!(write_file_error.contains("failed to write"));
+
+    let missing_conversion_rom = temp_dir.join("missing-conversion.gb");
+    let conversion_read_error =
+        load_cartridge_for_save_conversion(&missing_conversion_rom, &mut Vec::new())
+            .expect_err("missing conversion ROMs should surface read errors");
+    assert!(conversion_read_error.contains("failed to read ROM"));
 
     let mut write_error_writer = FailOnWrite {
         fail_on_write: Some(1),
@@ -1530,6 +1989,14 @@ fn save_key_framebuffer_io_and_formatting_helpers_cover_remaining_host_utilities
         String::from_utf8(diagnostic_output).expect("diagnostic output should be UTF-8");
     assert!(diagnostic_text.contains("warning: warn"));
     assert!(diagnostic_text.contains("error: err"));
+    let mut failing_diagnostic_output = FailOnWrite {
+        fail_on_write: Some(1),
+        ..FailOnWrite::default()
+    };
+    let diagnostic_write_error =
+        write_cartridge_diagnostics(&mut failing_diagnostic_output, &diagnostics)
+            .expect_err("diagnostic write failures should surface");
+    assert!(diagnostic_write_error.contains("failed to write output"));
 
     assert_eq!(
         format_header_parse_error(CartridgeHeaderParseError::ImageTooSmall {

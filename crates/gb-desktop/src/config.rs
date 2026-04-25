@@ -655,28 +655,10 @@ fn derive_save_key(rom_path: &Path) -> Result<CartridgeSaveKey, DesktopConfigErr
         .ok_or_else(|| DesktopConfigError::SaveKeyDerivationEmpty {
             rom_path: rom_path.to_path_buf(),
         })?
-        .to_string_lossy();
+        .to_string_lossy()
+        .into_owned();
 
-    let mut sanitized = String::new();
-    let mut inserted_separator = false;
-    for character in stem.chars() {
-        if character.is_ascii_alphanumeric() || matches!(character, '_' | '-') {
-            sanitized.push(character);
-            inserted_separator = false;
-        } else if !inserted_separator {
-            sanitized.push('_');
-            inserted_separator = true;
-        }
-    }
-
-    let sanitized = sanitized.trim_matches('_').to_string();
-    if sanitized.is_empty() {
-        return Err(DesktopConfigError::SaveKeyDerivationEmpty {
-            rom_path: rom_path.to_path_buf(),
-        });
-    }
-
-    Ok(CartridgeSaveKey::new(sanitized)?)
+    Ok(CartridgeSaveKey::new(stem)?)
 }
 
 #[cfg(test)]
@@ -761,14 +743,18 @@ mod tests {
     }
 
     #[test]
-    fn derived_save_key_sanitizes_the_rom_stem() {
-        let rom_path = Path::new("/tmp/roms/Pokemon Red (World).gb");
+    fn derived_save_key_preserves_the_rom_stem() {
+        let rom_path =
+            Path::new("/tmp/roms/Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb");
         let save_key = SaveOptions::default()
             .resolve_key(rom_path)
             .expect("save-key derivation should succeed")
             .expect("saves are enabled by default");
 
-        assert_eq!(save_key.as_str(), "Pokemon_Red_World");
+        assert_eq!(
+            save_key.as_str(),
+            "Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)"
+        );
     }
 
     #[test]
@@ -960,9 +946,9 @@ mod tests {
     }
 
     #[test]
-    fn derive_save_key_rejects_paths_without_any_usable_key_material() {
-        let error = derive_save_key(Path::new("/tmp/roms/..."))
-            .expect_err("all-punctuation stems should be rejected");
+    fn derive_save_key_rejects_paths_without_file_names() {
+        let error = derive_save_key(Path::new("/"))
+            .expect_err("paths without a file name should be rejected");
         assert!(matches!(
             error,
             DesktopConfigError::SaveKeyDerivationEmpty { .. }
@@ -977,7 +963,7 @@ mod tests {
         assert!(boot_error.to_string().contains("/tmp/missing-bootrom"));
         assert!(boot_error.source().is_some());
 
-        let save_key_error = CartridgeSaveKey::new("contains spaces".to_string())
+        let save_key_error = CartridgeSaveKey::new("bad/key".to_string())
             .expect_err("invalid save keys should fail validation");
         let save_error = DesktopConfigError::from(save_key_error);
         assert!(save_error.source().is_some());

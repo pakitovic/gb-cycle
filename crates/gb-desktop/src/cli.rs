@@ -270,7 +270,7 @@ pub fn help_text() -> &'static str {
         "  --boot-rom-dir <dir>                   Override the boot ROM directory root\n",
         "  --boot-rom-verify <off|warn|strict>    Control DMG boot ROM SHA-256 verification (default: strict)\n",
         "  --save-dir <dir>                       Override the battery-save directory\n",
-        "  --save-key <key>                       Override the derived save key (ASCII alnum, '_' or '-')\n",
+        "  --save-key <key>                       Override the derived save key (default: ROM stem)\n",
         "  --save-policy <manual|on-close|on-write|debounced>\n",
         "                                         Select battery-save flushing (default: debounced)\n",
         "  --no-saves                             Disable battery-save load/save\n",
@@ -1122,12 +1122,12 @@ mod tests {
         assert!(parse_positive_u64("--exit-after-frames", "wide").is_err());
 
         assert_eq!(
-            parse_save_key("SAVE_SLOT_1")
+            parse_save_key("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)")
                 .expect("valid cartridge save keys should parse")
                 .as_str(),
-            "SAVE_SLOT_1"
+            "Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)"
         );
-        assert!(parse_save_key("contains spaces").is_err());
+        assert!(parse_save_key("bad/key").is_err());
         assert_eq!(
             parse_audio_recording_stems("all"),
             Ok(ApuRecordedChannel::ALL.to_vec())
@@ -1243,7 +1243,7 @@ mod tests {
         assert!(parse_cli_arguments(["--startup", "warm-boot"]).is_err());
         assert!(parse_cli_arguments(["--mode", "fast"]).is_err());
         assert!(parse_cli_arguments(["--boot-rom-verify", "lenient"]).is_err());
-        assert!(parse_cli_arguments(["--save-key", "contains spaces"]).is_err());
+        assert!(parse_cli_arguments(["--save-key", "bad/key"]).is_err());
         assert!(parse_cli_arguments(["--save-policy", "later"]).is_err());
         assert!(parse_cli_arguments(["--scale", "0"]).is_err());
         assert!(parse_cli_arguments(["--audio-record-rate", "0"]).is_err());
