@@ -1,6 +1,6 @@
 use gb_core::{ExecutionMode, StartupMode};
 use gb_desktop::{
-    AudioOptions, DesktopConfig, DesktopSaveFlushPolicy, GamepadButtonBindings,
+    AudioOptions, DesktopConfig, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBindings,
     GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode, HotkeyBindings, InputOptions,
     JoypadKeyboardBindings, MenuKeyboardBindings, PreferredGamepadIdentity, SaveDirectoryPolicy,
     VideoOptions,
@@ -383,7 +383,7 @@ impl PersistedDesktopSettings {
                 path.display()
             )
         })?;
-        let settings = toml::from_str::<Self>(&text).map_err(|error| {
+        let mut settings = toml::from_str::<Self>(&text).map_err(|error| {
             format!(
                 "failed to parse desktop settings {}: {error}",
                 path.display()
@@ -398,7 +398,14 @@ impl PersistedDesktopSettings {
             ));
         }
 
+        settings.migrate_defaults();
         Ok(settings)
+    }
+
+    fn migrate_defaults(&mut self) {
+        if self.input.keyboard.hotkeys.reset == DesktopKey::R {
+            self.input.keyboard.hotkeys.reset = DesktopKey::F1;
+        }
     }
 
     fn save(&self, path: &Path) -> Result<(), String> {
@@ -1491,6 +1498,20 @@ mod tests {
             reloaded.last_open_directory,
             Some(PathBuf::from("/tmp/roms"))
         );
+    }
+
+    #[test]
+    fn loading_settings_migrates_the_old_reset_hotkey_default() {
+        let path = unique_test_path("migrate-reset-hotkey");
+        let mut settings = PersistedDesktopSettings::default();
+        settings.input.keyboard.hotkeys.reset = DesktopKey::R;
+        settings
+            .save(&path)
+            .expect("old reset hotkey settings should save");
+
+        let reloaded =
+            PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
+        assert_eq!(reloaded.input.keyboard.hotkeys.reset, DesktopKey::F1);
     }
 
     fn unique_test_path(label: &str) -> PathBuf {

@@ -95,6 +95,10 @@ Keep these concerns distinct:
   printer protocol state, `DMG-04` cable routing, `DMG-07` adapter state, and
   future multi-machine session scheduling belong outside the local serial
   controller even if they ultimately drive this boundary.
+- A future `DMG-07` adapter should reach serial only as externally supplied
+  slave-clock pulses and staged incoming bits. Ping packets, status tracking,
+  transmission buffering, and adapter-port identity belong to the link
+  topology, not to `SB` / `SC` logic.
 - The peer boundary should support at least:
   - disconnected state
   - loopback or echo-style testing
@@ -191,6 +195,11 @@ Keep these concerns distinct:
   future linked multi-console scheduler outside the serial subsystem; those
   owners should drive the narrow serial-endpoint boundary instead of being
   folded into `SB` / `SC` logic.
+- When the `DMG-07` adapter lands, the serial subsystem should still treat it
+  like any other external-clock endpoint: the adapter owns protocol phase,
+  packet layout, and clock cadence, while serial only shifts on pulses that
+  cross the scheduler ingress boundary while the console is armed in slave
+  mode.
 - In the current Phase `4` `DMG-04` baseline, the `link` session owns passive
   cable routing and shared-clock propagation, while each console's
   `external_port` attachment owns the per-console staged incoming-byte view that

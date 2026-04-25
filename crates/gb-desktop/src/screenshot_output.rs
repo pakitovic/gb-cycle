@@ -13,45 +13,36 @@ pub(crate) struct RenderedScreenshot {
 }
 
 pub(crate) fn render_screenshot(
-    primary: crate::FramebufferPanelInput<'_>,
-    secondary: Option<crate::FramebufferPanelInput<'_>>,
+    framebuffer: crate::FramebufferRenderInput<'_>,
     video_options: &crate::VideoOptions,
 ) -> RenderedScreenshot {
-    let width = if secondary.is_some() {
-        crate::FRAMEBUFFER_WIDTH * 2
-    } else {
-        crate::FRAMEBUFFER_WIDTH
-    };
-    let dimensions = crate::FramebufferDimensions {
-        width,
-        height: crate::FRAMEBUFFER_HEIGHT,
-    };
+    let dimensions = framebuffer.dimensions;
     let mut rgb_pixels = vec![
         0_u8;
-        crate::FRAMEBUFFER_HEIGHT as usize
+        dimensions.height as usize
             * crate::framebuffer_pitch_bytes_for_dimensions(dimensions)
     ];
 
-    crate::write_monochrome_framebuffer_region(
-        &mut rgb_pixels,
-        dimensions,
-        0,
-        primary,
-        video_options,
-    );
-    if let Some(secondary_panel) = secondary {
+    let columns = (dimensions.width / crate::FRAMEBUFFER_WIDTH).max(1) as usize;
+    for (panel_index, panel) in framebuffer.panels.into_iter().enumerate() {
+        let Some(panel) = panel else {
+            continue;
+        };
+        let column = panel_index % columns;
+        let row = panel_index / columns;
         crate::write_monochrome_framebuffer_region(
             &mut rgb_pixels,
             dimensions,
-            crate::FRAMEBUFFER_WIDTH as usize,
-            secondary_panel,
+            column * crate::FRAMEBUFFER_WIDTH as usize,
+            row * crate::FRAMEBUFFER_HEIGHT as usize,
+            panel,
             video_options,
         );
     }
 
     RenderedScreenshot {
-        width,
-        height: crate::FRAMEBUFFER_HEIGHT,
+        width: dimensions.width,
+        height: dimensions.height,
         rgb_pixels,
     }
 }
@@ -166,6 +157,25 @@ mod tests {
         root
     }
 
+    fn render_input(
+        dimensions: crate::FramebufferDimensions,
+        panels: [Option<crate::FramebufferPanelInput<'_>>; crate::PLAYER_SLOT_COUNT],
+    ) -> crate::FramebufferRenderInput<'_> {
+        crate::FramebufferRenderInput { dimensions, panels }
+    }
+
+    fn single_panel_input(
+        panel: crate::FramebufferPanelInput<'_>,
+    ) -> crate::FramebufferRenderInput<'_> {
+        render_input(
+            crate::FramebufferDimensions {
+                width: crate::FRAMEBUFFER_WIDTH,
+                height: crate::FRAMEBUFFER_HEIGHT,
+            },
+            [Some(panel), None, None, None],
+        )
+    }
+
     #[test]
     fn render_screenshot_uses_same_dmg_grayscale_ramp_as_desktop_presentation() {
         let mut primary =
@@ -174,14 +184,13 @@ mod tests {
         primary[..4].copy_from_slice(&[0, 1, 2, 3]);
 
         let rendered = render_screenshot(
-            crate::FramebufferPanelInput {
+            single_panel_input(crate::FramebufferPanelInput {
                 framebuffer: &primary,
                 framebuffer_layer_sources: &primary_sources,
                 bgwin_framebuffer: &primary,
                 backdrop_framebuffer: &primary,
                 bgwin_framebuffer_layer_sources: &primary_sources,
-            },
-            None,
+            }),
             &crate::VideoOptions::default(),
         );
 
@@ -201,20 +210,30 @@ mod tests {
         let secondary_sources = vec![PpuFramebufferLayerSource::Background; secondary.len()];
 
         let rendered = render_screenshot(
-            crate::FramebufferPanelInput {
-                framebuffer: &primary,
-                framebuffer_layer_sources: &primary_sources,
-                bgwin_framebuffer: &primary,
-                backdrop_framebuffer: &primary,
-                bgwin_framebuffer_layer_sources: &primary_sources,
-            },
-            Some(crate::FramebufferPanelInput {
-                framebuffer: &secondary,
-                framebuffer_layer_sources: &secondary_sources,
-                bgwin_framebuffer: &secondary,
-                backdrop_framebuffer: &secondary,
-                bgwin_framebuffer_layer_sources: &secondary_sources,
-            }),
+            render_input(
+                crate::FramebufferDimensions {
+                    width: crate::FRAMEBUFFER_WIDTH * 2,
+                    height: crate::FRAMEBUFFER_HEIGHT,
+                },
+                [
+                    Some(crate::FramebufferPanelInput {
+                        framebuffer: &primary,
+                        framebuffer_layer_sources: &primary_sources,
+                        bgwin_framebuffer: &primary,
+                        backdrop_framebuffer: &primary,
+                        bgwin_framebuffer_layer_sources: &primary_sources,
+                    }),
+                    Some(crate::FramebufferPanelInput {
+                        framebuffer: &secondary,
+                        framebuffer_layer_sources: &secondary_sources,
+                        bgwin_framebuffer: &secondary,
+                        backdrop_framebuffer: &secondary,
+                        bgwin_framebuffer_layer_sources: &secondary_sources,
+                    }),
+                    None,
+                    None,
+                ],
+            ),
             &crate::VideoOptions::default(),
         );
         let pitch = rendered.width as usize * 3;
@@ -370,14 +389,13 @@ mod tests {
         };
 
         let rendered = render_screenshot(
-            crate::FramebufferPanelInput {
+            single_panel_input(crate::FramebufferPanelInput {
                 framebuffer: &primary,
                 framebuffer_layer_sources: &primary_sources,
                 bgwin_framebuffer: &primary_bgwin,
                 backdrop_framebuffer: &primary_bgwin,
                 bgwin_framebuffer_layer_sources: &primary_bgwin_sources,
-            },
-            None,
+            }),
             &video_options,
         );
 
@@ -402,14 +420,13 @@ mod tests {
         primary_sources[1] = PpuFramebufferLayerSource::Object;
 
         let rendered = render_screenshot(
-            crate::FramebufferPanelInput {
+            single_panel_input(crate::FramebufferPanelInput {
                 framebuffer: &primary,
                 framebuffer_layer_sources: &primary_sources,
                 bgwin_framebuffer: &primary_bgwin,
                 backdrop_framebuffer: &primary_backdrop,
                 bgwin_framebuffer_layer_sources: &primary_bgwin_sources,
-            },
-            None,
+            }),
             &video_options,
         );
 

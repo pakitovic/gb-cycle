@@ -58,6 +58,11 @@ evidence or a clearer architectural need overrides them later.
    coordination.**
    The hard problem is not windowing; it is advancing multiple consoles on one
    shared T-cycle timeline with the repo's scheduler phase rules intact.
+7. **`DMG-07` is not the 2-player `DMG-04` path with more ports.**
+   Even when only two consoles participate, the 4-Player Adapter remains an
+   active adapter protocol with adapter-owned clocks, ping/status packets, and
+   port-indexed transmission slots. Normal two-player cable games should keep
+   using `DMG-04` unless the game explicitly speaks the adapter protocol.
 
 ## Phase 0 glossary
 
@@ -768,6 +773,45 @@ previous `core_other` remainder split into external-event ingress, timer, APU,
 DMA, serial, and interrupt buckets, so later optimizations can target a
 specific linked-session cost center instead of a single opaque aggregate.
 
+### Phase 7.6.d status
+
+Re-running the reproducible release benchmark after the later `main` PPU
+refactors keeps the Phase `7.6` decision evidence-based:
+
+- test ROM: `Tetris (W) (V1.1) [!].gb`
+- command shape: `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`,
+  `--mute --no-gamepad --no-vsync --exit-after-frames 360`, release build
+- profiler sampling: `GB_CYCLE_DESKTOP_EMU_PROFILE=summary:30`, first summary
+  discarded as warm-up
+
+Measured averages:
+
+| Session | FPS | Speed | Frame ms | Emu ms | Core estimate | PPU | CPU | Other core | Host |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| single | 59.66 | 100% | 16.75 | 13.63 | 13.60 | 8.59 | 1.14 | 3.87 | 0.03 |
+| `DMG-04` 2P | 29.73 | 49.8% | 33.63 | 33.25 | 33.22 | 20.87 | 2.84 | 9.50 | 0.03 |
+
+The no-profiler wall-clock check with the same dummy drivers and frame count
+matched the profiler result closely:
+
+- single: `360` frames in `6.13s` (`~58.7 FPS`)
+- `DMG-04` 2P: `360` frames in `12.04s` (`~29.9 FPS`)
+
+Decision:
+
+- Phase `7.6.a` through `7.6.c` did remove the obvious linked-session and
+  desktop bookkeeping overhead without changing timing semantics.
+- Phase `7.6.d` confirms the remaining linked desktop gap is not host
+  presentation, event polling, audio submit, or `DMG-04` routing overhead.
+  The two-console run is still dominated by duplicated core work, especially
+  PPU time, with `core_other` now split enough to guide later non-PPU work.
+- Do not expand user-facing multiplayer UX on performance grounds alone until
+  the dedicated PPU optimization branch is re-measured and brings the linked
+  path closer to realtime.
+- Phase `8` may still proceed as an internal desktop architecture refactor
+  if needed, but it should not be treated as solving the linked-play
+  performance problem.
+
 ### Crates / files
 
 - `crates/gb-desktop/src/main.rs`
@@ -813,9 +857,37 @@ future `SGB` / `SGB2` work can reuse the same host-side player model.
 - A player slot is not automatically the same thing as a `Machine`
 - Different session types may map slots to visible outputs differently later
 
+### Phase 8 status
+
+The first desktop player-slot layer is host-side only and deliberately leaves
+the `gb-core` linked-machine model untouched:
+
+- `gb-desktop` now has stable `P1..P4` slot identities.
+- Session policy maps a single-console session to active `P1` only.
+- Local `DMG-04` maps machine index `0` to `P1` and machine index `1` to `P2`;
+  `P3` and `P4` remain reserved for later `DMG-07` / host multiplayer work.
+- Keyboard profiles are selected by player slot:
+  - `P1` uses the existing configurable joypad keyboard bindings.
+  - `P2` uses the explicit local `DMG-04` `P2` keyboard profile.
+- Audio and view defaults are also expressed as frontend player policy:
+  - `P1` is the default audible source.
+  - `P2` is visible in the right-hand panel for local `DMG-04` but muted by
+    default.
+  - inactive slots are hidden and muted.
+
+This is not a performance change and does not add `DMG-07`; it removes the
+previous ad hoc two-console desktop wiring so Phase `9` and Phase `10`
+can attach more players without reopening core serial ownership.
+
+Follow-up audit note: remaining `primary` / `secondary` wording is reserved for
+ROM loading, save sessions, and `DMG-04` linked-session hardware ownership.
+Frontend input, audio, and view/layout policy should use player-slot names or
+left/right panel names instead.
+
 ### Crates / files
 
 - `crates/gb-desktop/src/input.rs`
+- `crates/gb-desktop/src/player_slots.rs`
 - desktop settings/config
 - session-layer frontend code
 
@@ -836,26 +908,99 @@ future `SGB` / `SGB2` work can reuse the same host-side player model.
 Implement the real `DMG-07` 4-Player Adapter only after the printer and
 two-console `DMG-04` stack are stable.
 
+### Hardware-shaped contract
+
+Phase `9` should start from the adapter model in `hardware/LINK.md`:
+
+- `DMG-07` is an active adapter topology, not a passive extension of
+  `DMG-04`.
+- The adapter owns its serial clocks and drives connected consoles through the
+  external-clock boundary.
+- Physical adapter ports are stable identities. Port `P4` remains `P4` even if
+  `P2` and `P3` are absent or not responding.
+- A powered session keeps the `P1` adapter cable explicit. Connection-status
+  bits are protocol-observed participation, not merely the existence of a
+  `Machine` value.
+- The implementation must model ping phase, transmission phase, transition
+  indicators, one-packet-delayed transmission buffering, and ping restart as
+  adapter state.
+- Ping acknowledgements, transmission `RATE`, and transmission `SIZE` are
+  software-provided bytes observed during ping replies. The first two reply
+  bytes establish protocol participation; the later two configure transmission
+  behavior.
+- For Phase `9`, prefer the current Pan Docs timing model when it differs from
+  older reverse-engineering notes, but keep those older notes as compatibility
+  clues for real-game behavior such as shortened transition sequences.
+
 ### Core outcomes
 
-- Add explicit `DMG-07` attachment/session behavior
-- Support 2-, 3-, and 4-console participation
-- Keep `DMG-07` distinct from the passive `DMG-04` cable model
+- Add explicit `DMG-07` attachment/session behavior separate from
+  `DMG-04`.
+- Support 2-, 3-, and 4-console participation through physical adapter ports,
+  with non-contiguous effective occupancy treated as normal behavior.
+- Add adapter-owned clock scheduling on the shared T-cycle timeline.
+- Keep adapter-port identity separate from frontend `PlayerSlot` policy.
+- Keep `DMG-07` distinct from the passive `DMG-04` cable model even for
+  two-console sessions.
 
 ### `gb-test-runner` outcomes
 
-- Extend linked manifests to 2/3/4 linked participants
-- Add deterministic adapter-focused tests and retained traces
+- Extend linked manifests with `topology = "dmg07"` and explicit participant
+  port assignment.
+- Validate adapter-port invariants before executing a session:
+  - 2 to 4 physical participants for this phase,
+  - no duplicate adapter ports,
+  - a powered session includes port `P1`,
+  - sparse optional ports are allowed.
+- Add deterministic adapter-focused tests and retained traces for ping,
+  transmission, sparse occupancy, and restart behavior.
 
 ### Design guidance
 
 - The adapter is active hardware and should remain architecturally separate
   from a plain cable
 - Sparse occupancy must be treated as a first-class case, not a corner case
+- Do not expose desktop input, audio, view, or mute policy from `gb-core`.
+- Do not reuse the `DMG-04` exchange path as a fallback when a `DMG-07`
+  participant uses the wrong clock mode.
+- Prefer protocol-shaped oracles over large whole-session fixtures when the
+  contract can be asserted directly.
+
+### Suggested implementation slices
+
+1. **Phase 9.1 — adapter contract and type boundary**
+   - Add the adapter-port vocabulary to core / runner APIs.
+   - Add manifest parsing and validation for `topology = "dmg07"` without
+     routing bytes yet if that keeps the first patch reviewable.
+   - Add docs and tests that prove `DMG-07` is not accepted as a `DMG-04`
+     substitute.
+2. **Phase 9.2 — ping phase**
+   - Implement adapter-owned external clocks for armed slave-mode transfers.
+   - Emit ping packets and update status bits from observed replies.
+   - Cover mid-packet status updates when acknowledgement replies arrive before
+     later status bytes.
+   - Cover fixed adapter-port IDs and sparse participation.
+3. **Phase 9.3 — transmission phase**
+   - Implement the begin-transmission sequence and indicator packet.
+   - Implement `SIZE * 4` packet layout and one-packet-delayed port buffers.
+   - Zero-fill missing/non-participating ports without renumbering.
+   - Ignore filler bytes outside a port's `SIZE` input window.
+4. **Phase 9.4 — ping restart and edge cases**
+   - Implement the restart sequence and ping indicator packet.
+   - Cover wrong clock mode, unarmed participants, detach/reset, and startup
+     snapshot behavior.
+   - Add compatibility coverage for observed shortened transition / restart
+     sequences only if tests make the accepted threshold explicit.
+5. **Phase 9.5 — runner artifacts and closure**
+   - Add retained traces / fixtures for representative 2-, 3-, and 4-console
+     sessions.
+   - Confirm repeated runs of the same manifest produce the same outputs.
 
 ### Crates / files
 
-- `gb-core` adapter/session modules
+- `gb-core` adapter/session modules, likely following the existing
+  `link.rs + link/` layout
+- `gb-core` external-port attachment taxonomy and snapshots
 - `gb-test-runner` multi-participant manifests and execution path
 
 ### Validation gate
@@ -863,6 +1008,34 @@ two-console `DMG-04` stack are stable.
 - unit tests for adapter-specific behavior
 - integration tests for 2/3/4 attached consoles
 - retained traces for adapter-state transitions where timing matters
+- manifest validation tests for port assignment and sparse occupancy
+- deterministic rerun tests for retained `DMG-07` fixtures
+
+### Non-goals
+
+- No desktop `4 PLAYER ADAPTER` UX until Phase `10`.
+- No host-level input/audio/view policy inside `gb-core`.
+- No `SGB` / `SGB2` multiplayer wrapper in this phase.
+- No compatibility alias where ordinary `DMG-04` two-player games silently run
+  through `DMG-07`.
+
+### Phase 9 status
+
+The core and runner now include the first real `DMG-07` path:
+
+- `gb-core` exposes physical `Dmg07Port::{P1, P2, P3, P4}` identities and
+  session-level `Dmg07Participant` mappings.
+- `LinkedMachines::attach_dmg07_adapter()` validates 2- to 4-participant
+  adapter sessions, requires `P1`, rejects duplicate ports / machine indexes,
+  and allows sparse physical occupancy such as `P1 + P4`.
+- `ExternalPortAttachmentKind::FourPlayerAdapterDmg07` records per-console
+  adapter-port identity and a transient incoming byte.
+- `link/dmg07.rs` models adapter-owned external clocks, ping acknowledgements,
+  status bytes, `RATE` / `SIZE`, transition to transmission, one-packet-delay
+  transmission buffers, missing-port zero fill, and ping restart.
+- `gb-test-runner` accepts `topology = "dmg07"` with per-participant
+  `adapter_port` fields and includes synthetic `DMG-07` fixtures plus a built-in
+  smoke manifest.
 
 ### Done criteria
 
@@ -905,6 +1078,30 @@ path are already validated.
 
 - `gb-desktop` can run real local `DMG-07` sessions with 2 to 4 players on top
   of the already-validated core and harness behavior.
+
+### Phase 10 status
+
+The desktop frontend now exposes local `DMG-07` sessions as a frontend-owned
+UX layer on top of the Phase `9` core/runner adapter model:
+
+- `EXT. PORT -> 4P ADAPTER` opens a count submenu with `2 PLAYERS`,
+  `3 PLAYERS`, and `4 PLAYERS`.
+- Selecting a count rebuilds a fresh synchronized `LinkedMachines` runtime from
+  the currently loaded `P1` ROM bytes, mapping contiguous player slots to
+  physical adapter ports from `P1` through the selected final port.
+- `GAME LINK` remains the explicit `DMG-04` second-ROM flow; the `4P ADAPTER`
+  path does not open additional ROM dialogs.
+- `P1` keeps the configurable keyboard/gamepad profile, `P2` keeps the fixed
+  linked-player profile, and Phase `10` adds fixed `P3`/`P4` keyboard profiles.
+  Gamepad and audible audio remain `P1`-only by default.
+- Rendering uses player-slot layouts: single `160x144`, 2P `320x144`, and
+  3P/4P `320x288` with an empty black fourth panel for 3P.
+- Saves are indexed by player slot: `P1` keeps the normal derived save key,
+  while `P2`/`P3`/`P4` use `_dmg07_p2`, `_dmg07_p3`, and `_dmg07_p4` key
+  suffixes so cloned-ROM slots still model separate physical cartridges.
+- Reset and machine-setting changes preserve the active `DMG-07` topology and
+  player count by rebuilding all slots from frame zero. `NONE`, `PRINTER`, and
+  opening a new primary ROM tear the session back down to single `P1`.
 
 ## Cross-phase rules
 

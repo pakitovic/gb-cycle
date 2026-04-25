@@ -359,7 +359,7 @@ impl MachinePhaseRunner<'_> {
             observe_machine_step_region(observer, MachineStepRegion::Serial, || {
                 self.external_port.tick_t_cycle();
                 self.serial.tick_t_cycle(context);
-                if let Some(output_byte) = self.serial.take_latest_completed_output_byte() {
+                if let Some(output_byte) = self.serial.latest_completed_output_byte() {
                     self.external_port.handle_completed_serial_byte(output_byte);
                 }
                 self.serial.set_peer(self.external_port.serial_peer());

@@ -3,7 +3,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-use gb_core::{ConsoleModel, ExecutionMode, StartupMode};
+use gb_core::{ConsoleModel, Dmg07Port, ExecutionMode, StartupMode};
 
 use crate::{ExternalStimulus, ExternalStimulusPlan, TestSubsystem, Timeout};
 
@@ -56,20 +56,24 @@ impl std::error::Error for LinkedSessionSuiteManifestError {}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LinkedSessionTopology {
     Dmg04,
+    Dmg07,
 }
 
 impl LinkedSessionTopology {
     pub(crate) const DMG04_MANIFEST_NAME: &str = "dmg04";
+    pub(crate) const DMG07_MANIFEST_NAME: &str = "dmg07";
 
     pub(crate) fn manifest_name(self) -> &'static str {
         match self {
             Self::Dmg04 => Self::DMG04_MANIFEST_NAME,
+            Self::Dmg07 => Self::DMG07_MANIFEST_NAME,
         }
     }
 
     pub(crate) fn from_manifest_name(name: &str) -> Option<Self> {
         match name {
             Self::DMG04_MANIFEST_NAME => Some(Self::Dmg04),
+            Self::DMG07_MANIFEST_NAME => Some(Self::Dmg07),
             _ => None,
         }
     }
@@ -192,6 +196,7 @@ pub struct LinkedSessionParticipant {
     pub console_model: ConsoleModel,
     pub startup_mode: StartupMode,
     pub execution_mode: ExecutionMode,
+    pub adapter_port: Option<Dmg07Port>,
     pub external_stimuli: ExternalStimulusPlan,
 }
 
@@ -204,6 +209,7 @@ impl LinkedSessionParticipant {
             console_model: ConsoleModel::Dmg,
             startup_mode: StartupMode::SkipBoot,
             execution_mode: ExecutionMode::Strict,
+            adapter_port: None,
             external_stimuli: ExternalStimulusPlan::new(),
         }
     }
@@ -225,6 +231,11 @@ impl LinkedSessionParticipant {
 
     pub fn with_execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
         self.execution_mode = execution_mode;
+        self
+    }
+
+    pub fn with_adapter_port(mut self, adapter_port: Dmg07Port) -> Self {
+        self.adapter_port = Some(adapter_port);
         self
     }
 
@@ -251,6 +262,17 @@ pub enum LinkedSessionCaseValidationError {
         topology: LinkedSessionTopology,
         count: usize,
     },
+    MissingDmg07ParticipantPort {
+        participant_id: String,
+    },
+    UnexpectedDmg04ParticipantPort {
+        participant_id: String,
+        port: Dmg07Port,
+    },
+    DuplicateDmg07ParticipantPort {
+        port: Dmg07Port,
+    },
+    MissingDmg07PlayerOne,
     UnknownPassConditionParticipant(String),
     DuplicateParticipantId(String),
     InvalidParticipant {

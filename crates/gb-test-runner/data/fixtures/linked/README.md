@@ -9,8 +9,9 @@ two-console `DMG-04` exchange. These fixtures are intended to validate the
 linked-session harness and its participant-scoped oracles, not to stand in for
 commercial game workflows.
 
-`dmg04/README.md` records the exact synthetic ROM template and the byte program
-for each committed `.gb` fixture so the binaries remain auditable.
+`dmg04/README.md` and `dmg07/README.md` record the exact synthetic ROM template
+and byte program for each committed `.gb` fixture so the binaries remain
+auditable.
 
 The `stale-*.gb` ROM pair exercises the `DMG-04` stale-byte reuse contract:
 the left participant performs two master-clocked transfers without rewriting
@@ -26,3 +27,8 @@ The `open-line-right.gb` ROM leaves the right participant idle while the left
 participant performs one internal-clock transfer. That fixture pair validates
 the current open-line baseline for a non-participating far end: the active
 master still completes and receives `0xFF`.
+
+The `dmg07/` set contains four external-clock slave ROMs for the 4-Player
+Adapter. They acknowledge ping, request transmission through P1, place payload
+only in the `SIZE` input window, and request a restart with the documented
+`0xFF` marker sequence.

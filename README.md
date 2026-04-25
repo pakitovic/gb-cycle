@@ -14,6 +14,7 @@ A hardware-accuracy-focused Game Boy emulator written in Rust.
 | Timer / interrupts | Falling-edge timer model with delayed `TIMA` reload/request timing, centralized `IF` / `IE` ownership, and scheduler-visible IRQ aggregation. |
 | APU | Shared-timeline four-channel DMG audio core with `DIV-APU` / frame-sequencer timing, channel quirks, HPF, and host-facing sample export. |
 | Joypad / serial | Hardware-owned `JOYP`, `SB`, and `SC` semantics with visible-edge interrupts, bit-shift transfers, and explicit link-endpoint boundaries. |
+| Game Link | `DMG-04` cable supports `2` players; `DMG-07` 4-Player Adapter supports `2`/`3`/`4` players. |
 | Cartridges | Header-driven mapper model with `NoMBC`, `MBC1`, `MBC2`, `MBC3`, `MBC5`, RTC support, and separate host persistence. |
 | Boot / startup | Real boot-ROM handoff plus model-aware `SkipBoot` state synthesis that keeps first post-boot timer, PPU, and APU behavior coherent. |
 | Validation | Current curated DMG external report is `167/167` entries (`165` passing, `2` informational) plus focused unit and integration coverage. |

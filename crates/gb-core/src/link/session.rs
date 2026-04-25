@@ -1,4 +1,5 @@
 use super::dmg04::Dmg04Cable;
+use super::dmg07::{Dmg07Adapter, Dmg07Participant, Dmg07Port, validate_dmg07_participants};
 use crate::debugger::{TraceBuffer, TraceSink};
 use crate::external_port::ExternalPortAttachmentKind;
 use crate::machine::{Machine, MachineStepObserver, NoopMachineStepObserver};
@@ -32,6 +33,20 @@ pub enum LinkedMachinesError {
     UnsupportedMachineCountForDmg04 {
         count: usize,
     },
+    UnsupportedMachineCountForDmg07 {
+        count: usize,
+    },
+    MissingDmg07PlayerOne,
+    DuplicateDmg07Port {
+        port: Dmg07Port,
+    },
+    DuplicateDmg07MachineIndex {
+        machine_index: usize,
+    },
+    Dmg07MachineIndexOutOfBounds {
+        machine_index: usize,
+        machine_count: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -39,13 +54,15 @@ pub enum LinkedTopologyKind {
     #[default]
     None,
     Dmg04,
+    Dmg07,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 enum LinkTopology {
     #[default]
     None,
     Dmg04(Dmg04Cable),
+    Dmg07(Dmg07Adapter),
 }
 
 #[derive(Debug, Clone)]
@@ -140,10 +157,28 @@ impl<S: TraceSink> LinkedMachines<S> {
         Ok(())
     }
 
+    pub fn attach_dmg07_adapter(
+        &mut self,
+        participants: &[Dmg07Participant],
+    ) -> Result<(), LinkedMachinesError> {
+        validate_dmg07_participants(participants, self.machines.len())?;
+
+        self.detach_link_topology();
+
+        for participant in participants {
+            self.machines[participant.machine_index].set_dmg07_attachment(participant.port);
+            self.machines[participant.machine_index].set_dmg07_incoming_byte(None);
+        }
+
+        self.topology = LinkTopology::Dmg07(Dmg07Adapter::new(participants));
+        Ok(())
+    }
+
     pub fn detach_link_topology(&mut self) {
-        match self.topology {
+        match &self.topology {
             LinkTopology::None => {}
             LinkTopology::Dmg04(cable) => cable.detach(&mut self.machines),
+            LinkTopology::Dmg07(adapter) => adapter.detach(&mut self.machines),
         }
 
         self.topology = LinkTopology::None;
@@ -177,6 +212,8 @@ impl<S: TraceSink> LinkedMachines<S> {
             for (machine, context) in self.machines.iter_mut().zip(self.contexts.iter_mut()) {
                 machine.step_phase_with_context(context, observer);
             }
+
+            self.finish_phase(phase);
         }
 
         let next_t_cycle = t_cycle.next();
@@ -187,18 +224,40 @@ impl<S: TraceSink> LinkedMachines<S> {
     }
 
     fn prepare_phase(&mut self, phase: SchedulerPhase) {
-        match self.topology {
+        let t_cycle = self.scheduler.next_t_cycle();
+        match &mut self.topology {
             LinkTopology::None => {}
             LinkTopology::Dmg04(cable) => cable.prepare_phase(phase, &mut self.machines),
+            LinkTopology::Dmg07(adapter) => {
+                adapter.prepare_phase(phase, t_cycle, &mut self.machines);
+            }
+        }
+    }
+
+    fn finish_phase(&mut self, phase: SchedulerPhase) {
+        let t_cycle = self.scheduler.next_t_cycle();
+        match &mut self.topology {
+            LinkTopology::None | LinkTopology::Dmg04(_) => {}
+            LinkTopology::Dmg07(adapter) => {
+                adapter.finish_phase(phase, t_cycle, &mut self.machines);
+            }
+        }
+    }
+
+    pub fn topology_trace_text(&self) -> Option<String> {
+        match &self.topology {
+            LinkTopology::None | LinkTopology::Dmg04(_) => None,
+            LinkTopology::Dmg07(adapter) => adapter.trace_text(),
         }
     }
 }
 
 impl LinkTopology {
-    const fn kind(self) -> LinkedTopologyKind {
+    const fn kind(&self) -> LinkedTopologyKind {
         match self {
             Self::None => LinkedTopologyKind::None,
             Self::Dmg04(_) => LinkedTopologyKind::Dmg04,
+            Self::Dmg07(_) => LinkedTopologyKind::Dmg07,
         }
     }
 }
@@ -424,6 +483,139 @@ mod tests {
                 .machine(1)
                 .map(|machine| machine.external_port().attachment_kind()),
             Some(ExternalPortAttachmentKind::GameLinkDmg04)
+        );
+    }
+
+    #[test]
+    fn attach_dmg07_adapter_accepts_sparse_physical_ports() {
+        let mut linked =
+            LinkedMachines::new(vec![dmg_skip_boot_machine(), dmg_skip_boot_machine()])
+                .expect("matching machines should link");
+
+        linked
+            .attach_dmg07_adapter(&[
+                Dmg07Participant::new(0, Dmg07Port::P1),
+                Dmg07Participant::new(1, Dmg07Port::P4),
+            ])
+            .expect("sparse P1/P4 adapter occupancy should be valid");
+
+        assert_eq!(linked.topology_kind(), LinkedTopologyKind::Dmg07);
+        assert_eq!(
+            linked
+                .machine(0)
+                .map(|machine| machine.external_port().attachment_kind()),
+            Some(ExternalPortAttachmentKind::FourPlayerAdapterDmg07)
+        );
+        assert_eq!(
+            linked
+                .machine(0)
+                .and_then(|machine| machine.external_port().dmg07_port()),
+            Some(Dmg07Port::P1)
+        );
+        assert_eq!(
+            linked
+                .machine(1)
+                .and_then(|machine| machine.external_port().dmg07_port()),
+            Some(Dmg07Port::P4)
+        );
+    }
+
+    #[test]
+    fn attach_dmg07_adapter_requires_player_one() {
+        let mut linked =
+            LinkedMachines::new(vec![dmg_skip_boot_machine(), dmg_skip_boot_machine()])
+                .expect("matching machines should link");
+
+        let error = linked
+            .attach_dmg07_adapter(&[
+                Dmg07Participant::new(0, Dmg07Port::P2),
+                Dmg07Participant::new(1, Dmg07Port::P4),
+            ])
+            .expect_err("adapter should require P1");
+
+        assert_eq!(error, LinkedMachinesError::MissingDmg07PlayerOne);
+    }
+
+    #[test]
+    fn attach_dmg07_adapter_rejects_duplicate_ports_and_machine_indexes() {
+        let mut linked =
+            LinkedMachines::new(vec![dmg_skip_boot_machine(), dmg_skip_boot_machine()])
+                .expect("matching machines should link");
+
+        let duplicate_port = linked
+            .attach_dmg07_adapter(&[
+                Dmg07Participant::new(0, Dmg07Port::P1),
+                Dmg07Participant::new(1, Dmg07Port::P1),
+            ])
+            .expect_err("adapter should reject duplicate ports");
+        assert_eq!(
+            duplicate_port,
+            LinkedMachinesError::DuplicateDmg07Port {
+                port: Dmg07Port::P1
+            }
+        );
+
+        let duplicate_machine = linked
+            .attach_dmg07_adapter(&[
+                Dmg07Participant::new(0, Dmg07Port::P1),
+                Dmg07Participant::new(0, Dmg07Port::P2),
+            ])
+            .expect_err("adapter should reject duplicate machines");
+        assert_eq!(
+            duplicate_machine,
+            LinkedMachinesError::DuplicateDmg07MachineIndex { machine_index: 0 }
+        );
+    }
+
+    #[test]
+    fn attach_dmg07_adapter_rejects_out_of_bounds_machine_index() {
+        let mut linked =
+            LinkedMachines::new(vec![dmg_skip_boot_machine(), dmg_skip_boot_machine()])
+                .expect("matching machines should link");
+
+        let error = linked
+            .attach_dmg07_adapter(&[
+                Dmg07Participant::new(0, Dmg07Port::P1),
+                Dmg07Participant::new(2, Dmg07Port::P2),
+            ])
+            .expect_err("adapter should reject missing machines");
+
+        assert_eq!(
+            error,
+            LinkedMachinesError::Dmg07MachineIndexOutOfBounds {
+                machine_index: 2,
+                machine_count: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn detach_link_topology_clears_the_session_owned_dmg07_adapter() {
+        let mut linked =
+            LinkedMachines::new(vec![dmg_skip_boot_machine(), dmg_skip_boot_machine()])
+                .expect("matching machines should link");
+
+        linked
+            .attach_dmg07_adapter(&[
+                Dmg07Participant::new(0, Dmg07Port::P1),
+                Dmg07Participant::new(1, Dmg07Port::P4),
+            ])
+            .expect("adapter should attach");
+
+        linked.detach_link_topology();
+
+        assert_eq!(linked.topology_kind(), LinkedTopologyKind::None);
+        assert_eq!(
+            linked
+                .machine(0)
+                .map(|machine| machine.external_port().attachment_kind()),
+            Some(ExternalPortAttachmentKind::None)
+        );
+        assert_eq!(
+            linked
+                .machine(1)
+                .map(|machine| machine.external_port().attachment_kind()),
+            Some(ExternalPortAttachmentKind::None)
         );
     }
 }

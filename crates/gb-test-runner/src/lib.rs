@@ -893,6 +893,10 @@ const BUILT_IN_LINKED_SESSION_SUITE_MANIFESTS: &[(&str, &str)] = &[
         "linked-dmg04-contracts",
         "crates/gb-test-runner/data/linked-dmg04-contracts.toml",
     ),
+    (
+        "linked-dmg07-smoke",
+        "crates/gb-test-runner/data/linked-dmg07-smoke.toml",
+    ),
 ];
 
 pub fn built_in_linked_session_suite_catalog() -> Vec<(&'static str, PathBuf)> {

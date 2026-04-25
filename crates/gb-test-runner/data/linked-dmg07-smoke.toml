@@ -1,0 +1,20 @@
+version = 1
+suite_name = "linked-dmg07-smoke"
+family = "linked"
+subsystem = "serial"
+
+[[session]]
+id = "dmg07-sparse-p1-p4"
+topology = "dmg07"
+timeout_tcycles = 500000
+oracle = "info-linked-trace"
+
+  [[session.participant]]
+  id = "p1"
+  rom = "fixtures/linked/dmg07/p1-basic.gb"
+  adapter_port = "p1"
+
+  [[session.participant]]
+  id = "p4"
+  rom = "fixtures/linked/dmg07/p4-basic.gb"
+  adapter_port = "p4"

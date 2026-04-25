@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use gb_core::{ConsoleModel, ExecutionMode, JoypadButton, StartupMode};
+use gb_core::{ConsoleModel, Dmg07Port, ExecutionMode, JoypadButton, StartupMode};
 use serde::Deserialize;
 
 use super::model::{
@@ -92,6 +92,7 @@ struct LinkedSessionParticipantManifest {
     console: Option<String>,
     startup: Option<String>,
     mode: Option<String>,
+    adapter_port: Option<String>,
     #[serde(rename = "stimulus", default)]
     stimuli: Vec<LinkedSessionParticipantStimulus>,
 }
@@ -246,6 +247,11 @@ fn build_participant_from_manifest(
         built_participant = built_participant.with_external_rom_root_key(external_rom_root_key);
     }
 
+    if let Some(adapter_port) = participant.adapter_port {
+        built_participant = built_participant
+            .with_adapter_port(parse_adapter_port(&adapter_port, &participant_id)?);
+    }
+
     for stimulus in participant.stimuli {
         built_participant =
             built_participant.with_external_stimulus(parse_stimulus(stimulus, &participant_id)?);
@@ -257,6 +263,14 @@ fn build_participant_from_manifest(
 fn parse_topology(topology: &str, session_id: &str) -> Result<LinkedSessionTopology, String> {
     LinkedSessionTopology::from_manifest_name(topology).ok_or_else(|| {
         format!("linked session {session_id} uses unsupported topology {topology:?}")
+    })
+}
+
+fn parse_adapter_port(adapter_port: &str, participant_id: &str) -> Result<Dmg07Port, String> {
+    Dmg07Port::from_manifest_name(adapter_port).ok_or_else(|| {
+        format!(
+            "linked participant {participant_id} uses unsupported adapter_port {adapter_port:?}"
+        )
     })
 }
 

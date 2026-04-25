@@ -71,6 +71,7 @@ pub struct LinkedSessionParticipantArtifacts {
 pub struct LinkedSessionCapturedArtifacts {
     pub trace: Option<String>,
     pub snapshot_text: Option<String>,
+    pub topology_trace_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -325,6 +326,13 @@ impl RunnerLinkedMachines {
             participant_index,
             |machine| machine.snapshot().render_text(),
             |machine| machine.snapshot().render_text(),
+        )
+    }
+
+    fn topology_trace_text(&self) -> Option<String> {
+        self.with_linked(
+            |linked| linked.topology_trace_text(),
+            |linked| linked.topology_trace_text(),
         )
     }
 
