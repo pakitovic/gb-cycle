@@ -2537,14 +2537,17 @@ fn glyph_rows(character: char) -> [u8; GLYPH_HEIGHT] {
 #[cfg(test)]
 mod tests {
     use super::{
-        BOOT_ROM_MENU_ITEMS, CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget,
-        GamepadMenuBindingTarget, KeyboardBindingTarget, KeyboardMenuBindingTarget,
-        MENU_VISIBLE_ITEM_CAPACITY, MenuAction, MenuInput, MenuItem, MenuPresentation, MenuScreen,
-        OverlayMenuState, PerformanceHudSnapshot, RECENT_MENU_ITEMS, RECENT_ROM_MENU_CAPACITY,
-        ROOT_MENU_ITEMS, SAVE_MENU_ITEMS, ScrollIndicatorDirection, VIDEO_MENU_ITEMS,
-        desktop_key_label, gamepad_binding_label, normalized_selected_index, performance_hud_lines,
-        previous_enabled_index, render_performance_hud, rendered_recent_rom_item_label,
-        scroll_indicator_rows, viewport_start_index, visible_item_at, visible_item_count,
+        AUDIO_MENU_ITEMS, BOOT_ROM_MENU_ITEMS, CompactMenuLabel, CompactRecentRomLabel,
+        EXT_PORT_MENU_ITEMS, GAMEPAD_MENU_CONTROL_ITEMS, GAMEPAD_MENU_ITEMS, GamepadBindingTarget,
+        GamepadMenuBindingTarget, HOTKEYS_MENU_ITEMS, INPUT_MENU_ITEMS,
+        KEYBOARD_MENU_CONTROL_ITEMS, KEYBOARD_MENU_ITEMS, KeyboardBindingTarget,
+        KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction, MenuInput, MenuItem,
+        MenuPresentation, MenuScreen, OverlayMenuState, PerformanceHudSnapshot, RECENT_MENU_ITEMS,
+        RECENT_ROM_MENU_CAPACITY, ROOT_MENU_ITEMS, SAVE_MENU_ITEMS, SYSTEM_MENU_ITEMS,
+        ScrollIndicatorDirection, VIDEO_MENU_ITEMS, desktop_key_label, gamepad_binding_label,
+        normalized_selected_index, performance_hud_lines, previous_enabled_index,
+        render_performance_hud, rendered_recent_rom_item_label, scroll_indicator_rows,
+        viewport_start_index, visible_item_at, visible_item_count,
     };
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
@@ -3491,14 +3494,64 @@ mod tests {
         assert_eq!(VIDEO_MENU_ITEMS[6], MenuItem::Screenshot);
         assert_eq!(VIDEO_MENU_ITEMS[7], MenuItem::ShowBackground);
 
+        assert_eq!(AUDIO_MENU_ITEMS[0], MenuItem::ToggleMute);
+        assert_eq!(AUDIO_MENU_ITEMS[1], MenuItem::AudioVolume);
+        assert_eq!(AUDIO_MENU_ITEMS[2], MenuItem::AudioRecord);
+        assert_eq!(AUDIO_MENU_ITEMS[7], MenuItem::AudioDefaults);
+        assert_eq!(AUDIO_MENU_ITEMS[8], MenuItem::Return);
+
+        assert_eq!(INPUT_MENU_ITEMS[0], MenuItem::KeyboardMenu);
+        assert_eq!(INPUT_MENU_ITEMS[1], MenuItem::KeyboardMenuControls);
+        assert_eq!(INPUT_MENU_ITEMS[2], MenuItem::HotkeysMenu);
+        assert_eq!(INPUT_MENU_ITEMS[3], MenuItem::GamepadMenu);
+        assert_eq!(INPUT_MENU_ITEMS[4], MenuItem::GamepadMenuControls);
+        assert_eq!(INPUT_MENU_ITEMS[8], MenuItem::Return);
+
+        assert_eq!(EXT_PORT_MENU_ITEMS[0], MenuItem::ExternalPortNone);
+        assert_eq!(EXT_PORT_MENU_ITEMS[1], MenuItem::ExternalPortPrinter);
+        assert_eq!(EXT_PORT_MENU_ITEMS[2], MenuItem::ExternalPortGameLink);
+        assert_eq!(
+            EXT_PORT_MENU_ITEMS[3],
+            MenuItem::ExternalPortFourPlayerAdapter
+        );
+        assert_eq!(EXT_PORT_MENU_ITEMS[4], MenuItem::Return);
+
+        assert_eq!(KEYBOARD_MENU_ITEMS[0], MenuItem::KeyboardUp);
+        assert_eq!(KEYBOARD_MENU_ITEMS[8], MenuItem::Return);
+        assert_eq!(KEYBOARD_MENU_CONTROL_ITEMS[0], MenuItem::KeyboardMenuUp);
+        assert_eq!(KEYBOARD_MENU_CONTROL_ITEMS[4], MenuItem::Return);
+        assert_eq!(HOTKEYS_MENU_ITEMS[0], MenuItem::HotkeyPause);
+        assert_eq!(HOTKEYS_MENU_ITEMS[5], MenuItem::Return);
+        assert_eq!(GAMEPAD_MENU_ITEMS[0], MenuItem::GamepadActive);
+        assert_eq!(GAMEPAD_MENU_ITEMS[10], MenuItem::Return);
+        assert_eq!(GAMEPAD_MENU_CONTROL_ITEMS[0], MenuItem::GamepadMenuUp);
+        assert_eq!(GAMEPAD_MENU_CONTROL_ITEMS[4], MenuItem::Return);
+
+        assert_eq!(SYSTEM_MENU_ITEMS[0], MenuItem::ConsoleModel);
+        assert_eq!(SYSTEM_MENU_ITEMS[1], MenuItem::StartupMode);
+        assert_eq!(SYSTEM_MENU_ITEMS[2], MenuItem::ExecutionMode);
+        assert_eq!(SYSTEM_MENU_ITEMS[3], MenuItem::BootRomMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[4], MenuItem::SaveMenu);
+        assert_eq!(SYSTEM_MENU_ITEMS[5], MenuItem::Reset);
+        assert_eq!(SYSTEM_MENU_ITEMS[6], MenuItem::Return);
+        assert!(!SYSTEM_MENU_ITEMS.contains(&MenuItem::SaveBattery));
+
         assert_eq!(BOOT_ROM_MENU_ITEMS[0], MenuItem::BootRomDefaultPath);
         assert_eq!(BOOT_ROM_MENU_ITEMS[1], MenuItem::BootRomFilePath);
         assert_eq!(BOOT_ROM_MENU_ITEMS[2], MenuItem::BootRomDirectoryPath);
         assert_eq!(BOOT_ROM_MENU_ITEMS[3], MenuItem::BootRomVerify);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[4], MenuItem::Return);
+        assert!(!BOOT_ROM_MENU_ITEMS.contains(&MenuItem::ConsoleModel));
+        assert!(!BOOT_ROM_MENU_ITEMS.contains(&MenuItem::StartupMode));
 
         assert_eq!(SAVE_MENU_ITEMS[0], MenuItem::ExportSave);
         assert_eq!(SAVE_MENU_ITEMS[1], MenuItem::ImportSave);
         assert_eq!(SAVE_MENU_ITEMS[2], MenuItem::SaveBattery);
+        assert_eq!(SAVE_MENU_ITEMS[3], MenuItem::SavesEnabled);
+        assert_eq!(SAVE_MENU_ITEMS[4], MenuItem::SavePolicy);
+        assert_eq!(SAVE_MENU_ITEMS[5], MenuItem::SaveDefaultPath);
+        assert_eq!(SAVE_MENU_ITEMS[6], MenuItem::SaveDirectoryPath);
+        assert_eq!(SAVE_MENU_ITEMS[7], MenuItem::Return);
     }
 
     #[test]

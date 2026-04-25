@@ -839,6 +839,21 @@ mod tests {
                 "/tmp/xdg-config/gb-cycle/desktop-settings.toml"
             ))
         );
+        assert_eq!(
+            resolve_desktop_settings_path_from_locations(
+                None,
+                Some(PathBuf::from("/home/pakitovic").into_os_string()),
+                None,
+                None,
+            ),
+            Some(PathBuf::from(
+                "/home/pakitovic/.config/gb-cycle/desktop-settings.toml"
+            ))
+        );
+        assert_eq!(
+            resolve_desktop_settings_path_from_locations(None, None, None, None),
+            None
+        );
     }
 
     #[test]
