@@ -32,10 +32,12 @@ cargo run -p gb-cli -- saves import path/to/rom.gb path/to/in.sav --save-dir pat
 
 Both commands load the ROM first, then validate the save payload against the
 cartridge mapper and persistence profile instead of inferring compatibility from
-the filename. Use `--save-key <key>` when the internal `.gbsav` key differs
-from the ROM stem. By default the derived key preserves the ROM's exact filename
-stem, so `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb`
-maps to `Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav`.
+the filename. `saves import` reads the selected external path exactly as
+provided, so extensionless files are valid when the caller supplies one. Use
+`--save-key <key>` when the internal `.gbsav` key differs from the ROM stem. By
+default the derived key preserves the ROM's exact filename stem, so
+`Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gb` maps to
+`Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav`.
 
 ## Console models
 

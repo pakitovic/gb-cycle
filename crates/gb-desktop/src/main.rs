@@ -37,8 +37,9 @@ use gb_desktop::{
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
     ExternalSaveError, ExternalSaveExportFormat, FilesystemCartridgeSaveBackend,
-    SystemCartridgeSaveTimeSource, encode_external_cartridge_save, import_external_cartridge_save,
-    legacy_sanitized_save_key, uses_battery_backed_hardware_persistence,
+    FixedCartridgeSaveTimeSource, SystemCartridgeSaveTimeSource, encode_external_cartridge_save,
+    import_external_cartridge_save, legacy_sanitized_save_key,
+    uses_battery_backed_hardware_persistence,
 };
 use input::{
     FrontendInputState, GamepadManager, gamepad_button_binding_from_sdl_button,
@@ -6563,16 +6564,27 @@ fn external_save_default_file_name(session: &DesktopSession) -> String {
     format!("{stem}.{EXTERNAL_SAVE_FILE_EXTENSION}")
 }
 
-fn resolve_external_save_path(session: &DesktopSession, selected_path: PathBuf) -> PathBuf {
-    let mut path = if selected_path.is_absolute() {
+fn resolve_selected_external_save_path(
+    session: &DesktopSession,
+    selected_path: PathBuf,
+) -> PathBuf {
+    if selected_path.is_absolute() {
         selected_path
     } else {
         resolve_path(&session.current_dir, &selected_path)
-    };
+    }
+}
+
+fn resolve_external_save_export_path(session: &DesktopSession, selected_path: PathBuf) -> PathBuf {
+    let mut path = resolve_selected_external_save_path(session, selected_path);
     if path.extension().is_none() {
         path.set_extension(EXTERNAL_SAVE_FILE_EXTENSION);
     }
     path
+}
+
+fn resolve_external_save_import_path(session: &DesktopSession, selected_path: PathBuf) -> PathBuf {
+    resolve_selected_external_save_path(session, selected_path)
 }
 
 fn primary_save_root_and_key(
@@ -6605,7 +6617,7 @@ fn export_current_external_save(
         );
     }
 
-    let export_path = resolve_external_save_path(context.session, selected_path);
+    let export_path = resolve_external_save_export_path(context.session, selected_path);
     let current_unix_seconds = SystemCartridgeSaveTimeSource.now_unix_seconds();
     let external_bytes = encode_external_cartridge_save(
         metadata,
@@ -6640,7 +6652,7 @@ fn import_external_save_for_current_rom(
     selected_path: PathBuf,
     context: &mut FrontendActionContext<'_>,
 ) -> Result<PathBuf, String> {
-    let import_path = resolve_external_save_path(context.session, selected_path);
+    let import_path = resolve_external_save_import_path(context.session, selected_path);
     let (save_root, save_key) = primary_save_root_and_key(context.session)?.ok_or_else(|| {
         "save support is disabled or no current ROM save key could be resolved".to_string()
     })?;
@@ -6660,11 +6672,12 @@ fn import_external_save_for_current_rom(
         );
     }
 
+    let import_unix_seconds = SystemCartridgeSaveTimeSource.now_unix_seconds();
     let imported_state = import_external_cartridge_save(
         metadata,
         &cartridge.persistent_state(),
         &external_bytes,
-        SystemCartridgeSaveTimeSource.now_unix_seconds(),
+        import_unix_seconds,
     )
     .map_err(|error| format_external_save_error("import", error))?;
 
@@ -6686,7 +6699,10 @@ fn import_external_save_for_current_rom(
         return Err(error);
     }
 
-    let mut backend = FilesystemCartridgeSaveBackend::new(save_root);
+    let mut backend = FilesystemCartridgeSaveBackend::with_time_source(
+        save_root,
+        FixedCartridgeSaveTimeSource::new(import_unix_seconds),
+    );
     let save_path = backend.path_for_key(&save_key);
     let save_result = backend.save(&save_key, metadata, &imported_state);
     match save_result {
@@ -14439,7 +14455,7 @@ mod tests {
         let exported = fs::read(&exported_path).expect("exported external save should exist");
         assert_eq!(exported, vec![0x12; 8 * 1024]);
 
-        let import_path = harness.root.join("imports/current.sav");
+        let import_path = harness.root.join("imports/current");
         fs::create_dir_all(
             import_path
                 .parent()
@@ -14520,11 +14536,18 @@ mod tests {
             no_rom_harness.root.join("saves/import/save.sav")
         );
         assert_eq!(
-            super::resolve_external_save_path(
+            super::resolve_external_save_export_path(
                 &no_rom_harness.session,
                 PathBuf::from("relative/current")
             ),
             no_rom_harness.root.join("relative/current.sav")
+        );
+        assert_eq!(
+            super::resolve_external_save_import_path(
+                &no_rom_harness.session,
+                PathBuf::from("relative/current")
+            ),
+            no_rom_harness.root.join("relative/current")
         );
         assert!(
             super::primary_save_root_and_key(&no_rom_harness.session)

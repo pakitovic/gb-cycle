@@ -800,12 +800,14 @@ Priority order:
   explicit host-side conversion boundary in `gb-persistence`; it does not change
   the internal `.gbsav` envelope. Linear RAM-backed cartridges export/import
   raw bytes, `MBC3` RAM/RTC payloads use the common `48`-byte little-endian RTC
-  suffix with elapsed RTC time applied through the persistence time source, and
-  `MBC2` import accepts both SameBoy's `512`-byte one-byte-per-nibble layout and
-  mGBA's `256`-byte packed layout while export defaults to the mGBA packed
-  form. Mapper/profile combinations without a safe shared external mapping,
-  such as the current HuC3 state shape, must fail explicitly instead of silently
-  dropping state.
+  suffix with elapsed RTC time applied through the persistence time source. On
+  import, frontends/tools must reuse the same timestamp for the RTC conversion
+  and the resulting `.gbsav` envelope so the next load does not lose elapsed RTC
+  time at a host-clock second boundary. `MBC2` import accepts both SameBoy's
+  `512`-byte one-byte-per-nibble layout and mGBA's `256`-byte packed layout
+  while export defaults to the mGBA packed form. Mapper/profile combinations
+  without a safe shared external mapping, such as the current HuC3 state shape,
+  must fail explicitly instead of silently dropping state.
 - In the current baseline, the default host-side hardware-persistence helper is
   now battery-gated through validated cartridge capability metadata. Battery
   presence and the typed persistence profile decide whether the helper will

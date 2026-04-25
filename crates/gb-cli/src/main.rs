@@ -7,8 +7,9 @@ use gb_core::{
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveEnvelope, CartridgeSaveKey,
-    CartridgeSaveKeyError, EXTERNAL_SAVE_FILE_EXTENSION, ExternalSaveError,
-    FilesystemCartridgeSaveBackend, export_external_cartridge_save, import_external_cartridge_save,
+    CartridgeSaveKeyError, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
+    ExternalSaveError, FilesystemCartridgeSaveBackend, FixedCartridgeSaveTimeSource,
+    SystemCartridgeSaveTimeSource, export_external_cartridge_save, import_external_cartridge_save,
     legacy_sanitized_save_key, uses_battery_backed_hardware_persistence,
 };
 use sha2::{Digest, Sha256};
@@ -1093,12 +1094,16 @@ fn saves_import_command(
     let target_state = cartridge.persistent_state();
     let save_root = resolve_path(&current_dir, &options.save_dir);
     validate_directory_input("--save-dir", &save_root)?;
-    let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
+    let import_unix_seconds = SystemCartridgeSaveTimeSource.now_unix_seconds();
+    let mut backend = FilesystemCartridgeSaveBackend::with_time_source(
+        &save_root,
+        FixedCartridgeSaveTimeSource::new(import_unix_seconds),
+    );
     let imported_state = import_external_cartridge_save(
         metadata,
         &target_state,
         &external_bytes,
-        backend.current_unix_seconds(),
+        import_unix_seconds,
     )
     .map_err(format_external_save_error)?;
     cartridge

@@ -191,13 +191,15 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - For RTC-backed `MBC3` cartridges, the desktop loop also injects host wall-clock elapsed seconds into the live session, so clock-based games keep advancing while the ROM remains open instead of only catching up on the next save reload.
 - `SYSTEM -> SAVE -> EXPORT SAVE` writes the current primary/P1 cartridge
   persistence as a SameBoy/mGBA-compatible `.sav`. The native save dialog
-  defaults under `saves/export` next to the active ROM or configured save root.
-- `SYSTEM -> SAVE -> IMPORT SAVE` reads a SameBoy/mGBA-compatible `.sav`,
-  validates it against the current primary/P1 ROM, writes the matching internal
-  `.gbsav`, and then asks the user to reload or reset the game. V1 does not
-  hot-swap the live cartridge session; after a successful import the active
-  primary save session is disabled until reload so the running game cannot
-  overwrite the imported `.gbsav`.
+  defaults under `saves/export` next to the active ROM or configured save root;
+  if the chosen output path has no extension, the frontend appends `.sav`.
+- `SYSTEM -> SAVE -> IMPORT SAVE` reads the selected external save path as-is
+  (the dialog defaults to `.sav`, but extensionless files are valid), validates
+  it against the current primary/P1 ROM, writes the matching internal `.gbsav`,
+  and then asks the user to reload or reset the game. V1 does not hot-swap the
+  live cartridge session; after a successful import the active primary save
+  session is disabled until reload so the running game cannot overwrite the
+  imported `.gbsav`.
 - The external `.sav` compatibility boundary mirrors the CLI converter: linear
   cartridge RAM is raw bytes, `MBC3` RTC saves use the shared `48`-byte suffix,
   and `MBC2` import accepts SameBoy and mGBA layouts while export defaults to
