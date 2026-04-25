@@ -1142,13 +1142,13 @@ mod tests {
             .expect("gamepad rumble mode should persist");
         store
             .set_keyboard_joypad_bindings(JoypadKeyboardBindings {
-                a: DesktopKey::Space,
+                a: DesktopKey::LeftAlt,
                 ..JoypadKeyboardBindings::default()
             })
             .expect("keyboard joypad bindings should persist");
         store
             .set_keyboard_menu_bindings(MenuKeyboardBindings {
-                confirm: DesktopKey::X,
+                confirm: DesktopKey::Tab,
                 ..MenuKeyboardBindings::default()
             })
             .expect("keyboard menu bindings should persist");
@@ -1166,7 +1166,7 @@ mod tests {
             .expect("gamepad menu bindings should persist");
         store
             .set_keyboard_hotkey_bindings(HotkeyBindings {
-                pause: DesktopKey::X,
+                pause: DesktopKey::LeftGui,
                 ..HotkeyBindings::default()
             })
             .expect("keyboard hotkey bindings should persist");
@@ -1200,9 +1200,9 @@ mod tests {
                 path: Some("bluetooth:vendor=057e,product=2009".to_string()),
             }
         );
-        assert_eq!(reloaded.input.keyboard.joypad.a, DesktopKey::Space);
-        assert_eq!(reloaded.input.keyboard.menu.confirm, DesktopKey::X);
-        assert_eq!(reloaded.input.keyboard.hotkeys.pause, DesktopKey::X);
+        assert_eq!(reloaded.input.keyboard.joypad.a, DesktopKey::LeftAlt);
+        assert_eq!(reloaded.input.keyboard.menu.confirm, DesktopKey::Tab);
+        assert_eq!(reloaded.input.keyboard.hotkeys.pause, DesktopKey::LeftGui);
         assert_eq!(
             reloaded.last_open_directory,
             Some(PathBuf::from("/tmp/roms"))

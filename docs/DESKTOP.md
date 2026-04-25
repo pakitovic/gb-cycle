@@ -142,6 +142,7 @@ All rebinding takes immediate runtime effect:
 - `INPUT -> KEYBOARD` — in-window keyboard joypad rebinding.
 - `INPUT -> KB MENU` — dedicated host-side keyboard menu rebinding.
 - `INPUT -> HOTKEYS` — frontend hotkey rebinding.
+- Keyboard rebinding uses SDL3 physical scancodes when available so saved bindings stay stable across host layouts. Supported keyboard keys include the existing arrows, `Backspace`, `Enter`, `Space`, `R`, `X`, `Z`, function hotkeys, plus `Tab`, left/right `Shift`, left/right `Control`, left/right `Alt` (`Option` on macOS), and left/right GUI (`Command` on macOS, Windows/Super on Windows/Linux). `Fn` remains host/firmware-owned and is not treated as a reliable bindable key.
 - `INPUT -> GAMEPAD` — SDL gamepad rebinding.
 - `INPUT -> PAD MENU` — dedicated SDL gamepad menu rebinding.
 - `INPUT -> RUMBLE` — host rumble mode for the active SDL gamepad with `OFF`, `HIGH`, and `LOW` host-intensity options. This option is only enabled when the loaded cartridge exposes rumble support and the active gamepad reports SDL rumble capability; otherwise it remains visible but disabled.

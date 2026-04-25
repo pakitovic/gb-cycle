@@ -79,10 +79,10 @@ project is still bringing up later hardware blocks such as APU and save states.
 - `PPU`: repo gate present for the currently closed OAM-corruption slice. Current
   evidence: Phase `4` synthetic OAM-corruption ROMs, curated Blargg `oam_bug`
   singles `1..6,8`, a repo-gated `dmg-acid2` framebuffer oracle, and the
-  curated `acid/which.gb` informational DMG execution lane.
-  Remaining final-closure gaps: a green repo-gated `mealybug-tearoom` slice,
-  broader rendering/timing differential coverage, and the still-deferred
-  non-curated exploratory ROMs.
+  curated `acid/which.gb` informational DMG execution lane, plus the
+  workflow-managed `mealybug-tearoom-tests` framebuffer oracle slice.
+  Remaining final-closure gaps: broader rendering/timing differential coverage
+  and the still-deferred non-curated exploratory ROMs.
 - `Cartridge`: repo gate present for the currently closed mapper-oracle slice.
   Current evidence: unit and integration coverage for `NoMbc`, `Mbc1`, `Mbc2`,
   `Mbc3`, `Mbc5`, hardware-style persistence, the built-in
@@ -121,7 +121,13 @@ This checklist should move only when one of the following becomes true:
 - A ROM omitted from `GBEmulatorShootout` may still be useful for exploratory debugging, but it must stay out of the repo-managed built-in suites until the reason for including it anyway is documented explicitly.
 - Each ROM case should define a timeout, an explicit pass/fail rule, and retained failure artifacts such as serial output, framebuffer output, trace excerpts, and optional snapshots.
 - For the current curated Mooneye DMG acceptance slice, retain at least snapshot plus serial artifacts on failure. Many cases still use the register-signature oracle for pass/fail, but keeping serial alongside the snapshot shortens diagnosis when a ROM emits a more specific failure reason before falling into the common Mooneye stop loop.
-- The exploratory `daid` DMG slice currently mixes ordinary framebuffer fixtures, one multi-fixture framebuffer oracle for `ppu_scanline_bgp.gb`, and one informational framebuffer capture for `rom_and_ram.gb`; keep that family out of the default repo-gated block until its expected green set is explicit. The informational `rom_and_ram.gb` case currently runs under `Permissive` because its `NoMbc` header uses a legacy RAM-size declaration that the project treats as a warning outside `Strict`.
+- The workflow-managed `daid` DMG slice currently mixes ordinary framebuffer
+  fixtures, one multi-fixture framebuffer oracle for `ppu_scanline_bgp.gb`, and
+  one informational framebuffer capture for `rom_and_ram.gb`. The informational
+  `rom_and_ram.gb` case currently runs under `Permissive` because its `NoMbc`
+  header uses a legacy RAM-size declaration that the project treats as a warning
+  outside `Strict`; keep that status visible instead of counting it as a normal
+  strict-mode pass.
 - When a ROM needs deterministic host-side interaction, the typed case metadata should also carry the external stimulus schedule explicitly instead of burying that behavior in ad hoc test-only closures.
 - During early Phase `0`, `gb-test-runner` could begin as a contract-only crate, but it should already own typed ROM-case and suite metadata including console model, startup mode, execution mode, emulation-progress timeout, explicit pass/fail rule, external stimulus schedule when needed, requested captures, and retained failure-artifact policy.
 - In the current baseline, `gb-test-runner` is already an executable harness as well: it can load typed suites, run ROMs on the shared T-cycle machine, capture serial / framebuffer / snapshot artifacts, and preserve failure outputs without relying on a frontend.
@@ -221,14 +227,14 @@ This checklist should move only when one of the following becomes true:
   `dmg-acid2.gb` with one non-blocking informational framebuffer case
   `which.gb`, mirroring the `GBEmulatorShootout` classification rather than
   forcing a synthetic pass/fail oracle where upstream does not define one.
-- The current early PPU hardening lane also includes one non-gated exploratory
+- The current early PPU hardening lane also includes one workflow-managed
   framebuffer suite for `mealybug-tearoom-tests` under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`.
   This suite uses a curated DMG-only subset sourced from `GBEmulatorShootout`
-  and the same committed-PNG oracle contract as `dmg-acid2`, but it is
-  currently red under `Strict`. The local `make test-roms` aggregator still
-  runs it for visibility, but it remains outside the GitHub `test-roms`
-  workflow until the underlying PPU mismatches are corrected.
+  and the same committed-PNG oracle contract as `dmg-acid2`. It is exercised by
+  `make run-mealybug`, the local `make test-roms` aggregator, and the GitHub
+  `test-roms` workflow; if a future exploratory case in this family turns red,
+  demote or split that case before claiming the workflow-managed suite is green.
 - The current DMG framebuffer lane also includes one workflow-managed
   `hacktix` suite under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite hacktix-dmg-curated [--failure-artifact-root <dir>]`.
@@ -238,8 +244,7 @@ This checklist should move only when one of the following becomes true:
   other screenshot-based curated families. It is exercised by
   `make run-hacktix`, the local `make test-roms` aggregator, and the GitHub
   `test-roms` workflow.
-- The current exploratory DMG `mooneye` lane also includes one non-gated
-  suite under
+- The current DMG `mooneye` lane also includes one workflow-managed suite under
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`.
   This suite follows the active `GBEmulatorShootout`
   `testroms/mooneye.py` DMG list rather than inventing a local file list: it
@@ -255,11 +260,10 @@ This checklist should move only when one of the following becomes true:
   shipped by `GBEmulatorShootout`. Because the runner samples once per
   T-cycle, treat the immediate post-breakpoint `nop; jr -3` halt loop as the
   same terminal condition when those registers still match the documented
-  pass/fail signature. It is intentionally exploratory for now: the local
-  `make test-roms` aggregator runs it, but it stays outside the GitHub
-  `test-roms` workflow until its remaining `acceptance/ppu/*` failures are triaged and
-  the experimental `emulator-only/mbc1/multicart_rom_8Mb.gb` heuristic path is
-  either retired or promoted under a documented strict-mode contract.
+  pass/fail signature. It is exercised by `make run-mooneye`, the local
+  `make test-roms` aggregator, and the GitHub `test-roms` workflow; keep it
+  documented as broad hardening evidence rather than as a substitute for later
+  differential, replay, or save/load determinism closure.
 - The current early `9.3` MVP also includes one imported-oracle end-of-test
   differential path under
   `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`.
@@ -333,14 +337,12 @@ This checklist should move only when one of the following becomes true:
 - The GitHub `ci` workflow is intentionally limited to formatting, linting, tests, typos, dependency policy, and the coverage gate. Keep external ROM execution out of that workflow.
 - In that workflow, prefer one instrumented workspace `cargo llvm-cov --workspace --no-report` run plus per-crate `cargo llvm-cov report -p <crate> --fail-under-*` gates instead of a separate `cargo test --workspace` pass followed by coverage; the workspace tests should be paid for once.
 - Repo-owned binary integration tests should resolve sibling executables from the active Cargo target directory rather than assuming only `target/debug` or runtime `CARGO_BIN_EXE_*` exports; coverage runs may build those binaries under an alternate root such as `target/llvm-cov-target/debug`.
-- The GitHub `test-roms` workflow currently runs the workflow-managed non-CGB
-  DMG suites sourced from `GBEmulatorShootout`: the curated Acid framebuffer
-  oracle family, the full Blargg DMG family (`cpu_instrs 01..11`, `halt_bug`,
-  `instr_timing`, `mem_timing 01..03`, `mem_timing-2 01..03`, `oam_bug 1..6,8`,
-  and `dmg_sound 01..12`), plus the curated `hacktix` and `cpp` suites.
-- The local `make test-roms` aggregator intentionally runs a broader set than
-  the GitHub workflow today by also including the current exploratory `daid`,
-  `mealybug-tearoom-tests`, and `mooneye` families.
+- The GitHub `test-roms` workflow currently runs the same workflow-managed
+  non-CGB DMG families as the local `make test-roms` aggregator: `acid`, the
+  full Blargg DMG family (`cpu_instrs 01..11`, `halt_bug`, `instr_timing`,
+  `mem_timing 01..03`, `mem_timing-2 01..03`, `oam_bug 1..6,8`, and
+  `dmg_sound 01..12`), `daid`, `hacktix`, `cpp`, `mooneye`, and
+  `mealybug-tearoom-tests`.
 - Keep multi-ROM bundles, CGB-only suites, and still-red exploratory ROMs out
   of the default external-ROM workflow until they are green and intentionally
   promoted.
@@ -348,9 +350,16 @@ This checklist should move only when one of the following becomes true:
   immediately: wire a dedicated `cargo llvm-cov report -p <crate>
   --fail-under-*` alias into `.cargo/config.toml`, add that alias to the
   `coverage-check` target in `Makefile` so `make ci` exercises it, and default
-  the new crate to `90/90/90` for lines/regions/functions whenever that is
-  practical for the initial landing.
-- For the current infrastructure-heavy stage, keep the repo-owned coverage gate per crate rather than aggregated across crates. The current temporary floors are `gb-core` at `96.00/95.95/98.43`, `gb-test-runner` at `84.22/84.63/78.87`, `gb-persistence` at `96.66/91.93/94.68`, `gb-cli` at `92.52/90.01/92.30`, and `gb-desktop` at `93.97/93.42/95.05` for lines/regions/functions respectively; do not satisfy those thresholds with hollow tests that only exercise trivial getters or app placeholders.
+  the new crate to at least `90+/90+/90+` for lines/regions/functions.
+- For the current infrastructure-heavy stage, keep the repo-owned coverage gate
+  per crate rather than aggregated across crates. The project requires at least
+  `90+/90+/90+` line/region/function coverage for every repo-gated crate, but
+  the authoritative per-crate thresholds are the `cargo cov-check-*` aliases in
+  `.cargo/config.toml`; do not duplicate the concrete percentages in docs.
+  Existing configured thresholds must never be reduced from their current
+  `.cargo/config.toml` values. Raise them when coverage improves, and do not
+  satisfy the gate with hollow tests that only exercise trivial getters or app
+  placeholders.
 - When immediate automated coverage is temporarily impractical, record the missing test coverage, the reason it is deferred, and the remaining risk in the change report; add a roadmap TODO as well if the gap is concrete and non-trivial.
 - ROM-based validation and oracle comparison complement automated tests; they do not replace the expectation that new code should usually leave behind unit or integration coverage.
 
@@ -556,11 +565,17 @@ When a change affects observable timing or ordering:
 - The regular CI path should always run critical unit tests, critical short integration tests, a stable subset of external ROMs, and save/load determinism coverage under `Strict`.
 - Coverage thresholds enforced with `cargo-llvm-cov --fail-under-*` must be checked per repo-gated crate, not as one aggregated multi-crate report, so a strong crate cannot hide a weaker one behind a shared total.
 - New workspace crates should join that per-crate gate in the same change that
-  introduces them unless a documented blocker exists; if the crate cannot meet
-  the intended `90/90/90` floor yet, record the temporary lower floor
-  explicitly in this file and in `docs/ROADMAP.md` rather than leaving the crate
-  outside `make ci`.
-- For the current repo-owned coverage gate, prefer one clean instrumented workspace run with `cargo llvm-cov --workspace --no-report`, then evaluate the gated crates separately with `cargo llvm-cov report -p <crate> --fail-under-*` so the signal stays per-crate without paying for repeated test execution. This keeps `make ci` from re-running the same tests once via `cargo test` and again via coverage while still enforcing floors for the full current workspace surface. The current temporary per-crate floors are `gb-core` `96.00/95.95/98.43`, `gb-test-runner` `84.22/84.63/78.87`, `gb-persistence` `96.66/91.93/94.68`, `gb-cli` `92.52/90.01/92.30`, and `gb-desktop` `57.14/60.32/61.22` for lines/regions/functions.
+  introduces them, with at least the project-wide `90+/90+/90+`
+  line/region/function floor.
+- For the current repo-owned coverage gate, prefer one clean instrumented
+  workspace run with `cargo llvm-cov --workspace --no-report`, then evaluate the
+  gated crates separately with `cargo llvm-cov report -p <crate>
+  --fail-under-*` so the signal stays per-crate without paying for repeated test
+  execution. This keeps `make ci` from re-running the same tests once via
+  `cargo test` and again via coverage while still enforcing floors for the full
+  current workspace surface. `.cargo/config.toml` is the single primary source
+  for the concrete `--fail-under-*` values, and those configured values must
+  never decrease from their current setting.
 - Experimental suites may exist in nightly or manual jobs, but they must publish artifacts separately and must not gate or dilute the official strict-mode closure signal.
 - Longer differential runs, soak tests, and broader external ROM inventories may live in nightly or manual suites, but they must remain documented and runnable.
 - When external ROMs are part of CI, the workflow should fetch them through the same repo-managed manifest-driven path used locally instead of embedding one-off download logic per job.

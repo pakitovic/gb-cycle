@@ -21,17 +21,17 @@ from this phase before APU work. The current early deliverables are:
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite acid-dmg-curated`,
   sourced from `GBEmulatorShootout` and now part of the supported external DMG
   block used by `make test-roms` and the GitHub `test-roms` workflow
-- one exploratory PPU framebuffer-oracle suite,
+- one workflow-managed PPU framebuffer-oracle suite,
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mealybug-tearoom-dmg-curated [--failure-artifact-root <dir>]`,
   which uses a curated DMG subset from `GBEmulatorShootout` and the same
-  committed-PNG oracle contract as `dmg-acid2`, but is currently red under
-  `Strict` and therefore remains outside the supported external DMG block
-- one exploratory DMG acceptance suite,
+  committed-PNG oracle contract as `dmg-acid2`
+- one workflow-managed DMG acceptance suite,
   `cargo run -p gb-test-runner --bin run_rom_suite -- --suite mooneye-acceptance-dmg-curated [--failure-artifact-root <dir>]`,
   which follows the active `GBEmulatorShootout` `testroms/mooneye.py`
   acceptance list, uses the upstream `mooneye` breakpoint/register result
-  protocol instead of framebuffer fixtures, and currently stays outside the
-  supported external DMG block while its failures are triaged one by one
+  protocol instead of framebuffer fixtures, and provides broad hardening
+  evidence without replacing later differential, replay, or save/load
+  determinism closure
 - one narrow differential end-of-test path,
   `cargo run -p gb-test-runner --bin run_differential -- --oracle sameboy [--oracle-layout <case-bundle|sameboy-tester>] [--oracle-artifact-root <dir>] --suite <suite-name>`,
   which compares the built-in suite's required-capture artifact against an
@@ -105,7 +105,9 @@ Close the DMG core with a formal validation matrix, strong differential and dete
 - deterministic replay and save/load determinism are green under `Strict`, with execution-mode metadata recorded in the relevant artifacts
 - no severe open correctness bugs remain in `NoMbc`, `Mbc1`, `Mbc2`, `Mbc3`, or `Mbc5`
 - the project has an explicit DMG closure checklist instead of relying on a general compatibility impression
-- Temporary repo-owned coverage-gate relaxation: as of April 2, 2026, the gate now runs one shared `cargo llvm-cov --workspace --no-report` sweep, then enforces per-crate floors of `gb-core` `96.00/95.95/98.43`, `gb-test-runner` `84.22/84.63/78.87`, `gb-persistence` `96.66/91.93/94.68`, `gb-cli` `92.52/90.01/92.30`, and `gb-desktop` `93.97/93.42/95.05` for lines/regions/functions. That keeps `make ci` on one workspace test pass while the coverage thresholds remain crate-specific. Follow-up work should continue raising the remaining relaxed crates toward the intended `90%` baseline and remove the relaxation once that coverage lands across the workspace.
+- the repo-owned coverage gate follows `docs/TESTING.md`; this roadmap must not
+  duplicate concrete per-crate percentages. The single primary source for the
+  active `--fail-under-*` thresholds is `.cargo/config.toml`.
 
 #### Risks if omitted or overly simplified
 
