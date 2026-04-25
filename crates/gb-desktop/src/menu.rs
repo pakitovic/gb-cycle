@@ -2053,6 +2053,7 @@ fn desktop_key_label(key: DesktopKey) -> &'static str {
         DesktopKey::ArrowDown => "DOWN",
         DesktopKey::ArrowLeft => "LEFT",
         DesktopKey::ArrowRight => "RIGHT",
+        DesktopKey::Tab => "TAB",
         DesktopKey::Backspace => "BACK",
         DesktopKey::Return => "ENTER",
         DesktopKey::Space => "SPACE",
@@ -2062,6 +2063,66 @@ fn desktop_key_label(key: DesktopKey) -> &'static str {
         DesktopKey::F5 => "F5",
         DesktopKey::F10 => "F10",
         DesktopKey::F11 => "F11",
+        DesktopKey::LeftShift => "L SHIFT",
+        DesktopKey::RightShift => "R SHIFT",
+        DesktopKey::LeftControl => "L CTRL",
+        DesktopKey::RightControl => "R CTRL",
+        DesktopKey::LeftAlt => left_alt_key_label(),
+        DesktopKey::RightAlt => right_alt_key_label(),
+        DesktopKey::LeftGui => left_gui_key_label(),
+        DesktopKey::RightGui => right_gui_key_label(),
+    }
+}
+
+fn left_alt_key_label() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "L OPT"
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "L ALT"
+    }
+}
+
+fn right_alt_key_label() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "R OPT"
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "R ALT"
+    }
+}
+
+fn left_gui_key_label() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "L CMD"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "L WIN"
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        "L SUPER"
+    }
+}
+
+fn right_gui_key_label() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "R CMD"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "R WIN"
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        "R SUPER"
     }
 }
 
@@ -2445,7 +2506,7 @@ mod tests {
         KeyboardBindingTarget, KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction,
         MenuInput, MenuItem, MenuPresentation, MenuScreen, OverlayMenuState,
         PerformanceHudSnapshot, RECENT_MENU_ITEMS, RECENT_ROM_MENU_CAPACITY, ROOT_MENU_ITEMS,
-        ScrollIndicatorDirection, VIDEO_MENU_ITEMS, gamepad_binding_label,
+        ScrollIndicatorDirection, VIDEO_MENU_ITEMS, desktop_key_label, gamepad_binding_label,
         normalized_selected_index, performance_hud_lines, previous_enabled_index,
         render_performance_hud, rendered_recent_rom_item_label, scroll_indicator_rows,
         viewport_start_index, visible_item_at,
@@ -3403,6 +3464,32 @@ mod tests {
             gamepad_binding_label(GamepadButtonBinding::RightShoulder),
             "R1"
         );
+        assert_eq!(desktop_key_label(DesktopKey::Tab), "TAB");
+        assert_eq!(desktop_key_label(DesktopKey::LeftShift), "L SHIFT");
+        assert_eq!(desktop_key_label(DesktopKey::RightShift), "R SHIFT");
+        assert_eq!(desktop_key_label(DesktopKey::LeftControl), "L CTRL");
+        assert_eq!(desktop_key_label(DesktopKey::RightControl), "R CTRL");
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(desktop_key_label(DesktopKey::LeftAlt), "L OPT");
+            assert_eq!(desktop_key_label(DesktopKey::RightAlt), "R OPT");
+            assert_eq!(desktop_key_label(DesktopKey::LeftGui), "L CMD");
+            assert_eq!(desktop_key_label(DesktopKey::RightGui), "R CMD");
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(desktop_key_label(DesktopKey::LeftAlt), "L ALT");
+            assert_eq!(desktop_key_label(DesktopKey::RightAlt), "R ALT");
+            assert_eq!(desktop_key_label(DesktopKey::LeftGui), "L WIN");
+            assert_eq!(desktop_key_label(DesktopKey::RightGui), "R WIN");
+        }
+        #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+        {
+            assert_eq!(desktop_key_label(DesktopKey::LeftAlt), "L ALT");
+            assert_eq!(desktop_key_label(DesktopKey::RightAlt), "R ALT");
+            assert_eq!(desktop_key_label(DesktopKey::LeftGui), "L SUPER");
+            assert_eq!(desktop_key_label(DesktopKey::RightGui), "R SUPER");
+        }
         assert_eq!(
             previous_enabled_index(MenuScreen::Root, 0, test_presentation()),
             7

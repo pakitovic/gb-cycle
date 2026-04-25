@@ -620,6 +620,7 @@ pub enum DesktopKey {
     ArrowDown,
     ArrowLeft,
     ArrowRight,
+    Tab,
     Backspace,
     Return,
     Space,
@@ -629,6 +630,22 @@ pub enum DesktopKey {
     F5,
     F10,
     F11,
+    LeftShift,
+    RightShift,
+    LeftControl,
+    RightControl,
+    #[serde(alias = "left-option")]
+    LeftAlt,
+    #[serde(alias = "right-option")]
+    RightAlt,
+    #[serde(alias = "left-command", alias = "left-super", alias = "left-windows")]
+    LeftGui,
+    #[serde(
+        alias = "right-command",
+        alias = "right-super",
+        alias = "right-windows"
+    )]
+    RightGui,
 }
 
 fn derive_save_key(rom_path: &Path) -> Result<CartridgeSaveKey, DesktopConfigError> {
@@ -775,6 +792,34 @@ mod tests {
         assert_eq!(keyboard.hotkeys.toggle_fullscreen, DesktopKey::F11);
         assert_eq!(keyboard.hotkeys.toggle_performance_hud, DesktopKey::F10);
         assert_eq!(keyboard.hotkeys.save_battery, DesktopKey::F5);
+    }
+
+    #[test]
+    fn desktop_key_deserialization_accepts_platform_aliases() {
+        #[derive(serde::Deserialize)]
+        struct KeyWrapper {
+            key: DesktopKey,
+        }
+
+        let cases = [
+            ("left-alt", DesktopKey::LeftAlt),
+            ("left-option", DesktopKey::LeftAlt),
+            ("right-option", DesktopKey::RightAlt),
+            ("left-gui", DesktopKey::LeftGui),
+            ("left-command", DesktopKey::LeftGui),
+            ("right-command", DesktopKey::RightGui),
+            ("left-super", DesktopKey::LeftGui),
+            ("right-windows", DesktopKey::RightGui),
+            ("left-shift", DesktopKey::LeftShift),
+            ("right-control", DesktopKey::RightControl),
+            ("tab", DesktopKey::Tab),
+        ];
+
+        for (serialized, expected) in cases {
+            let decoded: KeyWrapper = toml::from_str(&format!("key = \"{serialized}\""))
+                .expect("desktop key alias should deserialize");
+            assert_eq!(decoded.key, expected);
+        }
     }
 
     #[test]

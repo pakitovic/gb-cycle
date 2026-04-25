@@ -5125,23 +5125,25 @@ fn process_events(
             match &event {
                 Event::Quit { .. } => return Ok(LoopSignal::Quit),
                 Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
+                    keycode,
+                    scancode,
                     repeat: false,
                     ..
-                } => {
+                } if key_event_matches(DesktopKey::Escape, *keycode, *scancode) => {
                     runtime.menu_state.cancel_binding_capture();
                     continue;
                 }
                 Event::KeyDown {
-                    keycode: Some(keycode),
+                    keycode,
+                    scancode,
                     repeat: false,
                     ..
                 } => {
                     if let Some(target) = runtime.menu_state.pending_keyboard_binding_target() {
-                        if let Some(key) =
-                            assignable_key_for_binding_target_from_keycode(*keycode, target)
-                            && let Some(action) =
-                                runtime.menu_state.handle_keyboard_binding_capture(key)
+                        if let Some(key) = assignable_key_for_binding_target_from_key_event(
+                            *keycode, *scancode, target,
+                        ) && let Some(action) =
+                            runtime.menu_state.handle_keyboard_binding_capture(key)
                         {
                             let mut context = FrontendActionContext {
                                 session,
@@ -5155,8 +5157,9 @@ fn process_events(
                         }
                     } else if let Some(target) =
                         runtime.menu_state.pending_keyboard_menu_binding_target()
-                        && let Some(key) =
-                            assignable_menu_key_for_binding_target_from_keycode(*keycode, target)
+                        && let Some(key) = assignable_menu_key_for_binding_target_from_key_event(
+                            *keycode, *scancode, target,
+                        )
                         && let Some(action) =
                             runtime.menu_state.handle_keyboard_binding_capture(key)
                     {
@@ -5204,10 +5207,13 @@ fn process_events(
         match &event {
             Event::Quit { .. } => return Ok(LoopSignal::Quit),
             Event::KeyDown {
-                keycode: Some(Keycode::Escape),
+                keycode,
+                scancode,
                 repeat: false,
                 ..
-            } if !runtime.menu_state.is_open() => {
+            } if !runtime.menu_state.is_open()
+                && key_event_matches(DesktopKey::Escape, *keycode, *scancode) =>
+            {
                 toggle_menu(event_pump, canvas.window(), session, machine, runtime)?;
                 continue;
             }
@@ -5247,10 +5253,11 @@ fn process_events(
                 current_menu_presentation(canvas.window(), runtime, machine, session);
             let menu_action = match &event {
                 Event::KeyDown {
-                    keycode: Some(keycode),
+                    keycode,
+                    scancode,
                     repeat: false,
                     ..
-                } => menu_input_for_key(runtime.keyboard_bindings.menu, *keycode)
+                } => menu_input_for_key_event(runtime.keyboard_bindings.menu, *keycode, *scancode)
                     .and_then(|input| runtime.menu_state.handle_input(input, presentation)),
                 Event::ControllerButtonDown { which, button, .. }
                     if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
@@ -5287,13 +5294,14 @@ fn process_events(
 
         match event {
             Event::KeyDown {
-                keycode: Some(keycode),
+                keycode,
                 scancode,
                 repeat,
                 ..
             } => {
                 if !repeat {
-                    match hotkey_action(&runtime.keyboard_bindings, keycode) {
+                    match hotkey_action_for_key_event(&runtime.keyboard_bindings, keycode, scancode)
+                    {
                         HotkeyAction::None => {}
                         HotkeyAction::ManualSave => {
                             flush_runtime_save_sessions_if_changed(
@@ -5328,13 +5336,14 @@ fn process_events(
                         }
                     }
 
-                    if key_matches(runtime.keyboard_bindings.hotkeys.pause, keycode) {
+                    if key_event_matches(runtime.keyboard_bindings.hotkeys.pause, keycode, scancode)
+                    {
                         runtime.paused = !runtime.paused;
                         sync_audio_playback_state(machine, runtime)?;
                     }
                 }
                 if let Some(button) =
-                    joypad_button_for_key(runtime.keyboard_bindings.joypad, keycode)
+                    joypad_button_for_key_event(runtime.keyboard_bindings.joypad, keycode, scancode)
                 {
                     runtime.input_state.set_keyboard_button(
                         machine.primary_machine_mut(),
@@ -5354,7 +5363,7 @@ fn process_events(
                 }
             }
             Event::KeyUp {
-                keycode: Some(keycode),
+                keycode,
                 scancode,
                 repeat,
                 ..
@@ -5363,7 +5372,7 @@ fn process_events(
                     continue;
                 }
                 if let Some(button) =
-                    joypad_button_for_key(runtime.keyboard_bindings.joypad, keycode)
+                    joypad_button_for_key_event(runtime.keyboard_bindings.joypad, keycode, scancode)
                 {
                     runtime.input_state.set_keyboard_button(
                         machine.primary_machine_mut(),
@@ -7957,6 +7966,7 @@ fn desktop_key_scancode(binding: DesktopKey) -> Scancode {
         DesktopKey::ArrowDown => Scancode::Down,
         DesktopKey::ArrowLeft => Scancode::Left,
         DesktopKey::ArrowRight => Scancode::Right,
+        DesktopKey::Tab => Scancode::Tab,
         DesktopKey::Backspace => Scancode::Backspace,
         DesktopKey::Return => Scancode::Return,
         DesktopKey::Space => Scancode::Space,
@@ -7966,6 +7976,14 @@ fn desktop_key_scancode(binding: DesktopKey) -> Scancode {
         DesktopKey::F5 => Scancode::F5,
         DesktopKey::F10 => Scancode::F10,
         DesktopKey::F11 => Scancode::F11,
+        DesktopKey::LeftShift => Scancode::LShift,
+        DesktopKey::RightShift => Scancode::RShift,
+        DesktopKey::LeftControl => Scancode::LCtrl,
+        DesktopKey::RightControl => Scancode::RCtrl,
+        DesktopKey::LeftAlt => Scancode::LAlt,
+        DesktopKey::RightAlt => Scancode::RAlt,
+        DesktopKey::LeftGui => Scancode::LGui,
+        DesktopKey::RightGui => Scancode::RGui,
     }
 }
 
@@ -7973,18 +7991,27 @@ fn gamepad_event_joystick_id(which: u32) -> sdl3::joystick::JoystickId {
     sdl3::sys::joystick::SDL_JoystickID(which)
 }
 
+#[cfg(test)]
 fn menu_input_for_key(bindings: MenuKeyboardBindings, keycode: Keycode) -> Option<MenuInput> {
-    if keycode == Keycode::Escape {
+    menu_input_for_key_event(bindings, Some(keycode), None)
+}
+
+fn menu_input_for_key_event(
+    bindings: MenuKeyboardBindings,
+    keycode: Option<Keycode>,
+    scancode: Option<Scancode>,
+) -> Option<MenuInput> {
+    if key_event_matches(DesktopKey::Escape, keycode, scancode) {
         return Some(MenuInput::Cancel);
     }
 
-    if key_matches(bindings.up, keycode) {
+    if key_event_matches(bindings.up, keycode, scancode) {
         Some(MenuInput::Up)
-    } else if key_matches(bindings.down, keycode) {
+    } else if key_event_matches(bindings.down, keycode, scancode) {
         Some(MenuInput::Down)
-    } else if key_matches(bindings.confirm, keycode) {
+    } else if key_event_matches(bindings.confirm, keycode, scancode) {
         Some(MenuInput::Confirm)
-    } else if key_matches(bindings.cancel, keycode) {
+    } else if key_event_matches(bindings.cancel, keycode, scancode) {
         Some(MenuInput::Cancel)
     } else {
         None
@@ -8574,39 +8601,65 @@ fn diagnostic_severity_name(severity: CartridgeDiagnosticSeverity) -> &'static s
     }
 }
 
+#[cfg(test)]
 fn joypad_button_for_key(
     bindings: JoypadKeyboardBindings,
     keycode: Keycode,
 ) -> Option<JoypadButton> {
-    if key_matches(bindings.up, keycode) {
+    joypad_button_for_key_event(bindings, Some(keycode), None)
+}
+
+fn joypad_button_for_key_event(
+    bindings: JoypadKeyboardBindings,
+    keycode: Option<Keycode>,
+    scancode: Option<Scancode>,
+) -> Option<JoypadButton> {
+    if key_event_matches(bindings.up, keycode, scancode) {
         Some(JoypadButton::Up)
-    } else if key_matches(bindings.down, keycode) {
+    } else if key_event_matches(bindings.down, keycode, scancode) {
         Some(JoypadButton::Down)
-    } else if key_matches(bindings.left, keycode) {
+    } else if key_event_matches(bindings.left, keycode, scancode) {
         Some(JoypadButton::Left)
-    } else if key_matches(bindings.right, keycode) {
+    } else if key_event_matches(bindings.right, keycode, scancode) {
         Some(JoypadButton::Right)
-    } else if key_matches(bindings.a, keycode) {
+    } else if key_event_matches(bindings.a, keycode, scancode) {
         Some(JoypadButton::A)
-    } else if key_matches(bindings.b, keycode) {
+    } else if key_event_matches(bindings.b, keycode, scancode) {
         Some(JoypadButton::B)
-    } else if key_matches(bindings.select, keycode) {
+    } else if key_event_matches(bindings.select, keycode, scancode) {
         Some(JoypadButton::Select)
-    } else if key_matches(bindings.start, keycode) {
+    } else if key_event_matches(bindings.start, keycode, scancode) {
         Some(JoypadButton::Start)
     } else {
         None
     }
 }
 
+#[cfg(test)]
 fn hotkey_action(keyboard_bindings: &KeyboardBindings, keycode: Keycode) -> HotkeyAction {
-    if key_matches(keyboard_bindings.hotkeys.save_battery, keycode) {
+    hotkey_action_for_key_event(keyboard_bindings, Some(keycode), None)
+}
+
+fn hotkey_action_for_key_event(
+    keyboard_bindings: &KeyboardBindings,
+    keycode: Option<Keycode>,
+    scancode: Option<Scancode>,
+) -> HotkeyAction {
+    if key_event_matches(keyboard_bindings.hotkeys.save_battery, keycode, scancode) {
         HotkeyAction::ManualSave
-    } else if key_matches(keyboard_bindings.hotkeys.reset, keycode) {
+    } else if key_event_matches(keyboard_bindings.hotkeys.reset, keycode, scancode) {
         HotkeyAction::Reset
-    } else if key_matches(keyboard_bindings.hotkeys.toggle_fullscreen, keycode) {
+    } else if key_event_matches(
+        keyboard_bindings.hotkeys.toggle_fullscreen,
+        keycode,
+        scancode,
+    ) {
         HotkeyAction::ToggleFullscreen
-    } else if key_matches(keyboard_bindings.hotkeys.toggle_performance_hud, keycode) {
+    } else if key_event_matches(
+        keyboard_bindings.hotkeys.toggle_performance_hud,
+        keycode,
+        scancode,
+    ) {
         HotkeyAction::TogglePerformanceHud
     } else {
         HotkeyAction::None
@@ -8620,6 +8673,7 @@ fn desktop_key_from_keycode(keycode: Keycode) -> Option<DesktopKey> {
         Keycode::Down => Some(DesktopKey::ArrowDown),
         Keycode::Left => Some(DesktopKey::ArrowLeft),
         Keycode::Right => Some(DesktopKey::ArrowRight),
+        Keycode::Tab => Some(DesktopKey::Tab),
         Keycode::Backspace => Some(DesktopKey::Backspace),
         Keycode::Return => Some(DesktopKey::Return),
         Keycode::Space => Some(DesktopKey::Space),
@@ -8629,12 +8683,76 @@ fn desktop_key_from_keycode(keycode: Keycode) -> Option<DesktopKey> {
         Keycode::F5 => Some(DesktopKey::F5),
         Keycode::F10 => Some(DesktopKey::F10),
         Keycode::F11 => Some(DesktopKey::F11),
+        Keycode::LShift => Some(DesktopKey::LeftShift),
+        Keycode::RShift => Some(DesktopKey::RightShift),
+        Keycode::LCtrl => Some(DesktopKey::LeftControl),
+        Keycode::RCtrl => Some(DesktopKey::RightControl),
+        Keycode::LAlt => Some(DesktopKey::LeftAlt),
+        Keycode::RAlt => Some(DesktopKey::RightAlt),
+        Keycode::LGui => Some(DesktopKey::LeftGui),
+        Keycode::RGui => Some(DesktopKey::RightGui),
         _ => None,
     }
 }
 
+fn desktop_key_from_scancode(scancode: Scancode) -> Option<DesktopKey> {
+    match scancode {
+        Scancode::Escape => Some(DesktopKey::Escape),
+        Scancode::Up => Some(DesktopKey::ArrowUp),
+        Scancode::Down => Some(DesktopKey::ArrowDown),
+        Scancode::Left => Some(DesktopKey::ArrowLeft),
+        Scancode::Right => Some(DesktopKey::ArrowRight),
+        Scancode::Tab => Some(DesktopKey::Tab),
+        Scancode::Backspace => Some(DesktopKey::Backspace),
+        Scancode::Return => Some(DesktopKey::Return),
+        Scancode::Space => Some(DesktopKey::Space),
+        Scancode::R => Some(DesktopKey::R),
+        Scancode::X => Some(DesktopKey::X),
+        Scancode::Z => Some(DesktopKey::Z),
+        Scancode::F5 => Some(DesktopKey::F5),
+        Scancode::F10 => Some(DesktopKey::F10),
+        Scancode::F11 => Some(DesktopKey::F11),
+        Scancode::LShift => Some(DesktopKey::LeftShift),
+        Scancode::RShift => Some(DesktopKey::RightShift),
+        Scancode::LCtrl => Some(DesktopKey::LeftControl),
+        Scancode::RCtrl => Some(DesktopKey::RightControl),
+        Scancode::LAlt => Some(DesktopKey::LeftAlt),
+        Scancode::RAlt => Some(DesktopKey::RightAlt),
+        Scancode::LGui => Some(DesktopKey::LeftGui),
+        Scancode::RGui => Some(DesktopKey::RightGui),
+        _ => None,
+    }
+}
+
+fn desktop_key_from_key_event(
+    keycode: Option<Keycode>,
+    scancode: Option<Scancode>,
+) -> Option<DesktopKey> {
+    scancode
+        .and_then(desktop_key_from_scancode)
+        .or_else(|| keycode.and_then(desktop_key_from_keycode))
+}
+
+#[cfg(test)]
 fn assignable_key_for_binding_target_from_keycode(
     keycode: Keycode,
+    target: KeyboardBindingTarget,
+) -> Option<DesktopKey> {
+    let key = desktop_key_from_keycode(keycode)?;
+    assignable_key_for_binding_target(key, target)
+}
+
+fn assignable_key_for_binding_target_from_key_event(
+    keycode: Option<Keycode>,
+    scancode: Option<Scancode>,
+    target: KeyboardBindingTarget,
+) -> Option<DesktopKey> {
+    let key = desktop_key_from_key_event(keycode, scancode)?;
+    assignable_key_for_binding_target(key, target)
+}
+
+fn assignable_key_for_binding_target(
+    key: DesktopKey,
     target: KeyboardBindingTarget,
 ) -> Option<DesktopKey> {
     match target {
@@ -8642,22 +8760,7 @@ fn assignable_key_for_binding_target_from_keycode(
         | KeyboardBindingTarget::Reset
         | KeyboardBindingTarget::ToggleFullscreen
         | KeyboardBindingTarget::TogglePerformanceHud
-        | KeyboardBindingTarget::SaveBattery => match keycode {
-            Keycode::Up
-            | Keycode::Down
-            | Keycode::Left
-            | Keycode::Right
-            | Keycode::Backspace
-            | Keycode::Return
-            | Keycode::Space
-            | Keycode::R
-            | Keycode::X
-            | Keycode::Z
-            | Keycode::F5
-            | Keycode::F10
-            | Keycode::F11 => desktop_key_from_keycode(keycode),
-            _ => None,
-        },
+        | KeyboardBindingTarget::SaveBattery => is_hotkey_assignable_key(key).then_some(key),
         KeyboardBindingTarget::Up
         | KeyboardBindingTarget::Down
         | KeyboardBindingTarget::Left
@@ -8665,78 +8768,65 @@ fn assignable_key_for_binding_target_from_keycode(
         | KeyboardBindingTarget::A
         | KeyboardBindingTarget::B
         | KeyboardBindingTarget::Select
-        | KeyboardBindingTarget::Start => match keycode {
-            Keycode::Up
-            | Keycode::Down
-            | Keycode::Left
-            | Keycode::Right
-            | Keycode::Backspace
-            | Keycode::Return
-            | Keycode::Space
-            | Keycode::R
-            | Keycode::X
-            | Keycode::Z => desktop_key_from_keycode(keycode),
-            _ => None,
-        },
+        | KeyboardBindingTarget::Start => is_joypad_assignable_key(key).then_some(key),
     }
 }
 
+#[cfg(test)]
 fn assignable_menu_key_for_binding_target_from_keycode(
     keycode: Keycode,
     target: KeyboardMenuBindingTarget,
 ) -> Option<DesktopKey> {
+    let key = desktop_key_from_keycode(keycode)?;
+    assignable_menu_key_for_binding_target(key, target)
+}
+
+fn assignable_menu_key_for_binding_target_from_key_event(
+    keycode: Option<Keycode>,
+    scancode: Option<Scancode>,
+    target: KeyboardMenuBindingTarget,
+) -> Option<DesktopKey> {
+    let key = desktop_key_from_key_event(keycode, scancode)?;
+    assignable_menu_key_for_binding_target(key, target)
+}
+
+fn assignable_menu_key_for_binding_target(
+    key: DesktopKey,
+    target: KeyboardMenuBindingTarget,
+) -> Option<DesktopKey> {
     match target {
-        KeyboardMenuBindingTarget::Cancel => match keycode {
-            Keycode::Escape
-            | Keycode::Up
-            | Keycode::Down
-            | Keycode::Backspace
-            | Keycode::Return
-            | Keycode::Space
-            | Keycode::R
-            | Keycode::X
-            | Keycode::Z
-            | Keycode::F5
-            | Keycode::F10
-            | Keycode::F11 => desktop_key_from_keycode(keycode),
-            _ => None,
-        },
+        KeyboardMenuBindingTarget::Cancel => Some(key),
         KeyboardMenuBindingTarget::Up
         | KeyboardMenuBindingTarget::Down
-        | KeyboardMenuBindingTarget::Confirm => match keycode {
-            Keycode::Up
-            | Keycode::Down
-            | Keycode::Backspace
-            | Keycode::Return
-            | Keycode::Space
-            | Keycode::R
-            | Keycode::X
-            | Keycode::Z
-            | Keycode::F5
-            | Keycode::F10
-            | Keycode::F11 => desktop_key_from_keycode(keycode),
-            _ => None,
-        },
+        | KeyboardMenuBindingTarget::Confirm => (!matches!(key, DesktopKey::Escape)).then_some(key),
     }
 }
 
+fn is_joypad_assignable_key(key: DesktopKey) -> bool {
+    !matches!(
+        key,
+        DesktopKey::Escape | DesktopKey::F5 | DesktopKey::F10 | DesktopKey::F11
+    )
+}
+
+fn is_hotkey_assignable_key(key: DesktopKey) -> bool {
+    !matches!(key, DesktopKey::Escape)
+}
+
 fn key_matches(binding: DesktopKey, keycode: Keycode) -> bool {
-    match binding {
-        DesktopKey::Escape => keycode == Keycode::Escape,
-        DesktopKey::ArrowUp => keycode == Keycode::Up,
-        DesktopKey::ArrowDown => keycode == Keycode::Down,
-        DesktopKey::ArrowLeft => keycode == Keycode::Left,
-        DesktopKey::ArrowRight => keycode == Keycode::Right,
-        DesktopKey::Backspace => keycode == Keycode::Backspace,
-        DesktopKey::Return => keycode == Keycode::Return,
-        DesktopKey::Space => keycode == Keycode::Space,
-        DesktopKey::R => keycode == Keycode::R,
-        DesktopKey::X => keycode == Keycode::X,
-        DesktopKey::Z => keycode == Keycode::Z,
-        DesktopKey::F5 => keycode == Keycode::F5,
-        DesktopKey::F10 => keycode == Keycode::F10,
-        DesktopKey::F11 => keycode == Keycode::F11,
+    desktop_key_from_keycode(keycode) == Some(binding)
+}
+
+fn key_event_matches(
+    binding: DesktopKey,
+    keycode: Option<Keycode>,
+    scancode: Option<Scancode>,
+) -> bool {
+    if let Some(scancode_key) = scancode.and_then(desktop_key_from_scancode) {
+        return scancode_key == binding;
     }
+
+    keycode.is_some_and(|keycode| key_matches(binding, keycode))
 }
 
 fn startup_mode_name(startup_mode: StartupMode) -> &'static str {
@@ -8769,16 +8859,17 @@ mod tests {
         HostRtcSync, KeyboardBindingTarget, KeyboardMenuBindingTarget, PathDialogResult,
         PerformanceHudSnapshot, ROM_FILE_DIALOG_FILTERS, assign_gamepad_binding,
         assign_gamepad_menu_binding, assign_keyboard_binding, assign_keyboard_menu_binding,
+        assignable_key_for_binding_target_from_key_event,
         assignable_key_for_binding_target_from_keycode,
         assignable_menu_key_for_binding_target_from_keycode, compact_recent_rom_label,
-        desktop_key_from_keycode, desktop_key_scancode, entered_pc_ranges,
-        gamepad_binding_target_for_binding, gamepad_menu_binding_target_for_binding,
-        hotkey_binding_target_for_key, joypad_binding_target_for_key,
-        keyboard_menu_binding_target_for_key, map_path_dialog_result,
-        menu_input_for_gamepad_button, menu_input_for_key, next_audio_volume_percent,
-        next_boot_rom_verification_mode, next_console_model, next_execution_mode,
-        next_gamepad_directional_source, next_gamepad_rumble_mode, next_save_flush_policy,
-        next_startup_mode, next_window_scale, parse_edge_trace_addresses,
+        desktop_key_from_key_event, desktop_key_from_keycode, desktop_key_from_scancode,
+        desktop_key_scancode, entered_pc_ranges, gamepad_binding_target_for_binding,
+        gamepad_menu_binding_target_for_binding, hotkey_binding_target_for_key,
+        joypad_binding_target_for_key, keyboard_menu_binding_target_for_key,
+        map_path_dialog_result, menu_input_for_gamepad_button, menu_input_for_key,
+        next_audio_volume_percent, next_boot_rom_verification_mode, next_console_model,
+        next_execution_mode, next_gamepad_directional_source, next_gamepad_rumble_mode,
+        next_save_flush_policy, next_startup_mode, next_window_scale, parse_edge_trace_addresses,
         parse_edge_trace_event_count, parse_edge_trace_pc_ranges, parse_pc_watch_trace_event_count,
         parse_pc_watch_trace_ranges, parse_trace_capture_t_cycles, parse_watch_trace_addresses,
         parse_watch_trace_event_count, performance_window_title, render_desktop_edge_trace_record,
@@ -12696,6 +12787,42 @@ mod tests {
             ),
             Some(DesktopKey::Space)
         );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(Keycode::Tab, KeyboardBindingTarget::A),
+            Some(DesktopKey::Tab)
+        );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(
+                Keycode::LShift,
+                KeyboardBindingTarget::Select
+            ),
+            Some(DesktopKey::LeftShift)
+        );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(
+                Keycode::RShift,
+                KeyboardBindingTarget::Select
+            ),
+            Some(DesktopKey::RightShift)
+        );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(
+                Keycode::LCtrl,
+                KeyboardBindingTarget::Start
+            ),
+            Some(DesktopKey::LeftControl)
+        );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(
+                Keycode::RAlt,
+                KeyboardBindingTarget::Start
+            ),
+            Some(DesktopKey::RightAlt)
+        );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(Keycode::LGui, KeyboardBindingTarget::B),
+            Some(DesktopKey::LeftGui)
+        );
     }
 
     #[test]
@@ -12713,6 +12840,20 @@ mod tests {
                 KeyboardBindingTarget::ToggleFullscreen
             ),
             Some(DesktopKey::F11)
+        );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(
+                Keycode::RCtrl,
+                KeyboardBindingTarget::Reset
+            ),
+            Some(DesktopKey::RightControl)
+        );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(
+                Keycode::RGui,
+                KeyboardBindingTarget::Pause
+            ),
+            Some(DesktopKey::RightGui)
         );
     }
 
@@ -12738,6 +12879,20 @@ mod tests {
                 KeyboardMenuBindingTarget::Confirm
             ),
             Some(DesktopKey::Space)
+        );
+        assert_eq!(
+            assignable_menu_key_for_binding_target_from_keycode(
+                Keycode::Tab,
+                KeyboardMenuBindingTarget::Confirm
+            ),
+            Some(DesktopKey::Tab)
+        );
+        assert_eq!(
+            assignable_menu_key_for_binding_target_from_keycode(
+                Keycode::LAlt,
+                KeyboardMenuBindingTarget::Down
+            ),
+            Some(DesktopKey::LeftAlt)
         );
     }
 
@@ -12941,13 +13096,83 @@ mod tests {
             (DesktopKey::F5, Keycode::F5, sdl3::keyboard::Scancode::F5),
             (DesktopKey::F10, Keycode::F10, sdl3::keyboard::Scancode::F10),
             (DesktopKey::F11, Keycode::F11, sdl3::keyboard::Scancode::F11),
+            (DesktopKey::Tab, Keycode::Tab, sdl3::keyboard::Scancode::Tab),
+            (
+                DesktopKey::LeftShift,
+                Keycode::LShift,
+                sdl3::keyboard::Scancode::LShift,
+            ),
+            (
+                DesktopKey::RightShift,
+                Keycode::RShift,
+                sdl3::keyboard::Scancode::RShift,
+            ),
+            (
+                DesktopKey::LeftControl,
+                Keycode::LCtrl,
+                sdl3::keyboard::Scancode::LCtrl,
+            ),
+            (
+                DesktopKey::RightControl,
+                Keycode::RCtrl,
+                sdl3::keyboard::Scancode::RCtrl,
+            ),
+            (
+                DesktopKey::LeftAlt,
+                Keycode::LAlt,
+                sdl3::keyboard::Scancode::LAlt,
+            ),
+            (
+                DesktopKey::RightAlt,
+                Keycode::RAlt,
+                sdl3::keyboard::Scancode::RAlt,
+            ),
+            (
+                DesktopKey::LeftGui,
+                Keycode::LGui,
+                sdl3::keyboard::Scancode::LGui,
+            ),
+            (
+                DesktopKey::RightGui,
+                Keycode::RGui,
+                sdl3::keyboard::Scancode::RGui,
+            ),
         ];
         for (desktop_key, keycode, scancode) in key_pairs {
             assert_eq!(desktop_key_scancode(desktop_key), scancode);
             assert_eq!(desktop_key_from_keycode(keycode), Some(desktop_key));
+            assert_eq!(desktop_key_from_scancode(scancode), Some(desktop_key));
             assert!(super::key_matches(desktop_key, keycode));
+            assert!(super::key_event_matches(
+                desktop_key,
+                Some(keycode),
+                Some(scancode)
+            ));
         }
         assert_eq!(desktop_key_from_keycode(Keycode::A), None);
+        assert_eq!(desktop_key_from_scancode(sdl3::keyboard::Scancode::A), None);
+        assert_eq!(
+            desktop_key_from_key_event(Some(Keycode::X), Some(sdl3::keyboard::Scancode::Z)),
+            Some(DesktopKey::Z)
+        );
+        assert!(super::key_event_matches(
+            DesktopKey::Z,
+            Some(Keycode::X),
+            Some(sdl3::keyboard::Scancode::Z)
+        ));
+        assert!(!super::key_event_matches(
+            DesktopKey::X,
+            Some(Keycode::X),
+            Some(sdl3::keyboard::Scancode::Z)
+        ));
+        assert_eq!(
+            assignable_key_for_binding_target_from_key_event(
+                None,
+                Some(sdl3::keyboard::Scancode::LAlt),
+                KeyboardBindingTarget::A
+            ),
+            Some(DesktopKey::LeftAlt)
+        );
 
         let joypad = gb_desktop::JoypadKeyboardBindings::default();
         assert_eq!(
