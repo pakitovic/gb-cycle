@@ -789,6 +789,25 @@ Priority order:
   filesystem writes. The cartridge contract remains mapper-owned, while path
   policy, serialization format, and durable file handling stay outside the
   core as required by the architecture handbook.
+- The default host-side save key preserves the active ROM's exact filename stem
+  for both internal `.gbsav` paths and default external `.sav` dialog names.
+  Only path separators, control characters, and portable-filesystem reserved
+  characters are rejected; those edge cases require an explicit frontend/tool
+  save key override. Frontends and tools keep a read/export fallback for the old
+  underscore-sanitized derived key so existing saves are not orphaned when the
+  exact-stem path is introduced.
+- In the current baseline, `.sav` interchange with SameBoy and mGBA is an
+  explicit host-side conversion boundary in `gb-persistence`; it does not change
+  the internal `.gbsav` envelope. Linear RAM-backed cartridges export/import
+  raw bytes, `MBC3` RAM/RTC payloads use the common `48`-byte little-endian RTC
+  suffix with elapsed RTC time applied through the persistence time source. On
+  import, frontends/tools must reuse the same timestamp for the RTC conversion
+  and the resulting `.gbsav` envelope so the next load does not lose elapsed RTC
+  time at a host-clock second boundary. `MBC2` import accepts both SameBoy's
+  `512`-byte one-byte-per-nibble layout and mGBA's `256`-byte packed layout
+  while export defaults to the mGBA packed form. Mapper/profile combinations
+  without a safe shared external mapping, such as the current HuC3 state shape,
+  must fail explicitly instead of silently dropping state.
 - In the current baseline, the default host-side hardware-persistence helper is
   now battery-gated through validated cartridge capability metadata. Battery
   presence and the typed persistence profile decide whether the helper will
@@ -831,6 +850,9 @@ Priority order:
 - silently zeroing cartridge RAM during direct boot and then treating that as hardware-accurate startup behavior
 - teaching the generic bus how a specific MBC banks ROM or RAM instead of delegating that behavior to the cartridge subsystem
 - dumping the currently visible `0xA000-0xBFFF` contents as if that were always the full save payload
+- exporting `.sav` files by truncating mapper-owned state to whichever raw RAM
+  layout is convenient instead of requiring an explicit SameBoy/mGBA-compatible
+  mapping for that cartridge profile
 - collapsing every non-mainline cartridge into one opaque `Unsupported` bucket and then forcing the frontend to rediscover what was already known at load time
 - deciding save eligibility from `ram_enabled`, filename heuristics, or `0x0149` alone instead of validated cartridge capabilities
 - inferring the mapper from ROM size or other heuristics instead of using `0x0147`

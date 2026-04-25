@@ -39,6 +39,11 @@ Two workstreams span multiple phases:
   - `gb-desktop` now exposes a session-scoped PNG-based `CAM IMAGE` / `CAM RESET` workflow plus SDL3-backed `CAM LIVE` live-frame injection for that hardware.
   - Manual acceptance covers `Game Boy Camera (USA, Europe) (SGB Enhanced)`, `Game Boy Camera Gold (USA) (SGB Enhanced)`, and `Pocket Camera (Japan) (Rev 1) (SGB Enhanced)` for boot, still-image capture, SRAM photo save / reload, and reset-to-placeholder behavior.
   - Deferred work remains for richer live-camera UX, higher-fidelity analog sensor behavior, and broader oracle validation for printer-facing flows / lower-level capture observables.
+- External `.sav` conversion now covers the shared SameBoy/mGBA layouts for
+  linear RAM, `MBC2`, and `MBC3` RTC-backed saves at the `gb-persistence`
+  boundary. Deferred work remains for any mapper that lacks a confirmed shared
+  external layout, especially HuC3/TAMA-style cartridges, and those cases should
+  continue to fail explicitly until a compatibility contract is documented.
 - This document defines the recommended implementation order, not necessarily the exact merge order if work happens in parallel.
 - Whenever a later block requires additional observability, the `debugger/` infrastructure should be expanded incrementally without changing its transversal role.
 - Any local simplification that contradicts the T-cycle model or the dot-by-dot PPU must be treated as explicit and documented technical debt.

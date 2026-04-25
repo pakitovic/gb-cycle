@@ -32,10 +32,13 @@ use gb_desktop::{
     DesktopExternalPortSelection, DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding,
     GamepadButtonBindings, GamepadDirectionalSource, GamepadMenuBindings, GamepadRumbleMode,
     HotkeyBindings, JoypadKeyboardBindings, KeyboardBindings, MenuKeyboardBindings,
-    PreferredGamepadIdentity, SaveDirectoryPolicy, VideoOptions,
+    PreferredGamepadIdentity, SaveDirectoryPolicy, SaveKeyPolicy, VideoOptions,
 };
 use gb_persistence::{
-    CartridgeSaveTimeSource, SystemCartridgeSaveTimeSource,
+    CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
+    ExternalSaveError, ExternalSaveExportFormat, FilesystemCartridgeSaveBackend,
+    FixedCartridgeSaveTimeSource, SystemCartridgeSaveTimeSource, encode_external_cartridge_save,
+    import_external_cartridge_save, legacy_sanitized_save_key,
     uses_battery_backed_hardware_persistence,
 };
 use input::{
@@ -52,7 +55,10 @@ use png::{ColorType, Decoder, Transformations};
 use pocket_camera_live::PocketCameraLiveInput;
 use printer_output::PrinterOutputState;
 use save_session::DesktopSaveSession;
-use sdl3::dialog::{DialogError, DialogFileFilter, show_open_file_dialog, show_open_folder_dialog};
+use sdl3::dialog::{
+    DialogError, DialogFileFilter, show_open_file_dialog, show_open_folder_dialog,
+    show_save_file_dialog,
+};
 use sdl3::event::Event;
 use sdl3::gamepad::Button;
 use sdl3::hint;
@@ -180,6 +186,16 @@ const CAMERA_IMAGE_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
         pattern: "*",
     },
 ];
+const EXTERNAL_SAVE_FILE_DIALOG_FILTERS: [DialogFileFilter<'static>; 2] = [
+    DialogFileFilter {
+        name: "Game Boy saves",
+        pattern: "sav",
+    },
+    DialogFileFilter {
+        name: "All files",
+        pattern: "*",
+    },
+];
 
 #[cfg(test)]
 fn sdl_test_lock() -> &'static Mutex<()> {
@@ -259,6 +275,8 @@ struct FrontendRuntime {
     boot_rom_file_dialog: PathSelectionDialog,
     boot_rom_directory_dialog: PathSelectionDialog,
     save_directory_dialog: PathSelectionDialog,
+    external_save_export_dialog: PathSelectionDialog,
+    external_save_import_dialog: PathSelectionDialog,
     trace_capture: DesktopTraceCapture,
     watch_trace: DesktopWatchTraceCapture,
     pc_watch_trace: DesktopPcWatchTraceCapture,
@@ -680,6 +698,32 @@ impl PathSelectionDialog {
         Ok(())
     }
 
+    fn show_save_file(
+        &mut self,
+        filters: &[DialogFileFilter<'static>],
+        window: &Window,
+        default_location: &Path,
+    ) -> Result<(), String> {
+        if self.pending {
+            return Ok(());
+        }
+
+        let sender = self.sender.clone();
+        map_display_result(
+            show_save_file_dialog(
+                filters,
+                Some(default_location),
+                window,
+                Box::new(move |result, _| {
+                    let _ = sender.send(map_path_dialog_result(result));
+                }),
+            ),
+            "failed to show SDL3 save file dialog",
+        )?;
+        self.pending = true;
+        Ok(())
+    }
+
     fn show_folder(&mut self, window: &Window, default_location: &Path) {
         if self.pending {
             return;
@@ -719,6 +763,8 @@ impl FrontendRuntime {
             || self.boot_rom_file_dialog.is_pending()
             || self.boot_rom_directory_dialog.is_pending()
             || self.save_directory_dialog.is_pending()
+            || self.external_save_export_dialog.is_pending()
+            || self.external_save_import_dialog.is_pending()
     }
 }
 
@@ -4195,6 +4241,8 @@ fn run_desktop_with_startup_fallback_persistence(
         boot_rom_file_dialog: PathSelectionDialog::new(),
         boot_rom_directory_dialog: PathSelectionDialog::new(),
         save_directory_dialog: PathSelectionDialog::new(),
+        external_save_export_dialog: PathSelectionDialog::new(),
+        external_save_import_dialog: PathSelectionDialog::new(),
         trace_capture: DesktopTraceCapture::from_env()?,
         watch_trace: DesktopWatchTraceCapture::from_env()?,
         pc_watch_trace: DesktopPcWatchTraceCapture::from_env()?,
@@ -4289,6 +4337,8 @@ fn run_desktop_with_startup_fallback_persistence(
             process_pending_boot_rom_file_dialog(&mut canvas, &mut context)?;
             process_pending_boot_rom_directory_dialog(&mut canvas, &mut context)?;
             process_pending_save_directory_dialog(&mut canvas, &mut context)?;
+            process_pending_external_save_export_dialog(&mut canvas, &mut context)?;
+            process_pending_external_save_import_dialog(&mut canvas, &mut context)?;
         }
 
         runtime.rtc_sync.apply_to_machine(&mut machine);
@@ -4985,12 +5035,40 @@ fn open_save_session_for_loaded_rom(
         Ok(save_key) => save_key,
         Err(error) => return Err(error.to_string()),
     };
-    DesktopSaveSession::open(
-        save_root.as_deref(),
-        session.config.saves.flush_policy,
-        save_key,
-        machine,
-    )
+    let legacy_save_key = legacy_save_key_for_loaded_rom(session, rom_path);
+    if legacy_save_key.is_some() {
+        DesktopSaveSession::open_with_legacy_fallback(
+            save_root.as_deref(),
+            session.config.saves.flush_policy,
+            save_key,
+            legacy_save_key,
+            machine,
+        )
+    } else {
+        DesktopSaveSession::open(
+            save_root.as_deref(),
+            session.config.saves.flush_policy,
+            save_key,
+            machine,
+        )
+    }
+}
+
+fn legacy_save_key_for_loaded_rom(
+    session: &DesktopSession,
+    rom_path: &Path,
+) -> Option<CartridgeSaveKey> {
+    if !matches!(
+        session.config.saves.key_policy,
+        SaveKeyPolicy::DerivedFromRomStem
+    ) {
+        return None;
+    }
+    let stem = rom_path
+        .file_stem()
+        .or_else(|| rom_path.file_name())?
+        .to_string_lossy();
+    legacy_sanitized_save_key(&stem)
 }
 
 fn window_title(session: &DesktopSession, config: &DesktopConfig) -> String {
@@ -6046,6 +6124,79 @@ fn process_pending_save_directory_dialog(
     Ok(())
 }
 
+fn process_pending_external_save_export_dialog(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    let Some(result) = context.runtime.external_save_export_dialog.take_result() else {
+        return Ok(());
+    };
+
+    match result {
+        PathDialogResult::Selected(path) => match export_current_external_save(path, context) {
+            Ok(export_path) => {
+                eprintln!("info: exported external save to {}", export_path.display());
+            }
+            Err(error) => {
+                show_error_message(Some(canvas.window()), "Export save failed", &error);
+                eprintln!("warning: {error}");
+            }
+        },
+        PathDialogResult::Canceled => {}
+        PathDialogResult::Failed(error) => {
+            show_error_message(
+                Some(canvas.window()),
+                "Export save failed",
+                &format!("failed to complete SDL3 external save export dialog: {error}"),
+            );
+            eprintln!("warning: failed to complete SDL3 external save export dialog: {error}");
+        }
+    }
+
+    restore_window_after_native_dialog(canvas);
+    Ok(())
+}
+
+fn process_pending_external_save_import_dialog(
+    canvas: &mut Canvas<Window>,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<(), String> {
+    let Some(result) = context.runtime.external_save_import_dialog.take_result() else {
+        return Ok(());
+    };
+
+    match result {
+        PathDialogResult::Selected(path) => {
+            match import_external_save_for_current_rom(path, context) {
+                Ok(import_path) => {
+                    let message = format!(
+                        "Imported external save into {}.\nReload or reset the game before continuing. The active primary save session is disabled until reload so it cannot overwrite the imported save.",
+                        import_path.display()
+                    );
+                    show_warning_message(Some(canvas.window()), "Import save", &message);
+                    eprintln!("info: {message}");
+                }
+                Err(error) => {
+                    show_error_message(Some(canvas.window()), "Import save failed", &error);
+                    eprintln!("warning: {error}");
+                }
+            }
+        }
+        PathDialogResult::Canceled => {}
+        PathDialogResult::Failed(error) => {
+            show_error_message(
+                Some(canvas.window()),
+                "Import save failed",
+                &format!("failed to complete SDL3 external save import dialog: {error}"),
+            );
+            eprintln!("warning: failed to complete SDL3 external save import dialog: {error}");
+        }
+    }
+
+    restore_window_after_native_dialog(canvas);
+    Ok(())
+}
+
 fn restore_window_after_native_dialog(canvas: &mut Canvas<Window>) {
     let _ = canvas.window_mut().raise();
 }
@@ -6364,6 +6515,214 @@ fn save_directory_dialog_default_location(session: &DesktopSession) -> PathBuf {
         }
         SaveDirectoryPolicy::RomFolderSavesSubdir => session.rom_directory_hint().to_path_buf(),
     }
+}
+
+fn external_save_export_dialog_default_location(session: &DesktopSession) -> PathBuf {
+    external_save_dialog_default_location(session, "export")
+}
+
+fn external_save_import_dialog_default_location(session: &DesktopSession) -> PathBuf {
+    external_save_dialog_default_location(session, "import")
+}
+
+fn external_save_dialog_default_location(session: &DesktopSession, subdirectory: &str) -> PathBuf {
+    if let Some(rom_path) = session.rom_path() {
+        return resolve_path(
+            &session.current_dir,
+            &session.config.saves.directory_policy.resolve(rom_path),
+        )
+        .join(subdirectory)
+        .join(external_save_default_file_name(session));
+    }
+
+    session
+        .current_dir
+        .join("saves")
+        .join(subdirectory)
+        .join(external_save_default_file_name(session))
+}
+
+fn external_save_default_file_name(session: &DesktopSession) -> String {
+    let stem = session
+        .rom_path()
+        .and_then(|rom_path| {
+            session
+                .config
+                .saves
+                .resolve_key(rom_path)
+                .ok()
+                .flatten()
+                .map(|key| key.as_str().to_string())
+                .or_else(|| {
+                    rom_path
+                        .file_stem()
+                        .map(|stem| stem.to_string_lossy().into_owned())
+                })
+        })
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or_else(|| "save".to_string());
+    format!("{stem}.{EXTERNAL_SAVE_FILE_EXTENSION}")
+}
+
+fn resolve_selected_external_save_path(
+    session: &DesktopSession,
+    selected_path: PathBuf,
+) -> PathBuf {
+    if selected_path.is_absolute() {
+        selected_path
+    } else {
+        resolve_path(&session.current_dir, &selected_path)
+    }
+}
+
+fn resolve_external_save_export_path(session: &DesktopSession, selected_path: PathBuf) -> PathBuf {
+    let mut path = resolve_selected_external_save_path(session, selected_path);
+    if path.extension().is_none() {
+        path.set_extension(EXTERNAL_SAVE_FILE_EXTENSION);
+    }
+    path
+}
+
+fn resolve_external_save_import_path(session: &DesktopSession, selected_path: PathBuf) -> PathBuf {
+    resolve_selected_external_save_path(session, selected_path)
+}
+
+fn primary_save_root_and_key(
+    session: &DesktopSession,
+) -> Result<Option<(PathBuf, CartridgeSaveKey)>, String> {
+    let Some(rom_path) = session.rom_path() else {
+        return Ok(None);
+    };
+    let Some(save_root) = session.config.saves.resolve_directory(rom_path) else {
+        return Ok(None);
+    };
+    let save_key = session
+        .config
+        .saves
+        .resolve_key(rom_path)
+        .map_err(|error| error.to_string())?;
+    Ok(save_key.map(|key| (resolve_path(&session.current_dir, &save_root), key)))
+}
+
+fn export_current_external_save(
+    selected_path: PathBuf,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<PathBuf, String> {
+    context.runtime.rtc_sync.apply_to_machine(context.machine);
+    let cartridge = context.machine.primary_machine().cartridge();
+    let metadata = cartridge.persistence_metadata();
+    if !uses_battery_backed_hardware_persistence(metadata) {
+        return Err(
+            "current game does not expose battery-backed persistence to export".to_string(),
+        );
+    }
+
+    let export_path = resolve_external_save_export_path(context.session, selected_path);
+    let current_unix_seconds = SystemCartridgeSaveTimeSource.now_unix_seconds();
+    let external_bytes = encode_external_cartridge_save(
+        metadata,
+        &cartridge.persistent_state(),
+        current_unix_seconds,
+        ExternalSaveExportFormat::default(),
+    )
+    .map_err(|error| format_external_save_error("export", error))?;
+
+    if let Some(parent) = export_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            format_path_error(
+                "failed to create external save export directory",
+                parent,
+                &error.to_string(),
+            )
+        })?;
+    }
+    fs::write(&export_path, external_bytes).map_err(|error| {
+        format_path_error(
+            "failed to write external save",
+            &export_path,
+            &error.to_string(),
+        )
+    })?;
+    Ok(export_path)
+}
+
+fn import_external_save_for_current_rom(
+    selected_path: PathBuf,
+    context: &mut FrontendActionContext<'_>,
+) -> Result<PathBuf, String> {
+    let import_path = resolve_external_save_import_path(context.session, selected_path);
+    let (save_root, save_key) = primary_save_root_and_key(context.session)?.ok_or_else(|| {
+        "save support is disabled or no current ROM save key could be resolved".to_string()
+    })?;
+    let external_bytes = fs::read(&import_path).map_err(|error| {
+        format_path_error(
+            "failed to read external save",
+            &import_path,
+            &error.to_string(),
+        )
+    })?;
+
+    let cartridge = context.machine.primary_machine().cartridge();
+    let metadata = cartridge.persistence_metadata();
+    if !uses_battery_backed_hardware_persistence(metadata) {
+        return Err(
+            "current game does not expose battery-backed persistence to import".to_string(),
+        );
+    }
+
+    let import_unix_seconds = SystemCartridgeSaveTimeSource.now_unix_seconds();
+    let imported_state = import_external_cartridge_save(
+        metadata,
+        &cartridge.persistent_state(),
+        &external_bytes,
+        import_unix_seconds,
+    )
+    .map_err(|error| format_external_save_error("import", error))?;
+
+    let mut validation_cartridge = cartridge.clone();
+    validation_cartridge
+        .restore_persistent_state(&imported_state)
+        .map_err(|error| {
+            format_debug_error(
+                "imported external save does not match the current cartridge",
+                &format!("{error:?}"),
+            )
+        })?;
+
+    let mut previous_primary_save_session = context.runtime.save_session.take();
+    if let Some(save_session) = previous_primary_save_session.as_mut()
+        && let Err(error) = save_session.close(context.machine.primary_machine())
+    {
+        context.runtime.save_session = previous_primary_save_session;
+        return Err(error);
+    }
+
+    let mut backend = FilesystemCartridgeSaveBackend::with_time_source(
+        save_root,
+        FixedCartridgeSaveTimeSource::new(import_unix_seconds),
+    );
+    let save_path = backend.path_for_key(&save_key);
+    let save_result = backend.save(&save_key, metadata, &imported_state);
+    match save_result {
+        Ok(_) => {
+            context.runtime.save_session = None;
+            Ok(save_path)
+        }
+        Err(error) => {
+            context.runtime.save_session = previous_primary_save_session;
+            Err(format_path_error(
+                "failed to write imported internal save",
+                &save_path,
+                &error.to_string(),
+            ))
+        }
+    }
+}
+
+fn format_external_save_error(action: &str, error: ExternalSaveError) -> String {
+    format!("failed to {action} external save: {error}")
 }
 
 fn load_selected_camera_image(
@@ -6880,6 +7239,30 @@ fn execute_menu_action(
             flush_runtime_save_sessions_if_changed(context.runtime, context.machine, "menu")?;
             Ok(None)
         }
+        MenuAction::ExportSave => {
+            let default_location = external_save_export_dialog_default_location(context.session);
+            if let Err(error) = context.runtime.external_save_export_dialog.show_save_file(
+                &EXTERNAL_SAVE_FILE_DIALOG_FILTERS,
+                canvas.window(),
+                &default_location,
+            ) {
+                show_warning_message(Some(canvas.window()), "Export save", &error);
+                eprintln!("warning: {error}");
+            }
+            Ok(None)
+        }
+        MenuAction::ImportSave => {
+            let default_location = external_save_import_dialog_default_location(context.session);
+            if let Err(error) = context.runtime.external_save_import_dialog.show_file(
+                &EXTERNAL_SAVE_FILE_DIALOG_FILTERS,
+                canvas.window(),
+                &default_location,
+            ) {
+                show_warning_message(Some(canvas.window()), "Import save", &error);
+                eprintln!("warning: {error}");
+            }
+            Ok(None)
+        }
         MenuAction::SelectCameraImage => {
             let default_location = context.session.rom_directory_hint();
             if let Err(error) = context.runtime.camera_image_dialog.show_file(
@@ -7336,6 +7719,10 @@ fn current_menu_presentation(
         .map(CompactMenuLabel::from_gamepad_name)
         .unwrap_or_default();
     let cartridge_rumble_supported = machine.primary_machine().cartridge().has_rumble();
+    let external_save_available = !machine.cartridge().is_empty()
+        && uses_battery_backed_hardware_persistence(
+            machine.primary_machine().cartridge().persistence_metadata(),
+        );
     let cartridge_pocket_camera_supported = session_has_pocket_camera(machine);
     let preferred_gamepad_configured = runtime
         .gamepad_manager
@@ -7408,6 +7795,8 @@ fn current_menu_presentation(
                 .secondary_save_session
                 .as_ref()
                 .is_some_and(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual),
+        external_save_available,
+        external_save_import_available: external_save_available && session.config.saves.enabled,
         any_dialog_pending: runtime.any_dialog_pending(),
         cartridge_pocket_camera_supported,
         pocket_camera_live_enabled: runtime.pocket_camera_live.is_enabled(),
@@ -8893,6 +9282,7 @@ mod tests {
         DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
         GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings,
     };
+    use gb_persistence::{CartridgeSaveBackend, FilesystemCartridgeSaveBackend};
     use sdl3::dialog::DialogError;
     use sdl3::event::Event;
     use sdl3::gamepad::Button;
@@ -9682,6 +10072,8 @@ mod tests {
                 boot_rom_file_dialog: super::PathSelectionDialog::new(),
                 boot_rom_directory_dialog: super::PathSelectionDialog::new(),
                 save_directory_dialog: super::PathSelectionDialog::new(),
+                external_save_export_dialog: super::PathSelectionDialog::new(),
+                external_save_import_dialog: super::PathSelectionDialog::new(),
                 trace_capture: super::DesktopTraceCapture {
                     enabled: false,
                     output_path: None,
@@ -9869,6 +10261,30 @@ mod tests {
                 settings_store: &mut self.settings_store,
             };
             super::process_pending_save_directory_dialog(&mut self.canvas, &mut context)
+        }
+
+        fn process_pending_external_save_export_dialog(&mut self) -> Result<(), String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_pending_external_save_export_dialog(&mut self.canvas, &mut context)
+        }
+
+        fn process_pending_external_save_import_dialog(&mut self) -> Result<(), String> {
+            let mut context = super::FrontendActionContext {
+                session: &mut self.session,
+                machine: &mut self.machine,
+                runtime: &mut self.runtime,
+                performance_counter: &mut self.performance_counter,
+                frame_pacer: &mut self.frame_pacer,
+                settings_store: &mut self.settings_store,
+            };
+            super::process_pending_external_save_import_dialog(&mut self.canvas, &mut context)
         }
     }
 
@@ -13514,7 +13930,6 @@ mod tests {
             (Keycode::Z, false),
             (Keycode::Escape, true),
             (Keycode::Down, true),
-            (Keycode::Down, true),
             (Keycode::Return, true),
             (Keycode::Down, true),
             (Keycode::Return, true),
@@ -13563,7 +13978,6 @@ mod tests {
         let settings_store = DesktopSettingsStore::new_for_tests(settings_path.clone());
         let sequence = schedule_key_sequence(vec![
             (Keycode::Escape, true),
-            (Keycode::Down, true),
             (Keycode::Down, true),
             (Keycode::Down, true),
             (Keycode::Down, true),
@@ -13626,6 +14040,12 @@ mod tests {
         assert_eq!(harness.session.rom_directory_hint(), harness.root.as_path());
         assert!(harness.session.recent_roms().is_empty());
         assert!(!harness.runtime.any_dialog_pending());
+        harness.runtime.external_save_export_dialog.pending = true;
+        assert!(harness.runtime.any_dialog_pending());
+        harness.runtime.external_save_export_dialog.pending = false;
+        harness.runtime.external_save_import_dialog.pending = true;
+        assert!(harness.runtime.any_dialog_pending());
+        harness.runtime.external_save_import_dialog.pending = false;
 
         let mut dialog = super::PathSelectionDialog::new();
         assert!(!dialog.is_pending());
@@ -13637,6 +14057,13 @@ mod tests {
                 harness.root.as_path(),
             )
             .expect("pending file dialogs should be a no-op");
+        dialog
+            .show_save_file(
+                &super::EXTERNAL_SAVE_FILE_DIALOG_FILTERS,
+                harness.canvas.window(),
+                harness.root.as_path(),
+            )
+            .expect("pending save file dialogs should be a no-op");
         dialog.show_folder(harness.canvas.window(), harness.root.as_path());
         dialog.pending = false;
         dialog
@@ -13758,11 +14185,25 @@ mod tests {
             super::save_directory_dialog_default_location(&harness.session),
             harness.root
         );
+        assert_eq!(
+            super::external_save_export_dialog_default_location(&harness.session),
+            harness.root.join("saves/export/helpers.sav")
+        );
+        assert_eq!(
+            super::external_save_import_dialog_default_location(&harness.session),
+            harness.root.join("saves/import/helpers.sav")
+        );
         harness.session.config.saves.directory_policy =
             gb_desktop::SaveDirectoryPolicy::Custom(PathBuf::from("custom/saves/state.sav"));
         assert_eq!(
             super::save_directory_dialog_default_location(&harness.session),
             harness.root.join("custom/saves")
+        );
+        assert_eq!(
+            super::external_save_export_dialog_default_location(&harness.session),
+            harness
+                .root
+                .join("custom/saves/state.sav/export/helpers.sav")
         );
 
         let (replacement_sender, _) = std::sync::mpsc::channel();
@@ -13964,9 +14405,377 @@ mod tests {
     }
 
     #[test]
-    fn resume_action_clears_manual_pause_after_screenshot_for_dialog_loaded_rom() {
+    fn external_save_dialogs_export_current_state_and_import_internal_save() {
         let _guard = crate::lock_sdl_test();
-        let mut harness = FrontendHarness::new("resume-after-screenshot", false, false, false);
+        let mut harness = FrontendHarness::new("external-save-dialogs", false, false, false);
+        let rom_name = "battery.gb";
+        let rom_path = harness.root.join(rom_name);
+        fs::write(&rom_path, build_test_rom(32 * 1024, 0x09, 0x00, 0x02))
+            .expect("battery-backed ROM should be writable");
+
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(rom_name)))
+            .expect("battery ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("battery ROM should load");
+        assert_eq!(harness.session.rom_path(), Some(rom_path.as_path()));
+
+        let presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(presentation.external_save_available);
+        assert!(presentation.external_save_import_available);
+
+        harness
+            .machine
+            .primary_machine_mut()
+            .restore_cartridge_persistent_state(&PersistentCartState::NoMbcRam {
+                ram: vec![0x12; 8 * 1024],
+            })
+            .expect("NoMBC RAM state should restore");
+
+        let export_without_extension = harness.root.join("exports/current");
+        harness
+            .runtime
+            .external_save_export_dialog
+            .sender
+            .send(PathDialogResult::Selected(export_without_extension.clone()))
+            .expect("external save export selection should send");
+        harness
+            .process_pending_external_save_export_dialog()
+            .expect("external save export dialog should complete");
+        let exported_path = export_without_extension.with_extension("sav");
+        let exported = fs::read(&exported_path).expect("exported external save should exist");
+        assert_eq!(exported, vec![0x12; 8 * 1024]);
+
+        let import_path = harness.root.join("imports/current");
+        fs::create_dir_all(
+            import_path
+                .parent()
+                .expect("import path should have a parent"),
+        )
+        .expect("import directory should be creatable");
+        fs::write(&import_path, vec![0x34; 8 * 1024])
+            .expect("external save import file should be writable");
+        harness
+            .runtime
+            .external_save_import_dialog
+            .sender
+            .send(PathDialogResult::Selected(import_path.clone()))
+            .expect("external save import selection should send");
+        harness
+            .process_pending_external_save_import_dialog()
+            .expect("external save import dialog should complete");
+        assert!(
+            harness.runtime.save_session.is_none(),
+            "import keeps the live primary save session disabled until reload"
+        );
+
+        let save_root = harness.root.join("saves");
+        let save_key = harness
+            .session
+            .config
+            .saves
+            .resolve_key(&rom_path)
+            .expect("save key should resolve")
+            .expect("save key should be enabled");
+        let backend = FilesystemCartridgeSaveBackend::new(save_root);
+        let envelope = backend
+            .load(&save_key)
+            .expect("imported internal save should load")
+            .expect("imported internal save should exist");
+        assert_eq!(
+            envelope.persistent_state,
+            PersistentCartState::NoMbcRam {
+                ram: vec![0x34; 8 * 1024]
+            }
+        );
+
+        harness
+            .runtime
+            .external_save_export_dialog
+            .sender
+            .send(PathDialogResult::Failed("export failed".to_string()))
+            .expect("export failure should send");
+        harness
+            .process_pending_external_save_export_dialog()
+            .expect("failed external save export dialog should be reported");
+        harness
+            .runtime
+            .external_save_import_dialog
+            .sender
+            .send(PathDialogResult::Canceled)
+            .expect("import cancel should send");
+        harness
+            .process_pending_external_save_import_dialog()
+            .expect("canceled external save import dialog should be ignored");
+    }
+
+    #[test]
+    fn external_save_helpers_cover_disabled_non_battery_and_io_error_paths() {
+        let _guard = crate::lock_sdl_test();
+
+        let mut no_rom_harness = FrontendHarness::new("external-save-no-rom", false, false, false);
+        assert_eq!(
+            super::external_save_default_file_name(&no_rom_harness.session),
+            "save.sav"
+        );
+        assert_eq!(
+            super::external_save_export_dialog_default_location(&no_rom_harness.session),
+            no_rom_harness.root.join("saves/export/save.sav")
+        );
+        assert_eq!(
+            super::external_save_import_dialog_default_location(&no_rom_harness.session),
+            no_rom_harness.root.join("saves/import/save.sav")
+        );
+        assert_eq!(
+            super::resolve_external_save_export_path(
+                &no_rom_harness.session,
+                PathBuf::from("relative/current")
+            ),
+            no_rom_harness.root.join("relative/current.sav")
+        );
+        assert_eq!(
+            super::resolve_external_save_import_path(
+                &no_rom_harness.session,
+                PathBuf::from("relative/current")
+            ),
+            no_rom_harness.root.join("relative/current")
+        );
+        assert!(
+            super::primary_save_root_and_key(&no_rom_harness.session)
+                .expect("no-ROM sessions should not fail save root lookup")
+                .is_none()
+        );
+
+        no_rom_harness.session.loaded_rom = Some(super::LoadedRom {
+            path: PathBuf::from("/"),
+            bytes: Vec::new(),
+        });
+        assert_eq!(
+            super::legacy_save_key_for_loaded_rom(&no_rom_harness.session, Path::new("/")),
+            None
+        );
+        no_rom_harness.session.loaded_rom = None;
+        drop(no_rom_harness);
+
+        let mut disabled_harness =
+            FrontendHarness::new("external-save-disabled", true, false, false);
+        let non_battery_import_path = disabled_harness.root.join("non-battery.sav");
+        fs::write(&non_battery_import_path, vec![0x11; 8 * 1024])
+            .expect("non-battery import fixture should be writable");
+        {
+            let FrontendHarness {
+                session,
+                machine,
+                runtime,
+                settings_store,
+                performance_counter,
+                frame_pacer,
+                ..
+            } = &mut disabled_harness;
+            let mut context = super::FrontendActionContext {
+                session,
+                machine,
+                runtime,
+                performance_counter,
+                frame_pacer,
+                settings_store,
+            };
+            let import_error =
+                super::import_external_save_for_current_rom(non_battery_import_path, &mut context)
+                    .expect_err("non-battery games should reject external imports");
+            assert!(import_error.contains("does not expose battery-backed persistence"));
+            let export_error =
+                super::export_current_external_save(PathBuf::from("no-battery.sav"), &mut context)
+                    .expect_err("non-battery games should reject external exports");
+            assert!(export_error.contains("does not expose battery-backed persistence"));
+        }
+
+        disabled_harness.session.config.saves.enabled = false;
+        assert_eq!(
+            super::external_save_default_file_name(&disabled_harness.session),
+            "external-save-disabled.sav"
+        );
+        assert!(
+            super::primary_save_root_and_key(&disabled_harness.session)
+                .expect("disabled saves should resolve as absent")
+                .is_none()
+        );
+        {
+            let FrontendHarness {
+                session,
+                machine,
+                runtime,
+                settings_store,
+                performance_counter,
+                frame_pacer,
+                ..
+            } = &mut disabled_harness;
+            let mut context = super::FrontendActionContext {
+                session,
+                machine,
+                runtime,
+                performance_counter,
+                frame_pacer,
+                settings_store,
+            };
+            let import_error = super::import_external_save_for_current_rom(
+                PathBuf::from("missing-disabled.sav"),
+                &mut context,
+            )
+            .expect_err("disabled saves should reject external imports before reading files");
+            assert!(import_error.contains("save support is disabled"));
+        }
+        drop(disabled_harness);
+
+        let mut bad_key_harness =
+            FrontendHarness::new("external-save-bad-key", false, false, false);
+        bad_key_harness.session.loaded_rom = Some(super::LoadedRom {
+            path: bad_key_harness.root.join("bad*key.gb"),
+            bytes: Vec::new(),
+        });
+        let key_error = super::primary_save_root_and_key(&bad_key_harness.session)
+            .expect_err("unsafe ROM stems should fail save key resolution");
+        assert!(key_error.contains("invalid character `*`"));
+        drop(bad_key_harness);
+
+        let mut battery_harness =
+            FrontendHarness::new("external-save-error-paths", false, false, false);
+        let battery_rom_name = "battery.gb";
+        let battery_rom_path = battery_harness.root.join(battery_rom_name);
+        fs::write(
+            &battery_rom_path,
+            build_test_rom(32 * 1024, 0x09, 0x00, 0x02),
+        )
+        .expect("battery ROM should be writable");
+        battery_harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(battery_rom_name)))
+            .expect("battery ROM selection should send");
+        battery_harness
+            .process_pending_open_rom_dialog()
+            .expect("battery ROM should load");
+        battery_harness
+            .machine
+            .primary_machine_mut()
+            .restore_cartridge_persistent_state(&PersistentCartState::NoMbcRam {
+                ram: vec![0x12; 8 * 1024],
+            })
+            .expect("battery RAM state should restore");
+
+        let (save_root, save_key) = super::primary_save_root_and_key(&battery_harness.session)
+            .expect("battery saves should resolve")
+            .expect("battery saves should be enabled");
+
+        {
+            let FrontendHarness {
+                session,
+                machine,
+                runtime,
+                settings_store,
+                performance_counter,
+                frame_pacer,
+                ..
+            } = &mut battery_harness;
+            let mut context = super::FrontendActionContext {
+                session,
+                machine,
+                runtime,
+                performance_counter,
+                frame_pacer,
+                settings_store,
+            };
+
+            let blocking_parent = context.session.current_dir.join("blocked-export-parent");
+            fs::write(&blocking_parent, b"file")
+                .expect("blocking export parent should be writable");
+            let export_directory_error = super::export_current_external_save(
+                blocking_parent.join("current.sav"),
+                &mut context,
+            )
+            .expect_err("file parents should block export directory creation");
+            assert!(
+                export_directory_error.contains("failed to create external save export directory")
+            );
+
+            let blocked_export_target = context.session.current_dir.join("blocked-write.sav");
+            fs::create_dir_all(&blocked_export_target)
+                .expect("blocked export target directory should be creatable");
+            let export_write_error =
+                super::export_current_external_save(blocked_export_target, &mut context)
+                    .expect_err("directory targets should block export writes");
+            assert!(export_write_error.contains("failed to write external save"));
+
+            let import_read_error = super::import_external_save_for_current_rom(
+                PathBuf::from("missing-import.sav"),
+                &mut context,
+            )
+            .expect_err("missing external saves should surface read errors");
+            assert!(import_read_error.contains("failed to read external save"));
+
+            let invalid_import_path = context.session.current_dir.join("invalid-import.sav");
+            fs::write(&invalid_import_path, [0xAA])
+                .expect("invalid external save should be writable");
+            let invalid_import_error =
+                super::import_external_save_for_current_rom(invalid_import_path, &mut context)
+                    .expect_err("invalid external saves should surface conversion errors");
+            assert!(invalid_import_error.contains("failed to import external save"));
+
+            let valid_import_path = context.session.current_dir.join("valid-import.sav");
+            fs::write(&valid_import_path, vec![0x44; 8 * 1024])
+                .expect("valid external save should be writable");
+            let backend = FilesystemCartridgeSaveBackend::new(&save_root);
+            let target_save_path = backend.path_for_key(&save_key);
+            let mut blocked_temp_path = target_save_path.as_os_str().to_os_string();
+            blocked_temp_path.push(".tmp");
+            fs::create_dir_all(PathBuf::from(blocked_temp_path))
+                .expect("blocked internal save temp path should be creatable");
+            let close_error = super::import_external_save_for_current_rom(
+                valid_import_path.clone(),
+                &mut context,
+            )
+            .expect_err("blocked save sessions should surface close errors");
+            assert!(close_error.contains("failed to save cartridge persistence (close)"));
+            assert!(
+                context.runtime.save_session.is_some(),
+                "failed imports restore the previous primary save session"
+            );
+
+            context.runtime.save_session = None;
+            let import_write_error =
+                super::import_external_save_for_current_rom(valid_import_path, &mut context)
+                    .expect_err("internal save backend errors should surface");
+            assert!(
+                import_write_error.contains("failed to write imported internal save"),
+                "{import_write_error}"
+            );
+        }
+
+        assert!(
+            super::format_external_save_error(
+                "export",
+                gb_persistence::ExternalSaveError::UnsupportedPersistentState {
+                    state_kind: "test-state"
+                }
+            )
+            .contains("failed to export external save")
+        );
+    }
+
+    #[test]
+    fn root_cancel_clears_manual_pause_after_screenshot_for_dialog_loaded_rom() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("cancel-after-screenshot", false, false, false);
         let rom_name = "picked.gb";
         let rom_path = harness.root.join(rom_name);
         fs::write(&rom_path, build_test_rom(32 * 1024, 0x00, 0x00, 0x00))
@@ -14001,11 +14810,11 @@ mod tests {
                 .is_none()
         );
 
-        let resume_action = harness
+        let cancel_action = harness
             .runtime
             .menu_state
             .handle_input(
-                super::MenuInput::Confirm,
+                super::MenuInput::Cancel,
                 super::current_menu_presentation(
                     harness.canvas.window(),
                     &harness.runtime,
@@ -14013,12 +14822,12 @@ mod tests {
                     &harness.session,
                 ),
             )
-            .expect("root RESUME should stay available after taking a screenshot");
-        assert_eq!(resume_action, super::MenuAction::Resume);
+            .expect("root cancel should resume after taking a screenshot");
+        assert_eq!(cancel_action, super::MenuAction::Resume);
 
         assert!(
             harness
-                .execute_action(resume_action)
+                .execute_action(cancel_action)
                 .expect("resume action should succeed")
                 .is_none()
         );
@@ -15422,12 +16231,12 @@ mod tests {
             .push_event(Event::ControllerButtonDown {
                 timestamp: 0,
                 which: virtual_gamepad.joystick_id.0,
-                button: Button::South,
+                button: Button::Guide,
             })
-            .expect("menu confirm event should be pushable");
+            .expect("menu close event should be pushable");
         harness
             .process_events()
-            .expect("gamepad menu navigation should process");
+            .expect("gamepad menu close should process");
         assert!(!harness.runtime.menu_state.is_open());
     }
 

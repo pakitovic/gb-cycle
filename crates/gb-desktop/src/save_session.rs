@@ -25,6 +25,16 @@ impl DesktopSaveSession {
         key: Option<CartridgeSaveKey>,
         machine: &mut Machine<TraceSummaryBuffer>,
     ) -> Result<Option<Self>, String> {
+        Self::open_with_legacy_fallback(save_root, flush_policy, key, None, machine)
+    }
+
+    pub fn open_with_legacy_fallback(
+        save_root: Option<&Path>,
+        flush_policy: DesktopSaveFlushPolicy,
+        key: Option<CartridgeSaveKey>,
+        legacy_key: Option<CartridgeSaveKey>,
+        machine: &mut Machine<TraceSummaryBuffer>,
+    ) -> Result<Option<Self>, String> {
         let Some(save_root) = save_root else {
             return Ok(None);
         };
@@ -39,12 +49,31 @@ impl DesktopSaveSession {
         };
 
         let backend = FilesystemCartridgeSaveBackend::new(save_root);
-        if let Some(envelope) = backend.load(&key).map_err(|error| {
+        let load_result = backend.load(&key).map_err(|error| {
             format!(
                 "failed to load save {}: {error}",
                 backend.path_for_key(&key).display()
             )
-        })? {
+        })?;
+        let legacy_load_result = if load_result.is_none() {
+            legacy_key
+                .as_ref()
+                .filter(|legacy_key| *legacy_key != &key)
+                .map(|legacy_key| {
+                    backend.load(legacy_key).map_err(|error| {
+                        format!(
+                            "failed to load save {}: {error}",
+                            backend.path_for_key(legacy_key).display()
+                        )
+                    })
+                })
+                .transpose()?
+                .flatten()
+        } else {
+            None
+        };
+
+        if let Some(envelope) = load_result.or(legacy_load_result) {
             let elapsed_seconds = backend
                 .current_unix_seconds()
                 .saturating_sub(envelope.backend_metadata.saved_at_unix_seconds);
@@ -325,6 +354,57 @@ mod tests {
             restored_machine.cartridge().persistent_state(),
             expected_state
         );
+
+        fs::remove_dir_all(root).expect("temp save root should be removable");
+    }
+
+    #[test]
+    fn open_restores_legacy_sanitized_save_but_writes_exact_key() {
+        let root = temp_save_root();
+        let exact_key =
+            CartridgeSaveKey::new("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)")
+                .expect("exact ROM stem should be valid");
+        let legacy_key =
+            CartridgeSaveKey::new("Legend_of_Zelda_The_-_Link_s_Awakening_USA_Europe_Rev_2")
+                .expect("legacy sanitized key should be valid");
+        let mut saved_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        mutate_mbc2_persistent_state(&mut saved_machine, 0x0A);
+        let expected_state = saved_machine.cartridge().persistent_state();
+
+        let mut backend = FilesystemCartridgeSaveBackend::new(&root);
+        backend
+            .save(
+                &legacy_key,
+                saved_machine.cartridge().persistence_metadata(),
+                &expected_state,
+            )
+            .expect("legacy save should write");
+
+        let mut restored_machine = load_machine(build_banked_mbc2_rom(0x06, 0x03, 0x00));
+        let mut session = DesktopSaveSession::open_with_legacy_fallback(
+            Some(&root),
+            DesktopSaveFlushPolicy::OnClose,
+            Some(exact_key.clone()),
+            Some(legacy_key.clone()),
+            &mut restored_machine,
+        )
+        .expect("save session should load a legacy save")
+        .expect("battery-backed cartridge should create a session");
+
+        assert_eq!(
+            restored_machine.cartridge().persistent_state(),
+            expected_state
+        );
+        assert_eq!(
+            session.save_path(),
+            root.join(format!("{}.gbsav", exact_key.as_str()))
+        );
+        assert!(backend.path_for_key(&legacy_key).is_file());
+        mutate_mbc2_persistent_state(&mut restored_machine, 0x0B);
+        session
+            .close(&restored_machine)
+            .expect("closing should rewrite through the exact key");
+        assert!(backend.path_for_key(&exact_key).is_file());
 
         fs::remove_dir_all(root).expect("temp save root should be removable");
     }

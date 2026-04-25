@@ -14,7 +14,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const SAVE_MAGIC: [u8; 8] = *b"GBCSAVE\0";
 pub const CURRENT_SAVE_FORMAT_VERSION: u16 = 1;
 pub const SAVE_FILE_EXTENSION: &str = "gbsav";
+pub const EXTERNAL_SAVE_FILE_EXTENSION: &str = "sav";
 const MBC2_RAM_NIBBLE_COUNT: usize = 512;
+const MBC2_MGBA_PACKED_BYTE_COUNT: usize = MBC2_RAM_NIBBLE_COUNT / 2;
+const MBC3_EXTERNAL_RTC_SUFFIX_LEN: usize = 48;
 const RAM_KIND_LINEAR_TAG: u8 = 0;
 const RAM_KIND_MBC2_TAG: u8 = 1;
 const PROFILE_NONE_TAG: u8 = 0;
@@ -46,8 +49,7 @@ impl CartridgeSaveKey {
         }
 
         for (index, character) in key.chars().enumerate() {
-            let allowed = character.is_ascii_alphanumeric() || matches!(character, '_' | '-');
-            if !allowed {
+            if !is_portable_save_key_character(character) {
                 return Err(CartridgeSaveKeyError::InvalidCharacter { index, character });
             }
         }
@@ -58,6 +60,33 @@ impl CartridgeSaveKey {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+fn is_portable_save_key_character(character: char) -> bool {
+    !character.is_control()
+        && !matches!(
+            character,
+            '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*'
+        )
+}
+
+pub fn legacy_sanitized_save_key(raw_key_material: &str) -> Option<CartridgeSaveKey> {
+    let mut sanitized = String::new();
+    let mut inserted_separator = false;
+    for character in raw_key_material.chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '_' | '-') {
+            sanitized.push(character);
+            inserted_separator = false;
+        } else if !inserted_separator {
+            sanitized.push('_');
+            inserted_separator = true;
+        }
+    }
+    let sanitized = sanitized.trim_matches('_').to_string();
+    if sanitized.is_empty() {
+        return None;
+    }
+    CartridgeSaveKey::new(sanitized).ok()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,6 +224,76 @@ pub enum HardwarePersistenceActionResult {
     },
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ExternalSaveExportFormat {
+    #[default]
+    Mgba,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExternalSaveError {
+    UnsupportedPersistentState {
+        state_kind: &'static str,
+    },
+    UnsupportedPersistenceProfile {
+        profile: CartridgePersistenceProfile,
+    },
+    StateProfileMismatch {
+        state_kind: &'static str,
+        profile: CartridgePersistenceProfile,
+    },
+    InvalidLength {
+        context: &'static str,
+        expected: ExternalSaveLengthExpectation,
+        actual: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExternalSaveLengthExpectation {
+    Exact(usize),
+    Either { first: usize, second: usize },
+}
+
+impl fmt::Display for ExternalSaveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnsupportedPersistentState { state_kind } => {
+                write!(f, "external .sav conversion does not support {state_kind}")
+            }
+            Self::UnsupportedPersistenceProfile { profile } => {
+                write!(
+                    f,
+                    "external .sav conversion does not support persistence profile {profile:?}"
+                )
+            }
+            Self::StateProfileMismatch {
+                state_kind,
+                profile,
+            } => write!(
+                f,
+                "persistent state {state_kind} does not match cartridge persistence profile {profile:?}"
+            ),
+            Self::InvalidLength {
+                context,
+                expected,
+                actual,
+            } => match expected {
+                ExternalSaveLengthExpectation::Exact(expected) => write!(
+                    f,
+                    "invalid external .sav length for {context}: expected {expected} bytes, got {actual}"
+                ),
+                ExternalSaveLengthExpectation::Either { first, second } => write!(
+                    f,
+                    "invalid external .sav length for {context}: expected {first} or {second} bytes, got {actual}"
+                ),
+            },
+        }
+    }
+}
+
+impl std::error::Error for ExternalSaveError {}
+
 #[derive(Debug)]
 pub struct HardwarePersistenceManager<B> {
     backend: B,
@@ -283,6 +382,214 @@ pub fn save_hardware_cartridge_persistence<B: CartridgeSaveBackend>(
         .save(key, metadata, &cartridge.persistent_state())
         .map_err(HardwarePersistenceError::Backend)?;
     Ok(HardwarePersistenceSaveResult::Saved(envelope))
+}
+
+pub fn export_external_cartridge_save(
+    envelope: &CartridgeSaveEnvelope,
+    current_unix_seconds: u64,
+) -> Result<Vec<u8>, ExternalSaveError> {
+    let mut state = envelope.persistent_state.clone();
+    let elapsed_off_session_seconds =
+        current_unix_seconds.saturating_sub(envelope.backend_metadata.saved_at_unix_seconds);
+    apply_elapsed_off_session_seconds(&mut state, elapsed_off_session_seconds);
+    encode_external_cartridge_save(
+        envelope.cartridge_metadata,
+        &state,
+        current_unix_seconds,
+        ExternalSaveExportFormat::default(),
+    )
+}
+
+pub fn encode_external_cartridge_save(
+    metadata: CartridgePersistenceMetadata,
+    state: &PersistentCartState,
+    current_unix_seconds: u64,
+    format: ExternalSaveExportFormat,
+) -> Result<Vec<u8>, ExternalSaveError> {
+    if !uses_battery_backed_hardware_persistence(metadata) {
+        return Err(ExternalSaveError::UnsupportedPersistenceProfile {
+            profile: metadata.profile,
+        });
+    }
+
+    match (metadata.profile, state) {
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::NoMbcRam { ram }
+            | PersistentCartState::Mmm01Ram { ram }
+            | PersistentCartState::Huc1Ram { ram }
+            | PersistentCartState::Mbc1Ram { ram }
+            | PersistentCartState::Mbc3Ram { ram }
+            | PersistentCartState::Mbc5Ram { ram }
+            | PersistentCartState::PocketCameraRam { ram },
+        ) => encode_external_linear_ram(ram, byte_len),
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles { cell_count },
+            },
+            PersistentCartState::Mbc2Ram { ram_nibbles },
+        ) => encode_external_mbc2_ram(ram_nibbles, cell_count, format),
+        (CartridgePersistenceProfile::PersistentRtc, PersistentCartState::Mbc3Rtc { rtc }) => {
+            let mut bytes = Vec::with_capacity(MBC3_EXTERNAL_RTC_SUFFIX_LEN);
+            encode_external_mbc3_rtc_suffix(&mut bytes, *rtc, current_unix_seconds);
+            Ok(bytes)
+        }
+        (
+            CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::Mbc3RamRtc { ram, rtc },
+        ) => {
+            let mut bytes = encode_external_linear_ram(ram, byte_len)?;
+            encode_external_mbc3_rtc_suffix(&mut bytes, *rtc, current_unix_seconds);
+            Ok(bytes)
+        }
+        (
+            CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles { .. },
+            },
+            _,
+        ) => Err(ExternalSaveError::UnsupportedPersistenceProfile {
+            profile: metadata.profile,
+        }),
+        (
+            CartridgePersistenceProfile::PersistentRamAndRtc { .. },
+            PersistentCartState::Huc3 { .. },
+        ) => Err(ExternalSaveError::UnsupportedPersistentState {
+            state_kind: persistent_state_kind_name(state),
+        }),
+        (CartridgePersistenceProfile::PersistentRam { .. }, PersistentCartState::Huc3 { .. })
+        | (CartridgePersistenceProfile::PersistentRtc, PersistentCartState::Huc3 { .. }) => {
+            Err(ExternalSaveError::UnsupportedPersistentState {
+                state_kind: persistent_state_kind_name(state),
+            })
+        }
+        (profile, _) => Err(ExternalSaveError::StateProfileMismatch {
+            state_kind: persistent_state_kind_name(state),
+            profile,
+        }),
+    }
+}
+
+pub fn import_external_cartridge_save(
+    metadata: CartridgePersistenceMetadata,
+    target_state: &PersistentCartState,
+    bytes: &[u8],
+    current_unix_seconds: u64,
+) -> Result<PersistentCartState, ExternalSaveError> {
+    if !uses_battery_backed_hardware_persistence(metadata) {
+        return Err(ExternalSaveError::UnsupportedPersistenceProfile {
+            profile: metadata.profile,
+        });
+    }
+
+    match (metadata.profile, target_state) {
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::NoMbcRam { .. },
+        ) => decode_external_linear_ram(bytes, byte_len, "linear RAM")
+            .map(|ram| PersistentCartState::NoMbcRam { ram }),
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::Mmm01Ram { .. },
+        ) => decode_external_linear_ram(bytes, byte_len, "MMM01 RAM")
+            .map(|ram| PersistentCartState::Mmm01Ram { ram }),
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::Huc1Ram { .. },
+        ) => decode_external_linear_ram(bytes, byte_len, "HuC1 RAM")
+            .map(|ram| PersistentCartState::Huc1Ram { ram }),
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::Mbc1Ram { .. },
+        ) => decode_external_linear_ram(bytes, byte_len, "MBC1 RAM")
+            .map(|ram| PersistentCartState::Mbc1Ram { ram }),
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::Mbc3Ram { .. },
+        ) => decode_external_linear_ram(bytes, byte_len, "MBC3 RAM")
+            .map(|ram| PersistentCartState::Mbc3Ram { ram }),
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::Mbc5Ram { .. },
+        ) => decode_external_linear_ram(bytes, byte_len, "MBC5 RAM")
+            .map(|ram| PersistentCartState::Mbc5Ram { ram }),
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::PocketCameraRam { .. },
+        ) => decode_external_linear_ram(bytes, byte_len, "Pocket Camera RAM")
+            .map(|ram| PersistentCartState::PocketCameraRam { ram }),
+        (
+            CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles { cell_count },
+            },
+            PersistentCartState::Mbc2Ram { .. },
+        ) => decode_external_mbc2_ram(bytes, cell_count)
+            .map(|ram_nibbles| PersistentCartState::Mbc2Ram { ram_nibbles }),
+        (CartridgePersistenceProfile::PersistentRtc, PersistentCartState::Mbc3Rtc { .. }) => {
+            if bytes.len() != MBC3_EXTERNAL_RTC_SUFFIX_LEN {
+                return Err(ExternalSaveError::InvalidLength {
+                    context: "MBC3 RTC",
+                    expected: ExternalSaveLengthExpectation::Exact(MBC3_EXTERNAL_RTC_SUFFIX_LEN),
+                    actual: bytes.len(),
+                });
+            }
+            let rtc = decode_external_mbc3_rtc_suffix(bytes, current_unix_seconds)?;
+            Ok(PersistentCartState::Mbc3Rtc { rtc })
+        }
+        (
+            CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Linear { byte_len },
+            },
+            PersistentCartState::Mbc3RamRtc { .. },
+        ) => {
+            let expected_len = byte_len + MBC3_EXTERNAL_RTC_SUFFIX_LEN;
+            if bytes.len() != expected_len {
+                return Err(ExternalSaveError::InvalidLength {
+                    context: "MBC3 RAM+RTC",
+                    expected: ExternalSaveLengthExpectation::Exact(expected_len),
+                    actual: bytes.len(),
+                });
+            }
+            let ram = bytes[..byte_len].to_vec();
+            let rtc = decode_external_mbc3_rtc_suffix(&bytes[byte_len..], current_unix_seconds)?;
+            Ok(PersistentCartState::Mbc3RamRtc { ram, rtc })
+        }
+        (
+            CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles { .. },
+            },
+            _,
+        ) => Err(ExternalSaveError::UnsupportedPersistenceProfile {
+            profile: metadata.profile,
+        }),
+        (
+            CartridgePersistenceProfile::PersistentRamAndRtc { .. },
+            PersistentCartState::Huc3 { .. },
+        ) => Err(ExternalSaveError::UnsupportedPersistentState {
+            state_kind: persistent_state_kind_name(target_state),
+        }),
+        (profile, _) => Err(ExternalSaveError::StateProfileMismatch {
+            state_kind: persistent_state_kind_name(target_state),
+            profile,
+        }),
+    }
 }
 
 impl<B> HardwarePersistenceManager<B> {
@@ -844,6 +1151,175 @@ fn apply_elapsed_off_session_seconds(state: &mut PersistentCartState, elapsed_se
     }
 }
 
+fn encode_external_linear_ram(
+    ram: &[u8],
+    expected_len: usize,
+) -> Result<Vec<u8>, ExternalSaveError> {
+    if ram.len() != expected_len {
+        return Err(ExternalSaveError::InvalidLength {
+            context: "linear RAM state",
+            expected: ExternalSaveLengthExpectation::Exact(expected_len),
+            actual: ram.len(),
+        });
+    }
+    Ok(ram.to_vec())
+}
+
+fn decode_external_linear_ram(
+    bytes: &[u8],
+    expected_len: usize,
+    context: &'static str,
+) -> Result<Vec<u8>, ExternalSaveError> {
+    if bytes.len() != expected_len {
+        return Err(ExternalSaveError::InvalidLength {
+            context,
+            expected: ExternalSaveLengthExpectation::Exact(expected_len),
+            actual: bytes.len(),
+        });
+    }
+    Ok(bytes.to_vec())
+}
+
+fn encode_external_mbc2_ram(
+    ram_nibbles: &[u8; MBC2_RAM_NIBBLE_COUNT],
+    expected_cell_count: usize,
+    format: ExternalSaveExportFormat,
+) -> Result<Vec<u8>, ExternalSaveError> {
+    if expected_cell_count != MBC2_RAM_NIBBLE_COUNT {
+        return Err(ExternalSaveError::InvalidLength {
+            context: "MBC2 metadata",
+            expected: ExternalSaveLengthExpectation::Exact(MBC2_RAM_NIBBLE_COUNT),
+            actual: expected_cell_count,
+        });
+    }
+
+    match format {
+        ExternalSaveExportFormat::Mgba => {
+            let mut bytes = Vec::with_capacity(MBC2_MGBA_PACKED_BYTE_COUNT);
+            for pair in ram_nibbles.chunks_exact(2) {
+                bytes.push((pair[0] & 0x0F) | ((pair[1] & 0x0F) << 4));
+            }
+            Ok(bytes)
+        }
+    }
+}
+
+fn decode_external_mbc2_ram(
+    bytes: &[u8],
+    expected_cell_count: usize,
+) -> Result<[u8; MBC2_RAM_NIBBLE_COUNT], ExternalSaveError> {
+    if expected_cell_count != MBC2_RAM_NIBBLE_COUNT {
+        return Err(ExternalSaveError::InvalidLength {
+            context: "MBC2 metadata",
+            expected: ExternalSaveLengthExpectation::Exact(MBC2_RAM_NIBBLE_COUNT),
+            actual: expected_cell_count,
+        });
+    }
+
+    let mut ram_nibbles = [0; MBC2_RAM_NIBBLE_COUNT];
+    match bytes.len() {
+        MBC2_MGBA_PACKED_BYTE_COUNT => {
+            for (index, byte) in bytes.iter().copied().enumerate() {
+                ram_nibbles[index * 2] = byte & 0x0F;
+                ram_nibbles[index * 2 + 1] = (byte >> 4) & 0x0F;
+            }
+            Ok(ram_nibbles)
+        }
+        MBC2_RAM_NIBBLE_COUNT => {
+            for (index, byte) in bytes.iter().copied().enumerate() {
+                ram_nibbles[index] = byte & 0x0F;
+            }
+            Ok(ram_nibbles)
+        }
+        actual => Err(ExternalSaveError::InvalidLength {
+            context: "MBC2 RAM",
+            expected: ExternalSaveLengthExpectation::Either {
+                first: MBC2_MGBA_PACKED_BYTE_COUNT,
+                second: MBC2_RAM_NIBBLE_COUNT,
+            },
+            actual,
+        }),
+    }
+}
+
+fn encode_external_mbc3_rtc_suffix(
+    bytes: &mut Vec<u8>,
+    rtc: Mbc3RtcPersistentState,
+    current_unix_seconds: u64,
+) {
+    let day_low = (rtc.day_counter & 0x00FF) as u8;
+    let day_high =
+        ((rtc.day_counter >> 8) as u8 & 0x01) | ((rtc.halt as u8) << 6) | ((rtc.carry as u8) << 7);
+    let fields = [rtc.seconds, rtc.minutes, rtc.hours, day_low, day_high];
+
+    for field in fields {
+        write_u32(bytes, u32::from(field));
+    }
+    for field in fields {
+        write_u32(bytes, u32::from(field));
+    }
+    write_u64(bytes, current_unix_seconds);
+}
+
+fn decode_external_mbc3_rtc_suffix(
+    bytes: &[u8],
+    current_unix_seconds: u64,
+) -> Result<Mbc3RtcPersistentState, ExternalSaveError> {
+    if bytes.len() != MBC3_EXTERNAL_RTC_SUFFIX_LEN {
+        return Err(ExternalSaveError::InvalidLength {
+            context: "MBC3 RTC",
+            expected: ExternalSaveLengthExpectation::Exact(MBC3_EXTERNAL_RTC_SUFFIX_LEN),
+            actual: bytes.len(),
+        });
+    }
+
+    let seconds = read_external_u32_low_u8(bytes, 0) & 0x3F;
+    let minutes = read_external_u32_low_u8(bytes, 4) & 0x3F;
+    let hours = read_external_u32_low_u8(bytes, 8) & 0x1F;
+    let day_low = read_external_u32_low_u8(bytes, 12);
+    let day_high = read_external_u32_low_u8(bytes, 16);
+    let saved_unix_seconds = u64::from_le_bytes([
+        bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
+    ]);
+
+    let mut rtc = Mbc3RtcPersistentState {
+        seconds,
+        minutes,
+        hours,
+        day_counter: u16::from(day_low) | (u16::from(day_high & 0x01) << 8),
+        halt: day_high & 0x40 != 0,
+        carry: day_high & 0x80 != 0,
+    };
+    rtc.apply_elapsed_seconds(current_unix_seconds.saturating_sub(saved_unix_seconds));
+    Ok(rtc)
+}
+
+fn read_external_u32_low_u8(bytes: &[u8], offset: usize) -> u8 {
+    u32::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+    ]) as u8
+}
+
+fn persistent_state_kind_name(state: &PersistentCartState) -> &'static str {
+    match state {
+        PersistentCartState::None => "None",
+        PersistentCartState::NoMbcRam { .. } => "NoMbcRam",
+        PersistentCartState::Mmm01Ram { .. } => "Mmm01Ram",
+        PersistentCartState::Huc1Ram { .. } => "Huc1Ram",
+        PersistentCartState::Huc3 { .. } => "Huc3",
+        PersistentCartState::Mbc1Ram { .. } => "Mbc1Ram",
+        PersistentCartState::Mbc2Ram { .. } => "Mbc2Ram",
+        PersistentCartState::Mbc3Rtc { .. } => "Mbc3Rtc",
+        PersistentCartState::Mbc3Ram { .. } => "Mbc3Ram",
+        PersistentCartState::Mbc3RamRtc { .. } => "Mbc3RamRtc",
+        PersistentCartState::Mbc5Ram { .. } => "Mbc5Ram",
+        PersistentCartState::PocketCameraRam { .. } => "PocketCameraRam",
+    }
+}
+
 fn encode_persistence_profile(
     bytes: &mut Vec<u8>,
     profile: CartridgePersistenceProfile,
@@ -1304,6 +1780,23 @@ mod tests {
             })
         );
         assert!(CartridgeSaveKey::new("phase6_save").is_ok());
+    }
+
+    #[test]
+    fn legacy_save_key_sanitizer_matches_previous_filename_policy() {
+        let legacy_key = legacy_sanitized_save_key(
+            "Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)",
+        )
+        .expect("legacy key should be derived");
+        assert_eq!(
+            legacy_key.as_str(),
+            "Legend_of_Zelda_The_-_Link_s_Awakening_USA_Europe_Rev_2"
+        );
+        assert_eq!(
+            legacy_sanitized_save_key(":::"),
+            None,
+            "all-separator stems used to collapse to an empty save key"
+        );
     }
 
     #[test]
@@ -1799,6 +2292,19 @@ mod tests {
             CartridgeSaveKeyError::Empty.to_string(),
             "save key must not be empty"
         );
+        let exact_rom_stem_key =
+            CartridgeSaveKey::new("Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)")
+                .expect("ordinary ROM filename punctuation should be valid");
+        assert_eq!(
+            exact_rom_stem_key.as_str(),
+            "Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2)"
+        );
+        assert_eq!(
+            FilesystemCartridgeSaveBackend::new("saves").path_for_key(&exact_rom_stem_key),
+            PathBuf::from(
+                "saves/Legend of Zelda, The - Link's Awakening (USA, Europe) (Rev 2).gbsav"
+            )
+        );
         assert_eq!(
             CartridgeSaveKeyError::InvalidCharacter {
                 index: 3,
@@ -1815,6 +2321,49 @@ mod tests {
         };
         assert_eq!(io_error.to_string(), "read save file failed for slot.gbsav");
         assert!(std::error::Error::source(&io_error).is_some());
+
+        assert_eq!(
+            ExternalSaveError::UnsupportedPersistentState { state_kind: "Huc3" }.to_string(),
+            "external .sav conversion does not support Huc3"
+        );
+        assert_eq!(
+            ExternalSaveError::UnsupportedPersistenceProfile {
+                profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                    ram: CartridgeRamPayloadKind::Mbc2Nibbles { cell_count: 512 },
+                },
+            }
+            .to_string(),
+            "external .sav conversion does not support persistence profile PersistentRamAndRtc { ram: Mbc2Nibbles { cell_count: 512 } }"
+        );
+        assert_eq!(
+            ExternalSaveError::StateProfileMismatch {
+                state_kind: "Mbc2Ram",
+                profile: CartridgePersistenceProfile::PersistentRtc,
+            }
+            .to_string(),
+            "persistent state Mbc2Ram does not match cartridge persistence profile PersistentRtc"
+        );
+        assert_eq!(
+            ExternalSaveError::InvalidLength {
+                context: "linear RAM",
+                expected: ExternalSaveLengthExpectation::Exact(8),
+                actual: 4,
+            }
+            .to_string(),
+            "invalid external .sav length for linear RAM: expected 8 bytes, got 4"
+        );
+        assert_eq!(
+            ExternalSaveError::InvalidLength {
+                context: "MBC2 RAM",
+                expected: ExternalSaveLengthExpectation::Either {
+                    first: 256,
+                    second: 512,
+                },
+                actual: 257,
+            }
+            .to_string(),
+            "invalid external .sav length for MBC2 RAM: expected 256 or 512 bytes, got 257"
+        );
 
         let other_backend_errors = [
             (
@@ -2098,5 +2647,587 @@ mod tests {
                 value: 511
             })
         ));
+    }
+
+    #[test]
+    fn external_save_exports_linear_ram_as_raw_bytes() {
+        let metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 4 },
+            },
+        };
+        let state = PersistentCartState::Mbc1Ram {
+            ram: vec![0x10, 0x20, 0x30, 0x40],
+        };
+
+        let external = encode_external_cartridge_save(
+            metadata,
+            &state,
+            1_700_000_000,
+            ExternalSaveExportFormat::default(),
+        )
+        .expect("linear RAM should export");
+        assert_eq!(external, [0x10, 0x20, 0x30, 0x40]);
+
+        let imported = import_external_cartridge_save(metadata, &state, &external, 1_700_000_001)
+            .expect("linear RAM should import");
+        assert_eq!(imported, state);
+    }
+
+    #[test]
+    fn external_save_round_trips_all_linear_ram_state_kinds() {
+        let metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+            },
+        };
+        let states = [
+            PersistentCartState::NoMbcRam {
+                ram: vec![0x01, 0x02],
+            },
+            PersistentCartState::Mmm01Ram {
+                ram: vec![0x03, 0x04],
+            },
+            PersistentCartState::Huc1Ram {
+                ram: vec![0x05, 0x06],
+            },
+            PersistentCartState::Mbc3Ram {
+                ram: vec![0x07, 0x08],
+            },
+            PersistentCartState::Mbc5Ram {
+                ram: vec![0x09, 0x0A],
+            },
+            PersistentCartState::PocketCameraRam {
+                ram: vec![0x0B, 0x0C],
+            },
+        ];
+
+        for state in states {
+            let external = encode_external_cartridge_save(
+                metadata,
+                &state,
+                1_700_000_000,
+                ExternalSaveExportFormat::default(),
+            )
+            .expect("linear RAM state should export");
+            let imported =
+                import_external_cartridge_save(metadata, &state, &external, 1_700_000_001)
+                    .expect("linear RAM state should import");
+            assert_eq!(imported, state);
+        }
+    }
+
+    #[test]
+    fn external_save_exports_mbc2_in_mgba_packed_form_and_imports_sameboy_form() {
+        let metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles {
+                    cell_count: MBC2_RAM_NIBBLE_COUNT,
+                },
+            },
+        };
+        let mut ram_nibbles = [0; MBC2_RAM_NIBBLE_COUNT];
+        ram_nibbles[0] = 0x01;
+        ram_nibbles[1] = 0x02;
+        ram_nibbles[2] = 0x0A;
+        ram_nibbles[3] = 0x0B;
+        ram_nibbles[511] = 0x0F;
+        let state = PersistentCartState::Mbc2Ram { ram_nibbles };
+
+        let external = encode_external_cartridge_save(
+            metadata,
+            &state,
+            1_700_000_000,
+            ExternalSaveExportFormat::default(),
+        )
+        .expect("MBC2 should export");
+        assert_eq!(external.len(), MBC2_MGBA_PACKED_BYTE_COUNT);
+        assert_eq!(external[0], 0x21);
+        assert_eq!(external[1], 0xBA);
+        assert_eq!(external[255], 0xF0);
+        assert_eq!(
+            import_external_cartridge_save(metadata, &state, &external, 1_700_000_000)
+                .expect("mGBA packed MBC2 should import"),
+            state
+        );
+
+        let mut sameboy = vec![0; MBC2_RAM_NIBBLE_COUNT];
+        sameboy[0] = 0xF1;
+        sameboy[1] = 0xE2;
+        sameboy[2] = 0xCA;
+        sameboy[3] = 0xBB;
+        sameboy[511] = 0xFF;
+        let imported = import_external_cartridge_save(metadata, &state, &sameboy, 1_700_000_000)
+            .expect("SameBoy one-byte-per-nibble MBC2 should import");
+        let PersistentCartState::Mbc2Ram { ram_nibbles } = imported else {
+            panic!("expected MBC2 state");
+        };
+        assert_eq!(ram_nibbles[0], 0x01);
+        assert_eq!(ram_nibbles[1], 0x02);
+        assert_eq!(ram_nibbles[2], 0x0A);
+        assert_eq!(ram_nibbles[3], 0x0B);
+        assert_eq!(ram_nibbles[511], 0x0F);
+    }
+
+    #[test]
+    fn external_save_round_trips_mbc3_rtc_only_suffix() {
+        let metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRtc,
+        };
+        let state = PersistentCartState::Mbc3Rtc {
+            rtc: Mbc3RtcPersistentState {
+                seconds: 1,
+                minutes: 2,
+                hours: 3,
+                day_counter: 4,
+                halt: false,
+                carry: false,
+            },
+        };
+        let external = encode_external_cartridge_save(
+            metadata,
+            &state,
+            1_700_000_010,
+            ExternalSaveExportFormat::default(),
+        )
+        .expect("MBC3 RTC-only state should export");
+        assert_eq!(external.len(), MBC3_EXTERNAL_RTC_SUFFIX_LEN);
+
+        let imported = import_external_cartridge_save(metadata, &state, &external, 1_700_000_012)
+            .expect("MBC3 RTC-only state should import");
+        assert_eq!(
+            imported,
+            PersistentCartState::Mbc3Rtc {
+                rtc: Mbc3RtcPersistentState {
+                    seconds: 3,
+                    minutes: 2,
+                    hours: 3,
+                    day_counter: 4,
+                    halt: false,
+                    carry: false,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn external_save_round_trips_mbc3_rtc_suffix_with_elapsed_time() {
+        let metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+            },
+        };
+        let state = PersistentCartState::Mbc3RamRtc {
+            ram: vec![0xAB, 0xCD],
+            rtc: Mbc3RtcPersistentState {
+                seconds: 58,
+                minutes: 59,
+                hours: 23,
+                day_counter: 7,
+                halt: false,
+                carry: false,
+            },
+        };
+
+        let envelope = CartridgeSaveEnvelope {
+            backend_metadata: CartridgeSaveBackendMetadata {
+                format_version: CURRENT_SAVE_FORMAT_VERSION,
+                saved_at_unix_seconds: 100,
+            },
+            cartridge_metadata: metadata,
+            persistent_state: state.clone(),
+        };
+        let external =
+            export_external_cartridge_save(&envelope, 103).expect("MBC3 RAM+RTC should export");
+        assert_eq!(external.len(), 2 + MBC3_EXTERNAL_RTC_SUFFIX_LEN);
+        assert_eq!(&external[..2], &[0xAB, 0xCD]);
+        assert_eq!(external[2], 1);
+        assert_eq!(external[6], 0);
+        assert_eq!(external[10], 0);
+        assert_eq!(
+            u64::from_le_bytes(external[42..50].try_into().unwrap()),
+            103
+        );
+
+        let imported = import_external_cartridge_save(metadata, &state, &external, 105)
+            .expect("MBC3 RAM+RTC should import");
+        assert_eq!(
+            imported,
+            PersistentCartState::Mbc3RamRtc {
+                ram: vec![0xAB, 0xCD],
+                rtc: Mbc3RtcPersistentState {
+                    seconds: 3,
+                    minutes: 0,
+                    hours: 0,
+                    day_counter: 8,
+                    halt: false,
+                    carry: false,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn external_save_rejects_ambiguous_or_invalid_payloads() {
+        let linear_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+            },
+        };
+        let linear_state = PersistentCartState::NoMbcRam { ram: vec![0xAA] };
+        assert!(matches!(
+            encode_external_cartridge_save(
+                linear_metadata,
+                &linear_state,
+                0,
+                ExternalSaveExportFormat::default(),
+            ),
+            Err(ExternalSaveError::InvalidLength {
+                context: "linear RAM state",
+                ..
+            })
+        ));
+        assert!(matches!(
+            import_external_cartridge_save(
+                linear_metadata,
+                &PersistentCartState::NoMbcRam { ram: vec![0; 2] },
+                &[0xAA],
+                0,
+            ),
+            Err(ExternalSaveError::InvalidLength {
+                context: "linear RAM",
+                ..
+            })
+        ));
+
+        let mbc2_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles {
+                    cell_count: MBC2_RAM_NIBBLE_COUNT,
+                },
+            },
+        };
+        let mbc2_state = PersistentCartState::Mbc2Ram {
+            ram_nibbles: [0; MBC2_RAM_NIBBLE_COUNT],
+        };
+        assert!(matches!(
+            import_external_cartridge_save(mbc2_metadata, &mbc2_state, &[0; 257], 0),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC2 RAM",
+                ..
+            })
+        ));
+        let invalid_mbc2_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles { cell_count: 511 },
+            },
+        };
+        assert!(matches!(
+            encode_external_cartridge_save(
+                invalid_mbc2_metadata,
+                &mbc2_state,
+                0,
+                ExternalSaveExportFormat::default(),
+            ),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC2 metadata",
+                ..
+            })
+        ));
+        assert!(matches!(
+            import_external_cartridge_save(invalid_mbc2_metadata, &mbc2_state, &[0; 256], 0),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC2 metadata",
+                ..
+            })
+        ));
+
+        let mbc3_rtc_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRtc,
+        };
+        let mbc3_rtc_state = PersistentCartState::Mbc3Rtc {
+            rtc: Mbc3RtcPersistentState {
+                seconds: 0,
+                minutes: 0,
+                hours: 0,
+                day_counter: 0,
+                halt: false,
+                carry: false,
+            },
+        };
+        assert!(matches!(
+            import_external_cartridge_save(
+                mbc3_rtc_metadata,
+                &mbc3_rtc_state,
+                &[0; MBC3_EXTERNAL_RTC_SUFFIX_LEN - 1],
+                0,
+            ),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC3 RTC",
+                ..
+            })
+        ));
+        assert!(matches!(
+            decode_external_mbc3_rtc_suffix(&[0; MBC3_EXTERNAL_RTC_SUFFIX_LEN - 1], 0),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC3 RTC",
+                ..
+            })
+        ));
+
+        let ram_rtc_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+            },
+        };
+        let ram_rtc_state = PersistentCartState::Mbc3RamRtc {
+            ram: vec![0; 2],
+            rtc: Mbc3RtcPersistentState {
+                seconds: 0,
+                minutes: 0,
+                hours: 0,
+                day_counter: 0,
+                halt: false,
+                carry: false,
+            },
+        };
+        assert!(matches!(
+            import_external_cartridge_save(
+                ram_rtc_metadata,
+                &ram_rtc_state,
+                &[0; MBC3_EXTERNAL_RTC_SUFFIX_LEN + 1],
+                0,
+            ),
+            Err(ExternalSaveError::InvalidLength {
+                context: "MBC3 RAM+RTC",
+                ..
+            })
+        ));
+
+        let unsupported_profile = CartridgePersistenceMetadata {
+            has_battery: false,
+            has_rtc: false,
+            profile: CartridgePersistenceProfile::PersistentRam {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 1 },
+            },
+        };
+        assert!(matches!(
+            encode_external_cartridge_save(
+                unsupported_profile,
+                &PersistentCartState::NoMbcRam { ram: vec![0] },
+                0,
+                ExternalSaveExportFormat::default(),
+            ),
+            Err(ExternalSaveError::UnsupportedPersistenceProfile { .. })
+        ));
+        assert!(matches!(
+            import_external_cartridge_save(
+                unsupported_profile,
+                &PersistentCartState::NoMbcRam { ram: vec![0] },
+                &[0],
+                0,
+            ),
+            Err(ExternalSaveError::UnsupportedPersistenceProfile { .. })
+        ));
+
+        let unsupported_mbc2_rtc_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Mbc2Nibbles {
+                    cell_count: MBC2_RAM_NIBBLE_COUNT,
+                },
+            },
+        };
+        assert!(matches!(
+            encode_external_cartridge_save(
+                unsupported_mbc2_rtc_metadata,
+                &ram_rtc_state,
+                0,
+                ExternalSaveExportFormat::default(),
+            ),
+            Err(ExternalSaveError::UnsupportedPersistenceProfile { .. })
+        ));
+        assert!(matches!(
+            import_external_cartridge_save(
+                unsupported_mbc2_rtc_metadata,
+                &ram_rtc_state,
+                &[0; 2],
+                0,
+            ),
+            Err(ExternalSaveError::UnsupportedPersistenceProfile { .. })
+        ));
+
+        let huc3_metadata = CartridgePersistenceMetadata {
+            has_battery: true,
+            has_rtc: true,
+            profile: CartridgePersistenceProfile::PersistentRamAndRtc {
+                ram: CartridgeRamPayloadKind::Linear { byte_len: 2 },
+            },
+        };
+        let huc3_state = PersistentCartState::Huc3 {
+            ram: vec![0; 2],
+            mcu_ram: [0; 256],
+            rtc: Huc3RtcPersistentState {
+                current_minutes_of_day: 0,
+                current_days: 0,
+                current_subminute_seconds: 0,
+                event_minutes_of_day: 0,
+                event_days: 0,
+            },
+            rom_bank: 0,
+            ram_bank: 0,
+            select_mode: 0,
+            access_address: 0,
+            mailbox_command: 0,
+            mailbox_argument: 0,
+            last_response_nybble: 0,
+            semaphore_ready: true,
+            ir_emitter_on: false,
+            ir_light_detected: false,
+            last_control_write: None,
+            last_unsupported_command: None,
+            last_unsupported_argument: None,
+        };
+        assert!(matches!(
+            encode_external_cartridge_save(
+                huc3_metadata,
+                &huc3_state,
+                0,
+                ExternalSaveExportFormat::default(),
+            ),
+            Err(ExternalSaveError::UnsupportedPersistentState { state_kind: "Huc3" })
+        ));
+        assert!(matches!(
+            import_external_cartridge_save(huc3_metadata, &huc3_state, &[0; 50], 0),
+            Err(ExternalSaveError::UnsupportedPersistentState { state_kind: "Huc3" })
+        ));
+        assert!(matches!(
+            encode_external_cartridge_save(
+                linear_metadata,
+                &huc3_state,
+                0,
+                ExternalSaveExportFormat::default(),
+            ),
+            Err(ExternalSaveError::UnsupportedPersistentState { state_kind: "Huc3" })
+        ));
+        assert!(matches!(
+            encode_external_cartridge_save(
+                linear_metadata,
+                &mbc2_state,
+                0,
+                ExternalSaveExportFormat::default(),
+            ),
+            Err(ExternalSaveError::StateProfileMismatch {
+                state_kind: "Mbc2Ram",
+                ..
+            })
+        ));
+        assert!(matches!(
+            import_external_cartridge_save(linear_metadata, &mbc2_state, &[0; 2], 0),
+            Err(ExternalSaveError::StateProfileMismatch {
+                state_kind: "Mbc2Ram",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn persistent_state_kind_names_cover_all_public_variants() {
+        let huc3_state = PersistentCartState::Huc3 {
+            ram: vec![],
+            mcu_ram: [0; 256],
+            rtc: Huc3RtcPersistentState {
+                current_minutes_of_day: 0,
+                current_days: 0,
+                current_subminute_seconds: 0,
+                event_minutes_of_day: 0,
+                event_days: 0,
+            },
+            rom_bank: 0,
+            ram_bank: 0,
+            select_mode: 0,
+            access_address: 0,
+            mailbox_command: 0,
+            mailbox_argument: 0,
+            last_response_nybble: 0,
+            semaphore_ready: true,
+            ir_emitter_on: false,
+            ir_light_detected: false,
+            last_control_write: None,
+            last_unsupported_command: None,
+            last_unsupported_argument: None,
+        };
+        let states = [
+            (PersistentCartState::None, "None"),
+            (PersistentCartState::NoMbcRam { ram: vec![] }, "NoMbcRam"),
+            (PersistentCartState::Mmm01Ram { ram: vec![] }, "Mmm01Ram"),
+            (PersistentCartState::Huc1Ram { ram: vec![] }, "Huc1Ram"),
+            (huc3_state, "Huc3"),
+            (PersistentCartState::Mbc1Ram { ram: vec![] }, "Mbc1Ram"),
+            (
+                PersistentCartState::Mbc2Ram {
+                    ram_nibbles: [0; MBC2_RAM_NIBBLE_COUNT],
+                },
+                "Mbc2Ram",
+            ),
+            (
+                PersistentCartState::Mbc3Rtc {
+                    rtc: Mbc3RtcPersistentState {
+                        seconds: 0,
+                        minutes: 0,
+                        hours: 0,
+                        day_counter: 0,
+                        halt: false,
+                        carry: false,
+                    },
+                },
+                "Mbc3Rtc",
+            ),
+            (PersistentCartState::Mbc3Ram { ram: vec![] }, "Mbc3Ram"),
+            (
+                PersistentCartState::Mbc3RamRtc {
+                    ram: vec![],
+                    rtc: Mbc3RtcPersistentState {
+                        seconds: 0,
+                        minutes: 0,
+                        hours: 0,
+                        day_counter: 0,
+                        halt: false,
+                        carry: false,
+                    },
+                },
+                "Mbc3RamRtc",
+            ),
+            (PersistentCartState::Mbc5Ram { ram: vec![] }, "Mbc5Ram"),
+            (
+                PersistentCartState::PocketCameraRam { ram: vec![] },
+                "PocketCameraRam",
+            ),
+        ];
+
+        for (state, expected_name) in states {
+            assert_eq!(persistent_state_kind_name(&state), expected_name);
+        }
     }
 }
