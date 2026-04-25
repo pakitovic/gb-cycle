@@ -7,7 +7,9 @@ use gb_core::{
 };
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveBackendError, CartridgeSaveKey, CartridgeSaveKeyError,
-    FilesystemCartridgeSaveBackend, uses_battery_backed_hardware_persistence,
+    EXTERNAL_SAVE_FILE_EXTENSION, ExternalSaveError, FilesystemCartridgeSaveBackend,
+    export_external_cartridge_save, import_external_cartridge_save,
+    uses_battery_backed_hardware_persistence,
 };
 use sha2::{Digest, Sha256};
 use std::env;
@@ -55,14 +57,25 @@ const INSPECT_HELP_TEXT: &str = concat!(
     "Options:\n",
     "  --mode <strict|permissive|experimental> Evaluate loader compatibility under the selected mode\n",
 );
+const SAVES_HELP_TEXT: &str = concat!(
+    "Usage:\n",
+    "  gb-cli saves export <rom> <out.sav> --save-dir <dir> [--save-key <key>]\n",
+    "  gb-cli saves import <rom> <in.sav> --save-dir <dir> [--save-key <key>]\n",
+    "\n",
+    "Options:\n",
+    "  --save-dir <dir>                       Directory containing gb-cycle .gbsav files\n",
+    "  --save-key <key>                       Override the derived save key (ASCII alnum, '_' or '-')\n",
+);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CliAction {
     ShowGeneralHelp,
     ShowRunHelp,
     ShowInspectHelp,
+    ShowSavesHelp,
     Run(RunOptions),
     InspectRom(InspectRomOptions),
+    Saves(SavesOptions),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -205,6 +218,21 @@ struct InspectRomOptions {
     execution_mode: ExecutionMode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SavesDirection {
+    Export,
+    Import,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SavesOptions {
+    direction: SavesDirection,
+    rom_path: PathBuf,
+    external_save_path: PathBuf,
+    save_dir: PathBuf,
+    save_key: Option<String>,
+}
+
 enum CliMachine {
     Buffered(Machine<TraceBuffer>),
     Summary(Machine<TraceSummaryBuffer>),
@@ -325,10 +353,12 @@ fn general_help_text() -> &'static str {
         "Usage:\n",
         "  gb-cli run <rom> [options]\n",
         "  gb-cli inspect-rom <rom> [--mode <strict|permissive|experimental>]\n",
+        "  gb-cli saves <export|import> <rom> <save.sav> --save-dir <dir> [--save-key <key>]\n",
         "\n",
         "Commands:\n",
         "  run         Execute one ROM with the DMG-family headless runner\n",
         "  inspect-rom Parse the cartridge header and report mapper compatibility\n",
+        "  saves       Convert gb-cycle .gbsav cartridge persistence to or from external .sav files\n",
         "\n",
         "Run `gb-cli <command> --help` for command-specific options.\n",
     )
@@ -347,8 +377,10 @@ where
         CliAction::ShowGeneralHelp => write_text(stdout, general_help_text()),
         CliAction::ShowRunHelp => write_text(stdout, RUN_HELP_TEXT),
         CliAction::ShowInspectHelp => write_text(stdout, INSPECT_HELP_TEXT),
+        CliAction::ShowSavesHelp => write_text(stdout, SAVES_HELP_TEXT),
         CliAction::Run(options) => run_command(options, stdout, stderr),
         CliAction::InspectRom(options) => inspect_rom_command(options, stdout),
+        CliAction::Saves(options) => saves_command(options, stdout, stderr),
     }
 }
 
@@ -366,6 +398,7 @@ where
         "--help" | "-h" => Ok(CliAction::ShowGeneralHelp),
         "run" => parse_run_arguments(arguments),
         "inspect-rom" => parse_inspect_rom_arguments(arguments),
+        "saves" => parse_saves_arguments(arguments),
         other => Err(format!(
             "unknown subcommand {other:?}; run `gb-cli --help` for usage"
         )),
@@ -560,6 +593,77 @@ where
             "missing required ROM path; run `gb-cli inspect-rom --help` for usage".to_string()
         })?,
         execution_mode,
+    }))
+}
+
+fn parse_saves_arguments<I, S>(arguments: I) -> Result<CliAction, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut arguments = arguments.into_iter();
+    let Some(direction) = arguments.next() else {
+        return Err("missing saves action; run `gb-cli saves --help` for usage".to_string());
+    };
+    let direction = match direction.as_ref() {
+        "--help" | "-h" => return Ok(CliAction::ShowSavesHelp),
+        "export" => SavesDirection::Export,
+        "import" => SavesDirection::Import,
+        other => {
+            return Err(format!(
+                "unknown saves action {other:?}; expected export or import"
+            ));
+        }
+    };
+
+    let mut positional = Vec::new();
+    let mut save_dir = None;
+    let mut save_key = None;
+
+    while let Some(argument) = arguments.next() {
+        match argument.as_ref() {
+            "--help" | "-h" => return Ok(CliAction::ShowSavesHelp),
+            "--save-dir" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--save-dir requires a value".to_string());
+                };
+                save_dir = Some(PathBuf::from(value.as_ref()));
+            }
+            "--save-key" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--save-key requires a value".to_string());
+                };
+                save_key = Some(value.as_ref().to_string());
+            }
+            value if value.starts_with("--") => {
+                return Err(format!(
+                    "unknown saves option {value:?}; run `gb-cli saves --help`"
+                ));
+            }
+            value => {
+                if positional.len() >= 2 {
+                    return Err(format!(
+                        "unexpected extra positional argument {value:?}; run `gb-cli saves --help`"
+                    ));
+                }
+                positional.push(PathBuf::from(value));
+            }
+        }
+    }
+
+    if positional.len() != 2 {
+        return Err(
+            "missing required ROM path or .sav path; run `gb-cli saves --help` for usage"
+                .to_string(),
+        );
+    }
+
+    Ok(CliAction::Saves(SavesOptions {
+        direction,
+        rom_path: positional.remove(0),
+        external_save_path: positional.remove(0),
+        save_dir: save_dir.ok_or_else(|| "--save-dir is required".to_string())?,
+        save_key,
     }))
 }
 
@@ -865,6 +969,164 @@ fn inspect_rom_command(options: InspectRomOptions, output: &mut dyn Write) -> Re
     }
 
     Ok(())
+}
+
+fn saves_command(
+    options: SavesOptions,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<(), String> {
+    match options.direction {
+        SavesDirection::Export => saves_export_command(options, stdout, stderr),
+        SavesDirection::Import => saves_import_command(options, stdout, stderr),
+    }
+}
+
+fn saves_export_command(
+    options: SavesOptions,
+    output: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<(), String> {
+    let current_dir = env::current_dir()
+        .map_err(|error| format!("failed to determine current directory: {error}"))?;
+    let rom_path = resolve_path(&current_dir, &options.rom_path);
+    let mut cartridge = load_cartridge_for_save_conversion(&rom_path, stderr)?;
+    let metadata = cartridge.persistence_metadata();
+    if !uses_battery_backed_hardware_persistence(metadata) {
+        return Err(format!(
+            "ROM {} does not expose battery-backed cartridge persistence",
+            rom_path.display()
+        ));
+    }
+
+    let save_root = resolve_path(&current_dir, &options.save_dir);
+    validate_directory_input("--save-dir", &save_root)?;
+    let key = resolve_saves_key(options.save_key.as_deref(), &rom_path)?;
+    let backend = FilesystemCartridgeSaveBackend::new(&save_root);
+    let save_path = backend.path_for_key(&key);
+    let envelope = backend
+        .load(&key)
+        .map_err(|error| format_save_load_error(&save_path, error))?
+        .ok_or_else(|| format!("no gb-cycle save found at {}", save_path.display()))?;
+    cartridge
+        .restore_persistent_state(&envelope.persistent_state)
+        .map_err(|error| {
+            format!(
+                "save {} is not compatible with ROM {}: {error:?}",
+                save_path.display(),
+                rom_path.display()
+            )
+        })?;
+
+    let external_bytes = export_external_cartridge_save(&envelope, backend.current_unix_seconds())
+        .map_err(format_external_save_error)?;
+    let external_path = resolve_path(&current_dir, &options.external_save_path);
+    write_bytes_with_parent(&external_path, &external_bytes)?;
+
+    writeln_checked(output, &format!("rom={}", rom_path.display()))?;
+    writeln_checked(output, &format!("save_key={}", key.as_str()))?;
+    writeln_checked(output, &format!("source_gbsav={}", save_path.display()))?;
+    writeln_checked(
+        output,
+        &format!("external_save={}", external_path.display()),
+    )?;
+    writeln_checked(output, &format!("external_bytes={}", external_bytes.len()))?;
+    Ok(())
+}
+
+fn saves_import_command(
+    options: SavesOptions,
+    output: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<(), String> {
+    let current_dir = env::current_dir()
+        .map_err(|error| format!("failed to determine current directory: {error}"))?;
+    let rom_path = resolve_path(&current_dir, &options.rom_path);
+    let mut cartridge = load_cartridge_for_save_conversion(&rom_path, stderr)?;
+    let metadata = cartridge.persistence_metadata();
+    if !uses_battery_backed_hardware_persistence(metadata) {
+        return Err(format!(
+            "ROM {} does not expose battery-backed cartridge persistence",
+            rom_path.display()
+        ));
+    }
+
+    let external_path = resolve_path(&current_dir, &options.external_save_path);
+    let external_bytes = fs::read(&external_path).map_err(|error| {
+        format!(
+            "failed to read external .{} save {}: {error}",
+            EXTERNAL_SAVE_FILE_EXTENSION,
+            external_path.display()
+        )
+    })?;
+    let target_state = cartridge.persistent_state();
+    let save_root = resolve_path(&current_dir, &options.save_dir);
+    validate_directory_input("--save-dir", &save_root)?;
+    let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
+    let imported_state = import_external_cartridge_save(
+        metadata,
+        &target_state,
+        &external_bytes,
+        backend.current_unix_seconds(),
+    )
+    .map_err(format_external_save_error)?;
+    cartridge
+        .restore_persistent_state(&imported_state)
+        .map_err(|error| {
+            format!(
+                "external save {} is not compatible with ROM {}: {error:?}",
+                external_path.display(),
+                rom_path.display()
+            )
+        })?;
+
+    let key = resolve_saves_key(options.save_key.as_deref(), &rom_path)?;
+    let target_save_path = backend.path_for_key(&key);
+    let envelope = backend
+        .save(&key, metadata, &imported_state)
+        .map_err(|error| format_save_flush_error(&target_save_path, "saves-import", error))?;
+
+    writeln_checked(output, &format!("rom={}", rom_path.display()))?;
+    writeln_checked(output, &format!("save_key={}", key.as_str()))?;
+    writeln_checked(
+        output,
+        &format!("external_save={}", external_path.display()),
+    )?;
+    writeln_checked(
+        output,
+        &format!("target_gbsav={}", target_save_path.display()),
+    )?;
+    writeln_checked(
+        output,
+        &format!(
+            "saved_at_unix_seconds={}",
+            envelope.backend_metadata.saved_at_unix_seconds
+        ),
+    )?;
+    Ok(())
+}
+
+fn load_cartridge_for_save_conversion(
+    rom_path: &Path,
+    stderr: &mut dyn Write,
+) -> Result<CartridgeSlot, String> {
+    let rom_bytes = fs::read(rom_path)
+        .map_err(|error| format!("failed to read ROM {}: {error}", rom_path.display()))?;
+    let report = CartridgeSlot::load(rom_bytes, &CompatibilityPolicy::strict())
+        .map_err(format_cartridge_load_error)?;
+    write_cartridge_diagnostics(stderr, report.diagnostics())?;
+    Ok(report.cartridge().clone())
+}
+
+fn resolve_saves_key(
+    explicit_key: Option<&str>,
+    rom_path: &Path,
+) -> Result<CartridgeSaveKey, String> {
+    if let Some(key) = explicit_key {
+        parse_save_key(key)
+    } else {
+        derive_save_key(rom_path)
+    }
 }
 
 fn open_save_session(
@@ -1306,6 +1568,10 @@ fn format_save_flush_error(path: &Path, reason: &str, error: CartridgeSaveBacken
         "failed to save cartridge persistence ({reason}) to {}: {error}",
         path.display()
     )
+}
+
+fn format_external_save_error(error: ExternalSaveError) -> String {
+    format!("failed to convert external .{EXTERNAL_SAVE_FILE_EXTENSION} save: {error}")
 }
 
 fn format_boot_rom_asset_load_error(root: &Path, error: BootRomAssetError) -> String {

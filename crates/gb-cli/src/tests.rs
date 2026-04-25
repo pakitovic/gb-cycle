@@ -313,6 +313,91 @@ fn run_command_emits_requested_artifacts_and_persists_battery_backed_ram() {
 }
 
 #[test]
+fn saves_commands_export_and_import_external_sav_files() {
+    let temp_dir = unique_temp_dir("saves-convert");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+
+    let rom_path = temp_dir.join("battery_serial.gb");
+    let save_root = temp_dir.join("saves");
+    let external_path = temp_dir.join("exports/battery.sav");
+    let rom = build_battery_backed_serial_and_ram_rom(b'S', 0x12);
+    fs::write(&rom_path, &rom).expect("test ROM should be writable");
+
+    let report = CartridgeSlot::load(rom, &CompatibilityPolicy::strict())
+        .expect("test ROM should load for save seeding");
+    let key = derive_save_key(&rom_path).expect("save key should derive");
+    let mut backend = FilesystemCartridgeSaveBackend::new(&save_root);
+    let mut seeded_ram = vec![0; 8 * 1024];
+    seeded_ram[0] = 0x5A;
+    seeded_ram[1] = 0xC3;
+    backend
+        .save(
+            &key,
+            report.cartridge().persistence_metadata(),
+            &PersistentCartState::NoMbcRam { ram: seeded_ram },
+        )
+        .expect("seed save should persist");
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    run_cli_command(
+        [
+            "saves",
+            "export",
+            rom_path.to_str().expect("path should be valid UTF-8"),
+            external_path.to_str().expect("path should be valid UTF-8"),
+            "--save-dir",
+            save_root.to_str().expect("path should be valid UTF-8"),
+        ],
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect("save export should succeed");
+    assert_eq!(
+        &fs::read(&external_path).expect("external save should exist")[..2],
+        &[0x5A, 0xC3]
+    );
+    let output = String::from_utf8(stdout).expect("stdout should be UTF-8");
+    assert!(output.contains("external_bytes=8192"));
+    let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
+
+    let mut imported = fs::read(&external_path).expect("external save should be readable");
+    imported[0] = 0xA5;
+    imported[1] = 0x3C;
+    fs::write(&external_path, imported).expect("external save should be writable");
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    run_cli_command(
+        [
+            "saves",
+            "import",
+            rom_path.to_str().expect("path should be valid UTF-8"),
+            external_path.to_str().expect("path should be valid UTF-8"),
+            "--save-dir",
+            save_root.to_str().expect("path should be valid UTF-8"),
+        ],
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect("save import should succeed");
+
+    let envelope = backend
+        .load(&key)
+        .expect("imported save should be readable")
+        .expect("imported save should exist");
+    match envelope.persistent_state {
+        PersistentCartState::NoMbcRam { ram } => assert_eq!(&ram[..2], &[0xA5, 0x3C]),
+        other => panic!("expected NoMbcRam persistence, got {other:?}"),
+    }
+    let output = String::from_utf8(stdout).expect("stdout should be UTF-8");
+    assert!(output.contains("target_gbsav="));
+    let _ = String::from_utf8(stderr).expect("stderr should be UTF-8");
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
 fn framebuffer_artifact_defaults_to_pgm_when_path_is_not_png() {
     let encoded = encode_framebuffer_artifact(Path::new("framebuffer.pgm"), &[0, 1, 2, 3])
         .expect("PGM encoding should succeed");
@@ -344,8 +429,18 @@ fn run_cli_command_routes_help_variants_and_unknown_subcommands() {
     run_cli_command(["inspect-rom", "--help"], &mut stdout, &mut stderr)
         .expect("inspect help should succeed");
     assert_eq!(
-        String::from_utf8(stdout).expect("stdout should be UTF-8"),
+        String::from_utf8(stdout.clone()).expect("stdout should be UTF-8"),
         INSPECT_HELP_TEXT
+    );
+    assert!(stderr.is_empty());
+
+    stdout.clear();
+    stderr.clear();
+    run_cli_command(["saves", "--help"], &mut stdout, &mut stderr)
+        .expect("saves help should succeed");
+    assert_eq!(
+        String::from_utf8(stdout).expect("stdout should be UTF-8"),
+        SAVES_HELP_TEXT
     );
     assert!(stderr.is_empty());
 
@@ -523,6 +618,74 @@ fn parse_inspect_rom_arguments_cover_valid_help_and_error_paths() {
         parse_inspect_rom_arguments(std::iter::empty::<&str>())
             .expect_err("inspect requires a ROM path"),
         "missing required ROM path; run `gb-cli inspect-rom --help` for usage"
+    );
+}
+
+#[test]
+fn parse_saves_arguments_cover_valid_help_and_error_paths() {
+    match parse_saves_arguments([
+        "export",
+        "demo.gb",
+        "demo.sav",
+        "--save-dir",
+        "saves",
+        "--save-key",
+        "slot1",
+    ])
+    .expect("saves export arguments should parse")
+    {
+        CliAction::Saves(options) => {
+            assert_eq!(options.direction, SavesDirection::Export);
+            assert_eq!(options.rom_path, PathBuf::from("demo.gb"));
+            assert_eq!(options.external_save_path, PathBuf::from("demo.sav"));
+            assert_eq!(options.save_dir, PathBuf::from("saves"));
+            assert_eq!(options.save_key.as_deref(), Some("slot1"));
+        }
+        other => panic!("expected saves action, got {other:?}"),
+    }
+
+    match parse_saves_arguments(["import", "demo.gb", "demo.sav", "--save-dir", "saves"])
+        .expect("saves import arguments should parse")
+    {
+        CliAction::Saves(options) => {
+            assert_eq!(options.direction, SavesDirection::Import);
+            assert_eq!(options.save_key, None);
+        }
+        other => panic!("expected saves action, got {other:?}"),
+    }
+
+    assert_eq!(
+        parse_saves_arguments(["--help"]).expect("help should parse"),
+        CliAction::ShowSavesHelp
+    );
+    assert_eq!(
+        parse_saves_arguments(std::iter::empty::<&str>()).expect_err("missing action should fail"),
+        "missing saves action; run `gb-cli saves --help` for usage"
+    );
+    assert_eq!(
+        parse_saves_arguments(["copy", "demo.gb", "demo.sav", "--save-dir", "saves"])
+            .expect_err("unknown action should fail"),
+        "unknown saves action \"copy\"; expected export or import"
+    );
+    assert_eq!(
+        parse_saves_arguments(["export", "demo.gb", "demo.sav"])
+            .expect_err("save dir should be required"),
+        "--save-dir is required"
+    );
+    assert_eq!(
+        parse_saves_arguments(["export", "demo.gb", "demo.sav", "--save-dir"])
+            .expect_err("save dir value should be required"),
+        "--save-dir requires a value"
+    );
+    assert_eq!(
+        parse_saves_arguments(["export", "demo.gb", "demo.sav", "--weird"])
+            .expect_err("unknown option should fail"),
+        "unknown saves option \"--weird\"; run `gb-cli saves --help`"
+    );
+    assert_eq!(
+        parse_saves_arguments(["export", "demo.gb", "demo.sav", "extra"])
+            .expect_err("extra positional should fail"),
+        "unexpected extra positional argument \"extra\"; run `gb-cli saves --help`"
     );
 }
 

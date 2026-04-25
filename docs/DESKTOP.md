@@ -155,19 +155,27 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - In launcher mode without a loaded ROM, that shared back/cancel behavior does not dismiss the root overlay.
 - While a native file dialog is pending from the overlay, the triggering entry stays selected but disabled until the dialog resolves.
 - Root overlay also exposes `QUIT` directly at the first menu level.
-- `RESUME` and root-level back/cancel (`Escape` / `Guide`) both clear an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
+- Root-level back/cancel (`Escape` / `Guide`) clears an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
 - When the loaded session includes a `Pocket Camera` cartridge, the root overlay also exposes:
   - `CAM LIVE ON` / `CAM LIVE OFF` — opens or stops the first SDL3 camera device with SDL's native stream selection, converts each available frame to grayscale, mirrors it horizontally for self-facing Pocket Camera orientation, and pushes it through the same core API used by `CAM IMAGE`
   - `CAM IMAGE` — native PNG picker that decodes the selected image in the frontend and pushes it into the core as a grayscale host frame
   - `CAM RESET` — stops live capture if active, clears the current session image, and restores the core's deterministic placeholder frame
-  These entries are ordered immediately after `RESUME` so Camera ROM sessions expose live capture state before the general ROM/system menus.
+  These entries appear before the general ROM/system menus so Camera ROM sessions expose live capture state first.
 - Pocket Camera still-image selection and live-camera state are session-scoped only. A chosen still image is reapplied across ROM reloads / resets while the desktop app stays open, but neither still-image path nor live-camera state is persisted into desktop settings.
 - Camera permission, device selection, native frame acquisition, RGB conversion, horizontal live-frame mirroring, and warm-up frame dropping are frontend-owned. `gb-core` only receives grayscale host frames and performs the deterministic `128x112` normalization.
 - If SDL opens a camera but no frames arrive, the desktop log reports whether SDL still considers camera permission `pending`, `approved`, or `denied`; this keeps OS permission stalls distinguishable from frame acquisition stalls.
 - **`VIDEO`** — stats HUD visibility, host-side presentation filter, fullscreen, vsync, window scale, integer presentation, screenshot capture, and BG/WIN/OBJ presentation masks.
 - **`AUDIO`** — toggle mute, cycle host volume, host-mask `CH1..CH4`, and start/stop automatic `WAV` captures under `audios/`.
 - **`INPUT`** — keyboard, gamepad, hotkey, and menu rebinding (see above).
-- **`SYSTEM`** — system-level options such as console model, startup mode, boot ROM paths, save policy, and reset.
+- **`SYSTEM`** — system-level options such as console model, startup mode, execution mode, the `BOOT ROM` submenu, the `SAVE` submenu, and reset.
+- **`SYSTEM -> BOOT ROM`** — boot-ROM-specific options: `BOOT AUTO`,
+  `BOOT FILE`, `BOOT DIR`, and `VERIFY`. `MODEL`, `START`, and `SAVE` remain
+  at the system/save level so hardware model selection, startup policy, and
+  cartridge persistence are not mixed with boot-ROM asset configuration.
+- **`SYSTEM -> SAVE`** — save-specific options: `EXPORT SAVE`, `IMPORT SAVE`,
+  `SAVE BATTERY`, `SAVES ON/OFF`, `SAVE POLICY`, `DIR AUTO`, and `SAVE DIR`.
+  This keeps cartridge persistence controls in one submenu instead of mixing
+  them into the root or top-level system option list.
 - **`OPEN RECENT`** — recent-ROM history for the last `12` ROMs, available from the root overlay whenever recent ROMs exist; entries can relaunch directly, the submenu exposes `CLEAR LIST`, and the selected entry scrolls after a short dwell when the sanitized title is wider than the overlay text area.
 - **`DEFAULTS`** — reset actions inside `VIDEO`, `AUDIO`, and `INPUT` to restore host-side settings and bindings without touching CLI config.
 
@@ -175,7 +183,21 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 
 - Default policy: debounced auto-flush — once cartridge persistence changes, the frontend writes a safe replacement save after roughly `2s`, and forces a flush on ROM changes and shutdown.
 - For RTC-backed `MBC3` cartridges, the desktop loop also injects host wall-clock elapsed seconds into the live session, so clock-based games keep advancing while the ROM remains open instead of only catching up on the next save reload.
-- The `SAVE BATTERY` menu action is only exposed when the desktop save policy is explicitly set to `manual`.
+- `SYSTEM -> SAVE -> EXPORT SAVE` writes the current primary/P1 cartridge
+  persistence as a SameBoy/mGBA-compatible `.sav`. The native save dialog
+  defaults under `saves/export` next to the active ROM or configured save root.
+- `SYSTEM -> SAVE -> IMPORT SAVE` reads a SameBoy/mGBA-compatible `.sav`,
+  validates it against the current primary/P1 ROM, writes the matching internal
+  `.gbsav`, and then asks the user to reload or reset the game. V1 does not
+  hot-swap the live cartridge session; after a successful import the active
+  primary save session is disabled until reload so the running game cannot
+  overwrite the imported `.gbsav`.
+- The external `.sav` compatibility boundary mirrors the CLI converter: linear
+  cartridge RAM is raw bytes, `MBC3` RTC saves use the shared `48`-byte suffix,
+  and `MBC2` import accepts SameBoy and mGBA layouts while export defaults to
+  mGBA packed bytes.
+- The `SAVE BATTERY` menu action is only exposed inside `SYSTEM -> SAVE` when
+  the desktop save policy is explicitly set to `manual`.
 
 ## Error handling
 

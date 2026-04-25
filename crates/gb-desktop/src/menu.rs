@@ -58,14 +58,12 @@ const RECENT_ROM_SCROLL_STEP: Duration = Duration::from_millis(150);
 const RECENT_ROM_SCROLL_GAP_CHARS: usize = 3;
 pub const RECENT_ROM_MENU_CAPACITY: usize = 12;
 
-const ROOT_MENU_ITEMS: [MenuItem; 13] = [
-    MenuItem::Resume,
+const ROOT_MENU_ITEMS: [MenuItem; 11] = [
     MenuItem::CameraLive,
     MenuItem::CameraImage,
     MenuItem::CameraReset,
     MenuItem::OpenRom,
     MenuItem::RecentMenu,
-    MenuItem::SaveBattery,
     MenuItem::VideoMenu,
     MenuItem::AudioMenu,
     MenuItem::InputMenu,
@@ -178,19 +176,30 @@ const GAMEPAD_MENU_CONTROL_ITEMS: [MenuItem; 5] = [
     MenuItem::GamepadMenuCancel,
     MenuItem::Return,
 ];
-const SYSTEM_MENU_ITEMS: [MenuItem; 13] = [
+const SYSTEM_MENU_ITEMS: [MenuItem; 7] = [
     MenuItem::ConsoleModel,
     MenuItem::StartupMode,
     MenuItem::ExecutionMode,
+    MenuItem::BootRomMenu,
+    MenuItem::SaveMenu,
+    MenuItem::Reset,
+    MenuItem::Return,
+];
+const BOOT_ROM_MENU_ITEMS: [MenuItem; 5] = [
     MenuItem::BootRomDefaultPath,
     MenuItem::BootRomFilePath,
     MenuItem::BootRomDirectoryPath,
     MenuItem::BootRomVerify,
+    MenuItem::Return,
+];
+const SAVE_MENU_ITEMS: [MenuItem; 8] = [
+    MenuItem::ExportSave,
+    MenuItem::ImportSave,
+    MenuItem::SaveBattery,
     MenuItem::SavesEnabled,
     MenuItem::SavePolicy,
     MenuItem::SaveDefaultPath,
     MenuItem::SaveDirectoryPath,
-    MenuItem::Reset,
     MenuItem::Return,
 ];
 
@@ -209,6 +218,8 @@ pub enum MenuAction {
     OpenRecentRom(usize),
     ClearRecentList,
     SaveBattery,
+    ExportSave,
+    ImportSave,
     SelectCameraImage,
     ToggleCameraLive,
     ResetCameraImage,
@@ -428,6 +439,8 @@ pub struct MenuPresentation {
     pub ch3_enabled: bool,
     pub ch4_enabled: bool,
     pub manual_save_available: bool,
+    pub external_save_available: bool,
+    pub external_save_import_available: bool,
     pub any_dialog_pending: bool,
     pub cartridge_pocket_camera_supported: bool,
     pub pocket_camera_live_enabled: bool,
@@ -474,7 +487,7 @@ impl MenuPresentation {
 
     fn item_enabled(self, item: MenuItem) -> bool {
         match item {
-            MenuItem::Resume | MenuItem::Reset | MenuItem::Screenshot => self.rom_loaded,
+            MenuItem::Reset | MenuItem::Screenshot => self.rom_loaded,
             MenuItem::OpenRom
             | MenuItem::RecentMenu
             | MenuItem::RecentRom1
@@ -496,6 +509,8 @@ impl MenuPresentation {
             | MenuItem::CameraLive => !self.any_dialog_pending,
             MenuItem::CameraReset => self.cartridge_pocket_camera_supported,
             MenuItem::SaveBattery => self.manual_save_available,
+            MenuItem::ExportSave => self.external_save_available && !self.any_dialog_pending,
+            MenuItem::ImportSave => self.external_save_import_available && !self.any_dialog_pending,
             MenuItem::AudioMenu => self.audio_available || self.rom_loaded,
             MenuItem::ToggleMute | MenuItem::AudioVolume => self.audio_available,
             MenuItem::AudioRecord => self.rom_loaded,
@@ -552,6 +567,8 @@ impl MenuPresentation {
             | MenuItem::ExtPortMenu
             | MenuItem::VideoMenu
             | MenuItem::SystemMenu
+            | MenuItem::BootRomMenu
+            | MenuItem::SaveMenu
             | MenuItem::ConsoleModel
             | MenuItem::StartupMode
             | MenuItem::ExecutionMode
@@ -584,7 +601,6 @@ impl MenuPresentation {
 
     fn item_label(self, item: MenuItem) -> String {
         match item {
-            MenuItem::Resume => "RESUME".to_string(),
             MenuItem::OpenRom => "OPEN ROM".to_string(),
             MenuItem::RecentMenu => "OPEN RECENT".to_string(),
             MenuItem::RecentRom1 => recent_rom_item_label(self.recent_rom_labels[0]),
@@ -600,6 +616,9 @@ impl MenuPresentation {
             MenuItem::RecentRom11 => recent_rom_item_label(self.recent_rom_labels[10]),
             MenuItem::RecentRom12 => recent_rom_item_label(self.recent_rom_labels[11]),
             MenuItem::ClearRecentList => "CLEAR LIST".to_string(),
+            MenuItem::SaveMenu => "SAVE".to_string(),
+            MenuItem::ExportSave => "EXPORT SAVE".to_string(),
+            MenuItem::ImportSave => "IMPORT SAVE".to_string(),
             MenuItem::SaveBattery => "SAVE BATTERY".to_string(),
             MenuItem::CameraImage => "CAM IMAGE".to_string(),
             MenuItem::CameraLive => {
@@ -625,6 +644,7 @@ impl MenuPresentation {
             MenuItem::GamepadMenu => "GAMEPAD".to_string(),
             MenuItem::GamepadMenuControls => "PAD MENU".to_string(),
             MenuItem::SystemMenu => "SYSTEM".to_string(),
+            MenuItem::BootRomMenu => "BOOT ROM".to_string(),
             MenuItem::ConsoleModel => match self.console_model {
                 DesktopConsoleModel::Dmg0 => "MODEL DMG0".to_string(),
                 DesktopConsoleModel::Dmg => "MODEL DMG".to_string(),
@@ -968,6 +988,8 @@ enum MenuScreen {
     KeyboardMenuControls,
     Hotkeys,
     System,
+    BootRom,
+    Save,
 }
 
 impl MenuScreen {
@@ -991,13 +1013,14 @@ impl MenuScreen {
             Self::KeyboardMenuControls => "KB MENU",
             Self::Hotkeys => "HOTKEYS",
             Self::System => "SYSTEM",
+            Self::BootRom => "BOOT ROM",
+            Self::Save => "SAVE",
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MenuItem {
-    Resume,
     OpenRom,
     RecentMenu,
     RecentRom1,
@@ -1027,6 +1050,8 @@ enum MenuItem {
     GamepadMenu,
     GamepadMenuControls,
     SystemMenu,
+    BootRomMenu,
+    SaveMenu,
     ConsoleModel,
     StartupMode,
     ExecutionMode,
@@ -1034,6 +1059,8 @@ enum MenuItem {
     BootRomFilePath,
     BootRomDirectoryPath,
     BootRomVerify,
+    ExportSave,
+    ImportSave,
     SavesEnabled,
     SavePolicy,
     SaveDefaultPath,
@@ -1562,10 +1589,6 @@ impl OverlayMenuState {
         presentation: MenuPresentation,
     ) -> Option<MenuAction> {
         match item {
-            MenuItem::Resume => {
-                self.close();
-                Some(MenuAction::Resume)
-            }
             MenuItem::OpenRom => Some(MenuAction::OpenRom),
             MenuItem::RecentMenu => {
                 self.push_screen(MenuScreen::Recent, presentation);
@@ -1628,6 +1651,14 @@ impl OverlayMenuState {
                 self.push_screen(MenuScreen::System, presentation);
                 None
             }
+            MenuItem::BootRomMenu => {
+                self.push_screen(MenuScreen::BootRom, presentation);
+                None
+            }
+            MenuItem::SaveMenu => {
+                self.push_screen(MenuScreen::Save, presentation);
+                None
+            }
             MenuItem::ConsoleModel => Some(MenuAction::CycleConsoleModel),
             MenuItem::StartupMode => Some(MenuAction::CycleStartupMode),
             MenuItem::ExecutionMode => Some(MenuAction::CycleExecutionMode),
@@ -1635,6 +1666,8 @@ impl OverlayMenuState {
             MenuItem::BootRomFilePath => Some(MenuAction::SelectBootRomFilePath),
             MenuItem::BootRomDirectoryPath => Some(MenuAction::SelectBootRomDirectoryPath),
             MenuItem::BootRomVerify => Some(MenuAction::CycleBootRomVerify),
+            MenuItem::ExportSave => Some(MenuAction::ExportSave),
+            MenuItem::ImportSave => Some(MenuAction::ImportSave),
             MenuItem::SavesEnabled => Some(MenuAction::ToggleSavesEnabled),
             MenuItem::SavePolicy => Some(MenuAction::CycleSavePolicy),
             MenuItem::SaveDefaultPath => Some(MenuAction::ClearSaveDirectoryPath),
@@ -2043,6 +2076,8 @@ fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
         MenuScreen::KeyboardMenuControls => &KEYBOARD_MENU_CONTROL_ITEMS,
         MenuScreen::Hotkeys => &HOTKEYS_MENU_ITEMS,
         MenuScreen::System => &SYSTEM_MENU_ITEMS,
+        MenuScreen::BootRom => &BOOT_ROM_MENU_ITEMS,
+        MenuScreen::Save => &SAVE_MENU_ITEMS,
     }
 }
 
@@ -2502,14 +2537,14 @@ fn glyph_rows(character: char) -> [u8; GLYPH_HEIGHT] {
 #[cfg(test)]
 mod tests {
     use super::{
-        CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget, GamepadMenuBindingTarget,
-        KeyboardBindingTarget, KeyboardMenuBindingTarget, MENU_VISIBLE_ITEM_CAPACITY, MenuAction,
-        MenuInput, MenuItem, MenuPresentation, MenuScreen, OverlayMenuState,
-        PerformanceHudSnapshot, RECENT_MENU_ITEMS, RECENT_ROM_MENU_CAPACITY, ROOT_MENU_ITEMS,
-        ScrollIndicatorDirection, VIDEO_MENU_ITEMS, desktop_key_label, gamepad_binding_label,
-        normalized_selected_index, performance_hud_lines, previous_enabled_index,
-        render_performance_hud, rendered_recent_rom_item_label, scroll_indicator_rows,
-        viewport_start_index, visible_item_at,
+        BOOT_ROM_MENU_ITEMS, CompactMenuLabel, CompactRecentRomLabel, GamepadBindingTarget,
+        GamepadMenuBindingTarget, KeyboardBindingTarget, KeyboardMenuBindingTarget,
+        MENU_VISIBLE_ITEM_CAPACITY, MenuAction, MenuInput, MenuItem, MenuPresentation, MenuScreen,
+        OverlayMenuState, PerformanceHudSnapshot, RECENT_MENU_ITEMS, RECENT_ROM_MENU_CAPACITY,
+        ROOT_MENU_ITEMS, SAVE_MENU_ITEMS, ScrollIndicatorDirection, VIDEO_MENU_ITEMS,
+        desktop_key_label, gamepad_binding_label, normalized_selected_index, performance_hud_lines,
+        previous_enabled_index, render_performance_hud, rendered_recent_rom_item_label,
+        scroll_indicator_rows, viewport_start_index, visible_item_at, visible_item_count,
     };
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
@@ -2552,6 +2587,8 @@ mod tests {
             ch3_enabled: true,
             ch4_enabled: true,
             manual_save_available: false,
+            external_save_available: false,
+            external_save_import_available: false,
             any_dialog_pending: false,
             cartridge_pocket_camera_supported: false,
             pocket_camera_live_enabled: false,
@@ -2593,6 +2630,42 @@ mod tests {
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
     }
 
+    fn open_audio_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
+        menu.open(presentation);
+        select_visible_item(menu, presentation, MenuItem::AudioMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+    }
+
+    fn open_input_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
+        menu.open(presentation);
+        select_visible_item(menu, presentation, MenuItem::InputMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+    }
+
+    fn open_recent_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
+        menu.open(presentation);
+        select_visible_item(menu, presentation, MenuItem::RecentMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+    }
+
+    fn open_system_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
+        menu.open(presentation);
+        select_visible_item(menu, presentation, MenuItem::SystemMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+    }
+
+    fn open_boot_rom_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
+        open_system_menu(menu, presentation);
+        select_visible_item(menu, presentation, MenuItem::BootRomMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+    }
+
+    fn open_save_menu(menu: &mut OverlayMenuState, presentation: MenuPresentation) {
+        open_system_menu(menu, presentation);
+        select_visible_item(menu, presentation, MenuItem::SaveMenu);
+        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+    }
+
     #[test]
     fn opening_the_menu_selects_the_first_enabled_root_item() {
         let presentation = test_presentation();
@@ -2602,7 +2675,7 @@ mod tests {
 
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
-            Some(MenuAction::Resume)
+            Some(MenuAction::OpenRom)
         );
     }
 
@@ -2634,12 +2707,7 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
-
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        open_audio_menu(&mut menu, presentation);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::ToggleMute)
@@ -2653,13 +2721,9 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_audio_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::AudioVolume);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleAudioVolume)
@@ -2778,12 +2842,7 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
-
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        open_audio_menu(&mut menu, presentation);
 
         while visible_item_at(
             menu.current_screen_state().screen,
@@ -2807,18 +2866,9 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::GamepadDirection);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleGamepadDirectionalSource)
@@ -2835,19 +2885,9 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::GamepadRumble);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleGamepadRumbleMode)
@@ -2862,19 +2902,9 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::InputDefaults);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::ResetInputDefaults)
@@ -2885,15 +2915,7 @@ mod tests {
     fn system_submenu_cycles_model_startup_and_execution_mode() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
-
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        open_system_menu(&mut menu, presentation);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::CycleConsoleModel)
@@ -2911,21 +2933,15 @@ mod tests {
     }
 
     #[test]
-    fn system_submenu_exposes_boot_path_and_verify_actions() {
+    fn boot_rom_submenu_exposes_boot_path_and_verify_actions() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_boot_rom_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ClearBootRomPath)
+        );
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
@@ -2945,24 +2961,24 @@ mod tests {
 
     #[test]
     fn system_submenu_exposes_save_actions() {
-        let presentation = test_presentation();
+        let presentation = MenuPresentation {
+            external_save_available: true,
+            external_save_import_available: true,
+            ..test_presentation()
+        };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_save_menu(&mut menu, presentation);
 
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ExportSave)
+        );
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::ImportSave)
+        );
+        select_visible_item(&mut menu, presentation, MenuItem::SavesEnabled);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::ToggleSavesEnabled)
@@ -3052,11 +3068,7 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
-
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        open_recent_menu(&mut menu, presentation);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::OpenRecentRom(0))
@@ -3073,11 +3085,7 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
-
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        open_recent_menu(&mut menu, presentation);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
@@ -3092,12 +3100,7 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
-
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        open_audio_menu(&mut menu, presentation);
         assert_eq!(menu.handle_input(MenuInput::Cancel, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
     }
@@ -3140,14 +3143,15 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_save_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        assert!((0..visible_item_count(MenuScreen::Save, presentation)).all(
+            |index| visible_item_at(MenuScreen::Save, index, presentation)
+                != Some(MenuItem::SaveBattery)
+        ));
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
-            Some(MenuAction::TogglePerformanceHud)
+            Some(MenuAction::ToggleSavesEnabled)
         );
     }
 
@@ -3159,10 +3163,9 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_save_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::SaveBattery);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
             Some(MenuAction::SaveBattery)
@@ -3173,13 +3176,9 @@ mod tests {
     fn keyboard_submenu_starts_a_capture_and_emits_the_selected_binding() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::KeyboardMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert!(menu.is_capturing_binding());
@@ -3197,13 +3196,9 @@ mod tests {
     fn keyboard_binding_capture_can_be_canceled_without_closing_the_menu() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::KeyboardMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert!(menu.is_capturing_binding());
@@ -3218,15 +3213,9 @@ mod tests {
     fn hotkeys_submenu_starts_a_capture_and_emits_the_selected_binding() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::HotkeysMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert!(menu.is_capturing_binding());
@@ -3244,15 +3233,9 @@ mod tests {
     fn hotkeys_submenu_can_capture_the_stats_hud_hotkey() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::HotkeysMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
@@ -3273,14 +3256,9 @@ mod tests {
     fn keyboard_menu_controls_submenu_starts_a_capture_and_emits_the_selected_binding() {
         let presentation = test_presentation();
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::KeyboardMenuControls);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert!(menu.is_capturing_binding());
@@ -3301,16 +3279,9 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::GamepadMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert!(menu.is_capturing_binding());
@@ -3331,17 +3302,9 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
+        select_visible_item(&mut menu, presentation, MenuItem::GamepadMenuControls);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert!(menu.is_capturing_binding());
@@ -3364,21 +3327,9 @@ mod tests {
             ..test_presentation()
         };
         let mut menu = OverlayMenuState::default();
-        menu.open(presentation);
+        open_input_menu(&mut menu, presentation);
 
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
-        while visible_item_at(
-            menu.current_screen_state().screen,
-            menu.current_screen_state().selected_index,
-            presentation,
-        ) != Some(MenuItem::GamepadMenu)
-        {
-            assert_eq!(menu.handle_input(MenuInput::Down, presentation), None);
-        }
+        select_visible_item(&mut menu, presentation, MenuItem::GamepadMenu);
         assert_eq!(menu.handle_input(MenuInput::Confirm, presentation), None);
         assert_eq!(
             menu.handle_input(MenuInput::Confirm, presentation),
@@ -3492,7 +3443,7 @@ mod tests {
         }
         assert_eq!(
             previous_enabled_index(MenuScreen::Root, 0, test_presentation()),
-            7
+            6
         );
 
         let mut presentation = test_presentation();
@@ -3520,12 +3471,13 @@ mod tests {
 
     #[test]
     fn recent_and_video_menu_order_matches_the_overlay_contract() {
-        assert_eq!(ROOT_MENU_ITEMS[0], MenuItem::Resume);
-        assert_eq!(ROOT_MENU_ITEMS[1], MenuItem::CameraLive);
-        assert_eq!(ROOT_MENU_ITEMS[2], MenuItem::CameraImage);
-        assert_eq!(ROOT_MENU_ITEMS[3], MenuItem::CameraReset);
-        assert_eq!(ROOT_MENU_ITEMS[4], MenuItem::OpenRom);
-        assert_eq!(ROOT_MENU_ITEMS[5], MenuItem::RecentMenu);
+        assert_eq!(ROOT_MENU_ITEMS[0], MenuItem::CameraLive);
+        assert_eq!(ROOT_MENU_ITEMS[1], MenuItem::CameraImage);
+        assert_eq!(ROOT_MENU_ITEMS[2], MenuItem::CameraReset);
+        assert_eq!(ROOT_MENU_ITEMS[3], MenuItem::OpenRom);
+        assert_eq!(ROOT_MENU_ITEMS[4], MenuItem::RecentMenu);
+        assert_eq!(ROOT_MENU_ITEMS[5], MenuItem::VideoMenu);
+        assert!(!ROOT_MENU_ITEMS.contains(&MenuItem::SaveBattery));
 
         assert_eq!(RECENT_MENU_ITEMS[0], MenuItem::RecentRom1);
         assert_eq!(RECENT_MENU_ITEMS[7], MenuItem::RecentRom8);
@@ -3538,10 +3490,19 @@ mod tests {
         assert_eq!(VIDEO_MENU_ITEMS[1], MenuItem::PresentationFilter);
         assert_eq!(VIDEO_MENU_ITEMS[6], MenuItem::Screenshot);
         assert_eq!(VIDEO_MENU_ITEMS[7], MenuItem::ShowBackground);
+
+        assert_eq!(BOOT_ROM_MENU_ITEMS[0], MenuItem::BootRomDefaultPath);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[1], MenuItem::BootRomFilePath);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[2], MenuItem::BootRomDirectoryPath);
+        assert_eq!(BOOT_ROM_MENU_ITEMS[3], MenuItem::BootRomVerify);
+
+        assert_eq!(SAVE_MENU_ITEMS[0], MenuItem::ExportSave);
+        assert_eq!(SAVE_MENU_ITEMS[1], MenuItem::ImportSave);
+        assert_eq!(SAVE_MENU_ITEMS[2], MenuItem::SaveBattery);
     }
 
     #[test]
-    fn camera_root_actions_appear_after_resume_when_supported() {
+    fn camera_root_actions_appear_before_general_rom_menus_when_supported() {
         let presentation = MenuPresentation {
             cartridge_pocket_camera_supported: true,
             recent_rom_count: 1,
@@ -3551,22 +3512,18 @@ mod tests {
 
         assert_eq!(
             visible_item_at(MenuScreen::Root, 0, presentation),
-            Some(MenuItem::Resume)
-        );
-        assert_eq!(
-            visible_item_at(MenuScreen::Root, 1, presentation),
             Some(MenuItem::CameraLive)
         );
         assert_eq!(
-            visible_item_at(MenuScreen::Root, 2, presentation),
+            visible_item_at(MenuScreen::Root, 1, presentation),
             Some(MenuItem::CameraImage)
         );
         assert_eq!(
-            visible_item_at(MenuScreen::Root, 3, presentation),
+            visible_item_at(MenuScreen::Root, 2, presentation),
             Some(MenuItem::CameraReset)
         );
         assert_eq!(
-            visible_item_at(MenuScreen::Root, 4, presentation),
+            visible_item_at(MenuScreen::Root, 3, presentation),
             Some(MenuItem::OpenRom)
         );
     }
@@ -3644,6 +3601,20 @@ mod tests {
             "VERIFY OFF"
         );
 
+        assert_eq!(presentation.item_label(MenuItem::BootRomMenu), "BOOT ROM");
+        assert_eq!(presentation.item_label(MenuItem::SaveMenu), "SAVE");
+        assert_eq!(presentation.item_label(MenuItem::ExportSave), "EXPORT SAVE");
+        assert_eq!(presentation.item_label(MenuItem::ImportSave), "IMPORT SAVE");
+        assert!(!presentation.item_enabled(MenuItem::ExportSave));
+        assert!(!presentation.item_enabled(MenuItem::ImportSave));
+        presentation.external_save_available = true;
+        assert!(presentation.item_enabled(MenuItem::ExportSave));
+        presentation.external_save_import_available = true;
+        assert!(presentation.item_enabled(MenuItem::ImportSave));
+        presentation.any_dialog_pending = true;
+        assert!(!presentation.item_enabled(MenuItem::ExportSave));
+        assert!(!presentation.item_enabled(MenuItem::ImportSave));
+        presentation.any_dialog_pending = false;
         presentation.saves_enabled = false;
         assert_eq!(presentation.item_label(MenuItem::SavesEnabled), "SAVES OFF");
         presentation.save_flush_policy = DesktopSaveFlushPolicy::Manual;
@@ -3992,6 +3963,8 @@ mod tests {
         );
         assert_eq!(MenuScreen::Hotkeys.title(presentation), "HOTKEYS");
         assert_eq!(MenuScreen::System.title(presentation), "SYSTEM");
+        assert_eq!(MenuScreen::BootRom.title(presentation), "BOOT ROM");
+        assert_eq!(MenuScreen::Save.title(presentation), "SAVE");
 
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);
@@ -4033,6 +4006,30 @@ mod tests {
         assert_eq!(
             menu.apply_item_action(MenuItem::SystemMenu, presentation),
             None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::System);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::BootRomMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::BootRom);
+        menu.open(presentation);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::SystemMenu, presentation),
+            None
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::SaveMenu, presentation),
+            None
+        );
+        assert_eq!(menu.current_screen_state().screen, MenuScreen::Save);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ExportSave, presentation),
+            Some(MenuAction::ExportSave)
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ImportSave, presentation),
+            Some(MenuAction::ImportSave)
         );
         assert_eq!(
             menu.apply_item_action(MenuItem::SaveBattery, presentation),

@@ -20,6 +20,21 @@ Execute a ROM headlessly:
 cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts/serial.bin
 ```
 
+### `saves`
+
+Convert between GB Cycle's internal `.gbsav` envelope and the raw `.sav`
+layout used by SameBoy and mGBA:
+
+```bash
+cargo run -p gb-cli -- saves export path/to/rom.gb path/to/out.sav --save-dir path/to/saves
+cargo run -p gb-cli -- saves import path/to/rom.gb path/to/in.sav --save-dir path/to/saves
+```
+
+Both commands load the ROM first, then validate the save payload against the
+cartridge mapper and persistence profile instead of inferring compatibility from
+the filename. Use `--save-key <key>` when the internal `.gbsav` key differs
+from the ROM stem.
+
 ## Console models
 
 `run` currently exposes the DMG-family models `dmg0`, `dmg`, and `mgb`.
@@ -38,6 +53,14 @@ cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts
 ## Battery saves
 
 `--save-dir` loads and stores battery-backed cartridge persistence using the host-side `.gbsav` format from `gb-persistence`.
+
+`gb-cli saves export` writes emulator-compatible `.sav` files at the host
+boundary without changing the internal `.gbsav` format. Linear cartridge RAM is
+exported as raw bytes; `MBC3` RTC saves append the shared `48`-byte little-endian
+RTC suffix used by SameBoy/mGBA; `MBC2` export defaults to mGBA's `256`-byte
+packed format while import accepts both mGBA packed saves and SameBoy's
+`512`-byte one-byte-per-nibble layout. Mapper/profile combinations without a
+safe external mapping fail explicitly instead of producing partial saves.
 
 ## Default stop conditions
 
