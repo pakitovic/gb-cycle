@@ -8728,9 +8728,10 @@ fn desktop_key_from_key_event(
     keycode: Option<Keycode>,
     scancode: Option<Scancode>,
 ) -> Option<DesktopKey> {
-    scancode
-        .and_then(desktop_key_from_scancode)
-        .or_else(|| keycode.and_then(desktop_key_from_keycode))
+    match scancode {
+        Some(scancode) => desktop_key_from_scancode(scancode),
+        None => keycode.and_then(desktop_key_from_keycode),
+    }
 }
 
 #[cfg(test)]
@@ -8813,6 +8814,7 @@ fn is_hotkey_assignable_key(key: DesktopKey) -> bool {
     !matches!(key, DesktopKey::Escape)
 }
 
+#[cfg(test)]
 fn key_matches(binding: DesktopKey, keycode: Keycode) -> bool {
     desktop_key_from_keycode(keycode) == Some(binding)
 }
@@ -8822,11 +8824,7 @@ fn key_event_matches(
     keycode: Option<Keycode>,
     scancode: Option<Scancode>,
 ) -> bool {
-    if let Some(scancode_key) = scancode.and_then(desktop_key_from_scancode) {
-        return scancode_key == binding;
-    }
-
-    keycode.is_some_and(|keycode| key_matches(binding, keycode))
+    desktop_key_from_key_event(keycode, scancode) == Some(binding)
 }
 
 fn startup_mode_name(startup_mode: StartupMode) -> &'static str {
@@ -13155,16 +13153,38 @@ mod tests {
             desktop_key_from_key_event(Some(Keycode::X), Some(sdl3::keyboard::Scancode::Z)),
             Some(DesktopKey::Z)
         );
+        assert_eq!(
+            desktop_key_from_key_event(Some(Keycode::Z), Some(sdl3::keyboard::Scancode::A)),
+            None
+        );
         assert!(super::key_event_matches(
             DesktopKey::Z,
             Some(Keycode::X),
             Some(sdl3::keyboard::Scancode::Z)
         ));
         assert!(!super::key_event_matches(
+            DesktopKey::Z,
+            Some(Keycode::Z),
+            Some(sdl3::keyboard::Scancode::A)
+        ));
+        assert!(!super::key_event_matches(
             DesktopKey::X,
             Some(Keycode::X),
             Some(sdl3::keyboard::Scancode::Z)
         ));
+        assert!(super::key_event_matches(
+            DesktopKey::Z,
+            Some(Keycode::Z),
+            None
+        ));
+        assert_eq!(
+            assignable_key_for_binding_target_from_key_event(
+                Some(Keycode::Z),
+                Some(sdl3::keyboard::Scancode::A),
+                KeyboardBindingTarget::A
+            ),
+            None
+        );
         assert_eq!(
             assignable_key_for_binding_target_from_key_event(
                 None,
