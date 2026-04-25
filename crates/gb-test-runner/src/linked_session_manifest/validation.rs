@@ -82,14 +82,54 @@ impl LinkedSessionCase {
                 );
             }
             LinkedSessionTopology::Dmg04 => {}
+            LinkedSessionTopology::Dmg07 if !(2..=4).contains(&participant_count) => {
+                return Err(
+                    LinkedSessionCaseValidationError::UnsupportedTopologyParticipantCount {
+                        topology: self.topology,
+                        count: participant_count,
+                    },
+                );
+            }
+            LinkedSessionTopology::Dmg07 => {}
         }
 
         let mut seen_participant_ids = BTreeSet::new();
+        let mut seen_dmg07_ports = BTreeSet::new();
+        let mut has_dmg07_p1 = false;
         for participant in &self.participants {
             if !seen_participant_ids.insert(participant.id.clone()) {
                 return Err(LinkedSessionCaseValidationError::DuplicateParticipantId(
                     participant.id.clone(),
                 ));
+            }
+
+            match (self.topology, participant.adapter_port) {
+                (LinkedSessionTopology::Dmg04, Some(port)) => {
+                    return Err(
+                        LinkedSessionCaseValidationError::UnexpectedDmg04ParticipantPort {
+                            participant_id: participant.id.clone(),
+                            port,
+                        },
+                    );
+                }
+                (LinkedSessionTopology::Dmg04, None) => {}
+                (LinkedSessionTopology::Dmg07, Some(port)) => {
+                    if !seen_dmg07_ports.insert(port) {
+                        return Err(
+                            LinkedSessionCaseValidationError::DuplicateDmg07ParticipantPort {
+                                port,
+                            },
+                        );
+                    }
+                    has_dmg07_p1 |= port == gb_core::Dmg07Port::P1;
+                }
+                (LinkedSessionTopology::Dmg07, None) => {
+                    return Err(
+                        LinkedSessionCaseValidationError::MissingDmg07ParticipantPort {
+                            participant_id: participant.id.clone(),
+                        },
+                    );
+                }
             }
 
             if let Err(error) = participant.validate() {
@@ -98,6 +138,10 @@ impl LinkedSessionCase {
                     error,
                 });
             }
+        }
+
+        if self.topology == LinkedSessionTopology::Dmg07 && !has_dmg07_p1 {
+            return Err(LinkedSessionCaseValidationError::MissingDmg07PlayerOne);
         }
 
         match &self.pass_condition {

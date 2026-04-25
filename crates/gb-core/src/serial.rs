@@ -209,8 +209,8 @@ impl Serial {
         std::mem::take(&mut self.completed_output_bytes)
     }
 
-    pub(crate) fn take_latest_completed_output_byte(&mut self) -> Option<u8> {
-        self.latest_completed_output_byte.take()
+    pub(crate) fn latest_completed_output_byte(&self) -> Option<u8> {
+        self.latest_completed_output_byte
     }
 
     pub(crate) fn internal_clock_edge_pending_this_t_cycle(&self) -> bool {

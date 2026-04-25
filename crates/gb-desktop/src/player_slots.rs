@@ -24,7 +24,6 @@ impl PlayerSlot {
         }
     }
 
-    #[cfg(test)]
     pub const fn from_machine_index(index: usize) -> Option<Self> {
         match index {
             0 => Some(Self::P1),
@@ -35,12 +34,10 @@ impl PlayerSlot {
         }
     }
 
-    #[cfg(test)]
     pub const fn machine_index(self) -> usize {
         self.index()
     }
 
-    #[cfg(test)]
     pub const fn label(self) -> &'static str {
         match self {
             Self::P1 => "P1",
@@ -52,15 +49,55 @@ impl PlayerSlot {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DesktopDmg07PlayerCount {
+    Two,
+    Three,
+    Four,
+}
+
+impl DesktopDmg07PlayerCount {
+    pub const fn get(self) -> usize {
+        match self {
+            Self::Two => 2,
+            Self::Three => 3,
+            Self::Four => 4,
+        }
+    }
+
+    pub const fn active_slots(self) -> [Option<PlayerSlot>; PLAYER_SLOT_COUNT] {
+        match self {
+            Self::Two => [Some(PlayerSlot::P1), Some(PlayerSlot::P2), None, None],
+            Self::Three => [
+                Some(PlayerSlot::P1),
+                Some(PlayerSlot::P2),
+                Some(PlayerSlot::P3),
+                None,
+            ],
+            Self::Four => [
+                Some(PlayerSlot::P1),
+                Some(PlayerSlot::P2),
+                Some(PlayerSlot::P3),
+                Some(PlayerSlot::P4),
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DesktopPlayerSessionKind {
     Single,
     LinkedDmg04TwoPlayer,
+    LinkedDmg07 {
+        player_count: DesktopDmg07PlayerCount,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerKeyboardProfile {
     ConfiguredJoypad,
     LinkedDmg04P2,
+    LinkedDmg07P3,
+    LinkedDmg07P4,
     Disabled,
 }
 
@@ -74,6 +111,8 @@ pub enum PlayerAudioPolicy {
 pub enum PlayerViewPolicy {
     LeftPanel,
     RightPanel,
+    BottomLeftPanel,
+    BottomRightPanel,
     Hidden,
 }
 
@@ -86,10 +125,18 @@ pub struct PlayerHostPolicy {
     pub view: PlayerViewPolicy,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerViewSlots {
     pub left: PlayerSlot,
     pub right: Option<PlayerSlot>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerViewLayout {
+    pub columns: usize,
+    pub rows: usize,
+    pub slots: [Option<PlayerSlot>; PLAYER_SLOT_COUNT],
 }
 
 pub const fn host_policy_for_slot(
@@ -118,6 +165,46 @@ pub const fn host_policy_for_slot(
             audio: PlayerAudioPolicy::Muted,
             view: PlayerViewPolicy::RightPanel,
         },
+        (DesktopPlayerSessionKind::LinkedDmg07 { .. }, PlayerSlot::P1) => PlayerHostPolicy {
+            slot,
+            machine_index: Some(0),
+            keyboard_profile: PlayerKeyboardProfile::ConfiguredJoypad,
+            audio: PlayerAudioPolicy::Audible,
+            view: PlayerViewPolicy::LeftPanel,
+        },
+        (DesktopPlayerSessionKind::LinkedDmg07 { player_count }, PlayerSlot::P2)
+            if player_count.get() >= 2 =>
+        {
+            PlayerHostPolicy {
+                slot,
+                machine_index: Some(1),
+                keyboard_profile: PlayerKeyboardProfile::LinkedDmg04P2,
+                audio: PlayerAudioPolicy::Muted,
+                view: PlayerViewPolicy::RightPanel,
+            }
+        }
+        (DesktopPlayerSessionKind::LinkedDmg07 { player_count }, PlayerSlot::P3)
+            if player_count.get() >= 3 =>
+        {
+            PlayerHostPolicy {
+                slot,
+                machine_index: Some(2),
+                keyboard_profile: PlayerKeyboardProfile::LinkedDmg07P3,
+                audio: PlayerAudioPolicy::Muted,
+                view: PlayerViewPolicy::BottomLeftPanel,
+            }
+        }
+        (DesktopPlayerSessionKind::LinkedDmg07 { player_count }, PlayerSlot::P4)
+            if player_count.get() >= 4 =>
+        {
+            PlayerHostPolicy {
+                slot,
+                machine_index: Some(3),
+                keyboard_profile: PlayerKeyboardProfile::LinkedDmg07P4,
+                audio: PlayerAudioPolicy::Muted,
+                view: PlayerViewPolicy::BottomRightPanel,
+            }
+        }
         (_, _) => PlayerHostPolicy {
             slot,
             machine_index: None,
@@ -132,6 +219,7 @@ pub const fn audio_source_slot(_session_kind: DesktopPlayerSessionKind) -> Playe
     PlayerSlot::P1
 }
 
+#[cfg(test)]
 pub const fn view_slots_for_session(session_kind: DesktopPlayerSessionKind) -> PlayerViewSlots {
     match session_kind {
         DesktopPlayerSessionKind::Single => PlayerViewSlots {
@@ -141,6 +229,37 @@ pub const fn view_slots_for_session(session_kind: DesktopPlayerSessionKind) -> P
         DesktopPlayerSessionKind::LinkedDmg04TwoPlayer => PlayerViewSlots {
             left: PlayerSlot::P1,
             right: Some(PlayerSlot::P2),
+        },
+        DesktopPlayerSessionKind::LinkedDmg07 { .. } => PlayerViewSlots {
+            left: PlayerSlot::P1,
+            right: Some(PlayerSlot::P2),
+        },
+    }
+}
+
+pub const fn view_layout_for_session(session_kind: DesktopPlayerSessionKind) -> PlayerViewLayout {
+    match session_kind {
+        DesktopPlayerSessionKind::Single => PlayerViewLayout {
+            columns: 1,
+            rows: 1,
+            slots: [Some(PlayerSlot::P1), None, None, None],
+        },
+        DesktopPlayerSessionKind::LinkedDmg04TwoPlayer => PlayerViewLayout {
+            columns: 2,
+            rows: 1,
+            slots: [Some(PlayerSlot::P1), Some(PlayerSlot::P2), None, None],
+        },
+        DesktopPlayerSessionKind::LinkedDmg07 {
+            player_count: DesktopDmg07PlayerCount::Two,
+        } => PlayerViewLayout {
+            columns: 2,
+            rows: 1,
+            slots: [Some(PlayerSlot::P1), Some(PlayerSlot::P2), None, None],
+        },
+        DesktopPlayerSessionKind::LinkedDmg07 { player_count } => PlayerViewLayout {
+            columns: 2,
+            rows: 2,
+            slots: player_count.active_slots(),
         },
     }
 }
@@ -172,8 +291,8 @@ pub const LINKED_DMG04_P2_KEYBOARD_BINDINGS: [(JoypadButton, Scancode); 8] = [
     (JoypadButton::Down, Scancode::S),
     (JoypadButton::Left, Scancode::A),
     (JoypadButton::Right, Scancode::D),
-    (JoypadButton::A, Scancode::V),
-    (JoypadButton::B, Scancode::C),
+    (JoypadButton::A, Scancode::X),
+    (JoypadButton::B, Scancode::Z),
     (JoypadButton::Select, Scancode::Q),
     (JoypadButton::Start, Scancode::E),
 ];
@@ -184,12 +303,48 @@ pub fn linked_dmg04_p2_button_for_scancode(scancode: Scancode) -> Option<JoypadB
         .find_map(|(button, binding)| (binding == scancode).then_some(button))
 }
 
+pub const LINKED_DMG07_P3_KEYBOARD_BINDINGS: [(JoypadButton, Scancode); 8] = [
+    (JoypadButton::Up, Scancode::T),
+    (JoypadButton::Down, Scancode::G),
+    (JoypadButton::Left, Scancode::F),
+    (JoypadButton::Right, Scancode::H),
+    (JoypadButton::A, Scancode::B),
+    (JoypadButton::B, Scancode::V),
+    (JoypadButton::Select, Scancode::R),
+    (JoypadButton::Start, Scancode::Y),
+];
+
+pub fn linked_dmg07_p3_button_for_scancode(scancode: Scancode) -> Option<JoypadButton> {
+    LINKED_DMG07_P3_KEYBOARD_BINDINGS
+        .into_iter()
+        .find_map(|(button, binding)| (binding == scancode).then_some(button))
+}
+
+pub const LINKED_DMG07_P4_KEYBOARD_BINDINGS: [(JoypadButton, Scancode); 8] = [
+    (JoypadButton::Up, Scancode::I),
+    (JoypadButton::Down, Scancode::K),
+    (JoypadButton::Left, Scancode::J),
+    (JoypadButton::Right, Scancode::L),
+    (JoypadButton::A, Scancode::Comma),
+    (JoypadButton::B, Scancode::M),
+    (JoypadButton::Select, Scancode::U),
+    (JoypadButton::Start, Scancode::O),
+];
+
+pub fn linked_dmg07_p4_button_for_scancode(scancode: Scancode) -> Option<JoypadButton> {
+    LINKED_DMG07_P4_KEYBOARD_BINDINGS
+        .into_iter()
+        .find_map(|(button, binding)| (binding == scancode).then_some(button))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        DesktopPlayerSessionKind, PlayerAudioPolicy, PlayerKeyboardProfile, PlayerSlot,
-        PlayerViewPolicy, audio_source_slot, host_policy_for_slot,
-        linked_dmg04_p2_button_for_scancode, view_slots_for_session,
+        DesktopDmg07PlayerCount, DesktopPlayerSessionKind, PlayerAudioPolicy,
+        PlayerKeyboardProfile, PlayerSlot, PlayerViewPolicy, audio_source_slot,
+        host_policy_for_slot, linked_dmg04_p2_button_for_scancode,
+        linked_dmg07_p3_button_for_scancode, linked_dmg07_p4_button_for_scancode,
+        view_layout_for_session, view_slots_for_session,
     };
     use gb_core::JoypadButton;
     use sdl3::keyboard::Scancode;
@@ -257,6 +412,36 @@ mod tests {
     }
 
     #[test]
+    fn host_policy_maps_dmg07_slots_without_enabling_inactive_players() {
+        let session = DesktopPlayerSessionKind::LinkedDmg07 {
+            player_count: DesktopDmg07PlayerCount::Three,
+        };
+        let p1 = host_policy_for_slot(session, PlayerSlot::P1);
+        let p2 = host_policy_for_slot(session, PlayerSlot::P2);
+        let p3 = host_policy_for_slot(session, PlayerSlot::P3);
+        let p4 = host_policy_for_slot(session, PlayerSlot::P4);
+
+        assert_eq!(p1.machine_index, Some(0));
+        assert_eq!(p1.keyboard_profile, PlayerKeyboardProfile::ConfiguredJoypad);
+        assert_eq!(p1.audio, PlayerAudioPolicy::Audible);
+        assert_eq!(p1.view, PlayerViewPolicy::LeftPanel);
+
+        assert_eq!(p2.machine_index, Some(1));
+        assert_eq!(p2.keyboard_profile, PlayerKeyboardProfile::LinkedDmg04P2);
+        assert_eq!(p2.audio, PlayerAudioPolicy::Muted);
+        assert_eq!(p2.view, PlayerViewPolicy::RightPanel);
+
+        assert_eq!(p3.machine_index, Some(2));
+        assert_eq!(p3.keyboard_profile, PlayerKeyboardProfile::LinkedDmg07P3);
+        assert_eq!(p3.audio, PlayerAudioPolicy::Muted);
+        assert_eq!(p3.view, PlayerViewPolicy::BottomLeftPanel);
+
+        assert_eq!(p4.machine_index, None);
+        assert_eq!(p4.keyboard_profile, PlayerKeyboardProfile::Disabled);
+        assert_eq!(p4.view, PlayerViewPolicy::Hidden);
+    }
+
+    #[test]
     fn default_audio_and_view_policy_stay_frontend_owned() {
         assert_eq!(
             audio_source_slot(DesktopPlayerSessionKind::Single),
@@ -275,6 +460,21 @@ mod tests {
             view_slots_for_session(DesktopPlayerSessionKind::LinkedDmg04TwoPlayer).right,
             Some(PlayerSlot::P2)
         );
+
+        let four_player_layout = view_layout_for_session(DesktopPlayerSessionKind::LinkedDmg07 {
+            player_count: DesktopDmg07PlayerCount::Four,
+        });
+        assert_eq!(four_player_layout.columns, 2);
+        assert_eq!(four_player_layout.rows, 2);
+        assert_eq!(
+            four_player_layout.slots,
+            [
+                Some(PlayerSlot::P1),
+                Some(PlayerSlot::P2),
+                Some(PlayerSlot::P3),
+                Some(PlayerSlot::P4)
+            ]
+        );
     }
 
     #[test]
@@ -287,6 +487,42 @@ mod tests {
             linked_dmg04_p2_button_for_scancode(Scancode::E),
             Some(JoypadButton::Start)
         );
-        assert_eq!(linked_dmg04_p2_button_for_scancode(Scancode::Z), None);
+        assert_eq!(
+            linked_dmg04_p2_button_for_scancode(Scancode::X),
+            Some(JoypadButton::A)
+        );
+        assert_eq!(
+            linked_dmg04_p2_button_for_scancode(Scancode::Z),
+            Some(JoypadButton::B)
+        );
+        assert_eq!(linked_dmg04_p2_button_for_scancode(Scancode::V), None);
+        assert_eq!(
+            linked_dmg07_p3_button_for_scancode(Scancode::T),
+            Some(JoypadButton::Up)
+        );
+        assert_eq!(
+            linked_dmg07_p3_button_for_scancode(Scancode::Y),
+            Some(JoypadButton::Start)
+        );
+        assert_eq!(
+            linked_dmg07_p3_button_for_scancode(Scancode::B),
+            Some(JoypadButton::A)
+        );
+        assert_eq!(
+            linked_dmg07_p4_button_for_scancode(Scancode::I),
+            Some(JoypadButton::Up)
+        );
+        assert_eq!(
+            linked_dmg07_p4_button_for_scancode(Scancode::O),
+            Some(JoypadButton::Start)
+        );
+        assert_eq!(
+            linked_dmg07_p4_button_for_scancode(Scancode::Comma),
+            Some(JoypadButton::A)
+        );
+        assert_eq!(
+            linked_dmg07_p4_button_for_scancode(Scancode::M),
+            Some(JoypadButton::B)
+        );
     }
 }

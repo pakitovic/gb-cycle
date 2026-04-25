@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use gb_core::debugger::TraceSink;
-use gb_core::{BootRomAssets, LinkedMachines, Machine, MachineConfig};
+use gb_core::{BootRomAssets, Dmg07Participant, LinkedMachines, Machine, MachineConfig};
 
 use super::{
     LinkedMachineBuild, LinkedSessionExecutionError, LinkedSessionParticipant, LinkedSessionRunner,
@@ -101,6 +101,24 @@ impl LinkedSessionRunner {
             crate::LinkedSessionTopology::Dmg04 => linked
                 .attach_dmg04_cable()
                 .map_err(|source| LinkedSessionExecutionError::LinkedMachines { source }),
+            crate::LinkedSessionTopology::Dmg07 => {
+                let participants = session
+                    .participants
+                    .iter()
+                    .enumerate()
+                    .map(|(machine_index, participant)| {
+                        Dmg07Participant::new(
+                            machine_index,
+                            participant
+                                .adapter_port
+                                .expect("validated DMG-07 participant should have a port"),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                linked
+                    .attach_dmg07_adapter(&participants)
+                    .map_err(|source| LinkedSessionExecutionError::LinkedMachines { source })
+            }
         }
     }
 

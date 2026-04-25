@@ -468,6 +468,42 @@ timeout_tcycles = 2
         other => panic!("unexpected linked manifest error: {other:?}"),
     }
 
+    let dmg07_manifest = write_manifest(
+        &workspace,
+        "dmg07-sparse.toml",
+        r#"
+version = 1
+
+[[session]]
+id = "broken"
+topology = "dmg07"
+timeout_frames = 1
+oracle = "info-linked-trace"
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gb"
+  adapter_port = "p1"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gb"
+  adapter_port = "p4"
+"#,
+    );
+    let dmg07_suite = load_linked_session_suite_manifest(&dmg07_manifest)
+        .expect("dmg07 topology with sparse ports should parse");
+    let dmg07_session = &dmg07_suite.sessions[0];
+    assert_eq!(dmg07_session.topology, LinkedSessionTopology::Dmg07);
+    assert_eq!(
+        dmg07_session.participants[0].adapter_port,
+        Some(gb_core::Dmg07Port::P1)
+    );
+    assert_eq!(
+        dmg07_session.participants[1].adapter_port,
+        Some(gb_core::Dmg07Port::P4)
+    );
+
     let unsupported_topology = write_manifest(
         &workspace,
         "unsupported-topology.toml",
@@ -476,7 +512,7 @@ version = 1
 
 [[session]]
 id = "broken"
-topology = "dmg07"
+topology = "dmg99"
 timeout_frames = 1
 oracle = "info-linked-trace"
 
@@ -494,6 +530,132 @@ oracle = "info-linked-trace"
     match unsupported_topology_error {
         LinkedSessionSuiteManifestError::Build { message, .. } => {
             assert!(message.contains("unsupported topology"));
+        }
+        other => panic!("unexpected linked manifest error: {other:?}"),
+    }
+
+    let dmg07_missing_port = write_manifest(
+        &workspace,
+        "dmg07-missing-port.toml",
+        r#"
+version = 1
+
+[[session]]
+id = "broken"
+topology = "dmg07"
+timeout_frames = 1
+oracle = "info-linked-trace"
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gb"
+  adapter_port = "p1"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gb"
+"#,
+    );
+    let missing_port_error = load_linked_session_suite_manifest(&dmg07_missing_port)
+        .expect_err("dmg07 should require adapter ports");
+    match missing_port_error {
+        LinkedSessionSuiteManifestError::Build { message, .. } => {
+            assert!(message.contains("MissingDmg07ParticipantPort"));
+        }
+        other => panic!("unexpected linked manifest error: {other:?}"),
+    }
+
+    let dmg07_duplicate_port = write_manifest(
+        &workspace,
+        "dmg07-duplicate-port.toml",
+        r#"
+version = 1
+
+[[session]]
+id = "broken"
+topology = "dmg07"
+timeout_frames = 1
+oracle = "info-linked-trace"
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gb"
+  adapter_port = "p1"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gb"
+  adapter_port = "p1"
+"#,
+    );
+    let duplicate_port_error = load_linked_session_suite_manifest(&dmg07_duplicate_port)
+        .expect_err("dmg07 should reject duplicate adapter ports");
+    match duplicate_port_error {
+        LinkedSessionSuiteManifestError::Build { message, .. } => {
+            assert!(message.contains("DuplicateDmg07ParticipantPort"));
+        }
+        other => panic!("unexpected linked manifest error: {other:?}"),
+    }
+
+    let dmg07_missing_p1 = write_manifest(
+        &workspace,
+        "dmg07-missing-p1.toml",
+        r#"
+version = 1
+
+[[session]]
+id = "broken"
+topology = "dmg07"
+timeout_frames = 1
+oracle = "info-linked-trace"
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gb"
+  adapter_port = "p2"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gb"
+  adapter_port = "p4"
+"#,
+    );
+    let missing_p1_error =
+        load_linked_session_suite_manifest(&dmg07_missing_p1).expect_err("dmg07 should require p1");
+    match missing_p1_error {
+        LinkedSessionSuiteManifestError::Build { message, .. } => {
+            assert!(message.contains("MissingDmg07PlayerOne"));
+        }
+        other => panic!("unexpected linked manifest error: {other:?}"),
+    }
+
+    let dmg04_unexpected_port = write_manifest(
+        &workspace,
+        "dmg04-unexpected-port.toml",
+        r#"
+version = 1
+
+[[session]]
+id = "broken"
+topology = "dmg04"
+timeout_frames = 1
+oracle = "info-linked-trace"
+
+  [[session.participant]]
+  id = "left"
+  rom = "left.gb"
+  adapter_port = "p1"
+
+  [[session.participant]]
+  id = "right"
+  rom = "right.gb"
+"#,
+    );
+    let unexpected_port_error = load_linked_session_suite_manifest(&dmg04_unexpected_port)
+        .expect_err("dmg04 should reject adapter ports");
+    match unexpected_port_error {
+        LinkedSessionSuiteManifestError::Build { message, .. } => {
+            assert!(message.contains("UnexpectedDmg04ParticipantPort"));
         }
         other => panic!("unexpected linked manifest error: {other:?}"),
     }
@@ -928,8 +1090,13 @@ fn linked_session_manifest_model_helpers_cover_public_contracts() {
         LinkedSessionTopology::from_manifest_name("dmg04"),
         Some(LinkedSessionTopology::Dmg04)
     );
+    assert_eq!(
+        LinkedSessionTopology::from_manifest_name("dmg07"),
+        Some(LinkedSessionTopology::Dmg07)
+    );
     assert_eq!(LinkedSessionTopology::from_manifest_name("bogus"), None);
     assert_eq!(LinkedSessionTopology::Dmg04.manifest_name(), "dmg04");
+    assert_eq!(LinkedSessionTopology::Dmg07.manifest_name(), "dmg07");
 
     assert_eq!(
         trace_fixture.required_capture(),

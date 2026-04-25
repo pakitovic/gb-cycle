@@ -5,7 +5,7 @@ use crate::{
     LinkedSessionPassCondition, LinkedSessionSuite, LinkedSessionTopology,
     external_rom_source_manifest_path,
 };
-use gb_core::JoypadButton;
+use gb_core::{Dmg07Port, JoypadButton};
 use std::env;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,6 +24,10 @@ fn unique_temp_dir(label: &str) -> PathBuf {
     ))
 }
 
+fn data_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative)
+}
+
 fn build_test_rom(program: &[u8]) -> Vec<u8> {
     let mut rom = vec![0xFF; HEADER_MINIMUM_ROM_LEN.max(32 * 1024)];
     for (offset, byte) in program.iter().copied().enumerate() {
@@ -33,6 +37,15 @@ fn build_test_rom(program: &[u8]) -> Vec<u8> {
     rom[0x0148] = 0x00;
     rom[0x0149] = 0x00;
     rom
+}
+
+fn build_repeating_serial_table_rom(sc_value: u8, response_table: &[u8]) -> Vec<u8> {
+    let mut program = vec![
+        0x21, 0x14, 0x01, 0x7E, 0xE0, 0x01, 0x3E, sc_value, 0xE0, 0x02, 0xF0, 0x02, 0xCB, 0x7F,
+        0x20, 0xFA, 0x23, 0xC3, 0x03, 0x01,
+    ];
+    program.extend_from_slice(response_table);
+    build_test_rom(&program)
 }
 
 fn build_single_shot_serial_from_address_rom(address: u16, sc_value: u8) -> Vec<u8> {
@@ -115,6 +128,162 @@ fn linked_session_runner_executes_a_dmg04_exchange_and_captures_session_trace() 
     assert!(trace.contains("== participant right trace =="));
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn linked_session_runner_executes_a_sparse_dmg07_session_and_captures_adapter_trace() {
+    let session = LinkedSessionCase::new(
+        "dmg07-sparse",
+        LinkedSessionTopology::Dmg07,
+        Timeout::TCycles(500_000),
+        LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Trace),
+    )
+    .with_participant(
+        LinkedSessionParticipant::new("p1", data_path("data/fixtures/linked/dmg07/p1-basic.gb"))
+            .with_adapter_port(Dmg07Port::P1),
+    )
+    .with_participant(
+        LinkedSessionParticipant::new("p4", data_path("data/fixtures/linked/dmg07/p4-basic.gb"))
+            .with_adapter_port(Dmg07Port::P4),
+    );
+
+    let report = LinkedSessionRunner::new()
+        .run_session(&session)
+        .expect("dmg07 linked session should execute");
+
+    assert_eq!(report.outcome, LinkedSessionCaseOutcome::Informational);
+    assert_eq!(report.participants.len(), 2);
+    assert!(
+        report.participants[0]
+            .artifacts
+            .serial_hex
+            .starts_with("88880001AAAAAA00")
+    );
+    assert!(
+        report.participants[1]
+            .artifacts
+            .serial_hex
+            .starts_with("8888000100000000")
+    );
+    let topology_trace = report
+        .artifacts
+        .topology_trace_text
+        .as_deref()
+        .expect("dmg07 adapter should emit topology trace");
+    assert!(topology_trace.contains("transition=transmission_indicator"));
+    assert!(topology_trace.contains("transition=transmission"));
+    assert!(topology_trace.contains("transition=ping_restart_indicator"));
+    let combined_trace = report
+        .artifacts
+        .trace
+        .as_deref()
+        .expect("combined trace should be captured");
+    assert!(combined_trace.contains("== link topology trace =="));
+}
+
+#[test]
+fn linked_session_runner_does_not_treat_dmg07_internal_clock_as_valid_adapter_input() {
+    let temp_dir = unique_temp_dir("dmg07-internal-clock");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let p1_rom = temp_dir.join("p1-internal.gb");
+    fs::write(
+        &p1_rom,
+        build_repeating_serial_table_rom(
+            0x81,
+            &[
+                0x88, 0x88, 0x00, 0x01, 0xAA, 0xAA, 0xAA, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ],
+        ),
+    )
+    .expect("p1 ROM should be writable");
+
+    let session = LinkedSessionCase::new(
+        "dmg07-internal-clock",
+        LinkedSessionTopology::Dmg07,
+        Timeout::TCycles(260_000),
+        LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Trace),
+    )
+    .with_participant(LinkedSessionParticipant::new("p1", &p1_rom).with_adapter_port(Dmg07Port::P1))
+    .with_participant(
+        LinkedSessionParticipant::new("p4", data_path("data/fixtures/linked/dmg07/p4-basic.gb"))
+            .with_adapter_port(Dmg07Port::P4),
+    );
+
+    let report = LinkedSessionRunner::new()
+        .run_session(&session)
+        .expect("dmg07 linked session should execute");
+
+    assert_eq!(report.outcome, LinkedSessionCaseOutcome::Informational);
+    assert!(
+        report.artifacts.topology_trace_text.is_none(),
+        "internal-clock P1 bytes must not drive the active adapter protocol"
+    );
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn linked_session_runner_executes_dmg07_three_and_four_player_sessions_deterministically() {
+    let build_session = |id: &str, ports: &[(&str, &str, Dmg07Port)]| {
+        let mut session = LinkedSessionCase::new(
+            id,
+            LinkedSessionTopology::Dmg07,
+            Timeout::TCycles(180_000),
+            LinkedSessionPassCondition::Informational(LinkedSessionCaptureKind::Trace),
+        );
+        for (participant_id, fixture, port) in ports {
+            session = session.with_participant(
+                LinkedSessionParticipant::new(
+                    *participant_id,
+                    data_path(&format!("data/fixtures/linked/dmg07/{fixture}")),
+                )
+                .with_adapter_port(*port),
+            );
+        }
+        session
+    };
+
+    let three_player = build_session(
+        "dmg07-three-player",
+        &[
+            ("p1", "p1-basic.gb", Dmg07Port::P1),
+            ("p2", "p2-basic.gb", Dmg07Port::P2),
+            ("p4", "p4-basic.gb", Dmg07Port::P4),
+        ],
+    );
+    let four_player = build_session(
+        "dmg07-four-player",
+        &[
+            ("p1", "p1-basic.gb", Dmg07Port::P1),
+            ("p2", "p2-basic.gb", Dmg07Port::P2),
+            ("p3", "p3-basic.gb", Dmg07Port::P3),
+            ("p4", "p4-basic.gb", Dmg07Port::P4),
+        ],
+    );
+
+    for session in [three_player, four_player] {
+        let first = LinkedSessionRunner::new()
+            .run_session(&session)
+            .expect("first dmg07 run should execute");
+        let second = LinkedSessionRunner::new()
+            .run_session(&session)
+            .expect("second dmg07 run should execute");
+
+        assert_eq!(first.outcome, LinkedSessionCaseOutcome::Informational);
+        assert_eq!(first.artifacts.trace, second.artifacts.trace);
+        assert_eq!(
+            first
+                .participants
+                .iter()
+                .map(|participant| participant.artifacts.serial_hex.as_str())
+                .collect::<Vec<_>>(),
+            second
+                .participants
+                .iter()
+                .map(|participant| participant.artifacts.serial_hex.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
 }
 
 #[test]

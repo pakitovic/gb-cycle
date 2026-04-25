@@ -385,8 +385,8 @@ impl Default for JoypadKeyboardBindings {
             down: DesktopKey::ArrowDown,
             left: DesktopKey::ArrowLeft,
             right: DesktopKey::ArrowRight,
-            a: DesktopKey::X,
-            b: DesktopKey::Z,
+            a: DesktopKey::LeftGui,
+            b: DesktopKey::LeftAlt,
             select: DesktopKey::Backspace,
             start: DesktopKey::Return,
         }
@@ -407,8 +407,8 @@ impl Default for MenuKeyboardBindings {
         Self {
             up: DesktopKey::ArrowUp,
             down: DesktopKey::ArrowDown,
-            confirm: DesktopKey::Return,
-            cancel: DesktopKey::Escape,
+            confirm: DesktopKey::LeftGui,
+            cancel: DesktopKey::LeftAlt,
         }
     }
 }
@@ -427,7 +427,7 @@ impl Default for HotkeyBindings {
     fn default() -> Self {
         Self {
             pause: DesktopKey::Space,
-            reset: DesktopKey::R,
+            reset: DesktopKey::F1,
             toggle_fullscreen: DesktopKey::F11,
             toggle_performance_hud: DesktopKey::F10,
             save_battery: DesktopKey::F5,
@@ -627,6 +627,7 @@ pub enum DesktopKey {
     R,
     X,
     Z,
+    F1,
     F5,
     F10,
     F11,
@@ -765,16 +766,16 @@ mod tests {
         assert_eq!(keyboard.joypad.down, DesktopKey::ArrowDown);
         assert_eq!(keyboard.joypad.left, DesktopKey::ArrowLeft);
         assert_eq!(keyboard.joypad.right, DesktopKey::ArrowRight);
-        assert_eq!(keyboard.joypad.a, DesktopKey::X);
-        assert_eq!(keyboard.joypad.b, DesktopKey::Z);
+        assert_eq!(keyboard.joypad.a, DesktopKey::LeftGui);
+        assert_eq!(keyboard.joypad.b, DesktopKey::LeftAlt);
         assert_eq!(keyboard.joypad.select, DesktopKey::Backspace);
         assert_eq!(keyboard.joypad.start, DesktopKey::Return);
         assert_eq!(keyboard.menu.up, DesktopKey::ArrowUp);
         assert_eq!(keyboard.menu.down, DesktopKey::ArrowDown);
-        assert_eq!(keyboard.menu.confirm, DesktopKey::Return);
-        assert_eq!(keyboard.menu.cancel, DesktopKey::Escape);
+        assert_eq!(keyboard.menu.confirm, DesktopKey::LeftGui);
+        assert_eq!(keyboard.menu.cancel, DesktopKey::LeftAlt);
         assert_eq!(keyboard.hotkeys.pause, DesktopKey::Space);
-        assert_eq!(keyboard.hotkeys.reset, DesktopKey::R);
+        assert_eq!(keyboard.hotkeys.reset, DesktopKey::F1);
         assert_eq!(keyboard.hotkeys.toggle_fullscreen, DesktopKey::F11);
         assert_eq!(keyboard.hotkeys.toggle_performance_hud, DesktopKey::F10);
         assert_eq!(keyboard.hotkeys.save_battery, DesktopKey::F5);
@@ -788,6 +789,7 @@ mod tests {
         }
 
         let cases = [
+            ("f1", DesktopKey::F1),
             ("left-alt", DesktopKey::LeftAlt),
             ("left-option", DesktopKey::LeftAlt),
             ("right-option", DesktopKey::RightAlt),

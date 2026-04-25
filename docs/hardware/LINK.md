@@ -71,8 +71,19 @@ serial shifting, printer command parsing, or frontend session UX.
   byte. Missing or malformed acknowledgements should clear that port's
   connection bit in later status bytes and packets.
 - The bytes sent by software in response to the second and third status bytes
-  configure transmission-phase `RATE` and `SIZE`; they should not affect the
-  current ping-phase byte cadence.
+  configure `RATE` and `SIZE`. `RATE` does not change the ping byte transfer
+  cadence, but its low nibble changes the delay before the next ping packet.
+- Ping packets use clustered serial byte transfers: bits are clocked with the
+  adapter's short serial-clock period, bytes are separated by a small
+  inter-byte delay, and packets are separated by a much longer delay. Do not
+  approximate ping as one evenly spaced byte stream.
+- Commercial software may present the ping reply bytes as a continuous
+  serial-output stream rather than as values that line up perfectly with the
+  adapter's internal byte index. The adapter model should therefore preserve
+  the last accepted connection mask, `RATE`, and `SIZE` while the `P1`
+  `0xAA` transition marker is being observed, instead of treating that marker
+  packet as a malformed ping that disconnects every port or overwrites the
+  previously configured transfer parameters.
 - Sparse effective occupancy is valid hardware behavior. If ports `P1` and
   `P4` participate while `P2` and `P3` do not, the fourth console remains
   adapter port `P4`; it must not be compacted into `P2`.
@@ -82,12 +93,24 @@ serial shifting, printer command parsing, or frontend session UX.
   software sends three transition bytes followed by a non-matching filler byte,
   so compatibility tests should distinguish the minimum accepted sequence from
   the idealized four-byte sequence.
+- Transmission applies the master-selected `RATE` in two parts: the high nibble
+  stretches delay between packet bytes, while the low nibble sets a minimum
+  total packet period. Games such as `F-1 Race` use both halves (`0x28`), so the
+  adapter model must not treat `RATE` as only a per-bit clock divider.
 - Transmission data is buffered by adapter port and rebroadcast one packet
   later. Missing or non-participating ports contribute zero-filled slots rather
   than causing the remaining slots to be renumbered.
-- During each transmission packet, the adapter should accept each port's next
-  payload only during that port's `SIZE` input window; filler bytes sent during
-  the rest of the packet should not overwrite buffered payload data.
+- Model transmission buffering as the adapter's own double packet ring:
+  while one `SIZE * 4` packet is being broadcast, the next packet is filled in
+  the opposite half of the ring. GBE+'s working `DMG-07` model and commercial
+  `F-1 Race` behavior both point to a one-byte pipeline at this boundary: the
+  byte at packet position `0` is the packet-leading broadcast transfer, and the
+  next `SIZE` transfers are committed as offsets `0..SIZE-1` for each physical
+  port in the next packet.
+- During each transmission packet, the adapter should therefore accept each
+  port's next payload only during that pipelined `SIZE`-byte input window;
+  filler bytes sent during the rest of the packet should not overwrite buffered
+  payload data.
 - The first broadcast data after entering transmission phase starts from
   adapter-internal stale / garbage contents derived from the preceding ping
   phase; games are expected to ignore the first returned packet(s).

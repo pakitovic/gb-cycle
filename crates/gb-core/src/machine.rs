@@ -17,6 +17,7 @@ use crate::dma::DmaController;
 use crate::external_port::{ExternalPort, ExternalPortAttachmentKind, ExternalPortResetPolicy};
 use crate::interrupts::InterruptController;
 use crate::joypad::{Joypad, JoypadButton, button_mask};
+use crate::link::Dmg07Port;
 use crate::model::MachineConfig;
 use crate::ppu::{Ppu, PpuStepObserver, PpuStepRegion};
 use crate::scheduler::GlobalScheduler;
@@ -104,6 +105,16 @@ pub(crate) struct Dmg04EndpointState {
     pub staged_outgoing_byte: u8,
     pub waiting_for_external_clock: bool,
     pub internal_clock_edge_pending: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub(crate) struct Dmg07EndpointState {
+    pub attached: bool,
+    pub port: Option<Dmg07Port>,
+    pub active_transfer: bool,
+    pub staged_outgoing_byte: u8,
+    pub waiting_for_external_clock: bool,
+    pub using_internal_clock: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -330,6 +341,10 @@ impl<S: TraceSink> Machine<S> {
         self.serial.take_completed_output_bytes()
     }
 
+    pub(crate) fn latest_completed_serial_output_byte(&self) -> Option<u8> {
+        self.serial.latest_completed_output_byte()
+    }
+
     pub fn take_printed_pages(&mut self) -> Vec<crate::external_port::PrintedPage> {
         self.external_port.take_printed_pages()
     }
@@ -425,6 +440,37 @@ impl<S: TraceSink> Machine<S> {
 
     pub(crate) fn set_dmg04_incoming_byte(&mut self, incoming_byte: Option<u8>) {
         self.external_port.set_dmg04_incoming_byte(incoming_byte);
+        self.sync_serial_peer_from_external_port();
+    }
+
+    pub(crate) fn set_dmg07_attachment(&mut self, port: Dmg07Port) {
+        self.external_port.set_dmg07_attachment(port);
+        self.sync_serial_peer_from_external_port();
+    }
+
+    pub(crate) fn dmg07_endpoint_state(&self) -> Dmg07EndpointState {
+        let port = self.external_port.dmg07_port();
+        let attached = port.is_some();
+        let transfer_requested = matches!(
+            self.serial.transfer_state(),
+            SerialTransferState::TransferRequested { .. }
+        );
+        let active_transfer = attached && transfer_requested && !self.cpu_stop_active();
+
+        Dmg07EndpointState {
+            attached,
+            port,
+            active_transfer,
+            staged_outgoing_byte: self.serial.endpoint_outgoing_byte(),
+            waiting_for_external_clock: active_transfer
+                && self.serial.clock_mode() == SerialClockMode::External,
+            using_internal_clock: active_transfer
+                && self.serial.clock_mode() == SerialClockMode::Internal,
+        }
+    }
+
+    pub(crate) fn set_dmg07_incoming_byte(&mut self, incoming_byte: Option<u8>) {
+        self.external_port.set_dmg07_incoming_byte(incoming_byte);
         self.sync_serial_peer_from_external_port();
     }
 

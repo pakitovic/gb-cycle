@@ -38,8 +38,15 @@ impl LinkedSessionRunner {
             });
         }
 
+        let topology_trace_text = capture_trace
+            .then(|| linked.topology_trace_text())
+            .flatten();
         let session_trace = if capture_trace {
-            Some(render_combined_trace(session, &participants))
+            Some(render_combined_trace(
+                session,
+                topology_trace_text.as_deref(),
+                &participants,
+            ))
         } else {
             None
         };
@@ -53,6 +60,7 @@ impl LinkedSessionRunner {
             session: LinkedSessionCapturedArtifacts {
                 trace: session_trace,
                 snapshot_text: session_snapshot,
+                topology_trace_text,
             },
             participants,
         }
@@ -181,9 +189,17 @@ fn write_optional_failure_artifact(
 
 fn render_combined_trace(
     session: &LinkedSessionCase,
+    topology_trace_text: Option<&str>,
     participants: &[LinkedSessionParticipantArtifacts],
 ) -> String {
     let mut rendered = String::new();
+    if let Some(topology_trace_text) = topology_trace_text {
+        rendered.push_str("== link topology trace ==\n");
+        rendered.push_str(topology_trace_text);
+        if !topology_trace_text.ends_with('\n') {
+            rendered.push('\n');
+        }
+    }
     for (participant, artifacts) in session.participants.iter().zip(participants.iter()) {
         rendered.push_str("== participant ");
         rendered.push_str(&participant.id);

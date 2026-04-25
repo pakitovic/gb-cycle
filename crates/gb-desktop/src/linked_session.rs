@@ -1,9 +1,9 @@
-use crate::player_slots::PlayerSlot;
+use crate::player_slots::{DesktopDmg07PlayerCount, PlayerSlot};
 #[cfg(test)]
 use gb_core::LinkedTopologyKind;
 use gb_core::{
-    ConsoleModel, LinkedMachines, LinkedMachinesError, Machine, MachineConfig, MachineStepObserver,
-    StartupMode, TraceSummaryBuffer,
+    ConsoleModel, Dmg07Participant, Dmg07Port, LinkedMachines, LinkedMachinesError, Machine,
+    MachineConfig, MachineStepObserver, StartupMode, TraceSummaryBuffer,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -12,6 +12,9 @@ use std::ops::{Deref, DerefMut};
 pub enum DesktopEmulationSessionKind {
     Single,
     LinkedDmg04TwoPlayer,
+    LinkedDmg07 {
+        player_count: DesktopDmg07PlayerCount,
+    },
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -19,6 +22,10 @@ pub enum DesktopEmulationSessionKind {
 pub enum DesktopEmulationSession {
     Single(Box<Machine<TraceSummaryBuffer>>),
     LinkedDmg04TwoPlayer(Box<LinkedMachines<TraceSummaryBuffer>>),
+    LinkedDmg07 {
+        linked: Box<LinkedMachines<TraceSummaryBuffer>>,
+        player_count: DesktopDmg07PlayerCount,
+    },
 }
 
 impl DesktopEmulationSession {
@@ -38,11 +45,38 @@ impl DesktopEmulationSession {
         Ok(Self::LinkedDmg04TwoPlayer(Box::new(linked)))
     }
 
+    pub fn new_linked_dmg07(
+        machines: Vec<Machine<TraceSummaryBuffer>>,
+        player_count: DesktopDmg07PlayerCount,
+    ) -> Result<Self, String> {
+        if machines.len() != player_count.get() {
+            return Err(format!(
+                "DMG-07 desktop session for {} players requires {} machines, found {}",
+                player_count.get(),
+                player_count.get(),
+                machines.len()
+            ));
+        }
+
+        let mut linked = LinkedMachines::new(machines).map_err(format_linked_machines_error)?;
+        let participants = dmg07_participants_for_player_count(player_count);
+        linked
+            .attach_dmg07_adapter(&participants)
+            .map_err(format_linked_machines_error)?;
+        Ok(Self::LinkedDmg07 {
+            linked: Box::new(linked),
+            player_count,
+        })
+    }
+
     #[cfg(test)]
     pub const fn kind(&self) -> DesktopEmulationSessionKind {
         match self {
             Self::Single(_) => DesktopEmulationSessionKind::Single,
             Self::LinkedDmg04TwoPlayer(_) => DesktopEmulationSessionKind::LinkedDmg04TwoPlayer,
+            Self::LinkedDmg07 { player_count, .. } => DesktopEmulationSessionKind::LinkedDmg07 {
+                player_count: *player_count,
+            },
         }
     }
 
@@ -51,6 +85,7 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(_) => LinkedTopologyKind::None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.topology_kind(),
+            Self::LinkedDmg07 { linked, .. } => linked.topology_kind(),
         }
     }
 
@@ -58,6 +93,9 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(machine) => machine,
             Self::LinkedDmg04TwoPlayer(linked) => linked
+                .machine(0)
+                .expect("linked desktop session should always have a primary machine"),
+            Self::LinkedDmg07 { linked, .. } => linked
                 .machine(0)
                 .expect("linked desktop session should always have a primary machine"),
         }
@@ -69,6 +107,9 @@ impl DesktopEmulationSession {
             Self::LinkedDmg04TwoPlayer(linked) => linked
                 .machine_mut(0)
                 .expect("linked desktop session should always have a primary machine"),
+            Self::LinkedDmg07 { linked, .. } => linked
+                .machine_mut(0)
+                .expect("linked desktop session should always have a primary machine"),
         }
     }
 
@@ -76,6 +117,7 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine(1),
+            Self::LinkedDmg07 { linked, .. } => linked.machine(1),
         }
     }
 
@@ -83,6 +125,7 @@ impl DesktopEmulationSession {
         match self {
             Self::Single(_) => None,
             Self::LinkedDmg04TwoPlayer(linked) => linked.machine_mut(1),
+            Self::LinkedDmg07 { linked, .. } => linked.machine_mut(1),
         }
     }
 
@@ -93,7 +136,10 @@ impl DesktopEmulationSession {
         match slot {
             PlayerSlot::P1 => Some(self.primary_machine()),
             PlayerSlot::P2 => self.secondary_machine(),
-            PlayerSlot::P3 | PlayerSlot::P4 => None,
+            PlayerSlot::P3 | PlayerSlot::P4 => match self {
+                Self::LinkedDmg07 { linked, .. } => linked.machine(slot.machine_index()),
+                Self::Single(_) | Self::LinkedDmg04TwoPlayer(_) => None,
+            },
         }
     }
 
@@ -104,12 +150,26 @@ impl DesktopEmulationSession {
         match slot {
             PlayerSlot::P1 => Some(self.primary_machine_mut()),
             PlayerSlot::P2 => self.secondary_machine_mut(),
-            PlayerSlot::P3 | PlayerSlot::P4 => None,
+            PlayerSlot::P3 | PlayerSlot::P4 => match self {
+                Self::LinkedDmg07 { linked, .. } => linked.machine_mut(slot.machine_index()),
+                Self::Single(_) | Self::LinkedDmg04TwoPlayer(_) => None,
+            },
         }
     }
 
     pub const fn is_linked_dmg04_two_player(&self) -> bool {
         matches!(self, Self::LinkedDmg04TwoPlayer(_))
+    }
+
+    pub const fn dmg07_player_count(&self) -> Option<DesktopDmg07PlayerCount> {
+        match self {
+            Self::LinkedDmg07 { player_count, .. } => Some(*player_count),
+            Self::Single(_) | Self::LinkedDmg04TwoPlayer(_) => None,
+        }
+    }
+
+    pub const fn is_linked_dmg07(&self) -> bool {
+        matches!(self, Self::LinkedDmg07 { .. })
     }
 
     pub fn attach_secondary_dmg04(
@@ -121,6 +181,12 @@ impl DesktopEmulationSession {
             Self::LinkedDmg04TwoPlayer(_) => {
                 return Err(
                     "desktop emulation session is already running a linked DMG-04 runtime"
+                        .to_string(),
+                );
+            }
+            Self::LinkedDmg07 { .. } => {
+                return Err(
+                    "desktop emulation session is already running a linked DMG-07 runtime"
                         .to_string(),
                 );
             }
@@ -166,6 +232,9 @@ impl DesktopEmulationSession {
             Self::LinkedDmg04TwoPlayer(linked) => {
                 linked.advance_t_cycle();
             }
+            Self::LinkedDmg07 { linked, .. } => {
+                linked.advance_t_cycle();
+            }
         }
     }
 
@@ -175,6 +244,9 @@ impl DesktopEmulationSession {
                 let _ = machine.step_t_cycle_with_observer(observer);
             }
             Self::LinkedDmg04TwoPlayer(linked) => {
+                linked.advance_t_cycle_with_observer(observer);
+            }
+            Self::LinkedDmg07 { linked, .. } => {
                 linked.advance_t_cycle_with_observer(observer);
             }
         }
@@ -191,8 +263,27 @@ impl DesktopEmulationSession {
                     .next()
                     .expect("linked desktop session should keep the primary machine")
             }
+            Self::LinkedDmg07 { mut linked, .. } => {
+                linked.detach_link_topology();
+                linked
+                    .into_machines()
+                    .into_iter()
+                    .next()
+                    .expect("linked desktop session should keep the primary machine")
+            }
         }
     }
+}
+
+fn dmg07_participants_for_player_count(
+    player_count: DesktopDmg07PlayerCount,
+) -> Vec<Dmg07Participant> {
+    Dmg07Port::ALL
+        .into_iter()
+        .take(player_count.get())
+        .enumerate()
+        .map(|(machine_index, port)| Dmg07Participant::new(machine_index, port))
+        .collect()
 }
 
 impl Deref for DesktopEmulationSession {
@@ -224,6 +315,24 @@ fn format_linked_machines_error(error: LinkedMachinesError) -> String {
         LinkedMachinesError::UnsupportedMachineCountForDmg04 { count } => {
             format!("DMG-04 desktop sessions currently require exactly two machines, found {count}")
         }
+        LinkedMachinesError::UnsupportedMachineCountForDmg07 { count } => {
+            format!("DMG-07 linked sessions require two to four machines, found {count}")
+        }
+        LinkedMachinesError::MissingDmg07PlayerOne => {
+            "DMG-07 linked sessions require adapter port P1".to_string()
+        }
+        LinkedMachinesError::DuplicateDmg07Port { port } => {
+            format!("DMG-07 linked session uses adapter port {port:?} more than once")
+        }
+        LinkedMachinesError::DuplicateDmg07MachineIndex { machine_index } => {
+            format!("DMG-07 linked session uses machine index {machine_index} more than once")
+        }
+        LinkedMachinesError::Dmg07MachineIndexOutOfBounds {
+            machine_index,
+            machine_count,
+        } => format!(
+            "DMG-07 linked session references machine index {machine_index}, but only {machine_count} machines exist"
+        ),
     }
 }
 
@@ -238,8 +347,10 @@ mod tests {
     use super::{
         DesktopEmulationSession, DesktopEmulationSessionKind, format_linked_machines_error,
     };
+    use crate::player_slots::{DesktopDmg07PlayerCount, PlayerSlot};
     use gb_core::{
-        ConsoleModel, LinkedMachinesError, Machine, MachineConfig, MachineStepObserver,
+        ConsoleModel, Dmg07Port, ExternalPortAttachmentKind, ExternalPortAttachmentSnapshot,
+        LinkedMachinesError, LinkedTopologyKind, Machine, MachineConfig, MachineStepObserver,
         MachineStepRegion, StartupMode, TCycle, TraceSummaryBuffer,
     };
     use std::collections::HashMap;
@@ -314,6 +425,72 @@ mod tests {
             "desktop emulation session is already running a linked DMG-04 runtime"
         );
         assert!(session.secondary_machine().is_some());
+    }
+
+    #[test]
+    fn new_linked_dmg07_maps_contiguous_player_slots_to_physical_ports() {
+        let mut session = DesktopEmulationSession::new_linked_dmg07(
+            vec![
+                dmg_skip_boot_summary_machine(),
+                dmg_skip_boot_summary_machine(),
+                dmg_skip_boot_summary_machine(),
+            ],
+            DesktopDmg07PlayerCount::Three,
+        )
+        .expect("three-player desktop DMG-07 session should build");
+
+        assert_eq!(
+            session.kind(),
+            DesktopEmulationSessionKind::LinkedDmg07 {
+                player_count: DesktopDmg07PlayerCount::Three,
+            }
+        );
+        assert_eq!(session.linked_topology_kind(), LinkedTopologyKind::Dmg07);
+        assert_eq!(
+            session.dmg07_player_count(),
+            Some(DesktopDmg07PlayerCount::Three)
+        );
+        for (slot, port) in [
+            (PlayerSlot::P1, Dmg07Port::P1),
+            (PlayerSlot::P2, Dmg07Port::P2),
+            (PlayerSlot::P3, Dmg07Port::P3),
+        ] {
+            let machine = session
+                .machine_for_player_slot(slot)
+                .expect("active DMG-07 slot should map to a machine");
+            assert_eq!(
+                machine.external_port().attachment_kind(),
+                ExternalPortAttachmentKind::FourPlayerAdapterDmg07
+            );
+            assert_eq!(
+                machine.external_port().snapshot().attachment,
+                ExternalPortAttachmentSnapshot::FourPlayerAdapterDmg07 {
+                    port,
+                    incoming_byte: None,
+                }
+            );
+        }
+        assert!(session.machine_for_player_slot(PlayerSlot::P4).is_none());
+
+        session.step_t_cycle();
+        assert_eq!(session.next_t_cycle(), TCycle::new(1));
+    }
+
+    #[test]
+    fn new_linked_dmg07_rejects_wrong_machine_count_before_core_attach() {
+        let error = DesktopEmulationSession::new_linked_dmg07(
+            vec![
+                dmg_skip_boot_summary_machine(),
+                dmg_skip_boot_summary_machine(),
+            ],
+            DesktopDmg07PlayerCount::Four,
+        )
+        .expect_err("four-player desktop DMG-07 session requires four machines");
+
+        assert_eq!(
+            error,
+            "DMG-07 desktop session for 4 players requires 4 machines, found 2"
+        );
     }
 
     #[test]

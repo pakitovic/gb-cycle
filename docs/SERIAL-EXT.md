@@ -1019,6 +1019,24 @@ Phase `9` should start from the adapter model in `hardware/LINK.md`:
 - No compatibility alias where ordinary `DMG-04` two-player games silently run
   through `DMG-07`.
 
+### Phase 9 status
+
+The core and runner now include the first real `DMG-07` path:
+
+- `gb-core` exposes physical `Dmg07Port::{P1, P2, P3, P4}` identities and
+  session-level `Dmg07Participant` mappings.
+- `LinkedMachines::attach_dmg07_adapter()` validates 2- to 4-participant
+  adapter sessions, requires `P1`, rejects duplicate ports / machine indexes,
+  and allows sparse physical occupancy such as `P1 + P4`.
+- `ExternalPortAttachmentKind::FourPlayerAdapterDmg07` records per-console
+  adapter-port identity and a transient incoming byte.
+- `link/dmg07.rs` models adapter-owned external clocks, ping acknowledgements,
+  status bytes, `RATE` / `SIZE`, transition to transmission, one-packet-delay
+  transmission buffers, missing-port zero fill, and ping restart.
+- `gb-test-runner` accepts `topology = "dmg07"` with per-participant
+  `adapter_port` fields and includes synthetic `DMG-07` fixtures plus a built-in
+  smoke manifest.
+
 ### Done criteria
 
 - `gb-core` and `gb-test-runner` can deterministically run real `DMG-07`
@@ -1060,6 +1078,30 @@ path are already validated.
 
 - `gb-desktop` can run real local `DMG-07` sessions with 2 to 4 players on top
   of the already-validated core and harness behavior.
+
+### Phase 10 status
+
+The desktop frontend now exposes local `DMG-07` sessions as a frontend-owned
+UX layer on top of the Phase `9` core/runner adapter model:
+
+- `EXT. PORT -> 4P ADAPTER` opens a count submenu with `2 PLAYERS`,
+  `3 PLAYERS`, and `4 PLAYERS`.
+- Selecting a count rebuilds a fresh synchronized `LinkedMachines` runtime from
+  the currently loaded `P1` ROM bytes, mapping contiguous player slots to
+  physical adapter ports from `P1` through the selected final port.
+- `GAME LINK` remains the explicit `DMG-04` second-ROM flow; the `4P ADAPTER`
+  path does not open additional ROM dialogs.
+- `P1` keeps the configurable keyboard/gamepad profile, `P2` keeps the fixed
+  linked-player profile, and Phase `10` adds fixed `P3`/`P4` keyboard profiles.
+  Gamepad and audible audio remain `P1`-only by default.
+- Rendering uses player-slot layouts: single `160x144`, 2P `320x144`, and
+  3P/4P `320x288` with an empty black fourth panel for 3P.
+- Saves are indexed by player slot: `P1` keeps the normal derived save key,
+  while `P2`/`P3`/`P4` use `_dmg07_p2`, `_dmg07_p3`, and `_dmg07_p4` key
+  suffixes so cloned-ROM slots still model separate physical cartridges.
+- Reset and machine-setting changes preserve the active `DMG-07` topology and
+  player count by rebuilding all slots from frame zero. `NONE`, `PRINTER`, and
+  opening a new primary ROM tear the session back down to single `P1`.
 
 ## Cross-phase rules
 

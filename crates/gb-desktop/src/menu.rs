@@ -1,3 +1,4 @@
+use crate::player_slots::DesktopDmg07PlayerCount;
 use gb_core::{ApuRecordedChannel, ExecutionMode, StartupMode};
 use gb_desktop::{
     BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
@@ -130,6 +131,12 @@ const EXT_PORT_MENU_ITEMS: [MenuItem; 5] = [
     MenuItem::ExternalPortFourPlayerAdapter,
     MenuItem::Return,
 ];
+const FOUR_PLAYER_ADAPTER_MENU_ITEMS: [MenuItem; 4] = [
+    MenuItem::FourPlayerAdapterTwoPlayers,
+    MenuItem::FourPlayerAdapterThreePlayers,
+    MenuItem::FourPlayerAdapterFourPlayers,
+    MenuItem::Return,
+];
 const KEYBOARD_MENU_ITEMS: [MenuItem; 9] = [
     MenuItem::KeyboardUp,
     MenuItem::KeyboardDown,
@@ -254,6 +261,7 @@ pub enum MenuAction {
     ResetVideoDefaults,
     ResetAudioDefaults,
     SetExternalPort(DesktopExternalPortSelection),
+    SetFourPlayerAdapter(DesktopDmg07PlayerCount),
     ResetInputDefaults,
     SetKeyboardBinding(KeyboardBindingTarget, DesktopKey),
     SetKeyboardMenuBinding(KeyboardMenuBindingTarget, DesktopKey),
@@ -594,8 +602,11 @@ impl MenuPresentation {
             | MenuItem::ClearRecentList
             | MenuItem::Quit
             | MenuItem::Return => true,
-            MenuItem::ExternalPortGameLink => self.rom_loaded && !self.any_dialog_pending,
-            MenuItem::ExternalPortFourPlayerAdapter => false,
+            MenuItem::ExternalPortGameLink
+            | MenuItem::ExternalPortFourPlayerAdapter
+            | MenuItem::FourPlayerAdapterTwoPlayers
+            | MenuItem::FourPlayerAdapterThreePlayers
+            | MenuItem::FourPlayerAdapterFourPlayers => self.rom_loaded && !self.any_dialog_pending,
         }
     }
 
@@ -830,6 +841,9 @@ impl MenuPresentation {
             }
             MenuItem::ExternalPortGameLink => "GAME LINK".to_string(),
             MenuItem::ExternalPortFourPlayerAdapter => "4P ADAPTER".to_string(),
+            MenuItem::FourPlayerAdapterTwoPlayers => "2 PLAYERS".to_string(),
+            MenuItem::FourPlayerAdapterThreePlayers => "3 PLAYERS".to_string(),
+            MenuItem::FourPlayerAdapterFourPlayers => "4 PLAYERS".to_string(),
             MenuItem::GamepadActive => {
                 if self.active_gamepad_connected {
                     format!("ACTIVE {}", self.active_gamepad_label.as_str())
@@ -982,6 +996,7 @@ enum MenuScreen {
     Audio,
     Input,
     ExtPort,
+    FourPlayerAdapter,
     Gamepad,
     GamepadMenuControls,
     Keyboard,
@@ -1007,6 +1022,7 @@ impl MenuScreen {
             Self::Audio => "AUDIO",
             Self::Input => "INPUT",
             Self::ExtPort => "EXT PORT",
+            Self::FourPlayerAdapter => "4P ADAPTER",
             Self::Gamepad => "GAMEPAD",
             Self::GamepadMenuControls => "PAD MENU",
             Self::Keyboard => "KEYBOARD",
@@ -1089,6 +1105,9 @@ enum MenuItem {
     ExternalPortPrinter,
     ExternalPortGameLink,
     ExternalPortFourPlayerAdapter,
+    FourPlayerAdapterTwoPlayers,
+    FourPlayerAdapterThreePlayers,
+    FourPlayerAdapterFourPlayers,
     GamepadRumble,
     InputDefaults,
     GamepadActive,
@@ -1627,6 +1646,10 @@ impl OverlayMenuState {
                 self.push_screen(MenuScreen::ExtPort, presentation);
                 None
             }
+            MenuItem::ExternalPortFourPlayerAdapter => {
+                self.push_screen(MenuScreen::FourPlayerAdapter, presentation);
+                None
+            }
             MenuItem::KeyboardMenu => {
                 self.push_screen(MenuScreen::Keyboard, presentation);
                 None
@@ -1709,7 +1732,15 @@ impl OverlayMenuState {
             MenuItem::ExternalPortGameLink => Some(MenuAction::SetExternalPort(
                 DesktopExternalPortSelection::GameLink,
             )),
-            MenuItem::ExternalPortFourPlayerAdapter => None,
+            MenuItem::FourPlayerAdapterTwoPlayers => Some(MenuAction::SetFourPlayerAdapter(
+                DesktopDmg07PlayerCount::Two,
+            )),
+            MenuItem::FourPlayerAdapterThreePlayers => Some(MenuAction::SetFourPlayerAdapter(
+                DesktopDmg07PlayerCount::Three,
+            )),
+            MenuItem::FourPlayerAdapterFourPlayers => Some(MenuAction::SetFourPlayerAdapter(
+                DesktopDmg07PlayerCount::Four,
+            )),
             MenuItem::GamepadRumble => Some(MenuAction::CycleGamepadRumbleMode),
             MenuItem::InputDefaults => Some(MenuAction::ResetInputDefaults),
             MenuItem::GamepadActive => None,
@@ -2070,6 +2101,7 @@ fn items_for_screen(screen: MenuScreen) -> &'static [MenuItem] {
         MenuScreen::Audio => &AUDIO_MENU_ITEMS,
         MenuScreen::Input => &INPUT_MENU_ITEMS,
         MenuScreen::ExtPort => &EXT_PORT_MENU_ITEMS,
+        MenuScreen::FourPlayerAdapter => &FOUR_PLAYER_ADAPTER_MENU_ITEMS,
         MenuScreen::Gamepad => &GAMEPAD_MENU_ITEMS,
         MenuScreen::GamepadMenuControls => &GAMEPAD_MENU_CONTROL_ITEMS,
         MenuScreen::Keyboard => &KEYBOARD_MENU_ITEMS,
@@ -2095,6 +2127,7 @@ fn desktop_key_label(key: DesktopKey) -> &'static str {
         DesktopKey::R => "R",
         DesktopKey::X => "X",
         DesktopKey::Z => "Z",
+        DesktopKey::F1 => "F1",
         DesktopKey::F5 => "F5",
         DesktopKey::F10 => "F10",
         DesktopKey::F11 => "F11",
@@ -2549,6 +2582,7 @@ mod tests {
         render_performance_hud, rendered_recent_rom_item_label, scroll_indicator_rows,
         viewport_start_index, visible_item_at, visible_item_count,
     };
+    use crate::player_slots::DesktopDmg07PlayerCount;
     use gb_core::{ExecutionMode, StartupMode};
     use gb_desktop::{
         BootRomVerificationMode, DesktopConsoleModel, DesktopExternalPortSelection, DesktopKey,
@@ -3423,6 +3457,7 @@ mod tests {
         assert_eq!(desktop_key_label(DesktopKey::RightShift), "R SHIFT");
         assert_eq!(desktop_key_label(DesktopKey::LeftControl), "L CTRL");
         assert_eq!(desktop_key_label(DesktopKey::RightControl), "R CTRL");
+        assert_eq!(desktop_key_label(DesktopKey::F1), "F1");
         #[cfg(target_os = "macos")]
         {
             assert_eq!(desktop_key_label(DesktopKey::LeftAlt), "L OPT");
@@ -3746,7 +3781,23 @@ mod tests {
             "4P ADAPTER"
         );
         assert!(presentation.item_enabled(MenuItem::ExternalPortGameLink));
+        assert!(presentation.item_enabled(MenuItem::ExternalPortFourPlayerAdapter));
+        assert_eq!(
+            presentation.item_label(MenuItem::FourPlayerAdapterTwoPlayers),
+            "2 PLAYERS"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::FourPlayerAdapterThreePlayers),
+            "3 PLAYERS"
+        );
+        assert_eq!(
+            presentation.item_label(MenuItem::FourPlayerAdapterFourPlayers),
+            "4 PLAYERS"
+        );
+        presentation.any_dialog_pending = true;
+        assert!(!presentation.item_enabled(MenuItem::ExternalPortGameLink));
         assert!(!presentation.item_enabled(MenuItem::ExternalPortFourPlayerAdapter));
+        presentation.any_dialog_pending = false;
         presentation.external_port_selection = DesktopExternalPortSelection::GameLink;
         assert_eq!(presentation.item_label(MenuItem::ExtPortMenu), "EXT LINK");
         presentation.external_port_selection = DesktopExternalPortSelection::FourPlayerAdapter;
@@ -4004,6 +4055,10 @@ mod tests {
         assert_eq!(MenuScreen::Audio.title(presentation), "AUDIO");
         assert_eq!(MenuScreen::Input.title(presentation), "INPUT");
         assert_eq!(MenuScreen::ExtPort.title(presentation), "EXT PORT");
+        assert_eq!(
+            MenuScreen::FourPlayerAdapter.title(presentation),
+            "4P ADAPTER"
+        );
         assert_eq!(MenuScreen::Gamepad.title(presentation), "GAMEPAD");
         assert_eq!(
             MenuScreen::GamepadMenuControls.title(presentation),
@@ -4055,6 +4110,32 @@ mod tests {
             None
         );
         assert_eq!(menu.current_screen_state().screen, MenuScreen::ExtPort);
+        assert_eq!(
+            menu.apply_item_action(MenuItem::ExternalPortFourPlayerAdapter, presentation),
+            None
+        );
+        assert_eq!(
+            menu.current_screen_state().screen,
+            MenuScreen::FourPlayerAdapter
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::FourPlayerAdapterTwoPlayers, presentation),
+            Some(MenuAction::SetFourPlayerAdapter(
+                DesktopDmg07PlayerCount::Two
+            ))
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::FourPlayerAdapterThreePlayers, presentation),
+            Some(MenuAction::SetFourPlayerAdapter(
+                DesktopDmg07PlayerCount::Three
+            ))
+        );
+        assert_eq!(
+            menu.apply_item_action(MenuItem::FourPlayerAdapterFourPlayers, presentation),
+            Some(MenuAction::SetFourPlayerAdapter(
+                DesktopDmg07PlayerCount::Four
+            ))
+        );
         menu.open(presentation);
         assert_eq!(
             menu.apply_item_action(MenuItem::SystemMenu, presentation),
