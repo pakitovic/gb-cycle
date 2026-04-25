@@ -4779,43 +4779,18 @@ fn apply_external_port_selection_to_machine(
 }
 
 fn session_has_pocket_camera(machine: &DesktopEmulationSession) -> bool {
-    machine.primary_machine().has_pocket_camera()
-        || machine
-            .secondary_machine()
+    PlayerSlot::ALL.into_iter().any(|slot| {
+        machine
+            .machine_for_player_slot(slot)
             .is_some_and(Machine::has_pocket_camera)
-}
-
-fn apply_session_pocket_camera_frame_to_machine(
-    session: &DesktopSession,
-    machine: &mut Machine<TraceSummaryBuffer>,
-) -> Result<(), String> {
-    let Some(frame) = session.pocket_camera_frame.clone() else {
-        return Ok(());
-    };
-    if !machine.has_pocket_camera() {
-        return Ok(());
-    }
-
-    machine.set_pocket_camera_frame(frame).map_err(|error| {
-        format_debug_error("failed to apply Pocket Camera frame", &format!("{error:?}"))
     })
 }
 
-fn apply_session_pocket_camera_frame_to_desktop_session(
-    session: &DesktopSession,
-    machine: &mut DesktopEmulationSession,
-) -> Result<(), String> {
-    apply_session_pocket_camera_frame_to_machine(session, machine.primary_machine_mut())?;
-    if let Some(secondary_machine) = machine.secondary_machine_mut() {
-        apply_session_pocket_camera_frame_to_machine(session, secondary_machine)?;
-    }
-    Ok(())
-}
-
-fn apply_pocket_camera_live_frame_to_machine(
+fn apply_pocket_camera_frame_to_machine(
     frame: &PocketCameraFrame,
     machine: &mut Machine<TraceSummaryBuffer>,
-    machine_name: &str,
+    slot: PlayerSlot,
+    action: &str,
 ) -> Result<(), String> {
     if !machine.has_pocket_camera() {
         return Ok(());
@@ -4825,19 +4800,61 @@ fn apply_pocket_camera_live_frame_to_machine(
         .set_pocket_camera_frame(frame.clone())
         .map_err(|error| {
             format_debug_error(
-                &format!("failed to apply live Pocket Camera frame to the {machine_name} machine"),
+                &format!(
+                    "failed to {action} Pocket Camera frame for {}",
+                    slot.label()
+                ),
                 &format!("{error:?}"),
             )
         })
+}
+
+fn apply_pocket_camera_frame_to_desktop_session(
+    frame: &PocketCameraFrame,
+    machine: &mut DesktopEmulationSession,
+    action: &str,
+) -> Result<(), String> {
+    for slot in PlayerSlot::ALL {
+        if let Some(slot_machine) = machine.machine_for_player_slot_mut(slot) {
+            apply_pocket_camera_frame_to_machine(frame, slot_machine, slot, action)?;
+        }
+    }
+    Ok(())
+}
+
+fn apply_session_pocket_camera_frame_to_desktop_session(
+    session: &DesktopSession,
+    machine: &mut DesktopEmulationSession,
+) -> Result<(), String> {
+    let Some(frame) = session.pocket_camera_frame.as_ref() else {
+        return Ok(());
+    };
+    apply_pocket_camera_frame_to_desktop_session(frame, machine, "apply")
 }
 
 fn apply_pocket_camera_live_frame_to_desktop_session(
     frame: &PocketCameraFrame,
     machine: &mut DesktopEmulationSession,
 ) -> Result<(), String> {
-    apply_pocket_camera_live_frame_to_machine(frame, machine.primary_machine_mut(), "primary")?;
-    if let Some(secondary_machine) = machine.secondary_machine_mut() {
-        apply_pocket_camera_live_frame_to_machine(frame, secondary_machine, "secondary")?;
+    apply_pocket_camera_frame_to_desktop_session(frame, machine, "apply live")
+}
+
+fn clear_pocket_camera_frame_from_desktop_session(
+    machine: &mut DesktopEmulationSession,
+) -> Result<(), String> {
+    for slot in PlayerSlot::ALL {
+        let Some(slot_machine) = machine.machine_for_player_slot_mut(slot) else {
+            continue;
+        };
+        if !slot_machine.has_pocket_camera() {
+            continue;
+        }
+        slot_machine.clear_pocket_camera_frame().map_err(|error| {
+            format_debug_error(
+                &format!("failed to reset Pocket Camera image on {}", slot.label()),
+                &format!("{error:?}"),
+            )
+        })?;
     }
     Ok(())
 }
@@ -5940,30 +5957,7 @@ fn process_pending_camera_image_dialog(
             let result: Result<(), String> = (|| {
                 let frame = load_selected_camera_image(path, context.session)?;
                 context.runtime.pocket_camera_live.stop();
-                if context.machine.primary_machine().has_pocket_camera() {
-                    context
-                        .machine
-                        .primary_machine_mut()
-                        .set_pocket_camera_frame(frame.clone())
-                        .map_err(|error| {
-                            format_debug_error(
-                                "failed to load Pocket Camera image into the primary machine",
-                                &format!("{error:?}"),
-                            )
-                        })?;
-                }
-                if let Some(secondary_machine) = context.machine.secondary_machine_mut()
-                    && secondary_machine.has_pocket_camera()
-                {
-                    secondary_machine
-                        .set_pocket_camera_frame(frame.clone())
-                        .map_err(|error| {
-                            format_debug_error(
-                                "failed to load Pocket Camera image into the secondary machine",
-                                &format!("{error:?}"),
-                            )
-                        })?;
-                }
+                apply_pocket_camera_frame_to_desktop_session(&frame, context.machine, "load")?;
                 context.session.pocket_camera_frame = Some(frame);
                 Ok(())
             })();
@@ -6357,6 +6351,10 @@ fn rebuild_machine_for_config(
                     &mut next_machine,
                     &battery_backed_states,
                     "after reconfigure",
+                )?;
+                apply_session_pocket_camera_frame_to_desktop_session(
+                    &next_session,
+                    &mut next_machine,
                 )?;
 
                 let effective_config = loaded.effective_config;
@@ -7375,30 +7373,7 @@ fn execute_menu_action(
         MenuAction::ResetCameraImage => {
             context.runtime.pocket_camera_live.stop();
             context.session.pocket_camera_frame = None;
-            if context.machine.primary_machine().has_pocket_camera() {
-                context
-                    .machine
-                    .primary_machine_mut()
-                    .clear_pocket_camera_frame()
-                    .map_err(|error| {
-                        format_debug_error(
-                            "failed to reset Pocket Camera image on the primary machine",
-                            &format!("{error:?}"),
-                        )
-                    })?;
-            }
-            if let Some(secondary_machine) = context.machine.secondary_machine_mut()
-                && secondary_machine.has_pocket_camera()
-            {
-                secondary_machine
-                    .clear_pocket_camera_frame()
-                    .map_err(|error| {
-                        format_debug_error(
-                            "failed to reset Pocket Camera image on the secondary machine",
-                            &format!("{error:?}"),
-                        )
-                    })?;
-            }
+            clear_pocket_camera_frame_from_desktop_session(context.machine)?;
             Ok(None)
         }
         MenuAction::SaveScreenshot => {
@@ -8691,6 +8666,7 @@ fn reset_machine(
                 &battery_backed_states,
                 "after reset",
             )?;
+            apply_session_pocket_camera_frame_to_desktop_session(session, &mut reset_machine)?;
 
             let effective_config = loaded.effective_config;
             let next_save_sessions = open_save_sessions_for_session(
@@ -10157,6 +10133,93 @@ mod tests {
                 .expect("P4 should stay active after reset")
                 .read_bus(0xC000),
             p4_reset_baseline
+        );
+    }
+
+    #[test]
+    fn dmg07_pocket_camera_frame_survives_reconfigure_and_reset_on_all_slots() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("dmg07-camera-frame-reset", false, false, false);
+        let camera_rom_name = "camera.gb";
+        write_test_camera_rom(&harness.root, camera_rom_name);
+        harness
+            .runtime
+            .open_rom_dialog
+            .sender
+            .send(PathDialogResult::Selected(PathBuf::from(camera_rom_name)))
+            .expect("Pocket Camera ROM selection should send");
+        harness
+            .process_pending_open_rom_dialog()
+            .expect("Pocket Camera ROM should load");
+        assert!(
+            harness
+                .execute_action(super::MenuAction::SetFourPlayerAdapter(
+                    super::DesktopDmg07PlayerCount::Four,
+                ))
+                .expect("4 PLAYER ADAPTER action should activate for a camera ROM")
+                .is_none()
+        );
+
+        let png_path = write_grayscale_png(&harness.root, "camera.png", 1, 1, &[0x00]);
+        harness
+            .runtime
+            .camera_image_dialog
+            .sender
+            .send(PathDialogResult::Selected(png_path))
+            .expect("Pocket Camera image selection should send");
+        harness
+            .process_pending_camera_image_dialog()
+            .expect("Pocket Camera image dialog should complete");
+
+        let expected_black_tiles = [
+            0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
+            0x00, 0xFF,
+        ];
+        assert_eq!(
+            capture_camera_tile_bytes(
+                harness
+                    .machine
+                    .machine_for_player_slot_mut(super::PlayerSlot::P4)
+                    .expect("P4 should be a cloned Pocket Camera machine")
+            ),
+            expected_black_tiles,
+            "loading a static Pocket Camera image should apply to all DMG-07 slots"
+        );
+
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleSavePolicy)
+                .expect("save policy change should rebuild the DMG-07 camera session")
+                .is_none()
+        );
+        assert_eq!(
+            capture_camera_tile_bytes(
+                harness
+                    .machine
+                    .machine_for_player_slot_mut(super::PlayerSlot::P4)
+                    .expect("P4 should remain active after reconfigure")
+            ),
+            expected_black_tiles,
+            "DMG-07 reconfigure should reapply the session Pocket Camera frame"
+        );
+
+        super::reset_machine(
+            harness.canvas.window(),
+            &mut harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.settings_store,
+        )
+        .expect("DMG-07 reset should rebuild the camera session");
+        assert_eq!(
+            capture_camera_tile_bytes(
+                harness
+                    .machine
+                    .machine_for_player_slot_mut(super::PlayerSlot::P4)
+                    .expect("P4 should remain active after reset")
+            ),
+            expected_black_tiles,
+            "DMG-07 reset should reapply the session Pocket Camera frame"
         );
     }
 
