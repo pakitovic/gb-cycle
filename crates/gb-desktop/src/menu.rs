@@ -456,6 +456,7 @@ pub struct MenuPresentation {
     pub external_save_available: bool,
     pub external_save_import_available: bool,
     pub machine_state_available: bool,
+    pub machine_state_load_available: bool,
     pub machine_state_slot: u8,
     pub any_dialog_pending: bool,
     pub cartridge_pocket_camera_supported: bool,
@@ -504,8 +505,14 @@ impl MenuPresentation {
     fn item_enabled(self, item: MenuItem) -> bool {
         match item {
             MenuItem::Reset | MenuItem::Screenshot => self.rom_loaded,
-            MenuItem::SaveState | MenuItem::LoadState => {
+            MenuItem::SaveState => {
                 self.rom_loaded && self.machine_state_available && !self.any_dialog_pending
+            }
+            MenuItem::LoadState => {
+                self.rom_loaded
+                    && self.machine_state_available
+                    && self.machine_state_load_available
+                    && !self.any_dialog_pending
             }
             MenuItem::StateSlot => self.rom_loaded,
             MenuItem::OpenRom
@@ -2648,6 +2655,7 @@ mod tests {
             external_save_available: false,
             external_save_import_available: false,
             machine_state_available: true,
+            machine_state_load_available: true,
             machine_state_slot: 1,
             any_dialog_pending: false,
             cartridge_pocket_camera_supported: false,
@@ -3532,9 +3540,23 @@ mod tests {
             machine_state_available: false,
             ..presentation
         };
+        assert!(blocked.item_visible(MenuItem::LoadState));
         assert!(!blocked.item_enabled(MenuItem::SaveState));
         assert!(!blocked.item_enabled(MenuItem::LoadState));
         assert!(blocked.item_enabled(MenuItem::StateSlot));
+
+        let no_slot_file = MenuPresentation {
+            machine_state_load_available: false,
+            ..presentation
+        };
+        assert!(no_slot_file.item_enabled(MenuItem::SaveState));
+        assert!(no_slot_file.item_visible(MenuItem::LoadState));
+        assert!(!no_slot_file.item_enabled(MenuItem::LoadState));
+        assert!(no_slot_file.item_enabled(MenuItem::StateSlot));
+        assert_eq!(
+            visible_item_at(MenuScreen::Root, 2, no_slot_file),
+            Some(MenuItem::LoadState)
+        );
 
         let mut menu = OverlayMenuState::default();
         menu.open(presentation);

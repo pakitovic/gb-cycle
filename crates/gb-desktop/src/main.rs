@@ -7204,6 +7204,15 @@ fn machine_state_actions_available(
         && !machine.is_linked_dmg07()
 }
 
+fn machine_state_slot_load_available(
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+    slot: u8,
+) -> bool {
+    machine_state_actions_available(session, machine)
+        && machine_state_slot_path(session, slot).is_ok_and(|path| path.is_file())
+}
+
 fn machine_state_slot_path(session: &DesktopSession, slot: u8) -> Result<PathBuf, String> {
     let slot = slot.clamp(1, MACHINE_STATE_SLOT_COUNT);
     let rom_path = session
@@ -7482,12 +7491,6 @@ fn execute_menu_action(
         MenuAction::CycleStateSlot => {
             context.runtime.machine_state_slot =
                 next_machine_state_slot(context.runtime.machine_state_slot);
-            context.runtime.menu_state.open(current_menu_presentation(
-                canvas.window(),
-                context.runtime,
-                context.machine,
-                context.session,
-            ));
             Ok(None)
         }
         MenuAction::SaveBattery => {
@@ -7978,6 +7981,8 @@ fn current_menu_presentation(
             machine.primary_machine().cartridge().persistence_metadata(),
         );
     let machine_state_available = machine_state_actions_available(session, machine);
+    let machine_state_load_available =
+        machine_state_slot_load_available(session, machine, runtime.machine_state_slot);
     let cartridge_pocket_camera_supported = session_has_pocket_camera(machine);
     let preferred_gamepad_configured = runtime
         .gamepad_manager
@@ -8050,6 +8055,7 @@ fn current_menu_presentation(
         external_save_available,
         external_save_import_available: external_save_available && session.config.saves.enabled,
         machine_state_available,
+        machine_state_load_available,
         machine_state_slot: runtime.machine_state_slot,
         any_dialog_pending: runtime.any_dialog_pending(),
         cartridge_pocket_camera_supported,
@@ -9587,15 +9593,15 @@ mod tests {
         desktop_key_scancode, entered_pc_ranges, gamepad_binding_target_for_binding,
         gamepad_menu_binding_target_for_binding, hotkey_binding_target_for_key,
         joypad_binding_target_for_key, keyboard_menu_binding_target_for_key,
-        load_machine_state_slot, machine_state_actions_available, machine_state_slot_path,
-        map_path_dialog_result, menu_input_for_gamepad_button, menu_input_for_key,
-        next_audio_volume_percent, next_boot_rom_verification_mode, next_console_model,
-        next_execution_mode, next_gamepad_directional_source, next_gamepad_rumble_mode,
-        next_machine_state_slot, next_save_flush_policy, next_startup_mode, next_window_scale,
-        parse_edge_trace_addresses, parse_edge_trace_event_count, parse_edge_trace_pc_ranges,
-        parse_pc_watch_trace_event_count, parse_pc_watch_trace_ranges,
-        parse_trace_capture_t_cycles, parse_watch_trace_addresses, parse_watch_trace_event_count,
-        performance_window_title, render_desktop_edge_trace_record,
+        load_machine_state_slot, machine_state_actions_available,
+        machine_state_slot_load_available, machine_state_slot_path, map_path_dialog_result,
+        menu_input_for_gamepad_button, menu_input_for_key, next_audio_volume_percent,
+        next_boot_rom_verification_mode, next_console_model, next_execution_mode,
+        next_gamepad_directional_source, next_gamepad_rumble_mode, next_machine_state_slot,
+        next_save_flush_policy, next_startup_mode, next_window_scale, parse_edge_trace_addresses,
+        parse_edge_trace_event_count, parse_edge_trace_pc_ranges, parse_pc_watch_trace_event_count,
+        parse_pc_watch_trace_ranges, parse_trace_capture_t_cycles, parse_watch_trace_addresses,
+        parse_watch_trace_event_count, performance_window_title, render_desktop_edge_trace_record,
         render_desktop_pc_watch_trace_record, render_desktop_trace_record,
         render_desktop_watch_trace_record, run_desktop, save_machine_state_slot,
         watched_bus_value_change, watched_cpu_addresses, watched_pc_ranges,
@@ -15374,6 +15380,19 @@ mod tests {
             default_path,
             harness.root.join("states/state-slot-paths.slot1.gbstate")
         );
+        assert!(!machine_state_slot_load_available(
+            &harness.session,
+            &harness.machine,
+            1
+        ));
+        let presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(presentation.machine_state_available);
+        assert!(!presentation.machine_state_load_available);
 
         harness.session.config.saves.enabled = false;
         harness.session.config.saves.key_policy = SaveKeyPolicy::Explicit(
@@ -15416,6 +15435,65 @@ mod tests {
     }
 
     #[test]
+    fn state_slot_menu_action_keeps_slot_selector_selected_while_cycling() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("state-slot-selection", true, false, false);
+        save_machine_state_slot(&harness.session, &harness.machine, 2)
+            .expect("slot 2 should save before cycling to it");
+
+        let presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(!presentation.machine_state_load_available);
+        harness.runtime.menu_state.open(presentation);
+        assert_eq!(
+            harness
+                .runtime
+                .menu_state
+                .handle_input(super::MenuInput::Down, presentation),
+            None
+        );
+        assert_eq!(
+            harness
+                .runtime
+                .menu_state
+                .handle_input(super::MenuInput::Down, presentation),
+            None
+        );
+        let action = harness
+            .runtime
+            .menu_state
+            .handle_input(super::MenuInput::Confirm, presentation)
+            .expect("STATE SLOT should emit a cycle action");
+        assert_eq!(action, super::MenuAction::CycleStateSlot);
+        harness
+            .execute_action(action)
+            .expect("slot cycle action should execute");
+        assert_eq!(harness.runtime.machine_state_slot, 2);
+
+        let cycled_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(cycled_presentation.machine_state_load_available);
+        let repeated_action = harness
+            .runtime
+            .menu_state
+            .handle_input(super::MenuInput::Confirm, cycled_presentation)
+            .expect("STATE SLOT should remain selected after cycling");
+        assert_eq!(repeated_action, super::MenuAction::CycleStateSlot);
+        harness
+            .execute_action(repeated_action)
+            .expect("second slot cycle action should execute");
+        assert_eq!(harness.runtime.machine_state_slot, 3);
+    }
+
+    #[test]
     fn state_slots_round_trip_machine_state_and_corrupt_loads_do_not_mutate() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("state-slot-roundtrip", true, false, false);
@@ -15423,6 +15501,23 @@ mod tests {
         harness.machine.write_bus(0xC000, 0x42);
         let saved_path = save_machine_state_slot(&harness.session, &harness.machine, 1)
             .expect("state slot should save");
+        assert!(machine_state_slot_load_available(
+            &harness.session,
+            &harness.machine,
+            1
+        ));
+        assert!(!machine_state_slot_load_available(
+            &harness.session,
+            &harness.machine,
+            2
+        ));
+        let presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(presentation.machine_state_load_available);
         let decoded = decode_machine_save_state_envelope(
             &fs::read(&saved_path).expect("saved .gbstate should exist"),
         )
