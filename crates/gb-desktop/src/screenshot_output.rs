@@ -292,7 +292,12 @@ mod tests {
         let encoded = fs::read(&output_path).expect("screenshot PNG should exist");
         let decoder = png::Decoder::new(Cursor::new(encoded));
         let mut reader = decoder.read_info().expect("PNG header should decode");
-        let mut buffer = vec![0; reader.output_buffer_size()];
+        let mut buffer = vec![
+            0;
+            reader
+                .output_buffer_size()
+                .expect("PNG output buffer size should fit in memory")
+        ];
         let info = reader
             .next_frame(&mut buffer)
             .expect("PNG payload should decode");

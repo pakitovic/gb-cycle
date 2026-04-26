@@ -84,6 +84,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::fmt::Display;
 use std::fs;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
@@ -6734,7 +6735,7 @@ fn load_selected_camera_image(
         )
     })?;
 
-    let mut decoder = Decoder::new(file);
+    let mut decoder = Decoder::new(BufReader::new(file));
     decoder.set_transformations(Transformations::EXPAND | Transformations::STRIP_16);
     let mut reader = decoder.read_info().map_err(|error| {
         format_path_error(
@@ -6743,7 +6744,14 @@ fn load_selected_camera_image(
             &error.to_string(),
         )
     })?;
-    let mut buffer = vec![0; reader.output_buffer_size()];
+    let output_buffer_size = reader.output_buffer_size().ok_or_else(|| {
+        format_path_error(
+            "failed to decode PNG metadata",
+            &image_path,
+            "decoded PNG output buffer is too large",
+        )
+    })?;
+    let mut buffer = vec![0; output_buffer_size];
     let info = reader.next_frame(&mut buffer).map_err(|error| {
         format_path_error(
             "failed to decode PNG image",
@@ -18201,7 +18209,12 @@ mod tests {
         let encoded = fs::read(&screenshot_path).expect("screenshot PNG should exist");
         let decoder = png::Decoder::new(std::io::Cursor::new(encoded));
         let mut reader = decoder.read_info().expect("PNG header should decode");
-        let mut buffer = vec![0; reader.output_buffer_size()];
+        let mut buffer = vec![
+            0;
+            reader
+                .output_buffer_size()
+                .expect("PNG output buffer size should fit in memory")
+        ];
         let info = reader
             .next_frame(&mut buffer)
             .expect("PNG payload should decode");
