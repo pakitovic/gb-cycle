@@ -59,12 +59,15 @@ const RECENT_ROM_SCROLL_STEP: Duration = Duration::from_millis(150);
 const RECENT_ROM_SCROLL_GAP_CHARS: usize = 3;
 pub const RECENT_ROM_MENU_CAPACITY: usize = 12;
 
-const ROOT_MENU_ITEMS: [MenuItem; 11] = [
+const ROOT_MENU_ITEMS: [MenuItem; 14] = [
     MenuItem::CameraLive,
     MenuItem::CameraImage,
     MenuItem::CameraReset,
     MenuItem::OpenRom,
     MenuItem::RecentMenu,
+    MenuItem::SaveState,
+    MenuItem::LoadState,
+    MenuItem::StateSlot,
     MenuItem::VideoMenu,
     MenuItem::AudioMenu,
     MenuItem::InputMenu,
@@ -224,6 +227,9 @@ pub enum MenuAction {
     OpenRom,
     OpenRecentRom(usize),
     ClearRecentList,
+    SaveState,
+    LoadState,
+    CycleStateSlot,
     SaveBattery,
     ExportSave,
     ImportSave,
@@ -449,6 +455,8 @@ pub struct MenuPresentation {
     pub manual_save_available: bool,
     pub external_save_available: bool,
     pub external_save_import_available: bool,
+    pub machine_state_available: bool,
+    pub machine_state_slot: u8,
     pub any_dialog_pending: bool,
     pub cartridge_pocket_camera_supported: bool,
     pub pocket_camera_live_enabled: bool,
@@ -496,6 +504,10 @@ impl MenuPresentation {
     fn item_enabled(self, item: MenuItem) -> bool {
         match item {
             MenuItem::Reset | MenuItem::Screenshot => self.rom_loaded,
+            MenuItem::SaveState | MenuItem::LoadState => {
+                self.rom_loaded && self.machine_state_available && !self.any_dialog_pending
+            }
+            MenuItem::StateSlot => self.rom_loaded,
             MenuItem::OpenRom
             | MenuItem::RecentMenu
             | MenuItem::RecentRom1
@@ -614,6 +626,9 @@ impl MenuPresentation {
         match item {
             MenuItem::OpenRom => "OPEN ROM".to_string(),
             MenuItem::RecentMenu => "OPEN RECENT".to_string(),
+            MenuItem::SaveState => "SAVE STATE".to_string(),
+            MenuItem::LoadState => "LOAD STATE".to_string(),
+            MenuItem::StateSlot => format!("STATE SLOT {}", self.machine_state_slot.clamp(1, 4)),
             MenuItem::RecentRom1 => recent_rom_item_label(self.recent_rom_labels[0]),
             MenuItem::RecentRom2 => recent_rom_item_label(self.recent_rom_labels[1]),
             MenuItem::RecentRom3 => recent_rom_item_label(self.recent_rom_labels[2]),
@@ -1039,6 +1054,9 @@ impl MenuScreen {
 enum MenuItem {
     OpenRom,
     RecentMenu,
+    SaveState,
+    LoadState,
+    StateSlot,
     RecentRom1,
     RecentRom2,
     RecentRom3,
@@ -1626,6 +1644,9 @@ impl OverlayMenuState {
             MenuItem::RecentRom11 => Some(MenuAction::OpenRecentRom(10)),
             MenuItem::RecentRom12 => Some(MenuAction::OpenRecentRom(11)),
             MenuItem::ClearRecentList => Some(MenuAction::ClearRecentList),
+            MenuItem::SaveState => Some(MenuAction::SaveState),
+            MenuItem::LoadState => Some(MenuAction::LoadState),
+            MenuItem::StateSlot => Some(MenuAction::CycleStateSlot),
             MenuItem::SaveBattery => Some(MenuAction::SaveBattery),
             MenuItem::CameraImage => Some(MenuAction::SelectCameraImage),
             MenuItem::CameraLive => Some(MenuAction::ToggleCameraLive),
@@ -2626,6 +2647,8 @@ mod tests {
             manual_save_available: false,
             external_save_available: false,
             external_save_import_available: false,
+            machine_state_available: true,
+            machine_state_slot: 1,
             any_dialog_pending: false,
             cartridge_pocket_camera_supported: false,
             pocket_camera_live_enabled: false,
@@ -3481,7 +3504,7 @@ mod tests {
         }
         assert_eq!(
             previous_enabled_index(MenuScreen::Root, 0, test_presentation()),
-            6
+            9
         );
 
         let mut presentation = test_presentation();
@@ -3489,6 +3512,47 @@ mod tests {
         presentation.recent_rom_labels[0] = CompactRecentRomLabel::from_text("TETRIS");
         presentation.recent_rom_labels[1] = CompactRecentRomLabel::from_text("MARIO");
         assert_eq!(presentation.item_label(MenuItem::RecentRom2), "MARIO");
+    }
+
+    #[test]
+    fn machine_state_root_items_label_cycle_and_disable_when_unavailable() {
+        let presentation = MenuPresentation {
+            machine_state_slot: 3,
+            ..test_presentation()
+        };
+
+        assert_eq!(presentation.item_label(MenuItem::SaveState), "SAVE STATE");
+        assert_eq!(presentation.item_label(MenuItem::LoadState), "LOAD STATE");
+        assert_eq!(presentation.item_label(MenuItem::StateSlot), "STATE SLOT 3");
+        assert!(presentation.item_enabled(MenuItem::SaveState));
+        assert!(presentation.item_enabled(MenuItem::LoadState));
+        assert!(presentation.item_enabled(MenuItem::StateSlot));
+
+        let blocked = MenuPresentation {
+            machine_state_available: false,
+            ..presentation
+        };
+        assert!(!blocked.item_enabled(MenuItem::SaveState));
+        assert!(!blocked.item_enabled(MenuItem::LoadState));
+        assert!(blocked.item_enabled(MenuItem::StateSlot));
+
+        let mut menu = OverlayMenuState::default();
+        menu.open(presentation);
+        select_visible_item(&mut menu, presentation, MenuItem::SaveState);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::SaveState)
+        );
+        select_visible_item(&mut menu, presentation, MenuItem::LoadState);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::LoadState)
+        );
+        select_visible_item(&mut menu, presentation, MenuItem::StateSlot);
+        assert_eq!(
+            menu.handle_input(MenuInput::Confirm, presentation),
+            Some(MenuAction::CycleStateSlot)
+        );
     }
 
     #[test]
@@ -3514,7 +3578,10 @@ mod tests {
         assert_eq!(ROOT_MENU_ITEMS[2], MenuItem::CameraReset);
         assert_eq!(ROOT_MENU_ITEMS[3], MenuItem::OpenRom);
         assert_eq!(ROOT_MENU_ITEMS[4], MenuItem::RecentMenu);
-        assert_eq!(ROOT_MENU_ITEMS[5], MenuItem::VideoMenu);
+        assert_eq!(ROOT_MENU_ITEMS[5], MenuItem::SaveState);
+        assert_eq!(ROOT_MENU_ITEMS[6], MenuItem::LoadState);
+        assert_eq!(ROOT_MENU_ITEMS[7], MenuItem::StateSlot);
+        assert_eq!(ROOT_MENU_ITEMS[8], MenuItem::VideoMenu);
         assert!(!ROOT_MENU_ITEMS.contains(&MenuItem::SaveBattery));
 
         assert_eq!(RECENT_MENU_ITEMS[0], MenuItem::RecentRom1);

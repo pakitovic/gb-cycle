@@ -93,6 +93,15 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 - Rewind restore goes only through `Machine::restore_save_state()`, preserving the existing metadata compatibility checks and direct subsystem restore path.
 - Phase 8.4 measures full-snapshot memory pressure through `MachineRewindStats`; compression, deltas, frontend hotkeys/menus, and coordinated multi-machine rewind remain follow-up work.
 
+#### Phase 8.5 host `.gbstate` integration contract
+
+- `gb-cli run` exposes reproducible host I/O through `--state-in <file.gbstate>` and `--state-out <file.gbstate>`. The CLI loads the ROM first, restores `--state-in` through `Machine::restore_save_state()`, runs the configured frame/T-cycle budget, then captures and writes `--state-out`.
+- When `--state-in` is present, the CLI does not load a pre-existing `.gbsav` before restore. If cartridge persistence is enabled for the run, the save session baseline is initialized from the restored cartridge state so an unrelated `.gbsav` is not immediately flushed over or mixed into the full-machine state.
+- `gb-desktop` exposes root-menu actions immediately below `OPEN RECENT`: `SAVE STATE`, `LOAD STATE`, and `STATE SLOT N`. The slot selector is runtime-only and cycles through slots `1` through `4`.
+- Desktop slots are single-machine only and live next to the ROM under `<rom-dir>/states/<state-key>.slot<N>.gbstate`. The `state-key` follows the current save-key policy, including explicit keys, but does not require cartridge persistence to be enabled.
+- Desktop load reads the selected slot, decodes v2, restores through `Machine::restore_save_state()`, clears live input and audio queue state, resynchronizes host pacing/RTC bookkeeping, and does not apply elapsed RTC off-session time. Failed load leaves the machine untouched; linked DMG-04 / DMG-07 sessions keep save/load state disabled until a coordinated multi-machine contract exists.
+- Phase 8.5 does not change `.gbstate` v2, `MachineSaveState` DTOs, rewind buffering, compression, or deltas.
+
 #### Risks if delayed or underspecified
 
 - final hardening work lacks a stable save/load foundation

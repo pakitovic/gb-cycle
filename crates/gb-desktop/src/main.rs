@@ -39,7 +39,9 @@ use gb_desktop::{
 use gb_persistence::{
     CartridgeSaveBackend, CartridgeSaveKey, CartridgeSaveTimeSource, EXTERNAL_SAVE_FILE_EXTENSION,
     ExternalSaveError, ExternalSaveExportFormat, FilesystemCartridgeSaveBackend,
-    FixedCartridgeSaveTimeSource, SystemCartridgeSaveTimeSource, encode_external_cartridge_save,
+    FixedCartridgeSaveTimeSource, MACHINE_SAVE_STATE_FILE_EXTENSION, MachineSaveStateEnvelope,
+    SystemCartridgeSaveTimeSource, decode_machine_save_state_envelope,
+    encode_external_cartridge_save, encode_machine_save_state_envelope,
     import_external_cartridge_save, legacy_sanitized_save_key,
     uses_battery_backed_hardware_persistence,
 };
@@ -106,6 +108,8 @@ const DEFAULT_TRACE_CAPTURE_T_CYCLES: usize = 8_192;
 const DEFAULT_WATCH_TRACE_EVENTS: usize = 4_096;
 const DEFAULT_PC_WATCH_TRACE_EVENTS: usize = 4_096;
 const DEFAULT_EDGE_TRACE_EVENTS: usize = 4_096;
+const MACHINE_STATE_SLOT_COUNT: u8 = 4;
+const DEFAULT_MACHINE_STATE_SLOT: u8 = 1;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FramebufferDimensions {
     width: u32,
@@ -263,6 +267,7 @@ struct FrontendRuntime {
     audio_recorder: Option<DesktopAudioRecorder>,
     gamepad_manager: Option<GamepadManager>,
     save_sessions: [Option<DesktopSaveSession>; PLAYER_SLOT_COUNT],
+    machine_state_slot: u8,
     rtc_sync: HostRtcSync,
     open_rom_dialog: PathSelectionDialog,
     open_rom_dialog_mode: OpenRomDialogMode,
@@ -2472,6 +2477,10 @@ impl FramePacer {
     fn set_vsync_enabled(&mut self, _vsync_enabled: bool) {
         self.next_frame_start = Instant::now();
     }
+
+    fn reset_host_pacing(&mut self) {
+        self.next_frame_start = Instant::now();
+    }
 }
 
 fn audio_queue_pacing_correction_with_policy(
@@ -4236,6 +4245,7 @@ fn run_desktop_with_startup_fallback_persistence(
         audio_recorder,
         gamepad_manager,
         save_sessions,
+        machine_state_slot: DEFAULT_MACHINE_STATE_SLOT,
         rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
         open_rom_dialog_mode: OpenRomDialogMode::Primary,
@@ -7176,6 +7186,129 @@ fn close_menu(
     sync_audio_playback_state(machine, runtime)
 }
 
+fn next_machine_state_slot(slot: u8) -> u8 {
+    if slot >= MACHINE_STATE_SLOT_COUNT {
+        1
+    } else {
+        slot.saturating_add(1).max(1)
+    }
+}
+
+fn machine_state_actions_available(
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+) -> bool {
+    session.has_loaded_rom()
+        && !machine.primary_machine().cartridge().is_empty()
+        && !machine.is_linked_dmg04_two_player()
+        && !machine.is_linked_dmg07()
+}
+
+fn machine_state_slot_path(session: &DesktopSession, slot: u8) -> Result<PathBuf, String> {
+    let slot = slot.clamp(1, MACHINE_STATE_SLOT_COUNT);
+    let rom_path = session
+        .rom_path()
+        .ok_or_else(|| "machine save states require a loaded ROM".to_string())?;
+    let state_key = session
+        .config
+        .saves
+        .key_policy
+        .resolve(rom_path)
+        .map_err(|error| format!("failed to resolve machine state key: {error}"))?;
+    let state_dir = rom_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("states");
+    Ok(state_dir.join(format!(
+        "{}.slot{slot}.{}",
+        state_key.as_str(),
+        MACHINE_SAVE_STATE_FILE_EXTENSION
+    )))
+}
+
+fn save_machine_state_slot(
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+    slot: u8,
+) -> Result<PathBuf, String> {
+    if !machine_state_actions_available(session, machine) {
+        return Err(
+            "machine save states are only available for single-machine sessions".to_string(),
+        );
+    }
+
+    let path = machine_state_slot_path(session, slot)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create machine state directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    let envelope = MachineSaveStateEnvelope::new(machine.primary_machine().capture_save_state());
+    let bytes = encode_machine_save_state_envelope(&envelope).map_err(|error| {
+        format!(
+            "failed to encode .{} state {}: {error}",
+            MACHINE_SAVE_STATE_FILE_EXTENSION,
+            path.display()
+        )
+    })?;
+    fs::write(&path, bytes).map_err(|error| {
+        format!(
+            "failed to write .{} state {}: {error}",
+            MACHINE_SAVE_STATE_FILE_EXTENSION,
+            path.display()
+        )
+    })?;
+    Ok(path)
+}
+
+fn load_machine_state_slot(
+    session: &DesktopSession,
+    machine: &mut DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+    frame_pacer: &mut FramePacer,
+    slot: u8,
+) -> Result<PathBuf, String> {
+    if !machine_state_actions_available(session, machine) {
+        return Err(
+            "machine save states are only available for single-machine sessions".to_string(),
+        );
+    }
+
+    let path = machine_state_slot_path(session, slot)?;
+    let bytes = fs::read(&path).map_err(|error| {
+        format!(
+            "failed to read .{} state {}: {error}",
+            MACHINE_SAVE_STATE_FILE_EXTENSION,
+            path.display()
+        )
+    })?;
+    let envelope = decode_machine_save_state_envelope(&bytes).map_err(|error| {
+        format!(
+            "failed to decode .{} state {}: {error}",
+            MACHINE_SAVE_STATE_FILE_EXTENSION,
+            path.display()
+        )
+    })?;
+    machine
+        .primary_machine_mut()
+        .restore_save_state(&envelope.state)
+        .map_err(|error| format!("failed to restore state {}: {error}", path.display()))?;
+
+    clear_live_input_state(machine, runtime);
+    if let Some(audio_output) = &mut runtime.audio_output {
+        audio_output.clear_buffer()?;
+    }
+    if let Some(save_session) = &mut runtime.save_sessions[PlayerSlot::P1.index()] {
+        save_session.reset_baseline_from_machine(machine.primary_machine());
+    }
+    runtime.rtc_sync.resync_to_host_clock();
+    frame_pacer.reset_host_pacing();
+    Ok(path)
+}
+
 fn execute_menu_action(
     action: MenuAction,
     event_pump: &sdl3::EventPump,
@@ -7300,6 +7433,55 @@ fn execute_menu_action(
         MenuAction::ClearRecentList => {
             context.settings_store.clear_recent_roms()?;
             context.session.recent_roms = context.settings_store.recent_roms().to_vec();
+            context.runtime.menu_state.open(current_menu_presentation(
+                canvas.window(),
+                context.runtime,
+                context.machine,
+                context.session,
+            ));
+            Ok(None)
+        }
+        MenuAction::SaveState => {
+            match save_machine_state_slot(
+                context.session,
+                context.machine,
+                context.runtime.machine_state_slot,
+            ) {
+                Ok(path) => eprintln!("info: state saved to {}", path.display()),
+                Err(error) => {
+                    show_warning_message(Some(canvas.window()), "Save State", &error);
+                    eprintln!("warning: {error}");
+                }
+            }
+            Ok(None)
+        }
+        MenuAction::LoadState => {
+            let slot = context.runtime.machine_state_slot;
+            match load_machine_state_slot(
+                context.session,
+                context.machine,
+                context.runtime,
+                context.frame_pacer,
+                slot,
+            ) {
+                Ok(path) => {
+                    eprintln!("info: state loaded from {}", path.display());
+                    sync_audio_playback_state(context.machine, context.runtime)?;
+                    context.performance_counter.reset_base_title(
+                        canvas.window_mut(),
+                        window_title(context.session, &context.session.config),
+                    )?;
+                }
+                Err(error) => {
+                    show_warning_message(Some(canvas.window()), "Load State", &error);
+                    eprintln!("warning: {error}");
+                }
+            }
+            Ok(None)
+        }
+        MenuAction::CycleStateSlot => {
+            context.runtime.machine_state_slot =
+                next_machine_state_slot(context.runtime.machine_state_slot);
             context.runtime.menu_state.open(current_menu_presentation(
                 canvas.window(),
                 context.runtime,
@@ -7795,6 +7977,7 @@ fn current_menu_presentation(
         && uses_battery_backed_hardware_persistence(
             machine.primary_machine().cartridge().persistence_metadata(),
         );
+    let machine_state_available = machine_state_actions_available(session, machine);
     let cartridge_pocket_camera_supported = session_has_pocket_camera(machine);
     let preferred_gamepad_configured = runtime
         .gamepad_manager
@@ -7866,6 +8049,8 @@ fn current_menu_presentation(
             .any(|session| session.flush_policy() == DesktopSaveFlushPolicy::Manual),
         external_save_available,
         external_save_import_available: external_save_available && session.config.saves.enabled,
+        machine_state_available,
+        machine_state_slot: runtime.machine_state_slot,
         any_dialog_pending: runtime.any_dialog_pending(),
         cartridge_pocket_camera_supported,
         pocket_camera_live_enabled: runtime.pocket_camera_live.is_enabled(),
@@ -9402,16 +9587,18 @@ mod tests {
         desktop_key_scancode, entered_pc_ranges, gamepad_binding_target_for_binding,
         gamepad_menu_binding_target_for_binding, hotkey_binding_target_for_key,
         joypad_binding_target_for_key, keyboard_menu_binding_target_for_key,
+        load_machine_state_slot, machine_state_actions_available, machine_state_slot_path,
         map_path_dialog_result, menu_input_for_gamepad_button, menu_input_for_key,
         next_audio_volume_percent, next_boot_rom_verification_mode, next_console_model,
         next_execution_mode, next_gamepad_directional_source, next_gamepad_rumble_mode,
-        next_save_flush_policy, next_startup_mode, next_window_scale, parse_edge_trace_addresses,
-        parse_edge_trace_event_count, parse_edge_trace_pc_ranges, parse_pc_watch_trace_event_count,
-        parse_pc_watch_trace_ranges, parse_trace_capture_t_cycles, parse_watch_trace_addresses,
-        parse_watch_trace_event_count, performance_window_title, render_desktop_edge_trace_record,
+        next_machine_state_slot, next_save_flush_policy, next_startup_mode, next_window_scale,
+        parse_edge_trace_addresses, parse_edge_trace_event_count, parse_edge_trace_pc_ranges,
+        parse_pc_watch_trace_event_count, parse_pc_watch_trace_ranges,
+        parse_trace_capture_t_cycles, parse_watch_trace_addresses, parse_watch_trace_event_count,
+        performance_window_title, render_desktop_edge_trace_record,
         render_desktop_pc_watch_trace_record, render_desktop_trace_record,
-        render_desktop_watch_trace_record, run_desktop, watched_bus_value_change,
-        watched_cpu_addresses, watched_pc_ranges,
+        render_desktop_watch_trace_record, run_desktop, save_machine_state_slot,
+        watched_bus_value_change, watched_cpu_addresses, watched_pc_ranges,
     };
     use crate::audio_recording::DesktopAudioRecordingOptions;
     use gb_core::apu::{ApuOutputSnapshot, ApuStereoOutputSnapshot};
@@ -9429,9 +9616,12 @@ mod tests {
     use gb_desktop::{
         BootRomVerificationMode, DesktopConfig, DesktopConsoleModel, DesktopExternalPortSelection,
         DesktopKey, DesktopSaveFlushPolicy, GamepadButtonBinding, GamepadDirectionalSource,
-        GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings,
+        GamepadMenuBindings, GamepadRumbleMode, MenuKeyboardBindings, SaveKeyPolicy,
     };
-    use gb_persistence::{CartridgeSaveBackend, FilesystemCartridgeSaveBackend};
+    use gb_persistence::{
+        CartridgeSaveBackend, CartridgeSaveKey, FilesystemCartridgeSaveBackend,
+        decode_machine_save_state_envelope,
+    };
     use sdl3::dialog::DialogError;
     use sdl3::event::Event;
     use sdl3::gamepad::Button;
@@ -10600,6 +10790,7 @@ mod tests {
                 audio_recorder: None,
                 gamepad_manager,
                 save_sessions,
+                machine_state_slot: super::DEFAULT_MACHINE_STATE_SLOT,
                 rtc_sync: super::HostRtcSync::from_host_clock(),
                 open_rom_dialog: super::PathSelectionDialog::new(),
                 open_rom_dialog_mode: super::OpenRomDialogMode::Primary,
@@ -15167,6 +15358,151 @@ mod tests {
     }
 
     #[test]
+    fn state_slot_paths_use_rom_states_subdir_and_runtime_slot_selector() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("state-slot-paths", true, false, false);
+
+        assert_eq!(next_machine_state_slot(1), 2);
+        assert_eq!(next_machine_state_slot(2), 3);
+        assert_eq!(next_machine_state_slot(3), 4);
+        assert_eq!(next_machine_state_slot(4), 1);
+        assert_eq!(next_machine_state_slot(0), 1);
+
+        let default_path = machine_state_slot_path(&harness.session, 1)
+            .expect("default state path should resolve");
+        assert_eq!(
+            default_path,
+            harness.root.join("states/state-slot-paths.slot1.gbstate")
+        );
+
+        harness.session.config.saves.enabled = false;
+        harness.session.config.saves.key_policy = SaveKeyPolicy::Explicit(
+            CartridgeSaveKey::new("manual-state-key").expect("explicit state key should be valid"),
+        );
+        let explicit_path = machine_state_slot_path(&harness.session, 4)
+            .expect("explicit state path should resolve");
+        assert_eq!(
+            explicit_path,
+            harness.root.join("states/manual-state-key.slot4.gbstate")
+        );
+
+        assert_eq!(harness.runtime.machine_state_slot, 1);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleStateSlot)
+                .expect("slot selector should cycle")
+                .is_none()
+        );
+        assert_eq!(harness.runtime.machine_state_slot, 2);
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleStateSlot)
+                .expect("slot selector should cycle")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleStateSlot)
+                .expect("slot selector should cycle")
+                .is_none()
+        );
+        assert!(
+            harness
+                .execute_action(super::MenuAction::CycleStateSlot)
+                .expect("slot selector should wrap")
+                .is_none()
+        );
+        assert_eq!(harness.runtime.machine_state_slot, 1);
+    }
+
+    #[test]
+    fn state_slots_round_trip_machine_state_and_corrupt_loads_do_not_mutate() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("state-slot-roundtrip", true, false, false);
+
+        harness.machine.write_bus(0xC000, 0x42);
+        let saved_path = save_machine_state_slot(&harness.session, &harness.machine, 1)
+            .expect("state slot should save");
+        let decoded = decode_machine_save_state_envelope(
+            &fs::read(&saved_path).expect("saved .gbstate should exist"),
+        )
+        .expect("saved .gbstate should decode");
+        assert_eq!(decoded.state, harness.machine.capture_save_state());
+
+        harness.machine.write_bus(0xC000, 0x99);
+        assert_eq!(harness.machine.read_bus(0xC000), 0x99);
+        let loaded_path = load_machine_state_slot(
+            &harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.frame_pacer,
+            1,
+        )
+        .expect("state slot should load");
+        assert_eq!(loaded_path, saved_path);
+        assert_eq!(harness.machine.read_bus(0xC000), 0x42);
+
+        let before_missing = harness.machine.capture_save_state();
+        let missing_error = load_machine_state_slot(
+            &harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.frame_pacer,
+            2,
+        )
+        .expect_err("missing state slot should fail");
+        assert!(missing_error.contains("failed to read .gbstate state"));
+        assert_eq!(harness.machine.capture_save_state(), before_missing);
+
+        let corrupt_path =
+            machine_state_slot_path(&harness.session, 2).expect("corrupt path should resolve");
+        fs::create_dir_all(
+            corrupt_path
+                .parent()
+                .expect("corrupt path parent should exist"),
+        )
+        .expect("state dir should be creatable");
+        fs::write(&corrupt_path, b"not-a-gbstate").expect("corrupt state should be writable");
+        let before_corrupt = harness.machine.capture_save_state();
+        let corrupt_error = load_machine_state_slot(
+            &harness.session,
+            &mut harness.machine,
+            &mut harness.runtime,
+            &mut harness.frame_pacer,
+            2,
+        )
+        .expect_err("corrupt state slot should fail");
+        assert!(corrupt_error.contains("failed to decode .gbstate state"));
+        assert_eq!(harness.machine.capture_save_state(), before_corrupt);
+    }
+
+    #[test]
+    fn state_slots_are_disabled_for_linked_desktop_sessions() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("state-slot-linked", true, false, false);
+        let primary = harness.machine.primary_machine().clone();
+        let secondary = primary.clone();
+        harness.machine =
+            super::DesktopEmulationSession::new_linked_dmg04_two_player(primary, secondary)
+                .expect("matching machines should link");
+
+        assert!(!machine_state_actions_available(
+            &harness.session,
+            &harness.machine
+        ));
+        let presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(!presentation.machine_state_available);
+        let save_error = save_machine_state_slot(&harness.session, &harness.machine, 1)
+            .expect_err("linked sessions should not save .gbstate slots");
+        assert!(save_error.contains("single-machine sessions"));
+    }
+
+    #[test]
     fn external_save_helpers_cover_disabled_non_battery_and_io_error_paths() {
         let _guard = crate::lock_sdl_test();
 
@@ -17299,7 +17635,13 @@ mod tests {
                 &harness.session,
             ));
 
-        for button in [Button::DPadDown, Button::DPadDown, Button::South] {
+        for button in [
+            Button::DPadDown,
+            Button::DPadDown,
+            Button::DPadDown,
+            Button::DPadDown,
+            Button::South,
+        ] {
             events
                 .push_event(Event::ControllerButtonDown {
                     timestamp: 0,
