@@ -73,6 +73,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 ### Phase 8 — Full emulator save states and global serialization strategy
 
 - [SAVESTATE][DTO-AUDIT] Phase 8.2 replaced root runtime save-state wrappers with explicit subsystem-owned DTOs and intentionally bumped `.gbstate` to v2, rejecting v1. Future CPU/PPU/APU/cart mapper refactors must update only the affected DTO conversion code and should add field-level compatibility assertions before changing the v2 payload again.
+- [REWIND][COMPRESSION-UX] Phase 8.4 adds a core-only full-snapshot rewind ring buffer with memory telemetry. Frontend controls, multi-machine coordination, compression, and delta encoding remain future work; use the measured `MachineRewindStats` pressure before choosing a Phase 8.5 storage strategy.
 
 ### Phase 9 — Final DMG hardening, differential validation, and closure
 

@@ -86,6 +86,13 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 - Bump `.gbstate` to version `2`, keep magic/extension unchanged, and reject version `1` as unsupported instead of adding a compatibility migration.
 - Keep rewind, ring buffers, compression, deltas, and UI out of this phase; the in-memory `MachineSaveState` remains cloneable and disk-independent.
 
+#### Phase 8.4 core rewind contract
+
+- `gb-core::rewind` owns a single-machine `MachineRewindBuffer` that stores full in-memory `MachineSaveState` snapshots in a bounded FIFO ring buffer. It does not touch `.gbstate`, `.gbsav`, disk, timestamps, host input, or frontend UI.
+- The default policy targets roughly ten seconds of history, always supports frame-boundary captures, supports configurable subframe captures, and enforces an estimated-byte cap with oldest-snapshot eviction while retaining at least the newest snapshot.
+- Rewind restore goes only through `Machine::restore_save_state()`, preserving the existing metadata compatibility checks and direct subsystem restore path.
+- Phase 8.4 measures full-snapshot memory pressure through `MachineRewindStats`; compression, deltas, frontend hotkeys/menus, and coordinated multi-machine rewind remain follow-up work.
+
 #### Risks if delayed or underspecified
 
 - final hardening work lacks a stable save/load foundation
