@@ -417,7 +417,14 @@ impl Default for MenuKeyboardBindings {
 #[serde(default)]
 pub struct HotkeyBindings {
     pub pause: DesktopKey,
+    pub save_state: DesktopKey,
+    pub load_state: DesktopKey,
+    pub state_slot_1: DesktopKey,
+    pub state_slot_2: DesktopKey,
+    pub state_slot_3: DesktopKey,
+    pub state_slot_4: DesktopKey,
     pub reset: DesktopKey,
+    pub rewind: DesktopKey,
     pub toggle_fullscreen: DesktopKey,
     pub toggle_performance_hud: DesktopKey,
     pub save_battery: DesktopKey,
@@ -427,10 +434,17 @@ impl Default for HotkeyBindings {
     fn default() -> Self {
         Self {
             pause: DesktopKey::Space,
-            reset: DesktopKey::F1,
+            save_state: DesktopKey::F1,
+            load_state: DesktopKey::F2,
+            state_slot_1: DesktopKey::Digit1,
+            state_slot_2: DesktopKey::Digit2,
+            state_slot_3: DesktopKey::Digit3,
+            state_slot_4: DesktopKey::Digit4,
+            reset: DesktopKey::F12,
+            rewind: DesktopKey::LeftShift,
             toggle_fullscreen: DesktopKey::F11,
             toggle_performance_hud: DesktopKey::F10,
-            save_battery: DesktopKey::F5,
+            save_battery: DesktopKey::F9,
         }
     }
 }
@@ -627,10 +641,26 @@ pub enum DesktopKey {
     R,
     X,
     Z,
+    #[serde(rename = "1", alias = "digit-1", alias = "key-1")]
+    Digit1,
+    #[serde(rename = "2", alias = "digit-2", alias = "key-2")]
+    Digit2,
+    #[serde(rename = "3", alias = "digit-3", alias = "key-3")]
+    Digit3,
+    #[serde(rename = "4", alias = "digit-4", alias = "key-4")]
+    Digit4,
     F1,
+    F2,
+    F3,
+    F4,
     F5,
+    F6,
+    F7,
+    F8,
+    F9,
     F10,
     F11,
+    F12,
     LeftShift,
     RightShift,
     LeftControl,
@@ -775,10 +805,17 @@ mod tests {
         assert_eq!(keyboard.menu.confirm, DesktopKey::LeftGui);
         assert_eq!(keyboard.menu.cancel, DesktopKey::LeftAlt);
         assert_eq!(keyboard.hotkeys.pause, DesktopKey::Space);
-        assert_eq!(keyboard.hotkeys.reset, DesktopKey::F1);
+        assert_eq!(keyboard.hotkeys.save_state, DesktopKey::F1);
+        assert_eq!(keyboard.hotkeys.load_state, DesktopKey::F2);
+        assert_eq!(keyboard.hotkeys.state_slot_1, DesktopKey::Digit1);
+        assert_eq!(keyboard.hotkeys.state_slot_2, DesktopKey::Digit2);
+        assert_eq!(keyboard.hotkeys.state_slot_3, DesktopKey::Digit3);
+        assert_eq!(keyboard.hotkeys.state_slot_4, DesktopKey::Digit4);
+        assert_eq!(keyboard.hotkeys.reset, DesktopKey::F12);
+        assert_eq!(keyboard.hotkeys.rewind, DesktopKey::LeftShift);
         assert_eq!(keyboard.hotkeys.toggle_fullscreen, DesktopKey::F11);
         assert_eq!(keyboard.hotkeys.toggle_performance_hud, DesktopKey::F10);
-        assert_eq!(keyboard.hotkeys.save_battery, DesktopKey::F5);
+        assert_eq!(keyboard.hotkeys.save_battery, DesktopKey::F9);
     }
 
     #[test]
@@ -789,7 +826,19 @@ mod tests {
         }
 
         let cases = [
+            ("1", DesktopKey::Digit1),
+            ("digit-2", DesktopKey::Digit2),
+            ("key-3", DesktopKey::Digit3),
             ("f1", DesktopKey::F1),
+            ("f2", DesktopKey::F2),
+            ("f3", DesktopKey::F3),
+            ("f4", DesktopKey::F4),
+            ("f5", DesktopKey::F5),
+            ("f6", DesktopKey::F6),
+            ("f7", DesktopKey::F7),
+            ("f8", DesktopKey::F8),
+            ("f9", DesktopKey::F9),
+            ("f12", DesktopKey::F12),
             ("left-alt", DesktopKey::LeftAlt),
             ("left-option", DesktopKey::LeftAlt),
             ("right-option", DesktopKey::RightAlt),

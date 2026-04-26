@@ -148,8 +148,10 @@ cargo run --release -p gb-desktop -- /path/to/tetris.gb \
   `Left Command` for `A`, `Backspace` for `SELECT`, and `Enter` for `START`.
   The keyboard menu defaults mirror those face buttons with `Left Command` as
   confirm/`A` and `Left Option` as cancel/`B`; `Esc` also remains a hardwired
-  cancel shortcut. Default hotkeys use `Space` for pause, `F1` for reset,
-  `F5` for manual save, `F10` for stats, and `F11` for fullscreen.
+  cancel shortcut. Default hotkeys use `Space` for pause, `F1` for save state,
+  `F2` for load state, `1`/`2`/`3`/`4` for selecting the active state slot,
+  `Left Shift` for rewind, `F9` for manual cartridge save, `F10` for stats,
+  `F11` for fullscreen, and `F12` for reset.
 - The current local `DMG-04` `P2` console uses its explicit `P2` keyboard profile.
   `DMG-07` reuses that `P2` profile and adds fixed keyboard profiles for `P3`
   and `P4` in this first desktop cut.
@@ -166,7 +168,7 @@ All rebinding takes immediate runtime effect:
 - `INPUT -> KEYBOARD` — in-window keyboard joypad rebinding.
 - `INPUT -> KB MENU` — dedicated host-side keyboard menu rebinding.
 - `INPUT -> HOTKEYS` — frontend hotkey rebinding.
-- Keyboard rebinding uses SDL3 physical scancodes when available so saved bindings stay stable across host layouts. Supported keyboard keys include the existing arrows, `Backspace`, `Enter`, `Space`, `R`, `X`, `Z`, function hotkeys such as `F1`, plus `Tab`, left/right `Shift`, left/right `Control`, left/right `Alt` (`Option` on macOS), and left/right GUI (`Command` on macOS, Windows/Super on Windows/Linux). `Fn` remains host/firmware-owned and is not treated as a reliable bindable key.
+- Keyboard rebinding uses SDL3 physical scancodes when available so saved bindings stay stable across host layouts. Supported keyboard keys include the existing arrows, top-row `1`/`2`/`3`/`4`, `Backspace`, `Enter`, `Space`, `R`, `X`, `Z`, all function keys from `F1` through `F12`, plus `Tab`, left/right `Shift`, left/right `Control`, left/right `Alt` (`Option` on macOS), and left/right GUI (`Command` on macOS, Windows/Super on Windows/Linux). `Fn` remains host/firmware-owned and is not treated as a reliable bindable key.
 - `INPUT -> GAMEPAD` — SDL gamepad rebinding.
 - `INPUT -> PAD MENU` — dedicated SDL gamepad menu rebinding.
 - `INPUT -> RUMBLE` — host rumble mode for the active SDL gamepad with `OFF`, `HIGH`, and `LOW` host-intensity options. This option is only enabled when the loaded cartridge exposes rumble support and the active gamepad reports SDL rumble capability; otherwise it remains visible but disabled.
@@ -178,6 +180,8 @@ Pause/menu overlay with native SDL3 `Open ROM` filtered to common Game Boy ROM e
 - `Escape` and the active gamepad `Guide` button open the overlay when it is closed; when it is already open they both act as the same back/cancel control.
 - In launcher mode without a loaded ROM, that shared back/cancel behavior does not dismiss the root overlay.
 - While a native file dialog is pending from the overlay, the triggering entry stays selected but disabled until the dialog resolves.
+- The root overlay exposes single-machine `.gbstate` actions immediately below `OPEN RECENT`: `SAVE STATE`, `LOAD STATE`, `STATE SLOT N`, and `REWIND`. `LOAD STATE` remains visible but disabled until the selected slot file exists; `REWIND` remains visible but disabled until the in-memory rewind buffer has at least one snapshot. State defaults are `F1` save, `F2` load, and `1`/`2`/`3`/`4` for selecting the active slot. Rewind uses `Left Shift` as the default hold hotkey and consumes one older in-memory snapshot per presented frame while held.
+- `.gbstate` slots and rewind are disabled in local `DMG-04` / `DMG-07` linked sessions until coordinated multi-machine restore policy is implemented.
 - Root overlay also exposes `QUIT` directly at the first menu level.
 - Root-level back/cancel (`Escape` / `Guide`) clears an explicit manual `SPACE` pause before closing the overlay, and loading a new primary ROM from `OPEN ROM` / `OPEN RECENT` also leaves the frontend unpaused so screenshot/debug workflows do not strand the session in a hidden paused state.
 - When the loaded session includes a `Pocket Camera` cartridge, the root overlay also exposes:

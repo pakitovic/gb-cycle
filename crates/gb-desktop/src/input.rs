@@ -146,6 +146,9 @@ impl FrontendInputState {
     pub fn clear_all(&mut self, machine: &mut Machine<TraceSummaryBuffer>) {
         self.clear_keyboard(machine);
         self.clear_gamepad(machine);
+        for button in JOYPAD_BUTTONS {
+            machine.set_joypad_button_pressed(button, false);
+        }
     }
 
     fn set_source_button(
@@ -1161,6 +1164,21 @@ mod tests {
         input_state.clear_all(&mut machine);
         ingest_host_input(&mut machine);
         assert_eq!(pressed_mask(&machine), 0);
+    }
+
+    #[test]
+    fn clear_all_forces_machine_buttons_released_after_external_restore() {
+        let mut machine = test_machine();
+        let mut input_state = FrontendInputState::new();
+
+        machine.set_joypad_button_pressed(JoypadButton::Right, true);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), joypad_mask(JoypadButton::Right));
+
+        input_state.clear_all(&mut machine);
+        ingest_host_input(&mut machine);
+        assert_eq!(pressed_mask(&machine), 0);
+        assert!(!input_state.is_effectively_pressed(JoypadButton::Right));
     }
 
     #[test]

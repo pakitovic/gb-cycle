@@ -403,8 +403,17 @@ impl PersistedDesktopSettings {
     }
 
     fn migrate_defaults(&mut self) {
-        if self.input.keyboard.hotkeys.reset == DesktopKey::R {
-            self.input.keyboard.hotkeys.reset = DesktopKey::F1;
+        if matches!(
+            self.input.keyboard.hotkeys.reset,
+            DesktopKey::R | DesktopKey::F1
+        ) {
+            self.input.keyboard.hotkeys.reset = DesktopKey::F12;
+        }
+        if self.input.keyboard.hotkeys.rewind == DesktopKey::F6 {
+            self.input.keyboard.hotkeys.rewind = DesktopKey::LeftShift;
+        }
+        if self.input.keyboard.hotkeys.save_battery == DesktopKey::F5 {
+            self.input.keyboard.hotkeys.save_battery = DesktopKey::F9;
         }
     }
 
@@ -1501,17 +1510,24 @@ mod tests {
     }
 
     #[test]
-    fn loading_settings_migrates_the_old_reset_hotkey_default() {
+    fn loading_settings_migrates_old_hotkey_defaults() {
         let path = unique_test_path("migrate-reset-hotkey");
         let mut settings = PersistedDesktopSettings::default();
         settings.input.keyboard.hotkeys.reset = DesktopKey::R;
+        settings.input.keyboard.hotkeys.rewind = DesktopKey::F6;
+        settings.input.keyboard.hotkeys.save_battery = DesktopKey::F5;
         settings
             .save(&path)
             .expect("old reset hotkey settings should save");
 
         let reloaded =
             PersistedDesktopSettings::load(&path).expect("persisted settings should reload");
-        assert_eq!(reloaded.input.keyboard.hotkeys.reset, DesktopKey::F1);
+        assert_eq!(reloaded.input.keyboard.hotkeys.reset, DesktopKey::F12);
+        assert_eq!(
+            reloaded.input.keyboard.hotkeys.rewind,
+            DesktopKey::LeftShift
+        );
+        assert_eq!(reloaded.input.keyboard.hotkeys.save_battery, DesktopKey::F9);
     }
 
     fn unique_test_path(label: &str) -> PathBuf {

@@ -91,7 +91,7 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 - `gb-core::rewind` owns a single-machine `MachineRewindBuffer` that stores full in-memory `MachineSaveState` snapshots in a bounded FIFO ring buffer. It does not touch `.gbstate`, `.gbsav`, disk, timestamps, host input, or frontend UI.
 - The default policy targets roughly ten seconds of history, always supports frame-boundary captures, supports configurable subframe captures, and enforces an estimated-byte cap with oldest-snapshot eviction while retaining at least the newest snapshot.
 - Rewind restore goes only through `Machine::restore_save_state()`, preserving the existing metadata compatibility checks and direct subsystem restore path.
-- Phase 8.4 measures full-snapshot memory pressure through `MachineRewindStats`; compression, deltas, frontend hotkeys/menus, and coordinated multi-machine rewind remain follow-up work.
+- Phase 8.4 measures full-snapshot memory pressure through `MachineRewindStats`; compression, deltas, frontend integration, and coordinated multi-machine rewind remain follow-up work.
 
 #### Phase 8.5 host `.gbstate` integration contract
 
@@ -101,6 +101,12 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 - Desktop slots are single-machine only and live next to the ROM under `<rom-dir>/states/<state-key>.slot<N>.gbstate`. The `state-key` follows the current save-key policy, including explicit keys, but does not require cartridge persistence to be enabled.
 - Desktop load reads the selected slot, decodes v2, restores through `Machine::restore_save_state()`, clears live input and audio queue state, resynchronizes host pacing/RTC bookkeeping, and does not apply elapsed RTC off-session time. Failed load leaves the machine untouched; linked DMG-04 / DMG-07 sessions keep save/load state disabled until a coordinated multi-machine contract exists.
 - Phase 8.5 does not change `.gbstate` v2, `MachineSaveState` DTOs, rewind buffering, compression, or deltas.
+
+#### Phase 8.6 desktop rewind integration
+
+- `gb-desktop` owns a single-machine `MachineRewindBuffer` using `MachineRewindConfig::default()` and records frame/subframe snapshots only during normal unpaused runtime. The buffer is cleared on ROM load, reset/reconfigure, `.gbstate` load, and linked-session transitions.
+- The root overlay adds `REWIND` next to the state-slot actions, visible but disabled until the in-memory buffer has history. The default `Left Shift` hotkey performs continuous hold-to-rewind by restoring older snapshots instead of advancing normal emulation; `F1`/`F2` save/load `.gbstate`, `1`..`4` select the active state slot, `F9` flushes cartridge save data, and `F12` resets.
+- Successful rewind restore uses the same host cleanup boundary as `.gbstate` load: clear live input/audio queue, reset frame pacing and host RTC sync, and reset the active cartridge-save baseline. Phase 8.6 still excludes CLI rewind, persistent rewind history, compression, deltas, and coordinated `DMG-04` / `DMG-07` rewind.
 
 #### Risks if delayed or underspecified
 

@@ -74,7 +74,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 - [SAVESTATE][DTO-AUDIT] Phase 8.2 replaced root runtime save-state wrappers with explicit subsystem-owned DTOs and intentionally bumped `.gbstate` to v2, rejecting v1. Future CPU/PPU/APU/cart mapper refactors must update only the affected DTO conversion code and should add field-level compatibility assertions before changing the v2 payload again.
 - [SAVESTATE][MULTI-MACHINE-HOST] Phase 8.5 exposes single-machine `.gbstate` I/O in CLI and desktop slots. Coordinated DMG-04 / DMG-07 multi-machine save states, manual `.gbstate` file dialogs, and persisted desktop slot selection remain future host work.
-- [REWIND][COMPRESSION-UX] Phase 8.4 adds a core-only full-snapshot rewind ring buffer with memory telemetry. Rewind frontend controls, multi-machine coordination, compression, and delta encoding remain future work; use the measured `MachineRewindStats` pressure before choosing a rewind compression/delta strategy.
+- [REWIND][COMPRESSION-UX] Phase 8.6 wires the core full-snapshot rewind buffer into `gb-desktop` for single-machine sessions with a root action and remappable hold hotkey. Multi-machine coordination, persisted/configurable rewind policy, compression, delta encoding, and richer telemetry UX remain future work; use measured `MachineRewindStats` pressure before choosing a rewind compression/delta strategy.
 
 ### Phase 9 — Final DMG hardening, differential validation, and closure
 

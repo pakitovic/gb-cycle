@@ -25,9 +25,9 @@ use gb_core::{
     CartridgeDiagnostic, CartridgeDiagnosticSeverity, CpuAddressEvent, CpuAddressEventKind,
     CpuAddressUpdateDirection, CpuBusAccessKind, CpuBusActivitySnapshot, CpuExecutionState,
     CpuSnapshot, ExecutionMode, InterruptControllerSnapshot, JoypadButton, JoypadSnapshot, Machine,
-    MachineConfig, MachineStepObserver, MachineStepRegion, PersistentCartState, PocketCameraFrame,
-    PpuAccessMode, PpuFramebufferLayerSource, PpuSnapshot, PpuStepRegion, StartupMode,
-    TraceSummaryBuffer,
+    MachineConfig, MachineRewindBuffer, MachineRewindConfig, MachineRewindFrameBoundaryTracker,
+    MachineStepObserver, MachineStepRegion, PersistentCartState, PocketCameraFrame, PpuAccessMode,
+    PpuFramebufferLayerSource, PpuSnapshot, PpuStepRegion, StartupMode, TraceSummaryBuffer,
 };
 use gb_desktop::{
     BootRomVerificationMode, DEFAULT_BOOT_ROM_DIR, DesktopConfig, DesktopConsoleModel,
@@ -250,7 +250,11 @@ impl EmulationProfileSessionKind {
 enum HotkeyAction {
     None,
     ManualSave,
+    SaveState,
+    LoadState,
+    SelectStateSlot(u8),
     Reset,
+    Rewind,
     ToggleFullscreen,
     TogglePerformanceHud,
 }
@@ -269,6 +273,9 @@ struct FrontendRuntime {
     gamepad_manager: Option<GamepadManager>,
     save_sessions: [Option<DesktopSaveSession>; PLAYER_SLOT_COUNT],
     machine_state_slot: u8,
+    rewind_buffer: MachineRewindBuffer,
+    rewind_frame_tracker: MachineRewindFrameBoundaryTracker,
+    rewind_hotkey_active: bool,
     rtc_sync: HostRtcSync,
     open_rom_dialog: PathSelectionDialog,
     open_rom_dialog_mode: OpenRomDialogMode,
@@ -4247,6 +4254,9 @@ fn run_desktop_with_startup_fallback_persistence(
         gamepad_manager,
         save_sessions,
         machine_state_slot: DEFAULT_MACHINE_STATE_SLOT,
+        rewind_buffer: MachineRewindBuffer::new(MachineRewindConfig::default()),
+        rewind_frame_tracker: MachineRewindFrameBoundaryTracker::new(),
+        rewind_hotkey_active: false,
         rtc_sync: HostRtcSync::from_host_clock(),
         open_rom_dialog: PathSelectionDialog::new(),
         open_rom_dialog_mode: OpenRomDialogMode::Primary,
@@ -4375,26 +4385,75 @@ fn run_desktop_with_startup_fallback_persistence(
         }
 
         let emulation_started_at = Instant::now();
-        let step_result = {
-            let mut context = FrontendActionContext {
-                session: &mut session,
-                machine: &mut machine,
-                runtime: &mut runtime,
-                performance_counter: &mut performance_counter,
-                frame_pacer: &mut frame_pacer,
-                settings_store: &mut settings_store,
+        let mut rewound_this_frame = false;
+        let step_result =
+            if runtime.rewind_hotkey_active && rewind_actions_available(&session, &machine) {
+                let rewind_result = {
+                    let context = FrontendActionContext {
+                        session: &mut session,
+                        machine: &mut machine,
+                        runtime: &mut runtime,
+                        performance_counter: &mut performance_counter,
+                        frame_pacer: &mut frame_pacer,
+                        settings_store: &mut settings_store,
+                    };
+                    rewind_desktop_session_once(
+                        context.session,
+                        context.machine,
+                        context.runtime,
+                        context.frame_pacer,
+                    )
+                };
+                match rewind_result {
+                    Ok(true) => {
+                        rewound_this_frame = true;
+                        sync_audio_playback_state(&machine, &runtime)?;
+                        StepUntilNextFrameResult {
+                            signal: LoopSignal::Continue,
+                            emulation_profile_request: None,
+                            frame_loop_telemetry: FrameLoopTelemetry::default(),
+                        }
+                    }
+                    Ok(false) => StepUntilNextFrameResult {
+                        signal: LoopSignal::Continue,
+                        emulation_profile_request: None,
+                        frame_loop_telemetry: FrameLoopTelemetry::default(),
+                    },
+                    Err(error) => {
+                        show_warning_message(Some(canvas.window()), "Rewind", &error);
+                        eprintln!("warning: {error}");
+                        runtime.rewind_hotkey_active = false;
+                        StepUntilNextFrameResult {
+                            signal: LoopSignal::Continue,
+                            emulation_profile_request: None,
+                            frame_loop_telemetry: FrameLoopTelemetry::default(),
+                        }
+                    }
+                }
+            } else {
+                let mut context = FrontendActionContext {
+                    session: &mut session,
+                    machine: &mut machine,
+                    runtime: &mut runtime,
+                    performance_counter: &mut performance_counter,
+                    frame_pacer: &mut frame_pacer,
+                    settings_store: &mut settings_store,
+                };
+                step_until_next_frame(&mut event_pump, &mut canvas, &mut context)?
             };
-            step_until_next_frame(&mut event_pump, &mut canvas, &mut context)
-        }?;
         match step_result.signal {
             LoopSignal::Continue => {}
             LoopSignal::Quit => break 'running,
         }
         let emulation_duration = emulation_started_at.elapsed();
-        let audio_submit_telemetry = runtime
-            .audio_output
-            .as_mut()
-            .and_then(DesktopAudioOutput::take_last_submit_telemetry);
+        let audio_submit_telemetry = (!rewound_this_frame)
+            .then(|| {
+                runtime
+                    .audio_output
+                    .as_mut()
+                    .and_then(DesktopAudioOutput::take_last_submit_telemetry)
+            })
+            .flatten();
 
         if emulation_paused(&machine, &runtime) {
             if runtime.menu_state.is_open() {
@@ -5447,6 +5506,53 @@ fn process_events(
                                 "manual-hotkey",
                             )?;
                         }
+                        HotkeyAction::SaveState => {
+                            match save_machine_state_slot(
+                                session,
+                                machine,
+                                runtime.machine_state_slot,
+                            ) {
+                                Ok(path) => eprintln!("info: state saved to {}", path.display()),
+                                Err(error) => {
+                                    show_warning_message(
+                                        Some(canvas.window()),
+                                        "Save State",
+                                        &error,
+                                    );
+                                    eprintln!("warning: {error}");
+                                }
+                            }
+                        }
+                        HotkeyAction::LoadState => {
+                            let slot = runtime.machine_state_slot;
+                            match load_machine_state_slot(
+                                session,
+                                machine,
+                                runtime,
+                                frame_pacer,
+                                slot,
+                            ) {
+                                Ok(path) => {
+                                    eprintln!("info: state loaded from {}", path.display());
+                                    sync_audio_playback_state(machine, runtime)?;
+                                    performance_counter.reset_base_title(
+                                        canvas.window_mut(),
+                                        window_title(session, &session.config),
+                                    )?;
+                                }
+                                Err(error) => {
+                                    show_warning_message(
+                                        Some(canvas.window()),
+                                        "Load State",
+                                        &error,
+                                    );
+                                    eprintln!("warning: {error}");
+                                }
+                            }
+                        }
+                        HotkeyAction::SelectStateSlot(slot) => {
+                            runtime.machine_state_slot = slot;
+                        }
                         HotkeyAction::Reset => {
                             reset_machine(
                                 canvas.window(),
@@ -5457,6 +5563,9 @@ fn process_events(
                             )?;
                             let keyboard_bindings = runtime.keyboard_bindings;
                             sync_live_input_state(event_pump, &keyboard_bindings, machine, runtime);
+                        }
+                        HotkeyAction::Rewind => {
+                            runtime.rewind_hotkey_active = true;
                         }
                         HotkeyAction::ToggleFullscreen => {
                             toggle_fullscreen(canvas.window_mut())?;
@@ -5489,6 +5598,9 @@ fn process_events(
             } => {
                 if repeat {
                     continue;
+                }
+                if key_event_matches(runtime.keyboard_bindings.hotkeys.rewind, keycode, scancode) {
+                    runtime.rewind_hotkey_active = false;
                 }
                 apply_keyboard_event_to_player_slots(runtime, machine, keycode, scancode, false);
             }
@@ -5663,6 +5775,7 @@ fn step_until_next_frame(
 
             let current_ly = context.machine.ppu().ly();
             let current_dot = context.machine.ppu().line_dot();
+            record_desktop_rewind_point(context.session, context.machine, context.runtime);
             if collect_frame_telemetry {
                 let current_mode0_start_dot = context.machine.ppu().mode0_start_dot();
                 let current_access_mode = context.machine.ppu().access_mode();
@@ -6467,6 +6580,7 @@ fn rebuild_machine_for_config(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
+    reset_rewind_state(context.runtime);
     context.runtime.save_sessions = next_save_sessions;
     context.runtime.rtc_sync.resync_to_host_clock();
     context.performance_counter.reset_base_title(
@@ -6915,6 +7029,7 @@ fn open_selected_rom(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
+    reset_rewind_state(context.runtime);
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.reset_for_session_swap(next_console_model)?;
     }
@@ -7057,6 +7172,7 @@ fn open_selected_linked_secondary_rom(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
+    reset_rewind_state(context.runtime);
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.reset_for_session_swap(next_console_model)?;
     }
@@ -7149,6 +7265,7 @@ fn activate_dmg07_adapter(
     }
     clear_live_input_state(context.machine, context.runtime);
     *context.machine = next_machine;
+    reset_rewind_state(context.runtime);
     if let Some(audio_output) = &mut context.runtime.audio_output {
         audio_output.reset_for_session_swap(next_console_model)?;
     }
@@ -7179,6 +7296,7 @@ fn open_menu(
     runtime
         .menu_state
         .open(current_menu_presentation(window, runtime, machine, session));
+    runtime.rewind_hotkey_active = false;
     clear_live_input_state(machine, runtime);
     sync_audio_playback_state(machine, runtime)
 }
@@ -7210,6 +7328,76 @@ fn machine_state_actions_available(
         && !machine.primary_machine().cartridge().is_empty()
         && !machine.is_linked_dmg04_two_player()
         && !machine.is_linked_dmg07()
+}
+
+fn rewind_actions_available(session: &DesktopSession, machine: &DesktopEmulationSession) -> bool {
+    session.has_loaded_rom()
+        && !machine.primary_machine().cartridge().is_empty()
+        && !machine.is_linked_dmg04_two_player()
+        && !machine.is_linked_dmg07()
+}
+
+fn reset_rewind_state(runtime: &mut FrontendRuntime) {
+    runtime.rewind_buffer.clear();
+    runtime.rewind_frame_tracker.reset();
+    runtime.rewind_hotkey_active = false;
+}
+
+fn reset_host_state_after_machine_restore(
+    machine: &mut DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+    frame_pacer: &mut FramePacer,
+) -> Result<(), String> {
+    clear_live_input_state(machine, runtime);
+    if let Some(audio_output) = &mut runtime.audio_output {
+        audio_output.clear_buffer()?;
+    }
+    if let Some(save_session) = &mut runtime.save_sessions[PlayerSlot::P1.index()] {
+        save_session.reset_baseline_from_machine(machine.primary_machine());
+    }
+    runtime.rtc_sync.resync_to_host_clock();
+    runtime.rewind_frame_tracker.reset();
+    frame_pacer.reset_host_pacing();
+    Ok(())
+}
+
+fn record_desktop_rewind_point(
+    session: &DesktopSession,
+    machine: &DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+) {
+    if !rewind_actions_available(session, machine) || runtime.rewind_hotkey_active {
+        return;
+    }
+
+    let primary = machine.primary_machine();
+    if runtime.rewind_frame_tracker.observe(primary) {
+        runtime.rewind_buffer.record_frame_boundary(primary);
+    } else {
+        runtime.rewind_buffer.record_subframe(primary);
+    }
+}
+
+fn rewind_desktop_session_once(
+    session: &DesktopSession,
+    machine: &mut DesktopEmulationSession,
+    runtime: &mut FrontendRuntime,
+    frame_pacer: &mut FramePacer,
+) -> Result<bool, String> {
+    if !rewind_actions_available(session, machine) {
+        return Err("rewind is only available for single-machine sessions".to_string());
+    }
+
+    let Some(_restored) = runtime
+        .rewind_buffer
+        .rewind_one(machine.primary_machine_mut())
+        .map_err(|error| format!("failed to restore rewind snapshot: {error}"))?
+    else {
+        return Ok(false);
+    };
+
+    reset_host_state_after_machine_restore(machine, runtime, frame_pacer)?;
+    Ok(true)
 }
 
 fn machine_state_slot_load_available(
@@ -7314,15 +7502,8 @@ fn load_machine_state_slot(
         .restore_save_state(&envelope.state)
         .map_err(|error| format!("failed to restore state {}: {error}", path.display()))?;
 
-    clear_live_input_state(machine, runtime);
-    if let Some(audio_output) = &mut runtime.audio_output {
-        audio_output.clear_buffer()?;
-    }
-    if let Some(save_session) = &mut runtime.save_sessions[PlayerSlot::P1.index()] {
-        save_session.reset_baseline_from_machine(machine.primary_machine());
-    }
-    runtime.rtc_sync.resync_to_host_clock();
-    frame_pacer.reset_host_pacing();
+    reset_host_state_after_machine_restore(machine, runtime, frame_pacer)?;
+    reset_rewind_state(runtime);
     Ok(path)
 }
 
@@ -7491,6 +7672,24 @@ fn execute_menu_action(
                 }
                 Err(error) => {
                     show_warning_message(Some(canvas.window()), "Load State", &error);
+                    eprintln!("warning: {error}");
+                }
+            }
+            Ok(None)
+        }
+        MenuAction::Rewind => {
+            match rewind_desktop_session_once(
+                context.session,
+                context.machine,
+                context.runtime,
+                context.frame_pacer,
+            ) {
+                Ok(true) => {
+                    sync_audio_playback_state(context.machine, context.runtime)?;
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    show_warning_message(Some(canvas.window()), "Rewind", &error);
                     eprintln!("warning: {error}");
                 }
             }
@@ -7797,6 +7996,7 @@ fn execute_menu_action(
                     );
                     context.runtime.save_sessions =
                         open_save_sessions_for_session(context.session, context.machine)?;
+                    reset_rewind_state(context.runtime);
                     context.performance_counter.reset_base_title(
                         canvas.window_mut(),
                         window_title(context.session, &context.session.config),
@@ -7874,7 +8074,14 @@ fn execute_menu_action(
                         .set_keyboard_joypad_bindings(context.runtime.keyboard_bindings.joypad)?;
                 }
                 KeyboardBindingTarget::Pause
+                | KeyboardBindingTarget::SaveState
+                | KeyboardBindingTarget::LoadState
+                | KeyboardBindingTarget::StateSlot1
+                | KeyboardBindingTarget::StateSlot2
+                | KeyboardBindingTarget::StateSlot3
+                | KeyboardBindingTarget::StateSlot4
                 | KeyboardBindingTarget::Reset
+                | KeyboardBindingTarget::Rewind
                 | KeyboardBindingTarget::ToggleFullscreen
                 | KeyboardBindingTarget::TogglePerformanceHud
                 | KeyboardBindingTarget::SaveBattery => {
@@ -7991,6 +8198,8 @@ fn current_menu_presentation(
     let machine_state_available = machine_state_actions_available(session, machine);
     let machine_state_load_available =
         machine_state_slot_load_available(session, machine, runtime.machine_state_slot);
+    let rewind_available =
+        rewind_actions_available(session, machine) && !runtime.rewind_buffer.is_empty();
     let cartridge_pocket_camera_supported = session_has_pocket_camera(machine);
     let preferred_gamepad_configured = runtime
         .gamepad_manager
@@ -8065,6 +8274,7 @@ fn current_menu_presentation(
         machine_state_available,
         machine_state_load_available,
         machine_state_slot: runtime.machine_state_slot,
+        rewind_available,
         any_dialog_pending: runtime.any_dialog_pending(),
         cartridge_pocket_camera_supported,
         pocket_camera_live_enabled: runtime.pocket_camera_live.is_enabled(),
@@ -8247,7 +8457,14 @@ fn assign_keyboard_binding(
         | KeyboardBindingTarget::Select
         | KeyboardBindingTarget::Start => joypad_binding_target_for_key(bindings.joypad, key),
         KeyboardBindingTarget::Pause
+        | KeyboardBindingTarget::SaveState
+        | KeyboardBindingTarget::LoadState
+        | KeyboardBindingTarget::StateSlot1
+        | KeyboardBindingTarget::StateSlot2
+        | KeyboardBindingTarget::StateSlot3
+        | KeyboardBindingTarget::StateSlot4
         | KeyboardBindingTarget::Reset
+        | KeyboardBindingTarget::Rewind
         | KeyboardBindingTarget::ToggleFullscreen
         | KeyboardBindingTarget::TogglePerformanceHud
         | KeyboardBindingTarget::SaveBattery => {
@@ -8445,7 +8662,14 @@ fn hotkey_binding_target_for_key(
 ) -> Option<KeyboardBindingTarget> {
     [
         KeyboardBindingTarget::Pause,
+        KeyboardBindingTarget::SaveState,
+        KeyboardBindingTarget::LoadState,
+        KeyboardBindingTarget::StateSlot1,
+        KeyboardBindingTarget::StateSlot2,
+        KeyboardBindingTarget::StateSlot3,
+        KeyboardBindingTarget::StateSlot4,
         KeyboardBindingTarget::Reset,
+        KeyboardBindingTarget::Rewind,
         KeyboardBindingTarget::ToggleFullscreen,
         KeyboardBindingTarget::TogglePerformanceHud,
         KeyboardBindingTarget::SaveBattery,
@@ -8485,7 +8709,14 @@ fn keyboard_binding_value(bindings: KeyboardBindings, target: KeyboardBindingTar
         KeyboardBindingTarget::Select => bindings.joypad.select,
         KeyboardBindingTarget::Start => bindings.joypad.start,
         KeyboardBindingTarget::Pause => bindings.hotkeys.pause,
+        KeyboardBindingTarget::SaveState => bindings.hotkeys.save_state,
+        KeyboardBindingTarget::LoadState => bindings.hotkeys.load_state,
+        KeyboardBindingTarget::StateSlot1 => bindings.hotkeys.state_slot_1,
+        KeyboardBindingTarget::StateSlot2 => bindings.hotkeys.state_slot_2,
+        KeyboardBindingTarget::StateSlot3 => bindings.hotkeys.state_slot_3,
+        KeyboardBindingTarget::StateSlot4 => bindings.hotkeys.state_slot_4,
         KeyboardBindingTarget::Reset => bindings.hotkeys.reset,
+        KeyboardBindingTarget::Rewind => bindings.hotkeys.rewind,
         KeyboardBindingTarget::ToggleFullscreen => bindings.hotkeys.toggle_fullscreen,
         KeyboardBindingTarget::TogglePerformanceHud => bindings.hotkeys.toggle_performance_hud,
         KeyboardBindingTarget::SaveBattery => bindings.hotkeys.save_battery,
@@ -8520,7 +8751,14 @@ fn set_keyboard_binding_value(
         KeyboardBindingTarget::Select => bindings.joypad.select = key,
         KeyboardBindingTarget::Start => bindings.joypad.start = key,
         KeyboardBindingTarget::Pause => bindings.hotkeys.pause = key,
+        KeyboardBindingTarget::SaveState => bindings.hotkeys.save_state = key,
+        KeyboardBindingTarget::LoadState => bindings.hotkeys.load_state = key,
+        KeyboardBindingTarget::StateSlot1 => bindings.hotkeys.state_slot_1 = key,
+        KeyboardBindingTarget::StateSlot2 => bindings.hotkeys.state_slot_2 = key,
+        KeyboardBindingTarget::StateSlot3 => bindings.hotkeys.state_slot_3 = key,
+        KeyboardBindingTarget::StateSlot4 => bindings.hotkeys.state_slot_4 = key,
         KeyboardBindingTarget::Reset => bindings.hotkeys.reset = key,
+        KeyboardBindingTarget::Rewind => bindings.hotkeys.rewind = key,
         KeyboardBindingTarget::ToggleFullscreen => bindings.hotkeys.toggle_fullscreen = key,
         KeyboardBindingTarget::TogglePerformanceHud => {
             bindings.hotkeys.toggle_performance_hud = key;
@@ -8699,10 +8937,22 @@ fn desktop_key_scancode(binding: DesktopKey) -> Scancode {
         DesktopKey::R => Scancode::R,
         DesktopKey::X => Scancode::X,
         DesktopKey::Z => Scancode::Z,
+        DesktopKey::Digit1 => Scancode::_1,
+        DesktopKey::Digit2 => Scancode::_2,
+        DesktopKey::Digit3 => Scancode::_3,
+        DesktopKey::Digit4 => Scancode::_4,
         DesktopKey::F1 => Scancode::F1,
+        DesktopKey::F2 => Scancode::F2,
+        DesktopKey::F3 => Scancode::F3,
+        DesktopKey::F4 => Scancode::F4,
         DesktopKey::F5 => Scancode::F5,
+        DesktopKey::F6 => Scancode::F6,
+        DesktopKey::F7 => Scancode::F7,
+        DesktopKey::F8 => Scancode::F8,
+        DesktopKey::F9 => Scancode::F9,
         DesktopKey::F10 => Scancode::F10,
         DesktopKey::F11 => Scancode::F11,
+        DesktopKey::F12 => Scancode::F12,
         DesktopKey::LeftShift => Scancode::LShift,
         DesktopKey::RightShift => Scancode::RShift,
         DesktopKey::LeftControl => Scancode::LCtrl,
@@ -8944,6 +9194,7 @@ fn reset_machine(
 
     clear_live_input_state(machine, runtime);
     *machine = reset_machine;
+    reset_rewind_state(runtime);
     if let Some(audio_output) = &mut runtime.audio_output {
         audio_output.reset_for_session_swap(reset_console_model)?;
     }
@@ -9382,8 +9633,22 @@ fn hotkey_action_for_key_event(
 ) -> HotkeyAction {
     if key_event_matches(keyboard_bindings.hotkeys.save_battery, keycode, scancode) {
         HotkeyAction::ManualSave
+    } else if key_event_matches(keyboard_bindings.hotkeys.save_state, keycode, scancode) {
+        HotkeyAction::SaveState
+    } else if key_event_matches(keyboard_bindings.hotkeys.load_state, keycode, scancode) {
+        HotkeyAction::LoadState
+    } else if key_event_matches(keyboard_bindings.hotkeys.state_slot_1, keycode, scancode) {
+        HotkeyAction::SelectStateSlot(1)
+    } else if key_event_matches(keyboard_bindings.hotkeys.state_slot_2, keycode, scancode) {
+        HotkeyAction::SelectStateSlot(2)
+    } else if key_event_matches(keyboard_bindings.hotkeys.state_slot_3, keycode, scancode) {
+        HotkeyAction::SelectStateSlot(3)
+    } else if key_event_matches(keyboard_bindings.hotkeys.state_slot_4, keycode, scancode) {
+        HotkeyAction::SelectStateSlot(4)
     } else if key_event_matches(keyboard_bindings.hotkeys.reset, keycode, scancode) {
         HotkeyAction::Reset
+    } else if key_event_matches(keyboard_bindings.hotkeys.rewind, keycode, scancode) {
+        HotkeyAction::Rewind
     } else if key_event_matches(
         keyboard_bindings.hotkeys.toggle_fullscreen,
         keycode,
@@ -9415,10 +9680,22 @@ fn desktop_key_from_keycode(keycode: Keycode) -> Option<DesktopKey> {
         Keycode::R => Some(DesktopKey::R),
         Keycode::X => Some(DesktopKey::X),
         Keycode::Z => Some(DesktopKey::Z),
+        Keycode::_1 => Some(DesktopKey::Digit1),
+        Keycode::_2 => Some(DesktopKey::Digit2),
+        Keycode::_3 => Some(DesktopKey::Digit3),
+        Keycode::_4 => Some(DesktopKey::Digit4),
         Keycode::F1 => Some(DesktopKey::F1),
+        Keycode::F2 => Some(DesktopKey::F2),
+        Keycode::F3 => Some(DesktopKey::F3),
+        Keycode::F4 => Some(DesktopKey::F4),
         Keycode::F5 => Some(DesktopKey::F5),
+        Keycode::F6 => Some(DesktopKey::F6),
+        Keycode::F7 => Some(DesktopKey::F7),
+        Keycode::F8 => Some(DesktopKey::F8),
+        Keycode::F9 => Some(DesktopKey::F9),
         Keycode::F10 => Some(DesktopKey::F10),
         Keycode::F11 => Some(DesktopKey::F11),
+        Keycode::F12 => Some(DesktopKey::F12),
         Keycode::LShift => Some(DesktopKey::LeftShift),
         Keycode::RShift => Some(DesktopKey::RightShift),
         Keycode::LCtrl => Some(DesktopKey::LeftControl),
@@ -9445,10 +9722,22 @@ fn desktop_key_from_scancode(scancode: Scancode) -> Option<DesktopKey> {
         Scancode::R => Some(DesktopKey::R),
         Scancode::X => Some(DesktopKey::X),
         Scancode::Z => Some(DesktopKey::Z),
+        Scancode::_1 => Some(DesktopKey::Digit1),
+        Scancode::_2 => Some(DesktopKey::Digit2),
+        Scancode::_3 => Some(DesktopKey::Digit3),
+        Scancode::_4 => Some(DesktopKey::Digit4),
         Scancode::F1 => Some(DesktopKey::F1),
+        Scancode::F2 => Some(DesktopKey::F2),
+        Scancode::F3 => Some(DesktopKey::F3),
+        Scancode::F4 => Some(DesktopKey::F4),
         Scancode::F5 => Some(DesktopKey::F5),
+        Scancode::F6 => Some(DesktopKey::F6),
+        Scancode::F7 => Some(DesktopKey::F7),
+        Scancode::F8 => Some(DesktopKey::F8),
+        Scancode::F9 => Some(DesktopKey::F9),
         Scancode::F10 => Some(DesktopKey::F10),
         Scancode::F11 => Some(DesktopKey::F11),
+        Scancode::F12 => Some(DesktopKey::F12),
         Scancode::LShift => Some(DesktopKey::LeftShift),
         Scancode::RShift => Some(DesktopKey::RightShift),
         Scancode::LCtrl => Some(DesktopKey::LeftControl),
@@ -9495,7 +9784,14 @@ fn assignable_key_for_binding_target(
 ) -> Option<DesktopKey> {
     match target {
         KeyboardBindingTarget::Pause
+        | KeyboardBindingTarget::SaveState
+        | KeyboardBindingTarget::LoadState
+        | KeyboardBindingTarget::StateSlot1
+        | KeyboardBindingTarget::StateSlot2
+        | KeyboardBindingTarget::StateSlot3
+        | KeyboardBindingTarget::StateSlot4
         | KeyboardBindingTarget::Reset
+        | KeyboardBindingTarget::Rewind
         | KeyboardBindingTarget::ToggleFullscreen
         | KeyboardBindingTarget::TogglePerformanceHud
         | KeyboardBindingTarget::SaveBattery => is_hotkey_assignable_key(key).then_some(key),
@@ -9543,7 +9839,23 @@ fn assignable_menu_key_for_binding_target(
 fn is_joypad_assignable_key(key: DesktopKey) -> bool {
     !matches!(
         key,
-        DesktopKey::Escape | DesktopKey::F1 | DesktopKey::F5 | DesktopKey::F10 | DesktopKey::F11
+        DesktopKey::Escape
+            | DesktopKey::Digit1
+            | DesktopKey::Digit2
+            | DesktopKey::Digit3
+            | DesktopKey::Digit4
+            | DesktopKey::F1
+            | DesktopKey::F2
+            | DesktopKey::F3
+            | DesktopKey::F4
+            | DesktopKey::F5
+            | DesktopKey::F6
+            | DesktopKey::F7
+            | DesktopKey::F8
+            | DesktopKey::F9
+            | DesktopKey::F10
+            | DesktopKey::F11
+            | DesktopKey::F12
     )
 }
 
@@ -10805,6 +11117,11 @@ mod tests {
                 gamepad_manager,
                 save_sessions,
                 machine_state_slot: super::DEFAULT_MACHINE_STATE_SLOT,
+                rewind_buffer: super::MachineRewindBuffer::new(
+                    super::MachineRewindConfig::default(),
+                ),
+                rewind_frame_tracker: super::MachineRewindFrameBoundaryTracker::new(),
+                rewind_hotkey_active: false,
                 rtc_sync: super::HostRtcSync::from_host_clock(),
                 open_rom_dialog: super::PathSelectionDialog::new(),
                 open_rom_dialog_mode: super::OpenRomDialogMode::Primary,
@@ -13854,15 +14171,19 @@ mod tests {
         assign_keyboard_binding(&mut bindings, KeyboardBindingTarget::Pause, DesktopKey::R);
 
         assert_eq!(bindings.hotkeys.pause, DesktopKey::R);
-        assert_eq!(bindings.hotkeys.reset, DesktopKey::F1);
+        assert_eq!(bindings.hotkeys.reset, DesktopKey::F12);
         assert_eq!(bindings.joypad.a, original_a);
         assert_eq!(
             hotkey_binding_target_for_key(bindings.hotkeys, DesktopKey::R),
             Some(KeyboardBindingTarget::Pause)
         );
         assert_eq!(
-            hotkey_binding_target_for_key(bindings.hotkeys, DesktopKey::F1),
+            hotkey_binding_target_for_key(bindings.hotkeys, DesktopKey::F12),
             Some(KeyboardBindingTarget::Reset)
+        );
+        assert_eq!(
+            hotkey_binding_target_for_key(bindings.hotkeys, DesktopKey::F1),
+            Some(KeyboardBindingTarget::SaveState)
         );
     }
 
@@ -13940,6 +14261,18 @@ mod tests {
             None
         );
         assert_eq!(
+            assignable_key_for_binding_target_from_keycode(Keycode::F6, KeyboardBindingTarget::A),
+            None
+        );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(Keycode::F12, KeyboardBindingTarget::A),
+            None
+        );
+        assert_eq!(
+            assignable_key_for_binding_target_from_keycode(Keycode::_1, KeyboardBindingTarget::A),
+            None
+        );
+        assert_eq!(
             assignable_key_for_binding_target_from_keycode(
                 Keycode::F11,
                 KeyboardBindingTarget::Start
@@ -13993,19 +14326,35 @@ mod tests {
 
     #[test]
     fn hotkey_key_capture_accepts_function_keys() {
+        let function_keys = [
+            (Keycode::F1, DesktopKey::F1),
+            (Keycode::F2, DesktopKey::F2),
+            (Keycode::F3, DesktopKey::F3),
+            (Keycode::F4, DesktopKey::F4),
+            (Keycode::F5, DesktopKey::F5),
+            (Keycode::F6, DesktopKey::F6),
+            (Keycode::F7, DesktopKey::F7),
+            (Keycode::F8, DesktopKey::F8),
+            (Keycode::F9, DesktopKey::F9),
+            (Keycode::F10, DesktopKey::F10),
+            (Keycode::F11, DesktopKey::F11),
+            (Keycode::F12, DesktopKey::F12),
+        ];
+        for (keycode, key) in function_keys {
+            assert_eq!(
+                assignable_key_for_binding_target_from_keycode(
+                    keycode,
+                    KeyboardBindingTarget::SaveBattery
+                ),
+                Some(key)
+            );
+        }
         assert_eq!(
             assignable_key_for_binding_target_from_keycode(
-                Keycode::F5,
-                KeyboardBindingTarget::SaveBattery
+                Keycode::_1,
+                KeyboardBindingTarget::StateSlot1
             ),
-            Some(DesktopKey::F5)
-        );
-        assert_eq!(
-            assignable_key_for_binding_target_from_keycode(
-                Keycode::F11,
-                KeyboardBindingTarget::ToggleFullscreen
-            ),
-            Some(DesktopKey::F11)
+            Some(DesktopKey::Digit1)
         );
         assert_eq!(
             assignable_key_for_binding_target_from_keycode(
@@ -14108,10 +14457,17 @@ mod tests {
             (KeyboardBindingTarget::Select, DesktopKey::Return),
             (KeyboardBindingTarget::Start, DesktopKey::Space),
             (KeyboardBindingTarget::Pause, DesktopKey::R),
-            (KeyboardBindingTarget::Reset, DesktopKey::F1),
+            (KeyboardBindingTarget::SaveState, DesktopKey::F1),
+            (KeyboardBindingTarget::LoadState, DesktopKey::F2),
+            (KeyboardBindingTarget::StateSlot1, DesktopKey::Digit1),
+            (KeyboardBindingTarget::StateSlot2, DesktopKey::Digit2),
+            (KeyboardBindingTarget::StateSlot3, DesktopKey::Digit3),
+            (KeyboardBindingTarget::StateSlot4, DesktopKey::Digit4),
+            (KeyboardBindingTarget::Reset, DesktopKey::F12),
+            (KeyboardBindingTarget::Rewind, DesktopKey::LeftShift),
             (KeyboardBindingTarget::ToggleFullscreen, DesktopKey::Z),
-            (KeyboardBindingTarget::TogglePerformanceHud, DesktopKey::F5),
-            (KeyboardBindingTarget::SaveBattery, DesktopKey::F10),
+            (KeyboardBindingTarget::TogglePerformanceHud, DesktopKey::F10),
+            (KeyboardBindingTarget::SaveBattery, DesktopKey::F9),
         ];
         for (target, key) in keyboard_targets {
             super::set_keyboard_binding_value(&mut keyboard, target, key);
@@ -14259,10 +14615,38 @@ mod tests {
             (DesktopKey::R, Keycode::R, sdl3::keyboard::Scancode::R),
             (DesktopKey::X, Keycode::X, sdl3::keyboard::Scancode::X),
             (DesktopKey::Z, Keycode::Z, sdl3::keyboard::Scancode::Z),
+            (
+                DesktopKey::Digit1,
+                Keycode::_1,
+                sdl3::keyboard::Scancode::_1,
+            ),
+            (
+                DesktopKey::Digit2,
+                Keycode::_2,
+                sdl3::keyboard::Scancode::_2,
+            ),
+            (
+                DesktopKey::Digit3,
+                Keycode::_3,
+                sdl3::keyboard::Scancode::_3,
+            ),
+            (
+                DesktopKey::Digit4,
+                Keycode::_4,
+                sdl3::keyboard::Scancode::_4,
+            ),
             (DesktopKey::F1, Keycode::F1, sdl3::keyboard::Scancode::F1),
+            (DesktopKey::F2, Keycode::F2, sdl3::keyboard::Scancode::F2),
+            (DesktopKey::F3, Keycode::F3, sdl3::keyboard::Scancode::F3),
+            (DesktopKey::F4, Keycode::F4, sdl3::keyboard::Scancode::F4),
             (DesktopKey::F5, Keycode::F5, sdl3::keyboard::Scancode::F5),
+            (DesktopKey::F6, Keycode::F6, sdl3::keyboard::Scancode::F6),
+            (DesktopKey::F7, Keycode::F7, sdl3::keyboard::Scancode::F7),
+            (DesktopKey::F8, Keycode::F8, sdl3::keyboard::Scancode::F8),
+            (DesktopKey::F9, Keycode::F9, sdl3::keyboard::Scancode::F9),
             (DesktopKey::F10, Keycode::F10, sdl3::keyboard::Scancode::F10),
             (DesktopKey::F11, Keycode::F11, sdl3::keyboard::Scancode::F11),
+            (DesktopKey::F12, Keycode::F12, sdl3::keyboard::Scancode::F12),
             (DesktopKey::Tab, Keycode::Tab, sdl3::keyboard::Scancode::Tab),
             (
                 DesktopKey::LeftShift,
@@ -14398,15 +14782,36 @@ mod tests {
         );
         assert_eq!(super::joypad_button_for_key(joypad, Keycode::F1), None);
         assert_eq!(super::joypad_button_for_key(joypad, Keycode::F5), None);
+        assert_eq!(super::joypad_button_for_key(joypad, Keycode::F6), None);
 
         let keyboard_bindings = gb_desktop::KeyboardBindings::default();
         assert!(matches!(
-            super::hotkey_action(&keyboard_bindings, Keycode::F5),
+            super::hotkey_action(&keyboard_bindings, Keycode::F9),
             super::HotkeyAction::ManualSave
         ));
         assert!(matches!(
             super::hotkey_action(&keyboard_bindings, Keycode::F1),
+            super::HotkeyAction::SaveState
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::F2),
+            super::HotkeyAction::LoadState
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::_1),
+            super::HotkeyAction::SelectStateSlot(1)
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::_4),
+            super::HotkeyAction::SelectStateSlot(4)
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::F12),
             super::HotkeyAction::Reset
+        ));
+        assert!(matches!(
+            super::hotkey_action(&keyboard_bindings, Keycode::LShift),
+            super::HotkeyAction::Rewind
         ));
         assert!(matches!(
             super::hotkey_action(&keyboard_bindings, Keycode::R),
@@ -14496,7 +14901,32 @@ mod tests {
         let hotkeys = keyboard_bindings.hotkeys;
         gameplay_bindings.extend([
             ("hotkey pause", desktop_key_scancode(hotkeys.pause)),
+            (
+                "hotkey save state",
+                desktop_key_scancode(hotkeys.save_state),
+            ),
+            (
+                "hotkey load state",
+                desktop_key_scancode(hotkeys.load_state),
+            ),
+            (
+                "hotkey state slot 1",
+                desktop_key_scancode(hotkeys.state_slot_1),
+            ),
+            (
+                "hotkey state slot 2",
+                desktop_key_scancode(hotkeys.state_slot_2),
+            ),
+            (
+                "hotkey state slot 3",
+                desktop_key_scancode(hotkeys.state_slot_3),
+            ),
+            (
+                "hotkey state slot 4",
+                desktop_key_scancode(hotkeys.state_slot_4),
+            ),
             ("hotkey reset", desktop_key_scancode(hotkeys.reset)),
+            ("hotkey rewind", desktop_key_scancode(hotkeys.rewind)),
             (
                 "hotkey fullscreen",
                 desktop_key_scancode(hotkeys.toggle_fullscreen),
@@ -15533,6 +15963,12 @@ mod tests {
         assert_eq!(decoded.state, harness.machine.capture_save_state());
 
         harness.machine.write_bus(0xC000, 0x99);
+        assert!(
+            harness
+                .runtime
+                .rewind_buffer
+                .record_subframe(harness.machine.primary_machine())
+        );
         assert_eq!(harness.machine.read_bus(0xC000), 0x99);
         let loaded_path = load_machine_state_slot(
             &harness.session,
@@ -15544,6 +15980,7 @@ mod tests {
         .expect("state slot should load");
         assert_eq!(loaded_path, saved_path);
         assert_eq!(harness.machine.read_bus(0xC000), 0x42);
+        assert!(harness.runtime.rewind_buffer.is_empty());
 
         let before_missing = harness.machine.capture_save_state();
         let missing_error = load_machine_state_slot(
@@ -15580,6 +16017,40 @@ mod tests {
     }
 
     #[test]
+    fn state_slot_hotkeys_save_load_and_select_slots() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("state-slot-hotkeys", true, false, false);
+
+        harness.machine.write_bus(0xC000, 0x42);
+        harness.push_key(Keycode::F1, true);
+        harness
+            .process_events()
+            .expect("save-state hotkey should process");
+        let slot_one_path =
+            machine_state_slot_path(&harness.session, 1).expect("slot path should resolve");
+        assert!(slot_one_path.is_file());
+
+        harness.push_key(Keycode::_3, true);
+        harness
+            .process_events()
+            .expect("slot-3 hotkey should process");
+        assert_eq!(harness.runtime.machine_state_slot, 3);
+        harness.push_key(Keycode::_1, true);
+        harness
+            .process_events()
+            .expect("slot-1 hotkey should process");
+        assert_eq!(harness.runtime.machine_state_slot, 1);
+
+        harness.machine.write_bus(0xC000, 0x99);
+        assert_eq!(harness.machine.read_bus(0xC000), 0x99);
+        harness.push_key(Keycode::F2, true);
+        harness
+            .process_events()
+            .expect("load-state hotkey should process");
+        assert_eq!(harness.machine.read_bus(0xC000), 0x42);
+    }
+
+    #[test]
     fn state_slots_are_disabled_for_linked_desktop_sessions() {
         let _guard = crate::lock_sdl_test();
         let mut harness = FrontendHarness::new("state-slot-linked", true, false, false);
@@ -15603,6 +16074,173 @@ mod tests {
         let save_error = save_machine_state_slot(&harness.session, &harness.machine, 1)
             .expect_err("linked sessions should not save .gbstate slots");
         assert!(save_error.contains("single-machine sessions"));
+    }
+
+    #[test]
+    fn rewind_records_during_single_machine_stepping_and_is_disabled_when_linked() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("rewind-recording", true, false, false);
+
+        let initial_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(!initial_presentation.rewind_available);
+        assert!(harness.runtime.rewind_buffer.is_empty());
+
+        for _ in 0..16 {
+            harness.machine.step_t_cycle();
+            super::record_desktop_rewind_point(
+                &harness.session,
+                &harness.machine,
+                &mut harness.runtime,
+            );
+        }
+        assert!(!harness.runtime.rewind_buffer.is_empty());
+        let recorded_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(recorded_presentation.rewind_available);
+
+        let primary = harness.machine.primary_machine().clone();
+        let secondary = primary.clone();
+        harness.machine =
+            super::DesktopEmulationSession::new_linked_dmg04_two_player(primary, secondary)
+                .expect("matching machines should link");
+        super::reset_rewind_state(&mut harness.runtime);
+        for _ in 0..16 {
+            harness.machine.step_t_cycle();
+            super::record_desktop_rewind_point(
+                &harness.session,
+                &harness.machine,
+                &mut harness.runtime,
+            );
+        }
+        assert!(harness.runtime.rewind_buffer.is_empty());
+        let linked_presentation = super::current_menu_presentation(
+            harness.canvas.window(),
+            &harness.runtime,
+            &harness.machine,
+            &harness.session,
+        );
+        assert!(!linked_presentation.rewind_available);
+    }
+
+    #[test]
+    fn rewind_menu_action_restores_snapshot_and_resets_host_timeline_state() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("rewind-menu-restore", true, false, false);
+
+        for _ in 0..8 {
+            harness.machine.step_t_cycle();
+        }
+        let target_state = harness.machine.capture_save_state();
+        assert!(
+            harness
+                .runtime
+                .rewind_buffer
+                .record_subframe(harness.machine.primary_machine())
+        );
+        harness
+            .runtime
+            .rewind_frame_tracker
+            .observe(harness.machine.primary_machine());
+        for _ in 0..32 {
+            harness.machine.step_t_cycle();
+        }
+        assert_ne!(harness.machine.capture_save_state(), target_state);
+        harness.frame_pacer.next_frame_start = Instant::now() + Duration::from_secs(60);
+
+        harness
+            .execute_action(super::MenuAction::Rewind)
+            .expect("rewind action should execute");
+
+        assert_eq!(harness.machine.capture_save_state(), target_state);
+        assert!(harness.runtime.rewind_buffer.is_empty());
+        assert_eq!(harness.runtime.rewind_frame_tracker.previous(), None);
+        assert!(
+            harness.frame_pacer.next_frame_start <= Instant::now() + Duration::from_millis(100)
+        );
+    }
+
+    #[test]
+    fn rewind_restore_releases_joypad_buttons_captured_in_snapshot() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("rewind-input-release", true, false, false);
+
+        harness
+            .machine
+            .primary_machine_mut()
+            .set_joypad_button_pressed(JoypadButton::Right, true);
+        harness.machine.step_t_cycle();
+        assert_ne!(
+            harness
+                .machine
+                .primary_machine()
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0
+        );
+        assert!(
+            harness
+                .runtime
+                .rewind_buffer
+                .record_subframe(harness.machine.primary_machine())
+        );
+
+        harness
+            .machine
+            .primary_machine_mut()
+            .set_joypad_button_pressed(JoypadButton::Right, false);
+        harness.machine.step_t_cycle();
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0
+        );
+
+        harness
+            .execute_action(super::MenuAction::Rewind)
+            .expect("rewind action should execute");
+        harness.machine.step_t_cycle();
+
+        assert_eq!(
+            harness
+                .machine
+                .primary_machine()
+                .joypad()
+                .snapshot()
+                .pressed_mask,
+            0
+        );
+    }
+
+    #[test]
+    fn rewind_hotkey_hold_state_tracks_rewind_key_events() {
+        let _guard = crate::lock_sdl_test();
+        let mut harness = FrontendHarness::new("rewind-hotkey", true, false, false);
+
+        harness.push_key(Keycode::LShift, true);
+        harness
+            .process_events()
+            .expect("rewind keydown should process");
+        assert!(harness.runtime.rewind_hotkey_active);
+
+        harness.push_key(Keycode::LShift, false);
+        harness
+            .process_events()
+            .expect("rewind keyup should process");
+        assert!(!harness.runtime.rewind_hotkey_active);
     }
 
     #[test]
