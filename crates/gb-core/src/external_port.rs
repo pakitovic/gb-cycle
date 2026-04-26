@@ -35,6 +35,12 @@ pub struct ExternalPort {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExternalPortSaveState {
+    attachment: ExternalPortAttachment,
+    reset_policy: ExternalPortResetPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExternalPortSnapshot {
     pub reset_policy: ExternalPortResetPolicy,
     pub attachment: ExternalPortAttachmentSnapshot,
@@ -122,6 +128,18 @@ impl ExternalPort {
 
     pub fn reset_policy(&self) -> ExternalPortResetPolicy {
         self.reset_policy
+    }
+
+    pub(crate) fn capture_save_state(&self) -> ExternalPortSaveState {
+        ExternalPortSaveState {
+            attachment: self.attachment.clone(),
+            reset_policy: self.reset_policy,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &ExternalPortSaveState) {
+        self.attachment = state.attachment.clone();
+        self.reset_policy = state.reset_policy;
     }
 
     pub fn set_reset_policy(&mut self, reset_policy: ExternalPortResetPolicy) {

@@ -32,6 +32,19 @@ pub struct Timer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TimerSaveState {
+    console_model: ConsoleModel,
+    status: TimerStatus,
+    system_counter: u16,
+    tima: u8,
+    tma: u8,
+    tac: u8,
+    previous_timer_signal: bool,
+    overflow_state: TimerOverflowState,
+    reloaded_this_t_cycle: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TimerSnapshot {
     pub console_model: ConsoleModel,
     pub status: TimerStatus,
@@ -67,6 +80,32 @@ impl Timer {
 
     pub fn status(&self) -> TimerStatus {
         self.status
+    }
+
+    pub(crate) fn capture_save_state(&self) -> TimerSaveState {
+        TimerSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            system_counter: self.system_counter,
+            tima: self.tima,
+            tma: self.tma,
+            tac: self.tac,
+            previous_timer_signal: self.previous_timer_signal,
+            overflow_state: self.overflow_state,
+            reloaded_this_t_cycle: self.reloaded_this_t_cycle,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &TimerSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.system_counter = state.system_counter;
+        self.tima = state.tima;
+        self.tma = state.tma;
+        self.tac = state.tac;
+        self.previous_timer_signal = state.previous_timer_signal;
+        self.overflow_state = state.overflow_state;
+        self.reloaded_this_t_cycle = state.reloaded_this_t_cycle;
     }
 
     pub fn read_div(&self) -> u8 {

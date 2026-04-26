@@ -386,8 +386,8 @@ to immediately materialize as a separate directory.
 - Debugger or tooling snapshots should layer on top of the same core-owned save-state contracts instead of creating a second incompatible serialization path.
 - `MachineSaveState` is the core-owned whole-machine boundary. It is distinct from `MachineSnapshot` (debug/inspection only) and `.gbsav` cartridge persistence.
 - Save-state capture is defined at the stable boundary between public T-cycle steps. Restore validates model, operating mode, host platform, startup mode, compatibility policy, loaded ROM fingerprint, and boot-ROM fingerprint before mutating any subsystem, then restores subsystem-owned state directly without replaying MMIO writes.
-- The initial `.gbstate` envelope lives in `gb-persistence`, uses the `GBSTATE\0` magic and format version `1`, and stores mandatory metadata before the machine payload. The core remains free of disk paths, timestamps, compression, and host storage policy so the same in-memory `MachineSaveState` can later feed frame/subframe rewind.
-- The Phase 8.1 hardening layer keeps `.gbstate` version `1` stable while validating restore semantics across CPU, PPU, DMA, timer, serial, APU, and representative cartridge runtime states through continuation-equivalence tests.
+- The `.gbstate` envelope lives in `gb-persistence`, uses the `GBSTATE\0` magic and format version `2`, and stores mandatory metadata before the machine payload. The core remains free of disk paths, timestamps, compression, and host storage policy so the same in-memory `MachineSaveState` can later feed frame/subframe rewind.
+- The Phase 8.2 durability layer intentionally rejects `.gbstate` version `1` and stores explicit subsystem-owned DTOs instead of root runtime structs, while keeping the core `MachineSaveState` capture/restore API stable.
 - Rewind should be layered over repeated `MachineSaveState` capture/restore or a future delta/compression layer. Phase 8 intentionally does not define a ring buffer, frontend UI, or debugger-grade reverse T-cycle stepping policy.
 
 ## Module mapping notes

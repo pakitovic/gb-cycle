@@ -561,6 +561,179 @@ enum PocketCameraCaptureState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CartridgeRuntimeSaveState {
+    device: Option<CartridgeDeviceSaveState>,
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum CartridgeDeviceSaveState {
+    NoMbc(NoMbcCartridgeSaveState),
+    Mmm01(Mmm01CartridgeSaveState),
+    M161(M161CartridgeSaveState),
+    Huc1(Huc1CartridgeSaveState),
+    Huc3(Huc3CartridgeSaveState),
+    Mbc1(Mbc1CartridgeSaveState),
+    Mbc2(Mbc2CartridgeSaveState),
+    Mbc3(Mbc3CartridgeSaveState),
+    Mbc5(Mbc5CartridgeSaveState),
+    PocketCamera(PocketCameraCartridgeSaveState),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct NoMbcCartridgeSaveState {
+    rom: Vec<u8>,
+    ram: Option<Vec<u8>>,
+    has_battery: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mmm01CartridgeSaveState {
+    rom: Vec<u8>,
+    ram: Option<Vec<u8>>,
+    has_battery: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    mapped: bool,
+    ram_enabled: bool,
+    ram_bank_mask: u8,
+    rom_bank_low: u8,
+    rom_bank_mid: u8,
+    ram_bank_low: u8,
+    ram_bank_high: u8,
+    rom_bank_high: u8,
+    mode_write_disable: bool,
+    banking_mode: u8,
+    rom_bank_mask: u8,
+    multiplex_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct M161CartridgeSaveState {
+    rom: Vec<u8>,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    selected_bank: u8,
+    bank_switch_locked: bool,
+    last_bank_write: Option<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Huc1CartridgeSaveState {
+    rom: Vec<u8>,
+    ram: Option<Vec<u8>>,
+    has_battery: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    io_mode: Huc1IoMode,
+    rom_bank: u8,
+    ram_bank: u8,
+    ir_emitter_on: bool,
+    ir_light_detected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Huc3CartridgeSaveState {
+    rom: Vec<u8>,
+    ram: Vec<u8>,
+    has_battery: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    select_mode: Huc3SelectMode,
+    rom_bank: u8,
+    ram_bank: u8,
+    access_address: u8,
+    mailbox: Huc3Mailbox,
+    #[serde(with = "serde_big_array::BigArray")]
+    mcu_ram: [u8; HUC3_MCU_RAM_NIBBLE_COUNT],
+    rtc: Huc3RtcState,
+    ir_emitter_on: bool,
+    ir_light_detected: bool,
+    last_control_write: Option<u8>,
+    last_unsupported_command: Option<u8>,
+    last_unsupported_argument: Option<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc1CartridgeSaveState {
+    rom: Vec<u8>,
+    ram: Option<Vec<u8>>,
+    has_battery: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    variant: Mbc1Variant,
+    wiring: Mbc1Wiring,
+    ram_enabled: bool,
+    rom_bank_low5: u8,
+    secondary_bank: u8,
+    banking_mode: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc2CartridgeSaveState {
+    rom: Vec<u8>,
+    #[serde(with = "serde_big_array::BigArray")]
+    ram_nibbles: [u8; MBC2_RAM_CELL_COUNT],
+    has_battery: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    ram_enabled: bool,
+    rom_bank_low4: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc3CartridgeSaveState {
+    rom: Vec<u8>,
+    ram: Option<Vec<u8>>,
+    has_battery: bool,
+    has_rtc: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    variant: Mbc3Variant,
+    ram_rtc_enabled: bool,
+    rom_bank: u8,
+    ram_or_rtc_select: Mbc3RamRtcSelect,
+    rtc_live: Mbc3RtcState,
+    rtc_latched: Mbc3RtcState,
+    rtc_latched_valid: bool,
+    rtc_latch_armed: bool,
+    rtc_access_ready_at: Option<TCycle>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Mbc5CartridgeSaveState {
+    rom: Vec<u8>,
+    ram: Option<Vec<u8>>,
+    has_battery: bool,
+    has_rumble: bool,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    variant: Mbc5Variant,
+    ram_enabled: bool,
+    rom_bank_low8: u8,
+    rom_bank_high1: u8,
+    ram_bank_raw: u8,
+    rumble_on: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct PocketCameraCartridgeSaveState {
+    rom: Vec<u8>,
+    ram: Vec<u8>,
+    header: CartridgeHeader,
+    classification: CartridgeClassification,
+    ram_enabled: bool,
+    rom_bank: u8,
+    ram_bank_or_register_select: u8,
+    #[serde(with = "serde_big_array::BigArray")]
+    registers: [u8; POCKET_CAMERA_REGISTER_COUNT],
+    host_frame: Vec<u8>,
+    capture_state: PocketCameraCaptureState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CartridgeSnapshot {
     pub state: CartridgeSlotState,
     pub rtc_access_ready_at: Option<TCycle>,

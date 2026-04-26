@@ -24,6 +24,14 @@ pub struct InterruptController {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InterruptSaveState {
+    console_model: ConsoleModel,
+    status: InterruptControllerStatus,
+    interrupt_flags: u8,
+    interrupt_enable: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InterruptControllerSnapshot {
     pub console_model: ConsoleModel,
     pub status: InterruptControllerStatus,
@@ -85,6 +93,22 @@ impl InterruptController {
 
     pub fn status(&self) -> InterruptControllerStatus {
         self.status
+    }
+
+    pub(crate) fn capture_save_state(&self) -> InterruptSaveState {
+        InterruptSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            interrupt_flags: self.interrupt_flags,
+            interrupt_enable: self.interrupt_enable,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &InterruptSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.interrupt_flags = state.interrupt_flags;
+        self.interrupt_enable = state.interrupt_enable;
     }
 
     pub fn read_if(&self) -> u8 {

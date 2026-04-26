@@ -72,7 +72,7 @@ Remove TODOs when closed. Rewrite when the old wording points to a superseded pa
 
 ### Phase 8 — Full emulator save states and global serialization strategy
 
-- [SAVESTATE][DTO-CONTRACTS] Phase 8.1 now validates restore continuation across the planned CPU, PPU, DMA, timer, serial, APU, and representative mapper runtime states while preserving `.gbstate` v1. The remaining durability debt is structural: current subsystem `*SaveState` wrappers still mirror some runtime structs. Do not change `.gbstate` v1 opportunistically; when CPU/PPU/APU refactors need stronger compatibility, introduce explicit owner DTOs through a planned Phase 8.2/v2 migration path with compatibility tests.
+- [SAVESTATE][DTO-AUDIT] Phase 8.2 replaced root runtime save-state wrappers with explicit subsystem-owned DTOs and intentionally bumped `.gbstate` to v2, rejecting v1. Future CPU/PPU/APU/cart mapper refactors must update only the affected DTO conversion code and should add field-level compatibility assertions before changing the v2 payload again.
 
 ### Phase 9 — Final DMG hardening, differential validation, and closure
 

@@ -210,6 +210,53 @@ pub struct CpuCore {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CpuSaveState {
+    console_model: ConsoleModel,
+    status: CpuStatus,
+    startup_state: CpuStartupState,
+    registers: CpuRegisters,
+    execution_state: CpuExecutionState,
+    in_flight: InFlightInstruction,
+    ime_state: ImeState,
+    halt_control: HaltControlState,
+    last_bus_activity: Option<CpuTraceBusActivity>,
+    last_address_event: Option<CpuAddressEvent>,
+    stop_div_reset_requested: bool,
+}
+
+impl CpuCore {
+    pub(crate) fn capture_save_state(&self) -> CpuSaveState {
+        CpuSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            startup_state: self.startup_state,
+            registers: self.registers,
+            execution_state: self.execution_state,
+            in_flight: self.in_flight,
+            ime_state: self.ime_state,
+            halt_control: self.halt_control,
+            last_bus_activity: self.last_bus_activity,
+            last_address_event: self.last_address_event,
+            stop_div_reset_requested: self.stop_div_reset_requested,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &CpuSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.startup_state = state.startup_state;
+        self.registers = state.registers;
+        self.execution_state = state.execution_state;
+        self.in_flight = state.in_flight;
+        self.ime_state = state.ime_state;
+        self.halt_control = state.halt_control;
+        self.last_bus_activity = state.last_bus_activity;
+        self.last_address_event = state.last_address_event;
+        self.stop_div_reset_requested = state.stop_div_reset_requested;
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CpuSnapshot {
     pub console_model: ConsoleModel,
     pub status: CpuStatus,

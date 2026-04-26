@@ -1,20 +1,21 @@
 use std::fmt;
 
-use crate::apu::Apu;
-use crate::boot::{BootController, BootRomKind};
-use crate::bus::Bus;
-use crate::cartridge::{CartridgeSlot, CartridgeSlotState};
-use crate::cpu::CpuCore;
-use crate::dma::DmaController;
-use crate::external_port::ExternalPort;
-use crate::interrupts::InterruptController;
-use crate::joypad::Joypad;
-use crate::machine::PendingExternalEvents;
+pub use crate::apu::ApuSaveState;
+use crate::boot::BootRomKind;
+pub use crate::boot::BootSaveState;
+pub use crate::bus::BusSaveState;
+pub use crate::cartridge::CartridgeRuntimeSaveState;
+use crate::cartridge::CartridgeSlotState;
+pub use crate::cpu::CpuSaveState;
+pub use crate::dma::DmaSaveState;
+pub use crate::external_port::ExternalPortSaveState;
+pub use crate::interrupts::InterruptSaveState;
+pub use crate::joypad::JoypadSaveState;
 use crate::model::{CompatibilityPolicy, ConsoleModel, HostPlatform, OperatingMode, StartupMode};
-use crate::ppu::Ppu;
+pub use crate::ppu::PpuSaveState;
 use crate::scheduler::TCycle;
-use crate::serial::Serial;
-use crate::timer::Timer;
+pub use crate::serial::SerialSaveState;
+pub use crate::timer::TimerSaveState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SaveStateByteFingerprint {
@@ -73,67 +74,9 @@ pub struct SchedulerSaveState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MachineRuntimeSaveState {
-    pub(crate) pending_external_events: PendingExternalEvents,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CpuSaveState {
-    pub(crate) core: CpuCore,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BusSaveState {
-    pub(crate) bus: Bus,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ApuSaveState {
-    pub(crate) apu: Apu,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PpuSaveState {
-    pub(crate) ppu: Ppu,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct DmaSaveState {
-    pub(crate) dma: DmaController,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct TimerSaveState {
-    pub(crate) timer: Timer,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SerialSaveState {
-    pub(crate) serial: Serial,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ExternalPortSaveState {
-    pub(crate) external_port: ExternalPort,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BootSaveState {
-    pub(crate) boot: BootController,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct InterruptSaveState {
-    pub(crate) interrupts: InterruptController,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct JoypadSaveState {
-    pub(crate) joypad: Joypad,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CartridgeRuntimeSaveState {
-    pub(crate) cartridge: CartridgeSlot,
+    pub(crate) joypad_pressed_mask: u8,
+    pub(crate) joypad_state_dirty: bool,
+    pub(crate) external_serial_clock_pulses_pending: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -352,69 +295,70 @@ mod tests {
 
     #[test]
     fn machine_save_state_metadata_accessor_returns_the_core_contract() {
-        let metadata = MachineSaveStateMetadata {
-            console_model: ConsoleModel::Dmg,
-            operating_mode: OperatingMode::Dmg,
-            host_platform: HostPlatform::Handheld,
-            startup_mode: StartupMode::SkipBoot,
-            compatibility: CompatibilityPolicy::strict(),
-            next_t_cycle: TCycle::new(42),
-            cartridge: cartridge_metadata(),
-            boot: boot_metadata(),
-        };
-        let state = MachineSaveState::new(
-            metadata.clone(),
-            MachineCoreSaveState {
-                scheduler: SchedulerSaveState {
-                    next_t_cycle: TCycle::new(42),
-                },
-                machine: MachineRuntimeSaveState {
-                    pending_external_events: PendingExternalEvents::default(),
-                },
-                cpu: CpuSaveState {
-                    core: CpuCore::new(ConsoleModel::Dmg),
-                },
-                bus: BusSaveState {
-                    bus: Bus::new(ConsoleModel::Dmg),
-                },
-                apu: ApuSaveState {
-                    apu: Apu::new(ConsoleModel::Dmg),
-                },
-                ppu: PpuSaveState {
-                    ppu: Ppu::new(ConsoleModel::Dmg),
-                },
-                dma: DmaSaveState {
-                    dma: DmaController::new(ConsoleModel::Dmg),
-                },
-                timer: TimerSaveState {
-                    timer: Timer::new(ConsoleModel::Dmg),
-                },
-                serial: SerialSaveState {
-                    serial: Serial::new(ConsoleModel::Dmg),
-                },
-                external_port: ExternalPortSaveState {
-                    external_port: ExternalPort::new(),
-                },
-                boot: BootSaveState {
-                    boot: BootController::new(
-                        ConsoleModel::Dmg,
-                        StartupMode::SkipBoot,
-                        crate::boot::BootRomAssets::none(),
-                    ),
-                },
-                interrupts: InterruptSaveState {
-                    interrupts: InterruptController::new(ConsoleModel::Dmg),
-                },
-                joypad: JoypadSaveState {
-                    joypad: Joypad::new(ConsoleModel::Dmg),
-                },
-                cartridge: CartridgeRuntimeSaveState {
-                    cartridge: CartridgeSlot::empty(),
-                },
-            },
-        );
+        let state = crate::Machine::new_summary(
+            crate::MachineConfig::new(ConsoleModel::Dmg).with_startup_mode(StartupMode::SkipBoot),
+        )
+        .capture_save_state();
+        let metadata = state.metadata().clone();
 
         assert_eq!(state.metadata(), &metadata);
-        assert_eq!(state.core().scheduler.next_t_cycle, TCycle::new(42));
+        assert_eq!(state.core().scheduler.next_t_cycle, metadata.next_t_cycle);
+    }
+
+    #[test]
+    fn subsystem_save_state_contracts_do_not_wrap_runtime_roots() {
+        let sources = [
+            include_str!("save_state.rs"),
+            include_str!("cpu.rs"),
+            include_str!("bus.rs"),
+            include_str!("apu.rs"),
+            include_str!("ppu.rs"),
+            include_str!("dma.rs"),
+            include_str!("timer.rs"),
+            include_str!("serial.rs"),
+            include_str!("external_port.rs"),
+            include_str!("boot.rs"),
+            include_str!("interrupts.rs"),
+            include_str!("joypad.rs"),
+            include_str!("cartridge.rs"),
+        ]
+        .join("\n");
+        let forbidden_runtime_root_fields = [
+            concat!("pub struct CpuSaveState {\n    core", ": ", "CpuCore"),
+            concat!("pub struct BusSaveState {\n    bus", ": ", "Bus"),
+            concat!("pub struct ApuSaveState {\n    apu", ": ", "Apu"),
+            concat!("pub struct PpuSaveState {\n    ppu", ": ", "Ppu"),
+            concat!("pub struct DmaSaveState {\n    dma", ": ", "DmaController"),
+            concat!("pub struct TimerSaveState {\n    timer", ": ", "Timer"),
+            concat!("pub struct SerialSaveState {\n    serial", ": ", "Serial"),
+            concat!(
+                "pub struct ExternalPortSaveState {\n    external_port",
+                ": ",
+                "ExternalPort"
+            ),
+            concat!(
+                "pub struct BootSaveState {\n    boot",
+                ": ",
+                "BootController"
+            ),
+            concat!(
+                "pub struct InterruptSaveState {\n    interrupts",
+                ": ",
+                "InterruptController"
+            ),
+            concat!("pub struct JoypadSaveState {\n    joypad", ": ", "Joypad"),
+            concat!(
+                "pub struct CartridgeRuntimeSaveState {\n    cartridge",
+                ": ",
+                "CartridgeSlot"
+            ),
+        ];
+
+        for forbidden in forbidden_runtime_root_fields {
+            assert!(
+                !sources.contains(forbidden),
+                "save-state DTOs must not wrap runtime root field `{forbidden}`"
+            );
+        }
     }
 }

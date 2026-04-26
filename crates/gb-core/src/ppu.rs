@@ -429,6 +429,68 @@ pub struct PpuRuntimeState {
     panel: PpuPanelState,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct PpuRuntimeSaveState {
+    visible_registers: PpuVisibleRegisters,
+    pipeline_registers: PpuVisibleRegisters,
+    startup_mode_latch: Option<PpuAccessMode>,
+    stat_state: StatState,
+    pending_interrupts: u8,
+    blank_frame_active: bool,
+    system_stop_active: bool,
+    oam_corruption_controller: OamCorruptionController,
+    mode2_scan_state: Mode2ScanState,
+    window_state: WindowState,
+    bg_pipeline_state: BgPipelineState,
+    obj_pipeline_state: ObjPipelineState,
+    last_unsigned_tile_data_fetch: u8,
+    last_unsigned_tile_data_low_fetch: u8,
+    last_unsigned_tile_data_high_fetch: u8,
+    panel: PpuPanelState,
+}
+
+impl PpuRuntimeState {
+    fn capture_save_state(&self) -> PpuRuntimeSaveState {
+        PpuRuntimeSaveState {
+            visible_registers: self.visible_registers,
+            pipeline_registers: self.pipeline_registers,
+            startup_mode_latch: self.startup_mode_latch,
+            stat_state: self.stat_state.clone(),
+            pending_interrupts: self.pending_interrupts,
+            blank_frame_active: self.blank_frame_active,
+            system_stop_active: self.system_stop_active,
+            oam_corruption_controller: self.oam_corruption_controller,
+            mode2_scan_state: self.mode2_scan_state.clone(),
+            window_state: self.window_state.clone(),
+            bg_pipeline_state: self.bg_pipeline_state.clone(),
+            obj_pipeline_state: self.obj_pipeline_state.clone(),
+            last_unsigned_tile_data_fetch: self.last_unsigned_tile_data_fetch,
+            last_unsigned_tile_data_low_fetch: self.last_unsigned_tile_data_low_fetch,
+            last_unsigned_tile_data_high_fetch: self.last_unsigned_tile_data_high_fetch,
+            panel: self.panel.clone(),
+        }
+    }
+
+    fn restore_save_state(&mut self, state: &PpuRuntimeSaveState) {
+        self.visible_registers = state.visible_registers;
+        self.pipeline_registers = state.pipeline_registers;
+        self.startup_mode_latch = state.startup_mode_latch;
+        self.stat_state = state.stat_state.clone();
+        self.pending_interrupts = state.pending_interrupts;
+        self.blank_frame_active = state.blank_frame_active;
+        self.system_stop_active = state.system_stop_active;
+        self.oam_corruption_controller = state.oam_corruption_controller;
+        self.mode2_scan_state = state.mode2_scan_state.clone();
+        self.window_state = state.window_state.clone();
+        self.bg_pipeline_state = state.bg_pipeline_state.clone();
+        self.obj_pipeline_state = state.obj_pipeline_state.clone();
+        self.last_unsigned_tile_data_fetch = state.last_unsigned_tile_data_fetch;
+        self.last_unsigned_tile_data_low_fetch = state.last_unsigned_tile_data_low_fetch;
+        self.last_unsigned_tile_data_high_fetch = state.last_unsigned_tile_data_high_fetch;
+        self.panel = state.panel.clone();
+    }
+}
+
 impl Default for PpuRuntimeState {
     fn default() -> Self {
         Self {
@@ -487,6 +549,77 @@ pub struct Ppu {
     wx: u8,
     obj_palette_read_policy: DmgObjPaletteReadPolicy,
     runtime: PpuRuntimeState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PpuSaveState {
+    console_model: ConsoleModel,
+    status: PpuStatus,
+    lcdc: u8,
+    stat_interrupt_enable: u8,
+    lcd_state: PpuLcdState,
+    lcd_enable_pending_delay_tcycles: u8,
+    scy: u8,
+    scx: u8,
+    ly: u8,
+    line_dot: u16,
+    lcd_restart_phase: PpuLcdRestartPhase,
+    lyc: u8,
+    bgp: u8,
+    obp0: Option<u8>,
+    obp1: Option<u8>,
+    wy: u8,
+    wx: u8,
+    obj_palette_read_policy: DmgObjPaletteReadPolicy,
+    runtime: PpuRuntimeSaveState,
+}
+
+impl Ppu {
+    pub(crate) fn capture_save_state(&self) -> PpuSaveState {
+        PpuSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            lcdc: self.lcdc,
+            stat_interrupt_enable: self.stat_interrupt_enable,
+            lcd_state: self.lcd_state,
+            lcd_enable_pending_delay_tcycles: self.lcd_enable_pending_delay_tcycles,
+            scy: self.scy,
+            scx: self.scx,
+            ly: self.ly,
+            line_dot: self.line_dot,
+            lcd_restart_phase: self.lcd_restart_phase,
+            lyc: self.lyc,
+            bgp: self.bgp,
+            obp0: self.obp0,
+            obp1: self.obp1,
+            wy: self.wy,
+            wx: self.wx,
+            obj_palette_read_policy: self.obj_palette_read_policy,
+            runtime: self.runtime.capture_save_state(),
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &PpuSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.lcdc = state.lcdc;
+        self.stat_interrupt_enable = state.stat_interrupt_enable;
+        self.lcd_state = state.lcd_state;
+        self.lcd_enable_pending_delay_tcycles = state.lcd_enable_pending_delay_tcycles;
+        self.scy = state.scy;
+        self.scx = state.scx;
+        self.ly = state.ly;
+        self.line_dot = state.line_dot;
+        self.lcd_restart_phase = state.lcd_restart_phase;
+        self.lyc = state.lyc;
+        self.bgp = state.bgp;
+        self.obp0 = state.obp0;
+        self.obp1 = state.obp1;
+        self.wy = state.wy;
+        self.wx = state.wx;
+        self.obj_palette_read_policy = state.obj_palette_read_policy;
+        self.runtime.restore_save_state(&state.runtime);
+    }
 }
 
 impl Deref for Ppu {

@@ -249,6 +249,18 @@ pub struct Apu {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ApuSaveState {
+    console_model: ConsoleModel,
+    status: ApuStatus,
+    master: MasterControlState,
+    frame_sequencer: FrameSequencerState,
+    output_path: OutputPathState,
+    channels: ApuChannels,
+    last_register_write: Option<ApuRegisterWriteObservation>,
+    wave_ram_startup_policy: WaveRamStartupPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApuSnapshot {
     pub console_model: ConsoleModel,
     pub status: ApuStatus,
@@ -289,6 +301,30 @@ impl Apu {
             last_register_write: None,
             wave_ram_startup_policy,
         }
+    }
+
+    pub(crate) fn capture_save_state(&self) -> ApuSaveState {
+        ApuSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            master: self.master,
+            frame_sequencer: self.frame_sequencer,
+            output_path: self.output_path,
+            channels: self.channels.clone(),
+            last_register_write: self.last_register_write.clone(),
+            wave_ram_startup_policy: self.wave_ram_startup_policy,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &ApuSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.master = state.master;
+        self.frame_sequencer = state.frame_sequencer;
+        self.output_path = state.output_path;
+        self.channels = state.channels.clone();
+        self.last_register_write = state.last_register_write.clone();
+        self.wave_ram_startup_policy = state.wave_ram_startup_policy;
     }
 
     pub fn console_model(&self) -> ConsoleModel {

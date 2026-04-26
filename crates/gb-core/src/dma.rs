@@ -470,6 +470,15 @@ pub struct DmaController {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DmaSaveState {
+    console_model: ConsoleModel,
+    status: DmaStatus,
+    source_page_latch: u8,
+    transfer_state: DmaTransferState,
+    pending_restart: Option<DmaTransferProgress>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DmaSnapshot {
     pub console_model: ConsoleModel,
     pub status: DmaStatus,
@@ -495,6 +504,24 @@ impl DmaController {
 
     pub fn status(&self) -> DmaStatus {
         self.status
+    }
+
+    pub(crate) fn capture_save_state(&self) -> DmaSaveState {
+        DmaSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            source_page_latch: self.source_page_latch,
+            transfer_state: self.transfer_state,
+            pending_restart: self.pending_restart,
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &DmaSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.source_page_latch = state.source_page_latch;
+        self.transfer_state = state.transfer_state;
+        self.pending_restart = state.pending_restart;
     }
 
     pub fn source_page_latch(&self) -> u8 {

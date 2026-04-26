@@ -69,7 +69,7 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 - `Machine::capture_save_state()` captures at the stable boundary between public T-cycle steps. The scheduler portion records `next_t_cycle`; machine-local pending external events are captured separately from scheduler timing.
 - `Machine::restore_save_state()` validates metadata before mutation, then restores owned subsystem fields directly. It does not replay MMIO writes and does not apply cartridge RTC elapsed off-session time.
 - Mandatory metadata includes console model, operating mode, host platform, startup mode, compatibility policy / execution mode / overrides, `next_t_cycle`, loaded cartridge kind and ROM fingerprint, plus boot-ROM kind, mapping state, and fingerprint when a boot ROM applies.
-- `gb-persistence` owns the `.gbstate` envelope (`GBSTATE\0`, version `1`, extension `.gbstate`) separately from `.gbsav`. Decode rejects unsupported versions, invalid magic, corrupt/truncated payloads, trailing bytes, unknown metadata tags, and envelope/payload metadata mismatches.
+- `gb-persistence` owns the `.gbstate` envelope (`GBSTATE\0`, current version `2`, extension `.gbstate`) separately from `.gbsav`. Decode rejects unsupported versions, including the intentionally broken version `1`, invalid magic, corrupt/truncated payloads, trailing bytes, unknown metadata tags, and envelope/payload metadata mismatches.
 - Phase 8 keeps `MachineSaveState` cloneable and usable entirely in memory. That is the future rewind hook: a later phase can add a frame/subframe ring buffer, compression, deltas, and UI without adding disk or timestamp policy to `gb-core`.
 
 #### Phase 8.1 semantic hardening contract
@@ -78,6 +78,13 @@ Phase `6` cartridge persistence is intentionally not a substitute for this whole
 - Validate restore semantics through one reusable continuation harness that captures a save state, forks an uninterrupted continuation, dirties and restores the original machine, then compares post-restore continuation state.
 - Coverage must include CPU mid-instruction / HALT / pending IME, PPU Mode 3 fetch/FIFO/window/OBJ state, active DMA with restart state, timer overflow pipeline, serial transfers in flight, active APU output state, and representative cartridge runtime state for NoMBC, MBC1, MBC2, MBC3 RAM+RTC, MBC5, and Pocket Camera.
 - A later Phase 8.2 may convert mirror-style subsystem wrappers into explicit durable DTOs, but only after the Phase 8.1 semantic coverage is green.
+
+#### Phase 8.2 DTO durability contract
+
+- Convert subsystem save-state wrappers from root runtime clones into explicit owner DTOs with runtime-to-DTO and DTO-to-runtime conversion paths.
+- Keep `Machine::capture_save_state`, `Machine::restore_save_state`, `MachineSaveState`, metadata, and restore error APIs stable; only the `.gbstate` payload contract changes.
+- Bump `.gbstate` to version `2`, keep magic/extension unchanged, and reject version `1` as unsupported instead of adding a compatibility migration.
+- Keep rewind, ring buffers, compression, deltas, and UI out of this phase; the in-memory `MachineSaveState` remains cloneable and disk-independent.
 
 #### Risks if delayed or underspecified
 

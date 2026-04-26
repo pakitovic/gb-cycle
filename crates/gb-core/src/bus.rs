@@ -48,6 +48,17 @@ pub struct Bus {
     iohram: IoHramDomain,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BusSaveState {
+    console_model: ConsoleModel,
+    status: BusStatus,
+    router: AddressRouter,
+    vram: VramDomain,
+    wram: WramDomain,
+    oam: OamDomain,
+    iohram: IoHramDomain,
+}
+
 impl Bus {
     pub fn new(console_model: ConsoleModel) -> Self {
         Self {
@@ -67,6 +78,28 @@ impl Bus {
 
     pub fn status(&self) -> BusStatus {
         self.status
+    }
+
+    pub(crate) fn capture_save_state(&self) -> BusSaveState {
+        BusSaveState {
+            console_model: self.console_model,
+            status: self.status,
+            router: self.router,
+            vram: self.vram.clone(),
+            wram: self.wram.clone(),
+            oam: self.oam.clone(),
+            iohram: self.iohram.clone(),
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &BusSaveState) {
+        self.console_model = state.console_model;
+        self.status = state.status;
+        self.router = state.router;
+        self.vram = state.vram.clone();
+        self.wram = state.wram.clone();
+        self.oam = state.oam.clone();
+        self.iohram = state.iohram.clone();
     }
 
     /// Returns the static DMG memory-map classification for `address`.

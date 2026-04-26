@@ -21,12 +21,9 @@ use crate::link::Dmg07Port;
 use crate::model::MachineConfig;
 use crate::ppu::{Ppu, PpuStepObserver, PpuStepRegion};
 use crate::save_state::{
-    ApuSaveState, BootSaveState, BusSaveState, CartridgeRuntimeSaveState, CpuSaveState,
-    DmaSaveState, ExternalPortSaveState, InterruptSaveState, JoypadSaveState,
     MachineBootSaveStateMetadata, MachineCartridgeSaveStateMetadata, MachineCoreSaveState,
     MachineRuntimeSaveState, MachineSaveState, MachineSaveStateMetadata,
-    MachineSaveStateRestoreError, PpuSaveState, SchedulerSaveState, SerialSaveState,
-    TimerSaveState,
+    MachineSaveStateRestoreError, SchedulerSaveState,
 };
 use crate::scheduler::GlobalScheduler;
 use crate::serial::{Serial, SerialClockMode, SerialTransferState};
@@ -412,44 +409,24 @@ impl<S: TraceSink> Machine<S> {
                     next_t_cycle: self.scheduler.next_t_cycle(),
                 },
                 machine: MachineRuntimeSaveState {
-                    pending_external_events: self.pending_external_events,
+                    joypad_pressed_mask: self.pending_external_events.joypad_pressed_mask,
+                    joypad_state_dirty: self.pending_external_events.joypad_state_dirty,
+                    external_serial_clock_pulses_pending: self
+                        .pending_external_events
+                        .external_serial_clock_pulses_pending,
                 },
-                cpu: CpuSaveState {
-                    core: self.cpu.clone(),
-                },
-                bus: BusSaveState {
-                    bus: self.bus.clone(),
-                },
-                apu: ApuSaveState {
-                    apu: self.apu.clone(),
-                },
-                ppu: PpuSaveState {
-                    ppu: self.ppu.clone(),
-                },
-                dma: DmaSaveState {
-                    dma: self.dma.clone(),
-                },
-                timer: TimerSaveState {
-                    timer: self.timer.clone(),
-                },
-                serial: SerialSaveState {
-                    serial: self.serial.clone(),
-                },
-                external_port: ExternalPortSaveState {
-                    external_port: self.external_port.clone(),
-                },
-                boot: BootSaveState {
-                    boot: self.boot.clone(),
-                },
-                interrupts: InterruptSaveState {
-                    interrupts: self.interrupts.clone(),
-                },
-                joypad: JoypadSaveState {
-                    joypad: self.joypad.clone(),
-                },
-                cartridge: CartridgeRuntimeSaveState {
-                    cartridge: self.cartridge.clone(),
-                },
+                cpu: self.cpu.capture_save_state(),
+                bus: self.bus.capture_save_state(),
+                apu: self.apu.capture_save_state(),
+                ppu: self.ppu.capture_save_state(),
+                dma: self.dma.capture_save_state(),
+                timer: self.timer.capture_save_state(),
+                serial: self.serial.capture_save_state(),
+                external_port: self.external_port.capture_save_state(),
+                boot: self.boot.capture_save_state(),
+                interrupts: self.interrupts.capture_save_state(),
+                joypad: self.joypad.capture_save_state(),
+                cartridge: self.cartridge.capture_save_state(),
             },
         )
     }
@@ -462,19 +439,23 @@ impl<S: TraceSink> Machine<S> {
 
         let core = state.core();
         self.scheduler.set_next_t_cycle(core.scheduler.next_t_cycle);
-        self.cpu = core.cpu.core.clone();
-        self.bus = core.bus.bus.clone();
-        self.apu = core.apu.apu.clone();
-        self.ppu = core.ppu.ppu.clone();
-        self.dma = core.dma.dma.clone();
-        self.timer = core.timer.timer.clone();
-        self.serial = core.serial.serial.clone();
-        self.external_port = core.external_port.external_port.clone();
-        self.boot = core.boot.boot.clone();
-        self.interrupts = core.interrupts.interrupts.clone();
-        self.joypad = core.joypad.joypad.clone();
-        self.cartridge = core.cartridge.cartridge.clone();
-        self.pending_external_events = core.machine.pending_external_events;
+        self.cpu.restore_save_state(&core.cpu);
+        self.bus.restore_save_state(&core.bus);
+        self.apu.restore_save_state(&core.apu);
+        self.ppu.restore_save_state(&core.ppu);
+        self.dma.restore_save_state(&core.dma);
+        self.timer.restore_save_state(&core.timer);
+        self.serial.restore_save_state(&core.serial);
+        self.external_port.restore_save_state(&core.external_port);
+        self.boot.restore_save_state(&core.boot);
+        self.interrupts.restore_save_state(&core.interrupts);
+        self.joypad.restore_save_state(&core.joypad);
+        self.cartridge.restore_save_state(&core.cartridge);
+        self.pending_external_events = PendingExternalEvents {
+            joypad_pressed_mask: core.machine.joypad_pressed_mask,
+            joypad_state_dirty: core.machine.joypad_state_dirty,
+            external_serial_clock_pulses_pending: core.machine.external_serial_clock_pulses_pending,
+        };
         self.pending_ppu_mmio_write = None;
         self.sync_serial_peer_from_external_port();
         Ok(())

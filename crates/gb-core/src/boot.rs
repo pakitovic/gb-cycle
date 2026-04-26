@@ -340,6 +340,16 @@ pub struct BootController {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BootSaveState {
+    console_model: ConsoleModel,
+    startup_mode: StartupMode,
+    status: BootStatus,
+    boot_rom_kind: BootRomKind,
+    boot_rom_mapped: bool,
+    boot_rom_assets: BootRomAssets,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BootSnapshot {
     pub console_model: ConsoleModel,
     pub startup_mode: StartupMode,
@@ -368,6 +378,26 @@ impl BootController {
 
     pub fn console_model(&self) -> ConsoleModel {
         self.console_model
+    }
+
+    pub(crate) fn capture_save_state(&self) -> BootSaveState {
+        BootSaveState {
+            console_model: self.console_model,
+            startup_mode: self.startup_mode,
+            status: self.status,
+            boot_rom_kind: self.boot_rom_kind,
+            boot_rom_mapped: self.boot_rom_mapped,
+            boot_rom_assets: self.boot_rom_assets.clone(),
+        }
+    }
+
+    pub(crate) fn restore_save_state(&mut self, state: &BootSaveState) {
+        self.console_model = state.console_model;
+        self.startup_mode = state.startup_mode;
+        self.status = state.status;
+        self.boot_rom_kind = state.boot_rom_kind;
+        self.boot_rom_mapped = state.boot_rom_mapped;
+        self.boot_rom_assets = state.boot_rom_assets.clone();
     }
 
     pub fn startup_mode(&self) -> StartupMode {
